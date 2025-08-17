@@ -534,7 +534,8 @@ let isMultiKADSelectionEnabled = false; // Flag for multi-KAD selection mode
 // Step 4) Move tool state for KAD vertices
 let moveToolSelectedKAD = null;
 let moveToolKADOriginalZ = 0;
-
+let toeSizeInMeters = 1;
+let connScale = 1;
 let isPlaying = false; // To track whether the animation is playing
 let animationInterval; // To store the interval ID for the animation
 let playSpeed = 1; // Default play speed
@@ -1702,9 +1703,27 @@ function updateTranslations(language) {
     const delayLabel = document.querySelector("#delayLabel");
     if (delayLabel) delayLabel.textContent = langTranslations.delay_label;
 
+    jscolor.install();
     const connectorColor = document.querySelector("#connectorColor");
     if (connectorColor)
       connectorColor.textContent = langTranslations.color_label;
+    if (connectorColor.jscolor) {
+      // Step #) Set the color programmatically
+      connectorColor.jscolor.fromString("#00FF00");
+
+      // Step #) Get the current color as hex
+      var currentColor = connectorColor.jscolor.toHEXString();
+
+      // Step #) Set jscolor options (optional)
+      connectorColor.jscolor.option("width", 80);
+      connectorColor.jscolor.option("height", 30);
+
+      // Step #) You can also add event handlers if needed
+      connectorColor.jscolor.option("onInput", function () {
+        // Do something when the color changes
+        // Example: update a preview or save to localStorage
+      });
+    }
 
     const connectLabel = document.querySelector("#connectLabel");
     if (connectLabel)
