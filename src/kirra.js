@@ -12,7 +12,7 @@ import Swal from "sweetalert2";
 import Plotly from "plotly.js-dist";
 import Papa from "papaparse";
 import CryptoJS from "crypto-js";
-import jscolor from "jscolor"; // importing a specific jscolor in html <script src="/libs/jscolor.min.js"></script>
+import jscolor from "jscolor";
 import * as turf from "@turf/turf";
 import { polygonCentroid } from "d3-polygon";
 import ClipperLib from "clipper-lib";
@@ -71,6 +71,11 @@ jscolor.presets.default = {
     "#FEFEFE",
   ],
 };
+
+// Initialize jscolor after DOM is loaded
+document.addEventListener("DOMContentLoaded", function () {
+  jscolor.install();
+});
 
 // END SETUP JSCOLOR
 //==============================================
