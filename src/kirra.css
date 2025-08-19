@@ -95,6 +95,7 @@ canvas {
 }
 
 .canvas-container {
+    position: relative !important;
     position: absolute;
     top: 0;
     left: 0;
@@ -566,11 +567,11 @@ body.dark-mode .menu-content a:hover {
     margin-left: 2px;
 }
 
-.dark-mode-toggle input:checked+label {
+.dark-mode-toggle input:checked + label {
     background-color: #666;
 }
 
-.dark-mode-toggle input:checked+label:after {
+.dark-mode-toggle input:checked + label:after {
     transform: translateX(24px);
 }
 
@@ -783,11 +784,11 @@ input[type="file"] {
     transition: 0.4s;
 }
 
-input:checked+.slider {
+input:checked + .slider {
     background-color: #00a91c;
 }
 
-input:checked+.slider:before {
+input:checked + .slider:before {
     -webkit-transform: translateX(26px);
     -ms-transform: translateX(26px);
     transform: translateX(26px);
@@ -1266,13 +1267,13 @@ body.dark-mode .file-import-btn:hover {
 }
 
 /* Style the selected (checked) button */
-.radio-buttons-custom input[type="radio"]:checked+.icon-button {
+.radio-buttons-custom input[type="radio"]:checked + .icon-button {
     background-color: red;
     /* Set the selected color */
 }
 
 /* Style the selected (checked) button */
-.toggle-buttons-custom input[type="checkbox"]:checked+.icon-button {
+.toggle-buttons-custom input[type="checkbox"]:checked + .icon-button {
     /* display: none; */
     background-color: red;
     border-color: red;
@@ -2441,7 +2442,6 @@ body.dark-mode .color-swatch:hover {
 /* STRICT MOBILE CONSTRAINTS */
 /* Universal mobile support */
 @media (max-width: 1024px) {
-
     html,
     body {
         margin: 0;
@@ -2513,7 +2513,6 @@ body.dark-mode .color-swatch:hover {
     }
 }
 
-
 .floating-dialog {
     position: fixed;
     background-color: var(--light-mode-canvas);
@@ -2564,7 +2563,6 @@ body.dark-mode .floating-dialog-header {
     border-bottom-color: var(--dark-mode-border);
     color: var(--dark-mode-text);
 }
-
 
 /* ✅ FIX: Simplify content area */
 .floating-dialog-content {
@@ -2641,11 +2639,11 @@ body.dark-mode .floating-dialog-btn {
     margin-top: 4px;
 }
 
-.floating-dialog .button-container-2col>*:nth-child(odd) {
+.floating-dialog .button-container-2col > *:nth-child(odd) {
     justify-self: start;
 }
 
-.floating-dialog .button-container-2col>*:nth-child(even) {
+.floating-dialog .button-container-2col > *:nth-child(even) {
     justify-self: stretch;
     width: 100%;
     margin-right: 4px;
@@ -2662,7 +2660,7 @@ body.dark-mode .floating-dialog-btn {
 }
 
 /* Ensure the second column doesn't overflow */
-.floating-dialog-compact .button-container-2col>*:nth-child(even) {
+.floating-dialog-compact .button-container-2col > *:nth-child(even) {
     margin-right: 8px !important;
     min-width: 0 !important;
     /* Allow shrinking */
@@ -2677,7 +2675,7 @@ body.dark-mode .floating-dialog-btn {
     row-gap: 6px !important;
 }
 
-.floating-dialog-wide .button-container-2col>*:nth-child(even) {
+.floating-dialog-wide .button-container-2col > *:nth-child(even) {
     margin-right: 6px !important;
 }
 
@@ -3014,17 +3012,17 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
 }
 
 /* When checkbox is checked, style the associated label */
-.toolbar-grid input[type="checkbox"]:checked+.icon-button,
-.toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom {
+.toolbar-grid input[type="checkbox"]:checked + .icon-button,
+.toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
-    border-color: #FF0000 !important;
+    border-color: #ff0000 !important;
     box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 /* Add hover state for checked buttons */
-.toolbar-grid input[type="checkbox"]:checked+.icon-button:hover,
-.toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom:hover {
+.toolbar-grid input[type="checkbox"]:checked + .icon-button:hover,
+.toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2x;
     border-color: #ff0000 !important;
@@ -3032,15 +3030,15 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
 }
 
 /* Dark mode checked state */
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.icon-button,
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .icon-button,
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
-    border-color: #FF0000 !important;
+    border-color: #ff0000 !important;
 }
 
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.icon-button:hover,
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .icon-button:hover,
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
     border-color: #ff0000 !important;
@@ -3094,7 +3092,7 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-cust
 }
 
 /* Step 2) Radio button label styling with horizontal alignment */
-.toolbar-grid input[type="radio"]+.toggle-buttons-custom {
+.toolbar-grid input[type="radio"] + .toggle-buttons-custom {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -3114,7 +3112,7 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-cust
 }
 
 /* Step 3) Radio button checked state */
-.toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom {
+.toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     border-width: 1px;
@@ -3122,41 +3120,40 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-cust
 }
 
 /* Step 4) Radio button hover states */
-.toolbar-grid input[type="radio"]+.toggle-buttons-custom:hover {
+.toolbar-grid input[type="radio"] + .toggle-buttons-custom:hover {
     border-color: #999;
     background-color: #444;
 }
 
-.toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:hover {
+.toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     box-shadow: 0 0 5px rgba(255, 0, 0, 0.7);
 }
 
 /* Step 5) Dark mode radio button styling */
-body.dark-mode .toolbar-grid input[type="radio"]+.toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="radio"] + .toggle-buttons-custom {
     background-color: #2a2a2a;
     border-color: #555;
     color: #ddd;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     color: #fff;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"]+.toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="radio"] + .toggle-buttons-custom:hover {
     background-color: #3a3a3a;
     border-color: #777;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     box-shadow: 0 0 5px rgba(255, 0, 0, 0.7);
 }
-
 
 /* Ensure grid items are properly centered */
 .toolbar-grid {
@@ -3212,4 +3209,10 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:
 /* Smooth transition when sidebar opens/closes */
 .toolbar-panel {
     transition: left 0.5s ease, width 0.5s ease, height 0.5s ease;
+}
+/* Add this to your CSS file */
+#contourOverlay {
+    position: absolute !important;
+    pointer-events: none !important;
+    z-index: 10 !important;
 }
