@@ -39313,7 +39313,7 @@ function drawBrightContoursFixed() {
             drawAlternatingDashLine(startX, startY, endX, endY);
 
             // Step 12) Add time labels at intervals
-            if (j % 5 === 0) {
+            if (j % 10 === 0) {
                 const timeLabel = (level * interval).toString() + "ms";
                 const labelX = (startX + endX) / 2;
                 const labelY = (startY + endY) / 2;
@@ -39393,6 +39393,21 @@ function drawTimeLabelFixed(x, y, text, color) {
     contourOverlayCtx.textAlign = "center";
     contourOverlayCtx.textBaseline = "middle";
     contourOverlayCtx.fillText(text, x, y);
+}
+
+// Step 1) Add missing updateOverlayColorsForTheme function
+function updateOverlayColorsForTheme() {
+    if (!contourOverlayCtx) return;
+
+    // Step 2) Clear and redraw overlay with new theme colors
+    contourOverlayCtx.clearRect(0, 0, contourOverlayCanvas.width, contourOverlayCanvas.height);
+
+    // Step 3) Update overlay colors based on current theme
+    if (useContourOverlay && contourLines && contourLines.length > 0) {
+        drawContoursOnOverlayFixed();
+    }
+
+    console.log("Overlay colors updated for theme change");
 }
 
 // Step 17) Hook overlay into existing functions
@@ -39692,7 +39707,7 @@ document.addEventListener("DOMContentLoaded", function () {
             enableAutoUpdate(); // Set up automatic hooks
             console.log("Overlay system initialized and ready");
         }
-    }, 1000); // Small delay to ensure all your variables are loaded
+    }, 100); // Small delay to ensure all your variables are loaded
     // The rest of your initialization code...
     setTimeout(function () {
         getDarkModeSettings();

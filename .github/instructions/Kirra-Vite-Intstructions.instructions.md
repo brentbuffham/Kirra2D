@@ -1,5 +1,5 @@
 ---
-applyTo: "**"
+applyTo: "**/Kirra-2D-Vite/**"
 ---
 
 # Kirra Vite Instructions
