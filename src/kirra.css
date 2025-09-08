@@ -3191,8 +3191,20 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
     object-fit: contain;
 }
 
-/* When left sidebar is open, shift toolbar to the right */
+/* When left sidebar is open, shift toolbar to the right 
 .toolbar-panel.sidebar-open {
+    left: 350px !important;
+    transition: left 0.5s ease;
+}*/
+
+/* Mobile - don't shift toolbar 
+@media (max-width: 1024px) {
+    .toolbar-panel.sidebar-open {
+        left: 20px !important;
+    }
+}*/
+/* When left sidebar is open, shift toolbar to the right */
+#toolbarPanel.toolbar-panel.sidebar-open {
     left: 350px !important;
     /* Adjust this value based on your sidebar width */
     transition: left 0.5s ease;
@@ -3200,7 +3212,7 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
 
 /* Mobile - don't shift toolbar */
 @media (max-width: 1024px) {
-    .toolbar-panel.sidebar-open {
+    #toolbarPanel.toolbar-panel.sidebar-open {
         left: 20px !important;
         /* Keep original position on mobile */
     }
