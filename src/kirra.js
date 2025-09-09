@@ -23636,10 +23636,6 @@ function updateHoleFromCsvData(hole, getValue, angleConvention, diameterUnit) {
     calculateMissingGeometry(hole);
 }
 
-/**
- * Calculate missing geometry when no explicit geometry data is provided
- * FIXED: Proper bearing and angle calculations
- */
 function calculateMissingGeometry(hole) {
     const hasEndCoords = hole.endXLocation !== hole.startXLocation || hole.endYLocation !== hole.startYLocation || hole.endZLocation !== hole.startZLocation;
 
