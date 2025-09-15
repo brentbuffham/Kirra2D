@@ -4795,7 +4795,7 @@ function parseK2Dcsv(data) {
 
     // In parseCSV and processCsvData:
     entitiesForRowDetection.forEach((holes, entityName) => {
-        enhancedSmartRowDetection(holes, entityName); //
+        improvedSmartRowDetection(holes, entityName); //
     });
 
     // Auto-assign rowID/posID for holes that still don't have them
@@ -15240,14 +15240,14 @@ async function addKADText() {
 //Eleven Possible columns
 function saveAQMPopup() {
     // ✅ Filter points first
-    const visibleBlastHoles = points.filter((point) => blastGroupVisible && point.visible !== false);
+    const visibleBlastHoles = allBlastHoles.filter((hole) => blastGroupVisible && hole.visible !== false);
     if (visibleBlastHoles.length === 0) {
         showModalMessage("No Visible Holes", "There are no visible holes to export.", "warning");
         return;
     }
     const savedAQMPopupSettings = JSON.parse(localStorage.getItem("savedAQMPopupSettings")) || {};
-    let blastNameFromPoints = visibleBlastHoles[0].entityName;
-    console.log("blastName: " + blastNameFromPoints);
+    let blastNameFromVisibleBlastHoles = visibleBlastHoles[0].entityName;
+    console.log("blastName: " + blastNameFromVisibleBlastHoles);
     Swal.fire({
         title: "Export AQM file?",
         showCancelButton: true,
@@ -15561,7 +15561,7 @@ function saveAQMPopup() {
             // Create the column order array
             let columnOrderArray = [column1Value, column2Value, column3Value, column4Value, column5Value, column6Value, column7Value, column8Value, column9Value, column10Value, column11Value];
             // Convert the points to a CSV string using the selected column orders
-            let aqm = convertPointsToAQMCSV(points, fileNameValue, blastName, patternName, materialType, instruction, useHoleTypeAsInstruction, writeIgnoreColumn, columnOrderArray);
+            let aqm = convertPointsToAQMCSV(visibleBlastHoles, fileNameValue, blastName, patternName, materialType, instruction, useHoleTypeAsInstruction, writeIgnoreColumn, columnOrderArray);
             if (isIOS()) {
                 // Create a Blob with the XML data
                 const blob = new Blob([aqm], {
@@ -23636,14 +23636,59 @@ function updateHoleFromCsvData(hole, getValue, angleConvention, diameterUnit) {
     calculateMissingGeometry(hole);
 }
 
-function calculateMissingGeometry(hole) {
-    const hasEndCoords = hole.endXLocation !== hole.startXLocation || hole.endYLocation !== hole.startYLocation || hole.endZLocation !== hole.startZLocation;
+// function calculateMissingGeometry(hole) {
+//     const hasEndCoords = hole.endXLocation !== hole.startXLocation || hole.endYLocation !== hole.startYLocation || hole.endZLocation !== hole.startZLocation;
 
-    if (hasEndCoords && (hole.holeAngle === 0 || hole.holeBearing === 0 || hole.holeLengthCalculated === 0)) {
-        // Calculate from end coordinates - FIXED CALCULATIONS
+//     if (hasEndCoords && (hole.holeAngle === 0 || hole.holeBearing === 0 || hole.holeLengthCalculated === 0)) {
+//         // Calculate from end coordinates - FIXED CALCULATIONS
+//         const dx = hole.endXLocation - hole.startXLocation;
+//         const dy = hole.endYLocation - hole.startYLocation;
+//         const dz = hole.endZLocation - hole.startZLocation; // Note: should be negative for downward holes
+
+//         const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+//         if (length > 0) {
+//             hole.holeLengthCalculated = length;
+
+//             // FIXED: Proper bearing calculation
+//             // 0° = North, 90° = East, 180° = South, 270° = West
+//             let bearing = Math.atan2(dx, dy) * (180 / Math.PI);
+//             if (bearing < 0) bearing += 360;
+//             hole.holeBearing = bearing;
+
+//             // FIXED: Proper angle calculation
+//             // 0° = vertical down, 90° = horizontal
+//             const horizontalDistance = Math.sqrt(dx * dx + dy * dy);
+//             if (horizontalDistance > 0) {
+//                 hole.holeAngle = Math.atan2(horizontalDistance, Math.abs(dz)) * (180 / Math.PI);
+//             } else {
+//                 hole.holeAngle = 0; // Vertical
+//             }
+//         }
+//     } else if (!hasEndCoords || hole.holeLengthCalculated === 0) {
+//         // Calculate from angle/bearing/length or set defaults
+//         if (hole.holeLengthCalculated === 0) {
+//             const benchHeight = hole.benchHeight || 10;
+//             const subdrillAmount = hole.subdrillAmount || 1;
+//             hole.holeLengthCalculated = benchHeight + subdrillAmount;
+//         }
+
+//         // FIXED: Proper coordinate calculation from angle and bearing
+//         calculateHoleEndCoordinates(hole);
+//     }
+// }
+function calculateMissingGeometry(hole) {
+    // Step 1) Check if we have meaningful end coordinates (not just defaults)
+    const hasEndCoords = (hole.endXLocation !== hole.startXLocation || hole.endYLocation !== hole.startYLocation || hole.endZLocation !== hole.startZLocation) && hole.endXLocation !== undefined && hole.endYLocation !== undefined && hole.endZLocation !== undefined;
+
+    // Step 2) Check if we have meaningful angle/bearing/length data
+    const hasAngleBearingLength = (hole.holeAngle !== 0 || hole.holeBearing !== 0 || hole.holeLengthCalculated !== 0) && hole.holeAngle !== undefined && hole.holeBearing !== undefined && hole.holeLengthCalculated !== undefined;
+
+    if (hasEndCoords && !hasAngleBearingLength) {
+        // Step 3) Calculate angle/bearing/length from end coordinates
         const dx = hole.endXLocation - hole.startXLocation;
         const dy = hole.endYLocation - hole.startYLocation;
-        const dz = hole.endZLocation - hole.startZLocation; // Note: should be negative for downward holes
+        const dz = hole.endZLocation - hole.startZLocation;
 
         const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
@@ -23665,22 +23710,27 @@ function calculateMissingGeometry(hole) {
                 hole.holeAngle = 0; // Vertical
             }
         }
-    } else if (!hasEndCoords || hole.holeLengthCalculated === 0) {
-        // Calculate from angle/bearing/length or set defaults
+    } else if (!hasEndCoords && hasAngleBearingLength) {
+        // Step 4) Calculate end coordinates from angle/bearing/length
         if (hole.holeLengthCalculated === 0) {
             const benchHeight = hole.benchHeight || 10;
-            const subdrillAmount = hole.subdrillAmount || 1;
+            const subdrillAmount = hole.subdrillAmount || 0; // Changed from 1 to 0
             hole.holeLengthCalculated = benchHeight + subdrillAmount;
         }
 
-        // FIXED: Proper coordinate calculation from angle and bearing
+        calculateHoleEndCoordinates(hole);
+    } else if (!hasEndCoords && !hasAngleBearingLength) {
+        // Step 5) Set defaults and calculate everything
+        const benchHeight = hole.benchHeight || 10;
+        const subdrillAmount = hole.subdrillAmount || 0; // Changed from 1 to 0
+        hole.holeLengthCalculated = benchHeight + subdrillAmount;
+        hole.holeAngle = hole.holeAngle || 0;
+        hole.holeBearing = hole.holeBearing || 0;
+
         calculateHoleEndCoordinates(hole);
     }
+    // If both hasEndCoords and hasAngleBearingLength are true, do nothing (data is complete)
 }
-
-/**
- * NEW: Proper calculation of end coordinates from angle, bearing, and length
- */
 function calculateHoleEndCoordinates(hole) {
     const angleRad = hole.holeAngle * (Math.PI / 180);
     const bearingRad = hole.holeBearing * (Math.PI / 180);
@@ -23695,11 +23745,15 @@ function calculateHoleEndCoordinates(hole) {
     hole.endYLocation = hole.startYLocation + horizontalDistance * Math.cos(bearingRad);
     hole.endZLocation = hole.startZLocation - verticalDistance; // Going down
 
-    // Calculate grade coordinates (at bench height)
-    const benchHeight = hole.benchHeight || 10;
+    // Calculate grade coordinates
+    // Step 1) Calculate actual bench height: total length minus subdrill
+    const subdrillAmount = hole.subdrillAmount || 0;
+    const actualBenchHeight = hole.holeLengthCalculated - subdrillAmount;
+
+    // Step 2) Calculate grade coordinates at the actual bench height
     const gradeAngleRad = hole.holeAngle * (Math.PI / 180);
-    const gradeHorizontalDistance = benchHeight * Math.tan(gradeAngleRad);
-    const gradeVerticalDistance = benchHeight;
+    const gradeHorizontalDistance = actualBenchHeight * Math.tan(gradeAngleRad);
+    const gradeVerticalDistance = actualBenchHeight;
 
     hole.gradeXLocation = hole.startXLocation + gradeHorizontalDistance * Math.sin(bearingRad);
     hole.gradeYLocation = hole.startYLocation + gradeHorizontalDistance * Math.cos(bearingRad);
@@ -25222,6 +25276,130 @@ function simplifiedHDBSCAN(points, minClusterSize) {
     const clusters = extractStableClusters(hierarchy, minClusterSize);
 
     return clusters;
+}
+
+/**
+ * SIMPLIFIED HDBSCAN WITH DISTANCE MATRIX
+ *
+ * This function runs HDBSCAN clustering using a pre-calculated distance matrix
+ * instead of calculating distances from point coordinates.
+ *
+ * @param {Array<Array<number>>} distanceMatrix - Pre-calculated n×n distance matrix
+ * @param {number} minClusterSize - Minimum number of points required to form a cluster
+ * @returns {Array<Array<number>>} Array of clusters, where each cluster is an array of point indices
+ */
+function simplifiedHDBSCANWithDistanceMatrix(distanceMatrix, minClusterSize) {
+    // Step 2) Validate input parameters
+    if (!distanceMatrix || !Array.isArray(distanceMatrix) || distanceMatrix.length === 0) {
+        console.warn("Invalid distance matrix provided to simplifiedHDBSCANWithDistanceMatrix");
+        return [];
+    }
+
+    const n = distanceMatrix.length;
+
+    // Step 3) Validate that distance matrix is square
+    if (distanceMatrix.some((row) => !Array.isArray(row) || row.length !== n)) {
+        console.warn("Distance matrix is not square or properly formatted");
+        return [];
+    }
+
+    console.log("Running HDBSCAN with pre-calculated " + n + "×" + n + " distance matrix");
+
+    // Step 4) Build minimum spanning tree using the provided distance matrix
+    const mst = buildMinimumSpanningTreeFromMatrix(distanceMatrix, minClusterSize);
+
+    // Step 5) Build cluster hierarchy using existing function
+    const hierarchy = buildClusterHierarchy(mst);
+
+    // Step 6) Extract stable clusters using existing function
+    const clusters = extractStableClusters(hierarchy, minClusterSize);
+
+    console.log("HDBSCAN with distance matrix detected " + clusters.length + " clusters");
+    return clusters;
+}
+
+/**
+ * BUILD MINIMUM SPANNING TREE FROM DISTANCE MATRIX
+ *
+ * Step 1) This is a variant of the existing buildMinimumSpanningTree function
+ * that works with a pre-calculated distance matrix instead of calculating distances.
+ *
+ * @param {Array<Array<number>>} distanceMatrix - Pre-calculated n×n distance matrix
+ * @param {number} minPts - Minimum points parameter for core distance calculation
+ * @returns {Array<Object>} Minimum spanning tree edges with {from, to, weight} structure
+ */
+function buildMinimumSpanningTreeFromMatrix(distanceMatrix, minPts) {
+    const n = distanceMatrix.length;
+    const edges = [];
+
+    // Step 2) Calculate core distances (distance to k-th nearest neighbor)
+    const coreDistances = [];
+    for (let i = 0; i < n; i++) {
+        // Step 3) Get all distances for point i and sort them
+        const dists = distanceMatrix[i].slice(); // Copy the row
+        dists.sort((a, b) => a - b);
+
+        // Step 4) Use k-th nearest neighbor distance as core distance
+        // Ensure we don't exceed array bounds
+        const kIndex = Math.min(minPts, dists.length - 1);
+        coreDistances[i] = dists[kIndex];
+    }
+
+    // Step 5) Calculate mutual reachability distances and create edges
+    for (let i = 0; i < n; i++) {
+        for (let j = i + 1; j < n; j++) {
+            // Step 6) Mutual reachability is the maximum of:
+            // - Core distance of point i
+            // - Core distance of point j
+            // - Direct distance between points i and j
+            const mutualReachability = Math.max(coreDistances[i], coreDistances[j], distanceMatrix[i][j]);
+
+            edges.push({
+                from: i,
+                to: j,
+                weight: mutualReachability
+            });
+        }
+    }
+
+    // Step 7) Sort edges by weight (Kruskal's algorithm)
+    edges.sort((a, b) => a.weight - b.weight);
+
+    // Step 8) Build MST using Union-Find algorithm
+    const parent = Array(n)
+        .fill()
+        .map((_, i) => i);
+    const mst = [];
+
+    // Step 9) Union-Find helper functions
+    function find(x) {
+        if (parent[x] !== x) {
+            parent[x] = find(parent[x]); // Path compression
+        }
+        return parent[x];
+    }
+
+    function union(x, y) {
+        const px = find(x);
+        const py = find(y);
+        if (px !== py) {
+            parent[px] = py;
+            return true;
+        }
+        return false;
+    }
+
+    // Step 10) Build MST by adding edges that don't create cycles
+    for (const edge of edges) {
+        if (union(edge.from, edge.to)) {
+            mst.push(edge);
+            // Step 11) Stop when we have n-1 edges (complete spanning tree)
+            if (mst.length === n - 1) break;
+        }
+    }
+
+    console.log("Built MST from distance matrix with " + mst.length + " edges");
+    return mst;
 }
 
 function calculateDistanceMatrix(points) {
