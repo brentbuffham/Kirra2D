@@ -4,7 +4,7 @@
   "description": "Kirra 2D",
   "main": "kirra.js",
   "scripts": {
-    "dev": "vite",
+    "dev": "BROWSER=firefox vite --open /kirra.html",
     "build": "vite build"
   },
   "keywords": [],

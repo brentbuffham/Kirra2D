@@ -15,4 +15,5 @@ applyTo: "**/Kirra-2D-Vite/**"
     2. What to Add
     3. What to remove
     4. What to keep
--
+-   Avoid Async for any Drawing function the GUI needs to be responsive and Async slows it down.
+
