@@ -33,6 +33,7 @@ import { GeometryFactory } from "./three/GeometryFactory.js";
 // Drawing Modules
 //=================================================
 import { clearThreeJS, renderThreeJS, drawHoleThreeJS, drawHoleToeThreeJS, drawHoleTextThreeJS, drawHoleTextsAndConnectorsThreeJS, drawKADPointThreeJS, drawKADLineThreeJS, drawKADPolygonThreeJS, drawKADCircleThreeJS, drawKADTextThreeJS, drawSurfaceThreeJS, drawContoursThreeJS, drawDirectionArrowsThreeJS, drawBackgroundImageThreeJS } from "./draw/canvas3DDrawing.js";
+import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts } from "./draw/canvas2DDrawing.js";
 //=================================================
 // import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
 //=================================================
@@ -366,8 +367,16 @@ window.worldToThreeLocal = worldToThreeLocal;
 // Function to sync globals to window for module access
 // Called before rendering to ensure all values are current
 function exposeGlobalsToWindow() {
+	// Step 1) Three.js globals
 	window.threeInitialized = threeInitialized;
 	window.threeRenderer = threeRenderer;
+	window.dataCentroidZ = dataCentroidZ;
+
+	// Step 2) 2D Canvas globals (ctx and canvas exposed at initialization)
+	window.strokeColor = strokeColor;
+	window.fillColor = fillColor;
+
+	// Step 3) Shared globals
 	window.holeScale = holeScale;
 	window.currentScale = currentScale;
 	window.darkModeEnabled = darkModeEnabled;
@@ -375,9 +384,11 @@ function exposeGlobalsToWindow() {
 	window.textFillColor = textFillColor;
 	window.depthColor = depthColor;
 	window.angleDipColor = angleDipColor;
+
+	// Step 4) Helper functions
 	window.elevationToColor = elevationToColor;
 	window.rgbStringToThreeColor = rgbStringToThreeColor;
-	window.dataCentroidZ = dataCentroidZ;
+	window.worldToCanvas = worldToCanvas;
 }
 
 // Step 3) Set local origin from first hole, surface, or current centroid
@@ -618,6 +629,10 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 
 const ctx = canvas.getContext("2d");
+// Expose ctx and canvas globally for canvas2DDrawing.js module
+window.ctx = ctx;
+window.canvas = canvas;
+
 let scale = 5; // adjust the scale to fit the allBlastHoles in the canvas
 let fontSize = document.getElementById("fontSlider").value;
 //TODO Eventually use this class for all holes.
@@ -12077,11 +12092,6 @@ function getAverageDistanceSmall(points) {
 	return count > 0 ? total / count : 1;
 }
 
-function clearCanvas() {
-	// Simple clear - transparency is handled by canvas style
-	ctx.clearRect(0, 0, canvas.width, canvas.height);
-}
-
 //=================================================
 // Three.js Drawing Helper Functions
 //=================================================
@@ -12106,36 +12116,7 @@ function rgbStringToThreeColor(rgbString) {
 //=================================================
 
 /*** CODE TO DRAW POINTS FROM KAD DATA ***/
-function drawKADPoints(x, y, z, lineWidth = 1, strokeColor) {
-	ctx.beginPath();
-	ctx.arc(x, y, lineWidth, 0, 2 * Math.PI);
-	ctx.strokeStyle = strokeColor;
-	ctx.fillStyle = strokeColor;
-	// Don't use line width use the line width as a proxy for diameter.
-	ctx.stroke();
-	ctx.fill();
-}
 //Draws an open poly line from the kadLinesArray
-function drawKADLines(sx, sy, ex, ey, sz, ez, lineWidth, strokeColor) {
-	ctx.beginPath();
-	ctx.moveTo(sx, sy);
-	ctx.lineTo(ex, ey);
-	ctx.strokeStyle = strokeColor;
-	ctx.lineWidth = lineWidth;
-	ctx.stroke();
-}
-
-function drawKADPolys(sx, sy, ex, ey, sz, ez, lineWidth, strokeColor, isClosed) {
-	ctx.beginPath();
-	ctx.moveTo(sx, sy);
-	ctx.lineTo(ex, ey);
-	ctx.strokeStyle = strokeColor;
-	ctx.lineWidth = lineWidth;
-	ctx.stroke();
-	if (isClosed) {
-		ctx.closePath();
-	}
-}
 
 function drawAllKADSelectionVisuals() {
 	console.log("Drawing selections - single:", selectedKADObject ? 1 : 0, "multiple:", selectedMultipleKADObjects.length); // DEBUG - ADD THIS LINE
@@ -12490,224 +12471,12 @@ function drawKADTESTPreviewLine(ctx) {
 }
 
 // Fix the drawKADCircles function around line 6450:
-function drawKADCircles(x, y, z, radius, lineWidth, strokeColor) {
-	ctx.strokeStyle = strokeColor;
-	ctx.beginPath();
-	// Convert radius from world units to screen pixels
-	const radiusInPixels = radius * currentScale;
-	ctx.arc(x, y, radiusInPixels, 0, 2 * Math.PI);
-	ctx.lineWidth = lineWidth;
-	ctx.stroke();
-}
 // Also update the drawKADTexts function to handle multiline calculations
-function drawKADTexts(x, y, z, text, color) {
-	ctx.save(); // Save current context state
-	ctx.font = parseInt(currentFontSize - 2) + "px Arial";
-	drawMultilineText(ctx, text, x, y, currentFontSize, "left", color, color, false);
-	ctx.restore(); // Restore context state
-}
 /*** CODE TO DRAW POINTS FROM CSV DATA ***/
-function drawTrack(lineStartX, lineStartY, lineEndX, lineEndY, gradeX, gradeY, strokeColor, subdrillAmount) {
-	ctx.lineWidth = 1;
 
-	if (subdrillAmount < 0) {
-		// NEGATIVE SUBDRILL: Draw only from start to toe (bypass grade)
-		// Use 20% opacity for the entire line since it represents "over-drilling"
-		ctx.beginPath();
-		ctx.strokeStyle = strokeColor;
-		ctx.moveTo(lineStartX, lineStartY);
-		ctx.lineTo(lineEndX, lineEndY);
-		ctx.stroke();
-		// Draw from grade to toe (subdrill portion - red)
-		ctx.beginPath();
-		ctx.strokeStyle = "rgba(255, 0, 0, 0.2)"; // Red line (full opacity)
-		ctx.moveTo(lineEndX, lineEndY);
-		ctx.lineTo(gradeX, gradeY);
-		ctx.stroke();
-		// Draw grade marker with 20% opacity
-		ctx.beginPath();
-		ctx.arc(gradeX, gradeY, 3, 0, 2 * Math.PI);
-		ctx.fillStyle = `rgba(255, 0, 0, 0.2)`; // Red marker with 20% opacity
-		ctx.fill();
-	} else {
-		// POSITIVE SUBDRILL: Draw from start to grade (dark), then grade to toe (red)
+// Note: drawHexagon moved to src/draw/canvas2DDrawing.js
 
-		// Draw from start to grade point (bench drill portion - dark)
-		ctx.beginPath();
-		ctx.strokeStyle = strokeColor; // Dark line (full opacity)
-		ctx.moveTo(lineStartX, lineStartY);
-		ctx.lineTo(gradeX, gradeY);
-		ctx.stroke();
-
-		// Draw from grade to toe (subdrill portion - red)
-		ctx.beginPath();
-		ctx.strokeStyle = "rgba(255, 0, 0, 1.0)"; // Red line (full opacity)
-		ctx.moveTo(gradeX, gradeY);
-		ctx.lineTo(lineEndX, lineEndY);
-		ctx.stroke();
-
-		// Draw grade marker (full opacity)
-		ctx.beginPath();
-		ctx.arc(gradeX, gradeY, 3, 0, 2 * Math.PI);
-		ctx.fillStyle = "rgba(255, 0, 0, 1.0)"; // Red marker (full opacity)
-		ctx.fill();
-	}
-}
-
-function drawHoleToe(x, y, fillColor, strokeColor, radius) {
-	ctx.beginPath();
-	// Use the toeSizeInMeters directly to set the radius
-	ctx.lineWidth = 1;
-	ctx.arc(x, y, radius, 0, 2 * Math.PI);
-	ctx.fillStyle = fillColor;
-	ctx.strokeStyle = strokeColor;
-	ctx.stroke();
-	ctx.fill();
-}
-
-function drawHole(x, y, radius, fillColor, strokeColor) {
-	ctx.strokeStyle = strokeColor;
-	ctx.fillStyle = strokeColor;
-	ctx.lineWidth = 1;
-	ctx.beginPath();
-	const minRadius = 1.5;
-	const drawRadius = radius > minRadius ? radius : minRadius;
-	ctx.arc(x, y, drawRadius, 0, 2 * Math.PI);
-	ctx.fill(); // fill the circle with the fill color
-	ctx.stroke(); // draw the circle border with the stroke color
-}
-
-function drawDummy(x, y, radius, strokeColor) {
-	ctx.strokeStyle = strokeColor;
-	ctx.lineWidth = 2; // Adjust the line width as needed
-	ctx.beginPath();
-	ctx.moveTo(x - radius, y - radius);
-	ctx.lineTo(x + radius, y + radius);
-	ctx.moveTo(x - radius, y + radius);
-	ctx.lineTo(x + radius, y - radius);
-	ctx.stroke();
-}
-
-function drawNoDiameterHole(x, y, sideLength, strokeColor) {
-	ctx.strokeStyle = strokeColor;
-	ctx.lineWidth = 2; // Adjust the line width as needed
-	const halfSide = sideLength / 2;
-	ctx.beginPath();
-	ctx.moveTo(x - halfSide, y - halfSide);
-	ctx.lineTo(x + halfSide, y - halfSide);
-	ctx.lineTo(x + halfSide, y + halfSide);
-	ctx.lineTo(x - halfSide, y + halfSide);
-	ctx.closePath(); // Close the path to form a square
-	ctx.stroke();
-}
-
-function drawHiHole(x, y, radius, fillColor, strokeColor) {
-	ctx.strokeStyle = strokeColor;
-	ctx.beginPath();
-	ctx.arc(x, y, radius, 0, 2 * Math.PI);
-	ctx.fillStyle = fillColor;
-	ctx.fill(); // fill the circle with the fill color
-	ctx.lineWidth = 5;
-	ctx.stroke(); // draw the circle border with the stroke color
-}
-
-function drawExplosion(x, y, spikes, outerRadius, innerRadius, color1, color2) {
-	let rotation = (Math.PI / 2) * 3;
-	let step = Math.PI / spikes;
-	let start = rotation;
-
-	// Start the drawing path
-	ctx.beginPath();
-	ctx.moveTo(x, y - outerRadius);
-	for (let i = 0; i < spikes; i++) {
-		ctx.lineTo(x + Math.cos(start) * outerRadius, y - Math.sin(start) * outerRadius);
-		start += step;
-
-		ctx.lineTo(x + Math.cos(start) * innerRadius, y - Math.sin(start) * innerRadius);
-		start += step;
-	}
-	ctx.lineTo(x, y - outerRadius);
-	ctx.closePath();
-	ctx.lineWidth = 5;
-	ctx.strokeStyle = color1;
-	ctx.stroke();
-	ctx.fillStyle = color2;
-	ctx.fill();
-}
-
-function drawHexagon(x, y, sideLength, fillColor, strokeColor) {
-	ctx.strokeStyle = strokeColor;
-	ctx.beginPath();
-	const rotationAngleRadians = (Math.PI / 180) * 30;
-	for (let i = 0; i < 6; i++) {
-		const angle = rotationAngleRadians + (Math.PI / 3) * i;
-		const offsetX = sideLength * Math.cos(angle);
-		const offsetY = sideLength * Math.sin(angle);
-
-		if (i === 0) {
-			ctx.moveTo(x + offsetX, y + offsetY);
-		} else {
-			ctx.lineTo(x + offsetX, y + offsetY);
-		}
-	}
-
-	ctx.closePath();
-	ctx.fillStyle = fillColor;
-	ctx.fill(); // fill the hexagon with the fill color
-	ctx.lineWidth = 5;
-	ctx.stroke(); // draw the hexagon border with the stroke color
-}
-
-function drawText(x, y, text, color) {
-	ctx.font = parseInt(currentFontSize - 2) + "px Arial";
-	ctx.fillStyle = color;
-	ctx.fillText(text, x, y);
-}
-
-function drawRightAlignedText(x, y, text, color) {
-	ctx.font = parseInt(currentFontSize - 2) + "px Arial";
-	const textWidth = ctx.measureText(text).width;
-	ctx.fillStyle = color;
-	// Draw the text at an x position minus the text width for right alignment
-	drawText(x - textWidth, y, text, color);
-}
-
-function drawMultilineText(ctx, text, x, y, lineHeight = 16, alignment = "left", textColor, boxColor, showBox = false) {
-	if (!text) return; //if no text, return
-	if (!ctx) return; //if no context, return
-	const lines = text.split("\n");
-	//calculate the text width of the widest line NOT the the entire sting.
-	let textWidth = 0;
-	for (let i = 0; i < lines.length; i++) {
-		const lineWidth = ctx.measureText(lines[i]).width;
-		if (lineWidth > textWidth) {
-			textWidth = lineWidth;
-		}
-	}
-	//colorise the text
-	ctx.fillStyle = textColor;
-	for (let i = 0; i < lines.length; i++) {
-		if (alignment == "left") {
-			ctx.fillText(lines[i], x, y + i * lineHeight);
-		} else if (alignment == "right") {
-			ctx.fillText(lines[i], x - textWidth, y + i * lineHeight);
-		} else if (alignment == "center") {
-			// Center each line individually based on its own width
-			const lineWidth = ctx.measureText(lines[i]).width;
-			ctx.fillText(lines[i], x - lineWidth / 2, y + i * lineHeight);
-		}
-	}
-
-	if (showBox) {
-		//colorise the box
-		//ctx.fillStyle = boxColor;
-		ctx.strokeStyle = boxColor;
-		ctx.lineWidth = 1;
-		ctx.beginPath();
-		ctx.roundRect(x - 5 - textWidth / 2, y - 6 - lineHeight / 2, textWidth + 10, lines.length * lineHeight + 6, 4);
-		ctx.stroke();
-	}
-}
+// Note: drawMultilineText moved to src/draw/canvas2DDrawing.js
 
 function drawDirectionArrow(startX, startY, endX, endY, fillColor, strokeColor, connScale) {
 	try {

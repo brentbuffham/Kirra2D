@@ -3,14 +3,18 @@
 ## Objective
 Reduce kirra.js file size from 41,413 lines to improve editor performance and maintainability by extracting drawing functions into separate modules.
 
-## Status: Phase 1 Complete ✅
+## Status: Phase 1 & 2 Complete ✅ | Core Functions Extracted
 
-### Completed Work
+---
 
-#### 1. Three.js Drawing Functions → `src/draw/canvas3DDrawing.js`
-**Status**: ✅ **Complete and Tested**
+## Phase 1: Three.js Drawing Functions ✅ COMPLETE
 
-**Extracted**: 15 functions, ~300 lines
+### What Was Done
+
+#### 1. Created Module: `src/draw/canvas3DDrawing.js` (315 lines)
+**Status**: ✅ **Complete, Tested, and Working**
+
+**Extracted Functions** (15 total):
 - `clearThreeJS()` - Clear 3D scene
 - `renderThreeJS()` - Render 3D  
 - `drawHoleThreeJS()` - Draw complete hole in 3D
@@ -27,193 +31,391 @@ Reduce kirra.js file size from 41,413 lines to improve editor performance and ma
 - `drawDirectionArrowsThreeJS()` - Direction arrows in 3D
 - `drawBackgroundImageThreeJS()` - Background images in 3D
 
-**Import added to kirra.js**: Lines 35-51
-**Functions removed from kirra.js**: Lines 12099-12291 (replaced with comment)
-**Build status**: ✅ Successful (tested with `npm run build`)
+#### 2. Updated kirra.js
+- ✅ Added imports for all 3D functions (lines 35-51)
+- ✅ Removed old 3D function definitions (replaced with comment at line 12098)
+- ✅ Created `exposeGlobalsToWindow()` function to sync globals to window object
+- ✅ Added `window.worldToThreeLocal` exposure
+- ✅ Called `exposeGlobalsToWindow()` in `drawData()` before rendering
 
-### Current File Sizes
-- **kirra.js**: 41,172 lines (down from 41,413)  
-- **canvas3DDrawing.js**: 315 lines
-- **Net reduction**: 241 lines
-
----
-
-## Next Steps: Phase 2 & 3
-
-### Phase 2: 2D Drawing Functions → `src/draw/canvas2DDrawing.js`
-**Status**: 🔄 **Ready to Extract**
-
-**Target**: 58 functions, estimated ~3,000-4,000 lines
-
-**Core Functions to Extract**:
-
-**Hole Drawing** (~400 lines):
-- `drawTrack()` - collar-to-toe track lines
-- `drawHoleToe()` - toe circles  
-- `drawHole()` - basic hole circle
-- `drawDummy()` - X for dummy holes
-- `drawNoDiameterHole()` - square for zero-diameter
-- `drawHiHole()` - highlighted hole
-- `drawHexagon()` - hexagonal holes
-- `drawExplosion()` - explosion effect
-- `drawHoleMainShape()` - main hole dispatcher
-- `drawHoleTextsAndConnectors()` - hole labels/connectors
-
-**KAD Drawing** (~400 lines):
-- `drawKADPoints()` - KAD point circles
-- `drawKADLines()` - KAD line segments
-- `drawKADPolys()` - KAD polygons/lines
-- `drawKADCircles()` - KAD circles
-- `drawKADTexts()` - KAD text labels
-- `drawKADCoordinates()` - coordinate labels
-- `drawKADPreviewLine()` - preview during drawing
-- `drawKADPolyUnified()` - unified poly drawing
-- `drawPolyPath()` - polygon path
-- `drawPolygonSelection()` - selection polygon
-- `drawAllKADSelectionVisuals()` - all selection visuals
-- `drawKADPolygonHighlightSelectedVisuals()` - highlight selected
-- `drawKADHighlightSelectionVisuals()` - selection visuals
-
-**Text Drawing** (~100 lines):
-- `drawText()` - left-aligned text
-- `drawRightAlignedText()` - right-aligned text
-- `drawMultilineText()` - multi-line with box
-
-**Surface Drawing** (~800 lines):
-- `drawSurface()` - main surface rendering
-- `drawTriangleWithGradient()` - triangle with gradient
-- `drawLinearGradientTriangle()` - linear gradient
-- `drawRadialGradientTriangle()` - radial gradient
-- `drawBarycentricGradientTriangle()` - barycentric gradient
-- `drawSurfaceLegend()` - surface color legend
-
-**Slope/Relief/Voronoi** (~600 lines):
-- `drawDelauanySlopeMap()` - slope visualization
-- `drawDelauanyBurdenRelief()` - burden relief map
-- `drawTriangleAngleText()` - angle labels
-- `drawTriangleBurdenReliefText()` - relief labels
-- `drawVoronoiLegendAndCells()` - voronoi cells + legend
-- `drawVoronoiMetric()` - voronoi metric values
-
-**Connectors/Arrows** (~300 lines):
-- `drawDirectionArrow()` - direction arrows
-- `drawArrow()` - curved connector arrows
-- `drawArrowDelayText()` - delay text on arrows
-
-**Legends** (~200 lines):
-- `drawLegend()` - general legend
-- `drawReliefLegend()` - relief legend
-
-**Tools/Measurement** (~200 lines):
-- `drawRuler()` - ruler tool
-- `drawProtractor()` - protractor tool
-- `drawMouseCrossHairs()` - mouse crosshairs
-- `drawMousePosition()` - mouse position display
-- `drawSnapHighlight()` - snap point highlight
-
-**Contours** (~200 lines):
-- `drawContoursOnOverlayFixed()` - contour overlay
-- `drawBrightContoursFixed()` - bright contours
-- `drawAlternatingDashLine()` - dashed contour lines
-- `drawTimeLabelFixed()` - timing labels
-- `drawTestContourLine()` - test contour
-
-**Background/Boundary** (~200 lines):
-- `drawBackgroundImage()` - background images
-- `drawBlastBoundary()` - blast boundary polygon
-
-**Canvas Utils** (~50 lines):
-- `clearCanvas()` - clear 2D canvas
-
-### Phase 3: Print Functions → `src/draw/canvas2DPrinting.js`
-**Status**: 📦 **Deferred** (Complex dependencies)
-
-**Target**: 39+ functions, 2,455 lines
-
-**Main Entry Points**:
-- `getPrintBoundary()` - calculate print boundary
-- `drawPrintBoundary()` - draw print boundary
-- `printToPDF()` - export to PDF
-- `printCanvasHiRes()` - high-res printing
-- `drawDataForPrinting()` - main print (WYSIWYG)
-- `drawCompleteBlastDataForPrint()` - complete data print
-
-**Note**: Print functions have complex interdependencies and share many global variables. Recommend extracting after 2D functions are complete.
-
----
-
-## Expected Final Results
-
-**After Phase 2 (2D extraction)**:
-- kirra.js: ~37,000 lines (down 4,000+)
-- canvas3DDrawing.js: 315 lines
-- canvas2DDrawing.js: ~3,500 lines
-
-**After Phase 3 (Print extraction)**:
-- kirra.js: ~34,500 lines (down 7,000+)
-- canvas3DDrawing.js: 315 lines
-- canvas2DDrawing.js: ~3,500 lines
-- canvas2DPrinting.js: ~2,500 lines
-
-**Total reduction**: ~17% smaller main file, better organization, improved maintainability
-
----
-
-## Implementation Notes
-
-### Dependencies
-All extracted functions depend on global variables from kirra.js:
-- Canvas context: `ctx`, `canvas`, `currentScale`
-- Colors: `strokeColor`, `fillColor`, `textFillColor`
-- State: `darkModeEnabled`, `displayOptions`
-- Utilities: `worldToCanvas()`, `worldToThreeLocal()`
-- Constants: `holeScale`, `currentFontSize`
-
-### Module Pattern
-Functions are exported from modules and imported into kirra.js:
+#### 3. Global Access Solution
+**Problem**: Module functions couldn't access kirra.js globals  
+**Solution**: Expose globals via `window` object
 ```javascript
-// In module:
-export function drawHole(x, y, radius, fillColor, strokeColor) { ... }
+// In kirra.js
+function exposeGlobalsToWindow() {
+	window.threeInitialized = threeInitialized;
+	window.threeRenderer = threeRenderer;
+	window.holeScale = holeScale;
+	// ...etc
+}
 
-// In kirra.js:
-import { drawHole, drawHoleToe, ... } from './draw/canvas2DDrawing.js';
+// In canvas3DDrawing.js
+if (!window.threeInitialized || !window.threeRenderer) return;
 ```
 
-### Testing After Each Phase
-1. Run `npm run build` to verify no syntax errors
-2. Test in browser to verify functionality
-3. Check console for errors
-4. Verify all drawing features work correctly
+### Results
+- **kirra.js**: 41,179 lines (down from 41,413)  
+- **canvas3DDrawing.js**: 315 lines
+- **Net reduction**: 234 lines from main file
+- **Build status**: ✅ Successful
+- **Runtime status**: ✅ Working correctly
 
 ---
 
-## How to Continue
+## Phase 2: 2D Canvas Drawing Functions ✅ CORE COMPLETE
 
-### Option A: Continue in New Context
-Since this is a large refactoring, you can continue with Phase 2 in a fresh context:
-1. Read this document for current status
-2. Extract 2D drawing functions following the same pattern as 3D
-3. Test after extraction
+### What Was Done
 
-### Option B: Manual Completion
-If you prefer to complete manually:
-1. Create `src/draw/canvas2DDrawing.js`
-2. Copy functions listed in Phase 2 from kirra.js
-3. Add `export` keyword to each function
-4. Add import statement to kirra.js (after line 51)
-5. Remove original functions from kirra.js
-6. Test with `npm run build` and browser
+#### 1. Created Module: `src/draw/canvas2DDrawing.js` (284 lines)
+**Status**: ✅ **Complete, Build Successful**
+
+**Extracted Functions** (17 core functions):
+- `clearCanvas()` - Clear 2D canvas
+- `drawText()`, `drawRightAlignedText()`, `drawMultilineText()` - Text rendering
+- `drawTrack()` - Hole track lines with subdrill indicators
+- `drawHoleToe()`, `drawHole()` - Basic hole shapes
+- `drawDummy()`, `drawNoDiameterHole()` - Special hole markers
+- `drawHiHole()`, `drawExplosion()`, `drawHexagon()` - Specialized shapes
+- `drawKADPoints()`, `drawKADLines()`, `drawKADPolys()` - KAD geometry
+- `drawKADCircles()`, `drawKADTexts()` - KAD circles and text
+
+#### 2. Updated kirra.js
+- ✅ Added imports for all 17 core 2D functions (line 36)
+- ✅ Updated `exposeGlobalsToWindow()` with 2D globals (ctx, canvas, etc.)
+- ✅ Removed old function definitions from kirra.js
+- ✅ All functions now access globals via `window` object
+
+### Results
+- **kirra.js**: 40,956 lines (down from 41,179)
+- **canvas2DDrawing.js**: 284 lines
+- **Net reduction**: 223 lines from main file
+- **Build status**: ✅ Successful
+- **Runtime status**: ⏳ Pending browser test
 
 ---
 
-## Architecture Notes
+### Remaining 2D Functions (Not Yet Extracted)
 
-The refactored structure provides:
-- **Separation of Concerns**: 2D vs 3D vs Print drawing
-- **Easier Navigation**: Find functions by category
-- **Better Performance**: Smaller files load faster in editor
-- **Parallel Development**: Multiple developers can work on different modules
-- **Clearer Dependencies**: Import statements show what each module needs
+**Target**: ~41 additional functions, ~2,700 lines
 
-This is **work in progress** - Phase 1 (3D) is complete and working. Continue with Phase 2 when ready.
+### Target Functions by Category
 
+#### A. Hole Drawing Functions (10 functions, ~250 lines)
+**Lines 12506-12659 in kirra.js**
+```javascript
+- drawTrack(lineStartX, lineStartY, lineEndX, lineEndY, gradeX, gradeY, strokeColor, subdrillAmount)
+- drawHoleToe(x, y, fillColor, strokeColor, radius)
+- drawHole(x, y, radius, fillColor, strokeColor)
+- drawDummy(x, y, radius, strokeColor)
+- drawNoDiameterHole(x, y, sideLength, strokeColor)
+- drawHiHole(x, y, radius, fillColor, strokeColor)
+- drawExplosion(x, y, spikes, outerRadius, innerRadius, color1, color2)
+- drawHexagon(x, y, sideLength, fillColor, strokeColor)
+- drawHoleMainShape(hole, x, y, selectedHole)  // Line 19415
+- drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj)  // Line 19270
+```
+
+#### B. Text Drawing Functions (3 functions, ~60 lines)
+**Lines 12661-12710 in kirra.js**
+```javascript
+- drawText(x, y, text, color)
+- drawRightAlignedText(x, y, text, color)
+- drawMultilineText(ctx, text, x, y, lineHeight, alignment, textColor, boxColor, showBox)
+```
+
+#### C. KAD Drawing Functions (13 functions, ~400 lines)
+**Lines 12089-12176 and 19130-19202 in kirra.js**
+```javascript
+- drawKADPoints(x, y, z, lineWidth, strokeColor)
+- drawKADLines(sx, sy, ex, ey, sz, ez, lineWidth, strokeColor)
+- drawKADPolys(sx, sy, ex, ey, sz, ez, lineWidth, strokeColor, isClosed)
+- drawKADCircles(x, y, z, radius, lineWidth, strokeColor)
+- drawKADTexts(x, y, z, text, color)
+- drawKADCoordinates(kadPoint, screenX, screenY)  // Line 19176
+- drawKADPreviewLine(ctx)  // Line 12270
+- drawKADTESTPreviewLine(ctx)  // Line 12454
+- drawKADPolyUnified(points)  // Line 12176
+- drawPolyPath(pathPoints, closed)  // Line ~12381
+- drawPolygonSelection(ctx)  // Line ~12410
+- drawKADPolygonHighlightSelectedVisuals()  // Line 29130
+- drawKADHighlightSelectionVisuals()  // Line 29202
+- drawAllKADSelectionVisuals()  // Line 12136
+```
+
+#### D. Arrow/Connector Functions (3 functions, ~350 lines)
+**Lines 12712-13091 in kirra.js**
+```javascript
+- drawDirectionArrow(startX, startY, endX, endY, fillColor, strokeColor, connScale)
+- drawArrow(startX, startY, endX, endY, color, connScale, connectorCurve)
+- drawArrowDelayText(startX, startY, endX, endY, color, text, connectorCurve)
+```
+
+#### E. Surface Drawing Functions (8 functions, ~1,200 lines)
+**Lines 30620-31589 in kirra.js**
+```javascript
+- drawSurface()  // Line 30620
+- drawSurfaceLegend()  // Line 30664
+- drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx, alpha, gradient, gradientMethod, lightBearing, lightElevation)
+- drawLinearGradientTriangle(...)  // Line 31128
+- drawRadialGradientTriangle(...)  // Line 31209
+- drawBarycentricGradientTriangle(...)  // Line 31261
+- drawBackgroundImage()  // Line 32885
+- drawBlastBoundary(polygon, strokeColor)  // Line 11935
+```
+
+#### F. Analysis/Overlay Functions (8 functions, ~800 lines)
+**Lines 10012-13392 in kirra.js**
+```javascript
+- drawVoronoiMetric(metrics, metricName, getColorForMetric)  // Line 10012
+- drawVoronoiLegendAndCells(...)  // Line 19206
+- drawDelauanySlopeMap(triangles, centroid, strokeColor)  // Line 12919
+- drawDelauanyBurdenRelief(triangles, centroid, strokeColor)  // Line 13033
+- drawTriangleAngleText(triangle, centroid, strokeColor)  // Line 13211
+- drawTriangleBurdenReliefText(triangle, centroid, strokeColor)  // Line 13218
+- drawLegend(strokecolor)  // Line 18166
+- drawReliefLegend(strokecolor)  // Line 13151
+```
+
+#### G. Tool/Helper Functions (8 functions, ~400 lines)
+**Lines 13380-32885 in kirra.js**
+```javascript
+- drawMousePosition(x, y)  // Line 13380
+- drawMouseCrossHairs(mouseX, mouseY, snapRadiusPixels, showSnapRadius, showMouseLines)  // Line 18258
+- drawSnapHighlight()  // Line 32590
+- drawRuler(startX, startY, startZ, endX, endY, endZ)  // Line 26684
+- drawProtractor(p1X, p1Y, p2X, p2Y, p3X, p3Y)  // Line ~27088
+- drawPatternInPolygonVisual()  // Line ~29083
+- drawPatternOnPolylineVisual()  // Line ~29297
+- drawHolesAlongLineVisuals()  // Line 29654
+```
+
+#### H. Contour Functions (5 functions, ~300 lines)
+**Lines 40463-40710 in kirra.js**
+```javascript
+- drawContoursOnOverlayFixed()  // Line 40463
+- drawBrightContoursFixed()  // Line 40478
+- drawAlternatingDashLine(x1, y1, x2, y2)  // Line 40549
+- drawTimeLabelFixed(x, y, text, color)  // Line 40590
+- drawTestContourLine()  // Line 40710
+```
+
+#### I. Canvas Utility (2 functions)
+```javascript
+- clearCanvas()  // Line 12076
+- drawConnectStadiumZone(sx, sy, endX, endY, connectAmount)  // Line 19350
+```
+
+---
+
+## Implementation Guide for Phase 2
+
+### Step 1: Create Module Skeleton
+Create `/Volumes/2TBSSD-BB-NTFS/Kirra-Vite-Clean/Kirra2D/src/draw/canvas2DDrawing.js`:
+
+```javascript
+/* prettier-ignore-file */
+//=================================================
+// canvas2DDrawing.js - 2D Canvas Drawing Functions
+//=================================================
+
+// These functions access globals via window object:
+// - ctx, canvas, currentScale, currentFontSize
+// - strokeColor, fillColor, textFillColor, depthColor, angleDipColor
+// - holeScale, toeSizeInMeters, connScale, firstMovementSize
+// - darkModeEnabled, displayOptions, worldToCanvas()
+// - selectedHole, selectedMultipleHoles, fromHoleStore, etc.
+
+//=================================================
+// Canvas Utilities
+//=================================================
+
+export function clearCanvas() {
+	window.ctx.clearRect(0, 0, window.canvas.width, window.canvas.height);
+}
+
+//=================================================
+// Hole Drawing Functions
+//=================================================
+
+export function drawTrack(lineStartX, lineStartY, lineEndX, lineEndY, gradeX, gradeY, strokeColor, subdrillAmount) {
+	// ... paste function body from kirra.js, replace ctx with window.ctx
+}
+
+// ... continue for all functions
+```
+
+### Step 2: Update kirra.js Imports
+Add after line 51 (after 3D imports):
+
+```javascript
+import {
+	clearCanvas,
+	drawTrack,
+	drawHoleToe,
+	drawHole,
+	drawDummy,
+	drawNoDiameterHole,
+	drawHiHole,
+	drawExplosion,
+	drawHexagon,
+	drawText,
+	drawRightAlignedText,
+	drawMultilineText,
+	drawKADPoints,
+	drawKADLines,
+	drawKADPolys,
+	drawKADCircles,
+	drawKADTexts,
+	drawKADCoordinates,
+	drawKADPreviewLine,
+	drawKADTESTPreviewLine,
+	drawKADPolyUnified,
+	drawPolyPath,
+	drawPolygonSelection,
+	drawAllKADSelectionVisuals,
+	drawKADPolygonHighlightSelectedVisuals,
+	drawKADHighlightSelectionVisuals,
+	drawDirectionArrow,
+	drawArrow,
+	drawArrowDelayText,
+	drawSurface,
+	drawSurfaceLegend,
+	drawTriangleWithGradient,
+	drawLinearGradientTriangle,
+	drawRadialGradientTriangle,
+	drawBarycentricGradientTriangle,
+	drawBackgroundImage,
+	drawBlastBoundary,
+	drawVoronoiMetric,
+	drawVoronoiLegendAndCells,
+	drawDelauanySlopeMap,
+	drawDelauanyBurdenRelief,
+	drawTriangleAngleText,
+	drawTriangleBurdenReliefText,
+	drawLegend,
+	drawReliefLegend,
+	drawMousePosition,
+	drawMouseCrossHairs,
+	drawSnapHighlight,
+	drawRuler,
+	drawProtractor,
+	drawPatternInPolygonVisual,
+	drawPatternOnPolylineVisual,
+	drawHolesAlongLineVisuals,
+	drawContoursOnOverlayFixed,
+	drawBrightContoursFixed,
+	drawAlternatingDashLine,
+	drawTimeLabelFixed,
+	drawTestContourLine,
+	drawConnectStadiumZone,
+	drawHoleMainShape,
+	drawHoleTextsAndConnectors,
+} from "./draw/canvas2DDrawing.js";
+```
+
+### Step 3: Expose Additional Globals
+Update `exposeGlobalsToWindow()` in kirra.js to include:
+
+```javascript
+function exposeGlobalsToWindow() {
+	// Existing...
+	window.threeInitialized = threeInitialized;
+	window.threeRenderer = threeRenderer;
+	// ... existing globals ...
+	
+	// Add for 2D drawing:
+	window.ctx = ctx;
+	window.canvas = canvas;
+	window.strokeColor = strokeColor;
+	window.fillColor = fillColor;
+	window.transparentFillColor = transparentFillColor;
+	window.toeSizeInMeters = toeSizeInMeters;
+	window.connScale = connScale;
+	window.firstMovementSize = firstMovementSize;
+	window.worldToCanvas = worldToCanvas;
+	window.selectedHole = selectedHole;
+	window.selectedMultipleHoles = selectedMultipleHoles;
+	window.fromHoleStore = fromHoleStore;
+	window.firstSelectedHole = firstSelectedHole;
+	window.secondSelectedHole = secondSelectedHole;
+	window.isAddingConnector = isAddingConnector;
+	window.isAddingMultiConnector = isAddingMultiConnector;
+}
+```
+
+### Step 4: Replace Global References in Extracted Functions
+In canvas2DDrawing.js, replace all direct global access with `window.`:
+- `ctx` → `window.ctx`
+- `currentScale` → `window.currentScale`
+- `currentFontSize` → `window.currentFontSize`
+- `strokeColor` → `window.strokeColor`
+- etc.
+
+### Step 5: Remove Old Functions from kirra.js
+After extraction, replace function bodies with comments:
+```javascript
+// Note: Drawing functions moved to src/draw/canvas2DDrawing.js
+```
+
+### Step 6: Test
+```bash
+cd /Volumes/2TBSSD-BB-NTFS/Kirra-Vite-Clean/Kirra2D
+npm run build
+# Then test in browser
+```
+
+---
+
+## Expected Results After Phase 2
+
+### File Sizes
+- **kirra.js**: ~37,500 lines (down ~3,500 from 41,179)
+- **canvas3DDrawing.js**: 315 lines
+- **canvas2DDrawing.js**: ~3,500 lines (new)
+- **Total reduction**: ~10% of main file extracted
+
+### Benefits
+- ✅ Improved editor performance
+- ✅ Better code organization
+- ✅ Easier to find functions
+- ✅ Clearer dependencies via imports
+
+---
+
+## Phase 3: Print Functions (Deferred)
+
+**Status**: 📦 **Pending** (Complex dependencies)
+
+**Scope**: 39+ functions, 2,455 lines  
+**Location**: Lines 33827-36281 in kirra.js
+
+**Reason for Deferral**: Print functions have complex interdependencies with many global variables and internal helper functions. Best completed after 2D extraction when patterns are well-established.
+
+---
+
+## Quick Reference: Current State
+
+```
+✅ Phase 1: 3D Functions → COMPLETE (295 lines extracted)
+✅ Phase 2: 2D Core Functions → COMPLETE (284 lines extracted)
+🔄 Phase 2b: Remaining 2D Functions → PENDING (~41 functions, ~2,700 lines)
+📦 Phase 3: Print Functions → DEFERRED (39 functions, 2,455 lines)
+```
+
+**Original kirra.js**: 41,413 lines  
+**After Phase 1**: 41,179 lines (↓ 234)  
+**After Phase 2 (Core)**: 40,956 lines (↓ 457 total)  
+**Target after Phase 2b**: ~38,000 lines  
+**Final target after Phase 3**: ~35,500 lines  
+
+---
+
+## Notes
+
+- All extracted functions use `window.globalName` to access kirra.js globals
+- `exposeGlobalsToWindow()` is called before each render to ensure fresh values
+- Build and runtime tests confirm Phase 1 is working correctly
+- This refactoring maintains full backward compatibility
+
+**Last Updated**: Phase 1 & 2 (Core) complete, build successful ✅ (Pending browser test)
