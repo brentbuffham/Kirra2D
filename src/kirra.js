@@ -33,7 +33,7 @@ import { GeometryFactory } from "./three/GeometryFactory.js";
 // Drawing Modules
 //=================================================
 import { clearThreeJS, renderThreeJS, drawHoleThreeJS, drawHoleToeThreeJS, drawHoleTextThreeJS, drawHoleTextsAndConnectorsThreeJS, drawKADPointThreeJS, drawKADLineThreeJS, drawKADPolygonThreeJS, drawKADCircleThreeJS, drawKADTextThreeJS, drawSurfaceThreeJS, drawContoursThreeJS, drawDirectionArrowsThreeJS, drawBackgroundImageThreeJS } from "./draw/canvas3DDrawing.js";
-import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts } from "./draw/canvas2DDrawing.js";
+import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 //=================================================
 // import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
 //=================================================
@@ -375,6 +375,8 @@ function exposeGlobalsToWindow() {
 	// Step 2) 2D Canvas globals (ctx and canvas exposed at initialization)
 	window.strokeColor = strokeColor;
 	window.fillColor = fillColor;
+	window.firstMovementSize = firstMovementSize;
+	window.connScale = connScale;
 
 	// Step 3) Shared globals
 	window.holeScale = holeScale;
@@ -12478,217 +12480,11 @@ function drawKADTESTPreviewLine(ctx) {
 
 // Note: drawMultilineText moved to src/draw/canvas2DDrawing.js
 
-function drawDirectionArrow(startX, startY, endX, endY, fillColor, strokeColor, connScale) {
-	try {
-		// Set up the arrow parameters
-		var arrowWidth = (firstMovementSize / 4) * currentScale; // Width of the arrowhead
-		var arrowLength = 2 * (firstMovementSize / 4) * currentScale; // Length of the arrowhead
-		var tailWidth = arrowWidth * 0.7; // Width of the tail (adjust as needed)
-		const angle = Math.atan2(endY - startY, endX - startX); // Angle of the arrow
+// Note: drawDirectionArrow moved to src/draw/canvas2DDrawing.js
 
-		// Set the stroke and fill colors
-		ctx.strokeStyle = strokeColor; // Stroke color (black outline)
-		ctx.fillStyle = fillColor; // Fill color (goldenrod)
+// Note: drawArrow moved to src/draw/canvas2DDrawing.js
 
-		// Begin drawing the arrow as a single path
-		ctx.beginPath();
-
-		// Move to the start point of the arrow
-		ctx.moveTo(startX + (tailWidth / 2) * Math.sin(angle), startY - (tailWidth / 2) * Math.cos(angle)); // Top-left corner of the tail
-
-		// Draw to the end point of the tail (top-right corner)
-		ctx.lineTo(endX - arrowLength * Math.cos(angle) + (tailWidth / 2) * Math.sin(angle), endY - arrowLength * Math.sin(angle) - (tailWidth / 2) * Math.cos(angle));
-
-		// Draw the right base of the arrowhead
-		ctx.lineTo(endX - arrowLength * Math.cos(angle) + arrowWidth * Math.sin(angle), endY - arrowLength * Math.sin(angle) - arrowWidth * Math.cos(angle));
-
-		// Draw the tip of the arrowhead
-		ctx.lineTo(endX, endY);
-
-		// Draw the left base of the arrowhead
-		ctx.lineTo(endX - arrowLength * Math.cos(angle) - arrowWidth * Math.sin(angle), endY - arrowLength * Math.sin(angle) + arrowWidth * Math.cos(angle));
-
-		// Draw back to the bottom-right corner of the tail
-		ctx.lineTo(endX - arrowLength * Math.cos(angle) - (tailWidth / 2) * Math.sin(angle), endY - arrowLength * Math.sin(angle) + (tailWidth / 2) * Math.cos(angle));
-
-		// Draw to the bottom-left corner of the tail
-		ctx.lineTo(startX - (tailWidth / 2) * Math.sin(angle), startY + (tailWidth / 2) * Math.cos(angle));
-
-		ctx.closePath();
-		ctx.fill(); // Fill the arrow with color
-		ctx.stroke(); // Outline the arrow with a stroke
-	} catch (error) {
-		console.error("Error while drawing arrow:", error);
-	}
-}
-
-function drawArrow(startX, startY, endX, endY, color, connScale, connectorCurve = 0) {
-	try {
-		// Step 1) Set up the arrow parameters
-		var arrowWidth = (connScale / 4) * currentScale;
-		var arrowLength = 2 * (connScale / 4) * currentScale;
-
-		ctx.strokeStyle = color;
-		ctx.fillStyle = color;
-		ctx.lineWidth = 2;
-
-		// Step 2) Handle straight arrow (0 degrees)
-		if (connectorCurve === 0) {
-			// Draw straight line
-			ctx.beginPath();
-			ctx.moveTo(parseInt(startX), parseInt(startY));
-			ctx.lineTo(parseInt(endX), parseInt(endY));
-			ctx.stroke();
-
-			// Calculate angle for arrowhead
-			const angle = Math.atan2(startX - endX, startY - endY);
-		} else {
-			// Step 3) Draw curved arrow
-			const midX = (startX + endX) / 2;
-			const midY = (startY + endY) / 2;
-			const dx = endX - startX;
-			const dy = endY - startY;
-			const distance = Math.sqrt(dx * dx + dy * dy);
-
-			// Step 4) Calculate control point based on angle in degrees
-			const radians = (connectorCurve * Math.PI) / 180;
-			const curveFactor = (connectorCurve / 90) * distance * 0.5; // Linear scaling instead of sine
-
-			// Perpendicular vector for curve direction
-			const perpX = -dy / distance;
-			const perpY = dx / distance;
-
-			const controlX = midX + perpX * curveFactor;
-			const controlY = midY + perpY * curveFactor;
-
-			// Step 5) Draw curved line using quadratic bezier
-			ctx.beginPath();
-			ctx.moveTo(parseInt(startX), parseInt(startY));
-			ctx.quadraticCurveTo(parseInt(controlX), parseInt(controlY), parseInt(endX), parseInt(endY));
-			ctx.stroke();
-		}
-
-		// Step 6) Draw arrowhead
-		if (endX == startX && endY == startY) {
-			// Draw house shape for self-referencing
-			var size = (connScale / 4) * currentScale;
-			ctx.fillStyle = color;
-			ctx.beginPath();
-			ctx.moveTo(endX, endY);
-			ctx.lineTo(endX - size / 2, endY + size);
-			ctx.lineTo(endX - size / 2, endY + 1.5 * size);
-			ctx.lineTo(endX + size / 2, endY + 1.5 * size);
-			ctx.lineTo(endX + size / 2, endY + size);
-			ctx.closePath();
-			ctx.stroke();
-		} else {
-			// Step 7) Calculate arrowhead angle for curved or straight arrows
-			let angle;
-			if (connectorCurve !== 0) {
-				// For curved arrows, calculate angle at the end point
-				const dx = endX - startX;
-				const dy = endY - startY;
-				const distance = Math.sqrt(dx * dx + dy * dy);
-				const curveFactor = (connectorCurve / 90) * distance * 0.5;
-				const perpX = -dy / distance;
-				const perpY = dx / distance;
-				const controlX = (startX + endX) / 2 + perpX * curveFactor;
-				const controlY = (startY + endY) / 2 + perpY * curveFactor;
-
-				// Calculate tangent at end point (derivative of quadratic bezier at t=1)
-				const tangentX = 2 * (endX - controlX);
-				const tangentY = 2 * (endY - controlY);
-				angle = Math.atan2(tangentY, tangentX);
-
-				// Draw arrowhead for curved arrows
-				ctx.beginPath();
-				ctx.moveTo(parseInt(endX), parseInt(endY));
-				ctx.lineTo(endX - arrowLength * Math.cos(angle - Math.PI / 6), endY - arrowLength * Math.sin(angle - Math.PI / 6));
-				ctx.lineTo(endX - arrowLength * Math.cos(angle + Math.PI / 6), endY - arrowLength * Math.sin(angle + Math.PI / 6));
-				ctx.closePath();
-				ctx.fill();
-			} else {
-				// For straight arrows - use the original working calculation
-				angle = Math.atan2(startX - endX, startY - endY);
-
-				// Draw arrowhead for straight arrows (original working method)
-				ctx.beginPath();
-				ctx.moveTo(parseInt(endX), parseInt(endY));
-				ctx.lineTo(endX - arrowLength * Math.cos((Math.PI / 2) * 3 - angle) - arrowWidth * Math.sin((Math.PI / 2) * 3 - angle), endY - arrowLength * Math.sin((Math.PI / 2) * 3 - angle) + arrowWidth * Math.cos((Math.PI / 2) * 3 - angle));
-				ctx.lineTo(endX - arrowLength * Math.cos((Math.PI / 2) * 3 - angle) + arrowWidth * Math.sin((Math.PI / 2) * 3 - angle), endY - arrowLength * Math.sin((Math.PI / 2) * 3 - angle) - arrowWidth * Math.cos((Math.PI / 2) * 3 - angle));
-				ctx.closePath();
-				ctx.fill();
-			}
-		}
-	} catch (error) {
-		console.error("Error while drawing arrow:", error);
-	}
-}
-
-function drawArrowDelayText(startX, startY, endX, endY, color, text, connectorCurve = 0) {
-	// Step 1) Calculate text position and angle
-	let textX, textY, textAngle;
-
-	if (connectorCurve === 0) {
-		// Straight arrow - use midpoint
-		const midX = (startX + endX) / 2;
-		const midY = (startY + endY) / 2;
-		textAngle = Math.atan2(endY - startY, endX - startX);
-
-		// Calculate perpendicular offset to move text above the line
-		const perpAngle = textAngle - Math.PI / 2; // 90 degrees counterclockwise
-		const offsetDistance = (currentFontSize - 2) * 0.1; // Much smaller offset
-
-		textX = midX + Math.cos(perpAngle) * offsetDistance;
-		textY = midY + Math.sin(perpAngle) * offsetDistance;
-	} else {
-		// Step 2) Curved arrow - calculate actual point on curve at t=0.5
-		const dx = endX - startX;
-		const dy = endY - startY;
-		const distance = Math.sqrt(dx * dx + dy * dy);
-		const curveFactor = (connectorCurve / 90) * distance * 0.5;
-
-		const perpX = -dy / distance;
-		const perpY = dx / distance;
-
-		// Control point
-		const controlX = (startX + endX) / 2 + perpX * curveFactor;
-		const controlY = (startY + endY) / 2 + perpY * curveFactor;
-
-		// Calculate actual point on quadratic bezier curve at t=0.5 (midpoint)
-		const t = 0.5;
-		const oneMinusT = 1 - t;
-		const curveX = oneMinusT * oneMinusT * startX + 2 * oneMinusT * t * controlX + t * t * endX;
-		const curveY = oneMinusT * oneMinusT * startY + 2 * oneMinusT * t * controlY + t * t * endY;
-
-		// Calculate tangent angle at t=0.5 for proper text rotation
-		const tangentX = 2 * oneMinusT * (controlX - startX) + 2 * t * (endX - controlX);
-		const tangentY = 2 * oneMinusT * (controlY - startY) + 2 * t * (endY - controlY);
-		textAngle = Math.atan2(tangentY, tangentX);
-
-		// Calculate perpendicular offset to move text above the curve
-		const perpAngle = textAngle - Math.PI / 2; // 90 degrees counterclockwise from tangent
-		const offsetDistance = (currentFontSize - 2) * 0.1; // Much smaller offset
-
-		textX = curveX + Math.cos(perpAngle) * offsetDistance;
-		textY = curveY + Math.sin(perpAngle) * offsetDistance;
-	}
-
-	// Step 3) Draw the text above the curve/line
-	ctx.save();
-	ctx.translate(textX, textY);
-	ctx.rotate(textAngle);
-
-	ctx.fillStyle = color;
-	ctx.font = parseInt(currentFontSize - 2) + "px Arial";
-
-	// Center the text horizontally and position baseline properly
-	const textWidth = ctx.measureText(text).width;
-	ctx.fillText(text, -textWidth / 2, 0); // y=0 puts baseline at the translated position
-
-	ctx.restore();
-}
-
+// Note: drawArrowDelayText moved to src/draw/canvas2DDrawing.js
 function drawDelauanySlopeMap(triangles, centroid, strokeColor) {
 	if (!triangles || !Array.isArray(triangles) || triangles.length === 0) return;
 	ctx.strokeStyle = strokeColor;
