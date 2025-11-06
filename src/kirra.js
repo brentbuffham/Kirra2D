@@ -479,7 +479,32 @@ function initializeThreeJS() {
 		}
 		threeRenderer = new ThreeRenderer(canvasContainer, canvas.clientWidth, canvas.clientHeight);
 
-		// Step 3) Insert Three.js canvas before 2D canvas
+		// Step 2a) Create base canvas for background color (bottom layer)
+		const baseCanvas = document.createElement("canvas");
+		baseCanvas.id = "baseCanvas";
+		baseCanvas.width = canvas.clientWidth;
+		baseCanvas.height = canvas.clientHeight;
+		baseCanvas.style.position = "absolute";
+		baseCanvas.style.top = "0";
+		baseCanvas.style.left = "0";
+		baseCanvas.style.width = "100%";
+		baseCanvas.style.height = "100%";
+		baseCanvas.style.pointerEvents = "none"; // No interaction, just background
+		baseCanvas.style.zIndex = "0"; // Bottom layer
+
+		// Step 2b) Set base canvas color based on dark mode
+		const baseCtx = baseCanvas.getContext("2d");
+		baseCtx.fillStyle = darkModeEnabled ? "#000000" : "#FFFFFF";
+		baseCtx.fillRect(0, 0, baseCanvas.width, baseCanvas.height);
+
+		// Step 2c) Insert base canvas first
+		canvasContainer.insertBefore(baseCanvas, canvas);
+
+		// Step 2d) Store reference for later updates
+		window.baseCanvas = baseCanvas;
+		window.baseCtx = baseCtx;
+
+		// Step 3) Insert Three.js canvas after base canvas
 		const threeCanvas = threeRenderer.getCanvas();
 		threeCanvas.id = "threeCanvas";
 		threeCanvas.style.position = "absolute";
@@ -490,7 +515,7 @@ function initializeThreeJS() {
 		threeCanvas.style.pointerEvents = "auto";
 		threeCanvas.style.zIndex = "1";
 
-		// Step 4) Insert before 2D canvas
+		// Step 4) Insert before 2D canvas (but after base canvas)
 		canvasContainer.insertBefore(threeCanvas, canvas);
 
 		// Step 5) Update 2D canvas to be transparent overlay
@@ -627,6 +652,59 @@ document.addEventListener("DOMContentLoaded", function () {
 			// Redraw to apply changes
 			drawData(allBlastHoles);
 		});
+	}
+
+	// Step 11) Setup 2D-3D dimension toggle button
+	const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
+	if (dimension2D3DBtn) {
+		dimension2D3DBtn.addEventListener("change", function () {
+			const show3D = this.checked;
+			const threeCanvas = document.getElementById("threeCanvas");
+			const iconImg = this.nextElementSibling.querySelector("img");
+
+			if (show3D) {
+				// Step 11a) 3D-only mode (no 2D drawing)
+				onlyShowThreeJS = true;
+				console.log("🎨 3D-ONLY Mode: ON (2D drawing disabled)");
+
+				if (threeCanvas) {
+					threeCanvas.style.display = "block";
+					threeCanvas.style.zIndex = "1";
+				}
+				// Keep 2D canvas visible for mouse events, but clear it
+				if (canvas) {
+					canvas.style.display = "block";
+				}
+				// Swap icon to 3D badge
+				if (iconImg) {
+					iconImg.src = "icons/badge-3d-v2.png";
+					iconImg.alt = "3D View Active (3D Only)";
+				}
+			} else {
+				// Step 11b) 2D-only mode (no 3D rendering)
+				onlyShowThreeJS = false;
+				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
+
+				if (threeCanvas) {
+					threeCanvas.style.display = "none";
+				}
+				if (canvas) {
+					canvas.style.display = "block";
+				}
+				// Swap icon to 2D badge
+				if (iconImg) {
+					iconImg.src = "icons/badge-2d-v2.png";
+					iconImg.alt = "2D View Active (2D Only)";
+				}
+			}
+
+			// Redraw to apply changes
+			drawData(allBlastHoles);
+		});
+
+		// Step 12) Set initial state (3D visible by default)
+		dimension2D3DBtn.checked = true;
+		dimension2D3DBtn.dispatchEvent(new Event("change"));
 	}
 });
 
@@ -3344,8 +3422,26 @@ function handleThreeJSResize() {
 	}
 }
 
+// Handle base canvas resize
+function handleBaseCanvasResize() {
+	if (window.baseCanvas && window.baseCtx && canvas) {
+		const width = canvas.clientWidth;
+		const height = canvas.clientHeight;
+
+		// Step 1) Resize base canvas to match main canvas
+		window.baseCanvas.width = width;
+		window.baseCanvas.height = height;
+
+		// Step 2) Redraw background color
+		const isDark = document.body.classList.contains("dark-mode");
+		window.baseCtx.fillStyle = isDark ? "#000000" : "#FFFFFF";
+		window.baseCtx.fillRect(0, 0, width, height);
+	}
+}
+
 window.addEventListener("resize", resizeChart);
 window.addEventListener("resize", handleThreeJSResize);
+window.addEventListener("resize", handleBaseCanvasResize);
 var acc = document.getElementsByClassName("accordion");
 var i;
 for (i = 0; i < acc.length; i++) {
@@ -17894,9 +17990,14 @@ function drawData(allBlastHoles, selectedHole) {
 	// Step 1) Clear Three.js geometry
 	clearThreeJS();
 
-	// Step 1a) Only process 2D canvas if not in Three.js-only mode
-	if (ctx && !onlyShowThreeJS) {
+	// Step 1a) Clear 2D canvas always (to remove old content)
+	if (ctx) {
 		clearCanvas();
+	}
+
+	// Step 1b) Only process 2D drawing if not in Three.js-only mode
+	if (ctx && !onlyShowThreeJS) {
+		// Step 1b.1) Set canvas smoothing for 2D drawing
 		ctx.imageSmoothingEnabled = false;
 
 		const displayOptions = getDisplayOptions();
@@ -18471,9 +18572,9 @@ function drawData(allBlastHoles, selectedHole) {
 				if (entity.entityType === "point") {
 					for (const pointData of entity.data) {
 						if (pointData.visible === false) continue;
-						const size = (pointData.lineWidth || 2) / 2; // Convert diameter to radius
+						const size = ((pointData.lineWidth || 2) / 2) * 1; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
 						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
-						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000");
+						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", entity.entityName);
 					}
 				} else if (entity.entityType === "line") {
 					// Step 7) Lines: entity.data is an array of points
@@ -18489,7 +18590,7 @@ function drawData(allBlastHoles, selectedHole) {
 						});
 						const lineWidth = visiblePoints[0]?.lineWidth || 1;
 						const color = visiblePoints[0]?.color || "#FF0000";
-						drawKADLineThreeJS(points, lineWidth, color);
+						drawKADLineThreeJS(points, lineWidth, color, entity.entityName);
 					}
 				} else if (entity.entityType === "poly") {
 					// Step 8) Polygons: entity.data is an array of points (closed loop)
@@ -18505,7 +18606,7 @@ function drawData(allBlastHoles, selectedHole) {
 						});
 						const lineWidth = visiblePoints[0]?.lineWidth || 1;
 						const color = visiblePoints[0]?.color || "#FF0000";
-						drawKADPolygonThreeJS(points, lineWidth, color);
+						drawKADPolygonThreeJS(points, lineWidth, color, entity.entityName);
 					}
 				} else if (entity.entityType === "circle") {
 					for (const circleData of entity.data) {
@@ -18513,9 +18614,9 @@ function drawData(allBlastHoles, selectedHole) {
 						const centerX = circleData.centerX || circleData.pointXLocation;
 						const centerY = circleData.centerY || circleData.pointYLocation;
 						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
-						const radius = circleData.radius || 10;
+						const radius = circleData.radius || 10; // Radius in world units
 						const local = worldToThreeLocal(centerX, centerY);
-						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000");
+						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", entity.entityName);
 					}
 				} else if (entity.entityType === "text") {
 					for (const textData of entity.data) {
@@ -18684,9 +18785,9 @@ function drawData(allBlastHoles, selectedHole) {
 				if (entity.entityType === "point") {
 					for (const pointData of entity.data) {
 						if (pointData.visible === false) continue;
-						const size = (pointData.lineWidth || 2) / 2; // Convert diameter to radius
+						const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
 						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
-						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000");
+						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", entity.entityName);
 					}
 				} else if (entity.entityType === "line") {
 					// Step 7) Lines: entity.data is an array of points
@@ -18702,7 +18803,7 @@ function drawData(allBlastHoles, selectedHole) {
 						});
 						const lineWidth = visiblePoints[0]?.lineWidth || 1;
 						const color = visiblePoints[0]?.color || "#FF0000";
-						drawKADLineThreeJS(points, lineWidth, color);
+						drawKADLineThreeJS(points, lineWidth, color, entity.entityName);
 					}
 				} else if (entity.entityType === "poly") {
 					// Step 8) Polygons: entity.data is an array of points (closed loop)
@@ -18718,7 +18819,7 @@ function drawData(allBlastHoles, selectedHole) {
 						});
 						const lineWidth = visiblePoints[0]?.lineWidth || 1;
 						const color = visiblePoints[0]?.color || "#FF0000";
-						drawKADPolygonThreeJS(points, lineWidth, color);
+						drawKADPolygonThreeJS(points, lineWidth, color, entity.entityName);
 					}
 				} else if (entity.entityType === "circle") {
 					for (const circleData of entity.data) {
@@ -18726,9 +18827,9 @@ function drawData(allBlastHoles, selectedHole) {
 						const centerX = circleData.centerX || circleData.pointXLocation;
 						const centerY = circleData.centerY || circleData.pointYLocation;
 						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
-						const radius = circleData.radius || 10;
+						const radius = circleData.radius || 10; // Radius in world units
 						const local = worldToThreeLocal(centerX, centerY);
-						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000");
+						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", entity.entityName);
 					}
 				} else if (entity.entityType === "text") {
 					for (const textData of entity.data) {
@@ -20691,6 +20792,12 @@ darkModeToggle.addEventListener("change", () => {
 	// Step 1) Update Three.js background color
 	if (threeInitialized && threeRenderer) {
 		threeRenderer.setBackgroundColor(darkModeEnabled);
+	}
+
+	// Step 1a) Update base canvas background color
+	if (window.baseCanvas && window.baseCtx) {
+		window.baseCtx.fillStyle = darkModeEnabled ? "#000000" : "#FFFFFF";
+		window.baseCtx.fillRect(0, 0, window.baseCanvas.width, window.baseCanvas.height);
 	}
 
 	if (Array.isArray(holeTimes)) {

@@ -80,10 +80,12 @@ export function drawHoleThreeJS(hole) {
 		holeGroup = GeometryFactory.createHole(collarLocal.x, collarLocal.y, collarZ, gradeLocal.x, gradeLocal.y, gradeZ, toeLocal.x, toeLocal.y, toeZ, hole.holeDiameter, hole.holeColor || "#FF0000", window.holeScale, hole.subdrillAmount || 0, window.darkModeEnabled);
 	}
 
+	// Step 4) Add metadata for interaction/selection
 	holeGroup.userData = {
 		type: "hole",
-		holeId: hole.holeID,
-		hole: hole,
+		holeId: hole.entityName, // Unique identifier for selection
+		holeID: hole.holeID, // Display name
+		holeData: hole, // Full hole data for tooltips/info
 	};
 
 	window.threeRenderer.holesGroup.add(holeGroup);
@@ -91,10 +93,17 @@ export function drawHoleThreeJS(hole) {
 }
 
 // Step 4) Draw hole toe in Three.js
-export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color) {
+export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	const toeMesh = GeometryFactory.createHoleToe(worldX, worldY, worldZ, radius, color);
+	
+	// Step 4a) Add metadata for selection
+	toeMesh.userData = {
+		type: "holeToe",
+		holeId: holeId,
+	};
+	
 	window.threeRenderer.holesGroup.add(toeMesh);
 }
 
@@ -182,34 +191,58 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 //=================================================
 
 // Step 7) Draw KAD point in Three.js
-export function drawKADPointThreeJS(worldX, worldY, worldZ, size, color) {
+export function drawKADPointThreeJS(worldX, worldY, worldZ, size, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	const pointMesh = GeometryFactory.createKADPoint(worldX, worldY, worldZ, size, color);
+	
+	// Step 7a) Add metadata for selection
+	if (kadId) {
+		pointMesh.userData = { type: "kadPoint", kadId: kadId };
+	}
+	
 	window.threeRenderer.kadGroup.add(pointMesh);
 }
 
 // Step 8) Draw KAD line in Three.js
-export function drawKADLineThreeJS(points, lineWidth, color) {
+export function drawKADLineThreeJS(points, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	const lineMesh = GeometryFactory.createKADLine(points, lineWidth, color);
+	
+	// Step 8a) Add metadata for selection
+	if (kadId) {
+		lineMesh.userData = { type: "kadLine", kadId: kadId };
+	}
+	
 	window.threeRenderer.kadGroup.add(lineMesh);
 }
 
 // Step 9) Draw KAD polygon in Three.js
-export function drawKADPolygonThreeJS(points, lineWidth, color) {
+export function drawKADPolygonThreeJS(points, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	const polyMesh = GeometryFactory.createKADPolygon(points, lineWidth, color);
+	
+	// Step 9a) Add metadata for selection
+	if (kadId) {
+		polyMesh.userData = { type: "kadPolygon", kadId: kadId };
+	}
+	
 	window.threeRenderer.kadGroup.add(polyMesh);
 }
 
 // Step 10) Draw KAD circle in Three.js
-export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, color) {
+export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	const circleMesh = GeometryFactory.createKADCircle(worldX, worldY, worldZ, radius, lineWidth, color);
+	
+	// Step 10a) Add metadata for selection
+	if (kadId) {
+		circleMesh.userData = { type: "kadCircle", kadId: kadId };
+	}
+	
 	window.threeRenderer.kadGroup.add(circleMesh);
 }
 
