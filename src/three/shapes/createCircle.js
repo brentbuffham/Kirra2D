@@ -14,7 +14,7 @@ export function createCircle(color, vector, diameter, lineWidth, dashArray, dash
 			color: new Color(color),
 			opacity: opacity,
 			transparent: opacity < 1,
-			side: DoubleSide // Stops the circle from disappearing when rotating the camera
+			side: DoubleSide, // Stops the circle from disappearing when rotating the camera
 		});
 		const circleMesh = new Mesh(geometry, material);
 		circleMesh.position.set(vector.x, vector.y, vector.z);
@@ -32,17 +32,18 @@ export function createCircle(color, vector, diameter, lineWidth, dashArray, dash
 			dashArray: dashArray,
 			dashOffset: dashOffset,
 			dashRatio: dashRatio,
-			sizeAttenuation: sizeAttenuation
+			sizeAttenuation: sizeAttenuation,
 		});
 		const circleGeometry = new BufferGeometry();
 		const positions = [];
 
+		// Step 1) Create circle centered at origin for precision
 		for (let i = 0; i <= segments; i++) {
 			const theta = (i / segments) * Math.PI * 2;
 			const x = radius * Math.cos(theta);
 			const y = radius * Math.sin(theta);
 
-			positions.push(x + vector.x, y + vector.y, vector.z);
+			positions.push(x, y, 0); // Centered at origin
 		}
 		circleGeometry.setAttribute("position", new Float32BufferAttribute(positions, 3));
 
@@ -51,6 +52,8 @@ export function createCircle(color, vector, diameter, lineWidth, dashArray, dash
 
 		const circleMesh = new Mesh(circle.geometry, material);
 
+		// Step 2) Position the mesh at the desired location
+		circleMesh.position.set(vector.x, vector.y, vector.z);
 		circleMesh.name = "outline-circle-part";
 
 		return circleMesh;

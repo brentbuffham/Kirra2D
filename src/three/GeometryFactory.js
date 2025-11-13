@@ -13,8 +13,8 @@ export class GeometryFactory {
 
 		// Step 2) Calculate dimensions
 		const diameterInMeters = diameter / 1000;
-		const radiusInMeters = (diameterInMeters / 2) * holeScale;
-		const gradeRadiusInMeters = radiusInMeters * 0.3; // Grade circle is 30% of collar size
+		const radiusInMeters = (diameterInMeters / 2) * (holeScale * 2);
+		const gradeRadiusInMeters = radiusInMeters * 0.5; // Grade circle is 30% of collar size
 
 		// Step 3) Check if subdrill is negative
 		const hasNegativeSubdrill = subdrillAmount < 0;
@@ -274,13 +274,11 @@ export class GeometryFactory {
 		return mesh;
 	}
 
-	// Step 10) Create KAD line with MeshLine for proper thickness
-	static createKADLine(points, lineWidth, color) {
-		// Step 10a) Convert points to Vector3 if needed
-		const vector3Points = points.map((p) => {
-			if (p instanceof THREE.Vector3) return p;
-			return new THREE.Vector3(p.x, p.y, p.z);
-		});
+	// Step 10) Create KAD line segment (single segment between two points)
+	// Matches 2D canvas drawKADLines() - each segment has its own lineWidth and color
+	static createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color) {
+		// Step 10a) Create two-point line
+		const points = [new THREE.Vector3(startX, startY, startZ), new THREE.Vector3(endX, endY, endZ)];
 
 		// Step 10b) Create MeshLine material with proper lineWidth
 		const material = new MeshLineMaterial({
@@ -295,7 +293,7 @@ export class GeometryFactory {
 		material.depthWrite = true;
 
 		// Step 10c) Create geometry from points
-		const geometry = new THREE.BufferGeometry().setFromPoints(vector3Points);
+		const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
 		// Step 10d) Create MeshLine and set geometry
 		const line = new MeshLine();
@@ -303,46 +301,16 @@ export class GeometryFactory {
 
 		// Step 10e) Create and return mesh
 		const mesh = new THREE.Mesh(line, material);
-		mesh.name = "kad-line";
+		mesh.name = "kad-line-segment";
 
 		return mesh;
 	}
 
-	// Step 11) Create KAD polygon (closed line) with MeshLine
-	static createKADPolygon(points, lineWidth, color) {
-		// Step 11a) Convert points to Vector3 objects
-		const vector3Points = points.map((p) => {
-			if (p instanceof THREE.Vector3) return p;
-			return new THREE.Vector3(p.x, p.y, p.z);
-		});
-
-		// Step 11b) Close the polygon by adding first point at end
-		const closedPoints = [...vector3Points, vector3Points[0]];
-
-		// Step 11c) Create MeshLine material with proper lineWidth
-		const material = new MeshLineMaterial({
-			color: new THREE.Color(color),
-			lineWidth: lineWidth || 3, // Direct pixel width
-			resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
-			sizeAttenuation: 0, // Constant screen size
-			opacity: 1.0,
-		});
-		material.transparent = true;
-		material.depthTest = true;
-		material.depthWrite = true;
-
-		// Step 11d) Create geometry from closed points
-		const geometry = new THREE.BufferGeometry().setFromPoints(closedPoints);
-
-		// Step 11e) Create MeshLine and set geometry
-		const line = new MeshLine();
-		line.setGeometry(geometry);
-
-		// Step 11f) Create and return mesh
-		const mesh = new THREE.Mesh(line, material);
-		mesh.name = "kad-polygon";
-
-		return mesh;
+	// Step 11) Create KAD polygon segment (single segment between two points)
+	// Matches 2D canvas drawKADPolys() - each segment has its own lineWidth and color
+	static createKADPolygonSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color) {
+		// Step 11a) Same as line segment - polygon is just a closed series of segments
+		return GeometryFactory.createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
 	}
 
 	// Step 12) Create KAD circle with MeshLine
@@ -359,14 +327,14 @@ export class GeometryFactory {
 		material.depthTest = true;
 		material.depthWrite = true;
 
-		// Step 12b) Create circle points
+		// Step 12b) Create circle points centered at (0, 0, 0) for precision
 		const segments = 64;
 		const positions = [];
 		for (let i = 0; i <= segments; i++) {
 			const theta = (i / segments) * Math.PI * 2;
 			const x = radius * Math.cos(theta);
 			const y = radius * Math.sin(theta);
-			positions.push(x + worldX, y + worldY, worldZ);
+			positions.push(x, y, 0); // Centered at origin
 		}
 
 		// Step 12c) Create geometry from positions
@@ -377,8 +345,9 @@ export class GeometryFactory {
 		const circle = new MeshLine();
 		circle.setGeometry(circleGeometry);
 
-		// Step 12e) Create and return mesh
+		// Step 12e) Create mesh and position it at world coordinates
 		const circleMesh = new THREE.Mesh(circle.geometry, material);
+		circleMesh.position.set(worldX, worldY, worldZ);
 		circleMesh.name = "kad-circle";
 
 		return circleMesh;

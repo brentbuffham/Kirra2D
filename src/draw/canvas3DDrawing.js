@@ -204,11 +204,12 @@ export function drawKADPointThreeJS(worldX, worldY, worldZ, size, color, kadId) 
 	window.threeRenderer.kadGroup.add(pointMesh);
 }
 
-// Step 8) Draw KAD line in Three.js
-export function drawKADLineThreeJS(points, lineWidth, color, kadId) {
+// Step 8) Draw KAD line segment in Three.js
+// Matches 2D drawKADLines() - draws a single segment with its own attributes
+export function drawKADLineSegmentThreeJS(startX, startY, startZ, endX, endY, endZ, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
-	const lineMesh = GeometryFactory.createKADLine(points, lineWidth, color);
+	const lineMesh = GeometryFactory.createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
 	
 	// Step 8a) Add metadata for selection
 	if (kadId) {
@@ -218,11 +219,12 @@ export function drawKADLineThreeJS(points, lineWidth, color, kadId) {
 	window.threeRenderer.kadGroup.add(lineMesh);
 }
 
-// Step 9) Draw KAD polygon in Three.js
-export function drawKADPolygonThreeJS(points, lineWidth, color, kadId) {
+// Step 9) Draw KAD polygon segment in Three.js
+// Matches 2D drawKADPolys() - draws a single segment with its own attributes
+export function drawKADPolygonSegmentThreeJS(startX, startY, startZ, endX, endY, endZ, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
-	const polyMesh = GeometryFactory.createKADPolygon(points, lineWidth, color);
+	const polyMesh = GeometryFactory.createKADPolygonSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
 	
 	// Step 9a) Add metadata for selection
 	if (kadId) {

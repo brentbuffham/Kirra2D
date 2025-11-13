@@ -32,7 +32,7 @@ import { GeometryFactory } from "./three/GeometryFactory.js";
 //=================================================
 // Drawing Modules
 //=================================================
-import { clearThreeJS, renderThreeJS, drawHoleThreeJS, drawHoleToeThreeJS, drawHoleTextThreeJS, drawHoleTextsAndConnectorsThreeJS, drawKADPointThreeJS, drawKADLineThreeJS, drawKADPolygonThreeJS, drawKADCircleThreeJS, drawKADTextThreeJS, drawSurfaceThreeJS, drawContoursThreeJS, drawDirectionArrowsThreeJS, drawBackgroundImageThreeJS } from "./draw/canvas3DDrawing.js";
+import { clearThreeJS, renderThreeJS, drawHoleThreeJS, drawHoleToeThreeJS, drawHoleTextThreeJS, drawHoleTextsAndConnectorsThreeJS, drawKADPointThreeJS, drawKADLineSegmentThreeJS, drawKADPolygonSegmentThreeJS, drawKADCircleThreeJS, drawKADTextThreeJS, drawSurfaceThreeJS, drawContoursThreeJS, drawDirectionArrowsThreeJS, drawBackgroundImageThreeJS } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 //=================================================
 // import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
@@ -18576,37 +18576,43 @@ function drawData(allBlastHoles, selectedHole) {
 						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
 						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", entity.entityName);
 					}
-				} else if (entity.entityType === "line") {
-					// Step 7) Lines: entity.data is an array of points
+				} else if (entity.entityType === "line" || entity.entityType === "poly") {
+					// Step 7) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
+					// Each segment gets its own lineWidth and color from point data
 					const visiblePoints = entity.data.filter((point) => point.visible !== false);
+
 					if (visiblePoints.length >= 2) {
-						const points = visiblePoints.map((p) => {
-							const local = worldToThreeLocal(p.pointXLocation, p.pointYLocation);
-							return {
-								x: local.x,
-								y: local.y,
-								z: p.pointZLocation || 0,
-							};
-						});
-						const lineWidth = visiblePoints[0]?.lineWidth || 1;
-						const color = visiblePoints[0]?.color || "#FF0000";
-						drawKADLineThreeJS(points, lineWidth, color, entity.entityName);
-					}
-				} else if (entity.entityType === "poly") {
-					// Step 8) Polygons: entity.data is an array of points (closed loop)
-					const visiblePoints = entity.data.filter((point) => point.visible !== false);
-					if (visiblePoints.length >= 2) {
-						const points = visiblePoints.map((p) => {
-							const local = worldToThreeLocal(p.pointXLocation, p.pointYLocation);
-							return {
-								x: local.x,
-								y: local.y,
-								z: p.pointZLocation || 0,
-							};
-						});
-						const lineWidth = visiblePoints[0]?.lineWidth || 1;
-						const color = visiblePoints[0]?.color || "#FF0000";
-						drawKADPolygonThreeJS(points, lineWidth, color, entity.entityName);
+						// Step 7a) Draw segments between consecutive points
+						for (let i = 0; i < visiblePoints.length - 1; i++) {
+							const currentPoint = visiblePoints[i];
+							const nextPoint = visiblePoints[i + 1];
+
+							const currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
+							const nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
+
+							const lineWidth = currentPoint.lineWidth || 1;
+							const color = currentPoint.color || "#FF0000";
+
+							if (entity.entityType === "line") {
+								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+							} else {
+								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+							}
+						}
+
+						// Step 7b) For polygons, close the loop with final segment
+						if (entity.entityType === "poly" && visiblePoints.length > 2) {
+							const firstPoint = visiblePoints[0];
+							const lastPoint = visiblePoints[visiblePoints.length - 1];
+
+							const firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
+							const lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
+
+							const lineWidth = lastPoint.lineWidth || 1;
+							const color = lastPoint.color || "#FF0000";
+
+							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+						}
 					}
 				} else if (entity.entityType === "circle") {
 					for (const circleData of entity.data) {
@@ -18789,37 +18795,43 @@ function drawData(allBlastHoles, selectedHole) {
 						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
 						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", entity.entityName);
 					}
-				} else if (entity.entityType === "line") {
-					// Step 7) Lines: entity.data is an array of points
+				} else if (entity.entityType === "line" || entity.entityType === "poly") {
+					// Step 6) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
+					// Each segment gets its own lineWidth and color from point data
 					const visiblePoints = entity.data.filter((point) => point.visible !== false);
+
 					if (visiblePoints.length >= 2) {
-						const points = visiblePoints.map((p) => {
-							const local = worldToThreeLocal(p.pointXLocation, p.pointYLocation);
-							return {
-								x: local.x,
-								y: local.y,
-								z: p.pointZLocation || 0,
-							};
-						});
-						const lineWidth = visiblePoints[0]?.lineWidth || 1;
-						const color = visiblePoints[0]?.color || "#FF0000";
-						drawKADLineThreeJS(points, lineWidth, color, entity.entityName);
-					}
-				} else if (entity.entityType === "poly") {
-					// Step 8) Polygons: entity.data is an array of points (closed loop)
-					const visiblePoints = entity.data.filter((point) => point.visible !== false);
-					if (visiblePoints.length >= 2) {
-						const points = visiblePoints.map((p) => {
-							const local = worldToThreeLocal(p.pointXLocation, p.pointYLocation);
-							return {
-								x: local.x,
-								y: local.y,
-								z: p.pointZLocation || 0,
-							};
-						});
-						const lineWidth = visiblePoints[0]?.lineWidth || 1;
-						const color = visiblePoints[0]?.color || "#FF0000";
-						drawKADPolygonThreeJS(points, lineWidth, color, entity.entityName);
+						// Step 6a) Draw segments between consecutive points
+						for (let i = 0; i < visiblePoints.length - 1; i++) {
+							const currentPoint = visiblePoints[i];
+							const nextPoint = visiblePoints[i + 1];
+
+							const currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
+							const nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
+
+							const lineWidth = currentPoint.lineWidth || 1;
+							const color = currentPoint.color || "#FF0000";
+
+							if (entity.entityType === "line") {
+								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+							} else {
+								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+							}
+						}
+
+						// Step 6b) For polygons, close the loop with final segment
+						if (entity.entityType === "poly" && visiblePoints.length > 2) {
+							const firstPoint = visiblePoints[0];
+							const lastPoint = visiblePoints[visiblePoints.length - 1];
+
+							const firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
+							const lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
+
+							const lineWidth = lastPoint.lineWidth || 1;
+							const color = lastPoint.color || "#FF0000";
+
+							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+						}
 					}
 				} else if (entity.entityType === "circle") {
 					for (const circleData of entity.data) {
