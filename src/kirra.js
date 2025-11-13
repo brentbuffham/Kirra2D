@@ -46,7 +46,7 @@ import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
 // Description: This file contains the main functions for the Kirra App
 // Author: Brent Buffham
 // Last Modified: "20250816.0140AWST"
-const buildVersion = "20250816.0140AWST"; //Backwards Compatible Date Format AWST = Australian Western Standard Time
+const buildVersion = "20251113.0000AWST"; //Backwards Compatible Date Format AWST = Australian Western Standard Time
 
 //=================================================
 // SETUP JSCOLOR
@@ -147,63 +147,8 @@ function updatePopup() {
 				    <label class="labelWhite18">Update - NEW FEATURES:                           </label>
 					<hr>
 				<div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
-					<label     class="labelWhite12c">⭐ ⭐ August 2025 ⭐ ⭐                                            </label>
-					<br><label class="labelWhite12c">✅ Delaunay Triangulation with Constrainautor - Surfaces/shells </label>
-					<br><label class="labelWhite12c">✅ Hillshade Lighting improvement - Better lighting and shadows </label>
-					<br><label class="labelWhite12c">✅ Three gradient style improvemts - Linear, Radial, Barycentric </label>
-					<br><label class="labelWhite12c">✅ Custom CSV importer improved and redesigned                  </label>
-					<br><label class="labelWhite12c">✅ Holes or KAD selection options                               </label>
-					<br><label class="labelWhite12c">---- Move tool moves holes no snap when "Holes" option true     </label>
-					<br><label class="labelWhite12c">---- Move tool moves KAD with snapping when "KAD" option true   </label>
-					<br><label class="labelWhite12c">✅ Curved Timing Arrows can be created for better visibilty     </label>
-					<br><label class="labelWhite12c">✅ Blast stats on print page including delay count              </label>
-					<br><label class="labelWhite12c">✅ QR code to App website on print page                         </label>
-					<br><label class="labelWhite12c">✅ Timing contour time labels are shown - Only in App not print </label>
-					<br><label class="labelWhite12c">✅ Contours are now processed in a separate thread/webworker    </label>
-					<br><label class="labelWhite12c">✅ Connect Distance now Base 5 Log for added granularity        </label>
-					<br><label class="labelWhite12c">✅ Play/Animate blast Time Speed slider is now Base 10 Log      </label>
-					<br><label class="labelWhite12c">⭐ July 2025 ⭐                                                 </label>
-					<br><label class="labelWhite12c">✅ IREDES Tested and confirmed working on Epiroc RCS 6.28.1     </label>
-					<br><label class="labelWhite12c">---- 6.22.1 returns a checksum error on both HEX and DEC        </label>
-					<br><label class="labelWhite12c">✅ UI Floating Dialog replacement to SWAL 2 Modal popups.       </label>
-					<br><label class="labelWhite12c">✅ KAD Entity visibility improvement and Hole Visibility        </label>
-					<br><label class="labelWhite12c">✅ Drawing tools on Floating Toolbar - details in the Left Nav  </label>
-					<br><label class="labelWhite12c">✅ Ruler Improved to 3D-Snap Dip, DeltaZ, Plan, Total Length    </label>
-					<br><label class="labelWhite12c">✅ Additional Hole properties on right click of selected holes  </label>
-					<br><label class="labelWhite12c">✅ Z Interpolation Snap for Drawing - snap to segment           </label>
-					<br><label class="labelWhite12c">✅ Backspace or Delete when drawing to remove the last point    </label>
-					<br><label class="labelWhite12c">✅ Offset Line and Projection added to Floating Toolbar         </label>
-					<br><label class="labelWhite12c">✅ Radiate Holes or KADs added to Floating Toolbar              </label>
-					<br><label class="labelWhite12c">✅ DXF 3DFace and Hillshade Gradient added                      </label>
-					<br><label class="labelWhite12c">✅ Selection and manipulation disabled on hidden entities       </label>
-					<br><label class="labelWhite12c">✅ Children Nodes inherit group node visibility                 </label>
-					<br><label class="labelWhite12c">✅ Export and Save only includes Visible holes all Entities     </label>
-					<br><label class="labelWhite12c">✅ Row and Position for holes added assists renaming            </label>
-					<br><label class="labelWhite12c">✅ Row detection for imported holes without row ids             </label>
-					<br><label class="labelWhite12c">✅ Holes along Lines/Polylines uses more reliable selection     </label>
-					<br><label class="labelWhite12c">✅ Implemented Show/Hide for Blasts, Blast holes, KAD Drawings  </label>
-					<br><label class="labelWhite12c">✅ Clear Database correctly and reordered the Popups            </label>
-					<br><label class="labelWhite12c">✅ Increased Colour Swatches in the jsColor picker              </label>
-					<br><label class="labelWhite12c">⭐ May, June and July 2025 ⭐                                   </label>
-					<br><label class="labelWhite12c">✅ Pattern bug fixes, duplicate hole search, polygon selection  </label>
-					<br><label class="labelWhite12c">✅ Added a radiate warning dialog                               </label>
-					<br><label class="labelWhite12c">✅ Move and Z Leveling for KAD Drawings in Edit Popup           </label>
-					<br><label class="labelWhite12c">✅ Distance indicator between added to drawing tools            </label>
-					<br><label class="labelWhite12c">✅ Improved user interaction for drawing tools                  </label>
-					<br><label class="labelWhite12c">✅ Added support for OBJ and other surface formats              </label>
-					<br><label class="labelWhite12c">✅ Critical bug fix to restore loading from local files         </label>
-					<br><label class="labelWhite12c">✅ Proximity Duplicate hole check and resolve                   </label>
-					<br><label class="labelWhite12c">✅ Tree View - Color Change                                     </label>
-					<br><label class="labelWhite12c">✅ Tree View - Context Menu - Delete & Properties               </label>
-					<br><label class="labelWhite12c">✅ Fixed State UI/UX issues                                     </label>
-					<br><label class="labelWhite12c">✅ Delete All Images/Surfaces to cleanup DB                     </label>
-					<br><label class="labelWhite12c">✅ Image Show/Hide/Remove/Transparency                          </label>
-					<br><label class="labelWhite12c">✅ Drawing Optimised - Pixel Distance culling                   </label>
-					<br><label class="labelWhite12c">✅ Improved Decimation of Surfaces                              </label>
-					<br><label class="labelWhite12c">✅ Fixed the Collar and Grade multiple Surfaces Bug             </label>
-					<br><label class="labelWhite12c">✅ Load multiple Surfaces and change colors                     </label>
-					<br><label class="labelWhite12c">✅ Drawings to IndexDB for large files                          </label>
-					<br><label class="labelWhite12c">✅ Load Multiple GeoTIFFs and convert from WGS                  </label>
+					<label     class="labelWhite12c">⭐ ⭐ November 2025 ⭐ ⭐                                            </label>
+					<br><label class="labelWhite12c">✅ 3D View </label>
 					<hr>
 					<br><label  class="labelWhite15">New & Existing Issues & Resolved                               </label>
 					<br><label class="labelWhite12c">🐞 Voronoi Display Lag with large blasts      ❌ unresolved ❌  </label>

@@ -269,14 +269,65 @@ export class ThreeRenderer {
 		return new THREE.Vector3(worldX, worldY, worldZ);
 	}
 
-	// Step 19) Clear all geometry from scene
-	clearAllGeometry() {
-		this.holesGroup.clear();
-		this.surfacesGroup.clear();
-		this.kadGroup.clear();
-		this.contoursGroup.clear();
-		this.imagesGroup.clear();
+	// Step 19) Helper method to dispose object resources
+	disposeObject(object) {
+		// Step 19a) Dispose geometry
+		if (object.geometry) {
+			object.geometry.dispose();
+		}
+		
+		// Step 19b) Dispose material(s)
+		if (object.material) {
+			if (Array.isArray(object.material)) {
+				object.material.forEach((material) => {
+					if (material.map) material.map.dispose();
+					if (material.lightMap) material.lightMap.dispose();
+					if (material.bumpMap) material.bumpMap.dispose();
+					if (material.normalMap) material.normalMap.dispose();
+					if (material.specularMap) material.specularMap.dispose();
+					if (material.envMap) material.envMap.dispose();
+					material.dispose();
+				});
+			} else {
+				if (object.material.map) object.material.map.dispose();
+				if (object.material.lightMap) object.material.lightMap.dispose();
+				if (object.material.bumpMap) object.material.bumpMap.dispose();
+				if (object.material.normalMap) object.material.normalMap.dispose();
+				if (object.material.specularMap) object.material.specularMap.dispose();
+				if (object.material.envMap) object.material.envMap.dispose();
+				object.material.dispose();
+			}
+		}
+		
+		// Step 19c) Dispose textures on sprites
+		if (object.isSprite && object.material && object.material.map) {
+			object.material.map.dispose();
+		}
+	}
 
+	// Step 20) Dispose group and all children
+	disposeGroup(group) {
+		// Step 20a) Traverse and dispose all objects
+		group.traverse((object) => {
+			if (object !== group) {
+				this.disposeObject(object);
+			}
+		});
+		
+		// Step 20b) Clear the group
+		group.clear();
+	}
+
+	// Step 21) Clear all geometry from scene
+	clearAllGeometry() {
+		// Step 21a) Dispose all groups to prevent memory leaks
+		this.disposeGroup(this.holesGroup);
+		this.disposeGroup(this.surfacesGroup);
+		this.disposeGroup(this.kadGroup);
+		this.disposeGroup(this.contoursGroup);
+		this.disposeGroup(this.imagesGroup);
+
+		// Step 21b) Clear mesh maps
 		this.holeMeshMap.clear();
 		this.surfaceMeshMap.clear();
 		this.kadMeshMap.clear();
@@ -284,38 +335,38 @@ export class ThreeRenderer {
 		this.needsRender = true;
 	}
 
-	// Step 20) Clear specific group
+	// Step 22) Clear specific group
 	clearGroup(groupName) {
 		switch (groupName) {
 			case "holes":
-				this.holesGroup.clear();
+				this.disposeGroup(this.holesGroup);
 				this.holeMeshMap.clear();
 				break;
 			case "surfaces":
-				this.surfacesGroup.clear();
+				this.disposeGroup(this.surfacesGroup);
 				this.surfaceMeshMap.clear();
 				break;
 			case "kad":
-				this.kadGroup.clear();
+				this.disposeGroup(this.kadGroup);
 				this.kadMeshMap.clear();
 				break;
 			case "contours":
-				this.contoursGroup.clear();
+				this.disposeGroup(this.contoursGroup);
 				break;
 			case "images":
-				this.imagesGroup.clear();
+				this.disposeGroup(this.imagesGroup);
 				break;
 		}
 		this.needsRender = true;
 	}
 
-	// Step 21) Render the scene
+	// Step 23) Render the scene
 	render() {
 		this.renderer.render(this.scene, this.camera);
 		this.needsRender = false;
 	}
 
-	// Step 22) Start animation loop (only renders when needed)
+	// Step 24) Start animation loop (only renders when needed)
 	startRenderLoop() {
 		const animate = () => {
 			this.animationFrameId = requestAnimationFrame(animate);
@@ -326,7 +377,7 @@ export class ThreeRenderer {
 		animate();
 	}
 
-	// Step 23) Stop animation loop
+	// Step 25) Stop animation loop
 	stopRenderLoop() {
 		if (this.animationFrameId !== null) {
 			cancelAnimationFrame(this.animationFrameId);
@@ -334,26 +385,26 @@ export class ThreeRenderer {
 		}
 	}
 
-	// Step 24) Request render on next frame
+	// Step 26) Request render on next frame
 	requestRender() {
 		this.needsRender = true;
 	}
 
-	// Step 24b) Update background color based on dark mode
+	// Step 27) Update background color based on dark mode
 	setBackgroundColor(isDarkMode) {
 		const backgroundColor = isDarkMode ? 0x000000 : 0xffffff; // Black in dark mode, white in light mode
 		this.scene.background = new THREE.Color(backgroundColor);
 		this.needsRender = true;
 	}
 
-	// Step 24c) Show/hide axis helper with fixed screen size (50 pixels)
+	// Step 28) Show/hide axis helper with fixed screen size (50 pixels)
 	showAxisHelper(show, positionX = 0, positionY = 0, scale = 1) {
 		if (this.axisHelper) {
 			this.axisHelper.visible = show;
 			if (show) {
 				this.axisHelper.position.set(positionX, positionY, 0);
 
-				// Step 24d) Scale to maintain fixed screen size (50 pixels)
+				// Step 28a) Scale to maintain fixed screen size (50 pixels)
 				// Screen size (pixels) = world size * scale
 				// To get 50 pixels: world size = 50 / scale
 				const desiredScreenPixels = 50;
@@ -367,7 +418,7 @@ export class ThreeRenderer {
 		}
 	}
 
-	// Step 25) Raycast for object selection
+	// Step 29) Raycast for object selection
 	raycast(mouseX, mouseY) {
 		// Convert mouse coordinates to normalized device coordinates (-1 to +1)
 		const mouse = new THREE.Vector2();
@@ -381,7 +432,7 @@ export class ThreeRenderer {
 		return intersects;
 	}
 
-	// Step 26) Get scene statistics
+	// Step 30) Get scene statistics
 	getStats() {
 		return {
 			holes: this.holeMeshMap.size,
@@ -392,7 +443,7 @@ export class ThreeRenderer {
 		};
 	}
 
-	// Step 27) Cleanup
+	// Step 31) Cleanup
 	dispose() {
 		this.stopRenderLoop();
 
