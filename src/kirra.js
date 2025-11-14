@@ -7610,17 +7610,26 @@ function delaunayContoursSync(contourData, contourLevel, maxEdgeLength) {
 		};
 	}
 
-	if (!allBlastHoles || !Array.isArray(allBlastHoles) || allBlastHoles.length === 0) return;
+	if (!allBlastHoles || !Array.isArray(allBlastHoles) || allBlastHoles.length === 0) {
+		return {
+			contourLines: [],
+			directionArrows: [],
+		};
+	}
 
 	const factor = 1.6;
 	const minAngleThreshold = 5;
 	const surfaceAreaThreshold = 0.1;
 
-	if (!allBlastHoles || !Array.isArray(allBlastHoles) || allBlastHoles.length === 0) return;
 	// Filter out allBlastHoles where holeTime is null
 	const filteredContourData = contourData.filter((hole) => hole.holeTime !== null);
 
-	if (filteredContourData.length < 3) return;
+	if (filteredContourData.length < 3) {
+		return {
+			contourLines: [],
+			directionArrows: [],
+		};
+	}
 
 	// Helper function to get average distance to N nearest neighbors for a specific point
 	function getLocalAverageDistance(targetPoint, allPoints, neighborCount = 6) {
@@ -17203,29 +17212,31 @@ function recalculateContours(allBlastHoles, deltaX, deltaY) {
 
 		const maxHoleTime = Math.max(...contourData.map((hole) => hole.z));
 
-		// Calculate contour lines and store them in contourLinesArray
-		contourLinesArray = [];
-		directionArrows = [];
-		let interval = maxHoleTime < 350 ? 25 : maxHoleTime < 700 ? 100 : 250;
-		interval = parseInt(intervalAmount);
-
-		// Iterate over contour levels
-		for (let contourLevel = 0; contourLevel <= maxHoleTime; contourLevel += interval) {
-			const { contourLines, directionArrows } = delaunayContours(contourData, contourLevel, maxEdgeLength);
-			const epsilon = 1; // Adjust this value to control the level of simplification
-			const simplifiedContourLines = contourLines.map((line) => simplifyLine(line, epsilon));
-			contourLinesArray.push(simplifiedContourLines);
-
-			//console.log("contourLinesArray: ", contourLinesArray);
-			//console.log("directionArrows: ", directionArrows);
+		// Step 1) Call delaunayContours ONCE - it calculates ALL contour levels
+		// NOTE: delaunayContours() handles all levels internally, not per-level
+		const result = delaunayContours(contourData, null, maxEdgeLength);
+		
+		// Step 2) Check if result is valid
+		if (!result || !result.contourLinesArray) {
+			console.warn("delaunayContours returned invalid result");
+			return {
+				contourLinesArray: [],
+				directionArrows: [],
+			};
 		}
-		// Return both contour lines
+
+		// Step 3) Return the complete result (already contains all contour levels)
 		return {
-			contourLinesArray,
-			directionArrows,
+			contourLinesArray: result.contourLinesArray,
+			directionArrows: result.directionArrows || [],
 		};
 	} catch (err) {
-		console.error(err);
+		console.error("Error in recalculateContours:", err);
+		// Return empty arrays instead of undefined
+		return {
+			contourLinesArray: [],
+			directionArrows: [],
+		};
 	}
 }
 
