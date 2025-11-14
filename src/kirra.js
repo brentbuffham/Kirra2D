@@ -15,7 +15,7 @@ import CryptoJS from "crypto-js";
 import * as turf from "@turf/turf";
 import { polygonCentroid } from "d3-polygon";
 import ClipperLib from "clipper-lib";
-import { fromUrl, GeoTIFF } from "geotiff";
+import { fromUrl, fromArrayBuffer } from "geotiff";
 import proj4 from "proj4";
 import printJS from "print-js";
 import { jsPDF } from "jspdf";
@@ -32364,7 +32364,7 @@ async function loadGeoTIFF(file) {
 		updateStatusMessage("Reading GeoTIFF file...");
 
 		const arrayBuffer = await file.arrayBuffer();
-		const tiff = await GeoTIFF.fromArrayBuffer(arrayBuffer);
+		const tiff = await fromArrayBuffer(arrayBuffer);
 		const image = await tiff.getImage();
 		const rasters = await image.readRasters();
 
