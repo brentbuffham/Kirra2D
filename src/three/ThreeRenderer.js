@@ -172,18 +172,19 @@ export class ThreeRenderer {
 	}
 
 	// Step 13) Update camera to match world coordinates and 2D canvas transformation
-	updateCamera(centroidX, centroidY, scale, rotation = 0, orbitX = 0, orbitY = 0) {
+	updateCamera(centroidX, centroidY, scale, rotation = 0, orbitX = 0, orbitY = 0, orbitZ = 0) {
 		this.cameraState.centroidX = centroidX;
 		this.cameraState.centroidY = centroidY;
 		this.cameraState.scale = scale;
 		this.cameraState.rotation = rotation;
 		this.cameraState.orbitX = orbitX;
 		this.cameraState.orbitY = orbitY;
+		this.cameraState.orbitZ = orbitZ;
 
 		// Step 13a) Update axis helper position if it's visible (but don't auto-show)
 		// The axis helper is controlled by mouse/touch events in CameraControls
 		if (this.axisHelper && this.axisHelper.visible) {
-			this.axisHelper.position.set(centroidX, centroidY, 0);
+			this.axisHelper.position.set(centroidX, centroidY, this.orbitCenterZ);
 
 			// Maintain fixed screen size
 			const desiredScreenPixels = 50;
@@ -203,9 +204,10 @@ export class ThreeRenderer {
 			const y = cameraDistance * Math.sin(orbitX);
 			const z = cameraDistance * Math.cos(orbitX) * Math.cos(orbitY);
 
-			this.camera.position.set(centroidX + x, centroidY + y, z);
+			// Position camera relative to orbit center (centroidX, centroidY, orbitCenterZ)
+			this.camera.position.set(centroidX + x, centroidY + y, this.orbitCenterZ + z);
 
-			// Look at the centroid (using data Z centroid for orbit center)
+			// Look at the orbit center (using data Z centroid)
 			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
 
 			// Apply Z-axis rotation (2D spin)
@@ -275,7 +277,7 @@ export class ThreeRenderer {
 		if (object.geometry) {
 			object.geometry.dispose();
 		}
-		
+
 		// Step 19b) Dispose material(s)
 		if (object.material) {
 			if (Array.isArray(object.material)) {
@@ -298,7 +300,7 @@ export class ThreeRenderer {
 				object.material.dispose();
 			}
 		}
-		
+
 		// Step 19c) Dispose textures on sprites
 		if (object.isSprite && object.material && object.material.map) {
 			object.material.map.dispose();
@@ -313,7 +315,7 @@ export class ThreeRenderer {
 				this.disposeObject(object);
 			}
 		});
-		
+
 		// Step 20b) Clear the group
 		group.clear();
 	}

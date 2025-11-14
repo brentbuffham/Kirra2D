@@ -29,6 +29,16 @@ export class CameraControls {
 		this.dragStartX = 0;
 		this.dragStartY = 0;
 
+		// Step 3a) Momentum/damping state for smooth controls
+		this.velocityX = 0;
+		this.velocityY = 0;
+		this.velocityOrbitX = 0;
+		this.velocityOrbitY = 0;
+		this.velocityRotation = 0;
+		this.damping = 0.85; // Damping factor (0-1, higher = less damping)
+		this.minVelocity = 0.0001; // Stop animation below this velocity
+		this.animationFrameId = null;
+
 		// Step 4) Bind event handlers
 		this.handleWheel = this.handleWheel.bind(this);
 		this.handleMouseDown = this.handleMouseDown.bind(this);
@@ -37,6 +47,7 @@ export class CameraControls {
 		this.handleTouchStart = this.handleTouchStart.bind(this);
 		this.handleTouchMove = this.handleTouchMove.bind(this);
 		this.handleTouchEnd = this.handleTouchEnd.bind(this);
+		this.animate = this.animate.bind(this);
 
 		// Step 5) Touch state
 		this.lastTouchDistance = 0;
@@ -85,6 +96,12 @@ export class CameraControls {
 		container.removeEventListener("touchstart", this.handleTouchStart);
 		container.removeEventListener("touchmove", this.handleTouchMove);
 		container.removeEventListener("touchend", this.handleTouchEnd);
+
+		// Stop animation loop if running
+		if (this.animationFrameId !== null) {
+			cancelAnimationFrame(this.animationFrameId);
+			this.animationFrameId = null;
+		}
 	}
 
 	// Step 8) Set camera state and update renderer
@@ -110,7 +127,7 @@ export class CameraControls {
 		};
 	}
 
-	// Step 10) Handle mouse wheel for zoom
+	// Step 10) Handle mouse wheel for zoom with cursor zoom support
 	handleWheel(event) {
 		event.preventDefault();
 
@@ -119,25 +136,42 @@ export class CameraControls {
 		const mouseX = event.clientX - rect.left;
 		const mouseY = event.clientY - rect.top;
 
-		// Step 11) Calculate world position before zoom
-		const worldX = (mouseX - canvas.width / 2) / this.scale + this.centroidX;
-		const worldY = -((mouseY - canvas.height / 2) / this.scale) + this.centroidY;
-
-		// Step 12) Update scale
+		// Step 11) Calculate zoom factor
 		const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
-		const newScale = this.scale * zoomFactor;
+		const oldScale = this.scale;
+		const newScale = Math.max(0.01, Math.min(1000, oldScale * zoomFactor));
+		this.scale = newScale;
 
-		// Step 13) Clamp scale to reasonable limits
-		this.scale = Math.max(0.01, Math.min(1000, newScale));
+		// Step 12) Cursor zoom - adjust centroid to keep cursor position fixed in world space
+		// This works in both 2D and 3D modes
+		if (this.orbitX === 0 && this.orbitY === 0) {
+			// 2D mode - standard cursor zoom
+			const worldX = (mouseX - canvas.width / 2) / oldScale + this.centroidX;
+			const worldY = -((mouseY - canvas.height / 2) / oldScale) + this.centroidY;
 
-		// Step 14) Adjust centroid to keep mouse position fixed
-		this.centroidX = worldX - (mouseX - canvas.width / 2) / this.scale;
-		this.centroidY = worldY + (mouseY - canvas.height / 2) / this.scale;
+			this.centroidX = worldX - (mouseX - canvas.width / 2) / this.scale;
+			this.centroidY = worldY + (mouseY - canvas.height / 2) / this.scale;
+		} else {
+			// 3D mode - scale the orbit distance
+			// This effectively zooms toward/away from the orbit center
+			// The visual effect is zoom toward cursor in 3D space
+			const scaleDelta = newScale / oldScale;
 
-		// Step 14b) Hide axis helper during zoom (transient behavior)
+			// Adjust centroid based on mouse offset from center
+			// This shifts the orbit center toward the cursor
+			const centerOffsetX = (mouseX - canvas.width / 2) / oldScale;
+			const centerOffsetY = -((mouseY - canvas.height / 2) / oldScale);
+
+			// Apply a portion of the offset to create cursor-directed zoom
+			const cursorInfluence = 1 - scaleDelta; // More influence when zooming in
+			this.centroidX += centerOffsetX * cursorInfluence * 0.3;
+			this.centroidY += centerOffsetY * cursorInfluence * 0.3;
+		}
+
+		// Step 13) Hide axis helper during zoom (transient behavior)
 		this.threeRenderer.showAxisHelper(false);
 
-		// Step 15) Update camera (preserve orbit state during zoom)
+		// Step 14) Update camera (preserve orbit state during zoom)
 		this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
 
 		return { centroidX: this.centroidX, centroidY: this.centroidY, scale: this.scale, rotation: this.rotation, orbitX: this.orbitX, orbitY: this.orbitY };
@@ -145,6 +179,19 @@ export class CameraControls {
 
 	// Step 16) Handle mouse down
 	handleMouseDown(event) {
+		// Step 16a) Stop any ongoing momentum animation
+		if (this.animationFrameId !== null) {
+			cancelAnimationFrame(this.animationFrameId);
+			this.animationFrameId = null;
+		}
+
+		// Step 16b) Reset velocities
+		this.velocityX = 0;
+		this.velocityY = 0;
+		this.velocityOrbitX = 0;
+		this.velocityOrbitY = 0;
+		this.velocityRotation = 0;
+
 		// Step 17) Prevent context menu on right-click
 		if (event.button === 2) {
 			event.preventDefault();
@@ -199,6 +246,10 @@ export class CameraControls {
 			this.centroidX -= rotatedDeltaX / this.scale;
 			this.centroidY += rotatedDeltaY / this.scale;
 
+			// Store velocity for momentum
+			this.velocityX = -rotatedDeltaX / this.scale;
+			this.velocityY = rotatedDeltaY / this.scale;
+
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
 
@@ -223,6 +274,8 @@ export class CameraControls {
 			const deltaAngle = currentAngle - startAngle;
 
 			this.rotation += deltaAngle;
+			this.velocityRotation = deltaAngle; // Store for momentum
+
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
 
@@ -237,13 +290,19 @@ export class CameraControls {
 			const deltaX = event.clientX - this.lastMouseX;
 			const deltaY = event.clientY - this.lastMouseY;
 
+			// Use smaller sensitivity for smoother control (reduced from 0.01 to 0.005)
+			const sensitivity = 0.005;
+
 			// Horizontal movement = Y-axis rotation (yaw/azimuth)
-			this.orbitY += deltaX * 0.01;
+			const deltaOrbitY = deltaX * sensitivity;
+			this.orbitY += deltaOrbitY;
+			this.velocityOrbitY = deltaOrbitY; // Store for momentum
 
 			// Vertical movement = X-axis rotation (pitch/elevation)
-			// Clamp pitch to prevent flipping
-			this.orbitX += deltaY * 0.01;
-			this.orbitX = Math.max(-Math.PI / 2 + 0.1, Math.min(Math.PI / 2 - 0.1, this.orbitX));
+			// No clamping - allow full rotation in all directions
+			const deltaOrbitX = deltaY * sensitivity;
+			this.orbitX += deltaOrbitX;
+			this.velocityOrbitX = deltaOrbitX; // Store for momentum
 
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
@@ -262,6 +321,18 @@ export class CameraControls {
 		if (this.isRotating || this.isOrbiting) {
 			this.threeRenderer.showAxisHelper(false);
 			console.log("🎯 Axis helper hidden - keys released");
+		}
+
+		// Step 22b) Start momentum animation if there's significant velocity
+		const hasVelocity =
+			Math.abs(this.velocityX) > this.minVelocity ||
+			Math.abs(this.velocityY) > this.minVelocity ||
+			Math.abs(this.velocityOrbitX) > this.minVelocity ||
+			Math.abs(this.velocityOrbitY) > this.minVelocity ||
+			Math.abs(this.velocityRotation) > this.minVelocity;
+
+		if (hasVelocity && this.animationFrameId === null) {
+			this.animationFrameId = requestAnimationFrame(this.animate);
 		}
 
 		this.isDragging = false;
@@ -383,5 +454,62 @@ export class CameraControls {
 		this.scale = Math.min(scaleX, scaleY);
 
 		this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+	}
+
+	// Step 32) Animation loop for smooth momentum/damping
+	animate() {
+		// Step 32a) Apply damping to velocities
+		this.velocityX *= this.damping;
+		this.velocityY *= this.damping;
+		this.velocityOrbitX *= this.damping;
+		this.velocityOrbitY *= this.damping;
+		this.velocityRotation *= this.damping;
+
+		// Step 32b) Check if velocities are below threshold
+		const hasVelocity =
+			Math.abs(this.velocityX) > this.minVelocity ||
+			Math.abs(this.velocityY) > this.minVelocity ||
+			Math.abs(this.velocityOrbitX) > this.minVelocity ||
+			Math.abs(this.velocityOrbitY) > this.minVelocity ||
+			Math.abs(this.velocityRotation) > this.minVelocity;
+
+		if (!hasVelocity) {
+			// Stop animation
+			this.animationFrameId = null;
+			this.velocityX = 0;
+			this.velocityY = 0;
+			this.velocityOrbitX = 0;
+			this.velocityOrbitY = 0;
+			this.velocityRotation = 0;
+			return;
+		}
+
+		// Step 32c) Apply velocities to camera state
+		let updated = false;
+
+		if (Math.abs(this.velocityX) > this.minVelocity || Math.abs(this.velocityY) > this.minVelocity) {
+			this.centroidX += this.velocityX;
+			this.centroidY += this.velocityY;
+			updated = true;
+		}
+
+		if (Math.abs(this.velocityOrbitX) > this.minVelocity || Math.abs(this.velocityOrbitY) > this.minVelocity) {
+			this.orbitX += this.velocityOrbitX;
+			this.orbitY += this.velocityOrbitY;
+			updated = true;
+		}
+
+		if (Math.abs(this.velocityRotation) > this.minVelocity) {
+			this.rotation += this.velocityRotation;
+			updated = true;
+		}
+
+		// Step 32d) Update camera if anything changed
+		if (updated) {
+			this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+		}
+
+		// Step 32e) Continue animation loop
+		this.animationFrameId = requestAnimationFrame(this.animate);
 	}
 }

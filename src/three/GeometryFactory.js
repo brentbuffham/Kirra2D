@@ -30,11 +30,11 @@ export class GeometryFactory {
 			side: THREE.DoubleSide,
 			transparent: false, // Collar is NEVER transparent
 			opacity: 1.0,
-			depthTest: false,
+			depthTest: true, // Enable depth testing so holes don't show through surfaces
+			depthWrite: true, // Write to depth buffer
 		});
 		const collarMesh = new THREE.Mesh(collarGeometry, collarMaterial);
 		collarMesh.position.set(collarX, collarY, collarZ);
-		collarMesh.renderOrder = 10;
 		group.add(collarMesh);
 
 		if (hasNegativeSubdrill) {
@@ -70,11 +70,11 @@ export class GeometryFactory {
 				side: THREE.DoubleSide,
 				transparent: true,
 				opacity: 0.2,
-				depthTest: false,
+				depthTest: true, // Enable depth testing
+				depthWrite: false, // Transparent objects shouldn't write to depth buffer
 			});
 			const gradeCircleMesh = new THREE.Mesh(gradeCircleGeometry, gradeCircleMaterial);
 			gradeCircleMesh.position.set(gradeX, gradeY, gradeZ);
-			gradeCircleMesh.renderOrder = 9;
 			group.add(gradeCircleMesh);
 		} else {
 			// POSITIVE SUBDRILL CASE (normal)
@@ -109,11 +109,11 @@ export class GeometryFactory {
 				side: THREE.DoubleSide,
 				transparent: false,
 				opacity: 1.0,
-				depthTest: false,
+				depthTest: true, // Enable depth testing
+				depthWrite: true, // Write to depth buffer
 			});
 			const gradeCircleMesh = new THREE.Mesh(gradeCircleGeometry, gradeCircleMaterial);
 			gradeCircleMesh.position.set(gradeX, gradeY, gradeZ);
-			gradeCircleMesh.renderOrder = 9;
 			group.add(gradeCircleMesh);
 		}
 
@@ -179,7 +179,7 @@ export class GeometryFactory {
 		const squareMaterial = new THREE.LineBasicMaterial({
 			color: lineColor,
 			linewidth: 2,
-			depthTest: false,
+			depthTest: true, // Enable depth testing
 		});
 
 		const halfSide = squareSize / 2;

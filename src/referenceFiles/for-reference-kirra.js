@@ -1,101 +1,7 @@
-/* prettier-ignore-file */
-//=================================================
-// IMPORTS
-//=================================================
-import { Delaunay } from "d3-delaunay";
-import Delaunator from "delaunator";
-import Triangle from "triangle-wasm";
-import earcut from "earcut";
-import Constrainautor from "@kninnug/constrainautor";
-import DxfParser from "dxf-data-parser";
-import Swal from "sweetalert2";
-import Plotly from "plotly.js-dist";
-import Papa from "papaparse";
-import CryptoJS from "crypto-js";
-import * as turf from "@turf/turf";
-import { polygonCentroid } from "d3-polygon";
-import ClipperLib from "clipper-lib";
-import { fromUrl, GeoTIFF } from "geotiff";
-import proj4 from "proj4";
-import printJS from "print-js";
-import { jsPDF } from "jspdf";
-import html2canvas from "html2canvas";
-import pdfMake from "pdfmake/build/pdfmake";
-import pdfFonts from "pdfmake/build/vfs_fonts";
-//=================================================
-// Three.js Rendering System
-//=================================================
-import * as THREE from "three";
-import { ThreeRenderer } from "./three/ThreeRenderer.js";
-import { CameraControls } from "./three/CameraControls.js";
-import { GeometryFactory } from "./three/GeometryFactory.js";
-//=================================================
-// Drawing Modules
-//=================================================
-import { clearThreeJS, renderThreeJS, drawHoleThreeJS, drawHoleToeThreeJS, drawHoleTextThreeJS, drawHoleTextsAndConnectorsThreeJS, drawKADPointThreeJS, drawKADLineSegmentThreeJS, drawKADPolygonSegmentThreeJS, drawKADCircleThreeJS, drawKADTextThreeJS, drawSurfaceThreeJS, drawContoursThreeJS, drawDirectionArrowsThreeJS, drawBackgroundImageThreeJS } from "./draw/canvas3DDrawing.js";
-import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
-//=================================================
-// import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
-//=================================================
-import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
-
-//=================================================
-// END IMPORTS
-//=================================================
-
 // Description: This file contains the main functions for the Kirra App
 // Author: Brent Buffham
 // Last Modified: "20250816.0140AWST"
-const buildVersion = "20251113.0000AWST"; //Backwards Compatible Date Format AWST = Australian Western Standard Time
-
-//=================================================
-// SETUP JSCOLOR
-// Set up jscolor configuration
-jscolor.presets = jscolor.presets || {};
-jscolor.presets.default = {
-	format: "rgb",
-	palette: [
-		"#770000",
-		"#FF0000",
-		"#FF9900",
-		"#FFFF00",
-		"#00ff00",
-		"#009900",
-		"#00ffFF",
-		"#0099ff",
-		"#0000FF",
-		"#FF00FF", //10 per row
-		"#550000",
-		"#AA0000",
-		"#883300",
-		"#bbbb00",
-		"#33AA00",
-		"#006600",
-		"#007F7F",
-		"#002288",
-		"#000099",
-		"#7F007F", //10 per row
-		"#010101",
-		"#222222",
-		"#333333",
-		"#444444",
-		"#555555",
-		"#777777",
-		"#888888",
-		"#AAAAAA",
-		"#cccccc",
-		"#FEFEFE",
-	],
-};
-
-// Initialize jscolor after DOM is loaded
-document.addEventListener("DOMContentLoaded", function () {
-	jscolor.install();
-});
-
-// END SETUP JSCOLOR
-//==============================================
-
+const buildVersion = "20250816.0140AWST"; //Backwards Compatible Date Format AWST = Australian Western Standard Time
 //-----------------------------------------
 // Using SweetAlert Library Create a popup that gets input from the user.
 function updatePopup() {
@@ -147,8 +53,63 @@ function updatePopup() {
 				    <label class="labelWhite18">Update - NEW FEATURES:                           </label>
 					<hr>
 				<div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
-					<label     class="labelWhite12c">⭐ ⭐ November 2025 ⭐ ⭐                                            </label>
-					<br><label class="labelWhite12c">✅ 3D View </label>
+					<label     class="labelWhite12c">⭐ ⭐ August 2025 ⭐ ⭐                                            </label>
+					<br><label class="labelWhite12c">✅ Delaunay Triangulation with Constrainautor - Surfaces/shells </label>
+					<br><label class="labelWhite12c">✅ Hillshade Lighting improvement - Better lighting and shadows </label>
+					<br><label class="labelWhite12c">✅ Three gradient style improvemts - Linear, Radial, Barycentric </label>
+					<br><label class="labelWhite12c">✅ Custom CSV importer improved and redesigned                  </label>
+					<br><label class="labelWhite12c">✅ Holes or KAD selection options                               </label>
+					<br><label class="labelWhite12c">---- Move tool moves holes no snap when "Holes" option true     </label>
+					<br><label class="labelWhite12c">---- Move tool moves KAD with snapping when "KAD" option true   </label>
+					<br><label class="labelWhite12c">✅ Curved Timing Arrows can be created for better visibilty     </label>
+					<br><label class="labelWhite12c">✅ Blast stats on print page including delay count              </label>
+					<br><label class="labelWhite12c">✅ QR code to App website on print page                         </label>
+					<br><label class="labelWhite12c">✅ Timing contour time labels are shown - Only in App not print </label>
+					<br><label class="labelWhite12c">✅ Contours are now processed in a separate thread/webworker    </label>
+					<br><label class="labelWhite12c">✅ Connect Distance now Base 5 Log for added granularity        </label>
+					<br><label class="labelWhite12c">✅ Play/Animate blast Time Speed slider is now Base 10 Log      </label>
+					<br><label class="labelWhite12c">⭐ July 2025 ⭐                                                 </label>
+					<br><label class="labelWhite12c">✅ IREDES Tested and confirmed working on Epiroc RCS 6.28.1     </label>
+					<br><label class="labelWhite12c">---- 6.22.1 returns a checksum error on both HEX and DEC        </label>
+					<br><label class="labelWhite12c">✅ UI Floating Dialog replacement to SWAL 2 Modal popups.       </label>
+					<br><label class="labelWhite12c">✅ KAD Entity visibility improvement and Hole Visibility        </label>
+					<br><label class="labelWhite12c">✅ Drawing tools on Floating Toolbar - details in the Left Nav  </label>
+					<br><label class="labelWhite12c">✅ Ruler Improved to 3D-Snap Dip, DeltaZ, Plan, Total Length    </label>
+					<br><label class="labelWhite12c">✅ Additional Hole properties on right click of selected holes  </label>
+					<br><label class="labelWhite12c">✅ Z Interpolation Snap for Drawing - snap to segment           </label>
+					<br><label class="labelWhite12c">✅ Backspace or Delete when drawing to remove the last point    </label>
+					<br><label class="labelWhite12c">✅ Offset Line and Projection added to Floating Toolbar         </label>
+					<br><label class="labelWhite12c">✅ Radiate Holes or KADs added to Floating Toolbar              </label>
+					<br><label class="labelWhite12c">✅ DXF 3DFace and Hillshade Gradient added                      </label>
+					<br><label class="labelWhite12c">✅ Selection and manipulation disabled on hidden entities       </label>
+					<br><label class="labelWhite12c">✅ Children Nodes inherit group node visibility                 </label>
+					<br><label class="labelWhite12c">✅ Export and Save only includes Visible holes all Entities     </label>
+					<br><label class="labelWhite12c">✅ Row and Position for holes added assists renaming            </label>
+					<br><label class="labelWhite12c">✅ Row detection for imported holes without row ids             </label>
+					<br><label class="labelWhite12c">✅ Holes along Lines/Polylines uses more reliable selection     </label>
+					<br><label class="labelWhite12c">✅ Implemented Show/Hide for Blasts, Blast holes, KAD Drawings  </label>
+					<br><label class="labelWhite12c">✅ Clear Database correctly and reordered the Popups            </label>
+					<br><label class="labelWhite12c">✅ Increased Colour Swatches in the jsColor picker              </label>
+					<br><label class="labelWhite12c">⭐ May, June and July 2025 ⭐                                   </label>
+					<br><label class="labelWhite12c">✅ Pattern bug fixes, duplicate hole search, polygon selection  </label>
+					<br><label class="labelWhite12c">✅ Added a radiate warning dialog                               </label>
+					<br><label class="labelWhite12c">✅ Move and Z Leveling for KAD Drawings in Edit Popup           </label>
+					<br><label class="labelWhite12c">✅ Distance indicator between added to drawing tools            </label>
+					<br><label class="labelWhite12c">✅ Improved user interaction for drawing tools                  </label>
+					<br><label class="labelWhite12c">✅ Added support for OBJ and other surface formats              </label>
+					<br><label class="labelWhite12c">✅ Critical bug fix to restore loading from local files         </label>
+					<br><label class="labelWhite12c">✅ Proximity Duplicate hole check and resolve                   </label>
+					<br><label class="labelWhite12c">✅ Tree View - Color Change                                     </label>
+					<br><label class="labelWhite12c">✅ Tree View - Context Menu - Delete & Properties               </label>
+					<br><label class="labelWhite12c">✅ Fixed State UI/UX issues                                     </label>
+					<br><label class="labelWhite12c">✅ Delete All Images/Surfaces to cleanup DB                     </label>
+					<br><label class="labelWhite12c">✅ Image Show/Hide/Remove/Transparency                          </label>
+					<br><label class="labelWhite12c">✅ Drawing Optimised - Pixel Distance culling                   </label>
+					<br><label class="labelWhite12c">✅ Improved Decimation of Surfaces                              </label>
+					<br><label class="labelWhite12c">✅ Fixed the Collar and Grade multiple Surfaces Bug             </label>
+					<br><label class="labelWhite12c">✅ Load multiple Surfaces and change colors                     </label>
+					<br><label class="labelWhite12c">✅ Drawings to IndexDB for large files                          </label>
+					<br><label class="labelWhite12c">✅ Load Multiple GeoTIFFs and convert from WGS                  </label>
 					<hr>
 					<br><label  class="labelWhite15">New & Existing Issues & Resolved                               </label>
 					<br><label class="labelWhite12c">🐞 Voronoi Display Lag with large blasts      ❌ unresolved ❌  </label>
@@ -223,7 +184,7 @@ function initializeVoronoiControls() {
 function initializePreferences() {
 	try {
 		loadViewControlsSliderValues();
-		fontSlider.value = 14; // force the font size.
+		//fontSlider.value = 14; // force the font size.
 		setupAutoSavePreferences();
 		console.log("✅ Preferences loaded successfully");
 		debugPreferences();
@@ -245,23 +206,23 @@ function debugPreferences() {
 // Call this in your consolidated DOMContentLoaded
 //------------------------------------------
 const canvas = document.getElementById("canvas");
-const padding = 10; // add 10 pixels of padding
+//const padding = 10; // add 10 pixels of padding
 
 const uiVersionElement = document.getElementById("htmlUIVersion");
 const htmlUIVersion = uiVersionElement ? uiVersionElement.value : "1"; // Default to "1" if not found
 
 //get the menu bar --var from the css
-const menubarSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--menubar-size"));
-const canvasBorderWidth2X = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--canvas-border")) * 2;
-const canvasContainerMargin = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--canvas-container-margin"));
+//const menubarSize = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--menubar-size"));
+//const canvasBorderWidth2X = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--canvas-border")) * 2;
+//const canvasContainerMargin = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--canvas-container-margin"));
 
 // Existing canvas setup logic that you want to make conditional
 if (htmlUIVersion === "1") {
 	// Get the screen size and calculate the dimensions based on the desired ratio
-	const screenWidth = window.innerWidth;
-	const screenHeight = window.innerHeight;
-	const canvasWidth = Math.round(screenWidth);
-	const canvasHeight = Math.round(screenHeight);
+	//const screenWidth = window.innerWidth;
+	//const screenHeight = window.innerHeight;
+	//	const canvasWidth = Math.round(screenWidth);
+	//	const canvasHeight = Math.round(screenHeight);
 
 	const canvasAdjustWidth = 40; //was 40 for kirra.html and styles.css;
 	const canvasAdjustHeight = 0.12; //was 0.12 for kirra.html and styles.css;
@@ -279,388 +240,11 @@ let isResizingRight = false;
 const resizeLeft = document.getElementById("resizeHandleLeft");
 let isResizingLeft = false;
 
-//=================================================
-// Step 1) Initialize Three.js Rendering System
-//=================================================
-let threeRenderer = null;
-let cameraControls = null;
-let threeInitialized = false;
-let onlyShowThreeJS = false; // Toggle to show only Three.js rendering
-
-// Step 1) Local coordinate offset for precision with large UTM coordinates
-// Three.js uses these local coordinates (offset from origin) to avoid floating-point errors
-let threeLocalOriginX = 0;
-let threeLocalOriginY = 0;
-
-// Step 1b) Track current rotation state (in radians)
-let currentRotation = 0;
-
-// Step 1c) Track Z centroid of all data for orbit center
-let dataCentroidZ = 0;
-
-// Step 2) Helper to convert world coordinates to local Three.js coordinates
-function worldToThreeLocal(worldX, worldY) {
-	return {
-		x: worldX - threeLocalOriginX,
-		y: worldY - threeLocalOriginY,
-	};
-}
-
-// Expose globals for canvas3DDrawing.js module
-window.worldToThreeLocal = worldToThreeLocal;
-
-// Function to sync globals to window for module access
-// Called before rendering to ensure all values are current
-function exposeGlobalsToWindow() {
-	// Step 1) Three.js globals
-	window.threeInitialized = threeInitialized;
-	window.threeRenderer = threeRenderer;
-	window.dataCentroidZ = dataCentroidZ;
-
-	// Step 2) 2D Canvas globals (ctx and canvas exposed at initialization)
-	window.strokeColor = strokeColor;
-	window.fillColor = fillColor;
-	window.firstMovementSize = firstMovementSize;
-	window.connScale = connScale;
-
-	// Step 3) Shared globals
-	window.holeScale = holeScale;
-	window.currentScale = currentScale;
-	window.darkModeEnabled = darkModeEnabled;
-	window.currentFontSize = currentFontSize;
-	window.textFillColor = textFillColor;
-	window.depthColor = depthColor;
-	window.angleDipColor = angleDipColor;
-
-	// Step 4) Helper functions
-	window.elevationToColor = elevationToColor;
-	window.rgbStringToThreeColor = rgbStringToThreeColor;
-	window.worldToCanvas = worldToCanvas;
-}
-
-// Step 3) Set local origin from first hole, surface, or current centroid
-function updateThreeLocalOrigin() {
-	// Priority 1: Use first hole if available
-	if (allBlastHoles && allBlastHoles.length > 0) {
-		threeLocalOriginX = allBlastHoles[0].startXLocation;
-		threeLocalOriginY = allBlastHoles[0].startYLocation;
-		console.log("📍 Three.js local origin set from first hole:", threeLocalOriginX, threeLocalOriginY);
-		return;
-	}
-
-	// Priority 2: Use first surface point if available
-	if (loadedSurfaces && loadedSurfaces.size > 0) {
-		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
-			if (surface.points && surface.points.length > 0) {
-				threeLocalOriginX = surface.points[0].x;
-				threeLocalOriginY = surface.points[0].y;
-				console.log("📍 Three.js local origin set from surface:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
-				return;
-			}
-		}
-	}
-
-	// Priority 3: Fallback to current centroid
-	if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined") {
-		threeLocalOriginX = centroidX;
-		threeLocalOriginY = centroidY;
-		console.log("📍 Three.js local origin set to centroid:", threeLocalOriginX, threeLocalOriginY);
-	}
-}
-
-// Step 4) Calculate Z centroid of all data for orbit center
-function calculateDataZCentroid() {
-	let sumZ = 0;
-	let count = 0;
-
-	// Step 1) Add hole Z values (collar, grade, toe)
-	if (allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
-		for (const hole of allBlastHoles) {
-			if (hole && typeof hole === "object") {
-				sumZ += hole.startZLocation || 0;
-				sumZ += hole.gradeZLocation || 0;
-				sumZ += hole.endZLocation || 0;
-				count += 3;
-			}
-		}
-	}
-
-	// Step 2) Add surface Z values if available
-	if (typeof loadedSurfaces !== "undefined" && loadedSurfaces && loadedSurfaces.size > 0) {
-		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
-			if (surface && surface.triangles && Array.isArray(surface.triangles) && surface.triangles.length > 0) {
-				for (const tri of surface.triangles) {
-					if (tri) {
-						sumZ += tri.minZ || 0;
-						sumZ += tri.maxZ || 0;
-						count += 2;
-					}
-				}
-			}
-		}
-	}
-
-	return count > 0 ? sumZ / count : 0;
-}
-
-function initializeThreeJS() {
-	if (threeInitialized) return;
-
-	// Step 1) Check if canvas exists
-	if (!canvas) {
-		console.warn("⚠️ Canvas not ready yet, deferring Three.js initialization");
-		return;
-	}
-
-	try {
-		console.log("🎬 Initializing Three.js rendering system...");
-
-		// Step 2) Create Three.js renderer
-		const canvasContainer = canvas.parentElement;
-
-		if (!canvasContainer) {
-			console.error("❌ Canvas container not found");
-			return;
-		}
-		threeRenderer = new ThreeRenderer(canvasContainer, canvas.clientWidth, canvas.clientHeight);
-
-		// Step 2a) Create base canvas for background color (bottom layer)
-		const baseCanvas = document.createElement("canvas");
-		baseCanvas.id = "baseCanvas";
-		baseCanvas.width = canvas.clientWidth;
-		baseCanvas.height = canvas.clientHeight;
-		baseCanvas.style.position = "absolute";
-		baseCanvas.style.top = "0";
-		baseCanvas.style.left = "0";
-		baseCanvas.style.width = "100%";
-		baseCanvas.style.height = "100%";
-		baseCanvas.style.pointerEvents = "none"; // No interaction, just background
-		baseCanvas.style.zIndex = "0"; // Bottom layer
-
-		// Step 2b) Set base canvas color based on dark mode
-		const baseCtx = baseCanvas.getContext("2d");
-		baseCtx.fillStyle = darkModeEnabled ? "#000000" : "#FFFFFF";
-		baseCtx.fillRect(0, 0, baseCanvas.width, baseCanvas.height);
-
-		// Step 2c) Insert base canvas first
-		canvasContainer.insertBefore(baseCanvas, canvas);
-
-		// Step 2d) Store reference for later updates
-		window.baseCanvas = baseCanvas;
-		window.baseCtx = baseCtx;
-
-		// Step 3) Insert Three.js canvas after base canvas
-		const threeCanvas = threeRenderer.getCanvas();
-		threeCanvas.id = "threeCanvas";
-		threeCanvas.style.position = "absolute";
-		threeCanvas.style.top = "0";
-		threeCanvas.style.left = "0";
-		threeCanvas.style.width = "100%";
-		threeCanvas.style.height = "100%";
-		threeCanvas.style.pointerEvents = "auto";
-		threeCanvas.style.zIndex = "1";
-
-		// Step 4) Insert before 2D canvas (but after base canvas)
-		canvasContainer.insertBefore(threeCanvas, canvas);
-
-		// Step 5) Update 2D canvas to be transparent overlay
-		canvas.style.zIndex = "2";
-		// IMPORTANT: Keep pointer-events AUTO so 2D canvas still works!
-		// Three.js will render behind, 2D canvas renders on top
-		canvas.style.pointerEvents = "auto";
-		canvas.style.setProperty("background-color", "transparent", "important"); // Override CSS
-		canvas.style.border = "none"; // Remove border for cleaner look
-
-		// Step 5b) Ensure toggle buttons are above both canvases
-		const toggleButtonsContainer = document.querySelector(".toggle-buttons-container");
-		if (toggleButtonsContainer) {
-			toggleButtonsContainer.style.zIndex = "10"; // Above both canvases
-			console.log("📍 Set toggle buttons z-index to 10");
-		}
-
-		// Step 6) Create camera controls
-		cameraControls = new CameraControls(threeRenderer, canvas);
-		cameraControls.attachEvents();
-
-		// Step 7) Override camera controls to sync with 2D overlay
-		const originalHandleWheel = cameraControls.handleWheel.bind(cameraControls);
-		cameraControls.handleWheel = function (event) {
-			const result = originalHandleWheel(event);
-			if (result) {
-				syncCameraFromThreeJS(result);
-			}
-			return result;
-		};
-
-		const originalHandleMouseMove = cameraControls.handleMouseMove.bind(cameraControls);
-		cameraControls.handleMouseMove = function (event) {
-			const result = originalHandleMouseMove(event);
-			if (result) {
-				syncCameraFromThreeJS(cameraControls.getCameraState());
-			}
-			return result;
-		};
-
-		// Step 8) Test square removed - Three.js is working!
-
-		// Step 8b) Initialize camera with current state (use local coordinates)
-		if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && typeof currentScale !== "undefined") {
-			const localCentroid = worldToThreeLocal(centroidX, centroidY);
-			// Initialize with default top-down view (rotation=0, orbitX=0, orbitY=0)
-			cameraControls.setCameraState(localCentroid.x, localCentroid.y, currentScale, 0, 0, 0);
-			console.log("📷 Camera initialized - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
-		}
-
-		// Step 9) Start render loop
-		threeRenderer.startRenderLoop();
-
-		// Step 10) Set initial background color based on current dark mode
-		threeRenderer.setBackgroundColor(darkModeEnabled);
-		console.log("🎨 Three.js background set to", darkModeEnabled ? "black" : "white");
-
-		threeInitialized = true;
-		console.log("✅ Three.js rendering system initialized");
-	} catch (error) {
-		console.error("❌ Failed to initialize Three.js:", error);
-		threeInitialized = false;
-	}
-}
-
-// Step 9) Sync camera state FROM Three.js TO 2D variables
-// This updates 2D variables when user interacts with Three.js camera
-function syncCameraFromThreeJS(cameraState) {
-	if (cameraState) {
-		// Convert local coordinates back to world
-		centroidX = cameraState.centroidX + threeLocalOriginX;
-		centroidY = cameraState.centroidY + threeLocalOriginY;
-		currentScale = cameraState.scale;
-
-		// Preserve rotation state
-		if (cameraState.rotation !== undefined) {
-			currentRotation = cameraState.rotation;
-		}
-
-		// Note: orbitX and orbitY are not synced to 2D (2D doesn't support orbit)
-		// They remain in CameraControls state only
-	}
-}
-
-// Step 9b) Sync camera state FROM 2D TO Three.js
-// This is used only for initialization and fit-to-view operations (not ongoing updates)
-function syncCameraToThreeJS() {
-	if (threeInitialized && cameraControls) {
-		const localCentroid = worldToThreeLocal(centroidX, centroidY);
-		cameraControls.setCameraState(localCentroid.x, localCentroid.y, currentScale, currentRotation || 0, cameraControls.orbitX || 0, cameraControls.orbitY || 0);
-		console.log("📷 Synced camera TO Three.js - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
-	}
-}
-
-//=================================================
-// End Three.js Initialization
-// Note: initializeThreeJS() is called from drawData() when canvas is ready
-//=================================================
-
-// Step 10) Setup onlyShowThreeJS checkbox listener
-document.addEventListener("DOMContentLoaded", function () {
-	const onlyThreeJSCheckbox = document.getElementById("onlyShowThreeJS");
-	if (onlyThreeJSCheckbox) {
-		onlyThreeJSCheckbox.addEventListener("change", function () {
-			onlyShowThreeJS = this.checked;
-			console.log(onlyShowThreeJS ? "🎨 Showing only Three.js rendering" : "🎨 Showing both 2D canvas and Three.js");
-
-			const threeCanvas = document.getElementById("threeCanvas");
-
-			if (onlyShowThreeJS) {
-				// Show only Three.js: swap z-index so Three.js is on top
-				canvas.style.zIndex = "0"; // 2D canvas behind
-				canvas.style.opacity = "0"; // Hide 2D canvas
-				canvas.style.pointerEvents = "none"; // Don't block events
-
-				if (threeCanvas) {
-					threeCanvas.style.zIndex = "2"; // Three.js on top
-					threeCanvas.style.pointerEvents = "auto"; // Receive events
-				}
-				console.log("📊 Layers: Three.js (z:2, top), 2D canvas (z:0, hidden)");
-			} else {
-				// Show both: restore original layering
-				canvas.style.zIndex = "2"; // 2D canvas on top (for text/UI)
-				canvas.style.opacity = "1"; // Show 2D canvas
-				canvas.style.pointerEvents = "auto"; // Receive events
-
-				if (threeCanvas) {
-					threeCanvas.style.zIndex = "1"; // Three.js below
-					threeCanvas.style.pointerEvents = "auto"; // Receive events
-				}
-				console.log("📊 Layers: 2D canvas (z:2, top), Three.js (z:1, below)");
-			}
-
-			// Redraw to apply changes
-			drawData(allBlastHoles);
-		});
-	}
-
-	// Step 11) Setup 2D-3D dimension toggle button
-	const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
-	if (dimension2D3DBtn) {
-		dimension2D3DBtn.addEventListener("change", function () {
-			const show3D = this.checked;
-			const threeCanvas = document.getElementById("threeCanvas");
-			const iconImg = this.nextElementSibling.querySelector("img");
-
-			if (show3D) {
-				// Step 11a) 3D-only mode (no 2D drawing)
-				onlyShowThreeJS = true;
-				console.log("🎨 3D-ONLY Mode: ON (2D drawing disabled)");
-
-				if (threeCanvas) {
-					threeCanvas.style.display = "block";
-					threeCanvas.style.zIndex = "1";
-				}
-				// Keep 2D canvas visible for mouse events, but clear it
-				if (canvas) {
-					canvas.style.display = "block";
-				}
-				// Swap icon to 3D badge
-				if (iconImg) {
-					iconImg.src = "icons/badge-3d-v2.png";
-					iconImg.alt = "3D View Active (3D Only)";
-				}
-			} else {
-				// Step 11b) 2D-only mode (no 3D rendering)
-				onlyShowThreeJS = false;
-				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
-
-				if (threeCanvas) {
-					threeCanvas.style.display = "none";
-				}
-				if (canvas) {
-					canvas.style.display = "block";
-				}
-				// Swap icon to 2D badge
-				if (iconImg) {
-					iconImg.src = "icons/badge-2d-v2.png";
-					iconImg.alt = "2D View Active (2D Only)";
-				}
-			}
-
-			// Redraw to apply changes
-			drawData(allBlastHoles);
-		});
-
-		// Step 12) Set initial state (3D visible by default)
-		dimension2D3DBtn.checked = true;
-		dimension2D3DBtn.dispatchEvent(new Event("change"));
-	}
-});
-
 const ctx = canvas.getContext("2d");
-// Expose ctx and canvas globally for canvas2DDrawing.js module
-window.ctx = ctx;
-window.canvas = canvas;
-
 let scale = 5; // adjust the scale to fit the allBlastHoles in the canvas
 let fontSize = document.getElementById("fontSlider").value;
 //TODO Eventually use this class for all holes.
+/*
 class BlastHole {
 	constructor(data = {}) {
 		this.entityName = data.entityName || "";
@@ -700,24 +284,22 @@ class BlastHole {
 		this.connectorCurve = data.connectorCurve || 0;
 	}
 }
+*/
 
 let allBlastHoles = [];
-let dxfEntities = [];
-let countAllBlastHoles = allBlastHoles.length;
-let sumMeters = 0;
+//let dxfEntities = [];
+//let countAllBlastHoles = allBlastHoles.length;
+//let sumMeters = 0;
 let currentScale = scale; // declare a variable to store the current scale
 let currentFontSize = fontSize; // declare a variable to store the current font size
-let toeScale = document.getElementById("toeSlider").value;
+//let toeScale = document.getElementById("toeSlider").value;
 let holeScale = document.getElementById("holeSlider").value;
 let deltaX = 0;
 let deltaY = 0;
 let centroidX = 0;
 let centroidY = 0;
-let centroidZ = 0;
-let firstPointInLine = null;
-let blastNameValue = "";
-let currentEntityName = "";
-
+//let centroidZ = 0;
+//let firstPointInLine = null;
 // Group visibility flags
 let blastGroupVisible = true;
 let drawingsGroupVisible = true;
@@ -738,39 +320,34 @@ let isAddingPattern = false;
 let isDeletingHole = false;
 let isMovingCanvas = false;
 let isDragging = false;
-let isModifyingKAD = false;
+//let isModifyingKAD = false;
 let entityName; // Define entityName outside the function to persist between calls
 let createNewEntity = true; // Flag to create a new entity
 // Variables to store the initial mouse position during canvas movement
-let lastMouseX = 0;
-let lastMouseY = 0;
-let initialMouseX = 0;
-let initialMouseY = 0;
-let touchStartX,
-	touchStartY = 0;
+//let initialMouseX = 0;
+//let initialMouseY = 0;
 // Add current mouse tracking for interactive previews
 let currentMouseCanvasX = 0;
 let currentMouseCanvasY = 0;
-let currentMouseCanvasZ = document.getElementById("drawingElevation").value;
+//let currentMouseCanvasZ = document.getElementById("drawingElevation").value;
 let currentMouseWorldX = 0;
 let currentMouseWorldY = 0;
-let currentMouseWorldZ = document.getElementById("drawingElevation").value;
+//let currentMouseWorldZ = document.getElementById("drawingElevation").value;
 // Surfaces
 let allAvailableSurfaces = [];
 let intervalAmount = document.getElementById("intervalSlider").value;
 let firstMovementSize = document.getElementById("firstMovementSlider").value;
 let connectAmount = document.getElementById("connectSlider").value;
-let contourLevel = 0;
+//let contourLevel = 0;
 let contourUpdatePending = false;
-let minX;
-let minY;
+//let minX;
+//let minY;
 let worldX = null;
 let worldY = null;
-let worldZ = null;
-let contourLines = [];
+//let contourLines = [];
 let contourLinesArray = [];
 let directionArrows = [];
-let epsilon = 1;
+//let epsilon = 1;
 let holeTimes = {};
 let deleteRenumberStart = document.getElementById("deleteRenumberStart").value;
 let firstSelectedHole = null;
@@ -792,8 +369,8 @@ let isBearingToolActive = false;
 // Add this declaration around line 99 (after bearingToolSelectedHole declaration)
 let bearingToolSelectedHole = null;
 let moveToolSelectedHole = null; // Add this declaration
-let bearingToolStartAngle = 0;
-let bearingToolStartMouseAngle = 0;
+//let bearingToolStartAngle = 0;
+//let bearingToolStartMouseAngle = 0;
 let isDraggingBearing = false;
 let rulerStartPoint = null;
 let rulerEndPoint = null;
@@ -816,14 +393,12 @@ let isDrawingLine = false;
 let isDrawingCircle = false;
 let isDrawingPoly = false;
 let isDrawingText = false;
-let isAddKADPointsToolActive = false;
-let isAddKADLineToolActive = false;
-let isAddKADPolygonToolActive = false;
-let isAddKADPointToolActive = false;
-let isAddKADCircleToolActive = false;
-let isAddKADTextToolActive = false;
-let isTriangulateToolActive = false;
-
+let isAddKADPointsToolActive;
+let isAddKADLineToolActive;
+let isAddKADPolygonToolActive;
+let isAddKADCircleToolActive;
+let isAddKADTextToolActive;
+let isTriangulateToolActive;
 //delete tool booleans
 let isDeletingKAD = false;
 //modify tool booleans
@@ -833,34 +408,31 @@ let isOffsetLinePoly = false;
 //offset kad tool booleans
 let isOffsetKAD = false;
 //radii holes or kads tool booleans
-let isRadiiHolesOrKADs = false;
+//let isRadiiHolesOrKADs = false;
 //Record Measurements booleans
 let isMeasureRecording = false;
 // PolyLine select for use in tools
-let selectedVertices = [];
-let isSelectingPolyline = false;
+//let selectedVertices = [];
+//let isSelectingPolyline = false;
 //has selected multiple holes
-let hasSelectedMultipleHoles = false;
+//let hasSelectedMultipleHoles = false;
 let isMultiHoleSelectionEnabled = false; // Selection mode is false if single ONLY hole selection on each click and true when each click adds a hole to the selection.  It does not indicate that selection is active or inactive.
 let isMoveToolActive = false;
 let isMovingHole = false;
-let holeToMove = null;
+//let holeToMove = null;
 
 let maxEdgeLength = 15;
 let clickedHole; // Declare clickedHole outside the event listener
 let timingWindowHolesSelected = [];
 let selectedMultipleHoles = [];
 let selectedPoint = null; // Global selectedPoint declaration
-let selectedMultiplePoints = [];
+//let selectedMultiplePoints = [];
 let selectedMultipleKADObjects = []; // Array to store multiple selected KAD objects
-let isMultiKADSelectionEnabled = false; // Flag for multi-KAD selection mode
-// Add this global flag at the top of your file (near other globals like snapEnabled)
-let isSelfSnapEnabled = false; // Tracks if 'S' is held down
+//let isMultiKADSelectionEnabled = false; // Flag for multi-KAD selection mode
 // Step 4) Move tool state for KAD vertices
 let moveToolSelectedKAD = null;
-let moveToolKADOriginalZ = 0;
-let toeSizeInMeters = 1;
-let connScale = 1;
+//let moveToolKADOriginalZ = 0;
+
 let isPlaying = false; // To track whether the animation is playing
 let animationInterval; // To store the interval ID for the animation
 let playSpeed = 1; // Default play speed
@@ -873,7 +445,8 @@ let strokeColor = darkModeEnabled ? "white" : "black";
 let textFillColor = darkModeEnabled ? "white" : "black";
 let depthColor = darkModeEnabled ? "blue" : "cyan";
 let angleDipColor = darkModeEnabled ? "darkcyan" : "orange";
-
+// Add this global flag at the top of your file (near other globals like snapEnabled)
+let isSelfSnapEnabled = false; // Tracks if 'S' is held down
 ///////////////////////////
 //DEVELOPER MODE BUTTON
 const developerModeCheckbox = document.getElementById("developerMode");
@@ -892,13 +465,13 @@ const addHoleSwitch = document.getElementById("addHoleSwitch");
 
 const editLengthPopupSwitch = document.getElementById("editLengthPopupButton");
 const editHoleTypePopupSwitch = document.getElementById("editHoleTypePopupButton");
-
+const fontSlider = document.getElementById("fontSlider");
 const editBlastNameSwitch = document.getElementById("editBlastNameButton");
 // const editDiameterSwitch = document.getElementById("editDiameterButton");
 const deleteHoleSwitch = document.getElementById("deleteHoleSwitch");
 const modifyKADSwitch = document.getElementById("modifyKADDraw");
 const offsetKADButton = document.getElementById("offsetKADTool");
-const radiiHolesOrKADsButton = document.getElementById("radiiHolesOrKADsTool");
+//const radiiHolesOrKADsButton = document.getElementById("radiiHolesOrKADsTool");
 const selectionModeButton = document.getElementById("selectionModeButton");
 const editHolesToggle = document.getElementById("editHolesToggle"); //required to be true if holes are to be fine tuned
 
@@ -1084,8 +657,8 @@ function resetAllSelectedStores() {
 	polylineEndPoint = null;
 
 	// Reset any other state variables
-	blastNameValue = "";
-	currentEntityName = "";
+	let blastNameValue = "";
+	let currentEntityName = "";
 
 	console.log("🧹 All selected stores and pattern states reset");
 }
@@ -1830,26 +1403,8 @@ function updateTranslations(language) {
 		const delayLabel = document.querySelector("#delayLabel");
 		if (delayLabel) delayLabel.textContent = langTranslations.delay_label;
 
-		jscolor.install();
 		const connectorColor = document.querySelector("#connectorColor");
 		if (connectorColor) connectorColor.textContent = langTranslations.color_label;
-		if (connectorColor.jscolor) {
-			// Step #) Set the color programmatically
-			connectorColor.jscolor.fromString("#00FF00");
-
-			// Step #) Get the current color as hex
-			var currentColor = connectorColor.jscolor.toHEXString();
-
-			// Step #) Set jscolor options (optional)
-			connectorColor.jscolor.option("width", 80);
-			connectorColor.jscolor.option("height", 30);
-
-			// Step #) You can also add event handlers if needed
-			connectorColor.jscolor.option("onInput", function () {
-				// Do something when the color changes
-				// Example: update a preview or save to localStorage
-			});
-		}
 
 		const connectLabel = document.querySelector("#connectLabel");
 		if (connectLabel) connectLabel.textContent = langTranslations.connect_distance_label;
@@ -3358,35 +2913,7 @@ function resizeChart() {
 }
 
 // Add event listener for window resize
-function handleThreeJSResize() {
-	if (threeInitialized && threeRenderer && canvas) {
-		const width = canvas.clientWidth;
-		const height = canvas.clientHeight;
-		threeRenderer.resize(width, height);
-		console.log("🔄 Three.js canvas resized:", width, height);
-	}
-}
-
-// Handle base canvas resize
-function handleBaseCanvasResize() {
-	if (window.baseCanvas && window.baseCtx && canvas) {
-		const width = canvas.clientWidth;
-		const height = canvas.clientHeight;
-
-		// Step 1) Resize base canvas to match main canvas
-		window.baseCanvas.width = width;
-		window.baseCanvas.height = height;
-
-		// Step 2) Redraw background color
-		const isDark = document.body.classList.contains("dark-mode");
-		window.baseCtx.fillStyle = isDark ? "#000000" : "#FFFFFF";
-		window.baseCtx.fillRect(0, 0, width, height);
-	}
-}
-
 window.addEventListener("resize", resizeChart);
-window.addEventListener("resize", handleThreeJSResize);
-window.addEventListener("resize", handleBaseCanvasResize);
 var acc = document.getElementsByClassName("accordion");
 var i;
 for (i = 0; i < acc.length; i++) {
@@ -3712,15 +3239,6 @@ canvasContainer.addEventListener(
 
 			// Ensure the currentScale does not go below a minimum value
 			currentScale = Math.max(currentScale, 0.000001);
-
-			// Recalculate contours when zoom changes to keep worker in sync
-			if (allBlastHoles && allBlastHoles.length > 0) {
-				const result = recalculateContours(allBlastHoles, deltaX, deltaY);
-				if (result && result.contourLinesArray) {
-					contourLinesArray = result.contourLinesArray;
-					directionArrows = result.directionArrows;
-				}
-			}
 
 			drawData(allBlastHoles, selectedHole);
 		}
@@ -4150,15 +3668,6 @@ function handleMouseMove(event) {
 		centroidY += deltaY / currentScale;
 		lastMouseX = mouseX;
 		lastMouseY = mouseY;
-
-		// Recalculate contours during drag to keep them in sync
-		if (allBlastHoles && allBlastHoles.length > 0 && (displayContours.checked || displayFirstMovements.checked)) {
-			const result = recalculateContours(allBlastHoles, deltaX, deltaY);
-			if (result && result.contourLinesArray) {
-				contourLinesArray = result.contourLinesArray;
-				directionArrows = result.directionArrows;
-			}
-		}
 	} else {
 		lastMouseX = mouseX;
 		lastMouseY = mouseY;
@@ -4181,10 +3690,9 @@ function handleMouseMove(event) {
 		isUpdatingSelectionFromMove = true; // Flag to prevent re-evaluating selection during mouse move
 	}
 
-	// Only redraw during active interactions to improve performance
-	//if (isDragging || isAddingHole || isDeletingHole || isAddingConnector || isAddingMultiConnector || isDrawingText || isDrawingLine || isDrawingPoly || isDrawingCircle || isMeasureRecording) {
-	drawData(allBlastHoles, selectedHole);
-	//}
+	// ⭐ IMPORTANT: Ensure this line is REMOVED or COMMENTED OUT if it's still present!
+	drawData(allBlastHoles, selectedHole); // THIS LINE IS THE MAJOR PERFORMANCE HIT IF UNCONDITIONAL
+	//drawMouseCrossHairs(lastMouseX, lastMouseY, snapRadiusPixels, true, true);
 
 	isUpdatingSelectionFromMove = false; // Reset the flag after drawData
 }
@@ -4825,6 +4333,259 @@ function generateUniqueHoleID(entityName, baseID) {
 	}
 }
 
+// ===================================================================
+// MISSING HDBSCAN FUNCTIONS - DROP-IN CODE
+// ===================================================================
+// Add these functions to kirra.js to complete the sequence-weighted HDBSCAN implementation
+
+/**
+ * SIMPLIFIED HDBSCAN WITH PRE-CALCULATED DISTANCE MATRIX
+ *
+ * Step 1) This function implements HDBSCAN clustering using a pre-calculated distance matrix,
+ * which is needed for sequence-weighted row detection.
+ *
+ * @param {Array<Array<number>>} distanceMatrix - Pre-calculated n×n distance matrix
+ * @param {number} minClusterSize - Minimum number of points required to form a cluster
+ * @returns {Array<Array<number>>} Array of clusters, where each cluster is an array of point indices
+ */
+function simplifiedHDBSCANWithDistanceMatrix(distanceMatrix, minClusterSize) {
+	// Step 2) Validate input parameters
+	if (!distanceMatrix || !Array.isArray(distanceMatrix) || distanceMatrix.length === 0) {
+		console.warn("Invalid distance matrix provided to simplifiedHDBSCANWithDistanceMatrix");
+		return [];
+	}
+
+	const n = distanceMatrix.length;
+
+	// Step 3) Validate that distance matrix is square
+	if (distanceMatrix.some((row) => !Array.isArray(row) || row.length !== n)) {
+		console.warn("Distance matrix is not square or properly formatted");
+		return [];
+	}
+
+	console.log("Running HDBSCAN with pre-calculated " + n + "×" + n + " distance matrix");
+
+	// Step 4) Build minimum spanning tree using the provided distance matrix
+	const mst = buildMinimumSpanningTreeFromMatrix(distanceMatrix, minClusterSize);
+
+	// Step 5) Build cluster hierarchy using existing function
+	const hierarchy = buildClusterHierarchy(mst);
+
+	// Step 6) Extract stable clusters using existing function
+	const clusters = extractStableClusters(hierarchy, minClusterSize);
+
+	console.log("HDBSCAN with distance matrix detected " + clusters.length + " clusters");
+	return clusters;
+}
+
+/**
+ * BUILD MINIMUM SPANNING TREE FROM DISTANCE MATRIX
+ *
+ * Step 1) This is a variant of the existing buildMinimumSpanningTree function
+ * that works with a pre-calculated distance matrix instead of calculating distances.
+ *
+ * @param {Array<Array<number>>} distanceMatrix - Pre-calculated n×n distance matrix
+ * @param {number} minPts - Minimum points parameter for core distance calculation
+ * @returns {Array<Object>} Minimum spanning tree edges with {from, to, weight} structure
+ */
+function buildMinimumSpanningTreeFromMatrix(distanceMatrix, minPts) {
+	const n = distanceMatrix.length;
+	const edges = [];
+
+	// Step 2) Calculate core distances (distance to k-th nearest neighbor)
+	const coreDistances = [];
+	for (let i = 0; i < n; i++) {
+		// Step 3) Get all distances for point i and sort them
+		const dists = distanceMatrix[i].slice(); // Copy the row
+		dists.sort((a, b) => a - b);
+
+		// Step 4) Use k-th nearest neighbor distance as core distance
+		// Ensure we don't exceed array bounds
+		const kIndex = Math.min(minPts, dists.length - 1);
+		coreDistances[i] = dists[kIndex];
+	}
+
+	// Step 5) Calculate mutual reachability distances and create edges
+	for (let i = 0; i < n; i++) {
+		for (let j = i + 1; j < n; j++) {
+			// Step 6) Mutual reachability is the maximum of:
+			// - Core distance of point i
+			// - Core distance of point j
+			// - Direct distance between points i and j
+			const mutualReachability = Math.max(coreDistances[i], coreDistances[j], distanceMatrix[i][j]);
+
+			edges.push({
+				from: i,
+				to: j,
+				weight: mutualReachability,
+			});
+		}
+	}
+
+	// Step 7) Sort edges by weight (Kruskal's algorithm)
+	edges.sort((a, b) => a.weight - b.weight);
+
+	// Step 8) Build MST using Union-Find algorithm
+	const parent = Array(n)
+		.fill()
+		.map((_, i) => i);
+	const mst = [];
+
+	// Step 9) Union-Find helper functions
+	function find(x) {
+		if (parent[x] !== x) {
+			parent[x] = find(parent[x]); // Path compression
+		}
+		return parent[x];
+	}
+
+	function union(x, y) {
+		const px = find(x);
+		const py = find(y);
+		if (px !== py) {
+			parent[px] = py;
+			return true;
+		}
+		return false;
+	}
+
+	// Step 10) Build MST by adding edges that don't create cycles
+	for (const edge of edges) {
+		if (union(edge.from, edge.to)) {
+			mst.push(edge);
+			// Step 11) Stop when we have n-1 edges (complete spanning tree)
+			if (mst.length === n - 1) break;
+		}
+	}
+
+	console.log("Built MST from distance matrix with " + mst.length + " edges");
+	return mst;
+}
+
+/**
+ * CALCULATE SEQUENCE-WEIGHTED DISTANCES
+ *
+ * Step 1) Modifies spatial distances to give preference to holes that are close
+ * in the numbering sequence, making them more likely to cluster together
+ *
+ * @param {Array<Object>} holesData - Array of hole objects with startXLocation, startYLocation, holeID
+ * @param {Object} sequenceInfo - Object containing sequenceMap and hasValidSequence
+ * @returns {Array<Array<number>>} Weighted distance matrix
+ */
+function calculateSequenceWeightedDistances(holesData, sequenceInfo) {
+	const n = holesData.length;
+	const distances = Array(n)
+		.fill()
+		.map(() => Array(n).fill(0));
+
+	// Step 2) Get sequence numbers for all holes
+	const sequences = holesData.map((hole) => sequenceInfo.sequenceMap.get(hole.holeID) || 0);
+	const maxSequenceDiff = Math.max(...sequences) - Math.min(...sequences);
+
+	// Step 3) Prevent division by zero
+	const normalizedMaxDiff = maxSequenceDiff > 0 ? maxSequenceDiff : 1;
+
+	console.log("Calculating sequence-weighted distances for " + n + " holes");
+	console.log("Sequence range: " + Math.min(...sequences) + " to " + Math.max(...sequences));
+
+	for (let i = 0; i < n; i++) {
+		for (let j = i + 1; j < n; j++) {
+			// Step 4) Calculate spatial distance
+			const dx = holesData[i].startXLocation - holesData[j].startXLocation;
+			const dy = holesData[i].startYLocation - holesData[j].startYLocation;
+			const spatialDistance = Math.sqrt(dx * dx + dy * dy);
+
+			// Step 5) Calculate sequence distance (normalized)
+			const sequenceDiff = Math.abs(sequences[i] - sequences[j]);
+			const normalizedSequenceDiff = sequenceDiff / normalizedMaxDiff;
+
+			// Step 6) SEQUENCE WEIGHTING FORMULA:
+			// - If holes are close in sequence (low sequenceDiff), reduce distance
+			// - If holes are far in sequence (high sequenceDiff), increase distance
+			// - Weight factor controls how much sequence matters vs spatial distance
+			const sequenceWeight = 0.3; // 30% influence from sequence
+			const sequencePenalty = 1 + sequenceWeight * normalizedSequenceDiff;
+			const sequenceBonus = Math.max(0.5, 1 - sequenceWeight * Math.exp(-sequenceDiff / 5));
+
+			// Step 7) Apply sequence weighting
+			let weightedDistance;
+			if (sequenceDiff <= 3) {
+				// Step 8) Holes very close in sequence get a distance bonus
+				weightedDistance = spatialDistance * sequenceBonus;
+			} else {
+				// Step 9) Holes far in sequence get a distance penalty
+				weightedDistance = spatialDistance * sequencePenalty;
+			}
+
+			distances[i][j] = distances[j][i] = weightedDistance;
+		}
+	}
+
+	console.log("Applied sequence weighting with max penalty factor: " + (1 + 0.3));
+	return distances;
+}
+
+/**
+ * ORDER CLUSTERS BY SEQUENCE
+ *
+ * Step 1) After clustering, ensure holes within each cluster are ordered by sequence
+ *
+ * @param {Array<Array<number>>} clusters - Array of clusters, each containing point indices
+ * @param {Array<Object>} holesData - Array of hole objects
+ * @param {Object} sequenceInfo - Object containing sequenceMap
+ * @returns {Array<Array<number>>} Clusters with holes ordered by sequence within each cluster
+ */
+function orderClustersbySequence(clusters, holesData, sequenceInfo) {
+	console.log("Ordering " + clusters.length + " clusters by sequence");
+
+	return clusters.map((cluster, clusterIndex) => {
+		// Step 2) Get holes in this cluster with their sequence information
+		const clusterHoles = cluster.map((index) => ({
+			hole: holesData[index],
+			index: index,
+			sequence: sequenceInfo.sequenceMap.get(holesData[index].holeID) || 0,
+		}));
+
+		// Step 3) Sort by sequence number
+		clusterHoles.sort((a, b) => a.sequence - b.sequence);
+
+		console.log("Cluster " + clusterIndex + ": ordered " + clusterHoles.length + " holes by sequence (" + clusterHoles[0].sequence + " to " + clusterHoles[clusterHoles.length - 1].sequence + ")");
+
+		// Step 4) Return just the indices in sequence order
+		return clusterHoles.map((item) => item.index);
+	});
+}
+
+/**
+ * ASSIGN ORDERED CLUSTERS TO ROWS
+ *
+ * Step 1) Assigns cluster results to rows while preserving sequence order
+ *
+ * @param {Array<Object>} holesData - Array of hole objects to assign row/position IDs
+ * @param {Array<Array<number>>} orderedClusters - Clusters with holes ordered by sequence
+ * @param {string} entityName - Entity name for generating row IDs
+ */
+function assignOrderedClustersToRows(holesData, orderedClusters, entityName) {
+	const startingRowID = getNextRowID(entityName);
+
+	console.log("Assigning " + orderedClusters.length + " ordered clusters to rows starting from ID " + startingRowID);
+
+	orderedClusters.forEach((cluster, clusterIndex) => {
+		const rowID = startingRowID + clusterIndex;
+
+		// Step 2) Assign row and position IDs in sequence order
+		cluster.forEach((holeIndex, positionInRow) => {
+			const hole = holesData[holeIndex];
+			hole.rowID = rowID;
+			hole.posID = positionInRow + 1; // Position respects sequence order
+		});
+
+		console.log("Row " + rowID + " assigned " + cluster.length + " holes in sequence order");
+	});
+
+	console.log("Completed sequence-ordered row assignment for entity: " + entityName);
+}
+
 function parseK2Dcsv(data) {
 	if (!allBlastHoles || !Array.isArray(allBlastHoles)) allBlastHoles = [];
 	randomHex = Math.floor(Math.random() * 16777215).toString(16);
@@ -5104,7 +4865,7 @@ function parseK2Dcsv(data) {
 
 	// In parseCSV and processCsvData:
 	entitiesForRowDetection.forEach((holes, entityName) => {
-		improvedSmartRowDetection(holes, entityName); //
+		improvedSmartRowDetection(holes, entityName); // This should be improvedSmartRowDetection
 	});
 
 	// Auto-assign rowID/posID for holes that still don't have them
@@ -6379,23 +6140,24 @@ document.getElementById("createRadiiFromBlastHoles").addEventListener("click", f
 		debouncedUpdateTreeView(); // Use debounced version
 	}
 });
-// Helper function to check if an entity is effectively visible (including parent groups)
+// Step 1) Update the visibility check function to be more robust
 function isEntityEffectivelyVisible(entityName, entityType, entityVisible = true) {
-	// Check blast holes
+	// Step 2) Check blast holes
 	if (entityType === "hole") {
 		return blastGroupVisible && entityVisible !== false;
 	}
 
-	// Check drawings
+	// Step 3) Check drawings group visibility first
 	if (!drawingsGroupVisible) return false;
 
-	// Check specific drawing type groups
-	if (entityType === "points") return pointsGroupVisible && entityVisible !== false;
-	if (entityType === "lines") return linesGroupVisible && entityVisible !== false;
-	if (entityType === "polygons") return polygonsGroupVisible && entityVisible !== false;
-	if (entityType === "circles") return circlesGroupVisible && entityVisible !== false;
-	if (entityType === "texts") return textsGroupVisible && entityVisible !== false;
+	// Step 4) Check specific drawing type groups
+	if (entityType === "points" && !pointsGroupVisible) return false;
+	if (entityType === "lines" && !linesGroupVisible) return false;
+	if (entityType === "polygons" && !polygonsGroupVisible) return false;
+	if (entityType === "circles" && !circlesGroupVisible) return false;
+	if (entityType === "texts" && !textsGroupVisible) return false;
 
+	// Step 5) Finally check individual entity visibility
 	return entityVisible !== false;
 }
 // Helper function to process radii polygons
@@ -6481,6 +6243,7 @@ function exportKADDXF() {
 	dxf += "0\nSECTION\n2\nENTITIES\n";
 
 	const allMaps = [allKADDrawingsMap];
+	console.log("All KAD Drawings: \n", allMaps);
 
 	for (const map of allMaps) {
 		for (const [entityName, entityData] of map.entries()) {
@@ -7940,37 +7703,80 @@ function pointToLineDistanceSq(point, lineStart, lineEnd, lineDistSq) {
 }
 
 function getVisibleHolesAndKADDrawings(allBlastHoles, allKADDrawings) {
-	try {
-		const visibleHoles = allBlastHoles.filter((hole) => hole.visible);
+	console.log("🔍 getVisibleHolesAndKADDrawings - allBlastHoles:", allBlastHoles.length);
+	console.log("🔍 getVisibleHolesAndKADDrawings - allKADDrawings:", allKADDrawings.length);
 
-		// Fix KAD drawings filtering - check if entity is visible using isEntityVisible
-		const visibleKADDrawings = allKADDrawings.filter((drawing) => {
-			// Check if the drawing has a visible property, or use isEntityVisible function
-			if (drawing.visible !== undefined) {
-				return drawing.visible;
-			} else if (drawing.entityName) {
-				return isEntityVisible(drawing.entityName);
-			}
-			// If no visibility info, assume it's visible
-			return true;
-		});
+	// Filter visible blast holes
+	const visibleHoles = allBlastHoles.filter((hole) => {
+		// Check if blast group is visible and hole is visible
+		const isVisible = blastGroupVisible && hole.visible !== false;
+		console.log(`🔍 Hole ${hole.holeID}: blastGroupVisible=${blastGroupVisible}, hole.visible=${hole.visible}, effective=${isVisible}`);
+		return isVisible;
+	});
 
-		console.log("�� getVisibleHolesAndKADDrawings - allBlastHoles:", allBlastHoles.length);
-		console.log("�� getVisibleHolesAndKADDrawings - allKADDrawings:", allKADDrawings.length);
-		console.log("�� getVisibleHolesAndKADDrawings - visibleHoles:", visibleHoles.length);
-		console.log("�� getVisibleHolesAndKADDrawings - visibleKADDrawings:", visibleKADDrawings.length);
+	console.log("🔍 getVisibleHolesAndKADDrawings - visibleHoles:", visibleHoles.length);
 
-		return {
-			visibleHoles,
-			visibleKADDrawings,
-		};
-	} catch (err) {
-		console.log("Error in getVisibleHolesAndKADDrawings:", err);
-		return {
-			visibleHoles: [],
-			visibleKADDrawings: [],
-		};
-	}
+	// Filter visible KAD drawings using proper visibility hierarchy
+	const visibleKADDrawings = allKADDrawings.filter((entity) => {
+		if (!entity || !entity.entityType) return false;
+
+		// Step 1: Check if drawings group is visible
+		if (!drawingsGroupVisible) {
+			console.log(`❌ Entity ${entity.entityName || "unknown"}: drawingsGroupVisible=false`);
+			return false;
+		}
+
+		// Step 2: Check entity type group visibility
+		let typeGroupVisible = false;
+		switch (entity.entityType) {
+			case "point":
+			case "points":
+				typeGroupVisible = pointsGroupVisible;
+				break;
+			case "line":
+			case "lines":
+				typeGroupVisible = linesGroupVisible;
+				break;
+			case "poly":
+			case "polygon":
+			case "polygons":
+				typeGroupVisible = polygonsGroupVisible;
+				break;
+			case "circle":
+			case "circles":
+				typeGroupVisible = circlesGroupVisible;
+				break;
+			case "text":
+			case "texts":
+				typeGroupVisible = textsGroupVisible;
+				break;
+			default:
+				typeGroupVisible = true; // Unknown types default to visible
+				break;
+		}
+
+		if (!typeGroupVisible) {
+			console.log(`❌ Entity ${entity.entityName || "unknown"} (${entity.entityType}): typeGroupVisible=false`);
+			return false;
+		}
+
+		// Step 3: Check individual entity visibility
+		const entityVisible = entity.visible !== false;
+		if (!entityVisible) {
+			console.log(`❌ Entity ${entity.entityName || "unknown"}: entityVisible=false`);
+			return false;
+		}
+
+		console.log(`✅ Entity ${entity.entityName || "unknown"} (${entity.entityType}): all checks passed`);
+		return true;
+	});
+
+	console.log("🔍 getVisibleHolesAndKADDrawings - visibleKADDrawings:", visibleKADDrawings.length);
+
+	return {
+		visibleHoles: visibleHoles,
+		visibleKADDrawings: visibleKADDrawings,
+	};
 }
 
 // make a global Earcut
@@ -8046,13 +7852,13 @@ triangulateTool.addEventListener("change", function () {
 		setMultipleSelectionModeToFalse();
 		resetFloatingToolbarButtons("triangulateTool");
 
-		isTriangulateToolActive = true;
+		isTriangulateTool = true;
 		triangulateTool.checked = true;
 
 		//handleContourTriangulationAction();
 		handleTriangulationAction();
 
-		isTriangulateToolActive = false;
+		isTriangulateTool = false;
 		triangulateTool.checked = false;
 	}
 });
@@ -8080,54 +7886,60 @@ function getTypeGroupVisible(entityType) {
 			return true;
 	}
 }
+// Step 6) Update the triangulation action handler
 function handleTriangulationAction() {
 	console.log("🔺 Delaunay triangulation action triggered");
 
-	// Step 1) Debug visibility flags
+	// Step 7) Debug visibility flags
 	console.log("🔍 Debugging triangulation visibility:");
 	console.log("📊 allKADDrawingsMap size:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
 	console.log("🌍 drawingsGroupVisible:", drawingsGroupVisible);
-	console.log("�� pointsGroupVisible:", pointsGroupVisible);
+	console.log("📍 pointsGroupVisible:", pointsGroupVisible);
 	console.log("📏 linesGroupVisible:", linesGroupVisible);
 	console.log("🔸 polygonsGroupVisible:", polygonsGroupVisible);
 	console.log("💥 blastGroupVisible:", blastGroupVisible);
 
-	// Check for any visible data
+	// Step 8) Check for any visible data with proper filtering
 	let hasVisibleData = false;
 	let visibleEntities = [];
 
-	// Step 2) Check KAD drawings with detailed logging
+	// Step 9) Check KAD drawings with proper visibility filtering
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-		console.log("🔍 Checking KAD drawings for visibility:");
-		allKADDrawingsMap.forEach((entity) => {
-			const isVisible = isEntityVisible(entity.entityName);
-			console.log("  - " + entity.entityName + " (" + entity.entityType + "): " + (isVisible ? "✅ Visible" : "❌ Hidden"));
-			if (isVisible) {
+		allKADDrawingsMap.forEach((entity, entityName) => {
+			// Step 10) Check if this entity type group is visible
+			const isTypeGroupVisible = isEntityEffectivelyVisible(entityName, entity.entityType, entity.visible);
+
+			console.log("🔍 Entity " + entityName + " (" + entity.entityType + "): ", {
+				entityVisible: entity.visible,
+				typeGroupVisible: getTypeGroupVisible(entity.entityType),
+				drawingsGroupVisible: drawingsGroupVisible,
+				effectivelyVisible: isTypeGroupVisible,
+			});
+
+			if (isTypeGroupVisible && entity.data && entity.data.length > 0) {
 				hasVisibleData = true;
-				visibleEntities.push(entity.entityName);
+				visibleEntities.push(entityName + " (" + entity.entityType + ")");
 			}
 		});
 	}
 
-	// Step 3) Check blast holes with detailed logging
+	// Step 11) Check blast holes with proper visibility filtering
 	if (!hasVisibleData && allBlastHoles && allBlastHoles.length > 0) {
-		console.log("🔍 Checking blast holes for visibility:");
-		allBlastHoles.forEach((hole) => {
-			const isVisible = isHoleVisible(hole);
-			// Step 1) Fix the logging to use the correct property name
-			const holeIdentifier = hole.entityName + ":" + hole.holeID || "Unknown";
-			console.log("  - " + holeIdentifier + ": " + (isVisible ? "✅ Visible" : "❌ Hidden"));
-			if (isVisible) {
-				hasVisibleData = true;
-				visibleEntities.push(holeIdentifier);
-			}
-		});
+		const visibleBlastHoles = allBlastHoles.filter((hole) => isHoleVisible(hole));
+		if (visibleBlastHoles.length > 0) {
+			hasVisibleData = true;
+			visibleEntities.push(visibleBlastHoles.length + " blast holes");
+		}
 	}
 
 	if (!hasVisibleData) {
 		console.log("❌ No visible data found for triangulation");
-		console.log("📋 Visible entities found:", visibleEntities);
-		updateStatusMessage("No visible data found for triangulation");
+		showModalMessage("No Visible Data", "No visible blast holes or KAD drawings found for triangulation.<br><br>Please ensure some entities are visible in the Data Explorer.", "warning");
+
+		// Step 12) Uncheck the triangulation tool
+		const triangulateTool = document.getElementById("triangulateTool");
+		if (triangulateTool) triangulateTool.checked = false;
+
 		return;
 	}
 
@@ -8135,7 +7947,6 @@ function handleTriangulationAction() {
 	updateStatusMessage("Ready for triangulation ✅");
 	showTriangulationPopup();
 }
-
 //Take the visible veritces and filter any points the are within a 3D tolerance
 function getUniqueElementVertices(xyzVertices, tolerance = 0.001) {
 	let uniqueVertices = [];
@@ -8228,17 +8039,19 @@ function createDelaunayTriangulation(params) {
 		}
 
 		// Add KAD drawing vertices
-		visibleElements.visibleKADDrawings.forEach((entity) => {
-			if (entity.data && Array.isArray(entity.data)) {
-				entity.data.forEach((point) => {
-					elementVertices.push({
-						x: parseFloat(point.pointXLocation) || parseFloat(point.x),
-						y: parseFloat(point.pointYLocation) || parseFloat(point.y),
-						z: parseFloat(point.pointZLocation) || parseFloat(point.z) || 0,
+		if (visibleElements.visibleKADDrawings && Array.isArray(visibleElements.visibleKADDrawings)) {
+			visibleElements.visibleKADDrawings.forEach((entity) => {
+				if (entity.data && Array.isArray(entity.data)) {
+					entity.data.forEach((point) => {
+						elementVertices.push({
+							x: parseFloat(point.pointXLocation) || parseFloat(point.x),
+							y: parseFloat(point.pointYLocation) || parseFloat(point.y),
+							z: parseFloat(point.pointZLocation) || parseFloat(point.z) || 0,
+						});
 					});
-				});
-			}
-		});
+				}
+			});
+		}
 
 		// Remove duplicate vertices within tolerance
 		elementVertices = getUniqueElementVertices(elementVertices, tolerance);
@@ -8307,7 +8120,7 @@ function createDelaunayTriangulation(params) {
 					}
 				}
 
-				// ✅ FIX: Create triangle in the CORRECT format that matches the rest of your system
+				// Create triangle in the CORRECT format that matches the rest of your system
 				// This should match the format used in parseDXFToKAD and other parts
 				resultTriangles.push({
 					vertices: [
@@ -8335,7 +8148,7 @@ function createDelaunayTriangulation(params) {
 
 		console.log("🎉 Generated", resultTriangles.length, "triangles");
 
-		// ✅ FIX: Return triangles in the correct format that matches your system
+		// Return triangles in the correct format that matches your system
 		return {
 			resultTriangles: resultTriangles, // Already in correct format
 			points: elementVertices, // Return the actual points used for triangulation
@@ -8560,7 +8373,7 @@ function deleteTrianglesByInternalAngle(surfaceId, internalAngleMin = 0, use3DAn
 	return true;
 }
 
-// ✅ NEW: Get visible KAD entities filtered by clipping polygon if needed
+// Step 13) Update the getVisibleKADEntitiesForConstraints function
 function getVisibleKADEntitiesForConstraints(useClippingFilter = false) {
 	const visibleEntities = [];
 
@@ -8568,45 +8381,25 @@ function getVisibleKADEntitiesForConstraints(useClippingFilter = false) {
 		return visibleEntities;
 	}
 
-	// Get clipping polygon if needed
+	// Step 14) Get clipping polygon if needed
 	let clippingPolygon = null;
 	if (useClippingFilter && selectedKADObject && selectedKADObject.entityType === "poly") {
-		clippingPolygon = allKADDrawingsMap.get(selectedKADObject.entityName);
+		const clippingEntity = allKADDrawingsMap.get(selectedKADObject.entityName);
+		if (clippingEntity && clippingEntity.entityType === "poly") {
+			clippingPolygon = clippingEntity;
+		}
 	}
 
 	allKADDrawingsMap.forEach((entity, entityName) => {
-		// Only process lines and polygons for constraints
-		if (entity.entityType !== "line" && entity.entityType !== "poly") {
-			return;
-		}
+		// Step 15) Use the robust visibility check
+		const isVisible = isEntityEffectivelyVisible(entityName, entity.entityType, entity.visible);
 
-		// Check if entity is visible
-		if (!isEntityVisible(entityName)) {
-			return;
-		}
-
-		// Filter by clipping polygon if specified
-		if (clippingPolygon && useClippingFilter) {
-			if (!entityIntersectsClippingPolygon(entity, clippingPolygon)) {
-				return;
+		if (isVisible && entity.data && entity.data.length > 0) {
+			// Step 16) Apply clipping filter if needed
+			if (!useClippingFilter || !clippingPolygon || entityIntersectsClippingPolygon(entity, clippingPolygon)) {
+				visibleEntities.push(entity);
 			}
 		}
-
-		// Add valid constraint entity
-		visibleEntities.push({
-			...entity,
-			entityName: entityName,
-			pointList2D: entity.data.map((p) => ({
-				x: parseFloat(p.pointXLocation),
-				y: parseFloat(p.pointYLocation),
-			})),
-			pointList3D: entity.data.map((p) => ({
-				x: parseFloat(p.pointXLocation),
-				y: parseFloat(p.pointYLocation),
-				z: parseFloat(p.pointZLocation) || 0,
-			})),
-			isLineOrPoly: entity.entityType,
-		});
 	});
 
 	console.log("📋 Found", visibleEntities.length, "visible KAD entities for constraints");
@@ -9050,14 +8843,13 @@ function findClosestVertexIndex(spatialIndex, targetX, targetY, tolerance) {
 function createConstrainautorTriangulation(points, constraintSegments, options = {}) {
 	return new Promise((resolve, reject) => {
 		try {
-			// Step 1) Check if Constrainautor is available (imported at top of file)
-			if (typeof Constrainautor === "undefined") {
+			if (!window.Constrainautor) {
 				throw new Error("Constrainautor library not loaded");
 			}
 
 			console.log("🔺 Starting Constrainautor with " + points.length + " points, " + constraintSegments.length + " constraints");
 
-			// Step 2) Create basic Delaunay triangulation first
+			// Create basic Delaunay triangulation first
 			const coords = new Float64Array(points.length * 2);
 			for (let i = 0; i < points.length; i++) {
 				coords[i * 2] = points[i].x;
@@ -9067,7 +8859,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 			const delaunay = new Delaunator(coords);
 			console.log("🔺 Initial Delaunay: " + delaunay.triangles.length / 3 + " triangles");
 
-			// Step 3) Use pre-calculated indices from constraint extraction
+			// *** FIX 6: Use pre-calculated indices from constraint extraction ***
 			const constraintEdges = [];
 			const validConstraints = [];
 
@@ -9086,7 +8878,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 
 			console.log("🔗 Prepared " + constraintEdges.length + " valid constraint edges");
 
-			// Step 4) Create Constrainautor instance (using imported module)
+			// Create Constrainautor instance
 			const constrainautor = new Constrainautor(delaunay);
 
 			// Apply constraints one by one with error handling
@@ -10500,11 +10292,11 @@ function clipVoronoiCells(voronoiMetrics) {
 	const allClippedCells = []; // Changed variable name for clarity
 
 	// --- Your existing logic to calculate contractedPolygons ---
-	const nearest = getNearestNeighborDistancesByAggregation(points, "mode", useToeLocation);
+	const nearest = getNearestNeighborDistancesByAggregation(allBlastHoles, "mode", useToeLocation);
 	const expand = nearest * 1.5;
 	const contract = expand * 0.65;
 	//----------------------getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWidth, useToeLocation)
-	const unionedPolygons = getRadiiPolygons(points, 36, expand, true, false, "red", 1, useToeLocation);
+	const unionedPolygons = getRadiiPolygons(allBlastHoles, 36, expand, true, false, "red", 1, useToeLocation);
 	//----------------------
 	const simplifiedPolygons = unionedPolygons.map((polygon) => simplifyPolygon(polygon, 0.1, true));
 	const contractedPolygons = simplifiedPolygons.map((polygon) => offsetPolygonClipper(polygon, -contract));
@@ -12136,31 +11928,40 @@ function getAverageDistanceSmall(points) {
 	return count > 0 ? total / count : 1;
 }
 
-//=================================================
-// Three.js Drawing Helper Functions
-//=================================================
-
-// Step 1) Helper - Convert RGB string to Three.js Color object
-function rgbStringToThreeColor(rgbString) {
-	// Parse "rgb(r, g, b)" string
-	const match = rgbString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
-	if (match) {
-		const r = parseInt(match[1]) / 255;
-		const g = parseInt(match[2]) / 255;
-		const b = parseInt(match[3]) / 255;
-		return { r: r, g: g, b: b };
-	}
-	return { r: 1, g: 1, b: 1 }; // Default white
+function clearCanvas() {
+	ctx.clearRect(0, 0, canvas.width, canvas.height);
+}
+/*** CODE TO DRAW POINTS FROM KAD DATA ***/
+function drawKADPoints(x, y, z, lineWidth = 1, strokeColor) {
+	ctx.beginPath();
+	ctx.arc(x, y, lineWidth, 0, 2 * Math.PI);
+	ctx.strokeStyle = strokeColor;
+	ctx.fillStyle = strokeColor;
+	// Don't use line width use the line width as a proxy for diameter.
+	ctx.stroke();
+	ctx.fill();
+}
+//Draws an open poly line from the kadLinesArray
+function drawKADLines(sx, sy, ex, ey, sz, ez, lineWidth, strokeColor) {
+	ctx.beginPath();
+	ctx.moveTo(sx, sy);
+	ctx.lineTo(ex, ey);
+	ctx.strokeStyle = strokeColor;
+	ctx.lineWidth = lineWidth;
+	ctx.stroke();
 }
 
-// Note: Three.js drawing functions moved to src/draw/canvas3DDrawing.js
-
-//=================================================
-// End Three.js Drawing Helper Functions
-//=================================================
-
-/*** CODE TO DRAW POINTS FROM KAD DATA ***/
-//Draws an open poly line from the kadLinesArray
+function drawKADPolys(sx, sy, ex, ey, sz, ez, lineWidth, strokeColor, isClosed) {
+	ctx.beginPath();
+	ctx.moveTo(sx, sy);
+	ctx.lineTo(ex, ey);
+	ctx.strokeStyle = strokeColor;
+	ctx.lineWidth = lineWidth;
+	ctx.stroke();
+	if (isClosed) {
+		ctx.closePath();
+	}
+}
 
 function drawAllKADSelectionVisuals() {
 	console.log("Drawing selections - single:", selectedKADObject ? 1 : 0, "multiple:", selectedMultipleKADObjects.length); // DEBUG - ADD THIS LINE
@@ -12515,18 +12316,436 @@ function drawKADTESTPreviewLine(ctx) {
 }
 
 // Fix the drawKADCircles function around line 6450:
+function drawKADCircles(x, y, z, radius, lineWidth, strokeColor) {
+	ctx.strokeStyle = strokeColor;
+	ctx.beginPath();
+	// Convert radius from world units to screen pixels
+	const radiusInPixels = radius * currentScale;
+	ctx.arc(x, y, radiusInPixels, 0, 2 * Math.PI);
+	ctx.lineWidth = lineWidth;
+	ctx.stroke();
+}
 // Also update the drawKADTexts function to handle multiline calculations
+function drawKADTexts(x, y, z, text, color) {
+	ctx.save(); // Save current context state
+	ctx.font = parseInt(currentFontSize - 2) + "px Arial";
+	drawMultilineText(ctx, text, x, y, currentFontSize, "left", color, color, false);
+	ctx.restore(); // Restore context state
+}
 /*** CODE TO DRAW POINTS FROM CSV DATA ***/
+function drawTrack(lineStartX, lineStartY, lineEndX, lineEndY, gradeX, gradeY, strokeColor, subdrillAmount) {
+	ctx.lineWidth = 1;
 
-// Note: drawHexagon moved to src/draw/canvas2DDrawing.js
+	if (subdrillAmount < 0) {
+		// NEGATIVE SUBDRILL: Draw only from start to toe (bypass grade)
+		// Use 20% opacity for the entire line since it represents "over-drilling"
+		ctx.beginPath();
+		ctx.strokeStyle = strokeColor;
+		ctx.moveTo(lineStartX, lineStartY);
+		ctx.lineTo(lineEndX, lineEndY);
+		ctx.stroke();
+		// Draw from grade to toe (subdrill portion - red)
+		ctx.beginPath();
+		ctx.strokeStyle = "rgba(255, 0, 0, 0.2)"; // Red line (full opacity)
+		ctx.moveTo(lineEndX, lineEndY);
+		ctx.lineTo(gradeX, gradeY);
+		ctx.stroke();
+		// Draw grade marker with 20% opacity
+		ctx.beginPath();
+		ctx.arc(gradeX, gradeY, 3, 0, 2 * Math.PI);
+		ctx.fillStyle = `rgba(255, 0, 0, 0.2)`; // Red marker with 20% opacity
+		ctx.fill();
+	} else {
+		// POSITIVE SUBDRILL: Draw from start to grade (dark), then grade to toe (red)
 
-// Note: drawMultilineText moved to src/draw/canvas2DDrawing.js
+		// Draw from start to grade point (bench drill portion - dark)
+		ctx.beginPath();
+		ctx.strokeStyle = strokeColor; // Dark line (full opacity)
+		ctx.moveTo(lineStartX, lineStartY);
+		ctx.lineTo(gradeX, gradeY);
+		ctx.stroke();
 
-// Note: drawDirectionArrow moved to src/draw/canvas2DDrawing.js
+		// Draw from grade to toe (subdrill portion - red)
+		ctx.beginPath();
+		ctx.strokeStyle = "rgba(255, 0, 0, 1.0)"; // Red line (full opacity)
+		ctx.moveTo(gradeX, gradeY);
+		ctx.lineTo(lineEndX, lineEndY);
+		ctx.stroke();
 
-// Note: drawArrow moved to src/draw/canvas2DDrawing.js
+		// Draw grade marker (full opacity)
+		ctx.beginPath();
+		ctx.arc(gradeX, gradeY, 3, 0, 2 * Math.PI);
+		ctx.fillStyle = "rgba(255, 0, 0, 1.0)"; // Red marker (full opacity)
+		ctx.fill();
+	}
+}
 
-// Note: drawArrowDelayText moved to src/draw/canvas2DDrawing.js
+function drawHoleToe(x, y, fillColor, strokeColor, radius) {
+	ctx.beginPath();
+	// Use the toeSizeInMeters directly to set the radius
+	ctx.lineWidth = 1;
+	ctx.arc(x, y, radius, 0, 2 * Math.PI);
+	ctx.fillStyle = fillColor;
+	ctx.strokeStyle = strokeColor;
+	ctx.stroke();
+	ctx.fill();
+}
+
+function drawHole(x, y, radius, fillColor, strokeColor) {
+	ctx.strokeStyle = strokeColor;
+	ctx.fillStyle = strokeColor;
+	ctx.lineWidth = 1;
+	ctx.beginPath();
+	const minRadius = 1.5;
+	const drawRadius = radius > minRadius ? radius : minRadius;
+	ctx.arc(x, y, drawRadius, 0, 2 * Math.PI);
+	ctx.fill(); // fill the circle with the fill color
+	ctx.stroke(); // draw the circle border with the stroke color
+}
+
+function drawDummy(x, y, radius, strokeColor) {
+	ctx.strokeStyle = strokeColor;
+	ctx.lineWidth = 2; // Adjust the line width as needed
+	ctx.beginPath();
+	ctx.moveTo(x - radius, y - radius);
+	ctx.lineTo(x + radius, y + radius);
+	ctx.moveTo(x - radius, y + radius);
+	ctx.lineTo(x + radius, y - radius);
+	ctx.stroke();
+}
+
+function drawNoDiameterHole(x, y, sideLength, strokeColor) {
+	ctx.strokeStyle = strokeColor;
+	ctx.lineWidth = 2; // Adjust the line width as needed
+	const halfSide = sideLength / 2;
+	ctx.beginPath();
+	ctx.moveTo(x - halfSide, y - halfSide);
+	ctx.lineTo(x + halfSide, y - halfSide);
+	ctx.lineTo(x + halfSide, y + halfSide);
+	ctx.lineTo(x - halfSide, y + halfSide);
+	ctx.closePath(); // Close the path to form a square
+	ctx.stroke();
+}
+
+function drawHiHole(x, y, radius, fillColor, strokeColor) {
+	ctx.strokeStyle = strokeColor;
+	ctx.beginPath();
+	ctx.arc(x, y, radius, 0, 2 * Math.PI);
+	ctx.fillStyle = fillColor;
+	ctx.fill(); // fill the circle with the fill color
+	ctx.lineWidth = 5;
+	ctx.stroke(); // draw the circle border with the stroke color
+}
+
+function drawExplosion(x, y, spikes, outerRadius, innerRadius, color1, color2) {
+	let rotation = (Math.PI / 2) * 3;
+	let step = Math.PI / spikes;
+	let start = rotation;
+
+	// Start the drawing path
+	ctx.beginPath();
+	ctx.moveTo(x, y - outerRadius);
+	for (let i = 0; i < spikes; i++) {
+		ctx.lineTo(x + Math.cos(start) * outerRadius, y - Math.sin(start) * outerRadius);
+		start += step;
+
+		ctx.lineTo(x + Math.cos(start) * innerRadius, y - Math.sin(start) * innerRadius);
+		start += step;
+	}
+	ctx.lineTo(x, y - outerRadius);
+	ctx.closePath();
+	ctx.lineWidth = 5;
+	ctx.strokeStyle = color1;
+	ctx.stroke();
+	ctx.fillStyle = color2;
+	ctx.fill();
+}
+
+function drawHexagon(x, y, sideLength, fillColor, strokeColor) {
+	ctx.strokeStyle = strokeColor;
+	ctx.beginPath();
+	const rotationAngleRadians = (Math.PI / 180) * 30;
+	for (let i = 0; i < 6; i++) {
+		const angle = rotationAngleRadians + (Math.PI / 3) * i;
+		const offsetX = sideLength * Math.cos(angle);
+		const offsetY = sideLength * Math.sin(angle);
+
+		if (i === 0) {
+			ctx.moveTo(x + offsetX, y + offsetY);
+		} else {
+			ctx.lineTo(x + offsetX, y + offsetY);
+		}
+	}
+
+	ctx.closePath();
+	ctx.fillStyle = fillColor;
+	ctx.fill(); // fill the hexagon with the fill color
+	ctx.lineWidth = 5;
+	ctx.stroke(); // draw the hexagon border with the stroke color
+}
+
+function drawText(x, y, text, color) {
+	ctx.font = parseInt(currentFontSize - 2) + "px Arial";
+	ctx.fillStyle = color;
+	ctx.fillText(text, x, y);
+}
+
+function drawRightAlignedText(x, y, text, color) {
+	ctx.font = parseInt(currentFontSize - 2) + "px Arial";
+	const textWidth = ctx.measureText(text).width;
+	ctx.fillStyle = color;
+	// Draw the text at an x position minus the text width for right alignment
+	drawText(x - textWidth, y, text, color);
+}
+
+function drawMultilineText(ctx, text, x, y, lineHeight = 16, alignment = "left", textColor, boxColor, showBox = false) {
+	if (!text) return; //if no text, return
+	if (!ctx) return; //if no context, return
+	const lines = text.split("\n");
+	//calculate the text width of the widest line NOT the the entire sting.
+	let textWidth = 0;
+	for (let i = 0; i < lines.length; i++) {
+		const lineWidth = ctx.measureText(lines[i]).width;
+		if (lineWidth > textWidth) {
+			textWidth = lineWidth;
+		}
+	}
+	//colorise the text
+	ctx.fillStyle = textColor;
+	for (let i = 0; i < lines.length; i++) {
+		if (alignment == "left") {
+			ctx.fillText(lines[i], x, y + i * lineHeight);
+		} else if (alignment == "right") {
+			ctx.fillText(lines[i], x - textWidth, y + i * lineHeight);
+		} else if (alignment == "center") {
+			// Center each line individually based on its own width
+			const lineWidth = ctx.measureText(lines[i]).width;
+			ctx.fillText(lines[i], x - lineWidth / 2, y + i * lineHeight);
+		}
+	}
+
+	if (showBox) {
+		//colorise the box
+		//ctx.fillStyle = boxColor;
+		ctx.strokeStyle = boxColor;
+		ctx.lineWidth = 1;
+		ctx.beginPath();
+		ctx.roundRect(x - 5 - textWidth / 2, y - 6 - lineHeight / 2, textWidth + 10, lines.length * lineHeight + 6, 4);
+		ctx.stroke();
+	}
+}
+
+function drawDirectionArrow(startX, startY, endX, endY, fillColor, strokeColor, connScale) {
+	try {
+		// Set up the arrow parameters
+		var arrowWidth = (firstMovementSize / 4) * currentScale; // Width of the arrowhead
+		var arrowLength = 2 * (firstMovementSize / 4) * currentScale; // Length of the arrowhead
+		var tailWidth = arrowWidth * 0.7; // Width of the tail (adjust as needed)
+		const angle = Math.atan2(endY - startY, endX - startX); // Angle of the arrow
+
+		// Set the stroke and fill colors
+		ctx.strokeStyle = strokeColor; // Stroke color (black outline)
+		ctx.fillStyle = fillColor; // Fill color (goldenrod)
+
+		// Begin drawing the arrow as a single path
+		ctx.beginPath();
+
+		// Move to the start point of the arrow
+		ctx.moveTo(startX + (tailWidth / 2) * Math.sin(angle), startY - (tailWidth / 2) * Math.cos(angle)); // Top-left corner of the tail
+
+		// Draw to the end point of the tail (top-right corner)
+		ctx.lineTo(endX - arrowLength * Math.cos(angle) + (tailWidth / 2) * Math.sin(angle), endY - arrowLength * Math.sin(angle) - (tailWidth / 2) * Math.cos(angle));
+
+		// Draw the right base of the arrowhead
+		ctx.lineTo(endX - arrowLength * Math.cos(angle) + arrowWidth * Math.sin(angle), endY - arrowLength * Math.sin(angle) - arrowWidth * Math.cos(angle));
+
+		// Draw the tip of the arrowhead
+		ctx.lineTo(endX, endY);
+
+		// Draw the left base of the arrowhead
+		ctx.lineTo(endX - arrowLength * Math.cos(angle) - arrowWidth * Math.sin(angle), endY - arrowLength * Math.sin(angle) + arrowWidth * Math.cos(angle));
+
+		// Draw back to the bottom-right corner of the tail
+		ctx.lineTo(endX - arrowLength * Math.cos(angle) - (tailWidth / 2) * Math.sin(angle), endY - arrowLength * Math.sin(angle) + (tailWidth / 2) * Math.cos(angle));
+
+		// Draw to the bottom-left corner of the tail
+		ctx.lineTo(startX - (tailWidth / 2) * Math.sin(angle), startY + (tailWidth / 2) * Math.cos(angle));
+
+		ctx.closePath();
+		ctx.fill(); // Fill the arrow with color
+		ctx.stroke(); // Outline the arrow with a stroke
+	} catch (error) {
+		console.error("Error while drawing arrow:", error);
+	}
+}
+
+function drawArrow(startX, startY, endX, endY, color, connScale, connectorCurve = 0) {
+	try {
+		// Step 1) Set up the arrow parameters
+		var arrowWidth = (connScale / 4) * currentScale;
+		var arrowLength = 2 * (connScale / 4) * currentScale;
+
+		ctx.strokeStyle = color;
+		ctx.fillStyle = color;
+		ctx.lineWidth = 2;
+
+		// Step 2) Handle straight arrow (0 degrees)
+		if (connectorCurve === 0) {
+			// Draw straight line
+			ctx.beginPath();
+			ctx.moveTo(parseInt(startX), parseInt(startY));
+			ctx.lineTo(parseInt(endX), parseInt(endY));
+			ctx.stroke();
+
+			// Calculate angle for arrowhead
+			const angle = Math.atan2(startX - endX, startY - endY);
+		} else {
+			// Step 3) Draw curved arrow
+			const midX = (startX + endX) / 2;
+			const midY = (startY + endY) / 2;
+			const dx = endX - startX;
+			const dy = endY - startY;
+			const distance = Math.sqrt(dx * dx + dy * dy);
+
+			// Step 4) Calculate control point based on angle in degrees
+			const radians = (connectorCurve * Math.PI) / 180;
+			const curveFactor = (connectorCurve / 90) * distance * 0.5; // Linear scaling instead of sine
+
+			// Perpendicular vector for curve direction
+			const perpX = -dy / distance;
+			const perpY = dx / distance;
+
+			const controlX = midX + perpX * curveFactor;
+			const controlY = midY + perpY * curveFactor;
+
+			// Step 5) Draw curved line using quadratic bezier
+			ctx.beginPath();
+			ctx.moveTo(parseInt(startX), parseInt(startY));
+			ctx.quadraticCurveTo(parseInt(controlX), parseInt(controlY), parseInt(endX), parseInt(endY));
+			ctx.stroke();
+		}
+
+		// Step 6) Draw arrowhead
+		if (endX == startX && endY == startY) {
+			// Draw house shape for self-referencing
+			var size = (connScale / 4) * currentScale;
+			ctx.fillStyle = color;
+			ctx.beginPath();
+			ctx.moveTo(endX, endY);
+			ctx.lineTo(endX - size / 2, endY + size);
+			ctx.lineTo(endX - size / 2, endY + 1.5 * size);
+			ctx.lineTo(endX + size / 2, endY + 1.5 * size);
+			ctx.lineTo(endX + size / 2, endY + size);
+			ctx.closePath();
+			ctx.stroke();
+		} else {
+			// Step 7) Calculate arrowhead angle for curved or straight arrows
+			let angle;
+			if (connectorCurve !== 0) {
+				// For curved arrows, calculate angle at the end point
+				const dx = endX - startX;
+				const dy = endY - startY;
+				const distance = Math.sqrt(dx * dx + dy * dy);
+				const curveFactor = (connectorCurve / 90) * distance * 0.5;
+				const perpX = -dy / distance;
+				const perpY = dx / distance;
+				const controlX = (startX + endX) / 2 + perpX * curveFactor;
+				const controlY = (startY + endY) / 2 + perpY * curveFactor;
+
+				// Calculate tangent at end point (derivative of quadratic bezier at t=1)
+				const tangentX = 2 * (endX - controlX);
+				const tangentY = 2 * (endY - controlY);
+				angle = Math.atan2(tangentY, tangentX);
+
+				// Draw arrowhead for curved arrows
+				ctx.beginPath();
+				ctx.moveTo(parseInt(endX), parseInt(endY));
+				ctx.lineTo(endX - arrowLength * Math.cos(angle - Math.PI / 6), endY - arrowLength * Math.sin(angle - Math.PI / 6));
+				ctx.lineTo(endX - arrowLength * Math.cos(angle + Math.PI / 6), endY - arrowLength * Math.sin(angle + Math.PI / 6));
+				ctx.closePath();
+				ctx.fill();
+			} else {
+				// For straight arrows - use the original working calculation
+				angle = Math.atan2(startX - endX, startY - endY);
+
+				// Draw arrowhead for straight arrows (original working method)
+				ctx.beginPath();
+				ctx.moveTo(parseInt(endX), parseInt(endY));
+				ctx.lineTo(endX - arrowLength * Math.cos((Math.PI / 2) * 3 - angle) - arrowWidth * Math.sin((Math.PI / 2) * 3 - angle), endY - arrowLength * Math.sin((Math.PI / 2) * 3 - angle) + arrowWidth * Math.cos((Math.PI / 2) * 3 - angle));
+				ctx.lineTo(endX - arrowLength * Math.cos((Math.PI / 2) * 3 - angle) + arrowWidth * Math.sin((Math.PI / 2) * 3 - angle), endY - arrowLength * Math.sin((Math.PI / 2) * 3 - angle) - arrowWidth * Math.cos((Math.PI / 2) * 3 - angle));
+				ctx.closePath();
+				ctx.fill();
+			}
+		}
+	} catch (error) {
+		console.error("Error while drawing arrow:", error);
+	}
+}
+
+function drawArrowDelayText(startX, startY, endX, endY, color, text, connectorCurve = 0) {
+	// Step 1) Calculate text position and angle
+	let textX, textY, textAngle;
+
+	if (connectorCurve === 0) {
+		// Straight arrow - use midpoint
+		const midX = (startX + endX) / 2;
+		const midY = (startY + endY) / 2;
+		textAngle = Math.atan2(endY - startY, endX - startX);
+
+		// Calculate perpendicular offset to move text above the line
+		const perpAngle = textAngle - Math.PI / 2; // 90 degrees counterclockwise
+		const offsetDistance = (currentFontSize - 2) * 0.1; // Much smaller offset
+
+		textX = midX + Math.cos(perpAngle) * offsetDistance;
+		textY = midY + Math.sin(perpAngle) * offsetDistance;
+	} else {
+		// Step 2) Curved arrow - calculate actual point on curve at t=0.5
+		const dx = endX - startX;
+		const dy = endY - startY;
+		const distance = Math.sqrt(dx * dx + dy * dy);
+		const curveFactor = (connectorCurve / 90) * distance * 0.5;
+
+		const perpX = -dy / distance;
+		const perpY = dx / distance;
+
+		// Control point
+		const controlX = (startX + endX) / 2 + perpX * curveFactor;
+		const controlY = (startY + endY) / 2 + perpY * curveFactor;
+
+		// Calculate actual point on quadratic bezier curve at t=0.5 (midpoint)
+		const t = 0.5;
+		const oneMinusT = 1 - t;
+		const curveX = oneMinusT * oneMinusT * startX + 2 * oneMinusT * t * controlX + t * t * endX;
+		const curveY = oneMinusT * oneMinusT * startY + 2 * oneMinusT * t * controlY + t * t * endY;
+
+		// Calculate tangent angle at t=0.5 for proper text rotation
+		const tangentX = 2 * oneMinusT * (controlX - startX) + 2 * t * (endX - controlX);
+		const tangentY = 2 * oneMinusT * (controlY - startY) + 2 * t * (endY - controlY);
+		textAngle = Math.atan2(tangentY, tangentX);
+
+		// Calculate perpendicular offset to move text above the curve
+		const perpAngle = textAngle - Math.PI / 2; // 90 degrees counterclockwise from tangent
+		const offsetDistance = (currentFontSize - 2) * 0.1; // Much smaller offset
+
+		textX = curveX + Math.cos(perpAngle) * offsetDistance;
+		textY = curveY + Math.sin(perpAngle) * offsetDistance;
+	}
+
+	// Step 3) Draw the text above the curve/line
+	ctx.save();
+	ctx.translate(textX, textY);
+	ctx.rotate(textAngle);
+
+	ctx.fillStyle = color;
+	ctx.font = parseInt(currentFontSize - 2) + "px Arial";
+
+	// Center the text horizontally and position baseline properly
+	const textWidth = ctx.measureText(text).width;
+	ctx.fillText(text, -textWidth / 2, 0); // y=0 puts baseline at the translated position
+
+	ctx.restore();
+}
+
 function drawDelauanySlopeMap(triangles, centroid, strokeColor) {
 	if (!triangles || !Array.isArray(triangles) || triangles.length === 0) return;
 	ctx.strokeStyle = strokeColor;
@@ -13389,9 +13608,8 @@ function getJSColorHexDrawing() {
 	const colorHex = jsColorInstance.toHEXString(); // This will get the color in HEX format, e.g., "#FF0000"
 	return colorHex;
 }
-
-// Wait for DOM, then set up color picker syncing
-document.addEventListener("DOMContentLoaded", function () {
+// Use jscolor.ready to ensure pickers are initialized before adding event handlers
+jscolor.ready(function () {
 	if (colorConnectorElement && colorConnectorElement.jscolor && floatingConnectorColorElement && floatingConnectorColorElement.jscolor) {
 		// Sync from the main color picker to the floating one
 		colorConnectorElement.jscolor.option("onInput", function () {
@@ -13988,7 +14206,7 @@ function deleteSelectedHoles() {
 	refreshPoints(); // This function will save changes, reload points, recalculate all necessary data, and redraw.
 }
 
-//function to delete holes that have the same entity name in both the allBlastHoles array and the map
+//function to delete holes that have the same entity name in both the points array and the map
 function deleteSelectedPattern() {
 	if (isDeletingHole) {
 		if (selectedHole !== null) {
@@ -14028,7 +14246,7 @@ function deleteSelectedPattern() {
 	refreshPoints();
 }
 
-//function to delete All Entities in the kadHolesMap and all the Entityies in the allBlastHoles array
+//function to delete All Entities in the kadHolesMap and all the Entityies in the points array
 function deleteSelectedAllPatterns() {
 	console.log("🚨 deleteSelectedAllPatterns called!");
 	console.log("isDeletingHole:", isDeletingHole);
@@ -14192,6 +14410,43 @@ function renumberHolesFunction(startNumber, selectedEntityName) {
 	console.log("Renumbered", entityHoles.length, "holes respecting rowID/posID structure");
 }
 
+// Update deleteHoleAndRenumber to handle rowID/posID
+function deleteHoleAndRenumber(holeToDelete) {
+	const entityName = holeToDelete.entityName;
+	const holeID = holeToDelete.holeID;
+	const rowID = holeToDelete.rowID;
+	const posID = holeToDelete.posID;
+
+	console.log("Deleting hole", holeID, "from row", rowID, "position", posID);
+
+	// Remove the hole from points array
+	const holeIndex = allBlastHoles.indexOf(holeToDelete);
+	if (holeIndex > -1) {
+		allBlastHoles.splice(holeIndex, 1);
+	}
+
+	// If we have rowID/posID, renumber only the affected row
+	if (rowID && posID) {
+		// Get all holes in the same row that come after the deleted hole
+		const sameRowHoles = allBlastHoles.filter((hole) => hole.entityName === entityName && hole.rowID === rowID && hole.posID > posID);
+
+		// Renumber positions in this row
+		sameRowHoles.forEach((hole) => {
+			const oldHoleID = hole.holeID;
+			hole.posID = hole.posID - 1; // Shift position down by 1
+
+			// Update fromHoleID references if needed
+			allBlastHoles.forEach((hole) => {
+				if (hole.fromHoleID === entityName + ":::" + oldHoleID) {
+					hole.fromHoleID = entityName + ":::" + hole.holeID;
+				}
+			});
+		});
+
+		console.log("Renumbered", sameRowHoles.length, "holes in row", rowID);
+	}
+}
+
 function renumberPatternAfterClipping(entityName) {
 	const entityHoles = allBlastHoles.filter((hole) => hole.entityName === entityName);
 
@@ -14326,51 +14581,26 @@ function renumberPatternAfterClipping(entityName) {
 	console.log("Renumbered " + entityHoles.length + " holes in " + rows.length + " rows for entity: " + entityName + " with detected row orientation: " + rowOrientation + "°");
 }
 
-// Step #1: Unified deleteHoleAndRenumber for rowID/posID and alphanumeric holeID
 function deleteHoleAndRenumber(holeToDelete) {
 	const entityName = holeToDelete.entityName;
 	const holeID = holeToDelete.holeID;
-	const rowID = holeToDelete.rowID;
-	const posID = holeToDelete.posID;
 
-	// Step #2: Remove the hole from allBlastHoles
+	// Check if this is alphanumeric naming
+	const alphaMatch = holeID.toString().match(/^([A-Z]+)(\d+)$/);
+	const isAlphaNumerical = alphaMatch !== null;
+
+	// Remove the hole from points array
 	const holeIndex = allBlastHoles.indexOf(holeToDelete);
 	if (holeIndex > -1) {
 		allBlastHoles.splice(holeIndex, 1);
 	}
-
-	// Step #3: If rowID/posID exist, use rowID/posID logic
-	if (rowID && posID) {
-		// Get all holes in the same row that come after the deleted hole
-		const sameRowHoles = allBlastHoles.filter((hole) => hole.entityName === entityName && hole.rowID === rowID && hole.posID > posID);
-
-		// Renumber positions in this row
-		sameRowHoles.forEach((hole) => {
-			const oldHoleID = hole.holeID;
-			hole.posID = hole.posID - 1; // Shift position down by 1
-
-			// Update fromHoleID references if needed
-			allBlastHoles.forEach((h) => {
-				if (h.fromHoleID === entityName + ":::" + oldHoleID) {
-					h.fromHoleID = entityName + ":::" + hole.holeID;
-				}
-			});
-		});
-
-		console.log("Renumbered " + sameRowHoles.length + " holes in row " + rowID);
-		return; // Step #4: Exit after rowID/posID logic
-	}
-
-	// Step #5: If not rowID/posID, check for alphanumeric holeID
-	const alphaMatch = holeID && holeID.toString().match(/^([A-Z]+)(\d+)$/);
-	const isAlphaNumerical = alphaMatch !== null;
 
 	if (isAlphaNumerical) {
 		const deletedRowLetter = alphaMatch[1];
 		const deletedHoleNumber = parseInt(alphaMatch[2]);
 
 		// Get all holes in the same row (same letter) and entity
-		const sameRowHoles = allBlastHoles.filter((hole) => hole.entityName === entityName && hole.holeID && hole.holeID.toString().startsWith(deletedRowLetter));
+		const sameRowHoles = allBlastHoles.filter((hole) => hole.entityName === entityName && hole.holeID.toString().startsWith(deletedRowLetter));
 
 		// Sort by hole number within the row
 		sameRowHoles.sort((a, b) => {
@@ -14393,21 +14623,16 @@ function deleteHoleAndRenumber(holeToDelete) {
 					hole.holeID = newHoleID;
 
 					// Update fromHoleID references
-					allBlastHoles.forEach((h) => {
-						if (h.fromHoleID === entityName + ":::" + oldHoleID) {
-							h.fromHoleID = entityName + ":::" + newHoleID;
+					allBlastHoles.forEach((hole) => {
+						if (hole.fromHoleID === entityName + ":::" + oldHoleID) {
+							hole.fromHoleID = entityName + ":::" + newHoleID;
 						}
 					});
 				}
 			}
 		});
-
-		console.log("Renumbered " + sameRowHoles.length + " holes in row " + deletedRowLetter);
-		return; // Step #6: Exit after alphanumeric logic
 	}
-
-	// Step #7: For numerical holes, no automatic renumbering on delete
-	// (user can manually renumber if needed)
+	// For numerical holes, no automatic renumbering on delete (user can manually renumber if needed)
 }
 
 function handleHoleAddingClick(event) {
@@ -15786,12 +16011,12 @@ function addHolePopup() {
 			localStorage.setItem("savedAddHolePopupSettings", JSON.stringify(lastValues));
 
 			// PROXIMITY CHECK: Check for nearby holes before adding
-			const proximityHoles = checkHoleProximity(parseFloat(worldX), parseFloat(worldY), parseFloat(diameterValue), points);
+			const proximityHoles = checkHoleProximity(parseFloat(worldX), parseFloat(worldY), parseFloat(diameterValue), allBlastHoles);
 
 			if (proximityHoles.length > 0) {
 				const newHoleInfo = {
 					entityName: blastNameValue,
-					holeID: useCustomHoleID ? customHoleID : (points.length + 1).toString(),
+					holeID: useCustomHoleID ? customHoleID : (allBlastHoles.length + 1).toString(),
 					x: parseFloat(worldX),
 					y: parseFloat(worldY),
 					diameter: parseFloat(diameterValue),
@@ -15800,7 +16025,7 @@ function addHolePopup() {
 				showProximityWarning(proximityHoles, newHoleInfo).then((proximityResult) => {
 					if (proximityResult.isConfirmed) {
 						// User chose to continue - add the hole
-						addHole(useCustomHoleID, useGradeZ, blastNameValue, useCustomHoleID ? customHoleID : points.length + 1, parseFloat(worldX), parseFloat(worldY), parseFloat(elevationValue), parseFloat(gradeZValue), parseFloat(diameterValue), typeValue, parseFloat(lengthValue), parseFloat(subdrillValue), parseFloat(angleValue), parseFloat(bearingValue), parseFloat(burdenValue), parseFloat(spacingValue));
+						addHole(useCustomHoleID, useGradeZ, blastNameValue, useCustomHoleID ? customHoleID : allBlastHoles.length + 1, parseFloat(worldX), parseFloat(worldY), parseFloat(elevationValue), parseFloat(gradeZValue), parseFloat(diameterValue), typeValue, parseFloat(lengthValue), parseFloat(subdrillValue), parseFloat(angleValue), parseFloat(bearingValue), parseFloat(burdenValue), parseFloat(spacingValue));
 					} else if (proximityResult.isDenied) {
 						// User chose to skip - don't add this hole
 						console.log("Skipped hole due to proximity");
@@ -15809,7 +16034,7 @@ function addHolePopup() {
 				});
 			} else {
 				// No proximity issues - add the hole normally
-				addHole(useCustomHoleID, useGradeZ, blastNameValue, useCustomHoleID ? customHoleID : points.length + 1, parseFloat(worldX), parseFloat(worldY), parseFloat(elevationValue), parseFloat(gradeZValue), parseFloat(diameterValue), typeValue, parseFloat(lengthValue), parseFloat(subdrillValue), parseFloat(angleValue), parseFloat(bearingValue), parseFloat(burdenValue), parseFloat(spacingValue));
+				addHole(useCustomHoleID, useGradeZ, blastNameValue, useCustomHoleID ? customHoleID : allBlastHoles.length + 1, parseFloat(worldX), parseFloat(worldY), parseFloat(elevationValue), parseFloat(gradeZValue), parseFloat(diameterValue), typeValue, parseFloat(lengthValue), parseFloat(subdrillValue), parseFloat(angleValue), parseFloat(bearingValue), parseFloat(burdenValue), parseFloat(spacingValue));
 			}
 		} else {
 			worldX = null;
@@ -16361,7 +16586,7 @@ function getNextPosID(entityName, rowID) {
 }
 
 /**
- * Add hole to the allBlastHoles array popup using sweetalert and then draw the allBlastHoles
+ * Add hole to the points array popup using sweetalert and then draw the points
  * @param {boolean} useCustomHoleID - If true, use the custom hole ID
  * @param {boolean} useGradeZ - If true, use grade Z instead of length
  * @param {string} entityName - The name of the entity
@@ -17895,9 +18120,6 @@ function drawMouseCrossHairs(mouseX, mouseY, snapRadiusPixels, showSnapRadius = 
 
 // Main draw function
 function drawData(allBlastHoles, selectedHole) {
-	// Expose globals to window for canvas3DDrawing.js module
-	exposeGlobalsToWindow();
-
 	if (canvas) {
 		// For UI version 2, this is ESSENTIAL.
 		// For UI version 1, it adds robustness if its display size could ever change.
@@ -17907,43 +18129,8 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 	}
 
-	// Step 0) Initialize Three.js on first draw
-	if (!threeInitialized) {
-		initializeThreeJS();
-	}
-
-	// Step 0a) Ensure Three.js canvas size matches 2D canvas
-	if (threeInitialized && threeRenderer && canvas) {
-		const threeCanvas = threeRenderer.getCanvas();
-		if (threeCanvas && (threeCanvas.width !== canvas.clientWidth || threeCanvas.height !== canvas.clientHeight)) {
-			threeRenderer.resize(canvas.clientWidth, canvas.clientHeight);
-		}
-	}
-
-	// Step 0b) Update local origin if any data is loaded (holes or surfaces)
-	if (threeLocalOriginX === 0 && threeLocalOriginY === 0) {
-		const hasHoles = allBlastHoles && allBlastHoles.length > 0;
-		const hasSurfaces = loadedSurfaces && loadedSurfaces.size > 0;
-
-		if (hasHoles || hasSurfaces) {
-			updateThreeLocalOrigin();
-		}
-	}
-
-	// Step 0c) Calculate Z centroid for orbit center
-	dataCentroidZ = calculateDataZCentroid();
-
-	// Step 1) Clear Three.js geometry
-	clearThreeJS();
-
-	// Step 1a) Clear 2D canvas always (to remove old content)
 	if (ctx) {
 		clearCanvas();
-	}
-
-	// Step 1b) Only process 2D drawing if not in Three.js-only mode
-	if (ctx && !onlyShowThreeJS) {
-		// Step 1b.1) Set canvas smoothing for 2D drawing
 		ctx.imageSmoothingEnabled = false;
 
 		const displayOptions = getDisplayOptions();
@@ -18475,115 +18662,9 @@ function drawData(allBlastHoles, selectedHole) {
 				// Draw main hole geometry, with selection highlight logic
 				drawHoleMainShape(hole, x, y, selectedHole);
 
-				// Step 3) Only draw Three.js geometry when in 3D mode (not in pure 2D mode)
-				const isIn3DMode = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
-				if (isIn3DMode || onlyShowThreeJS) {
-					// Draw complete hole in Three.js (collar + grade + toe lines)
-					drawHoleThreeJS(hole);
-
-					// Draw hole text labels in Three.js
-					if (threeInitialized) {
-						drawHoleTextsAndConnectorsThreeJS(hole, displayOptions);
-					}
-				}
-
 				// Font slider/label only needs to be updated once, after loop
 			}
 		}
-
-		// Step 4) Draw KAD entities in Three.js (during normal 2D+3D rendering)
-		if (drawingsGroupVisible && threeInitialized) {
-			for (const [name, entity] of allKADDrawingsMap.entries()) {
-				if (entity.visible === false) continue;
-
-				// Step 5) Check sub-group visibility
-				let subGroupVisible = true;
-				switch (entity.entityType) {
-					case "point":
-						subGroupVisible = pointsGroupVisible;
-						break;
-					case "line":
-						subGroupVisible = linesGroupVisible;
-						break;
-					case "poly":
-						subGroupVisible = polygonsGroupVisible;
-						break;
-					case "circle":
-						subGroupVisible = circlesGroupVisible;
-						break;
-					case "text":
-						subGroupVisible = textsGroupVisible;
-						break;
-				}
-
-				if (!subGroupVisible) continue;
-
-				// Step 6) Render each KAD entity type in Three.js
-				if (entity.entityType === "point") {
-					for (const pointData of entity.data) {
-						if (pointData.visible === false) continue;
-						const size = ((pointData.lineWidth || 2) / 2) * 1; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
-						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
-						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", entity.entityName);
-					}
-				} else if (entity.entityType === "line" || entity.entityType === "poly") {
-					// Step 7) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
-					// Each segment gets its own lineWidth and color from point data
-					const visiblePoints = entity.data.filter((point) => point.visible !== false);
-
-					if (visiblePoints.length >= 2) {
-						// Step 7a) Draw segments between consecutive points
-						for (let i = 0; i < visiblePoints.length - 1; i++) {
-							const currentPoint = visiblePoints[i];
-							const nextPoint = visiblePoints[i + 1];
-
-							const currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
-							const nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
-
-							const lineWidth = currentPoint.lineWidth || 1;
-							const color = currentPoint.color || "#FF0000";
-
-							if (entity.entityType === "line") {
-								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-							} else {
-								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-							}
-						}
-
-						// Step 7b) For polygons, close the loop with final segment
-						if (entity.entityType === "poly" && visiblePoints.length > 2) {
-							const firstPoint = visiblePoints[0];
-							const lastPoint = visiblePoints[visiblePoints.length - 1];
-
-							const firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
-							const lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
-
-							const lineWidth = lastPoint.lineWidth || 1;
-							const color = lastPoint.color || "#FF0000";
-
-							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-						}
-					}
-				} else if (entity.entityType === "circle") {
-					for (const circleData of entity.data) {
-						if (circleData.visible === false) continue;
-						const centerX = circleData.centerX || circleData.pointXLocation;
-						const centerY = circleData.centerY || circleData.pointYLocation;
-						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
-						const radius = circleData.radius || 10; // Radius in world units
-						const local = worldToThreeLocal(centerX, centerY);
-						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", entity.entityName);
-					}
-				} else if (entity.entityType === "text") {
-					for (const textData of entity.data) {
-						if (textData.visible === false) continue;
-						const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null);
-					}
-				}
-			}
-		}
-
 		// After all other drawing operations but before font updates
 		if (isPolygonSelectionActive) {
 			drawPolygonSelection(ctx);
@@ -18684,133 +18765,9 @@ function drawData(allBlastHoles, selectedHole) {
 		if (printMode) {
 			drawPrintBoundary(ctx);
 		}
-	} else if (!ctx) {
+	} else {
 		// Handle missing context
-		console.warn("⚠️ Canvas context not available");
-	} else if (onlyShowThreeJS) {
-		// Three.js-only mode: 2D canvas drawing intentionally skipped
-		// This is normal, not an error
-	}
-
-	// Step 1b) Check if we're in 3D mode (orbit angles are non-zero)
-	const isIn3DMode = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
-
-	// Step 1c) Create Three.js geometry when in Three.js-only mode OR when in 3D orbit mode
-	// (When both are visible in 2D mode, Three.js geometry is created during 2D canvas loop)
-	if ((onlyShowThreeJS || isIn3DMode) && threeInitialized) {
-		// Draw background images
-		drawBackgroundImage();
-
-		// Draw surfaces (includes Three.js rendering)
-		drawSurface();
-
-		// Draw holes
-		if (blastGroupVisible && allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
-			for (const hole of allBlastHoles) {
-				if (hole.visible === false) continue;
-				// Draw Three.js hole geometry
-				drawHoleThreeJS(hole);
-			}
-		}
-
-		// Step 3) Draw KAD entities in Three.js
-		if (drawingsGroupVisible) {
-			for (const [name, entity] of allKADDrawingsMap.entries()) {
-				if (entity.visible === false) continue;
-
-				// Step 4) Check sub-group visibility
-				let subGroupVisible = true;
-				switch (entity.entityType) {
-					case "point":
-						subGroupVisible = pointsGroupVisible;
-						break;
-					case "line":
-						subGroupVisible = linesGroupVisible;
-						break;
-					case "poly":
-						subGroupVisible = polygonsGroupVisible;
-						break;
-					case "circle":
-						subGroupVisible = circlesGroupVisible;
-						break;
-					case "text":
-						subGroupVisible = textsGroupVisible;
-						break;
-				}
-
-				if (!subGroupVisible) continue;
-
-				// Step 5) Render each KAD entity type (with local coordinate conversion)
-				if (entity.entityType === "point") {
-					for (const pointData of entity.data) {
-						if (pointData.visible === false) continue;
-						const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
-						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
-						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", entity.entityName);
-					}
-				} else if (entity.entityType === "line" || entity.entityType === "poly") {
-					// Step 6) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
-					// Each segment gets its own lineWidth and color from point data
-					const visiblePoints = entity.data.filter((point) => point.visible !== false);
-
-					if (visiblePoints.length >= 2) {
-						// Step 6a) Draw segments between consecutive points
-						for (let i = 0; i < visiblePoints.length - 1; i++) {
-							const currentPoint = visiblePoints[i];
-							const nextPoint = visiblePoints[i + 1];
-
-							const currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
-							const nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
-
-							const lineWidth = currentPoint.lineWidth || 1;
-							const color = currentPoint.color || "#FF0000";
-
-							if (entity.entityType === "line") {
-								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-							} else {
-								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-							}
-						}
-
-						// Step 6b) For polygons, close the loop with final segment
-						if (entity.entityType === "poly" && visiblePoints.length > 2) {
-							const firstPoint = visiblePoints[0];
-							const lastPoint = visiblePoints[visiblePoints.length - 1];
-
-							const firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
-							const lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
-
-							const lineWidth = lastPoint.lineWidth || 1;
-							const color = lastPoint.color || "#FF0000";
-
-							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-						}
-					}
-				} else if (entity.entityType === "circle") {
-					for (const circleData of entity.data) {
-						if (circleData.visible === false) continue;
-						const centerX = circleData.centerX || circleData.pointXLocation;
-						const centerY = circleData.centerY || circleData.pointYLocation;
-						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
-						const radius = circleData.radius || 10; // Radius in world units
-						const local = worldToThreeLocal(centerX, centerY);
-						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", entity.entityName);
-					}
-				} else if (entity.entityType === "text") {
-					for (const textData of entity.data) {
-						if (textData.visible === false) continue;
-						const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null);
-					}
-				}
-			}
-		}
-	}
-
-	// Step 2) Render Three.js scene only when in 3D mode or Three.js-only mode
-	// (reuse isIn3DMode variable declared above)
-	if (isIn3DMode || onlyShowThreeJS) {
-		renderThreeJS();
+		return;
 	}
 }
 
@@ -18985,9 +18942,6 @@ function drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj) {
 	}
 }
 
-// === Helper: Draw hole labels in Three.js for 3D mode ===
-// Note: drawHoleTextsAndConnectorsThreeJS moved to src/draw/canvas3DDrawing.js
-
 function drawConnectStadiumZone(sx, sy, endX, endY, connectAmount) {
 	// Only draw stadium zone if multi-connector tool is active
 	if (isAddingMultiConnector) {
@@ -19089,7 +19043,7 @@ function drawHoleMainShape(hole, x, y, selectedHole) {
 		highlightType = "selected";
 		highlightColor1 = "rgba(255, 0, 150, 0.2)";
 		highlightColor2 = "rgba(255, 0, 150, .8)";
-		highlightText = "Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + " with Single Selection Mode \nEscape key to clear Selection";
+		highlightText = "Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + " with Single Selection Mode \n key to clear Selection";
 	}
 	// Multiple selection highlighting
 	else if (selectedMultipleHoles != null && selectedMultipleHoles.find((p) => p.entityName === hole.entityName && p.holeID === hole.holeID)) {
@@ -19097,7 +19051,7 @@ function drawHoleMainShape(hole, x, y, selectedHole) {
 		highlightColor1 = "rgba(255, 0, 150, 0.2)";
 		highlightColor2 = "rgba(255, 0, 150, .8)";
 		if (hole === selectedMultipleHoles[0]) {
-			highlightText = "Editing Selected Holes: {" + selectedMultipleHoles.map((h) => h.holeID).join(",") + "} \nEscape key to clear Selection";
+			highlightText = "Editing Selected Holes: {" + selectedMultipleHoles.map((h) => h.holeID).join(",") + "} \n key to clear Selection";
 		} else {
 			highlightText = "";
 		}
@@ -19188,6 +19142,34 @@ function getHoleBoundaries() {
 	};
 }
 
+function getKADBoundaries() {
+	let minX = Infinity,
+		maxX = -Infinity,
+		minY = Infinity,
+		maxY = -Infinity;
+
+	if (allKADDrawingsMap.size === 0) {
+		return null;
+	}
+
+	for (const entity of allKADDrawingsMap.values()) {
+		if (entity.data && Array.isArray(entity.data)) {
+			for (const point of entity.data) {
+				if (point.pointXLocation < minX) minX = point.pointXLocation;
+				if (point.pointXLocation > maxX) maxX = point.pointXLocation;
+				if (point.pointYLocation < minY) minY = point.pointYLocation;
+				if (point.pointYLocation > maxY) maxY = point.pointYLocation;
+			}
+		}
+	}
+	return {
+		minX,
+		maxX,
+		minY,
+		maxY,
+	};
+}
+
 function zoomToFitAll() {
 	const holeBoundaries = getHoleBoundaries();
 	const kadBoundaries = getKADBoundaries();
@@ -19253,10 +19235,6 @@ function zoomToFitAll() {
 		const scaleY = (canvas.height * 0.9) / dataHeight;
 		currentScale = Math.min(scaleX, scaleY);
 	}
-
-	// Step 1) Sync camera to Three.js after calculating new position/scale
-	syncCameraToThreeJS();
-
 	drawData(allBlastHoles, selectedHole);
 }
 // REPLACE the entire function:
@@ -19320,26 +19298,12 @@ function resetZoom() {
 	currentScale = scale; // reset the current scale to the original scale
 	currentFontSize = fontSize;
 
-	// Reset Three.js camera rotation and orbit to top-down view
-	if (threeInitialized && cameraControls) {
-		currentRotation = 0; // Reset Z-axis rotation
-		// Reset orbit angles
-		cameraControls.rotation = 0;
-		cameraControls.orbitX = 0;
-		cameraControls.orbitY = 0;
-		console.log("📷 Camera reset to top-down view");
-	}
-
 	//calculate the centroids from the data in the maps and points
 	updateCentroids();
-
-	// Step 2) Sync camera after resetting
-	syncCameraToThreeJS();
-
 	drawData(allBlastHoles, selectedHole);
 	zoomToFitAll();
 }
-///SAVE and LOAD ALLBLASTHOLES ARRAY TO LOCAL STORAGE /////////////////////////////////
+///SAVE and LOAD POINTS ARRAY TO LOCAL STORAGE /////////////////////////////////
 function saveHolesToLocalStorage(allBlastHoles) {
 	if (allBlastHoles !== null) {
 		/* STRUCTURE OF THE POINTS ARRAY
@@ -20047,7 +20011,7 @@ function toggleKADEntityVisibility(entityName) {
 
 //=== Blast Hole Visibility Management ===
 function setHoleVisibility(holeID, visible) {
-	const hole = points.find((h) => h.holeID === holeID);
+	const hole = allBlastHoles.find((h) => h.holeID === holeID);
 	if (hole) {
 		hole.visible = visible;
 		console.log("👁️ Hole " + holeID + " visibility: " + visible);
@@ -20059,7 +20023,7 @@ function setHoleVisibility(holeID, visible) {
 }
 
 function setEntityVisibility(entityName, visible) {
-	const entityHoles = points.filter((h) => h.entityName === entityName);
+	const entityHoles = allBlastHoles.filter((h) => h.entityName === entityName);
 	entityHoles.forEach((hole) => {
 		hole.visible = visible;
 	});
@@ -20071,7 +20035,7 @@ function setEntityVisibility(entityName, visible) {
 }
 
 function toggleHoleVisibility(holeID) {
-	const hole = points.find((h) => h.holeID === holeID);
+	const hole = allBlastHoles.find((h) => h.holeID === holeID);
 	if (hole) {
 		hole.visible = !hole.visible;
 		setHoleVisibility(holeID, hole.visible);
@@ -20212,6 +20176,33 @@ async function deleteAllSurfacesFromDB() {
 		});
 	} catch (error) {
 		console.error("Error deleting all surfaces:", error);
+		throw error;
+	}
+}
+
+// Delete all images from IndexedDB (useful for cleanup)
+async function deleteAllImagesFromDB() {
+	try {
+		if (!db) return;
+
+		return new Promise((resolve, reject) => {
+			const transaction = db.transaction([IMAGE_STORE_NAME], "readwrite");
+			const store = transaction.objectStore(IMAGE_STORE_NAME);
+			const request = store.clear();
+
+			request.onsuccess = () => {
+				console.log("✅ All images deleted from IndexedDB");
+				debouncedUpdateTreeView();
+				resolve();
+			};
+
+			request.onerror = () => {
+				console.error("❌ Failed to delete all images:", request.error);
+				reject(request.error);
+			};
+		});
+	} catch (error) {
+		console.error("Error deleting all images:", error);
 		throw error;
 	}
 }
@@ -20372,9 +20363,7 @@ function setImageVisibility(imageId, visible) {
 	const image = loadedImages.get(imageId);
 	if (image) {
 		image.visible = visible;
-		if (developerModeEnabled) {
-			console.log("👁️ Image " + image.name + " visibility: " + visible);
-		}
+		console.log("👁️ Image " + image.name + " visibility: " + visible);
 		drawData(allBlastHoles, selectedHole);
 	}
 }
@@ -20553,7 +20542,7 @@ async function showPopup(isDBReady) {
 			onConfirm: async () => {
 				// Step 5) User chose to continue previous work
 				console.log("User chose to continue previous work");
-				allBlastHoles = loadHolesFromLocalStorage();
+				points = loadHolesFromLocalStorage();
 
 				if (isDBReady) {
 					try {
@@ -20756,18 +20745,6 @@ darkModeToggle.addEventListener("change", () => {
 	textFillColor = darkModeEnabled ? "white" : "black";
 	depthColor = darkModeEnabled ? "cyan" : "blue";
 	angleDipColor = darkModeEnabled ? "orange" : "darkorange";
-
-	// Step 1) Update Three.js background color
-	if (threeInitialized && threeRenderer) {
-		threeRenderer.setBackgroundColor(darkModeEnabled);
-	}
-
-	// Step 1a) Update base canvas background color
-	if (window.baseCanvas && window.baseCtx) {
-		window.baseCtx.fillStyle = darkModeEnabled ? "#000000" : "#FFFFFF";
-		window.baseCtx.fillRect(0, 0, window.baseCanvas.width, window.baseCanvas.height);
-	}
-
 	if (Array.isArray(holeTimes)) {
 		timeChart();
 	}
@@ -20806,7 +20783,7 @@ function endKadTools() {
 		drawData(allBlastHoles, selectedHole);
 	}
 
-	// Also handle polygon selection escape
+	// Also handle polygon selection
 	if (isPolygonSelectionActive) {
 		// isPolygonSelectionActive = false;
 		polyPointsX = [];
@@ -20925,6 +20902,11 @@ window.onload = function () {
 			handleDrawingKeyEvents(event);
 		}
 
+		// Add these listeners in your init function (e.g., DOMContentLoaded or initialize function)
+		if (event.key.toLowerCase() === "s" || event.key.toUpperCase() === "S") {
+			isSelfSnapEnabled = true;
+		}
+
 		// Escape Key to reset tools
 		if (event.key === "Escape") {
 			console.log("Escape pressed - resetting all");
@@ -20993,6 +20975,10 @@ window.onload = function () {
 		if (event.key === "Shift") {
 			document.getElementById("selectionModeButton").checked = false;
 			isMultiHoleSelectionEnabled = false;
+		}
+
+		if (event.key.toLowerCase() === "s" || event.key.toUpperCase() === "S") {
+			isSelfSnapEnabled = false;
 		}
 	});
 
@@ -21134,18 +21120,19 @@ if (isMobileQuery.matches) {
 	isMobile = false;
 }
 
-document.addEventListener("DOMContentLoaded", function () {
-	document.getElementById("openNavLeftBtn").addEventListener("click", openNavLeft);
-});
-document.addEventListener("DOMContentLoaded", function () {
-	document.getElementById("openNavRightBtn").addEventListener("click", openNavRight);
-});
-document.addEventListener("DOMContentLoaded", function () {
-	document.getElementById("closeNavLeftBtn").addEventListener("click", closeNavLeft);
-});
-document.addEventListener("DOMContentLoaded", function () {
-	document.getElementById("closeNavRightBtn").addEventListener("click", closeNavRight);
-});
+function updateFloatingToolbarPosition(sidebarOpen) {
+	const toolbar = document.getElementById("toolbarPanel");
+	if (!toolbar) return;
+
+	// Only adjust on desktop (not mobile)
+	if (!isMobile) {
+		if (sidebarOpen) {
+			toolbar.classList.add("sidebar-open");
+		} else {
+			toolbar.classList.remove("sidebar-open");
+		}
+	}
+}
 
 function openNavLeft() {
 	console.log(isMobile);
@@ -21169,17 +21156,10 @@ function openNavLeft() {
 		sidenavLeft.style.margin = "0px";
 	}
 
-	// Update toolbar position using ToolbarPanel class
-	if (toolbarPanel) {
-		console.log("Adding sidebar-open class to toolbar");
-		console.log("toolbarPanel container:", toolbarPanel.container);
-		console.log("Is mobile:", window.matchMedia("(max-width: 1024px)").matches);
-		toolbarPanel.updateSidebarState(true);
-		// Debug: Check if class was added
-		const toolbar = document.getElementById("toolbarPanel");
-		console.log("Toolbar classes:", toolbar.className);
-	}
+	// Update floating toolbar position
+	updateFloatingToolbarPosition(true);
 }
+
 function closeNavLeft() {
 	if (isMobile) {
 		body.style.marginBottom = "0px";
@@ -21197,10 +21177,9 @@ function closeNavLeft() {
 	}
 
 	// Update floating toolbar position
-	if (toolbarPanel) {
-		toolbarPanel.updateSidebarState(false);
-	}
+	updateFloatingToolbarPosition(false);
 }
+
 function openNavRight() {
 	if (isMobile) {
 		const sidenavHeight = 350; // Change this value to match the actual height of the sidenav
@@ -21231,6 +21210,7 @@ function openNavRight() {
 		resizeChart();
 	}
 }
+
 function closeNavRight() {
 	if (isMobile) {
 		body.style.marginBottom = "0%"; // Push body down
@@ -21251,19 +21231,228 @@ function closeNavRight() {
 //==============================================================//
 // TOOL BAR COLLAPSABLE - START
 //==============================================================//
-// ToolbarPanel is now imported
+//#region TOOLBAR
+
+// Step 1) Keep old toolbar code but add null checks to prevent errors
 const toolbar = document.getElementById("toolbarPanel");
 
 let isDraggingTools = false;
 let offsetX, offsetY;
 
+// // Add improved drag event listeners that exclude the collapse button
+// if (toolbar) {
+// 	toolbar.addEventListener("mousedown", (e) => {
+// 		// Check if clicking on collapse button or its children
+// 		const isCollapseButton = e.target.closest(".toolbar-collapse-button");
+// 		const isButton = e.target.closest("label.icon-button") || e.target.closest('input[type="checkbox"]') || e.target.closest('input[type="button"]') || e.target.closest('input[type="number2"]') || e.target.closest('input[type="range"]') || isCollapseButton;
+
+// 		// Only start dragging if we're not clicking on any button
+// 		if (!isButton) {
+// 			isDraggingTools = true;
+// 			offsetX = e.clientX - toolbar.getBoundingClientRect().left;
+// 			offsetY = e.clientY - toolbar.getBoundingClientRect().top;
+// 			toolbar.style.transition = "none";
+// 		}
+// 	});
+
+// 	toolbar.addEventListener("touchstart", (e) => {
+// 		const isCollapseButton = e.target.closest(".toolbar-collapse-button");
+// 		const isButton = e.target.closest("label.icon-button") || e.target.closest('input[type="checkbox"]') || e.target.closest('input[type="button"]') || e.target.closest('input[type="number2"]') || e.target.closest('input[type="range"]') || isCollapseButton;
+
+// 		if (!isButton) {
+// 			isDraggingTools = true;
+// 			offsetX = e.touches[0].clientX - toolbar.getBoundingClientRect().left;
+// 			offsetY = e.touches[0].clientY - toolbar.getBoundingClientRect().top;
+// 			toolbar.style.transition = "none";
+// 		}
+// 	});
+// }
+
+// document.addEventListener("mousemove", (e) => {
+// 	if (isDraggingTools && toolbar) {
+// 		// Added null check
+// 		const x = e.clientX - offsetX;
+// 		const y = e.clientY - offsetY;
+// 		toolbar.style.left = x + "px";
+// 		toolbar.style.top = y + "px";
+// 	}
+// });
+
+// document.addEventListener("mouseup", () => {
+// 	if (toolbar) {
+// 		// Added null check
+// 		isDraggingTools = false;
+// 		toolbar.style.transition = ""; // Re-enable smooth transition
+// 	}
+// });
+
+// document.addEventListener("touchmove", (e) => {
+// 	if (isDraggingTools && toolbar) {
+// 		// Added null check
+// 		const x = e.touches[0].clientX - offsetX;
+// 		const y = e.touches[0].clientY - offsetY;
+// 		toolbar.style.left = x + "px";
+// 		toolbar.style.top = y + "px";
+// 	}
+// });
+
+// document.addEventListener("touchend", () => {
+// 	if (toolbar) {
+// 		// Added null check
+// 		isDraggingTools = false;
+// 		toolbar.style.transition = "";
+// 	}
+// });
+
+// Step 2) Add new toolbar panel functionality
+class ToolbarPanel {
+	constructor() {
+		this.container = document.getElementById("toolbarPanel");
+		this.isCollapsed = false;
+		this.isDragging = false;
+		this.dragOffset = { x: 0, y: 0 };
+
+		if (this.container) {
+			this.init();
+		}
+	}
+
+	init() {
+		// Setup collapse button
+		const collapseBtn = document.getElementById("toolbarCollapseBtn");
+		if (collapseBtn) {
+			collapseBtn.addEventListener("click", () => this.toggleCollapse());
+		}
+
+		// Setup close button
+		const closeBtn = document.getElementById("toolbarCloseBtn");
+		if (closeBtn) {
+			closeBtn.addEventListener("click", () => this.hide());
+		}
+
+		// Setup dragging
+		const header = document.getElementById("toolbarPanelHeader");
+		if (header) {
+			header.addEventListener("mousedown", (e) => this.startDrag(e));
+		}
+
+		// Load saved position
+		this.loadPosition();
+
+		// Load saved collapse state
+		this.loadCollapseState();
+	}
+
+	toggleCollapse() {
+		this.isCollapsed = !this.isCollapsed;
+		this.container.classList.toggle("collapsed", this.isCollapsed);
+
+		const btn = document.getElementById("toolbarCollapseBtn");
+		if (btn) {
+			btn.textContent = this.isCollapsed ? "+" : "−";
+		}
+
+		// Save state
+		localStorage.setItem("kirra-toolbar-collapsed", this.isCollapsed);
+	}
+
+	hide() {
+		this.container.style.display = "none";
+		localStorage.setItem("kirra-toolbar-visible", "false");
+	}
+
+	show() {
+		this.container.style.display = "flex";
+		localStorage.setItem("kirra-toolbar-visible", "true");
+	}
+
+	startDrag(e) {
+		if (e.target.closest(".tree-panel-controls")) return;
+
+		this.isDragging = true;
+		const rect = this.container.getBoundingClientRect();
+		this.dragOffset.x = e.clientX - rect.left;
+		this.dragOffset.y = e.clientY - rect.top;
+
+		document.addEventListener("mousemove", this.handleDrag);
+		document.addEventListener("mouseup", this.stopDrag);
+
+		e.preventDefault();
+	}
+
+	handleDrag = (e) => {
+		if (!this.isDragging) return;
+
+		const x = e.clientX - this.dragOffset.x;
+		const y = e.clientY - this.dragOffset.y;
+
+		// Keep within viewport
+		const maxX = window.innerWidth - this.container.offsetWidth;
+		const maxY = window.innerHeight - this.container.offsetHeight;
+
+		this.container.style.left = Math.max(0, Math.min(x, maxX)) + "px";
+		this.container.style.top = Math.max(0, Math.min(y, maxY)) + "px";
+	};
+
+	stopDrag = () => {
+		this.isDragging = false;
+		document.removeEventListener("mousemove", this.handleDrag);
+		document.removeEventListener("mouseup", this.stopDrag);
+
+		// Save position
+		this.savePosition();
+	};
+
+	savePosition() {
+		const position = {
+			left: this.container.style.left,
+			top: this.container.style.top,
+		};
+		localStorage.setItem("kirra-toolbar-position", JSON.stringify(position));
+	}
+
+	loadPosition() {
+		const saved = localStorage.getItem("kirra-toolbar-position");
+		if (saved) {
+			try {
+				const position = JSON.parse(saved);
+				if (position.left) this.container.style.left = position.left;
+				if (position.top) this.container.style.top = position.top;
+			} catch (e) {
+				console.error("Error loading toolbar position:", e);
+			}
+		}
+	}
+
+	loadCollapseState() {
+		const collapsed = localStorage.getItem("kirra-toolbar-collapsed") === "true";
+		if (collapsed) {
+			this.toggleCollapse();
+		}
+
+		const visible = localStorage.getItem("kirra-toolbar-visible") !== "false";
+		if (!visible) {
+			this.hide();
+		}
+	}
+}
+
 // Step 3) Initialize the new toolbar panel
 let toolbarPanel;
-// Step 2) Update the DOMContentLoaded section around line 21376
 document.addEventListener("DOMContentLoaded", () => {
 	toolbarPanel = new ToolbarPanel();
 });
 
+// Step 4) Update any existing references to show/hide toolbar
+// For example, if you have a menu option to show the toolbar:
+function showToolbar() {
+	if (toolbarPanel) {
+		toolbarPanel.show();
+	} else {
+		document.getElementById("toolbarPanel").style.display = "flex";
+	}
+}
+//#endregion TOOLBAR
 //==============================================================//
 // TOOL BAR COLLAPSABLE - START
 //==============================================================//
@@ -21300,36 +21489,6 @@ selectKADRadio.addEventListener("change", function () {
 		drawData(allBlastHoles, selectedHole);
 	}
 });
-
-// Step 5) Add function to connect toolbar tools to their handlers
-function initializeToolbarConnections() {
-	// Connect radio buttons to their change handlers
-	const selectHoles = document.getElementById("selectHoles");
-	const selectKAD = document.getElementById("selectKAD");
-
-	if (selectHoles) {
-		selectHoles.addEventListener("change", function () {
-			if (this.checked) {
-				selectedKADObject = null;
-				selectedKADPolygon = null;
-				selectedMultipleKADObjects = [];
-				updateStatusMessage("Selection mode: Holes only");
-				drawData(allBlastHoles, selectedHole);
-			}
-		});
-	}
-
-	if (selectKAD) {
-		selectKAD.addEventListener("change", function () {
-			if (this.checked) {
-				selectedHole = null;
-				selectedMultipleHoles = [];
-				updateStatusMessage("Selection mode: KAD only");
-				drawData(allBlastHoles, selectedHole);
-			}
-		});
-	}
-}
 
 //---------------MOVE TOOL---------------//
 // --- Move Tool State ---
@@ -21649,19 +21808,6 @@ function handleMoveToolMouseDown(event) {
 		}
 	}
 }
-
-// Add these listeners in your init function (e.g., DOMContentLoaded or initialize function)
-document.addEventListener("keydown", (event) => {
-	if (event.key.toLowerCase() === "s" || event.key.toUpperCase() === "S") {
-		isSelfSnapEnabled = true;
-	}
-});
-
-document.addEventListener("keyup", (event) => {
-	if (event.key.toLowerCase() === "s" || event.key.toUpperCase() === "S") {
-		isSelfSnapEnabled = false;
-	}
-});
 
 // Handle move tool mouse move - move holes
 function handleMoveToolMouseMove(event) {
@@ -22213,6 +22359,15 @@ canvas.addEventListener("contextmenu", function (e) {
 			debouncedUpdateTreeView();
 			return;
 		}
+	} else if (selectedMultipleHoles && selectedMultipleHoles.length === 1) {
+		// Handle single hole in selectedMultipleHoles array
+		const hole = selectedMultipleHoles[0];
+		const distance = Math.sqrt(Math.pow(hole.startXLocation - worldCoords[0], 2) + Math.pow(hole.startYLocation - worldCoords[1], 2));
+		if (distance <= snapRadius) {
+			showHolePropertyEditor(hole); // or selectedMultipleHoles, depending on what showHolePropertyEditor expects
+			debouncedUpdateTreeView();
+			return;
+		}
 	}
 
 	if (clickedHole) {
@@ -22473,6 +22628,45 @@ function isKADObjectSelected(clickedObject) {
 	}
 
 	return false;
+}
+
+function jsColorPaletteForPicker() {
+	// These options apply to all color pickers on the page
+	jscolor.presets.default = {
+		format: "rgb",
+		palette: [
+			"#770000",
+			"#FF0000",
+			"#FF9900",
+			"#FFFF00",
+			"#00ff00",
+			"#009900",
+			"#00ffFF",
+			"#0099ff",
+			"#0000FF",
+			"#FF00FF", //10 per row
+			"#550000",
+			"#AA0000",
+			"#883300",
+			"#bbbb00",
+			"#33AA00",
+			"#006600",
+			"#007F7F",
+			"#002288",
+			"#000099",
+			"#7F007F", //10 per row
+			"#010101",
+			"#222222",
+			"#333333",
+			"#444444",
+			"#555555",
+			"#777777",
+			"#888888",
+			"#AAAAAA",
+			"#cccccc",
+			"#FEFEFE",
+		],
+	};
 }
 
 // ENHANCED: Unified KAD Property Editor with FloatingDialog and hide functionality
@@ -23740,59 +23934,18 @@ function updateHoleFromCsvData(hole, getValue, angleConvention, diameterUnit) {
 	calculateMissingGeometry(hole);
 }
 
-// function calculateMissingGeometry(hole) {
-//     const hasEndCoords = hole.endXLocation !== hole.startXLocation || hole.endYLocation !== hole.startYLocation || hole.endZLocation !== hole.startZLocation;
-
-//     if (hasEndCoords && (hole.holeAngle === 0 || hole.holeBearing === 0 || hole.holeLengthCalculated === 0)) {
-//         // Calculate from end coordinates - FIXED CALCULATIONS
-//         const dx = hole.endXLocation - hole.startXLocation;
-//         const dy = hole.endYLocation - hole.startYLocation;
-//         const dz = hole.endZLocation - hole.startZLocation; // Note: should be negative for downward holes
-
-//         const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-//         if (length > 0) {
-//             hole.holeLengthCalculated = length;
-
-//             // FIXED: Proper bearing calculation
-//             // 0° = North, 90° = East, 180° = South, 270° = West
-//             let bearing = Math.atan2(dx, dy) * (180 / Math.PI);
-//             if (bearing < 0) bearing += 360;
-//             hole.holeBearing = bearing;
-
-//             // FIXED: Proper angle calculation
-//             // 0° = vertical down, 90° = horizontal
-//             const horizontalDistance = Math.sqrt(dx * dx + dy * dy);
-//             if (horizontalDistance > 0) {
-//                 hole.holeAngle = Math.atan2(horizontalDistance, Math.abs(dz)) * (180 / Math.PI);
-//             } else {
-//                 hole.holeAngle = 0; // Vertical
-//             }
-//         }
-//     } else if (!hasEndCoords || hole.holeLengthCalculated === 0) {
-//         // Calculate from angle/bearing/length or set defaults
-//         if (hole.holeLengthCalculated === 0) {
-//             const benchHeight = hole.benchHeight || 10;
-//             const subdrillAmount = hole.subdrillAmount || 1;
-//             hole.holeLengthCalculated = benchHeight + subdrillAmount;
-//         }
-
-//         // FIXED: Proper coordinate calculation from angle and bearing
-//         calculateHoleEndCoordinates(hole);
-//     }
-// }
+/**
+ * Calculate missing geometry when no explicit geometry data is provided
+ * FIXED: Proper bearing and angle calculations
+ */
 function calculateMissingGeometry(hole) {
-	// Step 1) Check if we have meaningful end coordinates (not just defaults)
-	const hasEndCoords = (hole.endXLocation !== hole.startXLocation || hole.endYLocation !== hole.startYLocation || hole.endZLocation !== hole.startZLocation) && hole.endXLocation !== undefined && hole.endYLocation !== undefined && hole.endZLocation !== undefined;
+	const hasEndCoords = hole.endXLocation !== hole.startXLocation || hole.endYLocation !== hole.startYLocation || hole.endZLocation !== hole.startZLocation;
 
-	// Step 2) Check if we have meaningful angle/bearing/length data
-	const hasAngleBearingLength = (hole.holeAngle !== 0 || hole.holeBearing !== 0 || hole.holeLengthCalculated !== 0) && hole.holeAngle !== undefined && hole.holeBearing !== undefined && hole.holeLengthCalculated !== undefined;
-
-	if (hasEndCoords && !hasAngleBearingLength) {
-		// Step 3) Calculate angle/bearing/length from end coordinates
+	if (hasEndCoords && (hole.holeAngle === 0 || hole.holeBearing === 0 || hole.holeLengthCalculated === 0)) {
+		// Calculate from end coordinates - FIXED CALCULATIONS
 		const dx = hole.endXLocation - hole.startXLocation;
 		const dy = hole.endYLocation - hole.startYLocation;
-		const dz = hole.endZLocation - hole.startZLocation;
+		const dz = hole.endZLocation - hole.startZLocation; // Note: should be negative for downward holes
 
 		const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
@@ -23814,27 +23967,22 @@ function calculateMissingGeometry(hole) {
 				hole.holeAngle = 0; // Vertical
 			}
 		}
-	} else if (!hasEndCoords && hasAngleBearingLength) {
-		// Step 4) Calculate end coordinates from angle/bearing/length
+	} else if (!hasEndCoords || hole.holeLengthCalculated === 0) {
+		// Calculate from angle/bearing/length or set defaults
 		if (hole.holeLengthCalculated === 0) {
 			const benchHeight = hole.benchHeight || 10;
-			const subdrillAmount = hole.subdrillAmount || 0; // Changed from 1 to 0
+			const subdrillAmount = hole.subdrillAmount || 1;
 			hole.holeLengthCalculated = benchHeight + subdrillAmount;
 		}
 
-		calculateHoleEndCoordinates(hole);
-	} else if (!hasEndCoords && !hasAngleBearingLength) {
-		// Step 5) Set defaults and calculate everything
-		const benchHeight = hole.benchHeight || 10;
-		const subdrillAmount = hole.subdrillAmount || 0; // Changed from 1 to 0
-		hole.holeLengthCalculated = benchHeight + subdrillAmount;
-		hole.holeAngle = hole.holeAngle || 0;
-		hole.holeBearing = hole.holeBearing || 0;
-
+		// FIXED: Proper coordinate calculation from angle and bearing
 		calculateHoleEndCoordinates(hole);
 	}
-	// If both hasEndCoords and hasAngleBearingLength are true, do nothing (data is complete)
 }
+
+/**
+ * NEW: Proper calculation of end coordinates from angle, bearing, and length
+ */
 function calculateHoleEndCoordinates(hole) {
 	const angleRad = hole.holeAngle * (Math.PI / 180);
 	const bearingRad = hole.holeBearing * (Math.PI / 180);
@@ -23849,15 +23997,11 @@ function calculateHoleEndCoordinates(hole) {
 	hole.endYLocation = hole.startYLocation + horizontalDistance * Math.cos(bearingRad);
 	hole.endZLocation = hole.startZLocation - verticalDistance; // Going down
 
-	// Calculate grade coordinates
-	// Step 1) Calculate actual bench height: total length minus subdrill
-	const subdrillAmount = hole.subdrillAmount || 0;
-	const actualBenchHeight = hole.holeLengthCalculated - subdrillAmount;
-
-	// Step 2) Calculate grade coordinates at the actual bench height
+	// Calculate grade coordinates (at bench height)
+	const benchHeight = hole.benchHeight || 10;
 	const gradeAngleRad = hole.holeAngle * (Math.PI / 180);
-	const gradeHorizontalDistance = actualBenchHeight * Math.tan(gradeAngleRad);
-	const gradeVerticalDistance = actualBenchHeight;
+	const gradeHorizontalDistance = benchHeight * Math.tan(gradeAngleRad);
+	const gradeVerticalDistance = benchHeight;
 
 	hole.gradeXLocation = hole.startXLocation + gradeHorizontalDistance * Math.sin(bearingRad);
 	hole.gradeYLocation = hole.startYLocation + gradeHorizontalDistance * Math.cos(bearingRad);
@@ -24149,11 +24293,7 @@ function showCsvImportModal(csvData, fileName) {
 			title: "Timing & Connections",
 			fields: [
 				{ name: "fromHoleID", label: "From Hole ID", required: false },
-				{
-					name: "timingDelayMilliseconds",
-					label: "Timing Delay",
-					required: false,
-				},
+				{ name: "timingDelayMilliseconds", label: "Timing Delay", required: false },
 				{ name: "colorHexDecimal", label: "Tie Color", required: false },
 				{ name: "initiationTime", label: "Initiation Time", required: false },
 			],
@@ -24493,34 +24633,34 @@ function setupCsvDialogEventListeners(csvData, fieldGroups) {
 
 	// Auto-mapping keywords
 	const mappingKeywords = {
-		entityName: ["blast", "pattern", "blast name", "pattern name", "blastid"],
-		holeID: ["id", "holeid", "holeno", "name", "holename", "pointid", "no", "hole id"],
-		startXLocation: ["x", "cx", "easting", "collar x", "startx", "start easting", "start east", "start x"],
-		startYLocation: ["y", "cy", "northing", "collar y", "starty", "start northing", "start north", "start y"],
-		startZLocation: ["z", "cz", "rl", "collar z", "elevation", "zcoord", "startz", "start elevation", "start z"],
-		endXLocation: ["endx", "toex", "end easting", "end east", "tx", "end x", "toe x"],
-		endYLocation: ["endy", "toey", "end northing", "end north", "ty", "end y", "toe y"],
-		endZLocation: ["endz", "toez", "toerl", "end elevation", "tz", "end z", "toe z"],
-		gradeXLocation: ["gradex", "grade easting", "grade east", "gx", "grade x"],
-		gradeYLocation: ["gradey", "grade northing", "grade north", "gy", "grade y"],
-		gradeZLocation: ["gradez", "grade elevation", "gz", "grade z"],
-		holeDiameter: ["diameter", "dia", "diam", "holediameter", "hole diameter"],
-		subdrillAmount: ["subdrill", "subdrill amount", "sub drill amount", "sub drill"],
-		benchHeight: ["bench", "benchheight", "bench height"],
-		holeType: ["type", "holetype", "hole type", "material type", "materialtype"],
-		holeLengthCalculated: ["length", "holelength", "hole length"],
-		holeBearing: ["bearing", "azimuth", "azi", "bea", "heading", "holebearing", "hole bearing"],
-		holeAngle: ["angle", "dip", "mast angle", "holeangle", "hole angle"],
-		rowID: ["rowid", "row id", "row", "echelon", "rowno", "row number"],
-		posID: ["posid", "pos id", "position", "pos", "position id", "pos number", "posno"],
-		initiationTime: ["initiation", "initiationtime", "initiation time", "firing time", "firingtime"],
-		fromHoleID: ["from", "fromhole", "from hole", "tie from", "tiefrom"],
-		timingDelayMilliseconds: ["delay", "timing", "timingdelay", "timing delay", "ms", "milliseconds"],
-		colorHexDecimal: ["color", "colour", "tie color", "tiecolor"],
-		measuredLength: ["measured length", "measuredlength", "actual length", "actuallength"],
-		measuredMass: ["measured mass", "measuredmass", "actual mass", "actualmass", "kg", "weight"],
-		measuredComment: ["comment", "comments", "note", "notes", "measured comment"],
-	};
+        entityName: ["blast", "pattern", "blast name", "pattern name", "blastid"],
+        holeID: ["id", "holeid", "holeno", "name", "holename", "pointid", "no", "hole id"],
+        startXLocation: ["x", "cx", "easting", "collar x", "startx", "start easting", "start east", "start x"],
+        startYLocation: ["y", "cy", "northing", "collar y", "starty", "start northing", "start north", "start y"],
+        startZLocation: ["z", "cz", "rl", "collar z", "elevation", "zcoord", "startz", "start elevation", "start z"],
+        endXLocation: ["endx", "toex", "end easting", "end east", "tx", "end x", "toe x"],
+        endYLocation: ["endy", "toey", "end northing", "end north", "ty", "end y", "toe y"],
+        endZLocation: ["endz", "toerl", "end elevation", "tz", "end z", "toe z"],
+        gradeXLocation: ["gradex", "grade easting", "grade east", "gx", "grade x"],
+        gradeYLocation: ["gradey", "grade northing", "grade north", "gy", "grade y"],
+        gradeZLocation: ["gradez", "grade elevation", "gz", "grade z"],
+        holeDiameter: ["diameter", "dia", "diam", "holediameter", "hole diameter"],
+        subdrillAmount: ["subdrill", "subdrill amount", "sub drill amount", "sub drill"],
+        benchHeight: ["bench", "benchheight", "bench height"],
+        holeType: ["type", "holetype", "hole type", "material type", "materialtype"],
+        holeLengthCalculated: ["length", "holelength", "hole length"],
+        holeBearing: ["bearing", "azimuth", "azi", "bea", "heading", "holebearing", "hole bearing"],
+        holeAngle: ["angle", "dip", "mast angle", "holeangle", "hole angle"],
+        rowID: ["rowid", "row id", "row", "echelon", "rowno", "row number"],
+        posID: ["posid", "pos id", "position", "pos", "position id", "pos number", "posno"],
+        initiationTime: ["initiation", "initiationtime", "initiation time", "firing time", "firingtime"],
+        fromHoleID: ["from", "fromhole", "from hole", "tie from", "tiefrom"],
+        timingDelayMilliseconds: ["delay", "timing", "timingdelay", "timing delay", "ms", "milliseconds"],
+        colorHexDecimal: ["color", "colour", "tie color", "tiecolor"],
+        measuredLength: ["measured length", "measuredlength", "actual length", "actuallength"],
+        measuredMass: ["measured mass", "measuredmass", "actual mass", "actualmass", "kg", "weight"],
+        measuredComment: ["comment", "comments", "note", "notes", "measured comment"]
+    };
 
 	const headerRow = csvData[0].map(function (h) {
 		return String(h || "")
@@ -24780,10 +24920,10 @@ function getColumnOrderFromForm() {
 
 	// Save the column order to localStorage for future use
 	try {
-		localStorage.setItem("csvColumnOrder", JSON.stringify(order));
-	} catch (e) {
-		console.warn("Error saving column order to localStorage:", e);
-	}
+        localStorage.setItem("csvColumnOrder", JSON.stringify(order));
+    } catch (e) {
+        console.warn("Error saving column order to localStorage:", e);
+    }
 
 	return order;
 }
@@ -25332,130 +25472,6 @@ function simplifiedHDBSCAN(points, minClusterSize) {
 	const clusters = extractStableClusters(hierarchy, minClusterSize);
 
 	return clusters;
-}
-
-/**
- * SIMPLIFIED HDBSCAN WITH DISTANCE MATRIX
- *
- * This function runs HDBSCAN clustering using a pre-calculated distance matrix
- * instead of calculating distances from point coordinates.
- *
- * @param {Array<Array<number>>} distanceMatrix - Pre-calculated n×n distance matrix
- * @param {number} minClusterSize - Minimum number of points required to form a cluster
- * @returns {Array<Array<number>>} Array of clusters, where each cluster is an array of point indices
- */
-function simplifiedHDBSCANWithDistanceMatrix(distanceMatrix, minClusterSize) {
-	// Step 2) Validate input parameters
-	if (!distanceMatrix || !Array.isArray(distanceMatrix) || distanceMatrix.length === 0) {
-		console.warn("Invalid distance matrix provided to simplifiedHDBSCANWithDistanceMatrix");
-		return [];
-	}
-
-	const n = distanceMatrix.length;
-
-	// Step 3) Validate that distance matrix is square
-	if (distanceMatrix.some((row) => !Array.isArray(row) || row.length !== n)) {
-		console.warn("Distance matrix is not square or properly formatted");
-		return [];
-	}
-
-	console.log("Running HDBSCAN with pre-calculated " + n + "×" + n + " distance matrix");
-
-	// Step 4) Build minimum spanning tree using the provided distance matrix
-	const mst = buildMinimumSpanningTreeFromMatrix(distanceMatrix, minClusterSize);
-
-	// Step 5) Build cluster hierarchy using existing function
-	const hierarchy = buildClusterHierarchy(mst);
-
-	// Step 6) Extract stable clusters using existing function
-	const clusters = extractStableClusters(hierarchy, minClusterSize);
-
-	console.log("HDBSCAN with distance matrix detected " + clusters.length + " clusters");
-	return clusters;
-}
-
-/**
- * BUILD MINIMUM SPANNING TREE FROM DISTANCE MATRIX
- *
- * Step 1) This is a variant of the existing buildMinimumSpanningTree function
- * that works with a pre-calculated distance matrix instead of calculating distances.
- *
- * @param {Array<Array<number>>} distanceMatrix - Pre-calculated n×n distance matrix
- * @param {number} minPts - Minimum points parameter for core distance calculation
- * @returns {Array<Object>} Minimum spanning tree edges with {from, to, weight} structure
- */
-function buildMinimumSpanningTreeFromMatrix(distanceMatrix, minPts) {
-	const n = distanceMatrix.length;
-	const edges = [];
-
-	// Step 2) Calculate core distances (distance to k-th nearest neighbor)
-	const coreDistances = [];
-	for (let i = 0; i < n; i++) {
-		// Step 3) Get all distances for point i and sort them
-		const dists = distanceMatrix[i].slice(); // Copy the row
-		dists.sort((a, b) => a - b);
-
-		// Step 4) Use k-th nearest neighbor distance as core distance
-		// Ensure we don't exceed array bounds
-		const kIndex = Math.min(minPts, dists.length - 1);
-		coreDistances[i] = dists[kIndex];
-	}
-
-	// Step 5) Calculate mutual reachability distances and create edges
-	for (let i = 0; i < n; i++) {
-		for (let j = i + 1; j < n; j++) {
-			// Step 6) Mutual reachability is the maximum of:
-			// - Core distance of point i
-			// - Core distance of point j
-			// - Direct distance between points i and j
-			const mutualReachability = Math.max(coreDistances[i], coreDistances[j], distanceMatrix[i][j]);
-
-			edges.push({
-				from: i,
-				to: j,
-				weight: mutualReachability,
-			});
-		}
-	}
-
-	// Step 7) Sort edges by weight (Kruskal's algorithm)
-	edges.sort((a, b) => a.weight - b.weight);
-
-	// Step 8) Build MST using Union-Find algorithm
-	const parent = Array(n)
-		.fill()
-		.map((_, i) => i);
-	const mst = [];
-
-	// Step 9) Union-Find helper functions
-	function find(x) {
-		if (parent[x] !== x) {
-			parent[x] = find(parent[x]); // Path compression
-		}
-		return parent[x];
-	}
-
-	function union(x, y) {
-		const px = find(x);
-		const py = find(y);
-		if (px !== py) {
-			parent[px] = py;
-			return true;
-		}
-		return false;
-	}
-
-	// Step 10) Build MST by adding edges that don't create cycles
-	for (const edge of edges) {
-		if (union(edge.from, edge.to)) {
-			mst.push(edge);
-			// Step 11) Stop when we have n-1 edges (complete spanning tree)
-			if (mst.length === n - 1) break;
-		}
-	}
-
-	console.log("Built MST from distance matrix with " + mst.length + " edges");
-	return mst;
 }
 
 function calculateDistanceMatrix(points) {
@@ -26254,11 +26270,7 @@ function createUnifiedSequence(holesData) {
 
 	holesData.forEach((hole, index) => {
 		if (/^\d+$/.test(hole.holeID)) {
-			numericHoles.push({
-				hole,
-				num: parseInt(hole.holeID),
-				originalIndex: index,
-			});
+			numericHoles.push({ hole, num: parseInt(hole.holeID), originalIndex: index });
 		} else if (/^[A-Z]+\d+$/i.test(hole.holeID)) {
 			const match = hole.holeID.match(/^([A-Z]+)(\d+)$/i);
 			if (match) {
@@ -30263,6 +30275,73 @@ function canvasToWorld(canvasX, canvasY) {
 	const worldY = -(canvasY - canvas.height / 2) / currentScale + centroidY;
 	return [worldX, worldY];
 }
+// Load a specific image into the multi-image system
+async function loadImageIntoMemory(imageId) {
+	try {
+		if (!db) return null;
+
+		const transaction = db.transaction([IMAGE_STORE_NAME], "readonly");
+		const store = transaction.objectStore(IMAGE_STORE_NAME);
+		const request = store.get(imageId);
+
+		return new Promise((resolve) => {
+			request.onsuccess = async () => {
+				const imageData = request.result;
+				if (imageData) {
+					// Convert blob back to canvas
+					const img = new Image();
+					const canvas = document.createElement("canvas");
+					const ctx = canvas.getContext("2d");
+
+					img.onload = () => {
+						canvas.width = img.width;
+						canvas.height = img.height;
+						ctx.drawImage(img, 0, 0);
+
+						loadedImages.set(imageId, {
+							id: imageId,
+							name: imageData.name,
+							canvas: canvas,
+							bbox: imageData.bbox,
+							type: imageData.type,
+							visible: imageData.visible !== false,
+							transparency: imageData.transparency || 1.0,
+						});
+
+						// console.log("✅ Image " + imageData.name + " loaded into memory");
+						resolve(imageData);
+					};
+
+					img.src = URL.createObjectURL(imageData.blob);
+				} else {
+					resolve(null);
+				}
+			};
+			request.onerror = () => resolve(null);
+		});
+	} catch (error) {
+		console.error("Error loading image into memory:", error);
+		return null;
+	}
+}
+
+// Image visibility management
+function setImageVisibility(imageId, visible) {
+	const image = loadedImages.get(imageId);
+	if (image) {
+		image.visible = visible;
+		// console.log("👁️ Image " + image.name + " visibility: " + visible);
+		drawData(allBlastHoles, selectedHole);
+	}
+}
+
+function toggleImageVisibility(imageId) {
+	const image = loadedImages.get(imageId);
+	if (image) {
+		image.visible = !image.visible;
+		setImageVisibility(imageId, image.visible);
+	}
+}
 
 function drawSurface() {
 	// console.log("🎨 drawSurface called");
@@ -30292,21 +30371,15 @@ function drawSurface() {
 		// console.log("🎨 Surface Z range:", surfaceMinZ, "to", surfaceMaxZ);
 		// console.log("🎨 Drawing", surface.triangles.length, "triangles");
 
-		// Step 1) Draw surface in Three.js (always)
-		drawSurfaceThreeJS(surfaceId, surface.triangles, surfaceMinZ, surfaceMaxZ, surface.gradient || "default", surface.transparency || 1.0);
-
-		// Step 2) Draw surface in 2D canvas (only when not in Three.js-only mode)
-		if (!onlyShowThreeJS) {
-			// CRITICAL: Pass surface-specific min/max, transparency, AND gradient
-			surface.triangles.forEach((triangle, i) => {
-				// if (i === 0) {
-				// 	console.log("🎨 First triangle structure:", triangle);
-				// 	console.log("🎨 First triangle vertices:", triangle.vertices);
-				// }
-				// Fix line 20344 - Surface drawing function
-				drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, ctx, surface.transparency || 1.0, surface.gradient || "default", gradientMethod, lightBearing, lightElevation);
-			});
-		}
+		// CRITICAL: Pass surface-specific min/max, transparency, AND gradient
+		surface.triangles.forEach((triangle, i) => {
+			// if (i === 0) {
+			// 	console.log("🎨 First triangle structure:", triangle);
+			// 	console.log("🎨 First triangle vertices:", triangle.vertices);
+			// }
+			// Fix line 20344 - Surface drawing function
+			drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, ctx, surface.transparency || 1.0, surface.gradient || "default", gradientMethod, lightBearing, lightElevation);
+		});
 	});
 }
 // FIXED: Enhanced drawSurfaceLegend function to use surface-specific gradients
@@ -33424,17 +33497,6 @@ document.getElementById("addPrintPreviewToggle").addEventListener("change", func
 	togglePrintMode();
 });
 //KEEP
-
-document.addEventListener("DOMContentLoaded", function () {
-	document.getElementById("paperSize").addEventListener("click", changePaperSize);
-});
-document.addEventListener("DOMContentLoaded", function () {
-	document.getElementById("orientation").addEventListener("click", changeOrientation);
-});
-document.addEventListener("DOMContentLoaded", function () {
-	document.getElementById("printToPDFBtn").addEventListener("click", printToPDF);
-});
-
 function changePaperSize() {
 	const paperSizeSelect = document.getElementById("paperSize");
 	if (paperSizeSelect) {
@@ -35066,14 +35128,7 @@ function printData(allBlastHoles, selectedHole) {
 		printCtx.fillStyle = "blue";
 		printCtx.fillText("Version Build: " + buildVersion, 10, printCanvas.height - 55);
 		const now = new Date();
-		const dateNow =
-			now.toLocaleDateString("en-AU", {
-				year: "numeric",
-				month: "long",
-				day: "numeric",
-			}) +
-			" " +
-			now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+		const dateNow = now.toLocaleDateString("en-AU", { year: "numeric", month: "long", day: "numeric" }) + " " + now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
 		printCtx.fillStyle = "black";
 		printCtx.fillText("Date: " + dateNow, 10, printCanvas.height - 35);
 
@@ -37917,7 +37972,7 @@ function updateTreeView() {
 }
 
 //=============================================================
-// FLOATING DIALOG SYSTEM MOVED TO A MODULE
+// FLOATING DIALOG SYSTEM
 //=============================================================
 
 // Floating Dialog System - Alternative to Swal2 for non-blocking dialogs
@@ -40063,14 +40118,13 @@ function measuredCommentPopup() {
 //===========================================
 // MINIMAL SAFE OVERLAY FOR THE APP
 //===========================================
-// Around line 39636, replace the problematic section with this clean version:
 
-// Step 1) Initialize overlay system variables
+// Global overlay variables
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
 let useContourOverlay = false;
 
-// Step 2) Create overlay canvas with proper positioning
+// Step 1: Create the contour overlay canvas element
 function createContourOverlay() {
 	if (contourOverlayCanvas) return;
 
@@ -40094,21 +40148,7 @@ function createContourOverlay() {
 	console.log("Contour overlay " + "created");
 }
 
-// Step 5) Synchronize overlay with main canvas dimensions
-function syncOverlayWithMainCanvas() {
-	if (!contourOverlayCanvas || !canvas) return;
-
-	contourOverlayCanvas.width = canvas.width;
-	contourOverlayCanvas.height = canvas.height;
-
-	contourOverlayCanvas.style.width = canvas.style.width || canvas.width + "px";
-	contourOverlayCanvas.style.height = canvas.style.height || canvas.height + "px";
-
-	contourOverlayCanvas.style.left = canvas.offsetLeft + "px";
-	contourOverlayCanvas.style.top = canvas.offsetTop + "px";
-}
-
-// Step 6) Draw contours on overlay with proper coordinate transformation
+// Step 2: Draw contours using the correct data structure (line segments with .x/.y properties)
 function drawContoursOnOverlayFixed() {
 	if (!contourOverlayCanvas || !useContourOverlay) return;
 
@@ -40123,7 +40163,7 @@ function drawContoursOnOverlayFixed() {
 	drawBrightContoursFixed();
 }
 
-// Step 7) Draw bright contours with theme-aware colors
+// Step 3: Draw bright colored contour lines using your actual data structure
 function drawBrightContoursFixed() {
 	if (!contourLinesArray || contourLinesArray.length === 0) return;
 
@@ -40194,7 +40234,7 @@ function drawBrightContoursFixed() {
 	//console.log("Bright contours " + "drawn on overlay");
 }
 
-// Step 13) Draw alternating colored dash lines
+// Step 4: Draw alternating colored dash lines (10px magenta, 10px yellow/green)
 function drawAlternatingDashLine(x1, y1, x2, y2) {
 	// Step 4a: Calculate line properties
 	const totalLength = Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
@@ -40234,8 +40274,7 @@ function drawAlternatingDashLine(x1, y1, x2, y2) {
 		colorIndex++;
 	}
 }
-
-// Step 14) Draw time labels with theme-aware styling
+// Step 5: Draw time labels with theme-aware colors
 function drawTimeLabelFixed(x, y, text, color) {
 	// Step 5a: Use theme-aware background color
 	const backgroundColor = darkModeEnabled ? "rgba(0, 0, 0,0.6)" : "rgba(255, 255, 255,0.6)";
@@ -40451,7 +40490,7 @@ function hookOverlayIntoExistingFunctions() {
 	}
 }
 
-// Step 19) Hook into resize events
+// Add after your existing hookOverlayIntoExistingFunctions()
 function hookOverlayIntoResize() {
 	window.addEventListener("resize", function () {
 		if (contourOverlayCanvas && useContourOverlay) {
@@ -40468,7 +40507,7 @@ function hookOverlayIntoResize() {
 	console.log("Hooked into window resize");
 }
 
-// Step 21) Enable auto-update system
+// Add this to your enableAutoUpdate() function:
 function enableAutoUpdate() {
 	hookOverlayIntoExistingFunctions();
 	hookOverlayIntoThemeSystem();
@@ -40502,241 +40541,398 @@ if (typeof window.drawData === "function") {
 //===========================================
 
 //===========================================
-// Step 1) Inline Contour Calculation (moved from webworker)
+// Web worker for Delaunay Contours and Hole Hole Times.
 //===========================================
 
-// Step 2) Interpolation function - essential for contour crossing points
-function interpolateContourPoint(p1, p2, contourLevel) {
-	const t = (contourLevel - p1.z) / (p2.z - p1.z);
+// INLINE WEB WORKER FOR MONOLITH - Add this to your kirra.js file
+
+// FIXED: Replace the contourWorkerCode with this corrected version
+const contourWorkerCode = `
+// Import D3 for Delaunay triangulation in worker
+importScripts('https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js');
+
+self.onmessage = function(e) {
+    const { type, data } = e.data;
+    
+    try {
+        switch(type) {
+            case 'CALCULATE_CONTOURS':
+                const result = calculateContoursInWorker(data);
+                self.postMessage({
+                    type: 'CONTOURS_RESULT',
+                    data: result,
+                    success: true
+                });
+                break;
+                
+            default:
+                throw new Error('Unknown message type: ' + type);
+        }
+    } catch (error) {
+        self.postMessage({
+            type: 'ERROR',
+            error: error.message,
+            success: false
+        });
+    }
+};
+
+// Step 1) Interpolation function - essential for contour crossing points
+function interpolate(p1, p2, contourLevel) {
+    const t = (contourLevel - p1.z) / (p2.z - p1.z);
+    return {
+        x: p1.x + t * (p2.x - p1.x),
+        y: p1.y + t * (p2.y - p1.y)
+    };
+}
+
+// Step 2) Main contour calculation function - fixed to match sync version
+function calculateContoursInWorker(workerData) {
+    const { 
+        contourData, 
+        contourLevels,  // Changed: now expects array of levels
+        maxEdgeLength,
+        displayContours,
+        displayFirstMovements,
+        displayRelief,
+        firstMovementSize = 2
+    } = workerData;
+    
+    // Step 3) Early return if no display options enabled
+    if (!displayContours && !displayFirstMovements && !displayRelief) {
+        return {
+            contourLinesArray: [],
+            directionArrows: []
+        };
+    }
+
+    if (!contourData || !Array.isArray(contourData) || contourData.length === 0) {
+        return { contourLinesArray: [], directionArrows: [] };
+    }
+
+    const factor = 1.6;
+    const minAngleThreshold = 5;
+    const surfaceAreaThreshold = 0.1;
+
+    // Step 4) Filter out holes where holeTime is null
+    const filteredContourData = contourData.filter(hole => hole.holeTime !== null);
+    
+    if (filteredContourData.length < 3) {
+        return { contourLinesArray: [], directionArrows: [] };
+    }
+
+    // Step 5) Helper function for distance calculation
+    function getLocalAverageDistance(targetPoint, allPoints, neighborCount = 6) {
+        const distances = [];
+
+        for (let i = 0; i < allPoints.length; i++) {
+            if (allPoints[i] === targetPoint) continue;
+
+            const dx = targetPoint.x - allPoints[i].x;
+            const dy = targetPoint.y - allPoints[i].y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            distances.push(distance);
+        }
+
+        distances.sort((a, b) => a - b);
+        const nearestDistances = distances.slice(0, Math.min(neighborCount, distances.length));
+
+        return nearestDistances.length > 0 ?
+            nearestDistances.reduce((sum, dist) => sum + dist, 0) / nearestDistances.length :
+            maxEdgeLength;
+    }
+
+    // Step 6) Cache for performance
+    const localAverageCache = new Map();
+    function getCachedLocalAverage(point) {
+        if (!localAverageCache.has(point)) {
+            localAverageCache.set(point, getLocalAverageDistance(point, filteredContourData, 6));
+        }
+        return localAverageCache.get(point);
+    }
+
+    // Step 7) Compute Delaunay triangulation
+    const delaunay = d3.Delaunay.from(filteredContourData.map(hole => [hole.x, hole.y]));
+    const triangles = delaunay.triangles;
+
+    if (!triangles || triangles.length === 0) {
+        return { contourLinesArray: [], directionArrows: [] };
+    }
+
+    const contourLinesArray = [];
+    const directionArrows = [];
+
+    // Step 8) Process each contour level
+    for (let levelIndex = 0; levelIndex < contourLevels.length; levelIndex++) {
+        const contourLevel = contourLevels[levelIndex];
+        const contourLines = [];
+
+        // Step 9) Process triangles for this contour level
+        for (let i = 0; i < triangles.length; i += 3) {
+            const contourLine = [];
+
+            const p1 = contourData[triangles[i]];
+            const p2 = contourData[triangles[i + 1]];
+            const p3 = contourData[triangles[i + 2]];
+
+            // Step 10) Get cached local average distances for adaptive filtering
+            const p1LocalAvg = getCachedLocalAverage(p1);
+            const p2LocalAvg = getCachedLocalAverage(p2);
+            const p3LocalAvg = getCachedLocalAverage(p3);
+
+            const triangleLocalAverage = (p1LocalAvg + p2LocalAvg + p3LocalAvg) / 3;
+            const adaptiveMaxEdgeLength = Math.min(maxEdgeLength, triangleLocalAverage * factor);
+
+            // Step 11) Calculate triangle properties for direction arrows
+            const centroidX = (p1.x + p2.x + p3.x) / 3;
+            const centroidY = (p1.y + p2.y + p3.y) / 3;
+
+            // Step 12) Calculate edge lengths and check filtering
+            const edge1Length = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+            const edge2Length = Math.sqrt(Math.pow(p3.x - p2.x, 2) + Math.pow(p3.y - p2.y, 2));
+            const edge3Length = Math.sqrt(Math.pow(p1.x - p3.x, 2) + Math.pow(p1.y - p3.y, 2));
+
+            let trianglePassesFilter = true;
+            if (edge1Length > adaptiveMaxEdgeLength || edge2Length > adaptiveMaxEdgeLength || edge3Length > adaptiveMaxEdgeLength) {
+                trianglePassesFilter = false;
+            }
+
+            // Step 13) Check triangle angles to reject acute triangles
+            if (trianglePassesFilter) {
+                const edge1Squared = edge1Length * edge1Length;
+                const edge2Squared = edge2Length * edge2Length;
+                const edge3Squared = edge3Length * edge3Length;
+
+                const angle1 = Math.acos(Math.max(-1, Math.min(1, (edge2Squared + edge3Squared - edge1Squared) / (2 * edge2Length * edge3Length)))) * (180 / Math.PI);
+                const angle2 = Math.acos(Math.max(-1, Math.min(1, (edge1Squared + edge3Squared - edge2Squared) / (2 * edge1Length * edge3Length)))) * (180 / Math.PI);
+                const angle3 = Math.acos(Math.max(-1, Math.min(1, (edge1Squared + edge2Squared - edge3Squared) / (2 * edge1Length * edge2Length)))) * (180 / Math.PI);
+
+                const minAngle = Math.min(angle1, angle2, angle3);
+                if (minAngle < minAngleThreshold) {
+                    trianglePassesFilter = false;
+                }
+            }
+
+            // Step 14) Only process triangles that pass filtering
+            if (trianglePassesFilter) {
+                // Step 15) Create direction arrows for first movement
+                if (levelIndex === 0 && displayFirstMovements) {
+                    const surfaceArea = Math.abs((p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2);
+                    
+                    if (surfaceArea > surfaceAreaThreshold) {
+                        const v1X = p2.x - p1.x;
+                        const v1Y = p2.y - p1.y;
+                        const v1Z = p2.z - p1.z;
+
+                        const v2X = p3.x - p1.x;
+                        const v2Y = p3.y - p1.y;
+                        const v2Z = p3.z - p1.z;
+
+                        const slopeX = v1Y * v2Z - v1Z * v2Y;
+                        const slopeY = v1Z * v2X - v1X * v2Z;
+                        const slopeLength = Math.sqrt(slopeX * slopeX + slopeY * slopeY);
+                        
+                        if (slopeLength > 0) {
+                            const normSlopeX = slopeX / slopeLength;
+                            const normSlopeY = slopeY / slopeLength;
+                            
+                            const arrowEndX = centroidX - normSlopeX * firstMovementSize;
+                            const arrowEndY = centroidY - normSlopeY * firstMovementSize;
+                            
+                            directionArrows.push([centroidX, centroidY, arrowEndX, arrowEndY, "goldenrod", firstMovementSize]);
+                        }
+                    }
+                }
+
+                // Step 16) FIXED: Check each edge for contour level crossings
+                for (let j = 0; j < 3; j++) {
+                    const edgeP1 = contourData[triangles[i + j]];
+                    const edgeP2 = contourData[triangles[i + ((j + 1) % 3)]];
+
+                    // Step 17) Calculate distance between edge points
+                    const distance = Math.sqrt(Math.pow(edgeP2.x - edgeP1.x, 2) + Math.pow(edgeP2.y - edgeP1.y, 2));
+
+                    // Step 18) CRITICAL: Only create contour point if level crosses the edge
+                    if (distance <= adaptiveMaxEdgeLength && 
+                        ((edgeP1.z < contourLevel && edgeP2.z >= contourLevel) || 
+                         (edgeP1.z >= contourLevel && edgeP2.z < contourLevel))) {
+                        
+                        // Step 19) Interpolate to find exact crossing point
+                        const point = interpolate(edgeP1, edgeP2, contourLevel);
+                        contourLine.push(point);
+                    }
+                }
+
+                // Step 20) Only add contour line if it has exactly 2 points (proper line segment)
+                if (contourLine.length === 2) {
+                    contourLines.push(contourLine);
+                }
+            }
+        }
+
+        // Step 21) Add this level's contour lines to the array
+        contourLinesArray.push(contourLines);
+    }
+
+    // Step 22) Filter direction arrows 
+    const interval = 1;
+    const filteredArrows = directionArrows.filter((arrow, index) => index % interval === 0);
+
+    return {
+        contourLinesArray,
+        directionArrows: filteredArrows
+    };
+}
+
+console.log('Fixed contour worker ready');
+`;
+
+// Step 2: Create Blob URL worker
+let contourWorker = null;
+let contourWorkerBusy = false;
+
+// Step 2a: ADD THE MISSING FUNCTION - Create the worker from the inline code
+function createInlineContourWorker() {
+	try {
+		const blob = new Blob([contourWorkerCode], { type: "application/javascript" });
+		const workerUrl = URL.createObjectURL(blob);
+		contourWorker = new Worker(workerUrl);
+
+		contourWorker.onmessage = function (e) {
+			const { type, data, success, error } = e.data;
+
+			contourWorkerBusy = false;
+
+			if (!success) {
+				console.error("Contour worker error:", error);
+				return;
+			}
+
+			if (type === "CONTOURS_RESULT") {
+				// Step 2b: Format result to match your existing data structure
+				const formattedResult = formatWorkerResult(data);
+
+				// Step 2c: Update global variables
+				contourLinesArray = formattedResult.contourLinesArray;
+				directionArrows = formattedResult.directionArrows;
+
+				// Step 2d: Update overlay
+				if (typeof updateOverlayColorsForTheme === "function") {
+					updateOverlayColorsForTheme();
+				}
+
+				// Step 2e: Redraw main canvas
+				drawData(allBlastHoles, selectedHole);
+
+				console.log("Worker contour calculation completed:", formattedResult.contourLinesArray.length + " levels");
+			}
+		};
+
+		contourWorker.onerror = function (error) {
+			console.error("Contour worker error:", error);
+			contourWorkerBusy = false;
+		};
+
+		console.log("Inline contour worker created successfully");
+		return true;
+	} catch (error) {
+		console.error("Failed to create inline worker:", error);
+		return false;
+	}
+}
+
+// Step 2f: FIXED - Format worker result to match your existing structure
+function formatWorkerResult(workerResult) {
+	// Worker now returns properly formatted contourLinesArray directly
 	return {
-		x: p1.x + t * (p2.x - p1.x),
-		y: p1.y + t * (p2.y - p1.y),
+		contourLinesArray: workerResult.contourLinesArray || [],
+		directionArrows: workerResult.directionArrows || [],
 	};
 }
 
-// Step 3) Main contour calculation function - now runs in main thread
-function calculateContoursSync(contourData, contourLevels, maxEdgeLength, displayOptions) {
-	const { displayContours, displayFirstMovements, displayRelief, firstMovementSize = 2 } = displayOptions;
+// ... rest of your existing code (delaunayContours function, etc.) ...
 
-	// Step 4) Early return if no display options enabled
-	if (!displayContours && !displayFirstMovements && !displayRelief) {
+// Step 23) FIXED: Update the worker data preparation
+function delaunayContours(contourData, contourLevel, maxEdgeLength) {
+	if (contourWorker && !contourWorkerBusy) {
+		contourWorkerBusy = true;
+
+		// Step 24) Calculate all contour levels like the sync version
+		const maxHoleTime = Math.max(...allBlastHoles.map((hole) => hole.holeTime || 0).filter((t) => t > 0));
+		let interval = maxHoleTime < 350 ? 25 : maxHoleTime < 700 ? 100 : 250;
+		if (typeof intervalAmount !== "undefined") {
+			interval = parseInt(intervalAmount);
+		}
+
+		const numLevels = Math.ceil(maxHoleTime / interval) || 13;
+		const contourLevels = [];
+		for (let level = 0; level < numLevels; level++) {
+			contourLevels.push(level * interval);
+		}
+
+		const workerData = {
+			contourData: contourData.map((hole) => ({
+				x: hole.x,
+				y: hole.y,
+				z: hole.z || hole.holeTime || 0,
+				holeTime: hole.holeTime,
+			})),
+			contourLevels: contourLevels, // Pass all levels
+			maxEdgeLength: maxEdgeLength,
+			displayContours: displayContours ? displayContours.checked : false,
+			displayFirstMovements: displayFirstMovements ? displayFirstMovements.checked : false,
+			displayRelief: displayRelief ? displayRelief.checked : false,
+			firstMovementSize: firstMovementSize || 2,
+		};
+
+		contourWorker.postMessage({
+			type: "CALCULATE_CONTOURS",
+			data: workerData,
+		});
+
 		return {
-			contourLinesArray: [],
+			contourLines: [],
 			directionArrows: [],
 		};
+	} else {
+		return delaunayContoursSync(contourData, contourLevel, maxEdgeLength);
 	}
+}
 
-	if (!contourData || !Array.isArray(contourData) || contourData.length === 0) {
-		return { contourLinesArray: [], directionArrows: [] };
-	}
-
-	const factor = 1.6;
-	const minAngleThreshold = 5;
-	const surfaceAreaThreshold = 0.1;
-
-	// Step 5) Filter out holes where holeTime is null
-	const filteredContourData = contourData.filter((hole) => hole.holeTime !== null);
-
-	if (filteredContourData.length < 3) {
-		return { contourLinesArray: [], directionArrows: [] };
-	}
-
-	// Step 6) Helper function for distance calculation
-	function getLocalAverageDistance(targetPoint, allPoints, neighborCount = 6) {
-		const distances = [];
-
-		for (let i = 0; i < allPoints.length; i++) {
-			if (allPoints[i] === targetPoint) continue;
-
-			const dx = targetPoint.x - allPoints[i].x;
-			const dy = targetPoint.y - allPoints[i].y;
-			const distance = Math.sqrt(dx * dx + dy * dy);
-			distances.push(distance);
-		}
-
-		distances.sort((a, b) => a - b);
-		const nearestDistances = distances.slice(0, Math.min(neighborCount, distances.length));
-
-		return nearestDistances.length > 0 ? nearestDistances.reduce((sum, dist) => sum + dist, 0) / nearestDistances.length : maxEdgeLength;
-	}
-
-	// Step 7) Cache for performance
-	const localAverageCache = new Map();
-	function getCachedLocalAverage(point) {
-		if (!localAverageCache.has(point)) {
-			localAverageCache.set(point, getLocalAverageDistance(point, filteredContourData, 6));
-		}
-		return localAverageCache.get(point);
-	}
-
-	// Step 8) Compute Delaunay triangulation
-	const delaunay = Delaunay.from(filteredContourData.map((hole) => [hole.x, hole.y]));
-	const triangles = delaunay.triangles;
-
-	if (!triangles || triangles.length === 0) {
-		return { contourLinesArray: [], directionArrows: [] };
-	}
-
-	const contourLinesArray = [];
-	const directionArrows = [];
-
-	// Step 9) Process each contour level
-	for (let levelIndex = 0; levelIndex < contourLevels.length; levelIndex++) {
-		const contourLevel = contourLevels[levelIndex];
-		const contourLines = [];
-
-		// Step 10) Process triangles for this contour level
-		for (let i = 0; i < triangles.length; i += 3) {
-			const contourLine = [];
-
-			const p1 = contourData[triangles[i]];
-			const p2 = contourData[triangles[i + 1]];
-			const p3 = contourData[triangles[i + 2]];
-
-			// Step 11) Get cached local average distances for adaptive filtering
-			const p1LocalAvg = getCachedLocalAverage(p1);
-			const p2LocalAvg = getCachedLocalAverage(p2);
-			const p3LocalAvg = getCachedLocalAverage(p3);
-
-			const triangleLocalAverage = (p1LocalAvg + p2LocalAvg + p3LocalAvg) / 3;
-			const adaptiveMaxEdgeLength = Math.min(maxEdgeLength, triangleLocalAverage * factor);
-
-			// Step 12) Calculate triangle properties for direction arrows
-			const centroidX = (p1.x + p2.x + p3.x) / 3;
-			const centroidY = (p1.y + p2.y + p3.y) / 3;
-
-			// Step 13) Calculate edge lengths and check filtering
-			const edge1Length = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-			const edge2Length = Math.sqrt(Math.pow(p3.x - p2.x, 2) + Math.pow(p3.y - p2.y, 2));
-			const edge3Length = Math.sqrt(Math.pow(p1.x - p3.x, 2) + Math.pow(p1.y - p3.y, 2));
-
-			let trianglePassesFilter = true;
-			if (edge1Length > adaptiveMaxEdgeLength || edge2Length > adaptiveMaxEdgeLength || edge3Length > adaptiveMaxEdgeLength) {
-				trianglePassesFilter = false;
-			}
-
-			// Step 14) Check triangle angles to reject acute triangles
-			if (trianglePassesFilter) {
-				const edge1Squared = edge1Length * edge1Length;
-				const edge2Squared = edge2Length * edge2Length;
-				const edge3Squared = edge3Length * edge3Length;
-
-				const angle1 = Math.acos(Math.max(-1, Math.min(1, (edge2Squared + edge3Squared - edge1Squared) / (2 * edge2Length * edge3Length)))) * (180 / Math.PI);
-				const angle2 = Math.acos(Math.max(-1, Math.min(1, (edge1Squared + edge3Squared - edge2Squared) / (2 * edge1Length * edge3Length)))) * (180 / Math.PI);
-				const angle3 = Math.acos(Math.max(-1, Math.min(1, (edge1Squared + edge2Squared - edge3Squared) / (2 * edge1Length * edge2Length)))) * (180 / Math.PI);
-
-				const minAngle = Math.min(angle1, angle2, angle3);
-				if (minAngle < minAngleThreshold) {
-					trianglePassesFilter = false;
-				}
-			}
-
-			// Step 15) Only process triangles that pass filtering
-			if (trianglePassesFilter) {
-				// Step 16) Create direction arrows for first movement
-				if (levelIndex === 0 && displayFirstMovements) {
-					const surfaceArea = Math.abs((p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2);
-
-					if (surfaceArea > surfaceAreaThreshold) {
-						const v1X = p2.x - p1.x;
-						const v1Y = p2.y - p1.y;
-						const v1Z = p2.z - p1.z;
-
-						const v2X = p3.x - p1.x;
-						const v2Y = p3.y - p1.y;
-						const v2Z = p3.z - p1.z;
-
-						const slopeX = v1Y * v2Z - v1Z * v2Y;
-						const slopeY = v1Z * v2X - v1X * v2Z;
-						const slopeLength = Math.sqrt(slopeX * slopeX + slopeY * slopeY);
-
-						if (slopeLength > 0) {
-							const normSlopeX = slopeX / slopeLength;
-							const normSlopeY = slopeY / slopeLength;
-
-							const arrowEndX = centroidX - normSlopeX * firstMovementSize;
-							const arrowEndY = centroidY - normSlopeY * firstMovementSize;
-
-							directionArrows.push([centroidX, centroidY, arrowEndX, arrowEndY, "goldenrod", firstMovementSize]);
-						}
-					}
-				}
-
-				// Step 17) Check each edge for contour level crossings
-				for (let j = 0; j < 3; j++) {
-					const edgeP1 = contourData[triangles[i + j]];
-					const edgeP2 = contourData[triangles[i + ((j + 1) % 3)]];
-
-					// Step 18) Calculate distance between edge points
-					const distance = Math.sqrt(Math.pow(edgeP2.x - edgeP1.x, 2) + Math.pow(edgeP2.y - edgeP1.y, 2));
-
-					// Step 19) CRITICAL: Only create contour point if level crosses the edge
-					if (distance <= adaptiveMaxEdgeLength && ((edgeP1.z < contourLevel && edgeP2.z >= contourLevel) || (edgeP1.z >= contourLevel && edgeP2.z < contourLevel))) {
-						// Step 20) Interpolate to find exact crossing point
-						const point = interpolateContourPoint(edgeP1, edgeP2, contourLevel);
-						contourLine.push(point);
-					}
-				}
-
-				// Step 21) Only add contour line if it has exactly 2 points (proper line segment)
-				if (contourLine.length === 2) {
-					contourLines.push(contourLine);
-				}
-			}
-		}
-
-		// Step 22) Add this level's contour lines to the array
-		contourLinesArray.push(contourLines);
-	}
-
-	// Step 23) Filter direction arrows
-	const interval = 1;
-	const filteredArrows = directionArrows.filter((arrow, index) => index % interval === 0);
-
+// Step 25) FIXED: Update the result formatting
+function formatWorkerResult(workerResult) {
+	// Worker now returns properly formatted contourLinesArray
 	return {
-		contourLinesArray,
-		directionArrows: filteredArrows,
+		contourLinesArray: workerResult.contourLinesArray,
+		directionArrows: workerResult.directionArrows,
 	};
 }
 
-// Step 24) Delaunay contours - now calls synchronous version
-function delaunayContours(contourData, contourLevel, maxEdgeLength) {
-	// Step 25) Calculate all contour levels
-	const maxHoleTime = Math.max(...allBlastHoles.map((hole) => hole.holeTime || 0).filter((t) => t > 0));
-	let interval = maxHoleTime < 350 ? 25 : maxHoleTime < 700 ? 100 : 250;
-	if (typeof intervalAmount !== "undefined") {
-		interval = parseInt(intervalAmount);
+// Step 5: Initialize worker after DOM loads
+function initInlineContourWorker() {
+	if (createInlineContourWorker()) {
+		console.log("🚀 Contour calculations now run in web worker - UI will stay responsive!");
+	} else {
+		console.log("Worker creation failed - using main thread fallback");
 	}
-
-	const numLevels = Math.ceil(maxHoleTime / interval) || 13;
-	const contourLevels = [];
-	for (let level = 0; level < numLevels; level++) {
-		contourLevels.push(level * interval);
-	}
-
-	// Step 26) Prepare contour data
-	const processedData = contourData.map((hole) => ({
-		x: hole.x,
-		y: hole.y,
-		z: hole.z || hole.holeTime || 0,
-		holeTime: hole.holeTime,
-	}));
-
-	// Step 27) Call synchronous calculation
-	const displayOptions = {
-		displayContours: displayContours ? displayContours.checked : false,
-		displayFirstMovements: displayFirstMovements ? displayFirstMovements.checked : false,
-		displayRelief: displayRelief ? displayRelief.checked : false,
-		firstMovementSize: firstMovementSize || 2,
-	};
-
-	return calculateContoursSync(processedData, contourLevels, maxEdgeLength, displayOptions);
 }
 
-console.log("✅ Contour calculations now run in main thread (synchronous)");
+// Initialize worker when page loads
+if (document.readyState === "loading") {
+	document.addEventListener("DOMContentLoaded", initInlineContourWorker);
+} else {
+	initInlineContourWorker();
+}
+
+// Clean up worker on page unload
+window.addEventListener("beforeunload", function () {
+	if (contourWorker) {
+		contourWorker.terminate();
+	}
+});
 
 //===========================================
-// END OF Inline Contour Calculation
+// END OF Web worker for Delaunay Contours and Hole Hole Times.
 //===========================================
 
 document.addEventListener("DOMContentLoaded", function () {
