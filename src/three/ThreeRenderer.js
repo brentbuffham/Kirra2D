@@ -75,6 +75,10 @@ export class ThreeRenderer {
 		this.imagesGroup.name = "Images";
 		this.scene.add(this.imagesGroup);
 
+		this.connectorsGroup = new THREE.Group();
+		this.connectorsGroup.name = "Connectors";
+		this.scene.add(this.connectorsGroup);
+
 		// Step 8) Store mesh references for selection
 		this.holeMeshMap = new Map(); // holeId -> mesh
 		this.surfaceMeshMap = new Map(); // surfaceId -> mesh
@@ -328,6 +332,7 @@ export class ThreeRenderer {
 		this.disposeGroup(this.kadGroup);
 		this.disposeGroup(this.contoursGroup);
 		this.disposeGroup(this.imagesGroup);
+		this.disposeGroup(this.connectorsGroup);
 
 		// Step 21b) Clear mesh maps
 		this.holeMeshMap.clear();
@@ -357,6 +362,9 @@ export class ThreeRenderer {
 				break;
 			case "images":
 				this.disposeGroup(this.imagesGroup);
+				break;
+			case "connectors":
+				this.disposeGroup(this.connectorsGroup);
 				break;
 		}
 		this.needsRender = true;

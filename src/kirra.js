@@ -32,7 +32,7 @@ import { GeometryFactory } from "./three/GeometryFactory.js";
 //=================================================
 // Drawing Modules
 //=================================================
-import { clearThreeJS, renderThreeJS, drawHoleThreeJS, drawHoleToeThreeJS, drawHoleTextThreeJS, drawHoleTextsAndConnectorsThreeJS, drawKADPointThreeJS, drawKADLineSegmentThreeJS, drawKADPolygonSegmentThreeJS, drawKADCircleThreeJS, drawKADTextThreeJS, drawSurfaceThreeJS, drawContoursThreeJS, drawDirectionArrowsThreeJS, drawBackgroundImageThreeJS } from "./draw/canvas3DDrawing.js";
+import { clearThreeJS, renderThreeJS, drawHoleThreeJS, drawHoleToeThreeJS, drawHoleTextThreeJS, drawHoleTextsAndConnectorsThreeJS, drawKADPointThreeJS, drawKADLineSegmentThreeJS, drawKADPolygonSegmentThreeJS, drawKADCircleThreeJS, drawKADTextThreeJS, drawSurfaceThreeJS, drawContoursThreeJS, drawDirectionArrowsThreeJS, drawBackgroundImageThreeJS, drawConnectorThreeJS, highlightSelectedHoleThreeJS, drawToolPromptThreeJS, drawConnectStadiumZoneThreeJS, drawSlopeMapThreeJS, drawBurdenReliefMapThreeJS } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 //=================================================
 // import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
@@ -17966,6 +17966,16 @@ function drawData(allBlastHoles, selectedHole) {
 		// Draw background images FIRST (bottom layer)
 		drawBackgroundImage();
 
+		// Step 1) Draw background images in Three.js
+		if (threeInitialized && imagesGroupVisible) {
+			loadedImages.forEach((image) => {
+				if (image.visible && image.canvas && image.bbox) {
+					const imageId = image.id || image.name || "image_" + Date.now();
+					drawBackgroundImageThreeJS(imageId, image.canvas, image.bbox, image.transparency !== undefined && image.transparency !== null ? image.transparency : 1.0);
+				}
+			});
+		}
+
 		// Draw surfaces SECOND
 		drawSurface();
 
@@ -18168,6 +18178,12 @@ function drawData(allBlastHoles, selectedHole) {
 						}
 					}
 					drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getPFColor(value, minPF, maxPF), "Legend Powder Factor", minPF, maxPF, intervalPF);
+					// Step 8) Draw Voronoi cells in Three.js
+					if (threeInitialized) {
+						const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+						const clippedCells = clipVoronoiCells(voronoiMetrics);
+						drawVoronoiCellsThreeJS(clippedCells, (value) => getPFColor(value, minPF, maxPF), allBlastHoles, 1.0);
+					}
 					break;
 				case "mass":
 					// console.log("Drawing Mass");
@@ -18202,6 +18218,12 @@ function drawData(allBlastHoles, selectedHole) {
 						}
 					}
 					drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getMassColor(value, minMass, maxMass), "Legend Mass", minMass, maxMass, intervalMass);
+					// Step 8) Draw Voronoi cells in Three.js
+					if (threeInitialized) {
+						const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+						const clippedCells = clipVoronoiCells(voronoiMetrics);
+						drawVoronoiCellsThreeJS(clippedCells, (value) => getMassColor(value, minMass, maxMass), allBlastHoles, 1.0);
+					}
 					break;
 				case "volume": {
 					// console.log("Drawing Volume");
@@ -18399,6 +18421,11 @@ function drawData(allBlastHoles, selectedHole) {
 				drawTriangleAngleText(triangle, centroid, strokeColor);
 			}
 			drawLegend(strokeColor);
+
+			// Step 6) Draw slope map in Three.js
+			if (threeInitialized && resultTriangles && resultTriangles.length > 0) {
+				drawSlopeMapThreeJS(resultTriangles, allBlastHoles);
+			}
 		}
 
 		// Burden Relief
@@ -18413,6 +18440,11 @@ function drawData(allBlastHoles, selectedHole) {
 				drawTriangleBurdenReliefText(triangle, centroid, strokeColor);
 			}
 			drawReliefLegend(strokeColor);
+
+			// Step 7) Draw burden relief map in Three.js
+			if (threeInitialized && reliefTriangles && reliefTriangles.length > 0) {
+				drawBurdenReliefMapThreeJS(reliefTriangles, allBlastHoles);
+			}
 		}
 
 		// First Movement Direction Arrows
@@ -18423,6 +18455,16 @@ function drawData(allBlastHoles, selectedHole) {
 				const [endX, endY] = worldToCanvas(arrow[2], arrow[3]);
 				drawDirectionArrow(startX, startY, endX, endY, arrow[4], strokeColor, arrow[5]);
 			}
+
+			// Step 2) Draw first movement arrows in Three.js
+			if (threeInitialized && directionArrows && directionArrows.length > 0) {
+				drawDirectionArrowsThreeJS(directionArrows);
+			}
+		}
+
+		// Step 3) Draw contours in Three.js
+		if (displayOptions.contours && threeInitialized && contourLinesArray && contourLinesArray.length > 0) {
+			drawContoursThreeJS(contourLinesArray, strokeColor);
 		}
 
 		// Main hole loop
@@ -18495,6 +18537,57 @@ function drawData(allBlastHoles, selectedHole) {
 					// Draw hole text labels in Three.js
 					if (threeInitialized) {
 						drawHoleTextsAndConnectorsThreeJS(hole, displayOptions);
+					}
+
+					// Step 4) Draw connectors in Three.js
+					if (threeInitialized && displayOptions.connector && hole.fromHoleID) {
+						const [splitEntityName, splitFromHoleID] = hole.fromHoleID.split(":::");
+						const fromHole = holeMap.get(splitEntityName + ":::" + splitFromHoleID);
+						if (fromHole) {
+							const connColor = hole.colorHexDecimal || hole.holeColor || "#FF0000";
+							const delayText = displayOptions.delayValue ? hole.timingDelayMilliseconds : null;
+							drawConnectorThreeJS(fromHole, hole, connColor, hole.connectorCurve || 0, delayText, connScale);
+						}
+					}
+
+					// Step 5) Draw selection highlighting in Three.js (matching 2D style)
+					if (threeInitialized) {
+						// Connector mode highlighting
+						if (isAddingConnector || isAddingMultiConnector) {
+							if (fromHoleStore && fromHoleStore === hole) {
+								highlightSelectedHoleThreeJS(hole, "first");
+								if (isAddingMultiConnector && currentMouseWorldX !== undefined && currentMouseWorldY !== undefined) {
+									drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY }, connectAmount);
+								}
+								drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
+							} else if (firstSelectedHole && firstSelectedHole === hole) {
+								highlightSelectedHoleThreeJS(hole, "first");
+								drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName, { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
+							} else if (secondSelectedHole && secondSelectedHole === hole) {
+								highlightSelectedHoleThreeJS(hole, "second");
+								drawToolPromptThreeJS("2nd Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Click to connect)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 200, 0, .8)");
+							}
+						}
+						// Regular selection highlighting
+						else if (selectedHole && selectedHole === hole) {
+							highlightSelectedHoleThreeJS(hole, "selected");
+							drawToolPromptThreeJS("Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + " with Single Selection Mode \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
+						}
+						// Multiple selection highlighting
+						else if (selectedMultipleHoles && selectedMultipleHoles.find((h) => h.entityName === hole.entityName && h.holeID === hole.holeID)) {
+							highlightSelectedHoleThreeJS(hole, "multi");
+							if (hole === selectedMultipleHoles[0]) {
+								drawToolPromptThreeJS("Editing Selected Holes: {" + selectedMultipleHoles.map((h) => h.holeID).join(",") + "} \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
+							}
+						}
+						// Animation/timing window highlighting
+						if (timingWindowHolesSelected && timingWindowHolesSelected.find((h) => h.entityName === hole.entityName && h.holeID === hole.holeID)) {
+							if (isPlaying) {
+								highlightSelectedHoleThreeJS(hole, "animation-playing");
+							} else {
+								highlightSelectedHoleThreeJS(hole, "animation-paused");
+							}
+						}
 					}
 				}
 
@@ -18712,8 +18805,29 @@ function drawData(allBlastHoles, selectedHole) {
 		// Draw background images
 		drawBackgroundImage();
 
+		// Step 1d) Draw background images in Three.js
+		if (imagesGroupVisible) {
+			loadedImages.forEach((image) => {
+				if (image.visible && image.canvas && image.bbox) {
+					const imageId = image.id || image.name || "image_" + Date.now();
+					drawBackgroundImageThreeJS(imageId, image.canvas, image.bbox, image.transparency !== undefined && image.transparency !== null ? image.transparency : 1.0);
+				}
+			});
+		}
+
 		// Draw surfaces (includes Three.js rendering)
 		drawSurface();
+
+		// Step 2) Draw contours in Three.js (if needed)
+		const displayOptions3D = getDisplayOptions();
+		if (displayOptions3D.contours && contourLinesArray && contourLinesArray.length > 0) {
+			drawContoursThreeJS(contourLinesArray, strokeColor);
+		}
+
+		// Step 3) Draw first movement arrows in Three.js (if needed)
+		if (displayOptions3D.firstMovement && directionArrows && directionArrows.length > 0) {
+			drawDirectionArrowsThreeJS(directionArrows);
+		}
 
 		// Draw holes
 		if (blastGroupVisible && allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
@@ -18721,6 +18835,69 @@ function drawData(allBlastHoles, selectedHole) {
 				if (hole.visible === false) continue;
 				// Draw Three.js hole geometry
 				drawHoleThreeJS(hole);
+
+				// Draw hole text labels in Three.js
+				if (threeInitialized) {
+					drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
+				}
+
+				// Step 4) Draw connectors in Three.js
+				if (threeInitialized && displayOptions3D.connector && hole.fromHoleID) {
+					// Build hole map for connector lookup
+					const holeMap3D = new Map();
+					allBlastHoles.forEach((h) => {
+						holeMap3D.set(h.entityName + ":::" + h.holeID, h);
+					});
+
+					const [splitEntityName, splitFromHoleID] = hole.fromHoleID.split(":::");
+					const fromHole = holeMap3D.get(splitEntityName + ":::" + splitFromHoleID);
+					if (fromHole) {
+						const connColor = hole.colorHexDecimal || hole.holeColor || "#FF0000";
+						const delayText = displayOptions3D.delayValue ? hole.timingDelayMilliseconds : null;
+						const connScale3D = document.getElementById("connSlider") ? document.getElementById("connSlider").value : 100;
+						drawConnectorThreeJS(fromHole, hole, connColor, hole.connectorCurve || 0, delayText, connScale3D);
+					}
+				}
+
+				// Step 5) Draw selection highlighting in Three.js (matching 2D style)
+				if (threeInitialized) {
+					// Connector mode highlighting
+					if (isAddingConnector || isAddingMultiConnector) {
+						if (fromHoleStore && fromHoleStore === hole) {
+							highlightSelectedHoleThreeJS(hole, "first");
+							if (isAddingMultiConnector && currentMouseWorldX !== undefined && currentMouseWorldY !== undefined) {
+								drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY }, connectAmount);
+							}
+							drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
+						} else if (firstSelectedHole && firstSelectedHole === hole) {
+							highlightSelectedHoleThreeJS(hole, "first");
+							drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName, { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
+						} else if (secondSelectedHole && secondSelectedHole === hole) {
+							highlightSelectedHoleThreeJS(hole, "second");
+							drawToolPromptThreeJS("2nd Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Click to connect)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 200, 0, .8)");
+						}
+					}
+					// Regular selection highlighting
+					else if (selectedHole && selectedHole === hole) {
+						highlightSelectedHoleThreeJS(hole, "selected");
+						drawToolPromptThreeJS("Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + " with Single Selection Mode \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
+					}
+					// Multiple selection highlighting
+					else if (selectedMultipleHoles && selectedMultipleHoles.find((h) => h.entityName === hole.entityName && h.holeID === hole.holeID)) {
+						highlightSelectedHoleThreeJS(hole, "multi");
+						if (hole === selectedMultipleHoles[0]) {
+							drawToolPromptThreeJS("Editing Selected Holes: {" + selectedMultipleHoles.map((h) => h.holeID).join(",") + "} \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
+						}
+					}
+					// Animation/timing window highlighting
+					if (timingWindowHolesSelected && timingWindowHolesSelected.find((h) => h.entityName === hole.entityName && h.holeID === hole.holeID)) {
+						if (isPlaying) {
+							highlightSelectedHoleThreeJS(hole, "animation-playing");
+						} else {
+							highlightSelectedHoleThreeJS(hole, "animation-paused");
+						}
+					}
+				}
 			}
 		}
 
