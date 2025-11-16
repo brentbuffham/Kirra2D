@@ -974,6 +974,8 @@ export class GeometryFactory {
 	}
 
 	// Step 20.6) Create selection highlight ring (matching drawHiHole style)
+	// Uses torus flat on X-Y plane (horizontal in world coords) for plan view visibility
+	// Plan view = looking from Z+ve to Z-ve, so torus should be flat on X-Y plane (no rotation needed)
 	static createSelectionHighlight(x, y, z, radius, fillColor, strokeColor) {
 		const group = new THREE.Group();
 
@@ -981,31 +983,37 @@ export class GeometryFactory {
 		const fillColorObj = this.parseRGBA(fillColor);
 		const strokeColorObj = this.parseRGBA(strokeColor);
 
-		// Step 20.6b) Create ring geometry (torus-like but flat)
-		const ringGeometry = new THREE.RingGeometry(radius * 0.8, radius, 32);
+		// Step 20.6b) Create fill ring using torus geometry (flat on X-Y plane for plan view)
+		// Three.js TorusGeometry is created flat on X-Y plane by default (horizontal in world coords)
+		// No rotation needed - it's already oriented correctly for plan view (looking down Z-axis)
+		const torusRadius = radius * 0.9; // Slightly smaller for inner fill
+		const tubeRadius = radius * 0.4; // Thick tube for fill visibility
+		const fillTorusGeometry = new THREE.TorusGeometry(torusRadius, tubeRadius, 16, 32);
 		const fillMaterial = new THREE.MeshBasicMaterial({
 			color: new THREE.Color(fillColorObj.r, fillColorObj.g, fillColorObj.b),
 			transparent: true,
 			opacity: fillColorObj.a,
 			side: THREE.DoubleSide,
 		});
-		const fillMesh = new THREE.Mesh(ringGeometry, fillMaterial);
-		fillMesh.position.set(x, y, z);
-		fillMesh.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-		group.add(fillMesh);
+		const fillTorusMesh = new THREE.Mesh(fillTorusGeometry, fillMaterial);
+		fillTorusMesh.position.set(x, y, z);
+		// No rotation - torus is flat on X-Y plane (horizontal in world coords), visible in plan view
+		group.add(fillTorusMesh);
 
-		// Step 20.6c) Create stroke ring (outer edge)
-		const strokeGeometry = new THREE.RingGeometry(radius * 0.99, radius, 32);
+		// Step 20.6c) Create outer stroke ring using torus geometry (flat on X-Y plane for plan view)
+		const strokeTorusRadius = radius * 1.2;
+		const strokeTubeRadius = radius * 0.2; // Thin tube for stroke
+		const strokeTorusGeometry = new THREE.TorusGeometry(strokeTorusRadius, strokeTubeRadius, 16, 32);
 		const strokeMaterial = new THREE.MeshBasicMaterial({
 			color: new THREE.Color(strokeColorObj.r, strokeColorObj.g, strokeColorObj.b),
-			transparent: true,
+			transparent: false,
 			opacity: strokeColorObj.a,
 			side: THREE.DoubleSide,
 		});
-		const strokeMesh = new THREE.Mesh(strokeGeometry, strokeMaterial);
-		strokeMesh.position.set(x, y, z);
-		strokeMesh.rotation.x = -Math.PI / 2;
-		group.add(strokeMesh);
+		const strokeTorusMesh = new THREE.Mesh(strokeTorusGeometry, strokeMaterial);
+		strokeTorusMesh.position.set(x, y, z);
+		// No rotation - torus is flat on X-Y plane (horizontal in world coords), visible in plan view
+		group.add(strokeTorusMesh);
 
 		return group;
 	}
@@ -1025,74 +1033,66 @@ export class GeometryFactory {
 		return { r: 1, g: 1, b: 1, a: 1 };
 	}
 
-	// Step 20.8) Create stadium zone (ellipsoid indicator for multi-connector)
+	// Step 20.8) Create stadium zone (capsule: cylinder with hemispheres on ends)
+	// Visible from all orientations in 3D
 	static createStadiumZone(startX, startY, startZ, endX, endY, endZ, radius, strokeColor, fillColor) {
 		const group = new THREE.Group();
 
-		// Step 20.8a) Parse colors
+		// Step 1) Parse colors
 		const strokeColorObj = this.parseRGBA(strokeColor);
 		const fillColorObj = this.parseRGBA(fillColor);
 
-		// Step 20.8b) Calculate direction and perpendicular vectors
+		// Step 2) Calculate vector from start to end
 		const dx = endX - startX;
 		const dy = endY - startY;
-		const length = Math.sqrt(dx * dx + dy * dy);
+		const dz = endZ - startZ;
+		const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-		if (length < 0.001) return group; // Avoid division by zero
+		if (length < 0.001) return group; // Avoid zero-length capsules
 
-		const dirX = dx / length;
-		const dirY = dy / length;
-		const perpX = -dirY;
-		const perpY = dirX;
-
-		// Step 20.8c) Calculate four corners
-		const corner1X = startX + perpX * radius;
-		const corner1Y = startY + perpY * radius;
-		const corner2X = startX - perpX * radius;
-		const corner2Y = startY - perpY * radius;
-		const corner3X = endX - perpX * radius;
-		const corner3Y = endY - perpY * radius;
-		const corner4X = endX + perpX * radius;
-		const corner4Y = endY + perpY * radius;
-
-		// Step 20.8d) Create shape for rounded rectangle
-		const shape = new THREE.Shape();
-		shape.moveTo(corner1X, corner1Y);
-		shape.lineTo(corner4X, corner4Y);
-		shape.arc(endX, endY, radius, Math.atan2(perpY, perpX), Math.atan2(-perpY, -perpX), false);
-		shape.lineTo(corner3X, corner3Y);
-		shape.lineTo(corner2X, corner2Y);
-		shape.arc(startX, startY, radius, Math.atan2(-perpY, -perpX), Math.atan2(perpY, perpX), false);
-		shape.closePath();
-
-		// Step 20.8e) Create geometry and material
-		const geometry = new THREE.ShapeGeometry(shape);
+		// Step 3) Create cylinder (main body of capsule)
+		const cylinderGeometry = new THREE.CylinderGeometry(radius, radius, length, 16, 1);
 		const fillMaterial = new THREE.MeshBasicMaterial({
 			color: new THREE.Color(fillColorObj.r, fillColorObj.g, fillColorObj.b),
 			transparent: true,
 			opacity: fillColorObj.a,
 			side: THREE.DoubleSide,
+			depthWrite: false, // Allow transparency to work correctly
 		});
-		const fillMesh = new THREE.Mesh(geometry, fillMaterial);
-		fillMesh.position.z = startZ;
-		fillMesh.rotation.x = -Math.PI / 2; // Rotate to be horizontal
-		group.add(fillMesh);
+		const cylinder = new THREE.Mesh(cylinderGeometry, fillMaterial);
 
-		// Step 20.8f) Create dashed stroke (using line segments)
-		const strokeMaterial = new THREE.LineDashedMaterial({
-			color: new THREE.Color(strokeColorObj.r, strokeColorObj.g, strokeColorObj.b),
-			transparent: true,
-			opacity: strokeColorObj.a,
-			dashSize: 5,
-			gapSize: 5,
-		});
+		// Step 4) Create hemispheres for ends
+		const sphereGeometry = new THREE.SphereGeometry(radius, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
+		const startHemisphere = new THREE.Mesh(sphereGeometry, fillMaterial.clone());
+		const endHemisphere = new THREE.Mesh(sphereGeometry, fillMaterial.clone());
 
-		// Create stroke outline
-		const strokePoints = [new THREE.Vector3(corner1X, corner1Y, startZ), new THREE.Vector3(corner4X, corner4Y, startZ), new THREE.Vector3(corner3X, corner3Y, startZ), new THREE.Vector3(corner2X, corner2Y, startZ), new THREE.Vector3(corner1X, corner1Y, startZ)];
-		const strokeGeometry = new THREE.BufferGeometry().setFromPoints(strokePoints);
-		const strokeLine = new THREE.Line(strokeGeometry, strokeMaterial);
-		strokeLine.computeLineDistances(); // Required for dashed lines
-		group.add(strokeLine);
+		// Step 5) Position and orient cylinder
+		// Cylinder is created along Y-axis, need to align with our vector
+		const midX = (startX + endX) / 2;
+		const midY = (startY + endY) / 2;
+		const midZ = (startZ + endZ) / 2;
+		cylinder.position.set(midX, midY, midZ);
+
+		// Step 6) Rotate cylinder to align with start->end vector
+		// Default cylinder is along Y-axis (0, 1, 0)
+		const axis = new THREE.Vector3(dx, dy, dz).normalize();
+		const yAxis = new THREE.Vector3(0, 1, 0);
+		const quaternion = new THREE.Quaternion().setFromUnitVectors(yAxis, axis);
+		cylinder.quaternion.copy(quaternion);
+
+		// Step 7) Position hemispheres at ends
+		startHemisphere.position.set(startX, startY, startZ);
+		endHemisphere.position.set(endX, endY, endZ);
+
+		// Step 8) Orient hemispheres to face outward
+		startHemisphere.quaternion.copy(quaternion);
+		startHemisphere.rotateX(Math.PI); // Flip to face start direction
+		endHemisphere.quaternion.copy(quaternion);
+
+		// Step 9) Add all meshes to group (removed wireframe)
+		group.add(cylinder);
+		group.add(startHemisphere);
+		group.add(endHemisphere);
 
 		return group;
 	}

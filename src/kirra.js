@@ -29,10 +29,33 @@ import * as THREE from "three";
 import { ThreeRenderer } from "./three/ThreeRenderer.js";
 import { CameraControls } from "./three/CameraControls.js";
 import { GeometryFactory } from "./three/GeometryFactory.js";
+import { InteractionManager } from "./three/InteractionManager.js";
 //=================================================
 // Drawing Modules
 //=================================================
-import { clearThreeJS, renderThreeJS, drawHoleThreeJS, drawHoleToeThreeJS, drawHoleTextThreeJS, drawHoleTextsAndConnectorsThreeJS, drawKADPointThreeJS, drawKADLineSegmentThreeJS, drawKADPolygonSegmentThreeJS, drawKADCircleThreeJS, drawKADTextThreeJS, drawSurfaceThreeJS, drawContoursThreeJS, drawDirectionArrowsThreeJS, drawBackgroundImageThreeJS, drawConnectorThreeJS, highlightSelectedHoleThreeJS, drawToolPromptThreeJS, drawConnectStadiumZoneThreeJS, drawSlopeMapThreeJS, drawBurdenReliefMapThreeJS } from "./draw/canvas3DDrawing.js";
+import {
+	clearThreeJS,
+	renderThreeJS,
+	drawHoleThreeJS,
+	drawHoleToeThreeJS,
+	drawHoleTextThreeJS,
+	drawHoleTextsAndConnectorsThreeJS,
+	drawKADPointThreeJS,
+	drawKADLineSegmentThreeJS,
+	drawKADPolygonSegmentThreeJS,
+	drawKADCircleThreeJS,
+	drawKADTextThreeJS,
+	drawSurfaceThreeJS,
+	drawContoursThreeJS,
+	drawDirectionArrowsThreeJS,
+	drawBackgroundImageThreeJS,
+	drawConnectorThreeJS,
+	highlightSelectedHoleThreeJS,
+	drawToolPromptThreeJS,
+	drawConnectStadiumZoneThreeJS,
+	drawSlopeMapThreeJS,
+	drawBurdenReliefMapThreeJS,
+} from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 //=================================================
 // import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
@@ -284,6 +307,7 @@ let isResizingLeft = false;
 //=================================================
 let threeRenderer = null;
 let cameraControls = null;
+let interactionManager = null; // 3D raycasting and interaction manager
 let threeInitialized = false;
 let onlyShowThreeJS = false; // Toggle to show only Three.js rendering
 
@@ -482,6 +506,10 @@ function initializeThreeJS() {
 		cameraControls = new CameraControls(threeRenderer, canvas);
 		cameraControls.attachEvents();
 
+		// Step 6a) Create interaction manager for 3D raycasting
+		interactionManager = new InteractionManager(threeRenderer, threeRenderer.camera);
+		window.interactionManager = interactionManager; // Expose globally
+
 		// Step 7) Override camera controls to sync with 2D overlay
 		const originalHandleWheel = cameraControls.handleWheel.bind(cameraControls);
 		cameraControls.handleWheel = function (event) {
@@ -518,7 +546,19 @@ function initializeThreeJS() {
 		threeRenderer.setBackgroundColor(darkModeEnabled);
 		console.log("🎨 Three.js background set to", darkModeEnabled ? "black" : "white");
 
+		// Step 10a) Also update base canvas background on initialization
+		if (window.baseCanvas && window.baseCtx) {
+			window.baseCtx.fillStyle = darkModeEnabled ? "#000000" : "#FFFFFF";
+			window.baseCtx.fillRect(0, 0, window.baseCanvas.width, window.baseCanvas.height);
+			console.log("🎨 Base canvas background set to", darkModeEnabled ? "black" : "white");
+		}
+
+		// Step 10b) Set threeInitialized to true BEFORE setting up event handlers
 		threeInitialized = true;
+
+		// Step 10b) Setup 3D mouse event handlers for independent 3D selection
+		setup3DMouseEvents();
+
 		console.log("✅ Three.js rendering system initialized");
 	} catch (error) {
 		console.error("❌ Failed to initialize Three.js:", error);
@@ -560,38 +600,477 @@ function syncCameraToThreeJS() {
 // Note: initializeThreeJS() is called from drawData() when canvas is ready
 //=================================================
 
+// Step 11) Setup 3D mouse event handlers for independent 3D selection
+function setup3DMouseEvents() {
+	if (!threeRenderer) {
+		console.warn("⚠️ [3D EVENTS] threeRenderer not ready");
+		return;
+	}
+
+	const threeCanvas = threeRenderer.getCanvas();
+	if (!threeCanvas) {
+		console.warn("⚠️ [3D EVENTS] No 3D canvas found");
+		return;
+	}
+
+	// Step 11a) Get container (same as camera controls) to ensure events are received
+	const container = threeCanvas.parentElement;
+	if (!container) {
+		console.warn("⚠️ [3D EVENTS] Could not find container for 3D mouse events");
+		return;
+	}
+
+	console.log("🔧 [3D EVENTS] Setting up event listeners on container:", container);
+
+	// Step 11b) Attach event handlers
+	// IMPORTANT: Use capture phase for click to run before camera controls
+	// IMPORTANT: Use DOCUMENT for mousemove to track mouse even when it leaves canvas (for stadium zone)
+	container.addEventListener("click", handle3DClick, true); // Capture phase for selection priority
+	document.addEventListener("mousemove", handle3DMouseMove, false); // Document-wide to track all mouse movement
+	container.addEventListener("touchstart", handle3DTouchStart, { passive: false, capture: true });
+	container.addEventListener("touchend", handle3DTouchEnd, { passive: false, capture: true });
+	container.addEventListener("touchmove", handle3DTouchMove, { passive: false, capture: true });
+
+	console.log("✅ [3D EVENTS] 3D mouse event handlers attached", {
+		container: container.tagName,
+		containerId: container.id,
+		containerClass: container.className,
+		mouseMoveTarget: "document (for full tracking)",
+	});
+}
+
+// Step 12) Handle 3D click - independent 3D selection using raycasting
+// Using click instead of mousedown ensures it only fires after a full click (not during drag)
+// Simplified pattern matching Three.js examples - works at any camera orientation
+function handle3DClick(event) {
+	console.log("🔵 [3D CLICK] Event fired", {
+		onlyShowThreeJS,
+		threeInitialized: !!threeInitialized,
+		threeRenderer: !!threeRenderer,
+		allBlastHoles: !!allBlastHoles,
+		allBlastHolesLength: allBlastHoles ? allBlastHoles.length : 0,
+		clientX: event.clientX,
+		clientY: event.clientY,
+		button: event.button,
+		altKey: event.altKey,
+		ctrlKey: event.ctrlKey,
+		metaKey: event.metaKey,
+	});
+
+	// Step 12a) Only handle if in 3D mode (onlyShowThreeJS flag determines mode)
+	if (!onlyShowThreeJS) {
+		console.log("❌ [3D CLICK] Not in 3D mode - onlyShowThreeJS =", onlyShowThreeJS);
+		// 2D mode is active, don't handle 3D selection
+		return;
+	}
+
+	// Step 12b) Skip if modifier keys are held (let camera controls handle orbit/rotate)
+	// Alt = orbit, Ctrl/Cmd = rotate, Right-click = rotate
+	if (event.altKey || event.metaKey || event.ctrlKey || event.button === 2) {
+		console.log("⏭️ [3D CLICK] Modifier keys held - skipping selection");
+		// Let camera controls handle these
+		return;
+	}
+
+	// Step 12c) Early return if dependencies not ready
+	if (!threeInitialized || !threeRenderer || !allBlastHoles || allBlastHoles.length === 0) {
+		console.log("❌ [3D CLICK] Dependencies not ready", {
+			threeInitialized: !!threeInitialized,
+			threeRenderer: !!threeRenderer,
+			allBlastHoles: !!allBlastHoles,
+			allBlastHolesLength: allBlastHoles ? allBlastHoles.length : 0,
+		});
+		return;
+	}
+
+	// Step 12d) Get 3D canvas for coordinate conversion
+	const threeCanvas = threeRenderer.getCanvas();
+	if (!threeCanvas) {
+		console.log("❌ [3D CLICK] No 3D canvas found");
+		return;
+	}
+
+	// Step 12e) Update mouse position in interaction manager and perform raycast
+	// Use interactionManager which has the proper logic for finding holes
+	if (!interactionManager) {
+		console.log("❌ [3D CLICK] interactionManager not available");
+		return;
+	}
+
+	interactionManager.updateMousePosition(event, threeCanvas);
+
+	// Step 12f) Perform raycast
+	const intersects = interactionManager.raycast();
+
+	console.log("🎯 [3D CLICK] Raycast results:", {
+		intersectsCount: intersects.length,
+		firstIntersect:
+			intersects.length > 0
+				? {
+						object: intersects[0].object.type,
+						userData: intersects[0].object.userData,
+						distance: intersects[0].distance.toFixed(2),
+				  }
+				: null,
+	});
+
+	// Step 12g) Find clicked hole from intersects using interactionManager's method
+	// This has proper logic for traversing parent chains and finding the correct hole
+	// But let's also log what we're checking to debug why it always finds hole 1
+	console.log("🔍 [3D CLICK] Checking", intersects.length, "intersections for holes...");
+	for (let i = 0; i < Math.min(intersects.length, 5); i++) {
+		const intersect = intersects[i];
+		let object = intersect.object;
+		let userData = object.userData;
+		let depth = 0;
+
+		// Traverse up to find userData
+		while (object && (!userData || !userData.holeId)) {
+			object = object.parent;
+			if (object) {
+				userData = object.userData;
+				depth++;
+				if (depth > 5) break;
+			} else {
+				break;
+			}
+		}
+
+		console.log(`  [${i}] Intersection ${i}:`, {
+			distance: intersect.distance.toFixed(2),
+			objectType: intersect.object.type,
+			userDataFound: !!userData,
+			userDataType: userData ? userData.type : null,
+			userDataHoleId: userData ? userData.holeId : null,
+			traversedDepth: depth,
+		});
+	}
+
+	const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles);
+
+	if (clickedHole) {
+		console.log("✅ [3D CLICK] Found hole:", clickedHole.holeID, "in", clickedHole.entityName);
+	} else {
+		console.log("⚠️ [3D CLICK] No hole found in intersections");
+	}
+
+	// Step 12i) Handle selection based on current tool mode
+	if (clickedHole) {
+		console.log("🎯 [3D CLICK] Processing selection for hole:", clickedHole.holeID);
+		console.log("🎯 [3D CLICK] Current tool state:", {
+			isAddingConnector,
+			isAddingMultiConnector,
+			isMultiHoleSelectionEnabled,
+			selectedHoleBefore: selectedHole ? selectedHole.holeID : null,
+			selectedMultipleHolesBefore: selectedMultipleHoles.length,
+		});
+
+		// Prevent camera controls from handling this event
+		event.stopPropagation();
+		event.preventDefault();
+
+		if (isAddingConnector) {
+			// Step 12i.1) Single connector tool logic in 3D (matching 2D handleConnectorClick)
+			console.log("🔗 [3D CLICK] Single connector tool mode");
+			if (!fromHoleStore) {
+				// Step 12i.1a) First hole selection
+				fromHoleStore = clickedHole;
+				firstSelectedHole = clickedHole;
+				selectedHole = clickedHole;
+				console.log("✅ [3D CLICK] Set first connector hole:", clickedHole.holeID);
+			} else {
+				// Step 12i.1b) Second hole selection - create connector
+				selectedHole = clickedHole; // Set selected hole to second hole for yellow highlight
+				secondSelectedHole = clickedHole; // IMPORTANT: Set this for highlighting
+				console.log("✅ [3D CLICK] Set second connector hole:", clickedHole.holeID);
+
+				// Step 12i.1c) Get delay and color values
+				const delay = getDelayValue();
+				const color = getJSColorHex();
+
+				// Step 12i.1d) Find clicked hole in allBlastHoles array
+				const clickedHoleIndex = allBlastHoles.findIndex((h) => h === clickedHole);
+
+				if (clickedHoleIndex !== -1) {
+					// Step 12i.1e) Set connector data (matching 2D format)
+					allBlastHoles[clickedHoleIndex].fromHoleID = fromHoleStore.entityName + ":::" + fromHoleStore.holeID;
+					allBlastHoles[clickedHoleIndex].timingDelayMilliseconds = delay;
+					allBlastHoles[clickedHoleIndex].colorHexDecimal = color;
+					console.log("🔗 [3D CLICK] Created connector:", fromHoleStore.holeID, "→", clickedHole.holeID, "delay:", delay, "color:", color);
+				}
+
+				// Step 12i.1f) Reset connector state - green disappears, only yellow persists from selectedHole
+				fromHoleStore = null;
+				firstSelectedHole = null;
+				// NOTE: secondSelectedHole and selectedHole remain set to show yellow highlight
+
+				// Step 12i.1g) Recalculate timing and contours
+				holeTimes = calculateTimes(allBlastHoles);
+				const result = recalculateContours(allBlastHoles, deltaX, deltaY);
+				contourLinesArray = result.contourLinesArray;
+				directionArrows = result.directionArrows;
+
+				// Step 12i.1h) Update time chart
+				timeChart();
+
+				// Step 12i.1i) Draw - only yellow highlight visible now
+				drawData(allBlastHoles, selectedHole);
+			}
+		} else if (isAddingMultiConnector) {
+			// Step 12i.2) Multi-connector tool logic in 3D (matching 2D handleConnectorClick)
+			console.log("🔗 [3D CLICK] Multi-connector tool mode");
+			if (!fromHoleStore) {
+				// Step 12i.2a) First hole selection - clear previous yellow highlight
+				secondSelectedHole = null; // Clear old yellow
+				fromHoleStore = clickedHole;
+				firstSelectedHole = clickedHole;
+				selectedHole = clickedHole;
+				console.log("✅ [3D CLICK] Set first multi-connector hole:", clickedHole.holeID);
+			} else {
+				// Step 12i.2b) Second hole selection - create connectors
+				selectedHole = clickedHole; // Set selected hole to second hole for yellow highlight
+				secondSelectedHole = clickedHole; // IMPORTANT: Set this for highlighting
+				console.log("✅ [3D CLICK] Set second multi-connector hole:", clickedHole.holeID);
+
+				// Step 12i.2c) Get all holes in stadium zone (line with tolerance)
+				const pointsInLine = getPointsInLine(fromHoleStore, clickedHole);
+
+				if (pointsInLine.length > 0) {
+					// Step 12i.2d) Connect all holes in sequence
+					connectHolesInLine(pointsInLine);
+					console.log("🔗 [3D CLICK] Connected " + pointsInLine.length + " holes in line");
+				}
+
+				// Step 12i.2e) Reset connector state - green disappears, only yellow persists from selectedHole
+				fromHoleStore = null;
+				firstSelectedHole = null;
+				// NOTE: secondSelectedHole and selectedHole remain set to show yellow highlight
+
+				// Step 12i.2f) Recalculate timing and contours
+				holeTimes = calculateTimes(allBlastHoles);
+				const result = recalculateContours(allBlastHoles, deltaX, deltaY);
+				contourLinesArray = result.contourLinesArray;
+				directionArrows = result.directionArrows;
+
+				// Step 12i.2g) Update time chart
+				timeChart();
+
+				// Step 12i.2h) Draw - only yellow highlight visible now
+				drawData(allBlastHoles, selectedHole);
+			}
+		} else if (isMultiHoleSelectionEnabled) {
+			// Multi-selection mode
+			console.log("📋 [3D CLICK] Multi-selection mode");
+			const index = selectedMultipleHoles.findIndex((h) => h.entityName === clickedHole.entityName && h.holeID === clickedHole.holeID);
+			if (index >= 0) {
+				selectedMultipleHoles.splice(index, 1);
+				console.log("➖ [3D CLICK] Removed from multi-selection. New count:", selectedMultipleHoles.length);
+			} else {
+				selectedMultipleHoles.push(clickedHole);
+				console.log(
+					"➕ [3D CLICK] Added to multi-selection. New count:",
+					selectedMultipleHoles.length,
+					"Holes:",
+					selectedMultipleHoles.map((h) => h.holeID)
+				);
+			}
+			selectedHole = null; // Clear single selection
+		} else {
+			// Single selection mode (SelectionPointer tool)
+			console.log("👆 [3D CLICK] Single selection mode (SelectionPointer)");
+			const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
+			selectedHole = clickedHole;
+			selectedMultipleHoles = [];
+			console.log("✅ [3D CLICK] SELECTED HOLE:", {
+				previous: previousSelectedHole,
+				current: selectedHole.holeID,
+				entityName: selectedHole.entityName,
+				selectedHoleObject: selectedHole,
+			});
+		}
+
+		// Redraw to show selection (ONLY for non-connector modes)
+		// Connector modes handle their own drawData calls with proper timing
+		if (!isAddingConnector && !isAddingMultiConnector) {
+			console.log("🔄 [3D CLICK] Calling drawData with selectedHole:", selectedHole ? selectedHole.holeID : null);
+			drawData(allBlastHoles, selectedHole);
+		}
+	} else {
+		// Step 12j) Clicked on empty space - clear selection (unless in connector mode)
+		console.log("🌌 [3D CLICK] Clicked on empty space");
+		// Don't stop propagation here - let camera controls handle panning if needed
+		if (!isAddingConnector && !isAddingMultiConnector) {
+			const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
+			const previousMultiCount = selectedMultipleHoles.length;
+			selectedHole = null;
+			if (!isMultiHoleSelectionEnabled) {
+				selectedMultipleHoles = [];
+			}
+			console.log("🗑️ [3D CLICK] Cleared selection:", {
+				previousSelectedHole,
+				previousMultiCount,
+				newSelectedHole: selectedHole,
+				newMultiCount: selectedMultipleHoles.length,
+			});
+			drawData(allBlastHoles, selectedHole);
+		}
+	}
+}
+
+// Step 13) Handle 3D mouse move - hover effects and stadium zone tracking
+function handle3DMouseMove(event) {
+	// Step 13a) Only handle if in 3D mode
+	if (!onlyShowThreeJS) return;
+
+	// Step 13b) Early return if dependencies not ready
+	if (!threeInitialized || !threeRenderer || !interactionManager) return;
+
+	// Step 13c) Get 3D canvas
+	const threeCanvas = threeRenderer.getCanvas();
+	if (!threeCanvas) return;
+
+	// Step 13d) Update mouse position for raycasting
+	interactionManager.updateMousePosition(event, threeCanvas);
+
+	// Step 13e) Update hover state
+	if (allBlastHoles && allBlastHoles.length > 0) {
+		const intersects = interactionManager.raycast();
+		interactionManager.updateHover(intersects, allBlastHoles);
+	}
+
+	// Step 13f) Calculate world coordinates for stadium zone tracking
+	// Get mouse position in canvas coordinates
+	const rect = threeCanvas.getBoundingClientRect();
+	const mouseX = event.clientX - rect.left;
+	const mouseY = event.clientY - rect.top;
+
+	// Convert canvas coordinates to world coordinates using current camera state
+	const camera = threeRenderer.camera;
+	if (camera && camera.isOrthographicCamera) {
+		// Step 13f.1) Get normalized device coordinates (-1 to +1)
+		const ndcX = (mouseX / rect.width) * 2 - 1;
+		const ndcY = -(mouseY / rect.height) * 2 + 1;
+
+		// Step 13f.2) Calculate world position at Z=0 plane
+		// CameraControls.centroidX/Y are already in WORLD coordinates
+		// We just need to add the viewport offsets to get the final world mouse position
+		const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
+		if (cameraState) {
+			const viewportWidth = camera.right - camera.left;
+			const viewportHeight = camera.top - camera.bottom;
+
+			const offsetX = ndcX * (viewportWidth / 2);
+			const offsetY = ndcY * (viewportHeight / 2);
+
+			// Step 13f.3) CameraControls.centroidX/Y are already in WORLD coordinates
+			// Just add the viewport offsets (no need to add threeLocalOriginX/Y again)
+			const worldX = cameraState.centroidX + offsetX;
+			const worldY = cameraState.centroidY + offsetY;
+
+			currentMouseWorldX = worldX;
+			currentMouseWorldY = worldY;
+
+			if (isAddingMultiConnector && fromHoleStore && threeRenderer && threeRenderer.connectorsGroup) {
+				const toRemove = [];
+				threeRenderer.connectorsGroup.children.forEach((child) => {
+					if (child.userData && child.userData.type === "stadiumZone") {
+						toRemove.push(child);
+					}
+				});
+				toRemove.forEach((obj) => {
+					threeRenderer.connectorsGroup.remove(obj);
+					if (obj.geometry) obj.geometry.dispose();
+					if (obj.material) {
+						if (Array.isArray(obj.material)) {
+							obj.material.forEach((mat) => mat.dispose());
+						} else {
+							obj.material.dispose();
+						}
+					}
+				});
+
+				drawConnectStadiumZoneThreeJS(fromHoleStore, { x: worldX, y: worldY }, connectAmount);
+				if (threeRenderer.renderer) {
+					threeRenderer.render();
+				}
+			}
+		}
+	}
+}
+
+// Step 15) Handle 3D touch events
+function handle3DTouchStart(event) {
+	if (event.touches.length === 1) {
+		const touch = event.touches[0];
+		const mouseEvent = new MouseEvent("mousedown", {
+			clientX: touch.clientX,
+			clientY: touch.clientY,
+			button: 0,
+		});
+		handle3DMouseDown(mouseEvent);
+	}
+	event.preventDefault();
+}
+
+function handle3DTouchEnd(event) {
+	if (event.changedTouches.length === 1) {
+		const touch = event.changedTouches[0];
+		const mouseEvent = new MouseEvent("mouseup", {
+			clientX: touch.clientX,
+			clientY: touch.clientY,
+			button: 0,
+		});
+		handle3DMouseUp(mouseEvent);
+	}
+	event.preventDefault();
+}
+
+function handle3DTouchMove(event) {
+	if (event.touches.length === 1) {
+		const touch = event.touches[0];
+		const mouseEvent = new MouseEvent("mousemove", {
+			clientX: touch.clientX,
+			clientY: touch.clientY,
+		});
+		handle3DMouseMove(mouseEvent);
+	}
+	event.preventDefault();
+}
+
 // Step 10) Setup onlyShowThreeJS checkbox listener
 document.addEventListener("DOMContentLoaded", function () {
 	const onlyThreeJSCheckbox = document.getElementById("onlyShowThreeJS");
 	if (onlyThreeJSCheckbox) {
 		onlyThreeJSCheckbox.addEventListener("change", function () {
 			onlyShowThreeJS = this.checked;
-			console.log(onlyShowThreeJS ? "🎨 Showing only Three.js rendering" : "🎨 Showing both 2D canvas and Three.js");
+			console.log(onlyShowThreeJS ? "🎨 Showing only Three.js rendering" : "🎨 Showing only 2D canvas");
 
 			const threeCanvas = document.getElementById("threeCanvas");
 
 			if (onlyShowThreeJS) {
-				// Show only Three.js: swap z-index so Three.js is on top
+				// Step 1a) Show only 3D canvas - hide 2D canvas completely
 				canvas.style.zIndex = "0"; // 2D canvas behind
 				canvas.style.opacity = "0"; // Hide 2D canvas
 				canvas.style.pointerEvents = "none"; // Don't block events
 
 				if (threeCanvas) {
 					threeCanvas.style.zIndex = "2"; // Three.js on top
+					threeCanvas.style.opacity = "1"; // Show 3D canvas
 					threeCanvas.style.pointerEvents = "auto"; // Receive events
 				}
-				console.log("📊 Layers: Three.js (z:2, top), 2D canvas (z:0, hidden)");
+				console.log("📊 Layers: Three.js (z:2, visible), 2D canvas (z:0, hidden)");
 			} else {
-				// Show both: restore original layering
-				canvas.style.zIndex = "2"; // 2D canvas on top (for text/UI)
+				// Step 1b) Show only 2D canvas - hide 3D canvas completely
+				canvas.style.zIndex = "2"; // 2D canvas on top
 				canvas.style.opacity = "1"; // Show 2D canvas
 				canvas.style.pointerEvents = "auto"; // Receive events
 
 				if (threeCanvas) {
-					threeCanvas.style.zIndex = "1"; // Three.js below
-					threeCanvas.style.pointerEvents = "auto"; // Receive events
+					threeCanvas.style.zIndex = "0"; // Three.js behind
+					threeCanvas.style.opacity = "0"; // Hide 3D canvas
+					threeCanvas.style.pointerEvents = "none"; // Don't block events
 				}
-				console.log("📊 Layers: 2D canvas (z:2, top), Three.js (z:1, below)");
+				console.log("📊 Layers: 2D canvas (z:2, visible), Three.js (z:0, hidden)");
 			}
 
 			// Redraw to apply changes
@@ -608,17 +1087,20 @@ document.addEventListener("DOMContentLoaded", function () {
 			const iconImg = this.nextElementSibling.querySelector("img");
 
 			if (show3D) {
-				// Step 11a) 3D-only mode (no 2D drawing)
+				// Step 1c) 3D-only mode - show only 3D canvas, hide 2D canvas
 				onlyShowThreeJS = true;
-				console.log("🎨 3D-ONLY Mode: ON (2D drawing disabled)");
+				console.log("🎨 3D-ONLY Mode: ON (2D canvas hidden)");
 
 				if (threeCanvas) {
-					threeCanvas.style.display = "block";
-					threeCanvas.style.zIndex = "1";
+					threeCanvas.style.zIndex = "2"; // Three.js on top
+					threeCanvas.style.opacity = "1"; // Show 3D canvas
+					threeCanvas.style.pointerEvents = "auto"; // Receive events
 				}
-				// Keep 2D canvas visible for mouse events, but clear it
+				// Hide 2D canvas completely
 				if (canvas) {
-					canvas.style.display = "block";
+					canvas.style.zIndex = "0"; // 2D canvas behind
+					canvas.style.opacity = "0"; // Hide 2D canvas
+					canvas.style.pointerEvents = "none"; // Don't block events
 				}
 				// Swap icon to 3D badge
 				if (iconImg) {
@@ -626,15 +1108,19 @@ document.addEventListener("DOMContentLoaded", function () {
 					iconImg.alt = "3D View Active (3D Only)";
 				}
 			} else {
-				// Step 11b) 2D-only mode (no 3D rendering)
+				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
 				onlyShowThreeJS = false;
 				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
 
 				if (threeCanvas) {
-					threeCanvas.style.display = "none";
+					threeCanvas.style.zIndex = "0"; // Three.js behind
+					threeCanvas.style.opacity = "0"; // Hide 3D canvas
+					threeCanvas.style.pointerEvents = "none"; // Don't block events
 				}
 				if (canvas) {
-					canvas.style.display = "block";
+					canvas.style.zIndex = "2"; // 2D canvas on top
+					canvas.style.opacity = "1"; // Show 2D canvas
+					canvas.style.pointerEvents = "auto"; // Receive events
 				}
 				// Swap icon to 2D badge
 				if (iconImg) {
@@ -866,13 +1352,16 @@ let animationInterval; // To store the interval ID for the animation
 let playSpeed = 1; // Default play speed
 //COLOURS
 let noneColor = "rgba(0, 0, 0, 0)";
-let darkModeEnabled = document.body.classList.contains("dark-mode");
+// Step 1) Initialize darkModeEnabled from localStorage BEFORE setting colors
+let darkModeEnabled = localStorage.getItem("darkMode") === "true" || document.body.classList.contains("dark-mode");
+console.log("🎨 Dark mode detected on init:", darkModeEnabled, "from localStorage:", localStorage.getItem("darkMode"));
+// Step 2) Set colors correctly based on dark mode
 let transparentFillColor = darkModeEnabled ? "rgba(0, 128, 255, 0.3)" : "rgba(128, 255, 0, 0.3)";
-let fillColor = darkModeEnabled ? "lightgrey" : "darkgrey";
+let fillColor = darkModeEnabled ? "darkgrey" : "lightgrey"; // FIXED: was backwards
 let strokeColor = darkModeEnabled ? "white" : "black";
 let textFillColor = darkModeEnabled ? "white" : "black";
-let depthColor = darkModeEnabled ? "blue" : "cyan";
-let angleDipColor = darkModeEnabled ? "darkcyan" : "orange";
+let depthColor = darkModeEnabled ? "cyan" : "blue"; // FIXED: was backwards
+let angleDipColor = darkModeEnabled ? "orange" : "darkorange"; // FIXED: was backwards
 
 ///////////////////////////
 //DEVELOPER MODE BUTTON
@@ -4190,6 +4679,12 @@ function handleMouseMove(event) {
 }
 
 function handleMouseUp(event) {
+	// Step 3a) Only process 2D mouse events when 2D canvas is active
+	if (onlyShowThreeJS) {
+		// 3D mode is active, don't process 2D selection
+		return;
+	}
+
 	isDragging = false;
 	clearTimeout(longPressTimeout); // Clear the long press timeout
 	// Block tool-specific behaviors only if tools are dragging
@@ -13006,6 +13501,12 @@ function drawMousePosition(x, y) {
 }
 //-------------------------SELECTION OF BLAST HOLES----------------------//
 function getClickedHole(clickX, clickY) {
+	// Step 2a) Only process 2D selection when 2D canvas is active
+	if (onlyShowThreeJS) {
+		// 3D mode is active, don't process 2D selection
+		return null;
+	}
+
 	// Add null check at the very beginning
 	if (!allBlastHoles || allBlastHoles.length === 0) {
 		return null; // No holes to check
@@ -17215,7 +17716,7 @@ function recalculateContours(allBlastHoles, deltaX, deltaY) {
 		// Step 1) Call delaunayContours ONCE - it calculates ALL contour levels
 		// NOTE: delaunayContours() handles all levels internally, not per-level
 		const result = delaunayContours(contourData, null, maxEdgeLength);
-		
+
 		// Step 2) Check if result is valid
 		if (!result || !result.contourLinesArray) {
 			console.warn("delaunayContours returned invalid result");
@@ -17979,8 +18480,8 @@ function drawData(allBlastHoles, selectedHole) {
 		// Draw surfaces SECOND
 		drawSurface();
 
-		// Highlight single selected point if needed
-		if (selectedPoint !== null) {
+		// Step 4e) Highlight single selected point if needed (2D only)
+		if (selectedPoint !== null && !onlyShowThreeJS) {
 			const [x, y] = worldToCanvas(selectedPoint.pointXLocation, selectedPoint.pointYLocation);
 			drawHiHole(x, y, 10, "rgba(255, 102, 255, 0.3)", "rgba(255, 0, 255, 0.6)");
 		}
@@ -18487,8 +18988,11 @@ function drawData(allBlastHoles, selectedHole) {
 					drawTrack(x, y, lineEndX, lineEndY, gradeX, gradeY, strokeColor, hole.subdrillAmount);
 				}
 
-				// Highlight selected holes for animation/time window selection
-				handleHoleHighlighting(hole, x, y);
+				// Step 4a) Highlight selected holes for animation/time window selection (2D only)
+				// Only draw 2D highlighting when in 2D mode
+				if (!onlyShowThreeJS) {
+					handleHoleHighlighting(hole, x, y);
+				}
 
 				// Draw toe if hole length is not zero
 				if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
@@ -18550,8 +19054,9 @@ function drawData(allBlastHoles, selectedHole) {
 						}
 					}
 
-					// Step 5) Draw selection highlighting in Three.js (matching 2D style)
-					if (threeInitialized) {
+					// Step 4b) Draw selection highlighting in Three.js (matching 2D style)
+					// Only draw 3D highlighting when in 3D mode
+					if (threeInitialized && onlyShowThreeJS) {
 						// Connector mode highlighting
 						if (isAddingConnector || isAddingMultiConnector) {
 							if (fromHoleStore && fromHoleStore === hole) {
@@ -18566,6 +19071,11 @@ function drawData(allBlastHoles, selectedHole) {
 							} else if (secondSelectedHole && secondSelectedHole === hole) {
 								highlightSelectedHoleThreeJS(hole, "second");
 								drawToolPromptThreeJS("2nd Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Click to connect)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 200, 0, .8)");
+							}
+							// IMPORTANT: Also check selectedHole in connector mode (for yellow highlight after creating connector)
+							else if (selectedHole && selectedHole === hole) {
+								highlightSelectedHoleThreeJS(hole, "selected");
+								drawToolPromptThreeJS("Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + " with Single Selection Mode \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
 							}
 						}
 						// Regular selection highlighting
@@ -19257,7 +19767,10 @@ function drawHoleMainShape(hole, x, y, selectedHole) {
 			highlightColor1 = "rgba(0, 255, 0, 0.2)";
 			highlightColor2 = "rgba(0, 190, 0, .8)";
 			highlightText = "1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)";
-			drawConnectStadiumZone(hole.startXLocation, hole.startYLocation, currentMouseWorldX, currentMouseWorldY, connectAmount);
+			// Step 4d) Draw 2D stadium zone only when in 2D mode
+			if (!onlyShowThreeJS) {
+				drawConnectStadiumZone(hole.startXLocation, hole.startYLocation, currentMouseWorldX, currentMouseWorldY, connectAmount);
+			}
 		}
 		// Second selected hole in connector mode (using firstSelectedHole/secondSelectedHole)
 		else if (firstSelectedHole && firstSelectedHole === hole) {
@@ -19291,8 +19804,8 @@ function drawHoleMainShape(hole, x, y, selectedHole) {
 		}
 	}
 
-	// Draw highlight, if any
-	if (highlightType) {
+	// Step 4c) Draw highlight, if any (2D only - only when in 2D mode)
+	if (highlightType && !onlyShowThreeJS) {
 		drawHiHole(x, y, 10 + parseInt((hole.holeDiameter / 900) * holeScale * currentScale), highlightColor1, highlightColor2);
 		ctx.fillStyle = highlightColor2;
 		ctx.font = "12px Arial";
@@ -23376,6 +23889,14 @@ function safeRemoveMenu(menu) {
 // Update the polygon tool event listener to properly handle conflicts
 selectByPolygonTool.addEventListener("change", function () {
 	if (this.checked) {
+		// Step 1) Check if in 3D mode - polygon selection is 2D-only
+		if (onlyShowThreeJS) {
+			console.log("⚠️ Polygon selection tool is not available in 3D mode");
+			alert("Polygon selection tool is only available in 2D mode.\nPlease switch to 2D view to use this tool.");
+			this.checked = false;
+			return;
+		}
+
 		// Uncheck the other buttons
 		resetFloatingToolbarButtons("selectByPolygonTool");
 		endKadTools();

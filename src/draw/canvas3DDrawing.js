@@ -81,12 +81,25 @@ export function drawHoleThreeJS(hole) {
 	}
 
 	// Step 4) Add metadata for interaction/selection
+	// IMPORTANT: holeId must be UNIQUE per hole, not just the entityName (which is shared by all holes in a pattern)
+	// Use entityName + ":::" + holeID to create a unique identifier (matching 2D selection logic)
+	const uniqueHoleId = hole.entityName + ":::" + hole.holeID;
+
 	holeGroup.userData = {
 		type: "hole",
-		holeId: hole.entityName, // Unique identifier for selection
-		holeID: hole.holeID, // Display name
+		holeId: uniqueHoleId, // Unique identifier for selection (entityName:::holeID)
+		entityName: hole.entityName, // Pattern/entity name
+		holeID: hole.holeID, // Display name (hole number)
 		holeData: hole, // Full hole data for tooltips/info
 	};
+
+	// Step 4a) Also set userData on all child meshes for raycasting
+	holeGroup.traverse((child) => {
+		if (child.isMesh || child.isLine || child.isPoints) {
+			// Copy userData to children so raycast hits work
+			child.userData = Object.assign({}, holeGroup.userData, child.userData);
+		}
+	});
 
 	window.threeRenderer.holesGroup.add(holeGroup);
 	window.threeRenderer.holeMeshMap.set(hole.holeID, holeGroup);
@@ -478,7 +491,10 @@ export function highlightSelectedHoleThreeJS(hole, highlightType) {
 	let fillColor, strokeColor, radius;
 
 	const holeDiameter = parseFloat(hole.holeDiameter) || 0;
-	const baseRadius = 10 + (holeDiameter / 900) * window.holeScale * window.currentScale;
+	// Step 18b.1) Radius = 1m + hole diameter (in meters)
+	// Convert hole diameter from mm to meters, then add 1m
+	const holeDiameterMeters = holeDiameter / 1000; // Convert mm to meters
+	const baseRadius = 1.0 + holeDiameterMeters; // 1m + hole diameter in meters
 
 	switch (highlightType) {
 		case "first":
@@ -531,32 +547,32 @@ export function highlightSelectedHoleThreeJS(hole, highlightType) {
 	window.threeRenderer.holesGroup.add(highlightGroup);
 }
 
-// Step 19) Draw connection stadium zone in Three.js
+// Step 19) Draw connection stadium zone (multi-connector indicator) in Three.js
 export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmount) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!fromHole || !toMousePos) return;
 
-	// Step 19a) Convert world coordinates to local Three.js coordinates
+	// Step 19a) Convert BOTH positions to Three.js local coordinates
 	const fromLocal = window.worldToThreeLocal(fromHole.startXLocation, fromHole.startYLocation);
 	const toLocal = window.worldToThreeLocal(toMousePos.x, toMousePos.y);
 
-	// Step 19b) Use collar Z elevation
-	const z = fromHole.startZLocation || 0;
+	// Step 19b) Use collar Z elevations (mouse doesn't have Z, use collar Z)
+	const fromZ = fromHole.startZLocation || 0;
+	const toZ = fromHole.startZLocation || 0; // Use same Z as collar for mouse endpoint
 
-	// Step 19c) Calculate radius in world units (connectAmount is in meters)
 	const radius = connectAmount;
 
-	// Step 19d) Create stadium zone geometry
+	// Step 19c) Create capsule stadium zone in local coordinates
 	const stadiumGroup = GeometryFactory.createStadiumZone(
 		fromLocal.x,
 		fromLocal.y,
-		z,
+		fromZ,
 		toLocal.x,
 		toLocal.y,
-		z,
+		toZ,
 		radius,
-		"rgba(0, 255, 0, 0.4)", // stroke
-		"rgba(0, 255, 0, 0.15)" // fill
+		"rgba(0, 255, 0, 0.6)", // stroke - more opaque green
+		"rgba(0, 255, 0, 0.2)" // fill - semi-transparent green
 	);
 
 	// Step 19e) Add metadata

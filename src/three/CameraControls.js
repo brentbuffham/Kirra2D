@@ -24,6 +24,7 @@ export class CameraControls {
 		this.isDragging = false;
 		this.isRotating = false;
 		this.isOrbiting = false; // 3D orbit mode
+		this.pendingPan = false; // Flag to track if pan is pending (will activate on drag)
 		this.lastMouseX = 0;
 		this.lastMouseY = 0;
 		this.dragStartX = 0;
@@ -179,13 +180,24 @@ export class CameraControls {
 
 	// Step 16) Handle mouse down
 	handleMouseDown(event) {
-		// Step 16a) Stop any ongoing momentum animation
+		// Step 16a) Check if we're in 3D mode and if an object was clicked (selection takes priority)
+		// Only check if onlyShowThreeJS is true and no modifier keys (selection handler runs in capture phase)
+		if (window.onlyShowThreeJS && !event.altKey && !event.metaKey && !event.ctrlKey && event.button !== 2) {
+			// Check if selection handler already handled this (it runs in capture phase)
+			// If event.defaultPrevented, selection handler stopped us - don't start any camera movement
+			if (event.defaultPrevented) {
+				console.log("🎯 Camera controls: Selection handler prevented camera movement");
+				return; // Don't start camera drag/orbit/rotate
+			}
+		}
+
+		// Step 16b) Stop any ongoing momentum animation
 		if (this.animationFrameId !== null) {
 			cancelAnimationFrame(this.animationFrameId);
 			this.animationFrameId = null;
 		}
 
-		// Step 16b) Reset velocities
+		// Step 16c) Reset velocities
 		this.velocityX = 0;
 		this.velocityY = 0;
 		this.velocityOrbitX = 0;
@@ -197,7 +209,7 @@ export class CameraControls {
 			event.preventDefault();
 		}
 
-		// Step 18) Check for orbit mode (Alt key)
+		// Step 18) Check for orbit mode (Alt key) - activate immediately
 		if (event.altKey) {
 			event.preventDefault(); // Prevent any browser shortcuts
 			this.isOrbiting = true;
@@ -205,7 +217,7 @@ export class CameraControls {
 			this.isDragging = false;
 			console.log("🌐 3D Orbit mode activated (Alt held)");
 		}
-		// Step 19) Check for 2D rotation mode (Command/Ctrl or right-click)
+		// Step 19) Check for 2D rotation mode (Command/Ctrl or right-click) - activate immediately
 		// metaKey = Command on Mac, Windows key on PC
 		else if (event.metaKey || event.ctrlKey || event.button === 2) {
 			event.preventDefault(); // Prevent context menu and browser shortcuts
@@ -214,12 +226,15 @@ export class CameraControls {
 			this.isDragging = false;
 			console.log("🔄 2D Rotation mode activated (⌘/Ctrl/Right-click)");
 		}
-		// Step 20) Default pan mode
+		// Step 20) Default pan mode - but DON'T activate until mouse moves (drag detected)
+		// In 3D mode, single click should select, not pan. Pan only happens on drag.
 		else {
-			this.isDragging = true;
+			// Don't set isDragging = true yet - wait for mousemove to detect actual drag
+			// Store initial position to detect drag threshold
+			this.isDragging = false; // Start as false, will be set to true on first mousemove
 			this.isRotating = false;
 			this.isOrbiting = false;
-			console.log("👆 Pan mode activated");
+			this.pendingPan = true; // Flag to indicate pan is pending (will activate on drag)
 		}
 
 		this.lastMouseX = event.clientX;
@@ -230,6 +245,21 @@ export class CameraControls {
 
 	// Step 18) Handle mouse move
 	handleMouseMove(event) {
+		// Step 18a) Check if pan is pending and activate on first movement (drag threshold)
+		if (this.pendingPan && !this.isDragging && !this.isRotating && !this.isOrbiting) {
+			// Check if mouse has moved enough to consider it a drag (not just a click)
+			const dragThreshold = 3; // pixels
+			const deltaX = Math.abs(event.clientX - this.dragStartX);
+			const deltaY = Math.abs(event.clientY - this.dragStartY);
+			
+			if (deltaX > dragThreshold || deltaY > dragThreshold) {
+				// Mouse has moved enough - this is a drag, activate pan
+				this.isDragging = true;
+				this.pendingPan = false;
+				console.log("👆 Pan mode activated (drag detected)");
+			}
+		}
+		
 		if (this.isDragging) {
 			// Step 19) Pan mode - account for current rotation
 			const deltaX = event.clientX - this.lastMouseX;
@@ -317,7 +347,13 @@ export class CameraControls {
 
 	// Step 22) Handle mouse up
 	handleMouseUp(event) {
-		// Step 22a) Hide axis helper when rotation/orbit ends
+		// Step 22a) Reset pending pan flag if mouse up without drag
+		if (this.pendingPan && !this.isDragging) {
+			this.pendingPan = false;
+			// This was a click, not a drag - selection handler should have handled it
+		}
+		
+		// Step 22b) Hide axis helper when rotation/orbit ends
 		if (this.isRotating || this.isOrbiting) {
 			this.threeRenderer.showAxisHelper(false);
 			console.log("🎯 Axis helper hidden - keys released");
@@ -338,6 +374,7 @@ export class CameraControls {
 		this.isDragging = false;
 		this.isRotating = false;
 		this.isOrbiting = false;
+		this.pendingPan = false;
 	}
 
 	// Step 23) Handle touch start

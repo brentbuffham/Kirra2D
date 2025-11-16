@@ -39,11 +39,19 @@ export class InteractionManager {
 	
 	// Step 4) Perform raycast and return intersected objects
 	raycast() {
-		this.raycaster.setFromCamera(this.mouse, this.camera);
+		// Step 4a) Use current camera state from threeRenderer (not stored reference)
+		// This ensures raycasting works with current camera orientation/orbit/rotation
+		const currentCamera = this.threeRenderer.camera;
+		this.raycaster.setFromCamera(this.mouse, currentCamera);
 		
-		// Step 4a) Raycast against all scene objects
+		// Step 4b) Raycast against all scene objects
 		const scene = this.threeRenderer.scene;
 		const intersects = this.raycaster.intersectObjects(scene.children, true);
+		
+		// Debug: Log raycast details
+		if (intersects.length > 0) {
+			console.log("🔍 Raycast hit", intersects.length, "objects. First:", intersects[0].object.userData, "distance:", intersects[0].distance.toFixed(2));
+		}
 		
 		return intersects;
 	}
@@ -54,26 +62,54 @@ export class InteractionManager {
 		
 		// Step 5a) Loop through intersects to find hole
 		for (const intersect of intersects) {
-			const userData = intersect.object.userData;
+			let object = intersect.object;
+			let userData = object.userData;
 			
-			// Step 5b) Check if this object represents a hole
-			if (userData && userData.type === "hole" && userData.holeId) {
-				// Step 5c) Find the corresponding hole data
-				const hole = allBlastHoles.find(h => h.entityName === userData.holeId);
-				if (hole) {
-					console.log("🎯 Clicked hole:", hole.holeID, "at distance:", intersect.distance.toFixed(2));
-					return hole;
+			// Step 5b) Traverse up the parent chain to find hole userData
+			// Raycast might hit child meshes that don't have userData
+			while (object && (!userData || !userData.holeId)) {
+				object = object.parent;
+				if (object) {
+					userData = object.userData;
+				} else {
+					break;
 				}
 			}
 			
-			// Step 5d) Check for hole toe
-			if (userData && userData.type === "holeToe" && userData.holeId) {
-				const hole = allBlastHoles.find(h => h.entityName === userData.holeId);
+		// Step 5c) Check if this object represents a hole
+		if (userData && userData.type === "hole" && userData.holeId) {
+			// Step 5d) Find the corresponding hole data
+			// userData.holeId is now unique: entityName:::holeID (e.g. "PolygonPattern_123:::5")
+			// Match against the combined identifier
+			const hole = allBlastHoles.find(h => (h.entityName + ":::" + h.holeID) === userData.holeId);
+			if (hole) {
+				console.log("🎯 Clicked hole:", hole.holeID, "in", hole.entityName, "at distance:", intersect.distance.toFixed(2));
+				return hole;
+			} else {
+				console.log("⚠️ Could not find hole with holeId:", userData.holeId);
+			}
+		}
+			
+		// Step 5e) Check for hole toe (also traverse up)
+		if (userData && userData.type === "holeToe" && userData.holeId) {
+			const hole = allBlastHoles.find(h => (h.entityName + ":::" + h.holeID) === userData.holeId);
+			if (hole) {
+				console.log("🎯 Clicked hole toe:", hole.holeID);
+				return hole;
+			}
+		}
+		
+		// Step 5f) Also check if parent is a Group with hole userData
+		if (object && object.parent) {
+			const parentUserData = object.parent.userData;
+			if (parentUserData && parentUserData.type === "hole" && parentUserData.holeId) {
+				const hole = allBlastHoles.find(h => (h.entityName + ":::" + h.holeID) === parentUserData.holeId);
 				if (hole) {
-					console.log("🎯 Clicked hole toe:", hole.holeID);
+					console.log("🎯 Clicked hole (via parent):", hole.holeID, "in", hole.entityName);
 					return hole;
 				}
 			}
+		}
 		}
 		
 		return null;
