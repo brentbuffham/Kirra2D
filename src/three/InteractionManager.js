@@ -10,61 +10,61 @@ export class InteractionManager {
 	constructor(threeRenderer, camera) {
 		this.threeRenderer = threeRenderer;
 		this.camera = camera;
-		
+
 		// Step 1) Create raycaster for object picking
 		this.raycaster = new THREE.Raycaster();
 		this.mouse = new THREE.Vector2();
-		
+
 		// Step 2) Store currently hovered object
 		this.hoveredObject = null;
 		this.hoveredHole = null;
-		
+
 		console.log("✨ InteractionManager initialized");
 	}
-	
+
 	//=================================================
 	// Mouse Position Conversion
 	//=================================================
-	
+
 	// Step 3) Convert mouse coordinates to normalized device coordinates (-1 to +1)
 	updateMousePosition(event, canvas) {
 		const rect = canvas.getBoundingClientRect();
 		this.mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
 		this.mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
 	}
-	
+
 	//=================================================
 	// Raycasting & Object Detection
 	//=================================================
-	
+
 	// Step 4) Perform raycast and return intersected objects
 	raycast() {
 		// Step 4a) Use current camera state from threeRenderer (not stored reference)
 		// This ensures raycasting works with current camera orientation/orbit/rotation
 		const currentCamera = this.threeRenderer.camera;
 		this.raycaster.setFromCamera(this.mouse, currentCamera);
-		
+
 		// Step 4b) Raycast against all scene objects
 		const scene = this.threeRenderer.scene;
 		const intersects = this.raycaster.intersectObjects(scene.children, true);
-		
+
 		// Debug: Log raycast details
 		if (intersects.length > 0) {
-			console.log("🔍 Raycast hit", intersects.length, "objects. First:", intersects[0].object.userData, "distance:", intersects[0].distance.toFixed(2));
+			//console.log("🔍 Raycast hit", intersects.length, "objects. First:", intersects[0].object.userData, "distance:", intersects[0].distance.toFixed(2));
 		}
-		
+
 		return intersects;
 	}
-	
+
 	// Step 5) Find clicked hole from intersects
 	findClickedHole(intersects, allBlastHoles) {
 		if (!intersects || intersects.length === 0) return null;
-		
+
 		// Step 5a) Loop through intersects to find hole
 		for (const intersect of intersects) {
 			let object = intersect.object;
 			let userData = object.userData;
-			
+
 			// Step 5b) Traverse up the parent chain to find hole userData
 			// Raycast might hit child meshes that don't have userData
 			while (object && (!userData || !userData.holeId)) {
@@ -75,53 +75,53 @@ export class InteractionManager {
 					break;
 				}
 			}
-			
-		// Step 5c) Check if this object represents a hole
-		if (userData && userData.type === "hole" && userData.holeId) {
-			// Step 5d) Find the corresponding hole data
-			// userData.holeId is now unique: entityName:::holeID (e.g. "PolygonPattern_123:::5")
-			// Match against the combined identifier
-			const hole = allBlastHoles.find(h => (h.entityName + ":::" + h.holeID) === userData.holeId);
-			if (hole) {
-				console.log("🎯 Clicked hole:", hole.holeID, "in", hole.entityName, "at distance:", intersect.distance.toFixed(2));
-				return hole;
-			} else {
-				console.log("⚠️ Could not find hole with holeId:", userData.holeId);
-			}
-		}
-			
-		// Step 5e) Check for hole toe (also traverse up)
-		if (userData && userData.type === "holeToe" && userData.holeId) {
-			const hole = allBlastHoles.find(h => (h.entityName + ":::" + h.holeID) === userData.holeId);
-			if (hole) {
-				console.log("🎯 Clicked hole toe:", hole.holeID);
-				return hole;
-			}
-		}
-		
-		// Step 5f) Also check if parent is a Group with hole userData
-		if (object && object.parent) {
-			const parentUserData = object.parent.userData;
-			if (parentUserData && parentUserData.type === "hole" && parentUserData.holeId) {
-				const hole = allBlastHoles.find(h => (h.entityName + ":::" + h.holeID) === parentUserData.holeId);
+
+			// Step 5c) Check if this object represents a hole
+			if (userData && userData.type === "hole" && userData.holeId) {
+				// Step 5d) Find the corresponding hole data
+				// userData.holeId is now unique: entityName:::holeID (e.g. "PolygonPattern_123:::5")
+				// Match against the combined identifier
+				const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === userData.holeId);
 				if (hole) {
-					console.log("🎯 Clicked hole (via parent):", hole.holeID, "in", hole.entityName);
+					console.log("🎯 Clicked hole:", hole.holeID, "in", hole.entityName, "at distance:", intersect.distance.toFixed(2));
+					return hole;
+				} else {
+					console.log("⚠️ Could not find hole with holeId:", userData.holeId);
+				}
+			}
+
+			// Step 5e) Check for hole toe (also traverse up)
+			if (userData && userData.type === "holeToe" && userData.holeId) {
+				const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === userData.holeId);
+				if (hole) {
+					console.log("🎯 Clicked hole toe:", hole.holeID);
 					return hole;
 				}
 			}
+
+			// Step 5f) Also check if parent is a Group with hole userData
+			if (object && object.parent) {
+				const parentUserData = object.parent.userData;
+				if (parentUserData && parentUserData.type === "hole" && parentUserData.holeId) {
+					const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === parentUserData.holeId);
+					if (hole) {
+						console.log("🎯 Clicked hole (via parent):", hole.holeID, "in", hole.entityName);
+						return hole;
+					}
+				}
+			}
 		}
-		}
-		
+
 		return null;
 	}
-	
+
 	// Step 6) Find clicked KAD object from intersects
 	findClickedKAD(intersects, kadEntities) {
 		if (!intersects || intersects.length === 0) return null;
-		
+
 		for (const intersect of intersects) {
 			const userData = intersect.object.userData;
-			
+
 			// Step 6a) Check if this object is a KAD entity
 			if (userData && userData.type && userData.type.startsWith("kad")) {
 				const kadId = userData.kadId;
@@ -131,44 +131,109 @@ export class InteractionManager {
 				}
 			}
 		}
-		
+
 		return null;
 	}
-	
+
 	// Step 7) Get 3D world position from raycast hit
 	getWorldPosition(intersects) {
 		if (!intersects || intersects.length === 0) return null;
-		
+
 		// Step 7a) Get the first intersection point
 		const point = intersects[0].point;
-		
+		if (!point || !isFinite(point.x) || !isFinite(point.y) || !isFinite(point.z)) {
+			return null;
+		}
+
 		// Step 7b) Convert from local Three.js coords to world coords
 		// Note: threeLocalOriginX/Y are exposed via window
-		const worldX = point.x + window.threeLocalOriginX;
-		const worldY = point.y + window.threeLocalOriginY;
+		// Ensure they are valid numbers, default to 0 if undefined
+		const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
+		const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
+
+		const worldX = point.x + originX;
+		const worldY = point.y + originY;
 		const worldZ = point.z;
-		
+
+		// Step 7c) Validate the result before returning
+		if (!isFinite(worldX) || !isFinite(worldY) || !isFinite(worldZ)) {
+			console.warn("getWorldPosition: Invalid world coordinates", {
+				point: point,
+				originX: originX,
+				originY: originY,
+				worldX: worldX,
+				worldY: worldY,
+				worldZ: worldZ,
+			});
+			return null;
+		}
+
 		return { x: worldX, y: worldY, z: worldZ };
 	}
-	
+
+	// Step 7.5) Get mouse world position using plane intersection (always returns valid position)
+	getMouseWorldPositionOnPlane(zLevel = null) {
+		// Step 7.5a) Use current camera for raycasting
+		const currentCamera = this.threeRenderer.camera;
+		this.raycaster.setFromCamera(this.mouse, currentCamera);
+
+		// Step 7.5b) Determine Z level for the plane
+		// Use provided zLevel, or fallback to dataCentroidZ, or 0
+		const planeZ = zLevel !== null && isFinite(zLevel) ? zLevel : window.dataCentroidZ !== undefined && isFinite(window.dataCentroidZ) ? window.dataCentroidZ : 0;
+
+		// Step 7.5c) Create a horizontal plane at the Z level
+		// Plane normal points up (0, 0, 1) and passes through (0, 0, planeZ)
+		const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -planeZ);
+
+		// Step 7.5d) Get intersection point with the plane
+		const intersectionPoint = new THREE.Vector3();
+		const hasIntersection = this.raycaster.ray.intersectPlane(plane, intersectionPoint);
+
+		if (!hasIntersection) {
+			console.warn("getMouseWorldPositionOnPlane: No plane intersection");
+			return null;
+		}
+
+		// Step 7.5e) Convert from local Three.js coords to world coords
+		const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
+		const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
+
+		const worldX = intersectionPoint.x + originX;
+		const worldY = intersectionPoint.y + originY;
+		const worldZ = intersectionPoint.z;
+
+		// Step 7.5f) Validate result
+		if (!isFinite(worldX) || !isFinite(worldY) || !isFinite(worldZ)) {
+			console.warn("getMouseWorldPositionOnPlane: Invalid coordinates", {
+				intersectionPoint: intersectionPoint,
+				worldX: worldX,
+				worldY: worldY,
+				worldZ: worldZ,
+			});
+			return null;
+		}
+
+		return { x: worldX, y: worldY, z: worldZ };
+	}
+
 	//=================================================
 	// Hover Detection
 	//=================================================
-	
+
 	// Step 8) Update hover state
 	updateHover(intersects, allBlastHoles) {
 		const hoveredHole = this.findClickedHole(intersects, allBlastHoles);
-		
+
 		// Step 8a) Check if hover changed
 		if (hoveredHole !== this.hoveredHole) {
 			// Step 8b) Clear previous hover
 			if (this.hoveredObject) {
 				this.clearHoverHighlight(this.hoveredObject);
 			}
-			
+
 			// Step 8c) Set new hover
 			this.hoveredHole = hoveredHole;
-			
+
 			if (hoveredHole && intersects.length > 0) {
 				this.hoveredObject = intersects[0].object;
 				this.applyHoverHighlight(this.hoveredObject);
@@ -176,42 +241,42 @@ export class InteractionManager {
 				this.hoveredObject = null;
 			}
 		}
-		
+
 		return hoveredHole;
 	}
-	
+
 	// Step 9) Apply hover highlight
 	applyHoverHighlight(object) {
 		if (!object || !object.material) return;
-		
+
 		// Step 9a) Store original emissive color
 		if (!object.userData.originalEmissive) {
 			object.userData.originalEmissive = object.material.emissive ? object.material.emissive.clone() : new THREE.Color(0x000000);
 			object.userData.originalEmissiveIntensity = object.material.emissiveIntensity || 0;
 		}
-		
+
 		// Step 9b) Apply hover highlight (slight yellow glow)
 		if (object.material.emissive) {
 			object.material.emissive = new THREE.Color(0xffff88);
 			object.material.emissiveIntensity = 0.3;
 		}
 	}
-	
+
 	// Step 10) Clear hover highlight
 	clearHoverHighlight(object) {
 		if (!object || !object.material || !object.userData.originalEmissive) return;
-		
+
 		// Step 10a) Restore original emissive
 		if (object.material.emissive) {
 			object.material.emissive = object.userData.originalEmissive;
 			object.material.emissiveIntensity = object.userData.originalEmissiveIntensity;
 		}
-		
+
 		// Step 10b) Clean up userData
 		delete object.userData.originalEmissive;
 		delete object.userData.originalEmissiveIntensity;
 	}
-	
+
 	// Step 11) Clear all hovers
 	clearAllHovers() {
 		if (this.hoveredObject) {
@@ -221,5 +286,3 @@ export class InteractionManager {
 		this.hoveredHole = null;
 	}
 }
-
-

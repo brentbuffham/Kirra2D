@@ -1038,11 +1038,25 @@ export class GeometryFactory {
 	static createStadiumZone(startX, startY, startZ, endX, endY, endZ, radius, strokeColor, fillColor) {
 		const group = new THREE.Group();
 
-		// Step 1) Parse colors
+		// Step 1) Validate inputs to prevent NaN values
+		if (!isFinite(startX) || !isFinite(startY) || !isFinite(startZ) || !isFinite(endX) || !isFinite(endY) || !isFinite(endZ) || !isFinite(radius) || radius <= 0) {
+			console.warn("createStadiumZone: Invalid coordinates or radius", {
+				startX,
+				startY,
+				startZ,
+				endX,
+				endY,
+				endZ,
+				radius,
+			});
+			return group; // Return empty group if invalid
+		}
+
+		// Step 2) Parse colors
 		const strokeColorObj = this.parseRGBA(strokeColor);
 		const fillColorObj = this.parseRGBA(fillColor);
 
-		// Step 2) Calculate vector from start to end
+		// Step 3) Calculate vector from start to end
 		const dx = endX - startX;
 		const dy = endY - startY;
 		const dz = endZ - startZ;
@@ -1050,7 +1064,7 @@ export class GeometryFactory {
 
 		if (length < 0.001) return group; // Avoid zero-length capsules
 
-		// Step 3) Create cylinder (main body of capsule)
+		// Step 4) Create cylinder (main body of capsule)
 		const cylinderGeometry = new THREE.CylinderGeometry(radius, radius, length, 16, 1);
 		const fillMaterial = new THREE.MeshBasicMaterial({
 			color: new THREE.Color(fillColorObj.r, fillColorObj.g, fillColorObj.b),
@@ -1061,38 +1075,68 @@ export class GeometryFactory {
 		});
 		const cylinder = new THREE.Mesh(cylinderGeometry, fillMaterial);
 
-		// Step 4) Create hemispheres for ends
+		// Step 5) Create hemispheres for ends
 		const sphereGeometry = new THREE.SphereGeometry(radius, 16, 16, 0, Math.PI * 2, 0, Math.PI / 2);
 		const startHemisphere = new THREE.Mesh(sphereGeometry, fillMaterial.clone());
 		const endHemisphere = new THREE.Mesh(sphereGeometry, fillMaterial.clone());
 
-		// Step 5) Position and orient cylinder
+		// Step 6) Position and orient cylinder
 		// Cylinder is created along Y-axis, need to align with our vector
 		const midX = (startX + endX) / 2;
 		const midY = (startY + endY) / 2;
 		const midZ = (startZ + endZ) / 2;
 		cylinder.position.set(midX, midY, midZ);
 
-		// Step 6) Rotate cylinder to align with start->end vector
+		// Step 7) Rotate cylinder to align with start->end vector
 		// Default cylinder is along Y-axis (0, 1, 0)
 		const axis = new THREE.Vector3(dx, dy, dz).normalize();
 		const yAxis = new THREE.Vector3(0, 1, 0);
 		const quaternion = new THREE.Quaternion().setFromUnitVectors(yAxis, axis);
 		cylinder.quaternion.copy(quaternion);
 
-		// Step 7) Position hemispheres at ends
+		// Step 8) Position hemispheres at ends
 		startHemisphere.position.set(startX, startY, startZ);
 		endHemisphere.position.set(endX, endY, endZ);
 
-		// Step 8) Orient hemispheres to face outward
+		// Step 9) Orient hemispheres to face outward
 		startHemisphere.quaternion.copy(quaternion);
 		startHemisphere.rotateX(Math.PI); // Flip to face start direction
 		endHemisphere.quaternion.copy(quaternion);
 
-		// Step 9) Add all meshes to group (removed wireframe)
+		// Step 10) Add all meshes to group
 		group.add(cylinder);
 		group.add(startHemisphere);
 		group.add(endHemisphere);
+
+		return group;
+	}
+
+	// Step 20.9) Create mouse position indicator (single grey torus)
+	static createMousePositionIndicator(x, y, z, size = 1.0, color = "rgba(128, 128, 128, 0.6)") {
+		const group = new THREE.Group();
+
+		// Step 20.9a) Validate inputs
+		if (!isFinite(x) || !isFinite(y) || !isFinite(z) || !isFinite(size) || size <= 0) {
+			return group; // Return empty group if invalid
+		}
+
+		// Step 20.9b) Parse color (grey, 60% transparent)
+		const colorObj = this.parseRGBA(color);
+		const material = new THREE.MeshBasicMaterial({
+			color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
+			transparent: true,
+			opacity: colorObj.a,
+			side: THREE.DoubleSide,
+		});
+
+		// Step 20.9c) Create single horizontal torus (flat on X-Y plane)
+		const torusRadius = size;
+		const tubeRadius = size * 0.1;
+		const torusGeometry = new THREE.TorusGeometry(torusRadius, tubeRadius, 8, 16);
+		const torusMesh = new THREE.Mesh(torusGeometry, material);
+		torusMesh.position.set(x, y, z);
+		// Already flat on X-Y plane, no rotation needed
+		group.add(torusMesh);
 
 		return group;
 	}

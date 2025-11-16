@@ -53,6 +53,7 @@ import {
 	highlightSelectedHoleThreeJS,
 	drawToolPromptThreeJS,
 	drawConnectStadiumZoneThreeJS,
+	drawMousePositionIndicatorThreeJS,
 	drawSlopeMapThreeJS,
 	drawBurdenReliefMapThreeJS,
 } from "./draw/canvas3DDrawing.js";
@@ -340,6 +341,8 @@ function exposeGlobalsToWindow() {
 	window.threeInitialized = threeInitialized;
 	window.threeRenderer = threeRenderer;
 	window.dataCentroidZ = dataCentroidZ;
+	window.threeLocalOriginX = threeLocalOriginX;
+	window.threeLocalOriginY = threeLocalOriginY;
 
 	// Step 2) 2D Canvas globals (ctx and canvas exposed at initialization)
 	window.strokeColor = strokeColor;
@@ -355,8 +358,14 @@ function exposeGlobalsToWindow() {
 	window.textFillColor = textFillColor;
 	window.depthColor = depthColor;
 	window.angleDipColor = angleDipColor;
+	window.snapRadiusPixels = snapRadiusPixels;
 
-	// Step 4) Helper functions
+	// Step 4) Connector state (for stadium zone tracking)
+	window.fromHoleStore = fromHoleStore;
+	window.isAddingMultiConnector = isAddingMultiConnector;
+	window.connectAmount = connectAmount;
+
+	// Step 5) Helper functions
 	window.elevationToColor = elevationToColor;
 	window.rgbStringToThreeColor = rgbStringToThreeColor;
 	window.worldToCanvas = worldToCanvas;
@@ -510,6 +519,10 @@ function initializeThreeJS() {
 		interactionManager = new InteractionManager(threeRenderer, threeRenderer.camera);
 		window.interactionManager = interactionManager; // Expose globally
 
+		// Step 6b) Expose globals to window immediately after initialization
+		// This ensures mouse tracking works from the start
+		exposeGlobalsToWindow();
+
 		// Step 7) Override camera controls to sync with 2D overlay
 		const originalHandleWheel = cameraControls.handleWheel.bind(cameraControls);
 		cameraControls.handleWheel = function (event) {
@@ -592,6 +605,32 @@ function syncCameraToThreeJS() {
 		const localCentroid = worldToThreeLocal(centroidX, centroidY);
 		cameraControls.setCameraState(localCentroid.x, localCentroid.y, currentScale, currentRotation || 0, cameraControls.orbitX || 0, cameraControls.orbitY || 0);
 		console.log("📷 Synced camera TO Three.js - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
+
+		// After camera sync, redraw mouse indicator at current position (or camera center)
+		// This ensures the grey torus stays visible after camera changes
+		if (onlyShowThreeJS && threeRenderer && interactionManager) {
+			setTimeout(() => {
+				const threeCanvas = threeRenderer.getCanvas();
+				if (threeCanvas) {
+					// Get current mouse position or canvas center
+					const rect = threeCanvas.getBoundingClientRect();
+					const centerX = rect.left + rect.width / 2;
+					const centerY = rect.top + rect.height / 2;
+
+					// Trigger mousemove event to recalculate and redraw mouse indicator
+					const syntheticEvent = new MouseEvent("mousemove", {
+						bubbles: true,
+						cancelable: true,
+						clientX: centerX,
+						clientY: centerY,
+						button: 0,
+						buttons: 0,
+					});
+
+					document.dispatchEvent(syntheticEvent);
+				}
+			}, 50); // Small delay to ensure camera state is fully updated
+		}
 	}
 }
 
@@ -735,15 +774,6 @@ function handle3DClick(event) {
 				break;
 			}
 		}
-
-		console.log(`  [${i}] Intersection ${i}:`, {
-			distance: intersect.distance.toFixed(2),
-			objectType: intersect.object.type,
-			userDataFound: !!userData,
-			userDataType: userData ? userData.type : null,
-			userDataHoleId: userData ? userData.holeId : null,
-			traversedDepth: depth,
-		});
 	}
 
 	const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles);
@@ -826,6 +856,10 @@ function handle3DClick(event) {
 				firstSelectedHole = clickedHole;
 				selectedHole = clickedHole;
 				console.log("✅ [3D CLICK] Set first multi-connector hole:", clickedHole.holeID);
+
+				// Step 12i.2a.1) Ensure globals are exposed and trigger redraw
+				exposeGlobalsToWindow();
+				drawData(allBlastHoles, selectedHole);
 			} else {
 				// Step 12i.2b) Second hole selection - create connectors
 				selectedHole = clickedHole; // Set selected hole to second hole for yellow highlight
@@ -923,7 +957,17 @@ function handle3DMouseMove(event) {
 	if (!onlyShowThreeJS) return;
 
 	// Step 13b) Early return if dependencies not ready
-	if (!threeInitialized || !threeRenderer || !interactionManager) return;
+	if (!threeInitialized || !threeRenderer || !interactionManager) {
+		// Try to get interactionManager from window if not set locally
+		if (!interactionManager && window.interactionManager) {
+			interactionManager = window.interactionManager;
+		}
+		// Ensure globals are exposed (in case they weren't set up yet)
+		if (threeInitialized && threeRenderer) {
+			exposeGlobalsToWindow();
+		}
+		if (!threeInitialized || !threeRenderer || !interactionManager) return;
+	}
 
 	// Step 13c) Get 3D canvas
 	const threeCanvas = threeRenderer.getCanvas();
@@ -932,68 +976,190 @@ function handle3DMouseMove(event) {
 	// Step 13d) Update mouse position for raycasting
 	interactionManager.updateMousePosition(event, threeCanvas);
 
-	// Step 13e) Update hover state
+	// Step 13e) Update hover state and get raytrace intersection for 3D tracking
+	// Always raycast to get 3D position (even if no blast holes, we might hit surfaces/other objects)
+	const intersects = interactionManager.raycast();
+
+	// Only update hover state if we have blast holes
 	if (allBlastHoles && allBlastHoles.length > 0) {
-		const intersects = interactionManager.raycast();
 		interactionManager.updateHover(intersects, allBlastHoles);
 	}
 
 	// Step 13f) Calculate world coordinates for stadium zone tracking
-	// Get mouse position in canvas coordinates
-	const rect = threeCanvas.getBoundingClientRect();
-	const mouseX = event.clientX - rect.left;
-	const mouseY = event.clientY - rect.top;
+	// Try to get 3D world position from raytrace intersection first
+	let mouseWorldPos = null;
+	if (intersects && intersects.length > 0) {
+		// Step 13f.1) Use raytrace intersection to get full 3D world position
+		mouseWorldPos = interactionManager.getWorldPosition(intersects);
+		// Validate the result - if it has NaN values, treat as null
+		if (mouseWorldPos && (!isFinite(mouseWorldPos.x) || !isFinite(mouseWorldPos.y) || !isFinite(mouseWorldPos.z))) {
+			mouseWorldPos = null;
+		}
+	}
 
-	// Convert canvas coordinates to world coordinates using current camera state
-	const camera = threeRenderer.camera;
-	if (camera && camera.isOrthographicCamera) {
-		// Step 13f.1) Get normalized device coordinates (-1 to +1)
-		const ndcX = (mouseX / rect.width) * 2 - 1;
-		const ndcY = -(mouseY / rect.height) * 2 + 1;
+	// Step 13f.2) If no object intersection, use plane intersection (always works)
+	if (!mouseWorldPos && interactionManager && typeof interactionManager.getMouseWorldPositionOnPlane === "function") {
+		// Use plane intersection at fromHoleStore Z level, or dataCentroidZ, or 0
+		const zLevel = fromHoleStore ? fromHoleStore.startZLocation || window.dataCentroidZ || 0 : window.dataCentroidZ || 0;
+		mouseWorldPos = interactionManager.getMouseWorldPositionOnPlane(zLevel);
+	}
 
-		// Step 13f.2) Calculate world position at Z=0 plane
-		// CameraControls.centroidX/Y are already in WORLD coordinates
-		// We just need to add the viewport offsets to get the final world mouse position
-		const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
-		if (cameraState) {
+	// Step 13f.3) Final fallback to camera projection if plane intersection fails
+	if (!mouseWorldPos) {
+		// Get mouse position in canvas coordinates
+		const rect = threeCanvas.getBoundingClientRect();
+		const mouseX = event.clientX - rect.left;
+		const mouseY = event.clientY - rect.top;
+
+		// Validate canvas dimensions
+		if (!rect.width || !rect.height || rect.width <= 0 || rect.height <= 0) {
+			console.warn("handle3DMouseMove: Invalid canvas dimensions", rect);
+			return; // Can't calculate position without valid canvas
+		}
+
+		// Convert canvas coordinates to world coordinates using current camera state
+		const camera = threeRenderer.camera;
+		if (camera && camera.isOrthographicCamera) {
+			// Step 13f.3.1) Get normalized device coordinates (-1 to +1)
+			const ndcX = (mouseX / rect.width) * 2 - 1;
+			const ndcY = -(mouseY / rect.height) * 2 + 1;
+
+			// Step 13f.3.2) Calculate world position at Z=0 plane
+			// Try to get camera state from CameraControls first, fallback to global centroidX/Y
+			let worldCentroidX = null;
+			let worldCentroidY = null;
+
+			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
+			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
+				// CameraControls.centroidX/Y are in LOCAL coordinates (relative to threeLocalOrigin)
+				// Need to convert to world coordinates
+				const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
+				const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
+				worldCentroidX = cameraState.centroidX + originX;
+				worldCentroidY = cameraState.centroidY + originY;
+			} else {
+				// Fallback to global centroidX/Y variables (already in world coordinates)
+				if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
+					// Use global variables directly (they're already in world coordinates)
+					worldCentroidX = centroidX;
+					worldCentroidY = centroidY;
+				} else {
+					console.warn("handle3DMouseMove: No valid camera state or centroid available", {
+						cameraState: cameraState,
+						globalCentroidX: typeof centroidX !== "undefined" ? centroidX : "undefined",
+						globalCentroidY: typeof centroidY !== "undefined" ? centroidY : "undefined",
+					});
+					return; // Can't calculate position without centroid
+				}
+			}
+
+			// Step 13f.3.3) Calculate viewport dimensions and offsets
 			const viewportWidth = camera.right - camera.left;
 			const viewportHeight = camera.top - camera.bottom;
 
-			const offsetX = ndcX * (viewportWidth / 2);
-			const offsetY = ndcY * (viewportHeight / 2);
+			// Validate viewport dimensions
+			if (isFinite(viewportWidth) && isFinite(viewportHeight) && viewportWidth > 0 && viewportHeight > 0) {
+				const offsetX = ndcX * (viewportWidth / 2);
+				const offsetY = ndcY * (viewportHeight / 2);
 
-			// Step 13f.3) CameraControls.centroidX/Y are already in WORLD coordinates
-			// Just add the viewport offsets (no need to add threeLocalOriginX/Y again)
-			const worldX = cameraState.centroidX + offsetX;
-			const worldY = cameraState.centroidY + offsetY;
+				// Step 13f.3.4) Calculate world mouse position
+				// worldCentroidX/Y are in WORLD coordinates, just add viewport offsets
+				const worldX = worldCentroidX + offsetX;
+				const worldY = worldCentroidY + offsetY;
 
-			currentMouseWorldX = worldX;
-			currentMouseWorldY = worldY;
+				// Validate calculated coordinates
+				if (isFinite(worldX) && isFinite(worldY)) {
+					// Use fromHoleStore Z as fallback when no intersection
+					const worldZ = fromHoleStore ? fromHoleStore.startZLocation || window.dataCentroidZ || 0 : window.dataCentroidZ || 0;
 
-			if (isAddingMultiConnector && fromHoleStore && threeRenderer && threeRenderer.connectorsGroup) {
-				const toRemove = [];
-				threeRenderer.connectorsGroup.children.forEach((child) => {
-					if (child.userData && child.userData.type === "stadiumZone") {
-						toRemove.push(child);
-					}
-				});
-				toRemove.forEach((obj) => {
-					threeRenderer.connectorsGroup.remove(obj);
-					if (obj.geometry) obj.geometry.dispose();
-					if (obj.material) {
-						if (Array.isArray(obj.material)) {
-							obj.material.forEach((mat) => mat.dispose());
-						} else {
-							obj.material.dispose();
-						}
-					}
-				});
-
-				drawConnectStadiumZoneThreeJS(fromHoleStore, { x: worldX, y: worldY }, connectAmount);
-				if (threeRenderer.renderer) {
-					threeRenderer.render();
+					mouseWorldPos = { x: worldX, y: worldY, z: worldZ };
+				} else {
+					console.warn("handle3DMouseMove: Calculated world coordinates are NaN", {
+						worldCentroidX: worldCentroidX,
+						worldCentroidY: worldCentroidY,
+						offsetX: offsetX,
+						offsetY: offsetY,
+						worldX: worldX,
+						worldY: worldY,
+					});
 				}
+			} else {
+				console.warn("handle3DMouseMove: Invalid viewport dimensions", {
+					viewportWidth: viewportWidth,
+					viewportHeight: viewportHeight,
+				});
 			}
+		} else {
+			console.warn("handle3DMouseMove: Camera not available or not orthographic", camera);
+		}
+	}
+
+	// Step 13f.4) Update current mouse world coordinates
+	if (mouseWorldPos) {
+		currentMouseWorldX = mouseWorldPos.x;
+		currentMouseWorldY = mouseWorldPos.y;
+
+		// Step 13f.5) Draw stadium zone if in multi-connector mode
+		// Check fromHoleStore by entityName and holeID to ensure it matches
+		const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
+		if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
+			const toRemove = [];
+			threeRenderer.connectorsGroup.children.forEach((child) => {
+				if (child.userData && child.userData.type === "stadiumZone") {
+					toRemove.push(child);
+				}
+			});
+			toRemove.forEach((obj) => {
+				threeRenderer.connectorsGroup.remove(obj);
+				if (obj.geometry) obj.geometry.dispose();
+				if (obj.material) {
+					if (Array.isArray(obj.material)) {
+						obj.material.forEach((mat) => mat.dispose());
+					} else {
+						obj.material.dispose();
+					}
+				}
+			});
+
+			// Only draw stadium zone if we have valid mouse position
+			if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+				drawConnectStadiumZoneThreeJS(fromHoleStore, mouseWorldPos, connectAmount);
+			}
+		}
+
+		// Step 13f.6) Always draw mouse position indicator (so we can always see it)
+		// If mouseWorldPos is null, use fallback position (camera centroid)
+		if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+			drawMousePositionIndicatorThreeJS(mouseWorldPos.x, mouseWorldPos.y, mouseWorldPos.z);
+		} else {
+			// Fallback: draw at camera centroid if mouse position calculation failed
+			const fallbackZ = window.dataCentroidZ || 0;
+			let fallbackPos = null;
+
+			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
+			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
+				const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
+				const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
+				fallbackPos = {
+					x: cameraState.centroidX + originX,
+					y: cameraState.centroidY + originY,
+					z: fallbackZ,
+				};
+			} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
+				fallbackPos = {
+					x: centroidX,
+					y: centroidY,
+					z: fallbackZ,
+				};
+			}
+
+			if (fallbackPos && isFinite(fallbackPos.x) && isFinite(fallbackPos.y)) {
+				drawMousePositionIndicatorThreeJS(fallbackPos.x, fallbackPos.y, fallbackPos.z);
+			}
+		}
+
+		if (threeRenderer.renderer) {
+			threeRenderer.render();
 		}
 	}
 }
@@ -1075,6 +1241,30 @@ document.addEventListener("DOMContentLoaded", function () {
 
 			// Redraw to apply changes
 			drawData(allBlastHoles);
+
+			// If switching to 3D mode, trigger mouse indicator initialization
+			if (show3D && threeInitialized && interactionManager && threeRenderer) {
+				// Use setTimeout to ensure canvas is visible and ready
+				setTimeout(() => {
+					const threeCanvas = threeRenderer.getCanvas();
+					if (threeCanvas) {
+						const rect = threeCanvas.getBoundingClientRect();
+						const centerX = rect.left + rect.width / 2;
+						const centerY = rect.top + rect.height / 2;
+
+						const syntheticEvent = new MouseEvent("mousemove", {
+							bubbles: true,
+							cancelable: true,
+							clientX: centerX,
+							clientY: centerY,
+							button: 0,
+							buttons: 0,
+						});
+
+						document.dispatchEvent(syntheticEvent);
+					}
+				}, 100);
+			}
 		});
 	}
 
@@ -1089,6 +1279,8 @@ document.addEventListener("DOMContentLoaded", function () {
 			if (show3D) {
 				// Step 1c) 3D-only mode - show only 3D canvas, hide 2D canvas
 				onlyShowThreeJS = true;
+				// Reset mouse indicator flag so it initializes when switching to 3D mode
+				mouseIndicatorInitialized = false;
 				console.log("🎨 3D-ONLY Mode: ON (2D canvas hidden)");
 
 				if (threeCanvas) {
@@ -1217,6 +1409,7 @@ let circlesGroupVisible = true;
 let textsGroupVisible = true;
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
+let mouseIndicatorInitialized = false; // Track if mouse indicator has been initialized on startup
 let isAddingConnector = false;
 let isAddingMultiConnector = false;
 let isAddingHole = false;
@@ -18410,6 +18603,36 @@ function drawData(allBlastHoles, selectedHole) {
 	// Expose globals to window for canvas3DDrawing.js module
 	exposeGlobalsToWindow();
 
+	// Step 0.5) Initialize mouse indicator on first draw in 3D mode
+	// This ensures the grey torus appears immediately on startup
+	if (onlyShowThreeJS && threeInitialized && interactionManager && threeRenderer && !mouseIndicatorInitialized && allBlastHoles && allBlastHoles.length > 0) {
+		mouseIndicatorInitialized = true; // Set flag immediately to prevent multiple calls
+
+		// Use requestAnimationFrame to ensure canvas is fully rendered
+		requestAnimationFrame(() => {
+			const threeCanvas = threeRenderer.getCanvas();
+			if (threeCanvas) {
+				// Get canvas center coordinates
+				const rect = threeCanvas.getBoundingClientRect();
+				const centerX = rect.left + rect.width / 2;
+				const centerY = rect.top + rect.height / 2;
+
+				// Create and dispatch a synthetic mousemove event at canvas center
+				const syntheticEvent = new MouseEvent("mousemove", {
+					bubbles: true,
+					cancelable: true,
+					clientX: centerX,
+					clientY: centerY,
+					button: 0,
+					buttons: 0,
+				});
+
+				// Dispatch on document (same as the real mousemove handler)
+				document.dispatchEvent(syntheticEvent);
+			}
+		});
+	}
+
 	if (canvas) {
 		// For UI version 2, this is ESSENTIAL.
 		// For UI version 1, it adds robustness if its display size could ever change.
@@ -19059,13 +19282,15 @@ function drawData(allBlastHoles, selectedHole) {
 					if (threeInitialized && onlyShowThreeJS) {
 						// Connector mode highlighting
 						if (isAddingConnector || isAddingMultiConnector) {
-							if (fromHoleStore && fromHoleStore === hole) {
+							// Step 4b.1) Check if this is the fromHoleStore (compare by entityName and holeID)
+							const isFromHole = fromHoleStore && fromHoleStore.entityName === hole.entityName && fromHoleStore.holeID === hole.holeID;
+							if (isFromHole) {
 								highlightSelectedHoleThreeJS(hole, "first");
 								if (isAddingMultiConnector && currentMouseWorldX !== undefined && currentMouseWorldY !== undefined) {
-									drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY }, connectAmount);
+									drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY, z: hole.startZLocation || window.dataCentroidZ || 0 }, connectAmount);
 								}
 								drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
-							} else if (firstSelectedHole && firstSelectedHole === hole) {
+							} else if (firstSelectedHole && firstSelectedHole.entityName === hole.entityName && firstSelectedHole.holeID === hole.holeID) {
 								highlightSelectedHoleThreeJS(hole, "first");
 								drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName, { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
 							} else if (secondSelectedHole && secondSelectedHole === hole) {
@@ -19373,13 +19598,15 @@ function drawData(allBlastHoles, selectedHole) {
 				if (threeInitialized) {
 					// Connector mode highlighting
 					if (isAddingConnector || isAddingMultiConnector) {
-						if (fromHoleStore && fromHoleStore === hole) {
+						// Step 5.1) Check if this is the fromHoleStore (compare by entityName and holeID)
+						const isFromHole = fromHoleStore && fromHoleStore.entityName === hole.entityName && fromHoleStore.holeID === hole.holeID;
+						if (isFromHole) {
 							highlightSelectedHoleThreeJS(hole, "first");
 							if (isAddingMultiConnector && currentMouseWorldX !== undefined && currentMouseWorldY !== undefined) {
-								drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY }, connectAmount);
+								drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY, z: hole.startZLocation || window.dataCentroidZ || 0 }, connectAmount);
 							}
 							drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
-						} else if (firstSelectedHole && firstSelectedHole === hole) {
+						} else if (firstSelectedHole && firstSelectedHole.entityName === hole.entityName && firstSelectedHole.holeID === hole.holeID) {
 							highlightSelectedHoleThreeJS(hole, "first");
 							drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName, { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
 						} else if (secondSelectedHole && secondSelectedHole === hole) {
@@ -19508,6 +19735,42 @@ function drawData(allBlastHoles, selectedHole) {
 	// Step 2) Render Three.js scene only when in 3D mode or Three.js-only mode
 	// (reuse isIn3DMode variable declared above)
 	if (isIn3DMode || onlyShowThreeJS) {
+		// Step 2a) Ensure mouse indicator is always visible in 3D mode
+		// Draw it at current mouse position or camera center if no mouse position yet
+		if (onlyShowThreeJS && threeInitialized && threeRenderer && interactionManager) {
+			// Use current mouse world position if available, otherwise use camera centroid
+			let indicatorPos = null;
+			if (currentMouseWorldX !== undefined && currentMouseWorldY !== undefined && isFinite(currentMouseWorldX) && isFinite(currentMouseWorldY)) {
+				indicatorPos = {
+					x: currentMouseWorldX,
+					y: currentMouseWorldY,
+					z: window.dataCentroidZ || 0,
+				};
+			} else {
+				// Fallback to camera centroid
+				const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
+				if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
+					const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
+					const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
+					indicatorPos = {
+						x: cameraState.centroidX + originX,
+						y: cameraState.centroidY + originY,
+						z: window.dataCentroidZ || 0,
+					};
+				} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
+					indicatorPos = {
+						x: centroidX,
+						y: centroidY,
+						z: window.dataCentroidZ || 0,
+					};
+				}
+			}
+
+			if (indicatorPos && isFinite(indicatorPos.x) && isFinite(indicatorPos.y)) {
+				drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z);
+			}
+		}
+
 		renderThreeJS();
 	}
 }

@@ -552,17 +552,28 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!fromHole || !toMousePos) return;
 
-	// Step 19a) Convert BOTH positions to Three.js local coordinates
+	// Step 19a) Validate inputs
+	if (!isFinite(fromHole.startXLocation) || !isFinite(fromHole.startYLocation) || !isFinite(toMousePos.x) || !isFinite(toMousePos.y) || !isFinite(connectAmount) || connectAmount <= 0) {
+		console.warn("drawConnectStadiumZoneThreeJS: Invalid inputs", {
+			fromHole: fromHole ? { x: fromHole.startXLocation, y: fromHole.startYLocation, z: fromHole.startZLocation } : null,
+			toMousePos: toMousePos,
+			connectAmount: connectAmount,
+		});
+		return;
+	}
+
+	// Step 19b) Convert BOTH positions to Three.js local coordinates
+	// worldToThreeLocal only accepts 2 parameters (x, y) - Z stays as-is
 	const fromLocal = window.worldToThreeLocal(fromHole.startXLocation, fromHole.startYLocation);
 	const toLocal = window.worldToThreeLocal(toMousePos.x, toMousePos.y);
 
-	// Step 19b) Use collar Z elevations (mouse doesn't have Z, use collar Z)
+	// Step 19c) Extract Z coordinates separately (Z coordinates stay as-is, no conversion needed)
 	const fromZ = fromHole.startZLocation || 0;
-	const toZ = fromHole.startZLocation || 0; // Use same Z as collar for mouse endpoint
+	const toZ = toMousePos.z !== undefined && isFinite(toMousePos.z) ? toMousePos.z : fromHole.startZLocation || 0;
 
 	const radius = connectAmount;
 
-	// Step 19c) Create capsule stadium zone in local coordinates
+	// Step 19d) Create simplified stadium zone using MeshLineModified
 	const stadiumGroup = GeometryFactory.createStadiumZone(
 		fromLocal.x,
 		fromLocal.y,
@@ -582,6 +593,70 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 	};
 
 	window.threeRenderer.connectorsGroup.add(stadiumGroup);
+}
+
+// Step 19.5) Draw mouse position indicator (crosshairs) in Three.js
+export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (worldX === undefined || worldY === undefined || worldZ === undefined) return;
+
+	// Step 19.5a) Convert world coordinates to local Three.js coordinates
+	const local = window.worldToThreeLocal(worldX, worldY);
+	const z = worldZ || 0;
+
+	// Step 19.5b) Remove existing mouse indicator if present
+	const connectorsGroup = window.threeRenderer.connectorsGroup;
+	const toRemove = [];
+	connectorsGroup.children.forEach((child) => {
+		if (child.userData && child.userData.type === "mouseIndicator") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach((obj) => {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) {
+			if (Array.isArray(obj.material)) {
+				obj.material.forEach((mat) => mat.dispose());
+			} else {
+				obj.material.dispose();
+			}
+		}
+		// Dispose children if it's a group
+		if (obj.isGroup) {
+			obj.traverse((child) => {
+				if (child.geometry) child.geometry.dispose();
+				if (child.material) {
+					if (Array.isArray(child.material)) {
+						child.material.forEach((mat) => mat.dispose());
+					} else {
+						child.material.dispose();
+					}
+				}
+			});
+		}
+	});
+
+	// Step 19.5c) Create mouse position indicator
+	// Size based on snap radius (convert pixels to world units)
+	// snapRadiusPixels is in pixels, convert to world units using currentScale
+	const snapRadiusPixels = window.snapRadiusPixels !== undefined ? window.snapRadiusPixels : 15; // Default 15px
+	const snapRadiusWorld = snapRadiusPixels / (window.currentScale || 1.0); // Convert pixels to world units
+	const indicatorSize = snapRadiusWorld; // Use snap radius as the indicator size
+	const indicatorGroup = GeometryFactory.createMousePositionIndicator(
+		local.x,
+		local.y,
+		z,
+		indicatorSize,
+		"rgba(128, 128, 128, 0.6)" // Grey, 60% transparent
+	);
+
+	// Step 19.5d) Add metadata
+	indicatorGroup.userData = {
+		type: "mouseIndicator",
+	};
+
+	connectorsGroup.add(indicatorGroup);
 }
 
 // Step 20) Draw slope map in Three.js
