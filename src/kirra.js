@@ -9595,10 +9595,13 @@ function lineIntersectsPolygon(x1, y1, x2, y2, polygon) {
 // STEP 1: REPLACE - New Constrained Delaunay Triangulation Function
 // =============================================================================
 
-async function createConstrainedDelaunayTriangulation(params) {
+async function createConstrainedDelaunayTriangulation(params, updateProgress = null) {
     console.log("🔗 Using FIXED Constrained Delaunay Triangulation (Constrainautor)");
 
     try {
+        // Step 0) Update progress - collecting data
+        if (updateProgress) updateProgress(5, "Collecting data points...");
+
         // Get visible elements
         const visibleElements = getVisibleHolesAndKADDrawings(allBlastHoles || [], allKADDrawingsMap ? Array.from(allKADDrawingsMap.values()) : []);
 
@@ -9724,6 +9727,9 @@ async function createConstrainedDelaunayTriangulation(params) {
 
         console.log("📊 Collected " + elementVertices.length + " vertices before deduplication");
 
+        // Step 0a) Update progress - deduplicating
+        if (updateProgress) updateProgress(15, "Deduplicating vertices...");
+
         // *** FIX 3: Deduplicate vertices (this changes coordinates) ***
         const originalVertexCount = elementVertices.length;
         elementVertices = getUniqueElementVertices(elementVertices, params.tolerance || 0.001);
@@ -9734,14 +9740,27 @@ async function createConstrainedDelaunayTriangulation(params) {
             throw new Error(`Insufficient points for triangulation: ${elementVertices.length}`);
         }
 
+        // Step 0b) Update progress - extracting constraints
+        if (updateProgress) updateProgress(25, "Extracting constraints...");
+
         // *** FIX 4: Extract constraints AFTER deduplication using deduplicated vertices ***
-        const constraintSegments = extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMap, params.tolerance || 0.001);
+        const constraintData = extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMap, params.tolerance || 0.001);
+        const constraintSegments = constraintData.constraints || constraintData; // Handle both old and new format
+        const entitiesWithUnmappedSegments = constraintData.entitiesWithUnmappedSegments || new Set();
 
         console.log("🔗 Extracted " + constraintSegments.length + " constraints from deduplicated vertices");
+        if (entitiesWithUnmappedSegments.size > 0) {
+            console.warn("⚠️ " + entitiesWithUnmappedSegments.size + " entities have unmapped segments: " + Array.from(entitiesWithUnmappedSegments).join(", "));
+        }
+
+        // Step 0c) Update progress - starting triangulation
+        if (updateProgress) updateProgress(30, "Creating Delaunay triangulation...");
 
         // Create the constrained triangulation
         const result = await createConstrainautorTriangulation(elementVertices, constraintSegments, {
-            tolerance: params.tolerance || 1e-10
+            tolerance: params.tolerance || 1e-10,
+            updateProgress: updateProgress, // Pass progress callback
+            entitiesWithUnmappedSegments: entitiesWithUnmappedSegments // Pass problematic entities info
         });
 
         if (!result || !result.resultTriangles || result.resultTriangles.length === 0) {
@@ -9774,6 +9793,7 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
     console.log("🔗 Extracting constraints from deduplicated vertices...");
 
     const constraints = [];
+    const entitiesWithUnmappedSegments = new Set(); // Track entities with mapping issues
 
     // *** FIX 5: Create spatial index for efficient vertex lookup ***
     const spatialIndex = createSpatialIndex(elementVertices, tolerance);
@@ -9790,6 +9810,7 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
         console.log("🔗 Processing constraints for " + entity.entityType + ' "' + entityName + '"');
 
         const entityConstraints = [];
+        let unmappedCount = 0;
 
         // Create segments between consecutive points
         for (let i = 0; i < entity.data.length - 1; i++) {
@@ -9818,6 +9839,7 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
                 entityConstraints.push(constraint);
                 constraints.push(constraint);
             } else {
+                unmappedCount++;
                 console.warn("⚠️ Could not map constraint segment " + i + " for entity " + entityName);
                 console.warn("  Start: (" + startX.toFixed(3) + ", " + startY.toFixed(3) + ") → index " + startIdx);
                 console.warn("  End: (" + endX.toFixed(3) + ", " + endY.toFixed(3) + ") → index " + endIdx);
@@ -9855,11 +9877,22 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
             }
         }
 
+        // Track entities with unmapped segments (these can cause constraint intersection issues)
+        if (unmappedCount > 0) {
+            entitiesWithUnmappedSegments.add(entityName);
+            console.warn("  ⚠️ Entity " + entityName + " has " + unmappedCount + " unmapped segments - constraints from this entity may cause intersection issues");
+        }
+
         console.log("  ✅ Added " + entityConstraints.length + " constraints for entity " + entityName);
     });
 
     console.log("✅ Total constraints extracted: " + constraints.length);
-    return constraints;
+
+    // Return constraints along with tracking info for problematic entities
+    return {
+        constraints: constraints,
+        entitiesWithUnmappedSegments: entitiesWithUnmappedSegments
+    };
 }
 
 // =============================================================================
@@ -9942,12 +9975,21 @@ function findClosestVertexIndex(spatialIndex, targetX, targetY, tolerance) {
 function createConstrainautorTriangulation(points, constraintSegments, options = {}) {
     return new Promise((resolve, reject) => {
         try {
+            const updateProgress = options.updateProgress || null;
+            const entitiesWithUnmappedSegments = options.entitiesWithUnmappedSegments || new Set();
+
             // Step 1) Check if Constrainautor is available (imported at top of file)
             if (typeof Constrainautor === "undefined") {
                 throw new Error("Constrainautor library not loaded");
             }
 
+            // Step 1a) Update progress
+            if (updateProgress) updateProgress(35, "Initializing Constrainautor...");
+
             console.log("🔺 Starting Constrainautor with " + points.length + " points, " + constraintSegments.length + " constraints");
+            if (entitiesWithUnmappedSegments.size > 0) {
+                console.warn("⚠️ Will skip constraints from problematic entities in problematic range: " + Array.from(entitiesWithUnmappedSegments).join(", "));
+            }
 
             // Step 2) Create basic Delaunay triangulation first
             const coords = new Float64Array(points.length * 2);
@@ -9958,6 +10000,8 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 
             const delaunay = new Delaunator(coords);
             console.log("🔺 Initial Delaunay: " + delaunay.triangles.length / 3 + " triangles");
+
+            if (updateProgress) updateProgress(40, "Delaunay triangulation created");
 
             // Step 3) Use pre-calculated indices from constraint extraction
             const constraintEdges = [];
@@ -9981,61 +10025,388 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
             // Step 4) Create Constrainautor instance (using imported module)
             const constrainautor = new Constrainautor(delaunay);
 
-            // Apply constraints one by one with error handling
+            if (updateProgress) updateProgress(45, "Applying constraints...");
+
+            // Step 5) Apply constraints in batches to avoid blocking UI
             let successfulConstraints = 0;
             if (constraintEdges.length > 0) {
                 console.log("🔧 Applying " + constraintEdges.length + " constraints...");
 
-                for (let i = 0; i < constraintEdges.length; i++) {
+                // Step 5a) Track successfully constrained edges to avoid duplicates
+                // Use normalized edge key (minIdx_maxIdx) to handle both directions
+                const constrainedEdges = new Set();
+                const constrainedEdgeList = []; // Also keep list for intersection checking
+                const getEdgeKey = (startIdx, endIdx) => {
+                    return Math.min(startIdx, endIdx) + "_" + Math.max(startIdx, endIdx);
+                };
+                const isEdgeConstrained = (startIdx, endIdx) => {
+                    return constrainedEdges.has(getEdgeKey(startIdx, endIdx));
+                };
+                const markEdgeConstrained = (startIdx, endIdx) => {
+                    constrainedEdges.add(getEdgeKey(startIdx, endIdx));
+                    constrainedEdgeList.push([startIdx, endIdx]);
+                };
+
+                // Step 5a.1) Function to check if two line segments intersect (excluding endpoints)
+                const segmentsIntersect = (p1, p2, p3, p4) => {
+                    // Check if segments [p1-p2] and [p3-p4] intersect
+                    // Using cross product method
+                    const d1 = (p4.x - p3.x) * (p1.y - p3.y) - (p4.y - p3.y) * (p1.x - p3.x);
+                    const d2 = (p4.x - p3.x) * (p2.y - p3.y) - (p4.y - p3.y) * (p2.x - p3.x);
+                    const d3 = (p2.x - p1.x) * (p3.y - p1.y) - (p2.y - p1.y) * (p3.x - p1.x);
+                    const d4 = (p2.x - p1.x) * (p4.y - p1.y) - (p2.y - p1.y) * (p4.x - p1.x);
+
+                    // Check if segments intersect (not including endpoints)
+                    if (((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) && ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0))) {
+                        return true;
+                    }
+                    return false;
+                };
+
+                // Step 5a.2) Check if edge passes through other points (collinear issue)
+                // Optimized version: only check points along the edge path, not all points
+                const edgePassesThroughPoint = (startIdx, endIdx) => {
+                    const p1 = points[startIdx];
+                    const p2 = points[endIdx];
+
+                    if (!p1 || !p2) return null;
+
+                    const dx = p2.x - p1.x;
+                    const dy = p2.y - p1.y;
+                    const lengthSq = dx * dx + dy * dy;
+
+                    if (lengthSq < 0.00000001) return null;
+
+                    // Step 1) Sample points along the edge to check for collinear intersections
+                    // Check at 10%, 25%, 50%, 75%, 90% along the edge
+                    const checkPositions = [0.1, 0.25, 0.5, 0.75, 0.9];
+                    const tolerance = 0.02; // More lenient tolerance
+
+                    for (const t of checkPositions) {
+                        const checkX = p1.x + t * dx;
+                        const checkY = p1.y + t * dy;
+
+                        // Step 2) Check nearby points to this position
+                        for (let i = 0; i < points.length; i++) {
+                            if (i === startIdx || i === endIdx) continue;
+
+                            const p = points[i];
+                            if (!p) continue;
+
+                            const distSq = (p.x - checkX) * (p.x - checkX) + (p.y - checkY) * (p.y - checkY);
+
+                            // Step 3) If point is very close to this position on the edge
+                            if (distSq < tolerance * tolerance) {
+                                // Verify it's actually on the line segment
+                                const px = p.x - p1.x;
+                                const py = p.y - p1.y;
+                                const tActual = (px * dx + py * dy) / lengthSq;
+
+                                // Must be between endpoints (not at ends)
+                                if (tActual > 0.05 && tActual < 0.95) {
+                                    return i;
+                                }
+                            }
+                        }
+                    }
+                    return null;
+                };
+
+                // Step 5a.3) Check if a constraint edge would intersect existing constrained edges
+                const wouldIntersectConstrainedEdges = (startIdx, endIdx) => {
+                    const p1 = points[startIdx];
+                    const p2 = points[endIdx];
+
+                    if (!p1 || !p2) return false;
+
+                    // Check against all existing constrained edges
+                    for (const [existingStartIdx, existingEndIdx] of constrainedEdgeList) {
+                        // Skip if edges share an endpoint (they're allowed to meet at vertices)
+                        if (startIdx === existingStartIdx || startIdx === existingEndIdx || endIdx === existingStartIdx || endIdx === existingEndIdx) {
+                            continue;
+                        }
+
+                        const p3 = points[existingStartIdx];
+                        const p4 = points[existingEndIdx];
+
+                        if (!p3 || !p4) continue;
+
+                        // Check if segments intersect
+                        if (segmentsIntersect(p1, p2, p3, p4)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+
+                // Step 5b) Process constraints one at a time with yields between each
+                // This prevents any single constraint from blocking the UI indefinitely
+                let currentIndex = 0;
+                const startTime = Date.now();
+                const MAX_CONSTRAINT_TIME = 30000; // Maximum 30 seconds for constraint application
+                let lastProgressIndex = 0;
+                let lastProgressTime = Date.now();
+                const STUCK_THRESHOLD = 5000; // If no progress for 5 seconds, skip remaining
+
+                // Step 5a.1) Process constraints one at a time with yields between each
+                const processNextConstraint = () => {
                     try {
-                        constrainautor.constrainOne(constraintEdges[i][0], constraintEdges[i][1]);
-                        successfulConstraints++;
-                    } catch (constraintError) {
-                        const constraint = validConstraints[i];
-                        console.warn("⚠️ Failed to apply constraint " + i + " for entity " + constraint?.entityName + ": [" + constraintEdges[i][0] + ", " + constraintEdges[i][1] + "]");
-                        console.warn("   Error: " + constraintError.message);
+                        // Check if we've exceeded maximum time
+                        const totalElapsed = Date.now() - startTime;
+                        if (totalElapsed > MAX_CONSTRAINT_TIME) {
+                            console.warn("⚠️ Maximum constraint application time (" + MAX_CONSTRAINT_TIME / 1000 + "s) exceeded. Skipping remaining " + (constraintEdges.length - currentIndex) + " constraints.");
+                            // Force completion with what we have
+                            currentIndex = constraintEdges.length;
+                        }
+
+                        // Check if we're stuck (no progress for too long)
+                        if (currentIndex === lastProgressIndex) {
+                            const stuckTime = Date.now() - lastProgressTime;
+                            if (stuckTime > STUCK_THRESHOLD) {
+                                console.warn("⚠️ Detected stuck constraint at index " + currentIndex + ". Skipping remaining " + (constraintEdges.length - currentIndex) + " constraints.");
+                                // Skip to end
+                                currentIndex = constraintEdges.length;
+                            }
+                        } else {
+                            // Progress detected - update tracking
+                            lastProgressIndex = currentIndex;
+                            lastProgressTime = Date.now();
+                        }
+
+                        if (currentIndex >= constraintEdges.length) {
+                            // All constraints processed
+                            const failedConstraints = constraintEdges.length - successfulConstraints;
+                            console.log("✅ Processed " + constraintEdges.length + " constraints: " + successfulConstraints + " applied, " + failedConstraints + " skipped");
+
+                            if (failedConstraints > 0) {
+                                console.warn("⚠️ " + failedConstraints + " constraints were skipped due to conflicts or errors");
+                            }
+
+                            if (updateProgress) updateProgress(95, "Finalizing triangulation...");
+
+                            // Step 6) Convert result triangles
+                            const resultTriangles = [];
+                            const triangles = delaunay.triangles;
+
+                            for (let i = 0; i < triangles.length; i += 3) {
+                                const idx1 = triangles[i];
+                                const idx2 = triangles[i + 1];
+                                const idx3 = triangles[i + 2];
+
+                                const v1 = points[idx1];
+                                const v2 = points[idx2];
+                                const v3 = points[idx3];
+
+                                if (v1 && v2 && v3) {
+                                    resultTriangles.push({
+                                        vertices: [v1, v2, v3],
+                                        indices: [idx1, idx2, idx3],
+                                        minZ: Math.min(v1.z || 0, v2.z || 0, v3.z || 0),
+                                        maxZ: Math.max(v1.z || 0, v2.z || 0, v3.z || 0)
+                                    });
+                                }
+                            }
+
+                            console.log("🎉 Constrainautor complete: " + resultTriangles.length + " triangles");
+
+                            if (updateProgress) updateProgress(100, "Complete!");
+
+                            resolve({
+                                resultTriangles,
+                                points: points,
+                                stats: {
+                                    algorithm: "constrainautor",
+                                    originalPoints: points.length,
+                                    triangles: resultTriangles.length,
+                                    constraints: successfulConstraints,
+                                    constraintAttempts: constraintEdges.length,
+                                    failedConstraints: failedConstraints
+                                }
+                            });
+                            return;
+                        }
+
+                        // Process single constraint
+                        const [startIdx, endIdx] = constraintEdges[currentIndex];
+                        const constraint = validConstraints[currentIndex];
+                        const constraintStartTime = Date.now();
+                        const constraintIndex = currentIndex; // Store for logging
+
+                        try {
+                            // Check time before processing - if we're close to limit, skip this one
+                            const elapsedBefore = Date.now() - startTime;
+                            if (elapsedBefore > MAX_CONSTRAINT_TIME - 1000) {
+                                console.warn("⚠️ Skipping constraint " + constraintIndex + " - approaching time limit");
+                                currentIndex++;
+                                requestAnimationFrame(processNextConstraint);
+                                return;
+                            }
+
+                            // Step 5c.1) Check if edge is already constrained - skip if so
+                            if (isEdgeConstrained(startIdx, endIdx)) {
+                                // Edge already constrained - skip silently (this is expected for duplicate constraints)
+                                currentIndex++;
+                                requestAnimationFrame(processNextConstraint);
+                                return;
+                            }
+
+                            // Step 5c.1a) Skip constraints from entities with unmapped segments in problematic range (700+) if processing is slow
+                            // These constraints can cause hangs due to intersection issues from broken constraint chains
+                            if (constraint?.entityName && entitiesWithUnmappedSegments.has(constraint.entityName)) {
+                                const elapsedBefore = Date.now() - startTime;
+                                // If we're in the problematic range (700+) and processing has been slow (>8s), skip to prevent hang
+                                if (constraintIndex >= 700 && elapsedBefore > 8000) {
+                                    console.warn("⚠️ Skipping constraint " + constraintIndex + " from entity " + constraint.entityName + " (has unmapped segments) - preventing hang in problematic range");
+                                    currentIndex++;
+                                    requestAnimationFrame(processNextConstraint);
+                                    return;
+                                }
+                            }
+
+                            // Step 5c.2) Pre-validate constraint indices before applying
+                            if (startIdx < 0 || endIdx < 0 || startIdx >= points.length || endIdx >= points.length || startIdx === endIdx) {
+                                console.warn("⚠️ Skipping invalid constraint " + constraintIndex + ": invalid indices [" + startIdx + ", " + endIdx + "]");
+                                currentIndex++;
+                                requestAnimationFrame(processNextConstraint);
+                                return;
+                            }
+
+                            // Step 5c.3) Check if constraint edge length is reasonable (very short edges can cause issues)
+                            const p1 = points[startIdx];
+                            const p2 = points[endIdx];
+                            if (p1 && p2) {
+                                const dx = p2.x - p1.x;
+                                const dy = p2.y - p1.y;
+                                const edgeLength = Math.sqrt(dx * dx + dy * dy);
+
+                                // Skip extremely short edges (< 0.0001) as they can cause numerical issues
+                                if (edgeLength < 0.0001) {
+                                    console.warn("⚠️ Skipping constraint " + constraintIndex + " - edge too short: " + edgeLength.toFixed(6));
+                                    currentIndex++;
+                                    requestAnimationFrame(processNextConstraint);
+                                    return;
+                                }
+                            }
+
+                            // Step 5c.3a) Check if constraint edge passes through other points (collinear issue)
+                            // This is a major cause of "Constraining edge intersects point" errors and hangs
+                            const intersectingPointIdx = edgePassesThroughPoint(startIdx, endIdx);
+                            if (intersectingPointIdx !== null) {
+                                console.warn("⚠️ Skipping constraint " + constraintIndex + " from entity " + constraint?.entityName + ": [" + startIdx + ", " + endIdx + "]");
+                                console.warn("   Reason: Edge passes through point " + intersectingPointIdx + " (collinear points) - this causes 'Constraining edge intersects point' errors");
+                                // Mark as constrained to prevent trying it again
+                                markEdgeConstrained(startIdx, endIdx);
+                                currentIndex++;
+                                requestAnimationFrame(processNextConstraint);
+                                return;
+                            }
+
+                            // Step 5c.3b) Check if this constraint would intersect existing constrained edges
+                            // This prevents hangs from intersecting constraints (especially from entities with unmapped segments)
+                            if (wouldIntersectConstrainedEdges(startIdx, endIdx)) {
+                                console.warn("⚠️ Skipping constraint " + constraintIndex + " from entity " + constraint?.entityName + ": [" + startIdx + ", " + endIdx + "]");
+                                console.warn("   Reason: Edge would intersect existing constrained edge - this can cause hangs");
+                                // Mark as constrained anyway to prevent trying it again
+                                markEdgeConstrained(startIdx, endIdx);
+                                currentIndex++;
+                                requestAnimationFrame(processNextConstraint);
+                                return;
+                            }
+
+                            // Step 5c.4) Apply constraint
+                            constrainautor.constrainOne(startIdx, endIdx);
+                            const constraintTime = Date.now() - constraintStartTime;
+
+                            // Mark edge as constrained after successful application
+                            markEdgeConstrained(startIdx, endIdx);
+
+                            // Check if constraint took too long (>2000ms) - might indicate a problem
+                            if (constraintTime > 2000) {
+                                console.warn("⚠️ Constraint " + constraintIndex + " took " + constraintTime + "ms (very slow but completed)");
+                            }
+
+                            successfulConstraints++;
+                        } catch (constraintError) {
+                            // Check if error is because edge is already constrained
+                            const errorMsg = constraintError.message || "";
+                            if (errorMsg.includes("already constrained") || errorMsg.includes("intersects already constrained")) {
+                                // Edge is already constrained - mark it and continue silently
+                                markEdgeConstrained(startIdx, endIdx);
+                            } else if (errorMsg.includes("intersects point") || errorMsg.includes("Constraining edge intersects point")) {
+                                // Collinear point issue - this is expected and should be skipped
+                                console.warn("⚠️ Skipping constraint " + constraintIndex + " for entity " + constraint?.entityName + ": [" + startIdx + ", " + endIdx + "]");
+                                console.warn("   Reason: " + constraintError.message + " (collinear point not detected in pre-check)");
+                                markEdgeConstrained(startIdx, endIdx);
+                            } else {
+                                // Other error - log but continue
+                                console.warn("⚠️ Skipping constraint " + constraintIndex + " for entity " + constraint?.entityName + ": [" + startIdx + ", " + endIdx + "]");
+                                console.warn("   Reason: " + constraintError.message);
+                            }
+                        }
+
+                        currentIndex++;
+
+                        // Update progress after each constraint
+                        if (updateProgress) {
+                            const constraintProgress = 45 + Math.round((currentIndex / constraintEdges.length) * 45);
+                            const progressPercent = Math.min(constraintProgress, 90);
+                            const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+                            updateProgress(progressPercent, "Applying constraints: " + Math.round((currentIndex / constraintEdges.length) * 100) + "% (" + currentIndex + "/" + constraintEdges.length + ") - " + elapsed + "s elapsed");
+                        }
+
+                        // Yield to browser after each constraint to keep UI responsive
+                        // Use requestAnimationFrame for smooth updates
+                        requestAnimationFrame(processNextConstraint);
+                    } catch (batchError) {
+                        // Catch any errors in constraint processing
+                        console.error("❌ Error processing constraint " + currentIndex + ":", batchError);
+                        currentIndex++; // Skip this constraint and continue
+                        requestAnimationFrame(processNextConstraint);
+                    }
+                };
+
+                // Step 5e) Start processing constraints one at a time
+                processNextConstraint();
+            } else {
+                // No constraints - just convert triangles
+                if (updateProgress) updateProgress(50, "No constraints to apply, finalizing...");
+
+                const resultTriangles = [];
+                const triangles = delaunay.triangles;
+
+                for (let i = 0; i < triangles.length; i += 3) {
+                    const idx1 = triangles[i];
+                    const idx2 = triangles[i + 1];
+                    const idx3 = triangles[i + 2];
+
+                    const v1 = points[idx1];
+                    const v2 = points[idx2];
+                    const v3 = points[idx3];
+
+                    if (v1 && v2 && v3) {
+                        resultTriangles.push({
+                            vertices: [v1, v2, v3],
+                            indices: [idx1, idx2, idx3],
+                            minZ: Math.min(v1.z || 0, v2.z || 0, v3.z || 0),
+                            maxZ: Math.max(v1.z || 0, v2.z || 0, v3.z || 0)
+                        });
                     }
                 }
 
-                console.log("✅ Successfully applied " + successfulConstraints + "/" + constraintEdges.length + " constraints");
+                if (updateProgress) updateProgress(100, "Complete!");
+
+                resolve({
+                    resultTriangles,
+                    points: points,
+                    stats: {
+                        algorithm: "constrainautor",
+                        originalPoints: points.length,
+                        triangles: resultTriangles.length,
+                        constraints: 0,
+                        constraintAttempts: 0
+                    }
+                });
             }
-
-            // Convert result triangles
-            const resultTriangles = [];
-            const triangles = delaunay.triangles;
-
-            for (let i = 0; i < triangles.length; i += 3) {
-                const idx1 = triangles[i];
-                const idx2 = triangles[i + 1];
-                const idx3 = triangles[i + 2];
-
-                const v1 = points[idx1];
-                const v2 = points[idx2];
-                const v3 = points[idx3];
-
-                if (v1 && v2 && v3) {
-                    resultTriangles.push({
-                        vertices: [v1, v2, v3],
-                        indices: [idx1, idx2, idx3],
-                        minZ: Math.min(v1.z || 0, v2.z || 0, v3.z || 0),
-                        maxZ: Math.max(v1.z || 0, v2.z || 0, v3.z || 0)
-                    });
-                }
-            }
-
-            console.log("🎉 Constrainautor complete: " + resultTriangles.length + " triangles");
-
-            resolve({
-                resultTriangles,
-                points: points,
-                stats: {
-                    algorithm: "constrainautor",
-                    originalPoints: points.length,
-                    triangles: resultTriangles.length,
-                    constraints: successfulConstraints,
-                    constraintAttempts: constraintEdges.length
-                }
-            });
         } catch (error) {
             console.error("❌ Constrainautor error:", error);
             reject(error);
@@ -10322,9 +10693,53 @@ function showTriangulationPopup() {
 
                 // ✅ FIX: Choose triangulation method based on formData
                 if (formData.useBreaklines === "yes") {
-                    console.log("🔗 Using constrained triangulation (poly2tri)");
-                    updateStatusMessage("Creating constrained triangulation...");
-                    result = await createConstrainedDelaunayTriangulation(params);
+                    console.log("🔗 Using constrained triangulation");
+
+                    // Step 1) Create progress dialog for triangulation
+                    const progressContent = `
+                        <p>Creating Constrained Delaunay Triangulation</p>
+                        <p>Please wait, this may take a moment...</p>
+                        <div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">
+                            <div id="triangulationProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>
+                        </div>
+                        <p id="triangulationProgressText">Initializing...</p>
+                    `;
+
+                    const progressDialog = new FloatingDialog({
+                        title: "Triangulation Progress",
+                        content: progressContent,
+                        layoutType: "standard",
+                        width: 400,
+                        height: 200,
+                        showConfirm: false,
+                        showCancel: false,
+                        allowOutsideClick: false
+                    });
+
+                    progressDialog.show();
+
+                    // Step 2) Get progress bar and text elements
+                    const progressBar = document.getElementById("triangulationProgressBar");
+                    const progressText = document.getElementById("triangulationProgressText");
+
+                    // Step 3) Update progress function
+                    const updateProgress = (percent, message) => {
+                        if (progressBar) progressBar.style.width = percent + "%";
+                        if (progressText) progressText.textContent = message;
+                    };
+
+                    try {
+                        result = await createConstrainedDelaunayTriangulation(params, updateProgress);
+
+                        // Step 4) Close progress dialog
+                        setTimeout(() => {
+                            progressDialog.close();
+                        }, 500); // Small delay to show 100% completion
+                    } catch (error) {
+                        // Close dialog on error
+                        progressDialog.close();
+                        throw error;
+                    }
 
                     // ✅ FIX: Fallback to basic triangulation if CDT fails
                     if (!result || !result.resultTriangles || result.resultTriangles.length === 0) {
