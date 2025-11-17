@@ -2158,7 +2158,7 @@ body.dark-mode .tree-meta {
 
 /* Eye icon styles for show/hide context menu items */
 .tree-context-item[data-action="hide"] span:first-child:before {
-    background-image: url("icons/eye-closed.png");
+    background-image: url("/icons/eye-closed.png");
     width: 18px;
     height: 18px;
     display: inline-block;
@@ -2168,7 +2168,7 @@ body.dark-mode .tree-meta {
 }
 
 .tree-context-item[data-action="show"] span:first-child:before {
-    background-image: url("icons/eye.png");
+    background-image: url("/icons/eye.png");
     width: 18px;
     height: 18px;
     display: inline-block;
@@ -2178,7 +2178,7 @@ body.dark-mode .tree-meta {
 }
 
 .tree-context-item[data-action="properties"] span:first-child:before {
-    background-image: url("icons/settings.png");
+    background-image: url("/icons/settings.png");
     width: 18px;
     height: 18px;
     display: inline-block;
@@ -2188,7 +2188,7 @@ body.dark-mode .tree-meta {
 }
 
 .tree-context-item[data-action="delete"] span:first-child:before {
-    background-image: url("icons/trash.png");
+    background-image: url("/icons/trash.png");
     width: 18px;
     height: 18px;
     display: inline-block;
@@ -2198,7 +2198,7 @@ body.dark-mode .tree-meta {
 }
 
 .tree-context-item[data-action="reset-connections"] span:first-child:before {
-    background-image: url("icons/replace.png");
+    background-image: url("/icons/replace.png");
     width: 18px;
     height: 18px;
     display: inline-block;
@@ -2208,7 +2208,7 @@ body.dark-mode .tree-meta {
 }
 
 .tree-context-item[data-action="rename"] span:first-child:before {
-    background-image: url("icons/writing-sign.png");
+    background-image: url("/icons/writing-sign.png");
     width: 18px;
     height: 18px;
     display: inline-block;
@@ -2231,90 +2231,90 @@ body.dark-mode .tree-meta {
 /* Specific Node Type Icons */
 .tree-icon.blast:before {
     /* content: "💥"; */
-    background-image: url("icons/grain.png");
+    background-image: url("/icons/grain.png");
 }
 
 .tree-icon.entity:before {
     /* content: "📁"; */
-    background-image: url("icons/pattern.png");
+    background-image: url("/icons/pattern.png");
 }
 
 .tree-icon.hole:before {
     /* content: "🕳"; */
-    background-image: url("icons/holename.png");
+    background-image: url("/icons/holename.png");
 }
 
 .tree-icon.drawing:before {
     /* content: "📐"; */
-    background-image: url("icons/triangle-square-circle.png");
+    background-image: url("/icons/triangle-square-circle.png");
 }
 
 .tree-icon.points:before {
     /* content: "⚫"; */
-    background-image: url("icons/dots-diagonal-2.png");
+    background-image: url("/icons/dots-diagonal-2.png");
 }
 
 .tree-icon.line:before {
     /* content: "📏"; */
-    background-image: url("icons/stairs.png");
+    background-image: url("/icons/stairs.png");
 }
 
 .tree-icon.polygon:before {
     /* content: "⬟"; */
-    background-image: url("icons/square-rotated.png");
+    background-image: url("/icons/square-rotated.png");
 }
 
 .tree-icon.circle:before {
     /* content: "⭕"; */
-    background-image: url("icons/circle.png");
+    background-image: url("/icons/circle.png");
 }
 
 .tree-icon.text:before {
     /* content: "📝"; */
-    background-image: url("icons/text-resize.png");
+    background-image: url("/icons/text-resize.png");
 }
 
 .tree-icon.surface:before {
     /* content: "🗻"; */
-    background-image: url("icons/solar-panel-2.png");
+    background-image: url("/icons/solar-panel-2.png");
 }
 
 .tree-icon.image:before {
     /* content: "🖼"; */
-    background-image: url("icons/TIF-image.png");
+    background-image: url("/icons/TIF-image.png");
 }
 
 .tree-icon.property:before {
     /* content: "🔧"; */
-    background-image: url("icons/rings.png");
+    background-image: url("/icons/rings.png");
 }
 
 .tree-icon.points-folder:before {
-    background-image: url("icons/dots-diagonal-2.png");
+    background-image: url("/icons/dots-diagonal-2.png");
 }
 
 .tree-icon.lines-folder:before {
-    background-image: url("icons/stairs.png");
+    background-image: url("/icons/stairs.png");
 }
 
 .tree-icon.polygons-folder:before {
-    background-image: url("icons/square-rotated.png");
+    background-image: url("/icons/square-rotated.png");
 }
 
 .tree-icon.circle-folder:before {
-    background-image: url("icons/circle.png");
+    background-image: url("/icons/circle.png");
 }
 
 .tree-icon.text-folder:before {
-    background-image: url("icons/text-resize.png");
+    background-image: url("/icons/text-resize.png");
 }
 
 .tree-icon.surface-folder:before {
-    background-image: url("icons/solar-panel-2.png");
+    background-image: url("/icons/solar-panel-2.png");
 }
 
 .tree-icon.image-folder:before {
-    background-image: url("icons/TIF-image.png");
+    background-image: url("/icons/TIF-image.png");
 }
 
 /* Context Menu */
