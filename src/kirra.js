@@ -10063,53 +10063,95 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
                     return false;
                 };
 
-                // Step 5a.2) Check if edge passes through other points (collinear issue)
-                // Optimized version: only check points along the edge path, not all points
-                const edgePassesThroughPoint = (startIdx, endIdx) => {
+                // Step 5a.2) Find all points that lie on the constraint edge (collinear points)
+                // Returns array of point indices sorted by position along the edge
+                const findPointsOnEdge = (startIdx, endIdx) => {
                     const p1 = points[startIdx];
                     const p2 = points[endIdx];
 
-                    if (!p1 || !p2) return null;
+                    if (!p1 || !p2) return [];
 
                     const dx = p2.x - p1.x;
                     const dy = p2.y - p1.y;
                     const lengthSq = dx * dx + dy * dy;
 
-                    if (lengthSq < 0.00000001) return null;
+                    if (lengthSq < 0.00000001) return [];
 
-                    // Step 1) Sample points along the edge to check for collinear intersections
-                    // Check at 10%, 25%, 50%, 75%, 90% along the edge
-                    const checkPositions = [0.1, 0.25, 0.5, 0.75, 0.9];
-                    const tolerance = 0.02; // More lenient tolerance
+                    const tolerance = 0.001; // Tolerance for point-on-line detection
+                    const toleranceSq = tolerance * tolerance;
+                    const pointsOnEdge = [];
 
-                    for (const t of checkPositions) {
-                        const checkX = p1.x + t * dx;
-                        const checkY = p1.y + t * dy;
+                    // Step 1) Calculate bounding box for quick rejection
+                    const minX = Math.min(p1.x, p2.x) - tolerance;
+                    const maxX = Math.max(p1.x, p2.x) + tolerance;
+                    const minY = Math.min(p1.y, p2.y) - tolerance;
+                    const maxY = Math.max(p1.y, p2.y) + tolerance;
 
-                        // Step 2) Check nearby points to this position
-                        for (let i = 0; i < points.length; i++) {
-                            if (i === startIdx || i === endIdx) continue;
+                    // Step 2) Check all points to find those on the edge
+                    for (let i = 0; i < points.length; i++) {
+                        // Step 3) Skip the endpoints
+                        if (i === startIdx || i === endIdx) continue;
 
-                            const p = points[i];
-                            if (!p) continue;
+                        const p = points[i];
+                        if (!p) continue;
 
-                            const distSq = (p.x - checkX) * (p.x - checkX) + (p.y - checkY) * (p.y - checkY);
+                        // Step 4) Quick bounding box check
+                        if (p.x < minX || p.x > maxX || p.y < minY || p.y > maxY) continue;
 
-                            // Step 3) If point is very close to this position on the edge
-                            if (distSq < tolerance * tolerance) {
-                                // Verify it's actually on the line segment
-                                const px = p.x - p1.x;
-                                const py = p.y - p1.y;
-                                const tActual = (px * dx + py * dy) / lengthSq;
+                        // Step 5) Calculate distance from point to line segment
+                        const px = p.x - p1.x;
+                        const py = p.y - p1.y;
 
-                                // Must be between endpoints (not at ends)
-                                if (tActual > 0.05 && tActual < 0.95) {
-                                    return i;
-                                }
-                            }
+                        // Step 6) Project point onto line segment
+                        const t = (px * dx + py * dy) / lengthSq;
+
+                        // Step 7) Only consider points between endpoints (not at ends)
+                        if (t <= 0.001 || t >= 0.999) continue;
+
+                        // Step 8) Calculate closest point on segment
+                        const closestX = p1.x + t * dx;
+                        const closestY = p1.y + t * dy;
+
+                        // Step 9) Distance from point to segment (squared for efficiency)
+                        const distX = p.x - closestX;
+                        const distY = p.y - closestY;
+                        const distSq = distX * distX + distY * distY;
+
+                        // Step 10) If point is on the line (within tolerance)
+                        if (distSq < toleranceSq) {
+                            pointsOnEdge.push({ index: i, t: t });
                         }
                     }
-                    return null;
+
+                    // Step 11) Sort by position along edge (t value)
+                    pointsOnEdge.sort((a, b) => a.t - b.t);
+
+                    // Step 12) Return just the indices
+                    return pointsOnEdge.map((item) => item.index);
+                };
+
+                // Step 5a.2a) Split constraint edge into segments through collinear points
+                const splitConstraintThroughPoints = (startIdx, endIdx) => {
+                    const pointsOnEdge = findPointsOnEdge(startIdx, endIdx);
+
+                    if (pointsOnEdge.length === 0) {
+                        // No points on edge - return original constraint
+                        return [[startIdx, endIdx]];
+                    }
+
+                    // Step 1) Create segments: start -> point1, point1 -> point2, ..., pointN -> end
+                    const segments = [];
+                    let currentStart = startIdx;
+
+                    for (const pointIdx of pointsOnEdge) {
+                        segments.push([currentStart, pointIdx]);
+                        currentStart = pointIdx;
+                    }
+
+                    // Step 2) Add final segment to end
+                    segments.push([currentStart, endIdx]);
+
+                    return segments;
                 };
 
                 // Step 5a.3) Check if a constraint edge would intersect existing constrained edges
@@ -10289,13 +10331,46 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
                             }
 
                             // Step 5c.3a) Check if constraint edge passes through other points (collinear issue)
-                            // This is a major cause of "Constraining edge intersects point" errors and hangs
-                            const intersectingPointIdx = edgePassesThroughPoint(startIdx, endIdx);
-                            if (intersectingPointIdx !== null) {
-                                console.warn("⚠️ Skipping constraint " + constraintIndex + " from entity " + constraint?.entityName + ": [" + startIdx + ", " + endIdx + "]");
-                                console.warn("   Reason: Edge passes through point " + intersectingPointIdx + " (collinear points) - this causes 'Constraining edge intersects point' errors");
-                                // Mark as constrained to prevent trying it again
+                            // Instead of skipping, split the constraint into smaller segments through the points
+                            const pointsOnEdge = findPointsOnEdge(startIdx, endIdx);
+                            if (pointsOnEdge.length > 0) {
+                                // Step 1) Split constraint into segments through collinear points
+                                const splitSegments = splitConstraintThroughPoints(startIdx, endIdx);
+
+                                console.log("🔧 Splitting constraint " + constraintIndex + " from entity " + constraint?.entityName + ": [" + startIdx + ", " + endIdx + "]");
+                                console.log("   Found " + pointsOnEdge.length + " collinear points: " + pointsOnEdge.join(", "));
+                                console.log("   Creating " + splitSegments.length + " sub-constraints");
+
+                                // Step 2) Apply each split segment as a separate constraint
+                                let splitSuccessCount = 0;
+                                for (let segIdx = 0; segIdx < splitSegments.length; segIdx++) {
+                                    const [segStartIdx, segEndIdx] = splitSegments[segIdx];
+
+                                    // Step 3) Skip if segment is already constrained
+                                    if (isEdgeConstrained(segStartIdx, segEndIdx)) {
+                                        continue;
+                                    }
+
+                                    try {
+                                        // Step 4) Apply the split constraint
+                                        constrainautor.constrainOne(segStartIdx, segEndIdx);
+                                        markEdgeConstrained(segStartIdx, segEndIdx);
+                                        splitSuccessCount++;
+                                    } catch (splitError) {
+                                        const splitErrorMsg = splitError.message || "";
+                                        if (splitErrorMsg.includes("already constrained") || splitErrorMsg.includes("intersects already constrained")) {
+                                            markEdgeConstrained(segStartIdx, segEndIdx);
+                                        } else {
+                                            console.warn("   ⚠️ Failed to apply split segment " + segIdx + ": [" + segStartIdx + ", " + segEndIdx + "] - " + splitErrorMsg);
+                                        }
+                                    }
+                                }
+
+                                // Step 5) Mark original edge as constrained and continue
                                 markEdgeConstrained(startIdx, endIdx);
+                                successfulConstraints += splitSuccessCount;
+                                console.log("   ✅ Successfully applied " + splitSuccessCount + "/" + splitSegments.length + " split segments");
+
                                 currentIndex++;
                                 requestAnimationFrame(processNextConstraint);
                                 return;
