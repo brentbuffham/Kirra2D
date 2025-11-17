@@ -746,10 +746,10 @@ function handle3DClick(event) {
 		firstIntersect:
 			intersects.length > 0
 				? {
-						object: intersects[0].object.type,
-						userData: intersects[0].object.userData,
-						distance: intersects[0].distance.toFixed(2),
-				  }
+					object: intersects[0].object.type,
+					userData: intersects[0].object.userData,
+					distance: intersects[0].distance.toFixed(2),
+				}
 				: null,
 	});
 
@@ -4074,7 +4074,7 @@ var i;
 for (i = 0; i < acc.length; i++) {
 	acc[i].addEventListener("click", function () {
 		/* Toggle between adding and removing the "active" class,
-    to highlight the button that controls the panel */
+	to highlight the button that controls the panel */
 		this.classList.toggle("active");
 		/* Toggle between hiding and showing the active panel */
 		var panel = this.nextElementSibling;
@@ -4745,15 +4745,15 @@ optionConfigs.forEach((config) => {
 
 			// REPLACE THIS SECTION:
 			/*
-            // Calculate contours when any of these displays are turned on
-            if ((config.option === displayContours && displayContours.checked) || 
-                (config.option === displayFirstMovements && displayFirstMovements.checked) || 
-                (config.option === displayRelief && displayRelief.checked)) {
-                const result = recalculateContours(allBlastHoles, 0, 0);
-                contourLinesArray = result.contourLinesArray;
-                directionArrows = result.directionArrows;
-            }
-            */
+			// Calculate contours when any of these displays are turned on
+			if ((config.option === displayContours && displayContours.checked) || 
+				(config.option === displayFirstMovements && displayFirstMovements.checked) || 
+				(config.option === displayRelief && displayRelief.checked)) {
+				const result = recalculateContours(allBlastHoles, 0, 0);
+				contourLinesArray = result.contourLinesArray;
+				directionArrows = result.directionArrows;
+			}
+			*/
 
 			// WITH THIS THROTTLED VERSION:
 			if ((config.option === displayContours && displayContours.checked) || (config.option === displayFirstMovements && displayFirstMovements.checked) || (config.option === displayRelief && displayRelief.checked)) {
@@ -6399,15 +6399,15 @@ function parseKADFile(fileData) {
 			showModalMessage(
 				"File Import Warning",
 				"The file was imported but there were " +
-					parseResult.errors.length +
-					" parsing warnings:<br><br>" +
-					parseResult.errors
-						.slice(0, 5)
-						.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-						.join("") +
-					additionalErrors +
-					"<br><br>" +
-					"Some data may have been skipped. Check your results carefully.",
+				parseResult.errors.length +
+				" parsing warnings:<br><br>" +
+				parseResult.errors
+					.slice(0, 5)
+					.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+					.join("") +
+				additionalErrors +
+				"<br><br>" +
+				"Some data may have been skipped. Check your results carefully.",
 				"warning"
 			);
 		}
@@ -6625,17 +6625,17 @@ function parseKADFile(fileData) {
 			const errorDetailsHtml =
 				errorCount > 0
 					? "<details>" +
-					  "<summary>View Error Details (" +
-					  errorCount +
-					  " errors)</summary>" +
-					  '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-					  errorDetails
-							.slice(0, 10)
-							.map((error) => "<li>" + error + "</li>")
-							.join("") +
-					  (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-					  "</ul>" +
-					  "</details>"
+					"<summary>View Error Details (" +
+					errorCount +
+					" errors)</summary>" +
+					'<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+					errorDetails
+						.slice(0, 10)
+						.map((error) => "<li>" + error + "</li>")
+						.join("") +
+					(errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+					"</ul>" +
+					"</details>"
 					: "";
 
 			showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -8036,9 +8036,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
 	const table = new Uint32Array(256);
-	for (let i = 256; i--; ) {
+	for (let i = 256; i--;) {
 		let tmp = i;
-		for (let k = 8; k--; ) {
+		for (let k = 8; k--;) {
 			tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
 		}
 		table[i] = tmp;
@@ -11209,13 +11209,13 @@ function clipVoronoiCells(voronoiMetrics) {
 
 	const clipPathPolygons = contractedPolygons; // These are the actual geometric polygons
 	/*
-    console.log("nearest:", nearest);
-    console.log("expand:", expand);
-    console.log("unionedPolygons:", unionedPolygons);
-    console.log("simplifiedPolygons:", simplifiedPolygons);
-    console.log("contract:", contract);
-    console.log("contractedPolygons:", contractedPolygons);
-    console.log("clipPathPolygons for iteration:", clipPathPolygons);
+	console.log("nearest:", nearest);
+	console.log("expand:", expand);
+	console.log("unionedPolygons:", unionedPolygons);
+	console.log("simplifiedPolygons:", simplifiedPolygons);
+	console.log("contract:", contract);
+	console.log("contractedPolygons:", contractedPolygons);
+	console.log("clipPathPolygons for iteration:", clipPathPolygons);
 	*/
 
 	for (let cell of voronoiMetrics) {
@@ -12440,29 +12440,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
 			`
             <div style="text-align: center;">
                 <p><strong>` +
-				resultMessage +
-				`</strong></p>
+			resultMessage +
+			`</strong></p>
                 <p><strong>Input:</strong> ` +
-				selectedEntities.length +
-				` entities</p>
+			selectedEntities.length +
+			` entities</p>
                 <p><strong>Output:</strong> ` +
-				polygons.length +
-				` polygon(s)</p>
+			polygons.length +
+			` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-				params.radius +
-				`m</p>
+			params.radius +
+			`m</p>
                 <p><strong>Rotation:</strong> ` +
-				params.rotationOffset +
-				`°</p>
+			params.rotationOffset +
+			`°</p>
                 <p><strong>Starburst:</strong> ` +
-				params.starburstOffset * 100 +
-				`%</p>
+			params.starburstOffset * 100 +
+			`%</p>
                 <p><strong>Line Width:</strong> ` +
-				params.lineWidth +
-				`</p>
+			params.lineWidth +
+			`</p>
                 <p><strong>Location:</strong> ` +
-				(params.useToeLocation ? "End/Toe" : "Start/Collar") +
-				`</p>
+			(params.useToeLocation ? "End/Toe" : "Start/Collar") +
+			`</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -12479,8 +12479,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-				(error.message || "Unknown error occurred") +
-				`</p>
+			(error.message || "Unknown error occurred") +
+			`</p>
             </div>
         `
 		);
@@ -18320,9 +18320,9 @@ function timeChart() {
 			.flatMap((index) => {
 				return holeIDs[index]
 					? holeIDs[index].map((combinedID) => {
-							const [entityName, holeID] = combinedID.split(":");
-							return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-					  })
+						const [entityName, holeID] = combinedID.split(":");
+						return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+					})
 					: [];
 			})
 			.filter(Boolean);
@@ -18345,11 +18345,11 @@ function timeChart() {
 
 		timingWindowHolesSelected = holeIDs[clickedIndex]
 			? holeIDs[clickedIndex]
-					.map((combinedID) => {
-						const [entityName, holeID] = combinedID.split(":");
-						return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-					})
-					.filter(Boolean)
+				.map((combinedID) => {
+					const [entityName, holeID] = combinedID.split(":");
+					return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+				})
+				.filter(Boolean)
 			: [];
 
 		drawData(allBlastHoles, selectedHole);
@@ -18659,9 +18659,12 @@ function drawData(allBlastHoles, selectedHole) {
 	if (threeLocalOriginX === 0 && threeLocalOriginY === 0) {
 		const hasHoles = allBlastHoles && allBlastHoles.length > 0;
 		const hasSurfaces = loadedSurfaces && loadedSurfaces.size > 0;
+		const hasKADDrawings = allKADDrawingsMap && allKADDrawingsMap.size > 0;
 
-		if (hasHoles || hasSurfaces) {
+		if (hasHoles || hasSurfaces || hasKADDrawings) {
 			updateThreeLocalOrigin();
+			// Step 0b.1) Sync camera to view the data after setting origin
+			syncCameraToThreeJS();
 		}
 	}
 
@@ -19257,14 +19260,14 @@ function drawData(allBlastHoles, selectedHole) {
 
 				// Step 3) Only draw Three.js geometry when in 3D mode (not in pure 2D mode)
 				const isIn3DMode = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
-				if (isIn3DMode || onlyShowThreeJS) {
+				if (threeInitialized && (isIn3DMode || onlyShowThreeJS)) {
 					// Draw complete hole in Three.js (collar + grade + toe lines)
 					drawHoleThreeJS(hole);
 
 					// Draw hole text labels in Three.js
-					if (threeInitialized) {
-						drawHoleTextsAndConnectorsThreeJS(hole, displayOptions);
-					}
+					//if (threeInitialized) {
+					drawHoleTextsAndConnectorsThreeJS(hole, displayOptions);
+					//}
 
 					// Step 4) Draw connectors in Three.js
 					if (threeInitialized && displayOptions.connector && hole.fromHoleID) {
@@ -19772,7 +19775,9 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 
 		renderThreeJS();
+		console.log("🎨 Three.js scene rendered - drawData()");
 	}
+
 }
 
 function drawKADCoordinates(kadPoint, screenX, screenY) {
@@ -20307,9 +20312,9 @@ function resetZoom() {
 function saveHolesToLocalStorage(allBlastHoles) {
 	if (allBlastHoles !== null) {
 		/* STRUCTURE OF THE POINTS ARRAY
-        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
-    */
+		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
+	*/
 		const lines = allBlastHoles.map((hole) => {
 			return `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation},${hole.startYLocation},${hole.startZLocation},${hole.endXLocation},${hole.endYLocation},${hole.endZLocation},${hole.gradeXLocation},${hole.gradeYLocation},${hole.gradeZLocation},${hole.subdrillAmount},${hole.subdrillLength},${hole.benchHeight},${hole.holeDiameter},${hole.holeType},${hole.fromHoleID},${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated},${hole.holeAngle},${hole.holeBearing},${hole.initiationTime},${hole.measuredLength},${hole.measuredLengthTimeStamp},${hole.measuredMass},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}\n`;
 		});
@@ -20394,9 +20399,9 @@ function loadHolesFromLocalStorage() {
 		allBlastHoles = [];
 	}
 	/* STRUCTURE OF THE POINTS ARRAY
-        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
-    */
+		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
+	*/
 	const csvString = localStorage.getItem("kirraDataPoints");
 	//console.log(csvString);
 	if (csvString) {
@@ -28251,10 +28256,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
 	return closestPoint
 		? {
-				point: closestPoint,
-				type: snapType,
-				distance: minDistance,
-		  }
+			point: closestPoint,
+			type: snapType,
+			distance: minDistance,
+		}
 		: null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
