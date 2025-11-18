@@ -6017,12 +6017,12 @@ async function handleDXFUpload(event) {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = function (e) {
+    reader.onload = async function (e) {
         const dxfContent = e.target.result;
         try {
             const parser = new DxfParser();
             const dxf = parser.parseSync(dxfContent);
-            parseDXFtoKadMaps(dxf);
+            await parseDXFtoKadMaps(dxf);
         } catch (error) {
             console.error("DXF parsing failed:", error);
             alert("Error parsing DXF file.");
@@ -6051,8 +6051,52 @@ function getUniqueEntityName(baseName, entityType) {
     return uniqueName;
 }
 
-function parseDXFtoKadMaps(dxf) {
-    // 1) seed counters so we never collide with existing entries
+async function parseDXFtoKadMaps(dxf) {
+    // Step 1) Create progress dialog for DXF parsing
+    var progressUpdateDXF = null;
+    var progressDialog = null;
+    var progressBar = null;
+    var progressText = null;
+    var totalEntities = dxf.entities ? dxf.entities.length : 0;
+
+    if (totalEntities > 10) {
+        var progressContent =
+            "<p>Parsing DXF File</p>" +
+            "<p>Please wait, this may take a moment...</p>" +
+            '<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">' +
+            '<div id="dxfProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>' +
+            "</div>" +
+            '<p id="dxfProgressText">Initializing...</p>';
+
+        progressDialog = new FloatingDialog({
+            title: "DXF Import Progress",
+            content: progressContent,
+            layoutType: "standard",
+            width: 400,
+            height: 200,
+            showConfirm: false,
+            showCancel: false,
+            draggable: true
+        });
+
+        progressDialog.show();
+
+        // Step 2) Wait for dialog to render, then get progress elements
+        await new Promise(function (resolve) {
+            setTimeout(resolve, 50);
+        });
+
+        progressBar = document.getElementById("dxfProgressBar");
+        progressText = document.getElementById("dxfProgressText");
+
+        // Step 3) Update progress function
+        progressUpdateDXF = function (percent, message) {
+            if (progressBar) progressBar.style.width = percent + "%";
+            if (progressText) progressText.textContent = message;
+        };
+    }
+
+    // Step 4) seed counters so we never collide with existing entries
     var counts = {
         point: 0,
         line: 0,
@@ -6061,14 +6105,14 @@ function parseDXFtoKadMaps(dxf) {
         text: 0
     };
 
-    // 2) kirra.js centroid offsets
+    // Step 5) kirra.js centroid offsets
     var offsetX = 0; //centroidX || 0;
     var offsetY = 0; //centroidY || 0;
-    // 3) Collections for surface data
+    // Step 6) Collections for surface data
     var surfacePoints = [];
     var surfaceTriangles = [];
 
-    // 3) raw DXF color or bright-red fallback, but return as "#RRGGBB"
+    // Step 7) raw DXF color or bright-red fallback, but return as "#RRGGBB"
     function getColor(idx) {
         // pick the DXF color (decimal) or default grey
         var dec = idx != null && idx >= 0 ? idx : 0x777777;
@@ -6077,8 +6121,23 @@ function parseDXFtoKadMaps(dxf) {
         return "#" + hex;
     }
 
-    // 4) iterate over every entity
-    dxf.entities.forEach(function (ent) {
+    // Step 8) iterate over every entity with progress updates
+    for (var index = 0; index < dxf.entities.length; index++) {
+        var ent = dxf.entities[index];
+
+        // Step 9) Update progress every entity and yield to UI periodically
+        if (progressUpdateDXF) {
+            var percent = Math.round((index / totalEntities) * 100);
+            var message = "Processing entity " + (index + 1) + " of " + totalEntities;
+            progressUpdateDXF(percent, message);
+
+            // Yield to UI every 50 entities to allow progress bar to update
+            if (index % 50 === 0) {
+                await new Promise(function (resolve) {
+                    setTimeout(resolve, 0);
+                });
+            }
+        }
         var t = ent.type.toUpperCase();
         var color = getColor(ent.color);
 
@@ -6371,7 +6430,7 @@ function parseDXFtoKadMaps(dxf) {
         else {
             console.warn("Unsupported DXF entity:", ent.type);
         }
-    });
+    }
     // NEW: Create and SAVE surface from 3DFACE data if any triangles were found
     if (surfaceTriangles.length > 0) {
         var surfaceName = "DXF_Surface_" + Date.now();
@@ -6404,6 +6463,16 @@ function parseDXFtoKadMaps(dxf) {
                 console.error("❌ Failed to save DXF surface:", saveError);
             }
         }, 100);
+    }
+
+    // Step 10) Update progress to 100% and close dialog
+    if (progressUpdateDXF) {
+        progressUpdateDXF(100, "DXF import complete!");
+        setTimeout(function () {
+            if (progressDialog) {
+                progressDialog.close();
+            }
+        }, 500);
     }
 
     console.log("Appended to KAD maps:", {
