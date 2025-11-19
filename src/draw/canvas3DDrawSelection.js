@@ -201,20 +201,25 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
             break;
 
         case "text":
-            // Step 4f) Highlight text
+            // Step 4f) Highlight text (match troika text dimensions)
             entity.data.forEach((textData, index) => {
                 const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
                 const z = textData.pointZLocation || dataCentroidZ || 0;
 
-                // Step 4f.1) Estimate text dimensions (rough approximation for 3D)
-                const text = textData.text || "Text";
+                // Step 4f.1) Calculate text dimensions matching GeometryFactory.createKADText()
+                // Troika text uses fontSize * 0.5 for world units
                 const fontSize = textData.fontSize || 12;
-                const charWidth = fontSize * 0.6; // Approximate character width
-                const lineHeight = fontSize * 1.2;
-                const lines = text.split("\n");
-                const maxLineLength = Math.max(...lines.map((line) => line.length));
-                const width = maxLineLength * charWidth;
-                const height = lines.length * lineHeight;
+                const text = textData.text || "Text";
+                const textScale = fontSize * 0.5; // Same as troika createKADText
+
+                // Step 4f.1a) Estimate width based on character count (more accurate than fixed width)
+                const charWidth = textScale * 0.6; // Approximate character width
+                const textWidth = text.length * charWidth;
+                const textHeight = textScale;
+
+                // Step 4f.1b) Make highlight box slightly larger for visibility
+                const width = textWidth * 1.2;
+                const height = textHeight * 1.5;
 
                 // Step 4f.2) Selected text gets magenta box
                 if (index === kadObject.elementIndex) {

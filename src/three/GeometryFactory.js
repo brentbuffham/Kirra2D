@@ -4,6 +4,7 @@
 //=================================================
 import * as THREE from "three";
 import { MeshLine, MeshLineMaterial } from "../helpers/meshLineModified.js";
+import { Text } from "troika-three-text";
 
 export class GeometryFactory {
     // Step 1) Create complete hole visualization (collar + grade circle + lines)
@@ -353,60 +354,95 @@ export class GeometryFactory {
         return circleMesh;
     }
 
-    // Step 12b) Create KAD text using canvas texture
+    // Step 12b) Create KAD text using troika-three-text (crisp SDF rendering)
     static createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null) {
-        // Step 1) Create canvas for text rendering
-        const canvas = document.createElement("canvas");
-        const context = canvas.getContext("2d");
+        // Step 1) Create troika Text object
+        const textMesh = new Text();
 
-        // Step 2) Set canvas size (power of 2 for better WebGL performance)
-        canvas.width = 512;
-        canvas.height = 128;
+        // Step 2) Set text content and properties
+        textMesh.text = String(text);
+        textMesh.fontSize = fontSize * 0.5; // Scale to world units (matches old sprite scale)
+        textMesh.color = color;
+        textMesh.anchorX = "center"; // Center horizontally
+        textMesh.anchorY = "middle"; // Center vertically
 
-        // Step 3) Configure text style
-        context.font = fontSize + "px Arial";
-        context.textAlign = "center";
-        context.textBaseline = "middle";
-
-        // Step 4) Draw background if specified
-        if (backgroundColor) {
-            context.fillStyle = backgroundColor;
-            context.fillRect(0, 0, canvas.width, canvas.height);
+        // Step 2a) Load Roboto font from fonts folder
+        // For Vite: fonts in src/fonts/ can be accessed via import or moved to public/
+        // Using dynamic import path - Vite will handle the asset
+        // If font is in src/fonts/, use: new URL('../fonts/Roboto-Regular.ttf', import.meta.url).href
+        // If font is in public/fonts/, use: "/fonts/Roboto-Regular.ttf"
+        try {
+            // Try to load Roboto font - Vite will resolve the path
+            const robotoFontUrl = new URL("../fonts/Roboto-Regular.ttf", import.meta.url).href;
+            textMesh.font = robotoFontUrl;
+        } catch (error) {
+            // Fallback to system font if Roboto not found
+            console.warn("⚠️ Could not load Roboto font, using Arial fallback:", error);
+            textMesh.font = "Arial"; // System font fallback
         }
 
-        // Step 5) Draw text
-        context.fillStyle = color;
-        context.fillText(text, canvas.width / 2, canvas.height / 2);
+        // Step 3) Set position
+        textMesh.position.set(worldX, worldY, worldZ);
 
-        // Step 6) Create texture from canvas
-        const texture = new THREE.CanvasTexture(canvas);
-        texture.needsUpdate = true;
+        // Step 4) Configure render order (material properties set after sync)
+        textMesh.renderOrder = 100; // Render on top of other meshes
 
-        // Step 7) Create sprite material with texture
-        const material = new THREE.SpriteMaterial({
-            map: texture,
-            transparent: true,
-            depthTest: true,
-            depthWrite: false
+        // Step 5) CRITICAL: Sync troika text to create geometry and material
+        // Troika text is async - must call sync() to actually render
+        textMesh.sync(() => {
+            // Step 5a) Configure material for depth testing and transparency
+            // Material is created after sync, so configure it here
+            if (textMesh.material) {
+                textMesh.material.depthTest = true; // Enable occlusion behind objects
+                textMesh.material.depthWrite = false; // Don't write to depth buffer (for transparency)
+                textMesh.material.transparent = true; // Enable transparency
+            }
         });
 
-        // Step 8) Create sprite and position it
-        const sprite = new THREE.Sprite(material);
-        sprite.position.set(worldX, worldY, worldZ);
+        // Step 6) Add background if specified (draw as plane behind text)
+        if (backgroundColor) {
+            // Create a background plane
+            const bgWidth = fontSize * 2; // Approximate width
+            const bgHeight = fontSize * 0.6; // Approximate height
+            const bgGeometry = new THREE.PlaneGeometry(bgWidth, bgHeight);
+            const bgMaterial = new THREE.MeshBasicMaterial({
+                color: backgroundColor,
+                transparent: true,
+                opacity: 0.7,
+                depthTest: true,
+                depthWrite: false
+            });
+            const bgMesh = new THREE.Mesh(bgGeometry, bgMaterial);
+            bgMesh.position.z = -0.1; // Slightly behind text
+            bgMesh.renderOrder = 99;
 
-        // Step 9) Scale sprite to fixed size based on fontSize (not text width)
-        // This ensures all text labels are the same size regardless of content
-        // Use fixed scale based on fontSize to maintain consistent sizing
-        // Scale factor converts font size to world units for 3D visibility
-        const scaleFactor = 0.5; // Adjust this to control text size in 3D
-        const fixedTextHeight = fontSize * scaleFactor; // Height in world units
-        const fixedTextWidth = fontSize * scaleFactor * 4; // Width in world units (aspect ratio for typical text)
+            // Group text and background together
+            const group = new THREE.Group();
+            group.position.set(worldX, worldY, worldZ);
+            group.add(bgMesh);
 
-        sprite.scale.set(fixedTextWidth, fixedTextHeight, 1);
+            // Adjust text to be relative to group
+            textMesh.position.set(0, 0, 0);
+            group.add(textMesh);
 
-        sprite.renderOrder = 100; // Render on top
+            // Store reference to textMesh for billboard rotation
+            group.userData.textMesh = textMesh;
+            group.userData.isTroikaText = true;
 
-        return sprite;
+            // Step 6a) Ensure text is synced in group
+            textMesh.sync();
+
+            return group;
+        }
+
+        // Step 7) Mark as troika text for billboard behavior
+        textMesh.userData.isTroikaText = true;
+
+        // Step 8) CRITICAL: Sync again to ensure rendering (troika is async)
+        // This ensures text geometry and material are created
+        textMesh.sync();
+
+        return textMesh;
     }
 
     // Step 12.5) Helper function to find nearest hole for a point
@@ -1167,7 +1203,7 @@ export class GeometryFactory {
 
         // Step 20.11b) Create box geometry
         const boxGeometry = new THREE.PlaneGeometry(width, height);
-        
+
         // Step 20.11c) Create edges from the box for outline
         const edges = new THREE.EdgesGeometry(boxGeometry);
         const lineMaterial = new THREE.LineBasicMaterial({

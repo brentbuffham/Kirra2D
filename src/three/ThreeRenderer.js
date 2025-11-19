@@ -277,12 +277,29 @@ export class ThreeRenderer {
 
 	// Step 19) Helper method to dispose object resources
 	disposeObject(object) {
-		// Step 19a) Dispose geometry
+		// Step 19a) Dispose troika text objects (special handling)
+		if (object.userData && object.userData.isTroikaText) {
+			// Troika text has its own dispose method that cleans up workers and resources
+			if (object.dispose && typeof object.dispose === "function") {
+				object.dispose();
+			}
+			// Also dispose geometry and material if they exist
+			if (object.geometry) {
+				object.geometry.dispose();
+			}
+			if (object.material) {
+				if (object.material.map) object.material.map.dispose();
+				object.material.dispose();
+			}
+			return; // Don't continue with standard disposal
+		}
+		
+		// Step 19b) Dispose geometry
 		if (object.geometry) {
 			object.geometry.dispose();
 		}
 
-		// Step 19b) Dispose material(s)
+		// Step 19c) Dispose material(s)
 		if (object.material) {
 			if (Array.isArray(object.material)) {
 				object.material.forEach((material) => {
@@ -305,7 +322,7 @@ export class ThreeRenderer {
 			}
 		}
 
-		// Step 19c) Dispose textures on sprites
+		// Step 19d) Dispose textures on sprites
 		if (object.isSprite && object.material && object.material.map) {
 			object.material.map.dispose();
 		}
@@ -372,8 +389,39 @@ export class ThreeRenderer {
 
 	// Step 23) Render the scene
 	render() {
+		// Step 23a) Update billboard text rotation before rendering
+		this.updateTextBillboards();
+		
 		this.renderer.render(this.scene, this.camera);
 		this.needsRender = false;
+	}
+	
+	// Step 23b) Update all troika text objects to face camera (billboard behavior)
+	updateTextBillboards() {
+		const updateGroup = (group) => {
+			group.traverse((object) => {
+				// Check if this is a troika text object
+				if (object.userData && object.userData.isTroikaText) {
+					// Make text face camera (billboard effect)
+					object.quaternion.copy(this.camera.quaternion);
+				}
+				// Also check for text inside groups (with backgrounds)
+				if (object.userData && object.userData.textMesh) {
+					object.userData.textMesh.quaternion.copy(this.camera.quaternion);
+					// Rotate background too if it exists
+					object.traverse((child) => {
+						if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
+							child.quaternion.copy(this.camera.quaternion);
+						}
+					});
+				}
+			});
+		};
+		
+		// Update text in all groups
+		updateGroup(this.kadGroup);
+		updateGroup(this.holesGroup);
+		updateGroup(this.connectorsGroup);
 	}
 
 	// Step 24) Start animation loop (only renders when needed)
