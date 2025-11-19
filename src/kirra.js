@@ -58,6 +58,8 @@ import {
     drawBurdenReliefMapThreeJS
 } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
+import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
+import { highlightSelectedKADThreeJS } from "./draw/canvas3DDrawSelection.js";
 //=================================================
 // import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
 //=================================================
@@ -369,6 +371,17 @@ function exposeGlobalsToWindow() {
     window.elevationToColor = elevationToColor;
     window.rgbStringToThreeColor = rgbStringToThreeColor;
     window.worldToCanvas = worldToCanvas;
+
+    // Step 6) Selection state for KAD and holes (for selection highlighting modules)
+    window.selectedKADObject = selectedKADObject;
+    window.selectedKADPolygon = selectedKADPolygon;
+    window.selectedMultipleKADObjects = selectedMultipleKADObjects;
+    window.selectedHole = selectedHole;
+    window.selectedMultipleHoles = selectedMultipleHoles;
+    window.isSelectionPointerActive = isSelectionPointerActive;
+    window.allKADDrawingsMap = allKADDrawingsMap;
+    window.getEntityFromKADObject = getEntityFromKADObject;
+    window.developerModeEnabled = developerModeEnabled;
 }
 
 // Step 3) Set local origin from first hole, surface, or current centroid
@@ -713,12 +726,11 @@ function handle3DClick(event) {
     }
 
     // Step 12c) Early return if dependencies not ready
-    if (!threeInitialized || !threeRenderer || !allBlastHoles || allBlastHoles.length === 0) {
+    // Note: allBlastHoles is NOT required - KAD objects can be selected without holes
+    if (!threeInitialized || !threeRenderer) {
         console.log("❌ [3D CLICK] Dependencies not ready", {
             threeInitialized: !!threeInitialized,
-            threeRenderer: !!threeRenderer,
-            allBlastHoles: !!allBlastHoles,
-            allBlastHolesLength: allBlastHoles ? allBlastHoles.length : 0
+            threeRenderer: !!threeRenderer
         });
         return;
     }
@@ -747,10 +759,10 @@ function handle3DClick(event) {
         firstIntersect:
             intersects.length > 0
                 ? {
-                      object: intersects[0].object.type,
-                      userData: intersects[0].object.userData,
-                      distance: intersects[0].distance.toFixed(2)
-                  }
+                    object: intersects[0].object.type,
+                    userData: intersects[0].object.userData,
+                    distance: intersects[0].distance.toFixed(2)
+                }
                 : null
     });
 
@@ -777,7 +789,7 @@ function handle3DClick(event) {
         }
     }
 
-    const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles);
+    const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
 
     if (clickedHole) {
         console.log("✅ [3D CLICK] Found hole:", clickedHole.holeID, "in", clickedHole.entityName);
@@ -934,23 +946,212 @@ function handle3DClick(event) {
             drawData(allBlastHoles, selectedHole);
         }
     } else {
-        // Step 12j) Clicked on empty space - clear selection (unless in connector mode)
-        console.log("🌌 [3D CLICK] Clicked on empty space");
-        // Don't stop propagation here - let camera controls handle panning if needed
-        if (!isAddingConnector && !isAddingMultiConnector) {
-            const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
-            const previousMultiCount = selectedMultipleHoles.length;
-            selectedHole = null;
-            if (!isMultiHoleSelectionEnabled) {
-                selectedMultipleHoles = [];
+        // Step 12j) No hole clicked - check for KAD objects in 3D
+        console.log("🔍 [3D CLICK] No hole found, checking for KAD objects...");
+        console.log("🔍 [3D CLICK] Total intersects:", intersects.length);
+
+        // Step 12j.0) Debug: Log all intersect types
+        intersects.forEach((intersect, index) => {
+            let obj = intersect.object;
+            let types = [];
+            let depth = 0;
+            while (obj && depth < 5) {
+                if (obj.userData && obj.userData.type) {
+                    types.push(obj.userData.type);
+                }
+                obj = obj.parent;
+                depth++;
             }
-            console.log("🗑️ [3D CLICK] Cleared selection:", {
-                previousSelectedHole,
-                previousMultiCount,
-                newSelectedHole: selectedHole,
-                newMultiCount: selectedMultipleHoles.length
-            });
-            drawData(allBlastHoles, selectedHole);
+            console.log("  Intersect " + index + ":", intersect.object.type, "types in chain:", types.join(" -> "));
+        });
+
+        // Step 12j.1) Check if selection pointer is active
+        if (isSelectionPointerActive) {
+            let clickedKADObject = null;
+
+            // Step 12j.2) Search intersects for KAD objects (they have userData.kadId)
+            // Skip selection highlights and look for actual KAD geometry
+            for (const intersect of intersects) {
+                let object = intersect.object;
+
+                // Step 12j.3) Skip if this intersect is a selection highlight
+                // Check immediate object and parents
+                let isHighlight = false;
+                let checkObj = object;
+                let depth = 0;
+                while (checkObj && depth < 10) {
+                    if (checkObj.userData && checkObj.userData.type === "kadSelectionHighlight") {
+                        isHighlight = true;
+                        console.log("⏭️ [3D CLICK] Skipping selection highlight at depth", depth);
+                        break;
+                    }
+                    checkObj = checkObj.parent;
+                    depth++;
+                }
+
+                // Step 12j.4) If this was a highlight, skip to next intersect
+                if (isHighlight) {
+                    continue;
+                }
+
+                // Step 12j.5) Now traverse up to find actual KAD object
+                depth = 0;
+                while (object && depth < 10) {
+                    // Step 12j.5a) Check for actual KAD objects (kadPoint, kadLine, kadPolygon, kadCircle, kadText)
+                    if (object.userData && object.userData.kadId && object.userData.type &&
+                        (object.userData.type === "kadPoint" ||
+                            object.userData.type === "kadLine" ||
+                            object.userData.type === "kadPolygon" ||
+                            object.userData.type === "kadCircle" ||
+                            object.userData.type === "kadText")) {
+                        console.log("✅ [3D CLICK] Found KAD object:", object.userData.kadId, "type:", object.userData.type);
+
+                        // Step 12j.4) Get the KAD entity from the map
+                        const entity = allKADDrawingsMap.get(object.userData.kadId);
+                        if (entity) {
+                            // Step 12j.5) Find which specific element was clicked
+                            // Use intersection point to determine closest element
+                            let closestElementIndex = 0;
+                            let minDistance = Infinity;
+
+                            if (entity.data && entity.data.length > 1 && intersect.point) {
+                                // Convert intersection point from local to world coordinates
+                                const intersectWorldX = intersect.point.x + (window.threeLocalOriginX || 0);
+                                const intersectWorldY = intersect.point.y + (window.threeLocalOriginY || 0);
+
+                                // Find closest element by distance
+                                entity.data.forEach((element, index) => {
+                                    const elemX = element.pointXLocation || element.centerX;
+                                    const elemY = element.pointYLocation || element.centerY;
+                                    const dx = elemX - intersectWorldX;
+                                    const dy = elemY - intersectWorldY;
+                                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                                    if (distance < minDistance) {
+                                        minDistance = distance;
+                                        closestElementIndex = index;
+                                    }
+                                });
+
+                                console.log("🎯 [3D CLICK] Found closest element:", closestElementIndex, "at distance:", minDistance.toFixed(2) + "m");
+                            }
+
+                            // Step 12j.6) Create KAD object descriptor (similar to 2D getClickedKADObject)
+                            clickedKADObject = {
+                                entityName: object.userData.kadId,
+                                entityType: entity.entityType,
+                                elementIndex: closestElementIndex, // Use calculated closest element
+                                selectionType: "entity" // Mark as full entity selection
+                            };
+
+                            // Step 12j.7) Add type-specific properties from the clicked element
+                            if (entity.data && entity.data[closestElementIndex]) {
+                                const clickedElement = entity.data[closestElementIndex];
+                                if (entity.entityType === "circle") {
+                                    clickedKADObject.pointXLocation = clickedElement.pointXLocation || clickedElement.centerX;
+                                    clickedKADObject.pointYLocation = clickedElement.pointYLocation || clickedElement.centerY;
+                                    clickedKADObject.radius = clickedElement.radius;
+                                } else if (entity.entityType === "text") {
+                                    clickedKADObject.pointXLocation = clickedElement.pointXLocation;
+                                    clickedKADObject.pointYLocation = clickedElement.pointYLocation;
+                                    clickedKADObject.text = clickedElement.text;
+                                } else {
+                                    clickedKADObject.pointXLocation = clickedElement.pointXLocation;
+                                    clickedKADObject.pointYLocation = clickedElement.pointYLocation;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    object = object.parent;
+                    depth++;
+                }
+
+                if (clickedKADObject) break;
+            }
+
+            // Step 12j.7) Handle KAD object selection (matching 2D handleSelection logic)
+            if (clickedKADObject) {
+                console.log("🎯 [3D CLICK] Processing KAD selection:", clickedKADObject.entityName);
+
+                // Step 12j.8) Check for Shift key (multiple selection)
+                const isShiftPressed = event.shiftKey;
+
+                if (isShiftPressed) {
+                    // Step 12j.9) Multiple selection mode
+                    console.log("🔀 [3D CLICK] Multiple KAD selection mode (Shift pressed)");
+                    const existingIndex = selectedMultipleKADObjects.findIndex((obj) => {
+                        return obj.entityName === clickedKADObject.entityName && obj.entityType === clickedKADObject.entityType;
+                    });
+
+                    if (existingIndex === -1) {
+                        // Add to multiple selection
+                        selectedMultipleKADObjects.push(clickedKADObject);
+                        console.log("➕ [3D CLICK] Added to selection, total:", selectedMultipleKADObjects.length);
+                    } else {
+                        // Remove from multiple selection
+                        selectedMultipleKADObjects.splice(existingIndex, 1);
+                        console.log("➖ [3D CLICK] Removed from selection, total:", selectedMultipleKADObjects.length);
+                    }
+
+                    // Clear single selection
+                    selectedKADObject = null;
+                    selectedKADPolygon = null;
+                } else {
+                    // Step 12j.10) Single selection mode
+                    console.log("🎯 [3D CLICK] Single KAD selection mode");
+                    selectedKADObject = clickedKADObject;
+                    selectedKADPolygon = clickedKADObject; // Backward compatibility
+                    selectedMultipleKADObjects = [];
+                }
+
+                // Step 12j.11) Clear hole selections
+                selectedHole = null;
+                selectedMultipleHoles = [];
+
+                // Step 12j.12) Expose globals and redraw
+                exposeGlobalsToWindow();
+                drawData(allBlastHoles || [], selectedHole);
+
+                // Prevent camera controls from handling this event
+                event.stopPropagation();
+                event.preventDefault();
+            } else {
+                // Step 12j.13) No KAD object - clear selection
+                console.log("🌌 [3D CLICK] Clicked on empty space - clearing selections");
+                if (!isAddingConnector && !isAddingMultiConnector) {
+                    const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
+                    const previousMultiCount = selectedMultipleHoles.length;
+                    const previousKADCount = selectedMultipleKADObjects.length;
+
+                    selectedHole = null;
+                    selectedKADObject = null;
+                    selectedKADPolygon = null;
+                    if (!isMultiHoleSelectionEnabled) {
+                        selectedMultipleHoles = [];
+                    }
+                    selectedMultipleKADObjects = [];
+
+                    console.log("🗑️ [3D CLICK] Cleared all selections:", {
+                        previousSelectedHole,
+                        previousMultiCount,
+                        previousKADCount
+                    });
+
+                    exposeGlobalsToWindow();
+                    drawData(allBlastHoles || [], selectedHole);
+                }
+            }
+        } else {
+            // Step 12j.14) Selection pointer not active - clear selections
+            console.log("⏭️ [3D CLICK] Selection pointer not active");
+            if (!isAddingConnector && !isAddingMultiConnector) {
+                selectedHole = null;
+                if (!isMultiHoleSelectionEnabled) {
+                    selectedMultipleHoles = [];
+                }
+                drawData(allBlastHoles || [], selectedHole);
+            }
         }
     }
 }
@@ -4254,7 +4455,7 @@ var i;
 for (i = 0; i < acc.length; i++) {
     acc[i].addEventListener("click", function () {
         /* Toggle between adding and removing the "active" class,
-	to highlight the button that controls the panel */
+    to highlight the button that controls the panel */
         this.classList.toggle("active");
         /* Toggle between hiding and showing the active panel */
         var panel = this.nextElementSibling;
@@ -4925,15 +5126,15 @@ optionConfigs.forEach((config) => {
 
             // REPLACE THIS SECTION:
             /*
-			// Calculate contours when any of these displays are turned on
-			if ((config.option === displayContours && displayContours.checked) || 
-				(config.option === displayFirstMovements && displayFirstMovements.checked) || 
-				(config.option === displayRelief && displayRelief.checked)) {
-				const result = recalculateContours(allBlastHoles, 0, 0);
-				contourLinesArray = result.contourLinesArray;
-				directionArrows = result.directionArrows;
-			}
-			*/
+            // Calculate contours when any of these displays are turned on
+            if ((config.option === displayContours && displayContours.checked) || 
+                (config.option === displayFirstMovements && displayFirstMovements.checked) || 
+                (config.option === displayRelief && displayRelief.checked)) {
+                const result = recalculateContours(allBlastHoles, 0, 0);
+                contourLinesArray = result.contourLinesArray;
+                directionArrows = result.directionArrows;
+            }
+            */
 
             // WITH THIS THROTTLED VERSION:
             if ((config.option === displayContours && displayContours.checked) || (config.option === displayFirstMovements && displayFirstMovements.checked) || (config.option === displayRelief && displayRelief.checked)) {
@@ -6639,14 +6840,14 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Parsing Error",
                 "Failed to parse the file properly:<br><br>" +
-                    criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
-                    "<br><br>" +
-                    "Common causes:<br><br>" +
-                    "<li>Mixed delimiters (commas and tabs in same file)</li>" +
-                    "<li>Unescaped quotes in text fields</li>" +
-                    "<li>Inconsistent number of columns</li>" +
-                    "<br><br>" +
-                    "Please check your file format and try again.",
+                criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
+                "<br><br>" +
+                "Common causes:<br><br>" +
+                "<li>Mixed delimiters (commas and tabs in same file)</li>" +
+                "<li>Unescaped quotes in text fields</li>" +
+                "<li>Inconsistent number of columns</li>" +
+                "<br><br>" +
+                "Please check your file format and try again.",
                 "error"
             );
             return; // Exit early
@@ -6660,15 +6861,15 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Import Warning",
                 "The file was imported but there were " +
-                    parseResult.errors.length +
-                    " parsing warnings:<br><br>" +
-                    parseResult.errors
-                        .slice(0, 5)
-                        .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-                        .join("") +
-                    additionalErrors +
-                    "<br><br>" +
-                    "Some data may have been skipped. Check your results carefully.",
+                parseResult.errors.length +
+                " parsing warnings:<br><br>" +
+                parseResult.errors
+                    .slice(0, 5)
+                    .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+                    .join("") +
+                additionalErrors +
+                "<br><br>" +
+                "Some data may have been skipped. Check your results carefully.",
                 "warning"
             );
         }
@@ -6886,17 +7087,17 @@ function parseKADFile(fileData) {
             const errorDetailsHtml =
                 errorCount > 0
                     ? "<details>" +
-                      "<summary>View Error Details (" +
-                      errorCount +
-                      " errors)</summary>" +
-                      '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-                      errorDetails
-                          .slice(0, 10)
-                          .map((error) => "<li>" + error + "</li>")
-                          .join("") +
-                      (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-                      "</ul>" +
-                      "</details>"
+                    "<summary>View Error Details (" +
+                    errorCount +
+                    " errors)</summary>" +
+                    '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+                    errorDetails
+                        .slice(0, 10)
+                        .map((error) => "<li>" + error + "</li>")
+                        .join("") +
+                    (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+                    "</ul>" +
+                    "</details>"
                     : "";
 
             showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -7632,11 +7833,9 @@ function convertPointsToAllDataCSV() {
         const hole = visibleBlastHoles[i];
         const row = `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation.toFixed(decimalPlaces)},${hole.startYLocation.toFixed(decimalPlaces)},${hole.startZLocation},${hole.endXLocation.toFixed(decimalPlaces)},${hole.endYLocation.toFixed(decimalPlaces)},${hole.endZLocation.toFixed(
             decimalPlaces
-        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${
-            hole.fromHoleID
-        },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${
-            hole.measuredMassTimeStamp
-        },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
+        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${hole.fromHoleID
+            },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${hole.measuredMassTimeStamp
+            },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
         csv += row + "\n";
     }
     return csv;
@@ -8300,9 +8499,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
     const table = new Uint32Array(256);
-    for (let i = 256; i--; ) {
+    for (let i = 256; i--;) {
         let tmp = i;
-        for (let k = 8; k--; ) {
+        for (let k = 8; k--;) {
             tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
         }
         table[i] = tmp;
@@ -12155,14 +12354,14 @@ function clipVoronoiCells(voronoiMetrics) {
 
     const clipPathPolygons = contractedPolygons; // These are the actual geometric polygons
     /*
-	console.log("nearest:", nearest);
-	console.log("expand:", expand);
-	console.log("unionedPolygons:", unionedPolygons);
-	console.log("simplifiedPolygons:", simplifiedPolygons);
-	console.log("contract:", contract);
-	console.log("contractedPolygons:", contractedPolygons);
-	console.log("clipPathPolygons for iteration:", clipPathPolygons);
-	*/
+    console.log("nearest:", nearest);
+    console.log("expand:", expand);
+    console.log("unionedPolygons:", unionedPolygons);
+    console.log("simplifiedPolygons:", simplifiedPolygons);
+    console.log("contract:", contract);
+    console.log("contractedPolygons:", contractedPolygons);
+    console.log("clipPathPolygons for iteration:", clipPathPolygons);
+    */
 
     for (let cell of voronoiMetrics) {
         if (!cell.polygon || cell.polygon.length < 3) continue;
@@ -13386,29 +13585,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
             `
             <div style="text-align: center;">
                 <p><strong>` +
-                resultMessage +
-                `</strong></p>
+            resultMessage +
+            `</strong></p>
                 <p><strong>Input:</strong> ` +
-                selectedEntities.length +
-                ` entities</p>
+            selectedEntities.length +
+            ` entities</p>
                 <p><strong>Output:</strong> ` +
-                polygons.length +
-                ` polygon(s)</p>
+            polygons.length +
+            ` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-                params.radius +
-                `m</p>
+            params.radius +
+            `m</p>
                 <p><strong>Rotation:</strong> ` +
-                params.rotationOffset +
-                `°</p>
+            params.rotationOffset +
+            `°</p>
                 <p><strong>Starburst:</strong> ` +
-                params.starburstOffset * 100 +
-                `%</p>
+            params.starburstOffset * 100 +
+            `%</p>
                 <p><strong>Line Width:</strong> ` +
-                params.lineWidth +
-                `</p>
+            params.lineWidth +
+            `</p>
                 <p><strong>Location:</strong> ` +
-                (params.useToeLocation ? "End/Toe" : "Start/Collar") +
-                `</p>
+            (params.useToeLocation ? "End/Toe" : "Start/Collar") +
+            `</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -13425,8 +13624,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-                (error.message || "Unknown error occurred") +
-                `</p>
+            (error.message || "Unknown error occurred") +
+            `</p>
             </div>
         `
         );
@@ -19319,9 +19518,9 @@ function timeChart() {
             .flatMap((index) => {
                 return holeIDs[index]
                     ? holeIDs[index].map((combinedID) => {
-                          const [entityName, holeID] = combinedID.split(":");
-                          return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                      })
+                        const [entityName, holeID] = combinedID.split(":");
+                        return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                    })
                     : [];
             })
             .filter(Boolean);
@@ -19344,11 +19543,11 @@ function timeChart() {
 
         timingWindowHolesSelected = holeIDs[clickedIndex]
             ? holeIDs[clickedIndex]
-                  .map((combinedID) => {
-                      const [entityName, holeID] = combinedID.split(":");
-                      return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                  })
-                  .filter(Boolean)
+                .map((combinedID) => {
+                    const [entityName, holeID] = combinedID.split(":");
+                    return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                })
+                .filter(Boolean)
             : [];
 
         drawData(allBlastHoles, selectedHole);
@@ -20419,11 +20618,14 @@ function drawData(allBlastHoles, selectedHole) {
                     for (const textData of entity.data) {
                         if (textData.visible === false) continue;
                         const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-                        drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null);
+                        drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, entity.entityName);
                     }
                 }
             }
         }
+
+        // Step 7) Highlight selected KAD objects in Three.js (after KAD drawing)
+        highlightSelectedKADThreeJS();
 
         // After all other drawing operations but before font updates
         if (isPolygonSelectionActive) {
@@ -20727,11 +20929,14 @@ function drawData(allBlastHoles, selectedHole) {
                     for (const textData of entity.data) {
                         if (textData.visible === false) continue;
                         const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-                        drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null);
+                        drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, entity.entityName);
                     }
                 }
             }
         }
+
+        // Step 6) Highlight selected KAD objects in Three.js (after KAD drawing)
+        highlightSelectedKADThreeJS();
     }
 
     // Step 2) Render Three.js scene only when in 3D mode or Three.js-only mode
@@ -21310,9 +21515,9 @@ function resetZoom() {
 function saveHolesToLocalStorage(allBlastHoles) {
     if (allBlastHoles !== null) {
         /* STRUCTURE OF THE POINTS ARRAY
-		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
-	*/
+        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
+    */
         const lines = allBlastHoles.map((hole) => {
             return `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation},${hole.startYLocation},${hole.startZLocation},${hole.endXLocation},${hole.endYLocation},${hole.endZLocation},${hole.gradeXLocation},${hole.gradeYLocation},${hole.gradeZLocation},${hole.subdrillAmount},${hole.subdrillLength},${hole.benchHeight},${hole.holeDiameter},${hole.holeType},${hole.fromHoleID},${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated},${hole.holeAngle},${hole.holeBearing},${hole.initiationTime},${hole.measuredLength},${hole.measuredLengthTimeStamp},${hole.measuredMass},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}\n`;
         });
@@ -21397,9 +21602,9 @@ function loadHolesFromLocalStorage() {
         allBlastHoles = [];
     }
     /* STRUCTURE OF THE POINTS ARRAY
-		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
-	*/
+        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
+    */
     const csvString = localStorage.getItem("kirraDataPoints");
     //console.log(csvString);
     if (csvString) {
@@ -29314,10 +29519,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
     return closestPoint
         ? {
-              point: closestPoint,
-              type: snapType,
-              distance: minDistance
-          }
+            point: closestPoint,
+            type: snapType,
+            distance: minDistance
+        }
         : null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
@@ -30846,487 +31051,8 @@ function drawKADPolygonHighlightSelectedVisuals() {
         });
     }
 }
-// NEW: Helper function to calculate exact text dimensions (matches drawKADTexts)
-function calculateTextDimensions(text) {
-    if (!text)
-        return {
-            width: 0,
-            height: 0,
-            lines: []
-        };
-
-    // Set the same font as drawKADTexts
-    ctx.font = parseInt(currentFontSize - 2) + "px Arial";
-
-    const lines = text.split("\n");
-    const lineHeight = currentFontSize; // Same as drawMultilineText
-
-    // Calculate the width of the widest line (same logic as drawMultilineText)
-    let maxWidth = 0;
-    for (let i = 0; i < lines.length; i++) {
-        const lineWidth = ctx.measureText(lines[i]).width;
-        if (lineWidth > maxWidth) {
-            maxWidth = lineWidth;
-        }
-    }
-
-    const totalHeight = lines.length * lineHeight;
-
-    return {
-        width: maxWidth,
-        height: totalHeight,
-        lineHeight: lineHeight,
-        lines: lines,
-        numLines: lines.length
-    };
-}
-// ENHANCED: Fix segment highlighting to show only the clicked segment
-function drawKADHighlightSelectionVisuals() {
-    if (!selectedKADObject && (!selectedMultipleKADObjects || selectedMultipleKADObjects.length === 0)) return;
-
-    if (developerModeEnabled) {
-        console.log("=== DRAWING FUNCTION DEBUG ===");
-        console.log("selectedKADObject:", selectedKADObject);
-        console.log("isSelectionPointerActive:", isSelectionPointerActive);
-        console.log("selectedMultipleKADObjects:", selectedMultipleKADObjects);
-        console.log("selectedMultipleKADObjects.length:", selectedMultipleKADObjects?.length);
-    }
-
-    //colours
-    const selectedSegmentColor = "rgba(255, 68, 255, 0.8)";
-    const nonSelectedSegmentColor = "#00FF00"; // Green for non-selected segments
-    const nonSelectedPointColor = "rgba(0, 255, 0, 0.5)"; // Green for non-selected points
-    const verticesColor = "rgba(255,0,0,0.5)";
-
-    if (selectedKADObject && isSelectionPointerActive) {
-        const tolerance = 5;
-        const entity = getEntityFromKADObject(selectedKADObject);
-        if (!entity) return;
-
-        // Common selection styling
-        ctx.strokeStyle = nonSelectedSegmentColor; // Bright green
-        ctx.lineWidth = 3;
-        ctx.setLineDash([]);
-        ctx.fillStyle = verticesColor || "rgba(255,0,0,0.5)"; // Red for vertices/points
-
-        switch (selectedKADObject.entityType) {
-            case "point":
-                // Highlight the selected point with extra emphasis
-                const [px, py] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
-
-                ctx.strokeStyle = selectedSegmentColor;
-                ctx.lineWidth = 4;
-                ctx.beginPath();
-                ctx.arc(px, py, tolerance + 3, 0, 2 * Math.PI);
-                ctx.stroke();
-
-                // Draw all other points in the entity with standard highlighting
-                ctx.strokeStyle = nonSelectedSegmentColor;
-                ctx.lineWidth = 5;
-                entity.data.forEach((point, index) => {
-                    if (index !== selectedKADObject.elementIndex) {
-                        const [opx, opy] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                        ctx.beginPath();
-                        ctx.arc(opx, opy, tolerance, 0, 2 * Math.PI);
-                        ctx.stroke();
-                    }
-                });
-                break;
-
-            case "line":
-                // Draw ALL segments first with standard highlighting
-                entity.data.forEach((point, index) => {
-                    if (index > 0) {
-                        const [prevX, prevY] = worldToCanvas(entity.data[index - 1].pointXLocation, entity.data[index - 1].pointYLocation);
-                        const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-
-                        ctx.strokeStyle = nonSelectedSegmentColor; // Green for non-selected segments
-                        ctx.lineWidth = 2;
-                        ctx.beginPath();
-                        ctx.moveTo(prevX, prevY);
-                        ctx.lineTo(x, y);
-                        ctx.stroke();
-                    }
-                });
-
-                // Then highlight ONLY the selected segment
-                if (selectedKADObject.selectionType === "segment") {
-                    const segmentIndex = selectedKADObject.segmentIndex;
-                    if (segmentIndex < entity.data.length - 1) {
-                        const point1 = entity.data[segmentIndex];
-                        const point2 = entity.data[segmentIndex + 1];
-                        const [x1, y1] = worldToCanvas(point1.pointXLocation, point1.pointYLocation);
-                        const [x2, y2] = worldToCanvas(point2.pointXLocation, point2.pointYLocation);
-
-                        ctx.strokeStyle = selectedSegmentColor;
-                        ctx.lineWidth = 5;
-                        ctx.beginPath();
-                        ctx.moveTo(x1, y1);
-                        ctx.lineTo(x2, y2);
-                        ctx.stroke();
-                    }
-                }
-
-                // Draw all vertices
-                entity.data.forEach((point) => {
-                    const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                    ctx.fillStyle = verticesColor;
-                    ctx.beginPath();
-                    ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                    ctx.fill();
-                });
-                break;
-
-            case "poly":
-                const polygonPoints = entity.data;
-
-                // Draw ALL segments first with standard highlighting
-                for (let i = 0; i < polygonPoints.length; i++) {
-                    const point1 = polygonPoints[i];
-                    const point2 = polygonPoints[(i + 1) % polygonPoints.length];
-                    const [x1, y1] = worldToCanvas(point1.pointXLocation, point1.pointYLocation);
-                    const [x2, y2] = worldToCanvas(point2.pointXLocation, point2.pointYLocation);
-
-                    ctx.strokeStyle = nonSelectedSegmentColor; // Green for non-selected segments
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(x1, y1);
-                    ctx.lineTo(x2, y2);
-                    ctx.stroke();
-                }
-
-                // Then highlight ONLY the selected segment
-                if (selectedKADObject.selectionType === "segment") {
-                    const segmentIndex = selectedKADObject.segmentIndex;
-                    const point1 = polygonPoints[segmentIndex];
-                    const point2 = polygonPoints[(segmentIndex + 1) % polygonPoints.length];
-
-                    // Step #) Check if points exist before accessing properties
-                    if (point1 && point2 && point1.pointXLocation !== undefined && point2.pointXLocation !== undefined) {
-                        const [x1, y1] = worldToCanvas(point1.pointXLocation, point1.pointYLocation);
-                        const [x2, y2] = worldToCanvas(point2.pointXLocation, point2.pointYLocation);
-
-                        ctx.strokeStyle = selectedSegmentColor;
-                        ctx.lineWidth = 5;
-                        ctx.beginPath();
-                        ctx.moveTo(x1, y1);
-                        ctx.lineTo(x2, y2);
-                        ctx.stroke();
-                    }
-                }
-
-                // Draw all vertices
-                polygonPoints.forEach((point) => {
-                    // Step #) Check if point exists before accessing properties
-                    if (point && point.pointXLocation !== undefined) {
-                        const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                        ctx.fillStyle = verticesColor;
-                        ctx.beginPath();
-                        ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                        ctx.fill();
-                    }
-                });
-                break;
-
-            case "circle":
-                // [Circle highlighting code remains the same]
-                const [cx, cy] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
-
-                ctx.strokeStyle = selectedSegmentColor;
-                ctx.lineWidth = 4;
-                const radiusCanvas = selectedKADObject.radius * currentScale;
-                ctx.beginPath();
-                ctx.arc(cx, cy, radiusCanvas, 0, 2 * Math.PI);
-                ctx.stroke();
-
-                ctx.fillStyle = verticesColor;
-                ctx.beginPath();
-                ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
-                ctx.fill();
-
-                // Other circles...
-                ctx.strokeStyle = nonSelectedSegmentColor;
-                ctx.lineWidth = 2;
-                entity.data.forEach((circle, index) => {
-                    if (index !== selectedKADObject.elementIndex) {
-                        const [ocx, ocy] = worldToCanvas(circle.pointXLocation, circle.pointYLocation);
-                        const oradiusCanvas = circle.radius * currentScale;
-                        ctx.beginPath();
-                        ctx.arc(ocx, ocy, oradiusCanvas + 5, 0, 2 * Math.PI);
-                        ctx.stroke();
-                    }
-                });
-                break;
-
-            case "text":
-                // [Text highlighting code from previous fix]
-                const [tx, ty] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
-                const textDimensions = calculateTextDimensions(selectedKADObject.text || "Text");
-
-                ctx.strokeStyle = selectedSegmentColor;
-                ctx.lineWidth = 4;
-
-                const rectX = tx - 5;
-                const rectY = ty - textDimensions.lineHeight + 2;
-                const rectWidth = textDimensions.width + 10;
-                const rectHeight = textDimensions.height + 6;
-
-                ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
-
-                ctx.fillStyle = verticesColor;
-                ctx.beginPath();
-                ctx.arc(tx, ty, 4, 0, 2 * Math.PI);
-                ctx.fill();
-
-                // Other text elements...
-                ctx.strokeStyle = nonSelectedSegmentColor;
-                ctx.lineWidth = 2;
-                entity.data.forEach((textData, index) => {
-                    if (index !== selectedKADObject.elementIndex) {
-                        const [otx, oty] = worldToCanvas(textData.pointXLocation, textData.pointYLocation);
-                        const otherTextDimensions = calculateTextDimensions(textData.text || "Text");
-
-                        const otherRectX = otx - 5;
-                        const otherRectY = oty - otherTextDimensions.lineHeight + 2;
-                        const otherRectWidth = otherTextDimensions.width + 10;
-                        const otherRectHeight = otherTextDimensions.height + 6;
-
-                        ctx.strokeRect(otherRectX, otherRectY, otherRectWidth, otherRectHeight);
-                    }
-                });
-                break;
-        }
-    }
-
-    // Handle multiple selections - reuse the single selection drawing code
-    if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
-        if (developerModeEnabled) {
-            console.log("Drawing multiple selections:", selectedMultipleKADObjects.length, "objects");
-        }
-
-        selectedMultipleKADObjects.forEach((kadObj, index) => {
-            if (developerModeEnabled) {
-                console.log("=== DRAWING OBJECT " + index + " ==="); // Fixed to use concatenation
-                console.log("kadObj:", kadObj);
-            }
-
-            // Temporarily replace selectedKADObject with this one
-            const temp = selectedKADObject;
-            selectedKADObject = kadObj;
-
-            // DECLARE VARIABLES FIRST (before the switch statement)
-            const tolerance = 5;
-            const entity = getEntityFromKADObject(selectedKADObject);
-
-            if (developerModeEnabled) {
-                console.log("Entity found by getEntityFromKADObject:", entity);
-                console.log("Entity type check:", selectedKADObject.entityType);
-            }
-
-            if (entity) {
-                if (developerModeEnabled) {
-                    console.log("Entity found - proceeding with drawing for:", selectedKADObject.entityType);
-                }
-
-                // Common selection styling
-                ctx.strokeStyle = nonSelectedSegmentColor; // Bright green
-                ctx.lineWidth = 3;
-                ctx.setLineDash([]);
-                ctx.fillStyle = verticesColor;
-
-                switch (selectedKADObject.entityType) {
-                    case "point":
-                        // Highlight the selected point with extra emphasis
-                        const [px, py] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
-
-                        ctx.strokeStyle = selectedSegmentColor; // Orange for selected element
-                        ctx.lineWidth = 4;
-                        ctx.beginPath();
-                        ctx.arc(px, py, tolerance + 3, 0, 2 * Math.PI);
-                        ctx.stroke();
-
-                        // Draw all other points in the entity with standard highlighting
-                        ctx.strokeStyle = nonSelectedSegmentColor;
-                        ctx.lineWidth = 2;
-                        entity.data.forEach((point, index) => {
-                            if (index !== selectedKADObject.elementIndex) {
-                                const [opx, opy] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                                ctx.beginPath();
-                                ctx.arc(opx, opy, tolerance, 0, 2 * Math.PI);
-                                ctx.stroke();
-                            }
-                        });
-                        break;
-
-                    case "line":
-                        // Draw ALL segments first with standard highlighting
-                        entity.data.forEach((point, index) => {
-                            if (index > 0) {
-                                const [prevX, prevY] = worldToCanvas(entity.data[index - 1].pointXLocation, entity.data[index - 1].pointYLocation);
-                                const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-
-                                ctx.strokeStyle = nonSelectedSegmentColor; // Green for non-selected segments
-                                ctx.lineWidth = 2;
-                                ctx.beginPath();
-                                ctx.moveTo(prevX, prevY);
-                                ctx.lineTo(x, y);
-                                ctx.stroke();
-                            }
-                        });
-
-                        // Then highlight ONLY the selected segment
-                        if (selectedKADObject.selectionType === "segment") {
-                            const segmentIndex = selectedKADObject.segmentIndex;
-                            if (segmentIndex < entity.data.length - 1) {
-                                const point1 = entity.data[segmentIndex];
-                                const point2 = entity.data[segmentIndex + 1];
-                                const [x1, y1] = worldToCanvas(point1.pointXLocation, point1.pointYLocation);
-                                const [x2, y2] = worldToCanvas(point2.pointXLocation, point2.pointYLocation);
-
-                                ctx.strokeStyle = selectedSegmentColor; // Orange for selected segment
-                                ctx.lineWidth = 5;
-                                ctx.beginPath();
-                                ctx.moveTo(x1, y1);
-                                ctx.lineTo(x2, y2);
-                                ctx.stroke();
-                            }
-                        }
-
-                        // Draw all vertices
-                        entity.data.forEach((point) => {
-                            const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                            ctx.fillStyle = verticesColor;
-                            ctx.beginPath();
-                            ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                            ctx.fill();
-                        });
-                        break;
-
-                    case "poly":
-                        const polygonPoints = entity.data;
-
-                        // Draw ALL segments first with standard highlighting
-                        for (let i = 0; i < polygonPoints.length; i++) {
-                            const point1 = polygonPoints[i];
-                            const point2 = polygonPoints[(i + 1) % polygonPoints.length];
-                            const [x1, y1] = worldToCanvas(point1.pointXLocation, point1.pointYLocation);
-                            const [x2, y2] = worldToCanvas(point2.pointXLocation, point2.pointYLocation);
-
-                            ctx.strokeStyle = nonSelectedSegmentColor; // Green for non-selected segments
-                            ctx.lineWidth = 2;
-                            ctx.beginPath();
-                            ctx.moveTo(x1, y1);
-                            ctx.lineTo(x2, y2);
-                            ctx.stroke();
-                        }
-
-                        // Then highlight ONLY the selected segment
-                        if (selectedKADObject.selectionType === "segment") {
-                            const segmentIndex = selectedKADObject.segmentIndex;
-                            const point1 = polygonPoints[segmentIndex];
-                            const point2 = polygonPoints[(segmentIndex + 1) % polygonPoints.length];
-                            const [x1, y1] = worldToCanvas(point1.pointXLocation, point1.pointYLocation);
-                            const [x2, y2] = worldToCanvas(point2.pointXLocation, point2.pointYLocation);
-
-                            ctx.strokeStyle = selectedSegmentColor; // Orange for selected segment
-                            ctx.lineWidth = 5;
-                            ctx.beginPath();
-                            ctx.moveTo(x1, y1);
-                            ctx.lineTo(x2, y2);
-                            ctx.stroke();
-                        }
-
-                        // Draw all vertices
-                        polygonPoints.forEach((point) => {
-                            const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                            ctx.fillStyle = verticesColor;
-                            ctx.beginPath();
-                            ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                            ctx.fill();
-                        });
-                        break;
-
-                    case "circle":
-                        // [Circle highlighting code remains the same]
-                        const [cx, cy] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
-
-                        ctx.strokeStyle = selectedSegmentColor; // Orange for selected segment
-                        ctx.lineWidth = 4;
-                        const radiusCanvas = selectedKADObject.radius * currentScale;
-                        ctx.beginPath();
-                        ctx.arc(cx, cy, radiusCanvas, 0, 2 * Math.PI);
-                        ctx.stroke();
-
-                        ctx.fillStyle = verticesColor;
-                        ctx.beginPath();
-                        ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
-                        ctx.fill();
-
-                        // Other circles...
-                        ctx.strokeStyle = nonSelectedSegmentColor;
-                        ctx.lineWidth = 2;
-                        entity.data.forEach((circle, index) => {
-                            if (index !== selectedKADObject.elementIndex) {
-                                const [ocx, ocy] = worldToCanvas(circle.pointXLocation, circle.pointYLocation);
-                                const oradiusCanvas = circle.radius * currentScale;
-                                ctx.beginPath();
-                                ctx.arc(ocx, ocy, oradiusCanvas + 5, 0, 2 * Math.PI);
-                                ctx.stroke();
-                            }
-                        });
-                        break;
-
-                    case "text":
-                        // [Text highlighting code from previous fix]
-                        const [tx, ty] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
-                        const textDimensions = calculateTextDimensions(selectedKADObject.text || "Text");
-
-                        ctx.strokeStyle = selectedSegmentColor; // Orange for selected segment
-                        ctx.lineWidth = 4;
-
-                        const rectX = tx - 5;
-                        const rectY = ty - textDimensions.lineHeight + 2;
-                        const rectWidth = textDimensions.width + 10;
-                        const rectHeight = textDimensions.height + 6;
-
-                        ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
-
-                        ctx.fillStyle = verticesColor;
-                        ctx.beginPath();
-                        ctx.arc(tx, ty, 4, 0, 2 * Math.PI);
-                        ctx.fill();
-
-                        // Other text elements...
-                        ctx.strokeStyle = nonSelectedSegmentColor;
-                        ctx.lineWidth = 2;
-                        entity.data.forEach((textData, index) => {
-                            if (index !== selectedKADObject.elementIndex) {
-                                const [otx, oty] = worldToCanvas(textData.pointXLocation, textData.pointYLocation);
-                                const otherTextDimensions = calculateTextDimensions(textData.text || "Text");
-
-                                const otherRectX = otx - 5;
-                                const otherRectY = oty - otherTextDimensions.lineHeight + 2;
-                                const otherRectWidth = otherTextDimensions.width + 10;
-                                const otherRectHeight = otherTextDimensions.height + 6;
-
-                                ctx.strokeRect(otherRectX, otherRectY, otherRectWidth, otherRectHeight);
-                            }
-                        });
-                        break;
-                }
-            } else {
-                console.log("ERROR: No entity found for:", selectedKADObject.entityName);
-                console.log("Available entities in allKADDrawingsMap:");
-                for (const [name, ent] of allKADDrawingsMap.entries()) {
-                    console.log("  -", name, "type:", ent.entityType);
-                }
-            }
-
-            // Restore original
-            selectedKADObject = temp;
-        });
-    }
-}
+// Step 1) Helper function moved to canvas2DDrawSelection.js module
+// drawKADHighlightSelectionVisuals is now imported from module
 
 function getEntityFromKADObject(kadObject) {
     // Everything is now in the unified map

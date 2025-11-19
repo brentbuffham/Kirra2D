@@ -44,6 +44,16 @@ export class InteractionManager {
 		const currentCamera = this.threeRenderer.camera;
 		this.raycaster.setFromCamera(this.mouse, currentCamera);
 
+		// Step 4a.1) Set raycaster threshold for detecting lines/points
+		// Convert snap tolerance from pixels to world units (rough approximation)
+		const snapTolerancePixels = window.snapRadiusPixels || 20;
+		const currentScale = window.currentScale || 5;
+		const thresholdWorld = (snapTolerancePixels / currentScale) * 0.5;
+		
+		// Step 4a.2) Configure raycaster parameters for better line/point detection
+		this.raycaster.params.Line = { threshold: thresholdWorld };
+		this.raycaster.params.Points = { threshold: thresholdWorld };
+
 		// Step 4b) Raycast against all scene objects
 		const scene = this.threeRenderer.scene;
 		const intersects = this.raycaster.intersectObjects(scene.children, true);

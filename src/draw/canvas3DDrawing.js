@@ -313,10 +313,16 @@ export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, 
 }
 
 // Step 11) Draw KAD text in Three.js
-export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null) {
+export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, kadId = null) {
     if (!window.threeInitialized || !window.threeRenderer) return;
 
     const textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor);
+    
+    // Step 11a) Add metadata for selection
+    if (kadId) {
+        textSprite.userData = { type: "kadText", kadId: kadId };
+    }
+    
     window.threeRenderer.kadGroup.add(textSprite);
 }
 

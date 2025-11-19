@@ -1033,7 +1033,160 @@ export class GeometryFactory {
         return { r: 1, g: 1, b: 1, a: 1 };
     }
 
-    // Step 20.8) Create stadium zone (capsule: cylinder with hemispheres on ends)
+    // Step 20.8) Create KAD line highlight for selection
+    // Used to highlight selected/non-selected line segments
+    static createKADLineHighlight(x1, y1, z1, x2, y2, z2, lineWidth, color) {
+        // Step 20.8a) Parse color
+        let colorObj;
+        if (typeof color === "string" && color.startsWith("#")) {
+            // Hex color
+            const c = new THREE.Color(color);
+            colorObj = { r: c.r, g: c.g, b: c.b, a: 1.0 };
+        } else if (typeof color === "string" && color.startsWith("rgba")) {
+            // RGBA color
+            colorObj = this.parseRGBA(color);
+        } else {
+            // Default fallback
+            colorObj = { r: 0, g: 1, b: 0, a: 1 };
+        }
+
+        // Step 20.8b) Create line geometry using MeshLine for thick lines
+        const points = [new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)];
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+        const meshLine = new MeshLine();
+        meshLine.setGeometry(geometry);
+
+        // Step 20.8c) Create material with specified width and color
+        const material = new MeshLineMaterial({
+            color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
+            lineWidth: lineWidth * 0.01, // Scale lineWidth for MeshLine
+            transparent: colorObj.a < 1,
+            opacity: colorObj.a,
+            depthTest: true,
+            depthWrite: false
+        });
+
+        const lineMesh = new THREE.Mesh(meshLine.geometry, material);
+        return lineMesh;
+    }
+
+    // Step 20.9) Create KAD point highlight for selection
+    // Creates a sphere to highlight a point
+    static createKADPointHighlight(x, y, z, radius, color) {
+        // Step 20.9a) Parse color
+        let colorObj;
+        if (typeof color === "string" && color.startsWith("#")) {
+            // Hex color
+            const c = new THREE.Color(color);
+            colorObj = { r: c.r, g: c.g, b: c.b, a: 1.0 };
+        } else if (typeof color === "string" && color.startsWith("rgba")) {
+            // RGBA color
+            colorObj = this.parseRGBA(color);
+        } else {
+            // Default fallback
+            colorObj = { r: 1, g: 0, b: 0, a: 0.5 };
+        }
+
+        // Step 20.9b) Create sphere geometry
+        const geometry = new THREE.SphereGeometry(radius, 16, 16);
+        const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
+            transparent: colorObj.a < 1,
+            opacity: colorObj.a,
+            depthTest: true,
+            depthWrite: false
+        });
+
+        const sphere = new THREE.Mesh(geometry, material);
+        sphere.position.set(x, y, z);
+        return sphere;
+    }
+
+    // Step 20.10) Create KAD circle highlight for selection
+    // Creates a circle outline using LineLoop
+    static createKADCircleHighlight(x, y, z, radius, lineWidth, color) {
+        // Step 20.10a) Parse color
+        let colorObj;
+        if (typeof color === "string" && color.startsWith("#")) {
+            // Hex color
+            const c = new THREE.Color(color);
+            colorObj = { r: c.r, g: c.g, b: c.b, a: 1.0 };
+        } else if (typeof color === "string" && color.startsWith("rgba")) {
+            // RGBA color
+            colorObj = this.parseRGBA(color);
+        } else {
+            // Default fallback
+            colorObj = { r: 0, g: 1, b: 0, a: 1 };
+        }
+
+        // Step 20.10b) Create circle geometry (64 segments for smooth circle)
+        const segments = 64;
+        const points = [];
+        for (let i = 0; i <= segments; i++) {
+            const angle = (i / segments) * Math.PI * 2;
+            points.push(new THREE.Vector3(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius, z));
+        }
+
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
+
+        // Step 20.10c) Use MeshLine for thick circle outline
+        const meshLine = new MeshLine();
+        meshLine.setGeometry(geometry);
+
+        const material = new MeshLineMaterial({
+            color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
+            lineWidth: lineWidth * 0.01,
+            transparent: colorObj.a < 1,
+            opacity: colorObj.a,
+            depthTest: true,
+            depthWrite: false
+        });
+
+        const circleMesh = new THREE.Mesh(meshLine.geometry, material);
+        return circleMesh;
+    }
+
+    // Step 20.11) Create KAD text box highlight for selection
+    // Creates a transparent box outline around text
+    static createKADTextBoxHighlight(x, y, z, width, height, color) {
+        const group = new THREE.Group();
+
+        // Step 20.11a) Parse color
+        let colorObj;
+        if (typeof color === "string" && color.startsWith("#")) {
+            // Hex color
+            const c = new THREE.Color(color);
+            colorObj = { r: c.r, g: c.g, b: c.b, a: 1.0 };
+        } else if (typeof color === "string" && color.startsWith("rgba")) {
+            // RGBA color
+            colorObj = this.parseRGBA(color);
+        } else {
+            // Default fallback
+            colorObj = { r: 0, g: 1, b: 0, a: 1 };
+        }
+
+        // Step 20.11b) Create box geometry
+        const boxGeometry = new THREE.PlaneGeometry(width, height);
+        
+        // Step 20.11c) Create edges from the box for outline
+        const edges = new THREE.EdgesGeometry(boxGeometry);
+        const lineMaterial = new THREE.LineBasicMaterial({
+            color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
+            transparent: colorObj.a < 1,
+            opacity: colorObj.a,
+            linewidth: 2,
+            depthTest: true,
+            depthWrite: false
+        });
+
+        const boxEdges = new THREE.LineSegments(edges, lineMaterial);
+        boxEdges.position.set(x, y, z);
+        group.add(boxEdges);
+
+        return group;
+    }
+
+    // Step 20.12) Create stadium zone (capsule: cylinder with hemispheres on ends)
     // Visible from all orientations in 3D
     static createStadiumZone(startX, startY, startZ, endX, endY, endZ, radius, strokeColor, fillColor) {
         const group = new THREE.Group();
