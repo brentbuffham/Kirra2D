@@ -759,10 +759,10 @@ function handle3DClick(event) {
         firstIntersect:
             intersects.length > 0
                 ? {
-                    object: intersects[0].object.type,
-                    userData: intersects[0].object.userData,
-                    distance: intersects[0].distance.toFixed(2)
-                }
+                      object: intersects[0].object.type,
+                      userData: intersects[0].object.userData,
+                      distance: intersects[0].distance.toFixed(2)
+                  }
                 : null
     });
 
@@ -949,6 +949,15 @@ function handle3DClick(event) {
         // Step 12j) No hole clicked - check for KAD objects in 3D
         console.log("🔍 [3D CLICK] No hole found, checking for KAD objects...");
         console.log("🔍 [3D CLICK] Total intersects:", intersects.length);
+        console.log("🔍 [3D CLICK] Selection pointer active?", isSelectionPointerActive);
+        console.log("🔍 [3D CLICK] KAD entities in map:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
+        if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+            const entityTypes = [];
+            allKADDrawingsMap.forEach((entity, name) => {
+                entityTypes.push(name + " (" + entity.entityType + ")");
+            });
+            console.log("🔍 [3D CLICK] Entity list:", entityTypes.join(", "));
+        }
 
         // Step 12j.0) Debug: Log all intersect types
         intersects.forEach((intersect, index) => {
@@ -998,12 +1007,7 @@ function handle3DClick(event) {
                 depth = 0;
                 while (object && depth < 10) {
                     // Step 12j.5a) Check for actual KAD objects (kadPoint, kadLine, kadPolygon, kadCircle, kadText)
-                    if (object.userData && object.userData.kadId && object.userData.type &&
-                        (object.userData.type === "kadPoint" ||
-                            object.userData.type === "kadLine" ||
-                            object.userData.type === "kadPolygon" ||
-                            object.userData.type === "kadCircle" ||
-                            object.userData.type === "kadText")) {
+                    if (object.userData && object.userData.kadId && object.userData.type && (object.userData.type === "kadPoint" || object.userData.type === "kadLine" || object.userData.type === "kadPolygon" || object.userData.type === "kadCircle" || object.userData.type === "kadText")) {
                         console.log("✅ [3D CLICK] Found KAD object:", object.userData.kadId, "type:", object.userData.type);
 
                         // Step 12j.4) Get the KAD entity from the map
@@ -1068,6 +1072,217 @@ function handle3DClick(event) {
                 }
 
                 if (clickedKADObject) break;
+            }
+
+            // Step 12j.6.5) If no raycast hit, try screen-space distance-based selection (fallback)
+            if (!clickedKADObject && allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+                console.log("🔍 [3D CLICK] No raycast hit, trying screen-space distance selection...");
+
+                // Step 12j.6.5a) Get camera and canvas for screen-space projection
+                const camera = threeRenderer.camera;
+                const canvas = threeRenderer.getCanvas();
+                if (!camera || !canvas) {
+                    console.log("⚠️ [3D CLICK] Missing camera or canvas for screen-space selection");
+                } else {
+                    // Step 12j.6.5b) Get mouse position in screen pixels
+                    const rect = canvas.getBoundingClientRect();
+                    const mouseScreenX = event.clientX - rect.left;
+                    const mouseScreenY = event.clientY - rect.top;
+                    const canvasWidth = rect.width;
+                    const canvasHeight = rect.height;
+
+                    // Step 12j.6.5c) Snap tolerance in pixels (use snapRadiusPixels directly)
+                    const snapTolerancePixels = snapRadiusPixels || 20;
+                    console.log("📏 [3D CLICK] Mouse at (" + mouseScreenX.toFixed(0) + "px, " + mouseScreenY.toFixed(0) + "px), tolerance: " + snapTolerancePixels + "px");
+
+                    // Step 12j.6.5d) Helper function to project 3D world position to 2D screen pixels
+                    const worldToScreen = function (worldX, worldY, worldZ) {
+                        // Step 12j.6.5d.1) Convert world to Three.js local coordinates
+                        const local = worldToThreeLocal(worldX, worldY);
+
+                        // Step 12j.6.5d.2) Create vector and project to normalized device coordinates
+                        const vector = new THREE.Vector3(local.x, local.y, worldZ);
+                        vector.project(camera);
+
+                        // Step 12j.6.5d.3) Convert NDC (-1 to +1) to screen pixels (0 to width/height)
+                        const screenX = ((vector.x + 1) * canvasWidth) / 2;
+                        const screenY = ((-vector.y + 1) * canvasHeight) / 2; // Invert Y for screen coordinates
+
+                        return { x: screenX, y: screenY };
+                    };
+
+                    // Step 12j.6.5e) Helper function to calculate distance from point to line segment in 2D screen space
+                    const screenPointToSegmentDistance = function (px, py, x1, y1, x2, y2) {
+                        const A = px - x1;
+                        const B = py - y1;
+                        const C = x2 - x1;
+                        const D = y2 - y1;
+                        const dot = A * C + B * D;
+                        const lenSq = C * C + D * D;
+
+                        if (lenSq === 0) {
+                            return Math.sqrt(A * A + B * B);
+                        }
+
+                        let t = dot / lenSq;
+                        t = Math.max(0, Math.min(1, t));
+
+                        const projX = x1 + t * C;
+                        const projY = y1 + t * D;
+                        const dx = px - projX;
+                        const dy = py - projY;
+
+                        return Math.sqrt(dx * dx + dy * dy);
+                    };
+
+                    // Step 12j.6.5f) Search all KAD entities for closest one within tolerance
+                    let closestEntity = null;
+                    let closestEntityName = null;
+                    let closestDistance = Infinity;
+                    let closestElementIndex = 0;
+
+                    allKADDrawingsMap.forEach((entity, entityName) => {
+                        if (!entity.data || entity.data.length === 0) return;
+
+                        // Step 12j.6.5g) Calculate screen-space distance based on entity type
+                        if (entity.entityType === "point") {
+                            // Step 12j.6.5g.1) Points: screen distance to each point
+                            entity.data.forEach((point, index) => {
+                                const screenPos = worldToScreen(point.pointXLocation, point.pointYLocation, point.pointZLocation || dataCentroidZ || 0);
+                                const dx = screenPos.x - mouseScreenX;
+                                const dy = screenPos.y - mouseScreenY;
+                                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                                if (distance < closestDistance) {
+                                    closestDistance = distance;
+                                    closestEntity = entity;
+                                    closestEntityName = entityName;
+                                    closestElementIndex = index;
+                                }
+                            });
+                        } else if (entity.entityType === "line" || entity.entityType === "poly") {
+                            // Step 12j.6.5g.2) Lines/Polys: screen distance to closest segment
+                            const points = entity.data;
+                            if (points.length >= 2) {
+                                const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
+                                console.log("🔍 [3D LINE SELECT] Checking " + entity.entityType + " '" + entity.entityName + "' with " + numSegments + " segments");
+
+                                // Step 12j.6.5g.2a) Store segment info for proper highlighting
+                                let closestSegmentIndex = 0;
+                                let closestSegmentDistance = Infinity;
+
+                                for (let i = 0; i < numSegments; i++) {
+                                    const p1 = points[i];
+                                    const p2 = points[(i + 1) % points.length];
+
+                                    // Project both endpoints to screen space
+                                    const screen1 = worldToScreen(p1.pointXLocation, p1.pointYLocation, p1.pointZLocation || dataCentroidZ || 0);
+                                    const screen2 = worldToScreen(p2.pointXLocation, p2.pointYLocation, p2.pointZLocation || dataCentroidZ || 0);
+
+                                    // Calculate screen-space distance to segment
+                                    const segmentDist = screenPointToSegmentDistance(mouseScreenX, mouseScreenY, screen1.x, screen1.y, screen2.x, screen2.y);
+
+                                    console.log("  Segment " + i + ": p1=(" + screen1.x.toFixed(0) + "," + screen1.y.toFixed(0) + ") p2=(" + screen2.x.toFixed(0) + "," + screen2.y.toFixed(0) + ") dist=" + segmentDist.toFixed(1) + "px");
+
+                                    if (segmentDist < closestSegmentDistance) {
+                                        closestSegmentDistance = segmentDist;
+                                        closestSegmentIndex = i;
+                                    }
+                                }
+
+                                // Step 12j.6.5g.2b) If closest segment is within tolerance, update closestEntity
+                                if (closestSegmentDistance < closestDistance) {
+                                    closestDistance = closestSegmentDistance;
+                                    closestEntity = entity;
+                                    closestEntityName = entityName;
+                                    closestElementIndex = closestSegmentIndex; // Which segment was clicked
+                                }
+                            }
+                        } else if (entity.entityType === "circle") {
+                            // Step 12j.6.5g.3) Circles: screen distance to circle outline (approximate - use center for now)
+                            entity.data.forEach((circle, index) => {
+                                const centerX = circle.pointXLocation || circle.centerX;
+                                const centerY = circle.pointYLocation || circle.centerY;
+                                const centerZ = circle.pointZLocation || dataCentroidZ || 0;
+
+                                const screenCenter = worldToScreen(centerX, centerY, centerZ);
+                                const dx = screenCenter.x - mouseScreenX;
+                                const dy = screenCenter.y - mouseScreenY;
+                                const distToCenter = Math.sqrt(dx * dx + dy * dy);
+
+                                // Approximate: just use distance to center (could improve by projecting radius)
+                                const distance = distToCenter;
+
+                                if (distance < closestDistance) {
+                                    closestDistance = distance;
+                                    closestEntity = entity;
+                                    closestEntityName = entityName;
+                                    closestElementIndex = index;
+                                }
+                            });
+                        } else if (entity.entityType === "text") {
+                            // Step 12j.6.5g.4) Text: screen distance to text anchor point
+                            entity.data.forEach((text, index) => {
+                                const screenPos = worldToScreen(text.pointXLocation, text.pointYLocation, text.pointZLocation || dataCentroidZ || 0);
+                                const dx = screenPos.x - mouseScreenX;
+                                const dy = screenPos.y - mouseScreenY;
+                                const distance = Math.sqrt(dx * dx + dy * dy);
+
+                                if (distance < closestDistance) {
+                                    closestDistance = distance;
+                                    closestEntity = entity;
+                                    closestEntityName = entityName;
+                                    closestElementIndex = index;
+                                }
+                            });
+                        }
+                    });
+
+                    // Step 12j.6.5h) Check if closest entity is within tolerance
+                    if (closestEntity && closestDistance <= snapTolerancePixels) {
+                        console.log("✅ [3D CLICK] Found entity by screen distance:", closestEntityName, "type:", closestEntity.entityType, "distance:", closestDistance.toFixed(1) + "px");
+
+                        // Step 12j.6.5i) Determine selection type (match 2D behavior)
+                        let selectionType = "entity";
+                        if (closestEntity.entityType === "line" || closestEntity.entityType === "poly") {
+                            selectionType = "segment"; // Lines/polys use segment selection
+                        } else if (closestEntity.entityType === "point") {
+                            selectionType = "point";
+                        }
+
+                        // Step 12j.6.5j) Create KAD object descriptor (match 2D structure)
+                        clickedKADObject = {
+                            entityName: closestEntityName,
+                            entityType: closestEntity.entityType,
+                            elementIndex: closestElementIndex,
+                            segmentIndex: closestElementIndex, // For lines/polys, this is the clicked segment
+                            selectionType: selectionType
+                        };
+
+                        // Step 12j.6.5k) Add type-specific properties
+                        if (closestEntity.data && closestEntity.data[closestElementIndex]) {
+                            const clickedElement = closestEntity.data[closestElementIndex];
+                            if (closestEntity.entityType === "circle") {
+                                clickedKADObject.pointXLocation = clickedElement.pointXLocation || clickedElement.centerX;
+                                clickedKADObject.pointYLocation = clickedElement.pointYLocation || clickedElement.centerY;
+                                clickedKADObject.radius = clickedElement.radius;
+                            } else if (closestEntity.entityType === "text") {
+                                clickedKADObject.pointXLocation = clickedElement.pointXLocation;
+                                clickedKADObject.pointYLocation = clickedElement.pointYLocation;
+                                clickedKADObject.text = clickedElement.text;
+                            } else if (closestEntity.entityType === "line" || closestEntity.entityType === "poly") {
+                                // For lines/polys, use first point of segment as base
+                                clickedKADObject.pointXLocation = clickedElement.pointXLocation;
+                                clickedKADObject.pointYLocation = clickedElement.pointYLocation;
+                            } else {
+                                clickedKADObject.pointXLocation = clickedElement.pointXLocation;
+                                clickedKADObject.pointYLocation = clickedElement.pointYLocation;
+                            }
+                        }
+                    } else {
+                        console.log("⚠️ [3D CLICK] Closest entity at " + closestDistance.toFixed(1) + "px (outside tolerance " + snapTolerancePixels + "px)");
+                    }
+                }
             }
 
             // Step 12j.7) Handle KAD object selection (matching 2D handleSelection logic)
@@ -6840,14 +7055,14 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Parsing Error",
                 "Failed to parse the file properly:<br><br>" +
-                criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
-                "<br><br>" +
-                "Common causes:<br><br>" +
-                "<li>Mixed delimiters (commas and tabs in same file)</li>" +
-                "<li>Unescaped quotes in text fields</li>" +
-                "<li>Inconsistent number of columns</li>" +
-                "<br><br>" +
-                "Please check your file format and try again.",
+                    criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
+                    "<br><br>" +
+                    "Common causes:<br><br>" +
+                    "<li>Mixed delimiters (commas and tabs in same file)</li>" +
+                    "<li>Unescaped quotes in text fields</li>" +
+                    "<li>Inconsistent number of columns</li>" +
+                    "<br><br>" +
+                    "Please check your file format and try again.",
                 "error"
             );
             return; // Exit early
@@ -6861,15 +7076,15 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Import Warning",
                 "The file was imported but there were " +
-                parseResult.errors.length +
-                " parsing warnings:<br><br>" +
-                parseResult.errors
-                    .slice(0, 5)
-                    .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-                    .join("") +
-                additionalErrors +
-                "<br><br>" +
-                "Some data may have been skipped. Check your results carefully.",
+                    parseResult.errors.length +
+                    " parsing warnings:<br><br>" +
+                    parseResult.errors
+                        .slice(0, 5)
+                        .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+                        .join("") +
+                    additionalErrors +
+                    "<br><br>" +
+                    "Some data may have been skipped. Check your results carefully.",
                 "warning"
             );
         }
@@ -7087,17 +7302,17 @@ function parseKADFile(fileData) {
             const errorDetailsHtml =
                 errorCount > 0
                     ? "<details>" +
-                    "<summary>View Error Details (" +
-                    errorCount +
-                    " errors)</summary>" +
-                    '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-                    errorDetails
-                        .slice(0, 10)
-                        .map((error) => "<li>" + error + "</li>")
-                        .join("") +
-                    (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-                    "</ul>" +
-                    "</details>"
+                      "<summary>View Error Details (" +
+                      errorCount +
+                      " errors)</summary>" +
+                      '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+                      errorDetails
+                          .slice(0, 10)
+                          .map((error) => "<li>" + error + "</li>")
+                          .join("") +
+                      (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+                      "</ul>" +
+                      "</details>"
                     : "";
 
             showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -7833,9 +8048,11 @@ function convertPointsToAllDataCSV() {
         const hole = visibleBlastHoles[i];
         const row = `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation.toFixed(decimalPlaces)},${hole.startYLocation.toFixed(decimalPlaces)},${hole.startZLocation},${hole.endXLocation.toFixed(decimalPlaces)},${hole.endYLocation.toFixed(decimalPlaces)},${hole.endZLocation.toFixed(
             decimalPlaces
-        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${hole.fromHoleID
-            },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${hole.measuredMassTimeStamp
-            },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
+        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${
+            hole.fromHoleID
+        },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${
+            hole.measuredMassTimeStamp
+        },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
         csv += row + "\n";
     }
     return csv;
@@ -8499,9 +8716,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
     const table = new Uint32Array(256);
-    for (let i = 256; i--;) {
+    for (let i = 256; i--; ) {
         let tmp = i;
-        for (let k = 8; k--;) {
+        for (let k = 8; k--; ) {
             tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
         }
         table[i] = tmp;
@@ -13585,29 +13802,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
             `
             <div style="text-align: center;">
                 <p><strong>` +
-            resultMessage +
-            `</strong></p>
+                resultMessage +
+                `</strong></p>
                 <p><strong>Input:</strong> ` +
-            selectedEntities.length +
-            ` entities</p>
+                selectedEntities.length +
+                ` entities</p>
                 <p><strong>Output:</strong> ` +
-            polygons.length +
-            ` polygon(s)</p>
+                polygons.length +
+                ` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-            params.radius +
-            `m</p>
+                params.radius +
+                `m</p>
                 <p><strong>Rotation:</strong> ` +
-            params.rotationOffset +
-            `°</p>
+                params.rotationOffset +
+                `°</p>
                 <p><strong>Starburst:</strong> ` +
-            params.starburstOffset * 100 +
-            `%</p>
+                params.starburstOffset * 100 +
+                `%</p>
                 <p><strong>Line Width:</strong> ` +
-            params.lineWidth +
-            `</p>
+                params.lineWidth +
+                `</p>
                 <p><strong>Location:</strong> ` +
-            (params.useToeLocation ? "End/Toe" : "Start/Collar") +
-            `</p>
+                (params.useToeLocation ? "End/Toe" : "Start/Collar") +
+                `</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -13624,8 +13841,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-            (error.message || "Unknown error occurred") +
-            `</p>
+                (error.message || "Unknown error occurred") +
+                `</p>
             </div>
         `
         );
@@ -19518,9 +19735,9 @@ function timeChart() {
             .flatMap((index) => {
                 return holeIDs[index]
                     ? holeIDs[index].map((combinedID) => {
-                        const [entityName, holeID] = combinedID.split(":");
-                        return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                    })
+                          const [entityName, holeID] = combinedID.split(":");
+                          return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                      })
                     : [];
             })
             .filter(Boolean);
@@ -19543,11 +19760,11 @@ function timeChart() {
 
         timingWindowHolesSelected = holeIDs[clickedIndex]
             ? holeIDs[clickedIndex]
-                .map((combinedID) => {
-                    const [entityName, holeID] = combinedID.split(":");
-                    return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                })
-                .filter(Boolean)
+                  .map((combinedID) => {
+                      const [entityName, holeID] = combinedID.split(":");
+                      return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                  })
+                  .filter(Boolean)
             : [];
 
         drawData(allBlastHoles, selectedHole);
@@ -29519,10 +29736,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
     return closestPoint
         ? {
-            point: closestPoint,
-            type: snapType,
-            distance: minDistance
-        }
+              point: closestPoint,
+              type: snapType,
+              distance: minDistance
+          }
         : null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
