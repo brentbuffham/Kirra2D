@@ -207,15 +207,16 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 const z = textData.pointZLocation || dataCentroidZ || 0;
 
                 // Step 4f.1) Calculate text dimensions matching GeometryFactory.createKADText()
-                // Troika text uses fontSize * 0.5 for world units
+                // Troika text uses fontSize / currentScale for world units
                 const fontSize = textData.fontSize || 12;
                 const text = textData.text || "Text";
-                const textScale = fontSize * 0.5; // Same as troika createKADText
+                const currentScale = window.currentScale || 5;
+                const fontSizeWorldUnits = fontSize / currentScale; // Match GeometryFactory scaling
 
                 // Step 4f.1a) Estimate width based on character count (more accurate than fixed width)
-                const charWidth = textScale * 0.6; // Approximate character width
+                const charWidth = fontSizeWorldUnits * 0.6; // Approximate character width
                 const textWidth = text.length * charWidth;
-                const textHeight = textScale;
+                const textHeight = fontSizeWorldUnits;
 
                 // Step 4f.1b) Make highlight box slightly larger for visibility
                 const width = textWidth * 1.2;

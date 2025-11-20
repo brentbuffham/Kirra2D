@@ -18,6 +18,10 @@ export class InteractionManager {
 		// Step 2) Store currently hovered object
 		this.hoveredObject = null;
 		this.hoveredHole = null;
+		
+		// Step 2a) Track warning messages to prevent spam
+		this.lastWarningTime = 0;
+		this.warningThrottle = 1000; // Only show warning once per second
 
 		console.log("✨ InteractionManager initialized");
 	}
@@ -193,6 +197,8 @@ export class InteractionManager {
 
 		// Step 7.5c) Create a horizontal plane at the Z level
 		// Plane normal points up (0, 0, 1) and passes through (0, 0, planeZ)
+		// THREE.Plane(normal, constant) where constant = -distance from origin along normal
+		// For a plane at Z = planeZ, we want normal (0,0,1) and constant = -planeZ
 		const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -planeZ);
 
 		// Step 7.5d) Get intersection point with the plane
@@ -200,8 +206,50 @@ export class InteractionManager {
 		const hasIntersection = this.raycaster.ray.intersectPlane(plane, intersectionPoint);
 
 		if (!hasIntersection) {
-			console.warn("getMouseWorldPositionOnPlane: No plane intersection");
-			return null;
+			// Step 7.5d.1) Fallback for orthographic camera in plan view
+			// Calculate intersection manually using camera projection
+			if (currentCamera.isOrthographicCamera) {
+				// For orthographic camera, rays are parallel
+				// Unproject at Z=0 (near plane) and Z=1 (far plane) to get ray direction
+				const near = new THREE.Vector3(this.mouse.x, this.mouse.y, 0);
+				near.unproject(currentCamera);
+				
+				const far = new THREE.Vector3(this.mouse.x, this.mouse.y, 1);
+				far.unproject(currentCamera);
+				
+				// Calculate ray direction
+				const direction = new THREE.Vector3().subVectors(far, near).normalize();
+				
+				// Find where ray intersects Z = planeZ
+				// ray: p = near + t * direction
+				// Solve for t where z = planeZ:  near.z + t * direction.z = planeZ
+				const t = (planeZ - near.z) / direction.z;
+				
+				intersectionPoint.copy(near).addScaledVector(direction, t);
+				
+				console.log("✅ Using orthographic unprojection fallback at Z=" + planeZ);
+			} else {
+				// Step 7.5d.2) Debug why intersection failed for perspective camera (throttled)
+				const now = Date.now();
+				if (now - this.lastWarningTime > this.warningThrottle) {
+					this.lastWarningTime = now;
+					const rayDir = this.raycaster.ray.direction;
+					const planeNormal = plane.normal;
+					const dotProduct = rayDir.dot(planeNormal);
+					
+					console.warn("getMouseWorldPositionOnPlane: No plane intersection", {
+						planeZ: planeZ,
+						rayOrigin: this.raycaster.ray.origin.toArray(),
+						rayDirection: rayDir.toArray(),
+						planeNormal: planeNormal.toArray(),
+						planeConstant: plane.constant,
+						dotProduct: dotProduct,
+						cameraPosition: currentCamera.position.toArray(),
+						cameraRotation: currentCamera.rotation.toArray()
+					});
+				}
+				return null;
+			}
 		}
 
 		// Step 7.5e) Convert from local Three.js coords to world coords

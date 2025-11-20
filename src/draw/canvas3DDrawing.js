@@ -127,7 +127,11 @@ export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, colo
 
     const local = window.worldToThreeLocal(worldX, worldY);
     const textSprite = GeometryFactory.createKADText(local.x, local.y, worldZ, String(text), fontSize, color, null);
-    window.threeRenderer.kadGroup.add(textSprite);
+    
+    // Step 5a) Only add if not already in group (cached objects might already be there)
+    if (!textSprite.parent) {
+        window.threeRenderer.kadGroup.add(textSprite);
+    }
 }
 
 // Step 6) Draw all hole labels in Three.js
@@ -320,10 +324,18 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
     
     // Step 11a) Add metadata for selection
     if (kadId) {
-        textSprite.userData = { type: "kadText", kadId: kadId };
+        // Preserve existing userData if it exists (for cached objects)
+        if (!textSprite.userData) {
+            textSprite.userData = {};
+        }
+        textSprite.userData.type = "kadText";
+        textSprite.userData.kadId = kadId;
     }
     
-    window.threeRenderer.kadGroup.add(textSprite);
+    // Step 11b) Only add if not already in group (cached objects might already be there)
+    if (!textSprite.parent) {
+        window.threeRenderer.kadGroup.add(textSprite);
+    }
 }
 
 //=================================================

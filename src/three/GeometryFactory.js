@@ -6,6 +6,14 @@ import * as THREE from "three";
 import { MeshLine, MeshLineMaterial } from "../helpers/meshLineModified.js";
 import { Text } from "troika-three-text";
 
+// Step 0) Text object cache to prevent recreation (performance)
+const textCache = new Map(); // key: "x,y,z,text,fontSize,color"
+
+// Step 0a) Clear text cache (call when clearing scene)
+export function clearTextCache() {
+    textCache.clear();
+}
+
 export class GeometryFactory {
     // Step 1) Create complete hole visualization (collar + grade circle + lines)
     // Matches 2D canvas drawTrack() implementation
@@ -356,12 +364,39 @@ export class GeometryFactory {
 
     // Step 12b) Create KAD text using troika-three-text (crisp SDF rendering)
     static createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null) {
-        // Step 1) Create troika Text object
+        // Step 1) Create cache key (scale-independent - use pixel fontSize)
+        const currentScale = window.currentScale || 5;
+        const fontSizeWorldUnits = fontSize / currentScale;
+        const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," + 
+                        String(text) + "," + fontSize + "," + color; // Use pixel fontSize, not world units
+        
+        // Step 1a) Return cached text if it exists
+        if (textCache.has(cacheKey)) {
+            const cachedText = textCache.get(cacheKey);
+            
+            // Step 1a.1) Update fontSize if scale changed
+            const newFontSizeWorldUnits = fontSize / currentScale;
+            if (Math.abs(cachedText.fontSize - newFontSizeWorldUnits) > 0.001) {
+                cachedText.fontSize = newFontSizeWorldUnits;
+                cachedText.sync(); // Update geometry
+            }
+            
+            // Step 1a.2) Update position (might have changed)
+            cachedText.position.set(worldX, worldY, worldZ);
+            
+            return cachedText;
+        }
+        
+        // Step 2) Create troika Text object (only if not cached)
         const textMesh = new Text();
 
-        // Step 2) Set text content and properties
+        // Step 3) Convert pixel-based fontSize to world units based on camera scale
+        // fontSize is in pixels (e.g. 6px, 12px)
+        // Need to convert to world units using current camera frustum
+        
+        // Step 3a) Set text content and properties
         textMesh.text = String(text);
-        textMesh.fontSize = fontSize * 0.5; // Scale to world units (matches old sprite scale)
+        textMesh.fontSize = fontSizeWorldUnits; // Properly scaled to world units
         textMesh.color = color;
         textMesh.anchorX = "center"; // Center horizontally
         textMesh.anchorY = "middle"; // Center vertically
@@ -381,25 +416,33 @@ export class GeometryFactory {
             textMesh.font = "Arial"; // System font fallback
         }
 
-        // Step 3) Set position
+        // Step 4) Set position
         textMesh.position.set(worldX, worldY, worldZ);
 
-        // Step 4) Configure render order (material properties set after sync)
+        // Step 5) Configure render order (material properties set after sync)
         textMesh.renderOrder = 100; // Render on top of other meshes
 
-        // Step 5) CRITICAL: Sync troika text to create geometry and material
-        // Troika text is async - must call sync() to actually render
-        textMesh.sync(() => {
-            // Step 5a) Configure material for depth testing and transparency
-            // Material is created after sync, so configure it here
-            if (textMesh.material) {
-                textMesh.material.depthTest = true; // Enable occlusion behind objects
-                textMesh.material.depthWrite = false; // Don't write to depth buffer (for transparency)
-                textMesh.material.transparent = true; // Enable transparency
-            }
-        });
+        // Step 6) CRITICAL: Sync troika text to create geometry and material
+        // Force immediate sync to prevent flashing (blocks briefly but ensures visibility)
+        textMesh.sync();
+        
+        // Step 6a) Configure material for depth testing and transparency immediately
+        if (textMesh.material) {
+            textMesh.material.depthTest = true; // Enable occlusion behind objects
+            textMesh.material.depthWrite = false; // Don't write to depth buffer (for transparency)
+            textMesh.material.transparent = true; // Enable transparency
+        }
+        
+        // Step 6b) Mark as cached text for special handling
+        textMesh.userData.isCachedText = true;
+        textMesh.userData.cacheKey = cacheKey;
+        
+        // Step 6c) Request render after text is ready
+        if (window.threeRenderer) {
+            window.threeRenderer.requestRender();
+        }
 
-        // Step 6) Add background if specified (draw as plane behind text)
+        // Step 7) Add background if specified (draw as plane behind text)
         if (backgroundColor) {
             // Create a background plane
             const bgWidth = fontSize * 2; // Approximate width
@@ -428,19 +471,23 @@ export class GeometryFactory {
             // Store reference to textMesh for billboard rotation
             group.userData.textMesh = textMesh;
             group.userData.isTroikaText = true;
+            group.userData.isCachedText = true; // Mark group as cached too
+            group.userData.cacheKey = cacheKey;
+            
+            // Step 7a) Store group in cache instead of textMesh when background exists
+            textCache.set(cacheKey, group);
 
-            // Step 6a) Ensure text is synced in group
+            // Step 7b) Ensure text is synced in group
             textMesh.sync();
 
             return group;
         }
+        
+        // Step 7c) Store textMesh in cache when no background
+        textCache.set(cacheKey, textMesh);
 
-        // Step 7) Mark as troika text for billboard behavior
+        // Step 7d) Mark as troika text for billboard behavior
         textMesh.userData.isTroikaText = true;
-
-        // Step 8) CRITICAL: Sync again to ensure rendering (troika is async)
-        // This ensures text geometry and material are created
-        textMesh.sync();
 
         return textMesh;
     }

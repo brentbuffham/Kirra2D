@@ -215,7 +215,7 @@ Currently: **Option B** (KAD text keeps stored size, hole labels respond to slid
 
 ## Known Limitations
 
-1. **Font Loading**: First text render may have brief delay while font loads
+1. ✅ **Font Loading**: First text render may have brief delay while font loads - FIXED in 20251120-0130 (auto-render after sync)
 2. **Background Planes**: Text with backgrounds uses simple plane (could be more sophisticated)
 3. **Dynamic Font Size**: KAD text uses stored fontSize (doesn't respond to slider)
 4. **Line Wrapping**: Multi-line text not tested extensively
@@ -279,4 +279,12 @@ kadGroup.traverse((object) => {
 **Risk**: Low (drop-in replacement)
 **Performance**: Major improvement (90% memory reduction)
 **Status**: ✅ PRODUCTION READY
+
+## Follow-Up Fixes
+
+### 20251120-0130: 3D Initial Render Fix
+- **Issue**: Text didn't appear until mouse move (async sync timing)
+- **Fix**: Added render request in troika sync() callback
+- **Result**: Text appears immediately when font loads
+- See: `20251120-0130-3D_INITIAL_RENDER_FIX.md`
 

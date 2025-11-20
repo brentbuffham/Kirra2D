@@ -3,6 +3,7 @@
 // ThreeRenderer.js - Core Three.js rendering system
 //=================================================
 import * as THREE from "three";
+import { clearTextCache } from "./GeometryFactory.js";
 
 export class ThreeRenderer {
 	constructor(containerElement, width, height) {
@@ -27,12 +28,12 @@ export class ThreeRenderer {
 			(frustumSize * aspect) / 2, // right
 			frustumSize / 2, // top
 			-frustumSize / 2, // bottom
-			0.1, // near
-			10000 // far
+			-50000, // near (large range for mining elevations)
+			50000 // far (large range for mining elevations)
 		);
 
-		// Step 4) Position camera looking down negative Z axis (into screen)
-		this.camera.position.set(0, 0, 1000);
+		// Step 4) Position camera looking down at origin (will be updated to look at data centroid)
+		this.camera.position.set(0, 0, 5000);
 		this.camera.lookAt(0, 0, 0);
 		this.camera.up.set(0, 1, 0); // Y-up orientation
 
@@ -50,9 +51,10 @@ export class ThreeRenderer {
 		const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
 		this.scene.add(ambientLight);
 
-		const directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-		directionalLight.position.set(0, 0, 1000);
-		this.scene.add(directionalLight);
+		// Step 6a) Store directional light reference to update position with camera
+		this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+		this.directionalLight.position.set(0, 0, 5000);
+		this.scene.add(this.directionalLight);
 
 		// Step 7) Initialize object groups for organization
 		this.holesGroup = new THREE.Group();
@@ -198,7 +200,8 @@ export class ThreeRenderer {
 		}
 
 		// Step 14) Calculate camera position based on orbit angles
-		const cameraDistance = 1000; // Fixed distance from centroid
+		// Camera distance from data centroid (use larger value for mining elevations)
+		const cameraDistance = 5000; // Increased for large elevation ranges
 
 		// If orbit angles are non-zero, calculate 3D camera position
 		if (orbitX !== 0 || orbitY !== 0) {
@@ -217,10 +220,13 @@ export class ThreeRenderer {
 			// Apply Z-axis rotation (2D spin)
 			this.camera.rotateZ(rotation);
 		} else {
-			// Standard 2D top-down view
+			// Standard 2D top-down view - position camera above data centroid
 			this.camera.position.x = centroidX;
 			this.camera.position.y = centroidY;
-			this.camera.position.z = 1000;
+			this.camera.position.z = this.orbitCenterZ + cameraDistance;
+
+			// Look at the data centroid (not Z=0)
+			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
 
 			// Reset camera rotation to default (looking down)
 			this.camera.rotation.set(0, 0, 0);
@@ -240,6 +246,12 @@ export class ThreeRenderer {
 		this.camera.bottom = -viewportHeightInWorldUnits / 2;
 
 		this.camera.updateProjectionMatrix();
+		
+		// Step 15a) Update directional light to follow camera position
+		if (this.directionalLight) {
+			this.directionalLight.position.copy(this.camera.position);
+		}
+		
 		this.needsRender = true;
 	}
 
@@ -330,15 +342,26 @@ export class ThreeRenderer {
 
 	// Step 20) Dispose group and all children
 	disposeGroup(group) {
-		// Step 20a) Traverse and dispose all objects
+		// Step 20a) Traverse and remove objects (but preserve cached text)
+		const toRemove = [];
 		group.traverse((object) => {
 			if (object !== group) {
-				this.disposeObject(object);
+				// Step 20a.1) Check if this is a cached text object
+				if (object.userData && object.userData.isCachedText) {
+					// Don't dispose - just remove from group (will be reused)
+					toRemove.push(object);
+				} else {
+					// Normal objects - dispose normally
+					this.disposeObject(object);
+					toRemove.push(object);
+				}
 			}
 		});
-
-		// Step 20b) Clear the group
-		group.clear();
+		
+		// Step 20b) Remove all objects from group
+		toRemove.forEach((obj) => {
+			group.remove(obj);
+		});
 	}
 
 	// Step 21) Clear all geometry from scene
@@ -355,8 +378,16 @@ export class ThreeRenderer {
 		this.holeMeshMap.clear();
 		this.surfaceMeshMap.clear();
 		this.kadMeshMap.clear();
+		
+		// Step 21c) DON'T clear text cache - persist across redraws
+		// Text cache is only cleared when data actually changes (see clearTextCacheOnDataChange)
 
 		this.needsRender = true;
+	}
+
+	// Step 21d) Clear text cache when data changes (not on every redraw)
+	clearTextCacheOnDataChange() {
+		clearTextCache();
 	}
 
 	// Step 22) Clear specific group

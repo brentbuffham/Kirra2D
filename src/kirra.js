@@ -312,6 +312,7 @@ let threeRenderer = null;
 let cameraControls = null;
 let interactionManager = null; // 3D raycasting and interaction manager
 let threeInitialized = false;
+let threeInitializationFailed = false; // Step 0a) Prevent retry storm if initialization fails
 let onlyShowThreeJS = false; // Toggle to show only Three.js rendering
 
 // Step 1) Local coordinate offset for precision with large UTM coordinates
@@ -452,6 +453,11 @@ function calculateDataZCentroid() {
 function initializeThreeJS() {
     if (threeInitialized) return;
 
+    // Step 0a) Prevent retry storm - if initialization failed once, don't retry on every mouse move
+    if (threeInitializationFailed) {
+        return;
+    }
+
     // Step 1) Check if canvas exists
     if (!canvas) {
         console.warn("⚠️ Canvas not ready yet, deferring Three.js initialization");
@@ -586,9 +592,33 @@ function initializeThreeJS() {
         setup3DMouseEvents();
 
         console.log("✅ Three.js rendering system initialized");
+
+        // Step 10c) If data was already loaded, redraw it now that 3D is ready
+        if (allBlastHoles && allBlastHoles.length > 0) {
+            console.log("🔄 Redrawing existing data in 3D...");
+            drawData(allBlastHoles, selectedHole);
+        }
     } catch (error) {
         console.error("❌ Failed to initialize Three.js:", error);
         threeInitialized = false;
+        threeInitializationFailed = true; // Step 0b) Mark failure to prevent retry storm
+
+        // Step 0c) Cleanup any partially-created renderer to free WebGL context
+        if (threeRenderer && threeRenderer.renderer) {
+            try {
+                threeRenderer.dispose();
+            } catch (disposeError) {
+                console.warn("⚠️ Failed to dispose renderer:", disposeError);
+            }
+            threeRenderer = null;
+        }
+
+        // Step 0d) Show user-friendly error message
+        console.error("⚠️ WebGL initialization failed. This may be caused by:");
+        console.error("  - Browser WebGL context limit exhausted (refresh page)");
+        console.error("  - GPU/graphics driver issues");
+        console.error("  - Too many browser tabs with WebGL content");
+        console.error("  - Outdated graphics drivers");
     }
 }
 
@@ -759,10 +789,10 @@ function handle3DClick(event) {
         firstIntersect:
             intersects.length > 0
                 ? {
-                      object: intersects[0].object.type,
-                      userData: intersects[0].object.userData,
-                      distance: intersects[0].distance.toFixed(2)
-                  }
+                    object: intersects[0].object.type,
+                    userData: intersects[0].object.userData,
+                    distance: intersects[0].distance.toFixed(2)
+                }
                 : null
     });
 
@@ -1823,6 +1853,8 @@ document.addEventListener("DOMContentLoaded", function () {
                 onlyShowThreeJS = true;
                 // Reset mouse indicator flag so it initializes when switching to 3D mode
                 mouseIndicatorInitialized = false;
+                // Step 1ca) Reset initialization failure flag to allow retry
+                threeInitializationFailed = false;
                 console.log("🎨 3D-ONLY Mode: ON (2D canvas hidden)");
 
                 if (threeCanvas) {
@@ -5643,6 +5675,10 @@ async function handleFileUpload(event) {
 
         if (file.name.endsWith(".kad") || file.name.endsWith(".KAD") || file.name.endsWith(".txt") || file.name.endsWith(".TXT")) {
             parseKADFile(data);
+            // Step 1) Clear text cache when data changes
+            if (window.threeRenderer && typeof window.threeRenderer.clearTextCacheOnDataChange === "function") {
+                window.threeRenderer.clearTextCacheOnDataChange();
+            }
             drawData(allBlastHoles, selectedHole);
         } else if (file.name.endsWith(".csv") || file.name.endsWith(".CSV")) {
             try {
@@ -5663,6 +5699,10 @@ async function handleFileUpload(event) {
                 contourLinesArray = result.contourLinesArray;
                 directionArrows = result.directionArrows;
                 const { resultTriangles, reliefTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
+                // Step 1) Clear text cache when data changes
+                if (window.threeRenderer && typeof window.threeRenderer.clearTextCacheOnDataChange === "function") {
+                    window.threeRenderer.clearTextCacheOnDataChange();
+                }
                 drawData(allBlastHoles, selectedHole);
                 countAllBlastHoles = allBlastHoles.length;
             } catch (error) {
@@ -7055,14 +7095,14 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Parsing Error",
                 "Failed to parse the file properly:<br><br>" +
-                    criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
-                    "<br><br>" +
-                    "Common causes:<br><br>" +
-                    "<li>Mixed delimiters (commas and tabs in same file)</li>" +
-                    "<li>Unescaped quotes in text fields</li>" +
-                    "<li>Inconsistent number of columns</li>" +
-                    "<br><br>" +
-                    "Please check your file format and try again.",
+                criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
+                "<br><br>" +
+                "Common causes:<br><br>" +
+                "<li>Mixed delimiters (commas and tabs in same file)</li>" +
+                "<li>Unescaped quotes in text fields</li>" +
+                "<li>Inconsistent number of columns</li>" +
+                "<br><br>" +
+                "Please check your file format and try again.",
                 "error"
             );
             return; // Exit early
@@ -7076,15 +7116,15 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Import Warning",
                 "The file was imported but there were " +
-                    parseResult.errors.length +
-                    " parsing warnings:<br><br>" +
-                    parseResult.errors
-                        .slice(0, 5)
-                        .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-                        .join("") +
-                    additionalErrors +
-                    "<br><br>" +
-                    "Some data may have been skipped. Check your results carefully.",
+                parseResult.errors.length +
+                " parsing warnings:<br><br>" +
+                parseResult.errors
+                    .slice(0, 5)
+                    .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+                    .join("") +
+                additionalErrors +
+                "<br><br>" +
+                "Some data may have been skipped. Check your results carefully.",
                 "warning"
             );
         }
@@ -7302,17 +7342,17 @@ function parseKADFile(fileData) {
             const errorDetailsHtml =
                 errorCount > 0
                     ? "<details>" +
-                      "<summary>View Error Details (" +
-                      errorCount +
-                      " errors)</summary>" +
-                      '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-                      errorDetails
-                          .slice(0, 10)
-                          .map((error) => "<li>" + error + "</li>")
-                          .join("") +
-                      (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-                      "</ul>" +
-                      "</details>"
+                    "<summary>View Error Details (" +
+                    errorCount +
+                    " errors)</summary>" +
+                    '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+                    errorDetails
+                        .slice(0, 10)
+                        .map((error) => "<li>" + error + "</li>")
+                        .join("") +
+                    (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+                    "</ul>" +
+                    "</details>"
                     : "";
 
             showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -8048,11 +8088,9 @@ function convertPointsToAllDataCSV() {
         const hole = visibleBlastHoles[i];
         const row = `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation.toFixed(decimalPlaces)},${hole.startYLocation.toFixed(decimalPlaces)},${hole.startZLocation},${hole.endXLocation.toFixed(decimalPlaces)},${hole.endYLocation.toFixed(decimalPlaces)},${hole.endZLocation.toFixed(
             decimalPlaces
-        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${
-            hole.fromHoleID
-        },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${
-            hole.measuredMassTimeStamp
-        },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
+        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${hole.fromHoleID
+            },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${hole.measuredMassTimeStamp
+            },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
         csv += row + "\n";
     }
     return csv;
@@ -8716,9 +8754,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
     const table = new Uint32Array(256);
-    for (let i = 256; i--; ) {
+    for (let i = 256; i--;) {
         let tmp = i;
-        for (let k = 8; k--; ) {
+        for (let k = 8; k--;) {
             tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
         }
         table[i] = tmp;
@@ -13802,29 +13840,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
             `
             <div style="text-align: center;">
                 <p><strong>` +
-                resultMessage +
-                `</strong></p>
+            resultMessage +
+            `</strong></p>
                 <p><strong>Input:</strong> ` +
-                selectedEntities.length +
-                ` entities</p>
+            selectedEntities.length +
+            ` entities</p>
                 <p><strong>Output:</strong> ` +
-                polygons.length +
-                ` polygon(s)</p>
+            polygons.length +
+            ` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-                params.radius +
-                `m</p>
+            params.radius +
+            `m</p>
                 <p><strong>Rotation:</strong> ` +
-                params.rotationOffset +
-                `°</p>
+            params.rotationOffset +
+            `°</p>
                 <p><strong>Starburst:</strong> ` +
-                params.starburstOffset * 100 +
-                `%</p>
+            params.starburstOffset * 100 +
+            `%</p>
                 <p><strong>Line Width:</strong> ` +
-                params.lineWidth +
-                `</p>
+            params.lineWidth +
+            `</p>
                 <p><strong>Location:</strong> ` +
-                (params.useToeLocation ? "End/Toe" : "Start/Collar") +
-                `</p>
+            (params.useToeLocation ? "End/Toe" : "Start/Collar") +
+            `</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -13841,8 +13879,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-                (error.message || "Unknown error occurred") +
-                `</p>
+            (error.message || "Unknown error occurred") +
+            `</p>
             </div>
         `
         );
@@ -19735,9 +19773,9 @@ function timeChart() {
             .flatMap((index) => {
                 return holeIDs[index]
                     ? holeIDs[index].map((combinedID) => {
-                          const [entityName, holeID] = combinedID.split(":");
-                          return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                      })
+                        const [entityName, holeID] = combinedID.split(":");
+                        return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                    })
                     : [];
             })
             .filter(Boolean);
@@ -19760,11 +19798,11 @@ function timeChart() {
 
         timingWindowHolesSelected = holeIDs[clickedIndex]
             ? holeIDs[clickedIndex]
-                  .map((combinedID) => {
-                      const [entityName, holeID] = combinedID.split(":");
-                      return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                  })
-                  .filter(Boolean)
+                .map((combinedID) => {
+                    const [entityName, holeID] = combinedID.split(":");
+                    return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                })
+                .filter(Boolean)
             : [];
 
         drawData(allBlastHoles, selectedHole);
@@ -29736,10 +29774,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
     return closestPoint
         ? {
-              point: closestPoint,
-              type: snapType,
-              distance: minDistance
-          }
+            point: closestPoint,
+            type: snapType,
+            distance: minDistance
+        }
         : null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
