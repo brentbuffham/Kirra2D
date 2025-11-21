@@ -48,8 +48,8 @@ export class ThreeRenderer {
 		this.renderer.setClearColor(0x000000, 0); // Transparent
 
 		// Step 6) Add lighting
-		const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-		this.scene.add(ambientLight);
+		this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+		this.scene.add(this.ambientLight);
 
 		// Step 6a) Store directional light reference to update position with camera
 		this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
@@ -247,9 +247,19 @@ export class ThreeRenderer {
 
 		this.camera.updateProjectionMatrix();
 		
-		// Step 15a) Update directional light to follow camera position
+		// Step 15a) Update directional light to be above camera (on camera side)
 		if (this.directionalLight) {
-			this.directionalLight.position.copy(this.camera.position);
+			// Step 15a1) Position light above camera position (camera side)
+			// Light should be above the camera, not at camera position
+			const lightOffset = 1000; // Offset above camera
+			this.directionalLight.position.set(
+				this.camera.position.x,
+				this.camera.position.y + lightOffset,
+				this.camera.position.z
+			);
+			// Step 15a2) Make light point at the orbit center
+			this.directionalLight.target.position.set(centroidX, centroidY, this.orbitCenterZ);
+			this.directionalLight.target.updateMatrixWorld();
 		}
 		
 		this.needsRender = true;
@@ -258,6 +268,82 @@ export class ThreeRenderer {
 	// Step 16) Set orbit center Z coordinate
 	setOrbitCenterZ(z) {
 		this.orbitCenterZ = z || 0;
+	}
+	
+	// Step 16a) Update lighting based on bearing and elevation
+	updateLighting(bearingDeg, elevationDeg) {
+		// Step 16a1) Convert bearing and elevation to radians
+		// Bearing: 0° = North, 90° = West, 180° = South, 270° = East
+		// Elevation: 0° = horizontal, 90° = vertical
+		const bearingRad = (bearingDeg * Math.PI) / 180;
+		const elevationRad = (elevationDeg * Math.PI) / 180;
+		
+		// Step 16a2) Calculate light direction vector
+		// X = East/West (positive = East)
+		// Y = Up/Down (positive = Up)
+		// Z = North/South (positive = North)
+		// For bearing: 0° = North (Z+), 90° = West (X-), 180° = South (Z-), 270° = East (X+)
+		const distance = 10000; // Distance from target
+		const x = -distance * Math.sin(bearingRad) * Math.cos(elevationRad);
+		const y = distance * Math.sin(elevationRad);
+		const z = distance * Math.cos(bearingRad) * Math.cos(elevationRad);
+		
+		// Step 16a3) Get current camera state to position light relative to camera
+		const cameraState = this.cameraState;
+		const targetX = cameraState.centroidX || 0;
+		const targetY = cameraState.centroidY || 0;
+		const targetZ = this.orbitCenterZ || 0;
+		
+		// Step 16a4) Position light relative to camera position (above camera side)
+		if (this.directionalLight) {
+			// Step 16a5) Calculate light position relative to camera
+			// Light should be above camera, positioned based on bearing/elevation
+			const cameraPos = this.camera.position;
+			const lightOffsetY = 1000; // Offset above camera
+			
+			// Position light above camera, offset by bearing/elevation
+			this.directionalLight.position.set(
+				cameraPos.x + x * 0.1, // Small offset based on bearing
+				cameraPos.y + lightOffsetY, // Above camera
+				cameraPos.z + z * 0.1 // Small offset based on bearing
+			);
+			
+			// Step 16a6) Make light point at target (orbit center)
+			this.directionalLight.target.position.set(targetX, targetY, targetZ);
+			this.directionalLight.target.updateMatrixWorld();
+		}
+		
+		// Step 16a7) Request render
+		this.requestRender();
+	}
+	
+	// Step 16b) Update clipping planes
+	updateClippingPlanes(near, far) {
+		// Step 16b1) Update camera near and far planes
+		this.camera.near = near;
+		this.camera.far = far;
+		
+		// Step 16b2) Update projection matrix
+		this.camera.updateProjectionMatrix();
+		
+		// Step 16b3) Request render
+		this.requestRender();
+	}
+	
+	// Step 16c) Update ambient light intensity
+	updateAmbientLightIntensity(intensity) {
+		if (this.ambientLight) {
+			this.ambientLight.intensity = intensity;
+			this.requestRender();
+		}
+	}
+	
+	// Step 16d) Update directional light intensity
+	updateDirectionalLightIntensity(intensity) {
+		if (this.directionalLight) {
+			this.directionalLight.intensity = intensity;
+			this.requestRender();
+		}
 	}
 
 	// Step 17) Resize renderer and update camera bounds
@@ -458,6 +544,11 @@ export class ThreeRenderer {
 	// Step 24) Start animation loop (only renders when needed)
 	startRenderLoop() {
 		const animate = () => {
+			// Step 24a) Update arcball controls if active
+			if (window.cameraControls && window.cameraControls.controlMode === "arcball") {
+				window.cameraControls.update();
+			}
+			
 			this.animationFrameId = requestAnimationFrame(animate);
 			if (this.needsRender) {
 				this.render();
