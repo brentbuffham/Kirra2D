@@ -542,38 +542,25 @@ function initializeThreeJS() {
 			console.log("📍 Set toggle buttons z-index to 10");
 		}
 
-		// Step 6) Create camera controls with loaded settings
-		const controlMode = settings.controlMode || "arcball";
-		cameraControls = new CameraControls(threeRenderer, canvas, controlMode);
+		// Step 6) Create unified camera controls
+		cameraControls = new CameraControls(threeRenderer, canvas);
 
-		// Step 6a) Set right-click drag delay
-		if (settings.rightClickDragDelay !== undefined) {
-			cameraControls.rightClickDragDelay = settings.rightClickDragDelay;
-		}
+		// Step 6a) Apply unified camera settings
+		const cameraSettings = {
+			gizmoDisplay: settings.gizmoDisplay || "only_when_orbit_or_rotate",
+			axisLock: settings.axisLock || "none",
+			dampingFactor: settings.dampingFactor || 0.05,
+		};
+		cameraControls.updateSettings(cameraSettings);
 
-		// Step 6b) Apply arcball settings if using arcball mode
-		if (controlMode === "arcball" && settings.dampingFactor !== undefined) {
-			cameraControls.updateSettings({
-				dampingFactor: settings.dampingFactor,
-				cursorZoom: settings.cursorZoom !== false,
-				gizmoDisplayMode: settings.gizmoDisplay || "only_when_orbit_or_rotate",
-			});
-		}
-
-		// Step 6c) Set gizmo display mode for both control modes
+		// Step 6b) Set gizmo display mode
 		if (settings.gizmoDisplay !== undefined) {
-			cameraControls.gizmoDisplayMode = settings.gizmoDisplay;
-			if (cameraControls.arcballControls) {
-				cameraControls.arcballControls.gizmoDisplayMode = settings.gizmoDisplay;
-			}
+			cameraControls.setGizmoDisplayMode(settings.gizmoDisplay);
 		}
 
-		// Step 6d) Set right-click drag delay for both control modes
-		if (settings.rightClickDragDelay !== undefined) {
-			cameraControls.rightClickDragDelay = settings.rightClickDragDelay;
-			if (cameraControls.arcballControls) {
-				cameraControls.arcballControls.rightClickDragDelay = settings.rightClickDragDelay;
-			}
+		// Step 6c) Set axis lock mode
+		if (settings.axisLock !== undefined) {
+			cameraControls.setAxisLock(settings.axisLock);
 		}
 
 		cameraControls.attachEvents();
@@ -1899,6 +1886,10 @@ document.addEventListener("DOMContentLoaded", function () {
 				mouseIndicatorInitialized = false;
 				// Step 1ca) Reset initialization failure flag to allow retry
 				threeInitializationFailed = false;
+				// Step 1cb) Reset camera pan state to prevent stuck drag
+				if (cameraControls && cameraControls.resetPanState) {
+					cameraControls.resetPanState();
+				}
 				console.log("🎨 3D-ONLY Mode: ON (2D canvas hidden)");
 
 				if (threeCanvas) {
@@ -1920,6 +1911,10 @@ document.addEventListener("DOMContentLoaded", function () {
 			} else {
 				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
 				onlyShowThreeJS = false;
+				// Step 1da) Reset camera pan state to prevent stuck drag
+				if (cameraControls && cameraControls.resetPanState) {
+					cameraControls.resetPanState();
+				}
 				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
 
 				if (threeCanvas) {
@@ -21512,12 +21507,38 @@ function openHelp() {
 }
 
 function zoomIn() {
+	// Step 1) Check if 3D mode is active
+	if (window.onlyShowThreeJS && window.cameraControls) {
+		// Step 1a) Get current camera state
+		const currentState = window.cameraControls.getCameraState();
+		const zoomFactor = 1.1; // Zoom in by 10%
+		const newScale = currentState.scale * zoomFactor;
+
+		// Step 1b) Update camera state with new scale
+		window.cameraControls.setCameraState(currentState.centroidX, currentState.centroidY, newScale, currentState.rotation, currentState.orbitX, currentState.orbitY);
+		return;
+	}
+
+	// Step 2) 2D mode - use existing logic
 	currentScale += 1; // increase the current scale by 1
 	currentFontSize += 1;
 	drawData(allBlastHoles, selectedHole);
 }
 
 function zoomOut() {
+	// Step 1) Check if 3D mode is active
+	if (window.onlyShowThreeJS && window.cameraControls) {
+		// Step 1a) Get current camera state
+		const currentState = window.cameraControls.getCameraState();
+		const zoomFactor = 0.9; // Zoom out by 10%
+		const newScale = Math.max(0.01, currentState.scale * zoomFactor);
+
+		// Step 1b) Update camera state with new scale
+		window.cameraControls.setCameraState(currentState.centroidX, currentState.centroidY, newScale, currentState.rotation, currentState.orbitX, currentState.orbitY);
+		return;
+	}
+
+	// Step 2) 2D mode - use existing logic
 	currentScale = Math.max(0.25, currentScale - 1); // decrease the current scale by 0.25, but not below 1
 	currentFontSize -= 1;
 	drawData(allBlastHoles, selectedHole);
@@ -40562,20 +40583,15 @@ function showConfirmationDialog(title, message, confirmText = "Confirm", cancelT
 // Step 14) Load 3D settings from localStorage
 function load3DSettings() {
 	const defaultSettings = {
-		controlMode: "arcball",
 		dampingFactor: 0.05,
-		cursorZoom: true,
 		lightBearing: 135,
 		lightElevation: 15,
 		ambientLightIntensity: 0.8,
 		directionalLightIntensity: 0.5,
-		axisLimitX: 0,
-		axisLimitY: 0,
-		axisLimitZ: 0,
 		clippingNear: -50000,
 		clippingFar: 50000,
-		rightClickDragDelay: 300,
 		gizmoDisplay: "only_when_orbit_or_rotate", // "always", "only_when_orbit_or_rotate", "never"
+		axisLock: "none", // "none", "x", "y", "z"
 	};
 
 	const saved = localStorage.getItem("kirra3DSettings");
@@ -40609,16 +40625,6 @@ function show3DSettingsDialog() {
 
 	// Step 16b) Create form fields
 	const fields = [
-		{
-			type: "select",
-			name: "controlMode",
-			label: "Camera Control Mode:",
-			value: currentSettings.controlMode || "arcball",
-			options: [
-				{ value: "arcball", text: "Arcball" },
-				{ value: "custom", text: "Custom" },
-			],
-		},
 		{
 			type: "number",
 			name: "dampingFactor",
@@ -40671,39 +40677,21 @@ function show3DSettingsDialog() {
 			label: "Directional Light Intensity:",
 			value: currentSettings.directionalLightIntensity !== undefined ? currentSettings.directionalLightIntensity : 0.5,
 			min: 0,
-			max: 2,
+			max: 10,
 			step: 0.1,
 			placeholder: "0.5",
 		},
 		{
-			type: "number",
-			name: "axisLimitX",
-			label: "Axis Limit X (deg, 0=unlimited):",
-			value: currentSettings.axisLimitX || 0,
-			min: 0,
-			max: 180,
-			step: 1,
-			placeholder: "0",
-		},
-		{
-			type: "number",
-			name: "axisLimitY",
-			label: "Axis Limit Y (deg, 0=unlimited):",
-			value: currentSettings.axisLimitY || 0,
-			min: 0,
-			max: 180,
-			step: 1,
-			placeholder: "0",
-		},
-		{
-			type: "number",
-			name: "axisLimitZ",
-			label: "Axis Limit Z (deg, 0=unlimited):",
-			value: currentSettings.axisLimitZ || 0,
-			min: 0,
-			max: 180,
-			step: 1,
-			placeholder: "0",
+			type: "select",
+			name: "axisLock",
+			label: "Axis Lock (Orbit Constraint):",
+			value: currentSettings.axisLock || "none",
+			options: [
+				{ value: "none", text: "None" },
+				{ value: "x", text: "X" },
+				{ value: "y", text: "Y" },
+				{ value: "z", text: "Z" },
+			],
 		},
 		{
 			type: "number",
@@ -40724,16 +40712,6 @@ function show3DSettingsDialog() {
 			max: 100000,
 			step: 1000,
 			placeholder: "50000",
-		},
-		{
-			type: "number",
-			name: "rightClickDragDelay",
-			label: "Right-Click Drag Delay (ms):",
-			value: currentSettings.rightClickDragDelay || 300,
-			min: 0,
-			max: 1000,
-			step: 50,
-			placeholder: "300",
 		},
 		{
 			type: "select",
@@ -40769,25 +40747,15 @@ function show3DSettingsDialog() {
 			// Step 16e) Get form data
 			const formData = getFormData(formContent);
 
-			// Step 16f) Convert checkbox value
-			if (formData.cursorZoom === "true") {
-				formData.cursorZoom = true;
-			} else {
-				formData.cursorZoom = false;
-			}
-
-			// Step 16g) Convert number fields
+			// Step 16f) Convert form data types
 			formData.dampingFactor = parseFloat(formData.dampingFactor) || 0.05;
 			formData.lightBearing = parseInt(formData.lightBearing) || 135;
 			formData.lightElevation = parseInt(formData.lightElevation) || 15;
 			formData.ambientLightIntensity = parseFloat(formData.ambientLightIntensity) || 0.8;
 			formData.directionalLightIntensity = parseFloat(formData.directionalLightIntensity) || 0.5;
-			formData.axisLimitX = parseInt(formData.axisLimitX) || 0;
-			formData.axisLimitY = parseInt(formData.axisLimitY) || 0;
-			formData.axisLimitZ = parseInt(formData.axisLimitZ) || 0;
+			formData.axisLock = formData.axisLock || "none";
 			formData.clippingNear = parseInt(formData.clippingNear) || -50000;
 			formData.clippingFar = parseInt(formData.clippingFar) || 50000;
-			formData.rightClickDragDelay = parseInt(formData.rightClickDragDelay) || 300;
 			formData.gizmoDisplay = formData.gizmoDisplay || "only_when_orbit_or_rotate";
 
 			// Step 16h) Save settings
@@ -40809,40 +40777,19 @@ function show3DSettingsDialog() {
 
 // Step 17) Apply 3D settings
 function apply3DSettings(settings) {
-	// Step 17a) Switch control mode if changed
-	if (settings.controlMode && cameraControls) {
-		if (cameraControls.controlMode !== settings.controlMode) {
-			cameraControls.switchControlMode(settings.controlMode);
-		}
-	}
-
-	// Step 17b) Update camera controls settings
-	if (cameraControls && settings.controlMode === "arcball") {
-		cameraControls.updateSettings({
+	// Step 17a) Update unified camera controls settings
+	if (cameraControls) {
+		const cameraSettings = {
+			gizmoDisplay: settings.gizmoDisplay,
+			axisLock: settings.axisLock,
 			dampingFactor: settings.dampingFactor,
-			cursorZoom: settings.cursorZoom,
-			gizmoDisplayMode: settings.gizmoDisplay || "only_when_orbit_or_rotate",
-		});
-	}
+		};
+		cameraControls.updateSettings(cameraSettings);
 
-	// Step 17c) Update right-click drag delay
-	if (cameraControls && settings.rightClickDragDelay !== undefined) {
-		cameraControls.rightClickDragDelay = settings.rightClickDragDelay;
-		// Step 17c1) Also update arcball controls delay if using arcball
-		if (cameraControls.controlMode === "arcball" && cameraControls.arcballControls) {
-			cameraControls.arcballControls.rightClickDragDelay = settings.rightClickDragDelay;
+		// Update gizmo display immediately
+		if (settings.gizmoDisplay !== undefined) {
+			updateGizmoDisplay();
 		}
-	}
-
-	// Step 17d) Update gizmo display mode
-	if (cameraControls && settings.gizmoDisplay !== undefined) {
-		cameraControls.gizmoDisplayMode = settings.gizmoDisplay;
-		// Step 17d1) Also update arcball controls gizmo mode if using arcball
-		if (cameraControls.controlMode === "arcball" && cameraControls.arcballControls) {
-			cameraControls.arcballControls.gizmoDisplayMode = settings.gizmoDisplay;
-		}
-		// Step 17d2) Apply gizmo display mode immediately
-		updateGizmoDisplay();
 	}
 
 	// Step 17e) Update lighting

@@ -1,53 +1,42 @@
 /* prettier-ignore-file */
 //=================================================
-// CameraControls.js - Camera pan/zoom/rotate controls
+// CameraControls.js - Unified Orthographic Camera Controller
 //=================================================
 
-import { ArcballCameraControls } from "./ArcballCameraControls.js";
+import * as THREE from "three";
 
 export class CameraControls {
-	constructor(threeRenderer, canvas2D, controlMode = "arcball") {
+	constructor(threeRenderer, canvas2D) {
 		// Step 1) Store references
 		this.threeRenderer = threeRenderer;
 		this.canvas2D = canvas2D;
-
-		// Get the container that holds both canvases
 		this.container = canvas2D.parentElement;
 
-		// Step 1a) Control mode: "arcball" or "custom"
-		this.controlMode = controlMode || "arcball";
-
-		// Step 1b) Initialize arcball controls (will be used if mode is "arcball")
-		this.arcballControls = null;
-
-		// Step 1c) Right-click drag delay (in milliseconds)
-		this.rightClickDragDelay = 300;
-		this.rightClickDragTimeout = null;
-		this.pendingRightClickDrag = false;
-		this.pendingRightClickEvent = null;
-
-		// Step 1d) Gizmo display mode
+		// Step 1a) Gizmo display mode
 		this.gizmoDisplayMode = "only_when_orbit_or_rotate"; // "always", "only_when_orbit_or_rotate", "never"
+
+		// Step 1b) Axis lock mode (for constraining orbit)
+		this.axisLock = "none"; // "none", "x", "y", "z"
 
 		// Step 2) Camera state
 		this.centroidX = 0;
 		this.centroidY = 0;
 		this.scale = 1;
-		this.rotation = 0; // Z-axis rotation (2D spin)
-		this.orbitX = 0; // X-axis rotation (pitch/elevation)
-		this.orbitY = 0; // Y-axis rotation (yaw/azimuth)
+		this.rotation = 0; // Z-axis rotation (roll/camera spin)
+		this.orbitX = 0; // X-axis rotation (pitch/elevation) - infinite, no gimbal lock
+		this.orbitY = 0; // Y-axis rotation (yaw/azimuth) - infinite, no gimbal lock
 
-		// Step 3) Mouse state
+		// Step 3) Mouse interaction state
 		this.isDragging = false;
-		this.isRotating = false;
-		this.isOrbiting = false; // 3D orbit mode
-		this.pendingPan = false; // Flag to track if pan is pending (will activate on drag)
+		this.isRotating = false; // Shift+Alt+drag = roll mode
+		this.isOrbiting = false; // Alt+drag = orbit mode
+		this.pendingPan = false; // Flag for pending pan activation
 		this.lastMouseX = 0;
 		this.lastMouseY = 0;
 		this.dragStartX = 0;
 		this.dragStartY = 0;
 
-		// Step 3a) Momentum/damping state for smooth controls
+		// Step 4) Momentum/damping system for smooth controls
 		this.velocityX = 0;
 		this.velocityY = 0;
 		this.velocityOrbitX = 0;
@@ -57,7 +46,10 @@ export class CameraControls {
 		this.minVelocity = 0.0001; // Stop animation below this velocity
 		this.animationFrameId = null;
 
-		// Step 4) Bind event handlers
+		// Step 5) Context menu handler for cleanup
+		this.contextMenuHandler = null;
+
+		// Step 6) Bind event handlers
 		this.handleWheel = this.handleWheel.bind(this);
 		this.handleMouseDown = this.handleMouseDown.bind(this);
 		this.handleMouseMove = this.handleMouseMove.bind(this);
@@ -67,48 +59,36 @@ export class CameraControls {
 		this.handleTouchEnd = this.handleTouchEnd.bind(this);
 		this.animate = this.animate.bind(this);
 
-		// Step 5) Touch state
+		// Step 7) Touch state
 		this.lastTouchDistance = 0;
 		this.touchStartCentroidX = 0;
 		this.touchStartCentroidY = 0;
 		this.touchStartScale = 1;
 	}
 
-	// Step 6) Initialize event listeners
+	// Step 8) Initialize event listeners for unified orthographic controls
 	attachEvents() {
-		// Step 6a) Reset all state flags for custom mode to ensure clean state
-		if (this.controlMode === "custom") {
-			this.resetStateFlags();
-		}
+		// Step 8a) Reset all state flags to ensure clean state
+		this.resetStateFlags();
 
-		// Step 6b) If using arcball mode, use arcball controls
-		if (this.controlMode === "arcball") {
-			if (!this.arcballControls) {
-				this.arcballControls = new ArcballCameraControls(this.threeRenderer, this.canvas2D);
-			}
-			this.arcballControls.attachEvents();
-			console.log("🎮 Arcball camera controls attached");
-			return;
-		}
-
-		// Step 6c) Custom controls - attach to container that holds both canvases
-		// This works regardless of which canvas is on top
+		// Step 8b) Attach to container that holds both canvases
 		const container = this.container;
 
 		container.addEventListener("wheel", this.handleWheel, { passive: false });
 		container.addEventListener("mousedown", this.handleMouseDown);
 
-		// Step 6c) Prevent context menu ONLY during active drag/rotation
+		// Step 8c) Prevent context menu ONLY during active drag/rotation
 		// Allow single right-click to show context menu
-		container.addEventListener("contextmenu", (e) => {
-			// Only prevent if we're actively dragging/rotating
+		this.contextMenuHandler = (e) => {
+			// Only prevent if we're actively dragging/rotating/orbiting
 			if (this.isDragging || this.isRotating || this.isOrbiting) {
 				e.preventDefault();
 				return false;
 			}
-		});
+		};
+		container.addEventListener("contextmenu", this.contextMenuHandler);
 
-		// Step 6d) Attach mousemove and mouseup to document for better drag handling
+		// Step 8d) Attach mousemove and mouseup to document for better drag handling
 		document.addEventListener("mousemove", this.handleMouseMove);
 		document.addEventListener("mouseup", this.handleMouseUp);
 		container.addEventListener("mouseleave", this.handleMouseUp);
@@ -117,25 +97,51 @@ export class CameraControls {
 		container.addEventListener("touchmove", this.handleTouchMove, { passive: false });
 		container.addEventListener("touchend", this.handleTouchEnd);
 
-		console.log("🎮 Custom camera controls attached to canvas container");
+		console.log("🎮 Unified orthographic camera controls attached");
 	}
 
-	// Step 7) Remove event listeners
-	detachEvents() {
-		// Step 7a) Reset all state flags to prevent stuck states
-		this.resetStateFlags();
+	// Step 10) Reset pan state (call when switching between 2D/3D contexts)
+	resetPanState() {
+		// Reset all pan-related flags to prevent stuck states
+		const wasDragging = this.isDragging;
+		const hadPendingPan = this.pendingPan;
 
-		// Step 7b) If using arcball mode, detach arcball controls
-		if (this.controlMode === "arcball" && this.arcballControls) {
-			this.arcballControls.detachEvents();
-			return;
+		this.isDragging = false;
+		this.pendingPan = false;
+		this.velocityX = 0;
+		this.velocityY = 0;
+
+		// Stop any momentum animation
+		if (this.animationFrameId !== null) {
+			cancelAnimationFrame(this.animationFrameId);
+			this.animationFrameId = null;
 		}
 
-		// Step 7c) Custom controls - remove event listeners
+		if (wasDragging || hadPendingPan) {
+			console.log("🔄 Pan state reset (prevented stuck drag)");
+		}
+	}
+
+	// Step 9) Remove event listeners
+	detachEvents() {
+		// Step 9a) Reset all state flags to prevent stuck states
+		this.resetStateFlags();
+
+		// Step 9b) Hide gizmo when detaching events
+		this.threeRenderer.showAxisHelper(false);
+
+		// Step 9c) Remove event listeners
 		const container = this.container;
 
 		container.removeEventListener("wheel", this.handleWheel);
 		container.removeEventListener("mousedown", this.handleMouseDown);
+
+		// Step 9d) Remove contextmenu handler if it exists
+		if (this.contextMenuHandler) {
+			container.removeEventListener("contextmenu", this.contextMenuHandler);
+			this.contextMenuHandler = null;
+		}
+
 		document.removeEventListener("mousemove", this.handleMouseMove);
 		document.removeEventListener("mouseup", this.handleMouseUp);
 		container.removeEventListener("mouseleave", this.handleMouseUp);
@@ -149,89 +155,52 @@ export class CameraControls {
 			cancelAnimationFrame(this.animationFrameId);
 			this.animationFrameId = null;
 		}
+
+		console.log("🎮 Unified orthographic camera controls detached");
 	}
 
-	// Step 7c) Switch control mode
-	switchControlMode(newMode) {
-		// Step 7c1) Validate mode
-		if (newMode !== "arcball" && newMode !== "custom") {
-			console.warn("Invalid control mode:", newMode, "- using 'arcball'");
-			newMode = "arcball";
+	// Step 10) Set gizmo display mode
+	setGizmoDisplayMode(mode) {
+		// Step 10a) Validate mode
+		const validModes = ["always", "only_when_orbit_or_rotate", "never"];
+		if (!validModes.includes(mode)) {
+			console.warn("Invalid gizmo display mode:", mode, "- using 'only_when_orbit_or_rotate'");
+			mode = "only_when_orbit_or_rotate";
 		}
 
-		// Step 7c2) If mode hasn't changed, do nothing
-		if (this.controlMode === newMode) {
-			return;
-		}
-
-		// Step 7c3) Store current gizmo display mode
-		const currentGizmoMode = this.gizmoDisplayMode;
-
-		// Step 7c4) Reset all state flags before switching modes
-		this.resetStateFlags();
-
-		// Step 7c5) Detach current controls
-		this.detachEvents();
-
-		// Step 7c6) Set new mode
-		this.controlMode = newMode;
-
-		// Step 7c7) Transfer gizmo display mode to arcball controls if switching to arcball
-		if (newMode === "arcball" && this.arcballControls) {
-			this.arcballControls.gizmoDisplayMode = currentGizmoMode;
-		}
-
-		// Step 7c8) Attach new controls
-		this.attachEvents();
-
-		// Step 7c8) Sync camera state to new controls
-		const currentState = this.getCameraState();
-		this.setCameraState(currentState.centroidX, currentState.centroidY, currentState.scale, currentState.rotation, currentState.orbitX, currentState.orbitY);
-
-		console.log("🔄 Switched to", newMode, "camera controls");
+		this.gizmoDisplayMode = mode;
+		console.log("🎯 Gizmo display mode set to:", mode);
 	}
 
-	// Step 8) Set camera state and update renderer
+	// Step 11) Set axis lock mode
+	setAxisLock(mode) {
+		// Step 11a) Validate mode
+		const validModes = ["none", "x", "y", "z"];
+		if (!validModes.includes(mode)) {
+			console.warn("Invalid axis lock mode:", mode, "- using 'none'");
+			mode = "none";
+		}
+
+		this.axisLock = mode;
+		console.log("🔒 Axis lock mode set to:", mode);
+	}
+
+	// Step 12) Set camera state and update renderer
 	setCameraState(centroidX, centroidY, scale, rotation = 0, orbitX = 0, orbitY = 0) {
-		// Step 8a) If using arcball mode, delegate to arcball controls
-		if (this.controlMode === "arcball" && this.arcballControls) {
-			this.arcballControls.setCameraState(centroidX, centroidY, scale, rotation, orbitX, orbitY);
-			// Step 8a1) Also update local state for compatibility
-			this.centroidX = centroidX;
-			this.centroidY = centroidY;
-			this.scale = scale;
-			this.rotation = rotation;
-			this.orbitX = orbitX;
-			this.orbitY = orbitY;
-			return;
-		}
-
-		// Step 8b) Custom controls
+		// Step 12a) Update internal state
 		this.centroidX = centroidX;
 		this.centroidY = centroidY;
 		this.scale = scale;
 		this.rotation = rotation;
 		this.orbitX = orbitX;
 		this.orbitY = orbitY;
+
+		// Step 12b) Update Three.js renderer
 		this.threeRenderer.updateCamera(centroidX, centroidY, scale, rotation, orbitX, orbitY);
 	}
 
-	// Step 9) Get current camera state
+	// Step 13) Get current camera state
 	getCameraState() {
-		// Step 9a) If using arcball mode, delegate to arcball controls
-		if (this.controlMode === "arcball" && this.arcballControls) {
-			const state = this.arcballControls.getCameraState();
-			// Step 9a1) Update local state for compatibility
-			this.centroidX = state.centroidX;
-			this.centroidY = state.centroidY;
-			this.scale = state.scale;
-			this.rotation = state.rotation;
-			this.orbitX = state.orbitX;
-			this.orbitY = state.orbitY;
-			return state;
-		}
-
-		// Step 9b) Custom controls
 		return {
 			centroidX: this.centroidX,
 			centroidY: this.centroidY,
@@ -242,7 +211,7 @@ export class CameraControls {
 		};
 	}
 
-	// Step 10) Handle mouse wheel for zoom with cursor zoom support
+	// Step 14) Handle mouse wheel for zoom with cursor zoom support
 	handleWheel(event) {
 		event.preventDefault();
 
@@ -251,124 +220,80 @@ export class CameraControls {
 		const mouseX = event.clientX - rect.left;
 		const mouseY = event.clientY - rect.top;
 
-		// Step 11) Calculate zoom factor
+		// Step 15) Calculate zoom factor
 		const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
 		const oldScale = this.scale;
 		const newScale = Math.max(0.01, Math.min(1000, oldScale * zoomFactor));
 		this.scale = newScale;
 
-		// Step 12) Cursor zoom - adjust centroid to keep cursor position fixed in world space
-		// This works in both 2D and 3D modes
+		// Step 16) Cursor zoom - adjust centroid to keep cursor position fixed in world space
+		// Works in both 2D and 3D modes
 		if (this.orbitX === 0 && this.orbitY === 0) {
-			// 2D mode - standard cursor zoom
+			// 2D mode - perfect cursor zoom
 			const worldX = (mouseX - canvas.width / 2) / oldScale + this.centroidX;
 			const worldY = -((mouseY - canvas.height / 2) / oldScale) + this.centroidY;
 
 			this.centroidX = worldX - (mouseX - canvas.width / 2) / this.scale;
 			this.centroidY = worldY + (mouseY - canvas.height / 2) / this.scale;
 		} else {
-			// 3D mode - scale the orbit distance
-			// This effectively zooms toward/away from the orbit center
-			// The visual effect is zoom toward cursor in 3D space
+			// 3D orbit mode - cursor-influenced zoom
 			const scaleDelta = newScale / oldScale;
 
-			// Adjust centroid based on mouse offset from center
-			// This shifts the orbit center toward the cursor
+			// Calculate cursor offset from screen center
 			const centerOffsetX = (mouseX - canvas.width / 2) / oldScale;
 			const centerOffsetY = -((mouseY - canvas.height / 2) / oldScale);
 
-			// Apply a portion of the offset to create cursor-directed zoom
-			const cursorInfluence = 1 - scaleDelta; // More influence when zooming in
+			// Apply cursor influence to shift orbit center
+			const cursorInfluence = 1 - scaleDelta; // Stronger when zooming in
 			this.centroidX += centerOffsetX * cursorInfluence * 0.3;
 			this.centroidY += centerOffsetY * cursorInfluence * 0.3;
 		}
 
-		// Step 13) Hide axis helper during zoom (transient behavior)
-		this.threeRenderer.showAxisHelper(false);
+		// Step 17) Update gizmo display during zoom
+		if (this.gizmoDisplayMode !== "always") {
+			this.threeRenderer.showAxisHelper(false);
+		}
 
-		// Step 14) Update camera (preserve orbit state during zoom)
+		// Step 18) Update camera with preserved orbit state
 		this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
 
-		return { centroidX: this.centroidX, centroidY: this.centroidY, scale: this.scale, rotation: this.rotation, orbitX: this.orbitX, orbitY: this.orbitY };
+		// Step 19) Re-show gizmo if always mode
+		if (this.gizmoDisplayMode === "always") {
+			this.updateGizmoDisplayForControls();
+		}
+
+		return {
+			centroidX: this.centroidX,
+			centroidY: this.centroidY,
+			scale: this.scale,
+			rotation: this.rotation,
+			orbitX: this.orbitX,
+			orbitY: this.orbitY,
+		};
 	}
 
-	// Step 16) Handle mouse down
+	// Step 20) Handle mouse down
 	handleMouseDown(event) {
-		// Step 16a) Right-click - set up delayed drag for rotation to allow context menu
+		// Step 20a) Right-click - allow context menu only, no camera interaction
 		if (event.button === 2) {
-			// Step 16a1) Clear any existing timeout
-			if (this.rightClickDragTimeout !== null) {
-				clearTimeout(this.rightClickDragTimeout);
-				this.rightClickDragTimeout = null;
-			}
-
-			// Step 16a2) Set flag that right-click drag is pending
-			this.pendingRightClickDrag = true;
-
-			// Step 16a3) Store event data for delayed processing
-			this.pendingRightClickEvent = {
-				clientX: event.clientX,
-				clientY: event.clientY,
-			};
-
-			// Step 16a4) Don't prevent default immediately - let context menu handler run first
-			// The context menu handler will cancel this timeout if a menu is shown
-			// Start timeout - if no context menu appears, enable drag after delay
-			this.rightClickDragTimeout = setTimeout(() => {
-				// Step 16a5) Timeout completed - enable drag if still pending
-				if (this.pendingRightClickDrag && this.pendingRightClickEvent) {
-					this.pendingRightClickDrag = false;
-
-					// Step 16a6) Stop any ongoing momentum animation
-					if (this.animationFrameId !== null) {
-						cancelAnimationFrame(this.animationFrameId);
-						this.animationFrameId = null;
-					}
-
-					// Step 16a7) Reset velocities
-					this.velocityX = 0;
-					this.velocityY = 0;
-					this.velocityOrbitX = 0;
-					this.velocityOrbitY = 0;
-					this.velocityRotation = 0;
-
-					// Step 16a8) Activate rotation mode
-					this.isRotating = true;
-					this.isOrbiting = false;
-					this.isDragging = false;
-					this.pendingPan = false;
-
-					// Step 16a9) Store initial mouse position for rotation calculation
-					this.lastMouseX = this.pendingRightClickEvent.clientX;
-					this.lastMouseY = this.pendingRightClickEvent.clientY;
-					this.dragStartX = this.pendingRightClickEvent.clientX;
-					this.dragStartY = this.pendingRightClickEvent.clientY;
-
-					console.log("🔄 Right-click drag rotation activated after delay");
-				}
-				this.rightClickDragTimeout = null;
-				this.pendingRightClickEvent = null;
-			}, this.rightClickDragDelay || 300);
-
-			// Step 16a10) Don't prevent default immediately - let context menu handler process first
-			// Return early to let context menu handler process first
+			// Let context menu handler process right-click
 			return;
 		}
 
-		// Step 16b) Process non-right-click events normally
+		// Step 20b) Process non-right-click events normally
 		this.processMouseDown(event);
 	}
 
-	// Step 16c) Process mouse down (extracted for reuse)
+	// Step 21) Process mouse down (extracted for reuse)
 	processMouseDown(event) {
-		// Step 16c1) Check for orbit mode (Alt key) - activate immediately
-		if (event.altKey) {
+		// Step 21a) Check for roll mode (Shift + Alt keys) - activate immediately
+		if (event.shiftKey && event.altKey) {
 			event.preventDefault();
-			this.isOrbiting = true;
-			this.isRotating = false;
+			this.isRotating = true;
+			this.isOrbiting = false;
 			this.isDragging = false;
 			this.pendingPan = false;
-			console.log("🌐 3D Orbit mode activated (Alt held)");
+			console.log("🔄 Roll mode activated (Shift+Alt held)");
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
 			this.dragStartX = event.clientX;
@@ -376,16 +301,24 @@ export class CameraControls {
 			return;
 		}
 
-		// Step 16c2) Process right-click drag (called after delay)
-		if (event.button === 2) {
-			this.processRightClickDrag(event);
+		// Step 21b) Check for orbit mode (Alt key only) - activate immediately
+		if (event.altKey) {
+			event.preventDefault();
+			this.isOrbiting = true;
+			this.isRotating = false;
+			this.isDragging = false;
+			this.pendingPan = false;
+			console.log("🌐 Tumble/Orbit mode activated (Alt held)");
+			this.lastMouseX = event.clientX;
+			this.lastMouseY = event.clientY;
+			this.dragStartX = event.clientX;
+			this.dragStartY = event.clientY;
 			return;
 		}
 
-		// Step 16c3) Check if we're in 3D mode and if an object was clicked (selection takes priority)
-		// Only check if onlyShowThreeJS is true and no modifier keys (selection handler runs in capture phase)
+		// Step 21c) Check if we're in 3D mode and if an object was clicked (selection takes priority)
+		// Only check if onlyShowThreeJS is true and no modifier keys
 		if (window.onlyShowThreeJS && !event.altKey && !event.metaKey && !event.ctrlKey && event.button !== 2) {
-			// Check if selection handler already handled this (it runs in capture phase)
 			// If event.defaultPrevented, selection handler stopped us - don't start any camera movement
 			if (event.defaultPrevented) {
 				console.log("🎯 Camera controls: Selection handler prevented camera movement");
@@ -393,20 +326,20 @@ export class CameraControls {
 			}
 		}
 
-		// Step 16c4) Stop any ongoing momentum animation
+		// Step 21d) Stop any ongoing momentum animation
 		if (this.animationFrameId !== null) {
 			cancelAnimationFrame(this.animationFrameId);
 			this.animationFrameId = null;
 		}
 
-		// Step 16c5) Reset velocities
+		// Step 21e) Reset velocities
 		this.velocityX = 0;
 		this.velocityY = 0;
 		this.velocityOrbitX = 0;
 		this.velocityOrbitY = 0;
 		this.velocityRotation = 0;
 
-		// Step 16c6) Default pan mode - but DON'T activate until mouse moves (drag detected)
+		// Step 21f) Default pan mode - but DON'T activate until mouse moves (drag detected)
 		// In 3D mode, single click should select, not pan. Pan only happens on drag.
 		this.isDragging = false; // Start as false, will be set to true on first mousemove
 		this.isRotating = false;
@@ -419,136 +352,100 @@ export class CameraControls {
 		this.dragStartY = event.clientY;
 	}
 
-	// Step 16d) Process right-click drag (called after delay)
-	processRightClickDrag(event) {
-		// Step 16d1) Prevent context menu on right-click drag
-		if (event.preventDefault) {
-			event.preventDefault();
-		}
-
-		// Step 16d2) Stop any ongoing momentum animation
-		if (this.animationFrameId !== null) {
-			cancelAnimationFrame(this.animationFrameId);
-			this.animationFrameId = null;
-		}
-
-		// Step 16d3) Reset velocities
-		this.velocityX = 0;
-		this.velocityY = 0;
-		this.velocityOrbitX = 0;
-		this.velocityOrbitY = 0;
-		this.velocityRotation = 0;
-
-		// Step 16d4) Check for orbit mode (Alt key) - activate immediately
-		if (event.altKey) {
-			this.isOrbiting = true;
-			this.isRotating = false;
-			this.isDragging = false;
-			console.log("🌐 3D Orbit mode activated (Alt held)");
-		}
-		// Step 16d5) Check for 2D rotation mode (Command/Ctrl or right-click) - activate immediately
-		// metaKey = Command on Mac, Windows key on PC
-		else if (event.metaKey || event.ctrlKey || event.button === 2) {
-			this.isRotating = true;
-			this.isOrbiting = false;
-			this.isDragging = false;
-			console.log("🔄 2D Rotation mode activated (⌘/Ctrl/Right-click)");
-		}
-
-		this.lastMouseX = event.clientX;
-		this.lastMouseY = event.clientY;
-		this.dragStartX = event.clientX;
-		this.dragStartY = event.clientY;
-	}
-
-	// Step 16e) Cancel right-click drag (called by context menu handler)
-	cancelRightClickDrag() {
-		// Step 16e1) If using arcball mode, delegate to arcball controls
-		if (this.controlMode === "arcball" && this.arcballControls) {
-			if (typeof this.arcballControls.cancelRightClickDrag === "function") {
-				this.arcballControls.cancelRightClickDrag();
-			}
-			return;
-		}
-
-		// Step 16e2) Custom controls - clear timeout
-		if (this.rightClickDragTimeout !== null) {
-			clearTimeout(this.rightClickDragTimeout);
-			this.rightClickDragTimeout = null;
-		}
-
-		// Step 16e3) Clear pending flag
-		this.pendingRightClickDrag = false;
-		this.pendingRightClickEvent = null;
-	}
-
-	// Step 18) Handle mouse move
+	// Step 22) Handle mouse move
 	handleMouseMove(event) {
-		// Step 18a) Check if right-click drag rotation was activated after delay
-		if (this.isRotating && this.pendingRightClickDrag === false && this.rightClickDragTimeout === null) {
-			// Right-click drag rotation is active - prevent default to block context menu during drag
-			event.preventDefault();
-		}
-
-		// Step 18b) Check if Alt is released - stop orbit if it was active
-		// Orbit should only be activated via Alt+mousedown, not during mousemove
+		// Step 22a) Check if Alt is released - stop orbit/roll if it was active
 		if (!event.altKey) {
-			// Step 18b1) If Alt is released and we were orbiting, release orbit mode
+			// If Alt is released and we were orbiting, release orbit mode
 			if (this.isOrbiting && !this.isDragging && !this.isRotating) {
 				this.isOrbiting = false;
-				// Allow pan to resume if mouse is still down
 				if (this.pendingPan) {
 					// Pan can resume
 				}
 			}
 		}
 
-		// Step 18b) Check if pan is pending and activate on first movement (drag threshold)
+		// Step 22b) Check if Shift+Alt is released - stop roll if it was active
+		if (!(event.shiftKey && event.altKey)) {
+			// If Shift+Alt is released and we were rotating, release rotation mode
+			if (this.isRotating && !this.isDragging && !this.isOrbiting) {
+				this.isRotating = false;
+				if (this.pendingPan) {
+					// Pan can resume
+				}
+			}
+		}
+
+		// Step 22c) Check if pan is pending and activate on drag threshold
 		if (this.pendingPan && !this.isDragging && !this.isRotating && !this.isOrbiting) {
-			// Check if mouse has moved enough to consider it a drag (not just a click)
 			const dragThreshold = 3; // pixels
 			const deltaX = Math.abs(event.clientX - this.dragStartX);
 			const deltaY = Math.abs(event.clientY - this.dragStartY);
 
 			if (deltaX > dragThreshold || deltaY > dragThreshold) {
-				// Mouse has moved enough - this is a drag, activate pan
 				this.isDragging = true;
 				this.pendingPan = false;
-				console.log("👆 Pan mode activated (drag detected)");
+				console.log("👆 2D Pan mode activated (drag detected)");
 			}
 		}
 
 		if (this.isDragging) {
-			// Step 19) Pan mode - account for current rotation
+			// Step 23) Pan mode - account for current rotation and 3D orbit
 			const deltaX = event.clientX - this.lastMouseX;
 			const deltaY = event.clientY - this.lastMouseY;
 
-			// Rotate the delta values to account for current Z-axis rotation
-			// This makes panning follow the rotated coordinate system
-			const cos = Math.cos(-this.rotation); // Negative because we're rotating screen space
-			const sin = Math.sin(-this.rotation);
+			// Step 23a) If camera is orbited in 3D, pan in screen space relative to bearing
+			if (this.orbitX !== 0 || this.orbitY !== 0) {
+				// Simple screen-relative pan that maintains consistent left/right/up/down movement
+				// regardless of camera orientation or tilt angle
 
-			const rotatedDeltaX = deltaX * cos - deltaY * sin;
-			const rotatedDeltaY = deltaX * sin + deltaY * cos;
+				const panDeltaX = deltaX / this.scale;
+				const panDeltaY = -deltaY / this.scale; // Screen Y is inverted
 
-			this.centroidX -= rotatedDeltaX / this.scale;
-			this.centroidY += rotatedDeltaY / this.scale;
+				// Transform screen movement to world space based on current bearing (yaw)
+				// This ensures pan always feels natural regardless of camera tilt
+				const cosYaw = Math.cos(this.orbitY);
+				const sinYaw = Math.sin(this.orbitY);
 
-			// Store velocity for momentum
-			this.velocityX = -rotatedDeltaX / this.scale;
-			this.velocityY = rotatedDeltaY / this.scale;
+				// Apply screen-to-world transformation
+				this.centroidX += panDeltaX * cosYaw + panDeltaY * sinYaw;
+				this.centroidY += -panDeltaX * sinYaw + panDeltaY * cosYaw;
+
+				// Store velocity for momentum (same transformation)
+				this.velocityX = panDeltaX * cosYaw + panDeltaY * sinYaw;
+				this.velocityY = -panDeltaX * sinYaw + panDeltaY * cosYaw;
+			} else {
+				// Step 23b) 2D mode - rotate delta values to account for current Z-axis rotation
+				const cos = Math.cos(-this.rotation);
+				const sin = Math.sin(-this.rotation);
+
+				const rotatedDeltaX = deltaX * cos - deltaY * sin;
+				const rotatedDeltaY = deltaX * sin + deltaY * cos;
+
+				this.centroidX -= rotatedDeltaX / this.scale;
+				this.centroidY += rotatedDeltaY / this.scale;
+
+				// Store velocity for momentum
+				this.velocityX = -rotatedDeltaX / this.scale;
+				this.velocityY = rotatedDeltaY / this.scale;
+			}
 
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
 
-			// Step 19b) Hide axis helper during pan (transient behavior)
-			this.threeRenderer.showAxisHelper(false);
+			// Update gizmo display during pan
+			if (this.gizmoDisplayMode !== "always") {
+				this.threeRenderer.showAxisHelper(false);
+			}
 			this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+
+			if (this.gizmoDisplayMode === "always") {
+				this.updateGizmoDisplayForControls();
+			}
 
 			return { centroidX: this.centroidX, centroidY: this.centroidY, mode: "pan" };
 		} else if (this.isRotating) {
-			// Step 20) 2D Rotation mode (Z-axis spin)
-			// Step 20a) Show axis helper based on gizmo display mode
+			// Step 24) Roll mode (Z-axis rotation/camera spin) - INFINITE
 			this.updateGizmoDisplayForControls();
 
 			const canvas = this.threeRenderer.getCanvas();
@@ -556,7 +453,7 @@ export class CameraControls {
 			const centerX = rect.left + rect.width / 2;
 			const centerY = rect.top + rect.height / 2;
 
-			// Step 21) Calculate angle from center
+			// Calculate angle from center (no gimbal lock for roll)
 			const startAngle = Math.atan2(this.lastMouseY - centerY, this.lastMouseX - centerX);
 			const currentAngle = Math.atan2(event.clientY - centerY, event.clientX - centerX);
 			const deltaAngle = currentAngle - startAngle;
@@ -569,28 +466,49 @@ export class CameraControls {
 
 			this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
 
-			return { rotation: this.rotation, mode: "rotate" };
+			return { rotation: this.rotation, mode: "roll" };
 		} else if (this.isOrbiting) {
-			// Step 22) 3D Orbit mode (X and Y axis rotation)
-			// Step 22a) Show axis helper based on gizmo display mode
+			// Step 25) 3D Orbit mode (X and Y axis rotation) - INFINITE, NO GIMBAL LOCK
 			this.updateGizmoDisplayForControls();
 
 			const deltaX = event.clientX - this.lastMouseX;
 			const deltaY = event.clientY - this.lastMouseY;
 
-			// Use smaller sensitivity for smoother control (reduced from 0.01 to 0.005)
 			const sensitivity = 0.005;
 
-			// Horizontal movement = Y-axis rotation (yaw/azimuth)
-			const deltaOrbitY = deltaX * sensitivity;
-			this.orbitY += deltaOrbitY;
-			this.velocityOrbitY = deltaOrbitY; // Store for momentum
+			// Apply axis lock constraints
+			let deltaOrbitX = deltaY * sensitivity;
+			let deltaOrbitY = deltaX * sensitivity;
 
-			// Vertical movement = X-axis rotation (pitch/elevation)
-			// No clamping - allow full rotation in all directions
-			const deltaOrbitX = deltaY * sensitivity;
+			switch (this.axisLock) {
+				case "x": // Lock to Easting axis - constrain to Y-Z plane (Northing/Elevation only)
+					deltaOrbitY = 0; // No horizontal rotation (yaw), only up/down (pitch)
+					break;
+				case "y": // Lock to Northing axis - constrain to X-Z plane (Easting/Elevation only)
+					deltaOrbitY = 0; // No yaw rotation, only pitch (up/down) allowed
+					break;
+				case "z": // Lock to Elevation axis - constrain to X-Y plane (Easting/Northing only)
+					deltaOrbitX = 0; // No vertical rotation (pitch), only horizontal (yaw)
+					break;
+				case "none": // No constraints - infinite orbit in all directions
+				default:
+					// Allow full rotation - no gimbal lock
+					break;
+			}
+
+			// Apply orbit changes (infinite, no clamping)
 			this.orbitX += deltaOrbitX;
-			this.velocityOrbitX = deltaOrbitX; // Store for momentum
+			this.orbitY += deltaOrbitY;
+
+			// Store velocity for momentum
+			this.velocityOrbitX = deltaOrbitX;
+			this.velocityOrbitY = deltaOrbitY;
+
+			// Debug logging for orbit values
+			const cameraPos = this.threeRenderer.camera.position;
+			const tiltDeg = ((this.orbitX * 180) / Math.PI).toFixed(1);
+			const bearingDeg = ((this.orbitY * 180) / Math.PI).toFixed(1);
+			console.log(`📍 Camera XYZ: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)}) | Tilt: ${tiltDeg}° | Bearing: ${bearingDeg}°`);
 
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
@@ -605,16 +523,21 @@ export class CameraControls {
 
 	// Step 22) Handle mouse up
 	handleMouseUp(event) {
-		// Step 22a) Reset pending pan flag if mouse up without drag
+		// Step 22a) Log 2D pan release if it was active
+		if (this.isDragging) {
+			console.log("👆 2D Pan mode released");
+		}
+
+		// Step 22b) Reset pending pan flag if mouse up without drag
 		if (this.pendingPan && !this.isDragging) {
 			this.pendingPan = false;
 			// This was a click, not a drag - selection handler should have handled it
 		}
 
-		// Step 22b) Update axis helper based on gizmo display mode
+		// Step 22c) Update axis helper based on gizmo display mode
 		this.updateGizmoDisplayForControls();
 
-		// Step 22c) Start momentum animation if there's significant velocity
+		// Step 22d) Start momentum animation if there's significant velocity
 		const hasVelocity = Math.abs(this.velocityX) > this.minVelocity || Math.abs(this.velocityY) > this.minVelocity || Math.abs(this.velocityOrbitX) > this.minVelocity || Math.abs(this.velocityOrbitY) > this.minVelocity || Math.abs(this.velocityRotation) > this.minVelocity;
 
 		if (hasVelocity && this.animationFrameId === null) {
@@ -633,21 +556,13 @@ export class CameraControls {
 		this.isRotating = false;
 		this.isOrbiting = false;
 		this.pendingPan = false;
-		this.pendingRightClickDrag = false;
 		this.velocityX = 0;
 		this.velocityY = 0;
 		this.velocityOrbitX = 0;
 		this.velocityOrbitY = 0;
 		this.velocityRotation = 0;
 
-		// Step 22d1) Clear right-click drag timeout
-		if (this.rightClickDragTimeout !== null) {
-			clearTimeout(this.rightClickDragTimeout);
-			this.rightClickDragTimeout = null;
-		}
-		this.pendingRightClickEvent = null;
-
-		// Step 22d2) Stop animation loop if running
+		// Step 22d1) Stop animation loop if running
 		if (this.animationFrameId !== null) {
 			cancelAnimationFrame(this.animationFrameId);
 			this.animationFrameId = null;
@@ -656,6 +571,12 @@ export class CameraControls {
 
 	// Step 22e) Helper to update gizmo display
 	updateGizmoDisplayForControls() {
+		// Step 22e1) Always respect "never" mode first
+		if (this.gizmoDisplayMode === "never") {
+			this.threeRenderer.showAxisHelper(false);
+			return;
+		}
+
 		if (this.gizmoDisplayMode === "always") {
 			// Keep gizmo visible if mode is "always"
 			const currentState = this.getCameraState();
@@ -669,7 +590,7 @@ export class CameraControls {
 				this.threeRenderer.showAxisHelper(false);
 			}
 		} else {
-			// Never show
+			// Default to never show if mode is unknown
 			this.threeRenderer.showAxisHelper(false);
 		}
 	}
@@ -804,18 +725,30 @@ export class CameraControls {
 		this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
 	}
 
-	// Step 31c) Update settings (for arcball mode)
+	// Step 34) Update settings from external configuration
 	updateSettings(settings) {
-		if (this.controlMode === "arcball" && this.arcballControls) {
-			this.arcballControls.updateSettings(settings);
+		// Update gizmo display mode
+		if (settings.gizmoDisplay) {
+			this.setGizmoDisplayMode(settings.gizmoDisplay);
 		}
+
+		// Update axis lock mode
+		if (settings.axisLock) {
+			this.setAxisLock(settings.axisLock);
+		}
+
+		// Update damping factor
+		if (settings.dampingFactor !== undefined) {
+			this.damping = Math.max(0, Math.min(1, settings.dampingFactor));
+		}
+
+		console.log("⚙️ Camera controls settings updated");
 	}
 
-	// Step 31d) Update method (for arcball mode - call in render loop)
+	// Step 35) Update method (call in render loop if needed)
 	update() {
-		if (this.controlMode === "arcball" && this.arcballControls) {
-			this.arcballControls.update();
-		}
+		// Unified system doesn't need continuous updates like arcball controls
+		// This method is kept for API compatibility
 	}
 
 	// Step 32) Animation loop for smooth momentum/damping

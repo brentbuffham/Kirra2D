@@ -115,6 +115,7 @@ export class ThreeRenderer {
 	// Step 11b) Create XYZ axis helper widget (fixed 50px screen size)
 	createAxisHelper(size) {
 		const group = new THREE.Group();
+		group.name = "AxisHelper"; // Name for easy identification
 
 		// X-axis (Red) - points East
 		const xGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(size, 0, 0)]);
@@ -465,10 +466,40 @@ export class ThreeRenderer {
 		this.surfaceMeshMap.clear();
 		this.kadMeshMap.clear();
 		
-		// Step 21c) DON'T clear text cache - persist across redraws
+		// Step 21c) Dispose axis helper if it exists
+		if (this.axisHelper) {
+			this.disposeAxisHelper();
+		}
+		
+		// Step 21d) DON'T clear text cache - persist across redraws
 		// Text cache is only cleared when data actually changes (see clearTextCacheOnDataChange)
 
 		this.needsRender = true;
+	}
+	
+	// Step 21e) Dispose axis helper and recreate
+	disposeAxisHelper() {
+		if (this.axisHelper) {
+			// Traverse and dispose all geometries and materials
+			this.axisHelper.traverse((child) => {
+				if (child.geometry) {
+					child.geometry.dispose();
+				}
+				if (child.material) {
+					if (Array.isArray(child.material)) {
+						child.material.forEach((mat) => mat.dispose());
+					} else {
+						child.material.dispose();
+					}
+				}
+				// Dispose sprite textures
+				if (child.material && child.material.map) {
+					child.material.map.dispose();
+				}
+			});
+			this.scene.remove(this.axisHelper);
+			this.axisHelper = null;
+		}
 	}
 
 	// Step 21d) Clear text cache when data changes (not on every redraw)
@@ -579,12 +610,24 @@ export class ThreeRenderer {
 
 	// Step 28) Show/hide axis helper with fixed screen size (50 pixels)
 	showAxisHelper(show, positionX = 0, positionY = 0, scale = 1) {
+		// Step 28a) Check if gizmo display mode is "never" - if so, always hide
+		// This check should be done by the caller, but we add a safety check here
+		// The caller should pass show=false when mode is "never"
+		
+		// Step 28b) Create axis helper if it doesn't exist
+		if (!this.axisHelper) {
+			this.axisHelper = this.createAxisHelper(50);
+			this.axisHelper.visible = false;
+			this.scene.add(this.axisHelper);
+			this.axisHelperBaseSize = 50;
+		}
+		
 		if (this.axisHelper) {
 			this.axisHelper.visible = show;
 			if (show) {
 				this.axisHelper.position.set(positionX, positionY, 0);
 
-				// Step 28a) Scale to maintain fixed screen size (50 pixels)
+				// Step 28c) Scale to maintain fixed screen size (50 pixels)
 				// Screen size (pixels) = world size * scale
 				// To get 50 pixels: world size = 50 / scale
 				const desiredScreenPixels = 50;
