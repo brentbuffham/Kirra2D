@@ -19,8 +19,8 @@ export class ThreeRenderer {
 		this.scene = new THREE.Scene();
 		this.scene.background = new THREE.Color(0xffffff); // White for light mode
 
-		// Step 3) Create orthographic camera with Y-up coordinate system
-		// Camera coordinates: +X right, +Y up, -Z into screen
+		// Step 3) Create orthographic camera with Z-up coordinate system
+		// Camera coordinates: +X East, +Y North, +Z Up
 		const aspect = width / height;
 		const frustumSize = 1000;
 		this.camera = new THREE.OrthographicCamera(
@@ -35,7 +35,7 @@ export class ThreeRenderer {
 		// Step 4) Position camera looking down at origin (will be updated to look at data centroid)
 		this.camera.position.set(0, 0, 5000);
 		this.camera.lookAt(0, 0, 0);
-		this.camera.up.set(0, 1, 0); // Y-up orientation
+		this.camera.up.set(0, 0, 1); // Z-up orientation
 
 		// Step 5) Create WebGL renderer with transparency
 		this.renderer = new THREE.WebGLRenderer({
@@ -206,11 +206,32 @@ export class ThreeRenderer {
 
 		// If orbit angles are non-zero, calculate 3D camera position
 		if (orbitX !== 0 || orbitY !== 0) {
-			// Spherical to Cartesian conversion
-			// orbitX = pitch (elevation), orbitY = yaw (azimuth)
-			const x = cameraDistance * Math.cos(orbitX) * Math.sin(orbitY);
-			const y = cameraDistance * Math.sin(orbitX);
-			const z = cameraDistance * Math.cos(orbitX) * Math.cos(orbitY);
+			// Spherical to Cartesian conversion (Z-up)
+			// orbitX = pitch (elevation from XY plane), orbitY = yaw (azimuth in XY plane)
+
+			// Note: In standard math, x=cos(pitch)cos(yaw), y=cos(pitch)sin(yaw), z=sin(pitch)
+			// But we want to match standard camera controls feel:
+			// orbitX (Pitch): 0 = Top Down (looking -Z), 90 = Horizon
+			// Actually, let's check CameraControls.
+			// If orbitX is 0, we are looking Down.
+
+			// Z-up Spherical:
+			// Position relative to centroid
+			// If Pitch(orbitX) = 0, we want camera at (0, 0, dist).
+			// If Pitch(orbitX) = 90 deg, we want camera at (dist, 0, 0) (Side view).
+
+			// Let's use:
+			// Z = dist * cos(pitch)
+			// RadiusXY = dist * sin(pitch)
+			// X = RadiusXY * sin(yaw)
+			// Y = RadiusXY * cos(yaw)
+
+			// Use orbitX directly as angle from Z-axis (Zenith)
+			// 0 = Top, PI/2 = Horizon
+
+			const x = cameraDistance * Math.sin(orbitX) * Math.sin(orbitY);
+			const y = cameraDistance * Math.sin(orbitX) * Math.cos(orbitY); // Swap sin/cos for alignment?
+			const z = cameraDistance * Math.cos(orbitX);
 
 			// Position camera relative to orbit center (centroidX, centroidY, orbitCenterZ)
 			this.camera.position.set(centroidX + x, centroidY + y, this.orbitCenterZ + z);
@@ -218,22 +239,25 @@ export class ThreeRenderer {
 			// Look at the orbit center (using data Z centroid)
 			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
 
-			// Apply Z-axis rotation (2D spin)
-			this.camera.rotateZ(rotation);
+			// Apply Z-axis rotation (2D spin) via Roll if needed, or rely on Up vector
+			// this.camera.rotateZ(rotation); // RotateZ might conflict with LookAt/Up.
+			// For Z-up camera, "Roll" is rotation around Z (View Axis).
+			// OrthographicCamera rotation.z corresponds to Roll.
+			this.camera.rotation.z += rotation;
 		} else {
 			// Standard 2D top-down view - position camera above data centroid
 			this.camera.position.x = centroidX;
 			this.camera.position.y = centroidY;
 			this.camera.position.z = this.orbitCenterZ + cameraDistance;
 
-			// Look at the data centroid (not Z=0)
+			// Look at the data centroid
 			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
 
 			// Reset camera rotation to default (looking down)
 			this.camera.rotation.set(0, 0, 0);
-			this.camera.up.set(0, 1, 0);
+			this.camera.up.set(0, 0, 1); // Z-up
 
-			// Apply Z-axis rotation only
+			// Apply Z-axis rotation only (Roll)
 			this.camera.rotation.z = rotation;
 		}
 
@@ -247,22 +271,18 @@ export class ThreeRenderer {
 		this.camera.bottom = -viewportHeightInWorldUnits / 2;
 
 		this.camera.updateProjectionMatrix();
-		
+
 		// Step 15a) Update directional light to be above camera (on camera side)
 		if (this.directionalLight) {
 			// Step 15a1) Position light above camera position (camera side)
 			// Light should be above the camera, not at camera position
 			const lightOffset = 1000; // Offset above camera
-			this.directionalLight.position.set(
-				this.camera.position.x,
-				this.camera.position.y + lightOffset,
-				this.camera.position.z
-			);
+			this.directionalLight.position.set(this.camera.position.x, this.camera.position.y + lightOffset, this.camera.position.z);
 			// Step 15a2) Make light point at the orbit center
 			this.directionalLight.target.position.set(centroidX, centroidY, this.orbitCenterZ);
 			this.directionalLight.target.updateMatrixWorld();
 		}
-		
+
 		this.needsRender = true;
 	}
 
@@ -270,7 +290,7 @@ export class ThreeRenderer {
 	setOrbitCenterZ(z) {
 		this.orbitCenterZ = z || 0;
 	}
-	
+
 	// Step 16a) Update lighting based on bearing and elevation
 	updateLighting(bearingDeg, elevationDeg) {
 		// Step 16a1) Convert bearing and elevation to radians
@@ -278,7 +298,7 @@ export class ThreeRenderer {
 		// Elevation: 0° = horizontal, 90° = vertical
 		const bearingRad = (bearingDeg * Math.PI) / 180;
 		const elevationRad = (elevationDeg * Math.PI) / 180;
-		
+
 		// Step 16a2) Calculate light direction vector
 		// X = East/West (positive = East)
 		// Y = Up/Down (positive = Up)
@@ -288,49 +308,49 @@ export class ThreeRenderer {
 		const x = -distance * Math.sin(bearingRad) * Math.cos(elevationRad);
 		const y = distance * Math.sin(elevationRad);
 		const z = distance * Math.cos(bearingRad) * Math.cos(elevationRad);
-		
+
 		// Step 16a3) Get current camera state to position light relative to camera
 		const cameraState = this.cameraState;
 		const targetX = cameraState.centroidX || 0;
 		const targetY = cameraState.centroidY || 0;
 		const targetZ = this.orbitCenterZ || 0;
-		
+
 		// Step 16a4) Position light relative to camera position (above camera side)
 		if (this.directionalLight) {
 			// Step 16a5) Calculate light position relative to camera
 			// Light should be above camera, positioned based on bearing/elevation
 			const cameraPos = this.camera.position;
 			const lightOffsetY = 1000; // Offset above camera
-			
+
 			// Position light above camera, offset by bearing/elevation
 			this.directionalLight.position.set(
 				cameraPos.x + x * 0.1, // Small offset based on bearing
 				cameraPos.y + lightOffsetY, // Above camera
 				cameraPos.z + z * 0.1 // Small offset based on bearing
 			);
-			
+
 			// Step 16a6) Make light point at target (orbit center)
 			this.directionalLight.target.position.set(targetX, targetY, targetZ);
 			this.directionalLight.target.updateMatrixWorld();
 		}
-		
+
 		// Step 16a7) Request render
 		this.requestRender();
 	}
-	
+
 	// Step 16b) Update clipping planes
 	updateClippingPlanes(near, far) {
 		// Step 16b1) Update camera near and far planes
 		this.camera.near = near;
 		this.camera.far = far;
-		
+
 		// Step 16b2) Update projection matrix
 		this.camera.updateProjectionMatrix();
-		
+
 		// Step 16b3) Request render
 		this.requestRender();
 	}
-	
+
 	// Step 16c) Update ambient light intensity
 	updateAmbientLightIntensity(intensity) {
 		if (this.ambientLight) {
@@ -338,7 +358,7 @@ export class ThreeRenderer {
 			this.requestRender();
 		}
 	}
-	
+
 	// Step 16d) Update directional light intensity
 	updateDirectionalLightIntensity(intensity) {
 		if (this.directionalLight) {
@@ -392,7 +412,7 @@ export class ThreeRenderer {
 			}
 			return; // Don't continue with standard disposal
 		}
-		
+
 		// Step 19b) Dispose geometry
 		if (object.geometry) {
 			object.geometry.dispose();
@@ -444,7 +464,7 @@ export class ThreeRenderer {
 				}
 			}
 		});
-		
+
 		// Step 20b) Remove all objects from group
 		toRemove.forEach((obj) => {
 			group.remove(obj);
@@ -465,18 +485,18 @@ export class ThreeRenderer {
 		this.holeMeshMap.clear();
 		this.surfaceMeshMap.clear();
 		this.kadMeshMap.clear();
-		
+
 		// Step 21c) Dispose axis helper if it exists
 		if (this.axisHelper) {
 			this.disposeAxisHelper();
 		}
-		
+
 		// Step 21d) DON'T clear text cache - persist across redraws
 		// Text cache is only cleared when data actually changes (see clearTextCacheOnDataChange)
 
 		this.needsRender = true;
 	}
-	
+
 	// Step 21e) Dispose axis helper and recreate
 	disposeAxisHelper() {
 		if (this.axisHelper) {
@@ -539,11 +559,14 @@ export class ThreeRenderer {
 	render() {
 		// Step 23a) Update billboard text rotation before rendering
 		this.updateTextBillboards();
-		
+
+		// Step 23a.1) Update billboarded objects (mouse torus, etc.)
+		this.updateBillboardedObjects();
+
 		this.renderer.render(this.scene, this.camera);
 		this.needsRender = false;
 	}
-	
+
 	// Step 23b) Update all troika text objects to face camera (billboard behavior)
 	updateTextBillboards() {
 		const updateGroup = (group) => {
@@ -565,11 +588,22 @@ export class ThreeRenderer {
 				}
 			});
 		};
-		
+
 		// Update text in all groups
 		updateGroup(this.kadGroup);
 		updateGroup(this.holesGroup);
 		updateGroup(this.connectorsGroup);
+	}
+
+	// Step 23c) Update billboarded objects (mouse torus, etc.) to face camera
+	updateBillboardedObjects() {
+		// Step 23c.1) Update connectors group (contains mouse indicator)
+		this.connectorsGroup.traverse((object) => {
+			if (object.userData && object.userData.billboard) {
+				// Rotate object to face camera
+				object.quaternion.copy(this.camera.quaternion);
+			}
+		});
 	}
 
 	// Step 24) Start animation loop (only renders when needed)
@@ -579,7 +613,7 @@ export class ThreeRenderer {
 			if (window.cameraControls && window.cameraControls.controlMode === "arcball") {
 				window.cameraControls.update();
 			}
-			
+
 			this.animationFrameId = requestAnimationFrame(animate);
 			if (this.needsRender) {
 				this.render();
@@ -613,7 +647,7 @@ export class ThreeRenderer {
 		// Step 28a) Check if gizmo display mode is "never" - if so, always hide
 		// This check should be done by the caller, but we add a safety check here
 		// The caller should pass show=false when mode is "never"
-		
+
 		// Step 28b) Create axis helper if it doesn't exist
 		if (!this.axisHelper) {
 			this.axisHelper = this.createAxisHelper(50);
@@ -621,7 +655,7 @@ export class ThreeRenderer {
 			this.scene.add(this.axisHelper);
 			this.axisHelperBaseSize = 50;
 		}
-		
+
 		if (this.axisHelper) {
 			this.axisHelper.visible = show;
 			if (show) {

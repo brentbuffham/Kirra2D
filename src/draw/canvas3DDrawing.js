@@ -614,6 +614,7 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 }
 
 // Step 19.5) Draw mouse position indicator (crosshairs) in Three.js
+// Now uses view plane positioning and billboard rendering
 export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ) {
     if (!window.threeInitialized || !window.threeRenderer) return;
     if (worldX === undefined || worldY === undefined || worldZ === undefined) return;
@@ -655,24 +656,32 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ) {
         }
     });
 
-    // Step 19.5c) Create mouse position indicator
+    // Step 19.5c) Create mouse position indicator with billboarding enabled
     // Size based on snap radius (convert pixels to world units)
     // snapRadiusPixels is in pixels, convert to world units using currentScale
     const snapRadiusPixels = window.snapRadiusPixels !== undefined ? window.snapRadiusPixels : 15; // Default 15px
     const snapRadiusWorld = snapRadiusPixels / (window.currentScale || 1.0); // Convert pixels to world units
-    const indicatorSize = snapRadiusWorld; // Use snap radius as the indicator size
+    const indicatorSize = snapRadiusWorld;
     const indicatorGroup = GeometryFactory.createMousePositionIndicator(
         local.x,
         local.y,
         z,
         indicatorSize,
-        "rgba(128, 128, 128, 0.6)" // Grey, 60% transparent
+        "rgba(128, 128, 128, 0.6)", // Grey, 60% transparent
+        true // Enable billboarding to face camera
     );
 
     // Step 19.5d) Add metadata
     indicatorGroup.userData = {
         type: "mouseIndicator"
     };
+    
+    // Step 19.5e) Mark torus mesh for billboarding
+    indicatorGroup.traverse((child) => {
+        if (child.isMesh && child.geometry && child.geometry.type === "TorusGeometry") {
+            child.userData.billboard = true;
+        }
+    });
 
     connectorsGroup.add(indicatorGroup);
 }

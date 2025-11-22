@@ -106,6 +106,10 @@ export class CameraControls {
 		const wasDragging = this.isDragging;
 		const hadPendingPan = this.pendingPan;
 
+		if (wasDragging || hadPendingPan) {
+			console.log("🔄 Pan state reset (prevented stuck drag) - wasDragging:", wasDragging, "pendingPan:", hadPendingPan);
+		}
+
 		this.isDragging = false;
 		this.pendingPan = false;
 		this.velocityX = 0;
@@ -115,10 +119,6 @@ export class CameraControls {
 		if (this.animationFrameId !== null) {
 			cancelAnimationFrame(this.animationFrameId);
 			this.animationFrameId = null;
-		}
-
-		if (wasDragging || hadPendingPan) {
-			console.log("🔄 Pan state reset (prevented stuck drag)");
 		}
 	}
 
@@ -394,26 +394,55 @@ export class CameraControls {
 			const deltaX = event.clientX - this.lastMouseX;
 			const deltaY = event.clientY - this.lastMouseY;
 
-			// Step 23a) If camera is orbited in 3D, pan in screen space relative to bearing
+			// Step 23a) If camera is orbited in 3D, use Raycast Pan on Ground Plane
 			if (this.orbitX !== 0 || this.orbitY !== 0) {
-				// Simple screen-relative pan that maintains consistent left/right/up/down movement
-				// regardless of camera orientation or tilt angle
+				// Calculate intersection of ray from previous mouse position to ground (Z=orbitCenterZ)
+				const groundZ = this.threeRenderer.orbitCenterZ || 0;
+				const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -groundZ); // Z-up plane
 
-				const panDeltaX = deltaX / this.scale;
-				const panDeltaY = -deltaY / this.scale; // Screen Y is inverted
+				const getRayIntersection = (clientX, clientY) => {
+					const canvas = this.threeRenderer.getCanvas();
+					const rect = canvas.getBoundingClientRect();
+					const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+					const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+					const raycaster = new THREE.Raycaster();
+					raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.threeRenderer.camera);
+					const target = new THREE.Vector3();
+					const hit = raycaster.ray.intersectPlane(plane, target);
+					return hit ? target : null;
+				};
 
-				// Transform screen movement to world space based on current bearing (yaw)
-				// This ensures pan always feels natural regardless of camera tilt
-				const cosYaw = Math.cos(this.orbitY);
-				const sinYaw = Math.sin(this.orbitY);
+				const startPoint = getRayIntersection(this.lastMouseX, this.lastMouseY);
+				const endPoint = getRayIntersection(event.clientX, event.clientY);
 
-				// Apply screen-to-world transformation
-				this.centroidX += panDeltaX * cosYaw + panDeltaY * sinYaw;
-				this.centroidY += -panDeltaX * sinYaw + panDeltaY * cosYaw;
+				if (startPoint && endPoint) {
+					// Move camera by the difference
+					const moveX = startPoint.x - endPoint.x;
+					const moveY = startPoint.y - endPoint.y;
 
-				// Store velocity for momentum (same transformation)
-				this.velocityX = panDeltaX * cosYaw + panDeltaY * sinYaw;
-				this.velocityY = -panDeltaX * sinYaw + panDeltaY * cosYaw;
+					this.centroidX += moveX;
+					this.centroidY += moveY;
+
+					// Store velocity
+					this.velocityX = moveX;
+					this.velocityY = moveY;
+				} else {
+					// Fallback to screen-space pan if raycast fails (e.g. looking at horizon)
+					const panDeltaX = deltaX / this.scale;
+					const panDeltaY = -deltaY / this.scale; // Screen Y is inverted
+
+					const cosYaw = Math.cos(this.orbitY); // orbitY is Yaw (around Z)
+					const sinYaw = Math.sin(this.orbitY);
+
+					// Transform screen movement to world XY (Z-up)
+					// Screen X moves Right (East-ish depending on Yaw)
+					// Screen Y moves Up (North-ish depending on Yaw, ignoring Z)
+					this.centroidX += panDeltaX * cosYaw - panDeltaY * sinYaw;
+					this.centroidY += panDeltaX * sinYaw + panDeltaY * cosYaw;
+
+					this.velocityX = panDeltaX * cosYaw - panDeltaY * sinYaw;
+					this.velocityY = panDeltaX * sinYaw + panDeltaY * cosYaw;
+				}
 			} else {
 				// Step 23b) 2D mode - rotate delta values to account for current Z-axis rotation
 				const cos = Math.cos(-this.rotation);
@@ -481,14 +510,14 @@ export class CameraControls {
 			let deltaOrbitY = deltaX * sensitivity;
 
 			switch (this.axisLock) {
-				case "x": // Lock to Easting axis - constrain to Y-Z plane (Northing/Elevation only)
-					deltaOrbitY = 0; // No horizontal rotation (yaw), only up/down (pitch)
+				case "x": // Lock to Easting axis (Rotate around X/Pitch)
+					deltaOrbitY = 0; // No yaw (Z-rotation)
 					break;
-				case "y": // Lock to Northing axis - constrain to X-Z plane (Easting/Elevation only)
-					deltaOrbitY = 0; // No yaw rotation, only pitch (up/down) allowed
+				case "y": // Lock to Northing axis (Rotate around Y/Pitch?)
+					deltaOrbitY = 0; // No yaw (Z-rotation)
 					break;
-				case "z": // Lock to Elevation axis - constrain to X-Y plane (Easting/Northing only)
-					deltaOrbitX = 0; // No vertical rotation (pitch), only horizontal (yaw)
+				case "z": // Lock to Elevation axis (Rotate around Z/Yaw)
+					deltaOrbitX = 0; // No pitch (X-rotation)
 					break;
 				case "none": // No constraints - infinite orbit in all directions
 				default:
@@ -500,15 +529,26 @@ export class CameraControls {
 			this.orbitX += deltaOrbitX;
 			this.orbitY += deltaOrbitY;
 
+			// Step 25a) Prevent Z-axis singularity when Z-lock is active
+			// When rotating around Z-axis (yaw only), avoid poles (orbitX = 0 or PI)
+			// Clamp orbitX to safe range to prevent gimbal lock at zenith/nadir
+			if (this.axisLock === "z") {
+				const minPitch = 0.1; // ~5.7 degrees from top
+				const maxPitch = Math.PI - 0.1; // ~5.7 degrees from bottom
+				this.orbitX = Math.max(minPitch, Math.min(maxPitch, this.orbitX));
+			}
+
 			// Store velocity for momentum
 			this.velocityOrbitX = deltaOrbitX;
 			this.velocityOrbitY = deltaOrbitY;
 
 			// Debug logging for orbit values
 			const cameraPos = this.threeRenderer.camera.position;
+			// In Z-up: orbitX is angle from Zenith (0). 90 is Horizon.
+			// Tilt (Pitch) usually 0 at Horizon.
 			const tiltDeg = ((this.orbitX * 180) / Math.PI).toFixed(1);
 			const bearingDeg = ((this.orbitY * 180) / Math.PI).toFixed(1);
-			console.log(`📍 Camera XYZ: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)}) | Tilt: ${tiltDeg}° | Bearing: ${bearingDeg}°`);
+			console.log(`📍 Camera XYZ: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)}) | Pitch(Z-angle): ${tiltDeg}° | Yaw: ${bearingDeg}°`);
 
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;

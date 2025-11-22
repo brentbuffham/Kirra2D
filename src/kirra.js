@@ -1600,11 +1600,18 @@ function handle3DMouseMove(event) {
 		}
 	}
 
-	// Step 13f.2) If no object intersection, use plane intersection (always works)
+	// Step 13f.2) If no object intersection, use ground plane intersection for interaction
 	if (!mouseWorldPos && interactionManager && typeof interactionManager.getMouseWorldPositionOnPlane === "function") {
 		// Use plane intersection at fromHoleStore Z level, or dataCentroidZ, or 0
 		const zLevel = fromHoleStore ? fromHoleStore.startZLocation || window.dataCentroidZ || 0 : window.dataCentroidZ || 0;
 		mouseWorldPos = interactionManager.getMouseWorldPositionOnPlane(zLevel);
+	}
+
+	// Step 13f.2a) Calculate mouse position on view plane for torus indicator
+	// This ensures torus is always visible at cursor location in 3D view
+	let torusWorldPos = null;
+	if (interactionManager && typeof interactionManager.getMouseWorldPositionOnViewPlane === "function") {
+		torusWorldPos = interactionManager.getMouseWorldPositionOnViewPlane();
 	}
 
 	// Step 13f.3) Final fallback to camera projection if plane intersection fails
@@ -1730,35 +1737,57 @@ function handle3DMouseMove(event) {
 			}
 		}
 
-		// Step 13f.6) Always draw mouse position indicator (so we can always see it)
-		// If mouseWorldPos is null, use fallback position (camera centroid)
-		if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
-			drawMousePositionIndicatorThreeJS(mouseWorldPos.x, mouseWorldPos.y, mouseWorldPos.z);
-		} else {
-			// Fallback: draw at camera centroid if mouse position calculation failed
-			const fallbackZ = window.dataCentroidZ || 0;
-			let fallbackPos = null;
+		// Step 13f.6) Always draw mouse position indicator on view plane (so it's always visible)
+		// Special case: During orbit mode, lock torus to orbit focal point to prevent jumping
+		// Use view plane position for torus, ground plane position for interactions
+		// Priority: 1) Orbit focal point (if orbiting), 2) Hit object, 3) View plane, 4) Camera centroid
+		let indicatorPos = null;
 
+		// Step 13f.6a) Check if orbit mode is active via CameraControls
+		const isOrbitingNow = window.cameraControls && window.cameraControls.isOrbiting;
+
+		if (isOrbitingNow) {
+			// Step 13f.6b) During orbit: Lock torus to orbit focal point (centroid + orbitCenterZ)
 			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
 			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
 				const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
 				const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
-				fallbackPos = {
+				const orbitZ = window.threeRenderer ? window.threeRenderer.orbitCenterZ || 0 : window.dataCentroidZ || 0;
+				indicatorPos = {
+					x: cameraState.centroidX + originX,
+					y: cameraState.centroidY + originY,
+					z: orbitZ,
+				};
+			}
+		} else if (intersects && intersects.length > 0 && mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+			// Step 13f.6c) If we hit an object, use that position
+			indicatorPos = mouseWorldPos;
+		} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
+			// Step 13f.6d) Otherwise use view plane position (always visible at cursor)
+			indicatorPos = torusWorldPos;
+		} else {
+			// Step 13f.6e) Fallback: camera centroid if view plane calc failed
+			const fallbackZ = window.dataCentroidZ || 0;
+			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
+			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
+				const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
+				const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
+				indicatorPos = {
 					x: cameraState.centroidX + originX,
 					y: cameraState.centroidY + originY,
 					z: fallbackZ,
 				};
 			} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
-				fallbackPos = {
+				indicatorPos = {
 					x: centroidX,
 					y: centroidY,
 					z: fallbackZ,
 				};
 			}
+		}
 
-			if (fallbackPos && isFinite(fallbackPos.x) && isFinite(fallbackPos.y)) {
-				drawMousePositionIndicatorThreeJS(fallbackPos.x, fallbackPos.y, fallbackPos.z);
-			}
+		if (indicatorPos && isFinite(indicatorPos.x) && isFinite(indicatorPos.y)) {
+			drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z);
 		}
 
 		if (threeRenderer.renderer) {
@@ -1839,6 +1868,13 @@ document.addEventListener("DOMContentLoaded", function () {
 					threeCanvas.style.opacity = "0"; // Hide 3D canvas
 					threeCanvas.style.pointerEvents = "none"; // Don't block events
 				}
+
+				// Reset pan state to prevent stuck dragging
+				if (window.cameraControls) {
+					window.cameraControls.resetPanState();
+					console.log("🔄 Reset camera controls pan state on switch to 2D");
+				}
+
 				console.log("📊 Layers: 2D canvas (z:2, visible), Three.js (z:0, hidden)");
 			}
 
@@ -2040,6 +2076,20 @@ let fromHoleStore = null;
 let mouseIndicatorInitialized = false; // Track if mouse indicator has been initialized on startup
 let isAddingConnector = false;
 let isAddingMultiConnector = false;
+
+let isAddingPoint = false;
+let isAddingLine = false;
+let isAddingPoly = false;
+let isAddingCircle = false;
+let isAddingText = false;
+let isAssignSurfaceActive = false;
+let isAssignGradeActive = false;
+let isOffsetKADActive = false;
+let isRadiiHolesOrKADActive = false;
+let isRulerToolActive = false;
+let isRulerProtractorToolActive = false;
+let startPanX, startPanY;
+
 let isAddingHole = false;
 let isAddingPattern = false;
 let isDeletingHole = false;
@@ -5418,11 +5468,38 @@ let newWidthRight = 350;
 let newWidthLeft = 350;
 
 function handleMouseDown(event) {
-	// Ignore right-clicks - they're handled by context menu event
-	// BUT preserve move tool functionality completely
+	// Debug log for 2D pan troubleshooting
+	console.log("👇 [2D] handleMouseDown fired", {
+		button: event.button,
+		ctrlKey: event.ctrlKey,
+		shiftKey: event.shiftKey,
+		altKey: event.altKey,
+		onlyShowThreeJS: onlyShowThreeJS,
+	});
+
+	if (onlyShowThreeJS) {
+		// In 3D mode, let camera controls handle it (except for selection which is handled by click)
+		return;
+	}
+
+	// Prevent context menu if we are panning or interacting
 	if (event.button === 2) {
-		// Only ignore if not in move tool mode
-		if (!isMoveToolActive) return;
+		// event.preventDefault(); // Don't prevent default here, let context menu handler decide
+	}
+
+	// Step 1) Handle dragging functionality (Pan)
+	// Only start pan if NOT clicking on a handle or control
+	if (!isResizingRight && !isResizingLeft) {
+		// Middle mouse or Left mouse (if no tool selected)
+		if (
+			event.button === 1 ||
+			(event.button === 0 && !isAddingConnector && !isAddingMultiConnector && !isSelectionPointerActive && !isAddingPoint && !isAddingLine && !isAddingPoly && !isAddingCircle && !isAddingText && !isMoveToolActive && !isBearingToolActive && !isAssignSurfaceActive && !isAssignGradeActive && !isOffsetKADActive && !isRadiiHolesOrKADActive && !isRulerToolActive && !isRulerProtractorToolActive && !isPatternInPolygonActive && !isHolesAlongLineActive && !isHolesAlongPolyLineActive)
+		) {
+			isDragging = true;
+			startPanX = event.clientX;
+			startPanY = event.clientY;
+			// console.log("👆 2D Pan started");
+		}
 	}
 
 	touchStartTime = Date.now();
@@ -5500,13 +5577,33 @@ function handleMouseMove(event) {
 }
 
 function handleMouseUp(event) {
-	// Step 3a) Only process 2D mouse events when 2D canvas is active
+	// Debug log for 2D pan troubleshooting
+	if (isDragging) {
+		console.log("👆 [2D] handleMouseUp fired - Releasing Pan");
+	}
+
 	if (onlyShowThreeJS) {
-		// 3D mode is active, don't process 2D selection
 		return;
 	}
 
-	isDragging = false;
+	// Stop 2D Pan
+	if (isDragging) {
+		isDragging = false;
+		canvas.style.cursor = "default";
+	}
+
+	// Stop resizing
+	if (isResizingRight) {
+		isResizingRight = false;
+		document.removeEventListener("mousemove", handleMouseMove);
+		document.removeEventListener("mouseup", handleMouseUp);
+	}
+	if (isResizingLeft) {
+		isResizingLeft = false;
+		document.removeEventListener("mousemove", handleMouseMove);
+		document.removeEventListener("mouseup", handleMouseUp);
+	}
+
 	clearTimeout(longPressTimeout); // Clear the long press timeout
 	// Block tool-specific behaviors only if tools are dragging
 	if (isDraggingBearing || isDraggingHole) return;

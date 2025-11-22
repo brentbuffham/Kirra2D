@@ -185,6 +185,59 @@ export class InteractionManager {
 		return { x: worldX, y: worldY, z: worldZ };
 	}
 
+	// Step 7.4b) Get mouse world position on camera view plane (frustum plane)
+	// This returns position on a plane perpendicular to camera view direction
+	// passing through the orbit center or specified point
+	getMouseWorldPositionOnViewPlane(centerPoint = null) {
+		// Step 7.4b.1) Use current camera for raycasting
+		const currentCamera = this.threeRenderer.camera;
+		this.raycaster.setFromCamera(this.mouse, currentCamera);
+
+		// Step 7.4b.2) Get camera view direction (normal to the view plane)
+		const viewDirection = new THREE.Vector3();
+		currentCamera.getWorldDirection(viewDirection);
+
+		// Step 7.4b.3) Determine the center point the plane passes through
+		// Use orbit center if available, or provided centerPoint, or data centroid
+		let planeCenter = new THREE.Vector3();
+		if (centerPoint && isFinite(centerPoint.x) && isFinite(centerPoint.y) && isFinite(centerPoint.z)) {
+			planeCenter.set(centerPoint.x, centerPoint.y, centerPoint.z);
+		} else if (window.cameraControls) {
+			const state = window.cameraControls.getCameraState();
+			const orbitCenterZ = this.threeRenderer.orbitCenterZ || 0;
+			planeCenter.set(state.centroidX, state.centroidY, orbitCenterZ);
+		} else {
+			const fallbackZ = window.dataCentroidZ || 0;
+			planeCenter.set(0, 0, fallbackZ);
+		}
+
+		// Step 7.4b.4) Create view plane perpendicular to camera direction
+		const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(viewDirection, planeCenter);
+
+		// Step 7.4b.5) Get intersection point with the view plane
+		const intersectionPoint = new THREE.Vector3();
+		const hasIntersection = this.raycaster.ray.intersectPlane(plane, intersectionPoint);
+
+		if (!hasIntersection) {
+			// Step 7.4b.6) Fallback: project to plane center
+			console.warn("View plane intersection failed - using plane center");
+			return {
+				x: planeCenter.x,
+				y: planeCenter.y,
+				z: planeCenter.z
+			};
+		}
+
+		// Step 7.4b.7) Convert to world coordinates
+		const originX = window.threeLocalOriginX !== undefined ? window.threeLocalOriginX : 0;
+		const originY = window.threeLocalOriginY !== undefined ? window.threeLocalOriginY : 0;
+		const worldX = intersectionPoint.x + originX;
+		const worldY = intersectionPoint.y + originY;
+		const worldZ = intersectionPoint.z;
+
+		return { x: worldX, y: worldY, z: worldZ };
+	}
+
 	// Step 7.5) Get mouse world position using plane intersection (always returns valid position)
 	getMouseWorldPositionOnPlane(zLevel = null) {
 		// Step 7.5a) Use current camera for raycasting

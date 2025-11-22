@@ -1348,7 +1348,8 @@ export class GeometryFactory {
     }
 
     // Step 20.9) Create mouse position indicator (single grey torus)
-    static createMousePositionIndicator(x, y, z, size = 1.0, color = "rgba(128, 128, 128, 0.6)") {
+    // Now supports billboarding to always face camera
+    static createMousePositionIndicator(x, y, z, size = 1.0, color = "rgba(128, 128, 128, 0.6)", billboard = true) {
         const group = new THREE.Group();
 
         // Step 20.9a) Validate inputs
@@ -1365,13 +1366,25 @@ export class GeometryFactory {
             side: THREE.DoubleSide
         });
 
-        // Step 20.9c) Create single horizontal torus (flat on X-Y plane)
+        // Step 20.9c) Create single torus
         const torusRadius = size;
         const tubeRadius = size * 0.1;
         const torusGeometry = new THREE.TorusGeometry(torusRadius, tubeRadius, 8, 16);
         const torusMesh = new THREE.Mesh(torusGeometry, material);
+        
+        // Step 20.9d) Position and rotation
         torusMesh.position.set(x, y, z);
-        // Already flat on X-Y plane, no rotation needed
+        
+        if (billboard) {
+            // Step 20.9d.1) Billboard mode: rotate to face camera
+            // Start flat (lying in XY plane) then will be rotated by camera quaternion
+            // The torus will be updated in the render loop to always face camera
+            torusMesh.userData.billboard = true;
+        } else {
+            // Step 20.9d.2) Static mode: flat on XY plane (Z-up)
+            // Already in correct orientation by default
+        }
+        
         group.add(torusMesh);
 
         return group;
