@@ -3,4 +3,5 @@ Kirra 2D: is a blasting pattern design application for mining and construction, 
 
 3D World Coordinate and Camera Conventions.
 
-<img width="608" height="718" alt="image" src="https://github.com/user-attachments/assets/20eaec26-fee8-4978-b181-129b2e7f0575" />
+<img width="607" height="716" alt="3D and Camera" src="https://github.com/user-attachments/assets/075e39a8-828d-484e-93df-8efe60e10ee7" />
+
