@@ -36,6 +36,10 @@ export class CameraControls {
 		this.dragStartX = 0;
 		this.dragStartY = 0;
 
+		// Step 3a) Z-lock orbit tracking (for relative rotation calculation)
+		this.zLockStartAngle = 0; // Initial mouse angle from orbit center when Z-lock orbit starts
+		this.zLockStartOrbitY = 0; // Initial orbitY value when Z-lock orbit starts
+
 		// Step 4) Momentum/damping system for smooth controls
 		this.velocityX = 0;
 		this.velocityY = 0;
@@ -313,6 +317,28 @@ export class CameraControls {
 			this.lastMouseY = event.clientY;
 			this.dragStartX = event.clientX;
 			this.dragStartY = event.clientY;
+
+			// Step 21b.1) Initialize Z-lock tracking if Z-axis is locked
+			if (this.axisLock === "z") {
+				// Calculate initial angle from orbit center to mouse
+				const canvas = this.threeRenderer.getCanvas();
+				const rect = canvas.getBoundingClientRect();
+				const mouseX = event.clientX - rect.left;
+				const mouseY = event.clientY - rect.top;
+
+				// Project orbit center to screen space
+				const camera = this.threeRenderer.camera;
+				const orbitCenterWorld = new THREE.Vector3(this.centroidX, this.centroidY, this.threeRenderer.orbitCenterZ || 0);
+				const orbitCenterScreen = orbitCenterWorld.clone().project(camera);
+				const centerScreenX = (orbitCenterScreen.x * 0.5 + 0.5) * rect.width;
+				const centerScreenY = (-orbitCenterScreen.y * 0.5 + 0.5) * rect.height;
+
+				// Store initial angle and current orbitY
+				this.zLockStartAngle = Math.atan2(mouseY - centerScreenY, mouseX - centerScreenX);
+				this.zLockStartOrbitY = this.orbitY;
+				console.log("🔒 Z-lock orbit started - Initial angle:", ((this.zLockStartAngle * 180) / Math.PI).toFixed(1), "° Initial orbitY:", ((this.zLockStartOrbitY * 180) / Math.PI).toFixed(1), "°");
+			}
+
 			return;
 		}
 
@@ -505,42 +531,80 @@ export class CameraControls {
 
 			const sensitivity = 0.005;
 
-			// Apply axis lock constraints
-			let deltaOrbitX = deltaY * sensitivity;
-			let deltaOrbitY = deltaX * sensitivity;
-
-			switch (this.axisLock) {
-				case "x": // Lock to Easting axis (Rotate around X/Pitch)
-					deltaOrbitY = 0; // No yaw (Z-rotation)
-					break;
-				case "y": // Lock to Northing axis (Rotate around Y/Pitch?)
-					deltaOrbitY = 0; // No yaw (Z-rotation)
-					break;
-				case "z": // Lock to Elevation axis (Rotate around Z/Yaw)
-					deltaOrbitX = 0; // No pitch (X-rotation)
-					break;
-				case "none": // No constraints - infinite orbit in all directions
-				default:
-					// Allow full rotation - no gimbal lock
-					break;
-			}
-
-			// Apply orbit changes (infinite, no clamping)
-			this.orbitX += deltaOrbitX;
-			this.orbitY += deltaOrbitY;
-
-			// Step 25a) Prevent Z-axis singularity when Z-lock is active
-			// When rotating around Z-axis (yaw only), avoid poles (orbitX = 0 or PI)
-			// Clamp orbitX to safe range to prevent gimbal lock at zenith/nadir
+			// Step 25a) For Z-axis lock, calculate angle from orbit center to mouse
 			if (this.axisLock === "z") {
+				// Step 25a.1) Get canvas and mouse position
+				const canvas = this.threeRenderer.getCanvas();
+				const rect = canvas.getBoundingClientRect();
+				const mouseX = event.clientX - rect.left;
+				const mouseY = event.clientY - rect.top;
+
+				// Step 25a.2) Get orbit center in screen space
+				const camera = this.threeRenderer.camera;
+				const orbitCenterWorld = new THREE.Vector3(this.centroidX, this.centroidY, this.threeRenderer.orbitCenterZ || 0);
+
+				// Step 25a.3) Project orbit center to screen space
+				const orbitCenterScreen = orbitCenterWorld.clone().project(camera);
+				const centerScreenX = (orbitCenterScreen.x * 0.5 + 0.5) * rect.width;
+				const centerScreenY = (-orbitCenterScreen.y * 0.5 + 0.5) * rect.height;
+
+				// Step 25a.4) Calculate current angle from orbit center to mouse
+				const currentAngle = Math.atan2(mouseY - centerScreenY, mouseX - centerScreenX);
+
+				// Step 25a.5) Calculate angular offset from initial angle
+				// This gives us how much the mouse has rotated relative to where orbit started
+				let angleOffset = currentAngle - this.zLockStartAngle;
+
+				// Step 25a.6) Normalize angle offset to [-PI, PI]
+				if (angleOffset > Math.PI) angleOffset -= 2 * Math.PI;
+				if (angleOffset < -Math.PI) angleOffset += 2 * Math.PI;
+
+				// Step 25a.7) Apply offset to initial orbitY (relative rotation from start)
+				// Invert to match expected rotation direction (CCW = positive angle in math, but CW in screen)
+				this.orbitY = this.zLockStartOrbitY - angleOffset;
+
+				// Step 25a.8) No pitch change (locked to Z-axis rotation)
+				// Keep current pitch, but ensure it is in safe range to avoid singularity
 				const minPitch = 0.1; // ~5.7 degrees from top
 				const maxPitch = Math.PI - 0.1; // ~5.7 degrees from bottom
 				this.orbitX = Math.max(minPitch, Math.min(maxPitch, this.orbitX));
-			}
 
-			// Store velocity for momentum
-			this.velocityOrbitX = deltaOrbitX;
-			this.velocityOrbitY = deltaOrbitY;
+				// Step 25a.9) Store velocity for momentum (calculate from last frame for smoothness)
+				const lastMouseXCanvas = this.lastMouseX - rect.left;
+				const lastMouseYCanvas = this.lastMouseY - rect.top;
+				const lastAngle = Math.atan2(lastMouseYCanvas - centerScreenY, lastMouseXCanvas - centerScreenX);
+				let deltaAngle = currentAngle - lastAngle;
+				if (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+				if (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+				this.velocityOrbitX = 0;
+				this.velocityOrbitY = -deltaAngle;
+			} else {
+				// Step 25b) Normal orbit mode (X, Y, or no lock)
+				// Apply axis lock constraints
+				let deltaOrbitX = deltaY * sensitivity;
+				let deltaOrbitY = deltaX * sensitivity;
+
+				switch (this.axisLock) {
+					case "x": // Lock to Easting axis (Rotate around X/Pitch)
+						deltaOrbitY = 0; // No yaw (Z-rotation)
+						break;
+					case "y": // Lock to Northing axis (Rotate around Y/Pitch?)
+						deltaOrbitY = 0; // No yaw (Z-rotation)
+						break;
+					case "none": // No constraints - infinite orbit in all directions
+					default:
+						// Allow full rotation - no gimbal lock
+						break;
+				}
+
+				// Apply orbit changes (infinite, no clamping)
+				this.orbitX += deltaOrbitX;
+				this.orbitY += deltaOrbitY;
+
+				// Store velocity for momentum
+				this.velocityOrbitX = deltaOrbitX;
+				this.velocityOrbitY = deltaOrbitY;
+			}
 
 			// Debug logging for orbit values
 			const cameraPos = this.threeRenderer.camera.position;
@@ -548,7 +612,7 @@ export class CameraControls {
 			// Tilt (Pitch) usually 0 at Horizon.
 			const tiltDeg = ((this.orbitX * 180) / Math.PI).toFixed(1);
 			const bearingDeg = ((this.orbitY * 180) / Math.PI).toFixed(1);
-			console.log(`📍 Camera XYZ: (${cameraPos.x.toFixed(2)}, ${cameraPos.y.toFixed(2)}, ${cameraPos.z.toFixed(2)}) | Pitch(Z-angle): ${tiltDeg}° | Yaw: ${bearingDeg}°`);
+			console.log("📍 Camera XYZ: (" + cameraPos.x.toFixed(2) + ", " + cameraPos.y.toFixed(2) + ", " + cameraPos.z.toFixed(2) + ") | Pitch(Z-angle): " + tiltDeg + "° | Yaw: " + bearingDeg + "°");
 
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
