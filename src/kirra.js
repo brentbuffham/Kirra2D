@@ -40688,7 +40688,7 @@ function load3DSettings() {
 		clippingNear: -50000,
 		clippingFar: 50000,
 		gizmoDisplay: "only_when_orbit_or_rotate", // "always", "only_when_orbit_or_rotate", "never"
-		axisLock: "none", // "none", "x", "y", "z"
+		axisLock: "none", // "none", "pitch", "roll", "yaw"
 	};
 
 	const saved = localStorage.getItem("kirra3DSettings");
@@ -40785,9 +40785,9 @@ function show3DSettingsDialog() {
 			value: currentSettings.axisLock || "none",
 			options: [
 				{ value: "none", text: "None" },
-				{ value: "x", text: "X" },
-				{ value: "y", text: "Y" },
-				{ value: "z", text: "Z" },
+				{ value: "pitch", text: "Pitch" },
+				{ value: "roll", text: "Roll" },
+				{ value: "yaw", text: "Yaw" },
 			],
 		},
 		{

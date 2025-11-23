@@ -2,6 +2,53 @@
 //=================================================
 // CameraControls.js - Unified Orthographic Camera Controller
 //=================================================
+//
+//
+// Gimbal-lock-free orbit controls with angle normalization
+//
+// Coordinate System: Standard Right-Handed (Camera starts tilted down)
+// - X+ = Easting (Points to the Right in Plan View)
+// - Y+ = Northing (Points Up in plan view)
+// - Z+ = Elevation (Points at the camera - Closer to Camera in Plan View)
+// - Camera starts above scene, tilted down toward ground (not horizontal)
+//
+// Orbit Behavior:
+// - axisLock = "none": Infinite SMOOTH ORBITING with angle normalization
+//   * No clamping - camera can rotate through all angles
+//   * Angles automatically normalize when passing through poles
+//   * No flipping or gimbal lock
+//
+// - axisLock = "pitch": Constrain orbiting to X-axis rotation only
+//   * Allows tilting camera up/down (pitch motion)
+//   * Prevents horizontal rotation (roll) and camera spin (yaw)
+//   * Maintains compass bearing, allows elevation changes
+//   * Continuous rotation around X-axis NO FLIPPING very important
+//
+// - axisLock = "roll": Constrain orbiting to Y-axis rotation only
+//   * Allows horizontal rotation / compass bearing changes (roll motion)
+//   * Prevents tilting (pitch) and camera spin (yaw)
+//   * Maintains elevation angle, allows rotation around Y-axis
+//
+// - axisLock = "yaw": Constrain orbiting to Z-axis rotation only
+//   * Allows camera spin around focal point (yaw motion)
+//   * Prevents tilting (pitch) and horizontal rotation (roll)
+//   * Maintains upright orientation relative to scene
+//
+// Camera Roll Mode:
+// - Shift + Alt + Left-click drag = Camera Roll mode
+// * Rotates the camera around its focal line (Z-axis spin/2D rotation)
+// * Works in PlanView 3D Mode or at any angle
+// * No clamping - camera can rotate through all angles
+// * No flipping or gimbal lock
+// * Console message: "🔄 Camera Roll mode activated (Shift+Alt held)"
+//
+// Angles:
+// - Pitch (orbitX): X-axis rotation (elevation angle from horizon) (Alt held + settings lock)
+// - Roll(orbitY): Y-axis rotation (compass bearing) (Alt Held +settings Lock)
+// - Yaw (orbitZ): Z-axis rotation (camera spin) (Alt Held + Settings Lock)
+// - Camera Roll (rotation): camera spin around focal line (Alt+Shift Held
+//
+//=================================================
 
 import * as THREE from "three";
 
@@ -16,19 +63,19 @@ export class CameraControls {
 		this.gizmoDisplayMode = "only_when_orbit_or_rotate"; // "always", "only_when_orbit_or_rotate", "never"
 
 		// Step 1b) Axis lock mode (for constraining orbit)
-		this.axisLock = "none"; // "none", "x", "y", "z"
+		this.axisLock = "none"; // "none", "pitch", "roll", "yaw"
 
 		// Step 2) Camera state
 		this.centroidX = 0;
 		this.centroidY = 0;
 		this.scale = 1;
-		this.rotation = 0; // Z-axis rotation (roll/camera spin)
-		this.orbitX = 0; // X-axis rotation (pitch/elevation) - infinite, no gimbal lock
-		this.orbitY = 0; // Y-axis rotation (yaw/azimuth) - infinite, no gimbal lock
+		this.rotation = 0; // Camera Roll (camera spin around focal line)
+		this.orbitX = 0; // Pitch (X-axis rotation, elevation angle) - infinite, no gimbal lock
+		this.orbitY = 0; // Roll (Y-axis rotation, compass bearing) - infinite, no gimbal lock
 
 		// Step 3) Mouse interaction state
 		this.isDragging = false;
-		this.isRotating = false; // Shift+Alt+drag = roll mode
+		this.isRotating = false; // Shift+Alt+drag = Camera Roll mode
 		this.isOrbiting = false; // Alt+drag = orbit mode
 		this.pendingPan = false; // Flag for pending pan activation
 		this.lastMouseX = 0;
@@ -36,9 +83,9 @@ export class CameraControls {
 		this.dragStartX = 0;
 		this.dragStartY = 0;
 
-		// Step 3a) Z-lock orbit tracking (for relative rotation calculation)
-		this.zLockStartAngle = 0; // Initial mouse angle from orbit center when Z-lock orbit starts
-		this.zLockStartOrbitY = 0; // Initial orbitY value when Z-lock orbit starts
+		// Step 3a) Yaw-lock orbit tracking (for relative rotation calculation)
+		this.yawLockStartAngle = 0; // Initial mouse angle from orbit center when yaw-lock orbit starts
+		this.yawLockStartOrbitY = 0; // Initial orbitY value when yaw-lock orbit starts
 
 		// Step 4) Momentum/damping system for smooth controls
 		this.velocityX = 0;
@@ -179,7 +226,7 @@ export class CameraControls {
 	// Step 11) Set axis lock mode
 	setAxisLock(mode) {
 		// Step 11a) Validate mode
-		const validModes = ["none", "x", "y", "z"];
+		const validModes = ["none", "pitch", "roll", "yaw"];
 		if (!validModes.includes(mode)) {
 			console.warn("Invalid axis lock mode:", mode, "- using 'none'");
 			mode = "none";
@@ -187,6 +234,9 @@ export class CameraControls {
 
 		this.axisLock = mode;
 		console.log("🔒 Axis lock mode set to:", mode);
+
+		// Step 11b) Immediately update camera to apply new axis lock (prevents delayed response)
+		this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
 	}
 
 	// Step 12) Set camera state and update renderer
@@ -228,7 +278,6 @@ export class CameraControls {
 		const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
 		const oldScale = this.scale;
 		const newScale = Math.max(0.01, Math.min(1000, oldScale * zoomFactor));
-		this.scale = newScale;
 
 		// Step 16) Cursor zoom - adjust centroid to keep cursor position fixed in world space
 		// Works in both 2D and 3D modes
@@ -237,20 +286,76 @@ export class CameraControls {
 			const worldX = (mouseX - canvas.width / 2) / oldScale + this.centroidX;
 			const worldY = -((mouseY - canvas.height / 2) / oldScale) + this.centroidY;
 
-			this.centroidX = worldX - (mouseX - canvas.width / 2) / this.scale;
-			this.centroidY = worldY + (mouseY - canvas.height / 2) / this.scale;
+			this.centroidX = worldX - (mouseX - canvas.width / 2) / newScale;
+			this.centroidY = worldY + (mouseY - canvas.height / 2) / newScale;
+			this.scale = newScale;
 		} else {
-			// 3D orbit mode - cursor-influenced zoom
-			const scaleDelta = newScale / oldScale;
+			// 3D orbit mode - raycast to mouse position and adjust centroid for cursor zoom
+			const groundZ = this.threeRenderer.orbitCenterZ || 0;
+			const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -groundZ); // Z-up plane
 
-			// Calculate cursor offset from screen center
-			const centerOffsetX = (mouseX - canvas.width / 2) / oldScale;
-			const centerOffsetY = -((mouseY - canvas.height / 2) / oldScale);
+			// Step 16a) Raycast mouse position to ground plane at old scale
+			const ndcX = ((mouseX - rect.left) / rect.width) * 2 - 1;
+			const ndcY = -((mouseY - rect.top) / rect.height) * 2 + 1;
+			const raycasterOld = new THREE.Raycaster();
+			raycasterOld.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.threeRenderer.camera);
+			const targetOld = new THREE.Vector3();
+			const hitOld = raycasterOld.ray.intersectPlane(plane, targetOld);
 
-			// Apply cursor influence to shift orbit center
-			const cursorInfluence = 1 - scaleDelta; // Stronger when zooming in
-			this.centroidX += centerOffsetX * cursorInfluence * 0.3;
-			this.centroidY += centerOffsetY * cursorInfluence * 0.3;
+			if (hitOld) {
+				// Step 16b) Get world point under mouse at old scale
+				const worldPointOld = targetOld.clone();
+
+				// Step 16c) Update scale and camera to new scale
+				this.scale = newScale;
+				this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+
+				// Step 16d) Raycast again at new scale
+				const raycasterNew = new THREE.Raycaster();
+				raycasterNew.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.threeRenderer.camera);
+				const targetNew = new THREE.Vector3();
+				const hitNew = raycasterNew.ray.intersectPlane(plane, targetNew);
+
+				if (hitNew) {
+					// Step 16e) Adjust centroid so the world point stays under the mouse
+					const worldPointNew = targetNew.clone();
+					const deltaX = worldPointOld.x - worldPointNew.x;
+					const deltaY = worldPointOld.y - worldPointNew.y;
+
+					this.centroidX += deltaX;
+					this.centroidY += deltaY;
+
+					// Step 16f) Update camera again with adjusted centroid
+					this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+				} else {
+					// If raycast fails at new scale, just update scale
+					this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+				}
+			} else {
+				// If raycast fails, just update scale
+				this.scale = newScale;
+				this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+			}
+
+			// Early return since camera was already updated in 3D mode
+			// Step 17) Update gizmo display during zoom
+			if (this.gizmoDisplayMode !== "always") {
+				this.threeRenderer.showAxisHelper(false);
+			}
+
+			// Step 19) Re-show gizmo if always mode
+			if (this.gizmoDisplayMode === "always") {
+				this.updateGizmoDisplayForControls();
+			}
+
+			return {
+				centroidX: this.centroidX,
+				centroidY: this.centroidY,
+				scale: this.scale,
+				rotation: this.rotation,
+				orbitX: this.orbitX,
+				orbitY: this.orbitY,
+			};
 		}
 
 		// Step 17) Update gizmo display during zoom
@@ -290,14 +395,14 @@ export class CameraControls {
 
 	// Step 21) Process mouse down (extracted for reuse)
 	processMouseDown(event) {
-		// Step 21a) Check for roll mode (Shift + Alt keys) - activate immediately
+		// Step 21a) Check for Camera Roll mode (Shift + Alt keys) - activate immediately
 		if (event.shiftKey && event.altKey) {
 			event.preventDefault();
 			this.isRotating = true;
 			this.isOrbiting = false;
 			this.isDragging = false;
 			this.pendingPan = false;
-			console.log("🔄 Roll mode activated (Shift+Alt held)");
+			console.log("🔄 Camera Roll mode activated (Shift+Alt held)");
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
 			this.dragStartX = event.clientX;
@@ -318,8 +423,8 @@ export class CameraControls {
 			this.dragStartX = event.clientX;
 			this.dragStartY = event.clientY;
 
-			// Step 21b.1) Initialize Z-lock tracking if Z-axis is locked
-			if (this.axisLock === "z") {
+			// Step 21b.1) Initialize yaw-lock tracking if yaw-axis is locked
+			if (this.axisLock === "yaw") {
 				// Calculate initial angle from orbit center to mouse
 				const canvas = this.threeRenderer.getCanvas();
 				const rect = canvas.getBoundingClientRect();
@@ -334,9 +439,9 @@ export class CameraControls {
 				const centerScreenY = (-orbitCenterScreen.y * 0.5 + 0.5) * rect.height;
 
 				// Store initial angle and current orbitY
-				this.zLockStartAngle = Math.atan2(mouseY - centerScreenY, mouseX - centerScreenX);
-				this.zLockStartOrbitY = this.orbitY;
-				console.log("🔒 Z-lock orbit started - Initial angle:", ((this.zLockStartAngle * 180) / Math.PI).toFixed(1), "° Initial orbitY:", ((this.zLockStartOrbitY * 180) / Math.PI).toFixed(1), "°");
+				this.yawLockStartAngle = Math.atan2(mouseY - centerScreenY, mouseX - centerScreenX);
+				this.yawLockStartOrbitY = this.orbitY;
+				console.log("🔒 Yaw-lock orbit started - Initial angle:", ((this.yawLockStartAngle * 180) / Math.PI).toFixed(1), "° Initial orbitY:", ((this.yawLockStartOrbitY * 180) / Math.PI).toFixed(1), "°");
 			}
 
 			return;
@@ -457,17 +562,17 @@ export class CameraControls {
 					const panDeltaX = deltaX / this.scale;
 					const panDeltaY = -deltaY / this.scale; // Screen Y is inverted
 
-					const cosYaw = Math.cos(this.orbitY); // orbitY is Yaw (around Z)
-					const sinYaw = Math.sin(this.orbitY);
+					const cosRoll = Math.cos(this.orbitY); // orbitY is Roll (compass bearing)
+					const sinRoll = Math.sin(this.orbitY);
 
 					// Transform screen movement to world XY (Z-up)
-					// Screen X moves Right (East-ish depending on Yaw)
-					// Screen Y moves Up (North-ish depending on Yaw, ignoring Z)
-					this.centroidX += panDeltaX * cosYaw - panDeltaY * sinYaw;
-					this.centroidY += panDeltaX * sinYaw + panDeltaY * cosYaw;
+					// Screen X moves Right (East-ish depending on Roll)
+					// Screen Y moves Up (North-ish depending on Roll, ignoring Z)
+					this.centroidX += panDeltaX * cosRoll - panDeltaY * sinRoll;
+					this.centroidY += panDeltaX * sinRoll + panDeltaY * cosRoll;
 
-					this.velocityX = panDeltaX * cosYaw - panDeltaY * sinYaw;
-					this.velocityY = panDeltaX * sinYaw + panDeltaY * cosYaw;
+					this.velocityX = panDeltaX * cosRoll - panDeltaY * sinRoll;
+					this.velocityY = panDeltaX * sinRoll + panDeltaY * cosRoll;
 				}
 			} else {
 				// Step 23b) 2D mode - rotate delta values to account for current Z-axis rotation
@@ -500,7 +605,7 @@ export class CameraControls {
 
 			return { centroidX: this.centroidX, centroidY: this.centroidY, mode: "pan" };
 		} else if (this.isRotating) {
-			// Step 24) Roll mode (Z-axis rotation/camera spin) - INFINITE
+			// Step 24) Camera Roll mode (Z-axis rotation/camera spin around focal line) - INFINITE
 			this.updateGizmoDisplayForControls();
 
 			const canvas = this.threeRenderer.getCanvas();
@@ -531,8 +636,8 @@ export class CameraControls {
 
 			const sensitivity = 0.005;
 
-			// Step 25a) For Z-axis lock, calculate angle from orbit center to mouse
-			if (this.axisLock === "z") {
+			// Step 25a) For yaw-axis lock, calculate angle from orbit center to mouse
+			if (this.axisLock === "yaw") {
 				// Step 25a.1) Get canvas and mouse position
 				const canvas = this.threeRenderer.getCanvas();
 				const rect = canvas.getBoundingClientRect();
@@ -553,7 +658,7 @@ export class CameraControls {
 
 				// Step 25a.5) Calculate angular offset from initial angle
 				// This gives us how much the mouse has rotated relative to where orbit started
-				let angleOffset = currentAngle - this.zLockStartAngle;
+				let angleOffset = currentAngle - this.yawLockStartAngle;
 
 				// Step 25a.6) Normalize angle offset to [-PI, PI]
 				if (angleOffset > Math.PI) angleOffset -= 2 * Math.PI;
@@ -561,9 +666,9 @@ export class CameraControls {
 
 				// Step 25a.7) Apply offset to initial orbitY (relative rotation from start)
 				// Invert to match expected rotation direction (CCW = positive angle in math, but CW in screen)
-				this.orbitY = this.zLockStartOrbitY - angleOffset;
+				this.orbitY = this.yawLockStartOrbitY - angleOffset;
 
-				// Step 25a.8) No pitch change (locked to Z-axis rotation)
+				// Step 25a.8) No pitch change (locked to yaw-axis rotation)
 				// Keep current pitch, but ensure it is in safe range to avoid singularity
 				const minPitch = 0.1; // ~5.7 degrees from top
 				const maxPitch = Math.PI - 0.1; // ~5.7 degrees from bottom
@@ -579,17 +684,17 @@ export class CameraControls {
 				this.velocityOrbitX = 0;
 				this.velocityOrbitY = -deltaAngle;
 			} else {
-				// Step 25b) Normal orbit mode (X, Y, or no lock)
+				// Step 25b) Normal orbit mode (pitch, roll, or no lock)
 				// Apply axis lock constraints
 				let deltaOrbitX = deltaY * sensitivity;
 				let deltaOrbitY = deltaX * sensitivity;
 
 				switch (this.axisLock) {
-					case "x": // Lock to Easting axis (Rotate around X/Pitch)
-						deltaOrbitY = 0; // No yaw (Z-rotation)
+					case "pitch": // Lock to Pitch (X-axis rotation only)
+						deltaOrbitY = 0; // No roll (Y-axis rotation)
 						break;
-					case "y": // Lock to Northing axis (Rotate around Y/Pitch?)
-						deltaOrbitY = 0; // No yaw (Z-rotation)
+					case "roll": // Lock to Roll (Y-axis rotation only)
+						deltaOrbitX = 0; // No pitch (X-axis rotation)
 						break;
 					case "none": // No constraints - infinite orbit in all directions
 					default:
@@ -608,11 +713,10 @@ export class CameraControls {
 
 			// Debug logging for orbit values
 			const cameraPos = this.threeRenderer.camera.position;
-			// In Z-up: orbitX is angle from Zenith (0). 90 is Horizon.
-			// Tilt (Pitch) usually 0 at Horizon.
-			const tiltDeg = ((this.orbitX * 180) / Math.PI).toFixed(1);
-			const bearingDeg = ((this.orbitY * 180) / Math.PI).toFixed(1);
-			console.log("📍 Camera XYZ: (" + cameraPos.x.toFixed(2) + ", " + cameraPos.y.toFixed(2) + ", " + cameraPos.z.toFixed(2) + ") | Pitch(Z-angle): " + tiltDeg + "° | Yaw: " + bearingDeg + "°");
+			// In Z-up: orbitX is Pitch (angle from Zenith, 0 = top-down). orbitY is Roll (compass bearing).
+			const pitchDeg = ((this.orbitX * 180) / Math.PI).toFixed(1);
+			const rollDeg = ((this.orbitY * 180) / Math.PI).toFixed(1);
+			console.log("📍 Camera XYZ: (" + cameraPos.x.toFixed(2) + ", " + cameraPos.y.toFixed(2) + ", " + cameraPos.z.toFixed(2) + ") | Pitch: " + pitchDeg + "° | Roll: " + rollDeg + "°");
 
 			this.lastMouseX = event.clientX;
 			this.lastMouseY = event.clientY;
