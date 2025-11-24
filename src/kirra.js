@@ -820,10 +820,10 @@ function handle3DClick(event) {
 		firstIntersect:
 			intersects.length > 0
 				? {
-						object: intersects[0].object.type,
-						userData: intersects[0].object.userData,
-						distance: intersects[0].distance.toFixed(2),
-				  }
+					object: intersects[0].object.type,
+					userData: intersects[0].object.userData,
+					distance: intersects[0].distance.toFixed(2),
+				}
 				: null,
 	});
 
@@ -850,16 +850,20 @@ function handle3DClick(event) {
 		}
 	}
 
-	const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
+	// Step 12h.5) Check radio button selection mode (Holes vs KAD) - matching 2D behavior
+	const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
+	const selectingKAD = selectKADRadio && selectKADRadio.checked;
+
+	const clickedHole = selectingHoles ? interactionManager.findClickedHole(intersects, allBlastHoles || []) : null;
 
 	if (clickedHole) {
 		console.log("✅ [3D CLICK] Found hole:", clickedHole.holeID, "in", clickedHole.entityName);
-	} else {
+	} else if (selectingHoles) {
 		console.log("⚠️ [3D CLICK] No hole found in intersections");
 	}
 
 	// Step 12i) Handle selection based on current tool mode
-	if (clickedHole) {
+	if (clickedHole && selectingHoles) {
 		console.log("🎯 [3D CLICK] Processing selection for hole:", clickedHole.holeID);
 		console.log("🎯 [3D CLICK] Current tool state:", {
 			isAddingConnector,
@@ -992,6 +996,10 @@ function handle3DClick(event) {
 			const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
 			selectedHole = clickedHole;
 			selectedMultipleHoles = [];
+			// Step 12i.3a) Clear KAD selections when hole is selected (matching 2D behavior)
+			selectedKADObject = null;
+			selectedKADPolygon = null;
+			selectedMultipleKADObjects = [];
 			console.log("✅ [3D CLICK] SELECTED HOLE:", {
 				previous: previousSelectedHole,
 				current: selectedHole.holeID,
@@ -1035,8 +1043,8 @@ function handle3DClick(event) {
 			console.log("  Intersect " + index + ":", intersect.object.type, "types in chain:", types.join(" -> "));
 		});
 
-		// Step 12j.1) Check if selection pointer is active
-		if (isSelectionPointerActive) {
+		// Step 12j.1) Check if selection pointer is active and KAD radio is selected
+		if (isSelectionPointerActive && selectingKAD) {
 			let clickedKADObject = null;
 
 			// Step 12j.2) Search intersects for KAD objects (they have userData.kadId)
@@ -1393,22 +1401,27 @@ function handle3DClick(event) {
 				event.stopPropagation();
 				event.preventDefault();
 			} else {
-				// Step 12j.13) No KAD object - clear selection
+				// Step 12j.13) No KAD object clicked - clear KAD selections only if KAD radio is selected
 				console.log("🌌 [3D CLICK] Clicked on empty space - clearing selections");
 				if (!isAddingConnector && !isAddingMultiConnector) {
 					const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
 					const previousMultiCount = selectedMultipleHoles.length;
 					const previousKADCount = selectedMultipleKADObjects.length;
 
-					selectedHole = null;
-					selectedKADObject = null;
-					selectedKADPolygon = null;
-					if (!isMultiHoleSelectionEnabled) {
+					// Step 12j.13a) Clear selections based on radio button state (matching 2D behavior)
+					if (selectingKAD) {
+						selectedKADObject = null;
+						selectedKADPolygon = null;
+						selectedMultipleKADObjects = [];
+					}
+					if (selectingHoles && !isMultiHoleSelectionEnabled) {
+						selectedHole = null;
 						selectedMultipleHoles = [];
 					}
-					selectedMultipleKADObjects = [];
 
-					console.log("🗑️ [3D CLICK] Cleared all selections:", {
+					console.log("🗑️ [3D CLICK] Cleared selections:", {
+						selectingHoles,
+						selectingKAD,
 						previousSelectedHole,
 						previousMultiCount,
 						previousKADCount,
@@ -1418,15 +1431,16 @@ function handle3DClick(event) {
 					drawData(allBlastHoles || [], selectedHole);
 				}
 			}
-		} else {
-			// Step 12j.14) Selection pointer not active - clear selections
-			console.log("⏭️ [3D CLICK] Selection pointer not active");
+		} else if (isSelectionPointerActive && selectingHoles && !clickedHole) {
+			// Step 12j.14) Selection pointer active with Holes radio, but no hole clicked - clear hole selections
+			console.log("⏭️ [3D CLICK] Selection pointer active (Holes mode), no hole clicked");
 			if (!isAddingConnector && !isAddingMultiConnector) {
-				selectedHole = null;
 				if (!isMultiHoleSelectionEnabled) {
+					selectedHole = null;
 					selectedMultipleHoles = [];
+					exposeGlobalsToWindow();
+					drawData(allBlastHoles || [], selectedHole);
 				}
-				drawData(allBlastHoles || [], selectedHole);
 			}
 		}
 	}
@@ -4752,7 +4766,7 @@ var i;
 for (i = 0; i < acc.length; i++) {
 	acc[i].addEventListener("click", function () {
 		/* Toggle between adding and removing the "active" class,
-    to highlight the button that controls the panel */
+	to highlight the button that controls the panel */
 		this.classList.toggle("active");
 		/* Toggle between hiding and showing the active panel */
 		var panel = this.nextElementSibling;
@@ -5423,15 +5437,15 @@ optionConfigs.forEach((config) => {
 
 			// REPLACE THIS SECTION:
 			/*
-            // Calculate contours when any of these displays are turned on
-            if ((config.option === displayContours && displayContours.checked) || 
-                (config.option === displayFirstMovements && displayFirstMovements.checked) || 
-                (config.option === displayRelief && displayRelief.checked)) {
-                const result = recalculateContours(allBlastHoles, 0, 0);
-                contourLinesArray = result.contourLinesArray;
-                directionArrows = result.directionArrows;
-            }
-            */
+			// Calculate contours when any of these displays are turned on
+			if ((config.option === displayContours && displayContours.checked) || 
+				(config.option === displayFirstMovements && displayFirstMovements.checked) || 
+				(config.option === displayRelief && displayRelief.checked)) {
+				const result = recalculateContours(allBlastHoles, 0, 0);
+				contourLinesArray = result.contourLinesArray;
+				directionArrows = result.directionArrows;
+			}
+			*/
 
 			// WITH THIS THROTTLED VERSION:
 			if ((config.option === displayContours && displayContours.checked) || (config.option === displayFirstMovements && displayFirstMovements.checked) || (config.option === displayRelief && displayRelief.checked)) {
@@ -5490,15 +5504,43 @@ function handleMouseDown(event) {
 	// Step 1) Handle dragging functionality (Pan)
 	// Only start pan if NOT clicking on a handle or control
 	if (!isResizingRight && !isResizingLeft) {
-		// Middle mouse or Left mouse (if no tool selected)
-		if (
-			event.button === 1 ||
-			(event.button === 0 && !isAddingConnector && !isAddingMultiConnector && !isSelectionPointerActive && !isAddingPoint && !isAddingLine && !isAddingPoly && !isAddingCircle && !isAddingText && !isMoveToolActive && !isBearingToolActive && !isAssignSurfaceActive && !isAssignGradeActive && !isOffsetKADActive && !isRadiiHolesOrKADActive && !isRulerToolActive && !isRulerProtractorToolActive && !isPatternInPolygonActive && !isHolesAlongLineActive && !isHolesAlongPolyLineActive)
-		) {
+		// Step 1a) Middle mouse button - immediate pan
+		if (event.button === 1) {
 			isDragging = true;
 			startPanX = event.clientX;
 			startPanY = event.clientY;
 			// console.log("👆 2D Pan started");
+		}
+		// Step 1b) Left mouse button - check tool state
+		else if (event.button === 0) {
+			// Step 1b.1) Tools that suspend dragging: Move and Bearing tools
+			// These tools handle their own dragging behavior and should not trigger panning
+			const toolsThatSuspendDragging = isMoveToolActive || isBearingToolActive;
+
+			// Step 1b.2) Tools that allow immediate panning (no delay needed)
+			const toolsThatAllowImmediatePan = !isAddingConnector && !isAddingMultiConnector && !isAddingPoint && !isAddingLine && !isAddingPoly && !isAddingCircle && !isAddingText && !isAssignSurfaceActive && !isAssignGradeActive && !isOffsetKADActive && !isRadiiHolesOrKADActive && !isRulerToolActive && !isRulerProtractorToolActive && !isPatternInPolygonActive && !isHolesAlongLineActive && !isHolesAlongPolyLineActive;
+
+			// Step 1b.3) selectPointer allows panning after 300ms delay (single click = selection, long press = pan)
+			if (isSelectionPointerActive && !toolsThatSuspendDragging) {
+				// Store initial mouse position for drag detection
+				startPanX = event.clientX;
+				startPanY = event.clientY;
+				// Delay panning for selectPointer - allows single clicks for selection
+				// Pan will be enabled after 300ms if mouse is still down
+				window.selectPointerPanTimeout = setTimeout(() => {
+					if (!isDraggingBearing && !isDraggingHole) {
+						isDragging = true;
+						// console.log("👆 2D Pan started (selectPointer delayed)");
+					}
+				}, 300); // 300ms delay for selectPointer panning
+			}
+			// Step 1b.4) Other tools - immediate panning if allowed
+			else if (!isSelectionPointerActive && toolsThatAllowImmediatePan && !toolsThatSuspendDragging) {
+				isDragging = true;
+				startPanX = event.clientX;
+				startPanY = event.clientY;
+				// console.log("👆 2D Pan started");
+			}
 		}
 	}
 
@@ -5529,6 +5571,22 @@ function handleMouseMove(event) {
 	// Convert to world coordinates
 	currentMouseWorldX = (mouseX - canvas.width / 2) / currentScale + centroidX;
 	currentMouseWorldY = -(mouseY - canvas.height / 2) / currentScale + centroidY;
+
+	// Step 1) For selectPointer, if mouse moves significantly before timeout, start panning immediately
+	if (isSelectionPointerActive && window.selectPointerPanTimeout && !isDragging) {
+		const deltaX = Math.abs(event.clientX - startPanX);
+		const deltaY = Math.abs(event.clientY - startPanY);
+		// If mouse moved more than 5 pixels, start panning immediately
+		if (deltaX > 5 || deltaY > 5) {
+			clearTimeout(window.selectPointerPanTimeout);
+			window.selectPointerPanTimeout = null;
+			if (!isDraggingBearing && !isDraggingHole) {
+				isDragging = true;
+				startPanX = event.clientX;
+				startPanY = event.clientY;
+			}
+		}
+	}
 
 	if (isDragging && !isDraggingBearing && !isDraggingHole) {
 		deltaX = mouseX - lastMouseX;
@@ -5605,6 +5663,11 @@ function handleMouseUp(event) {
 	}
 
 	clearTimeout(longPressTimeout); // Clear the long press timeout
+	// Step 2) Clear selectPointer pan timeout if it exists
+	if (window.selectPointerPanTimeout) {
+		clearTimeout(window.selectPointerPanTimeout);
+		window.selectPointerPanTimeout = null;
+	}
 	// Block tool-specific behaviors only if tools are dragging
 	if (isDraggingBearing || isDraggingHole) return;
 	//touchDuration = Date.now() - touchStartTime;
@@ -7195,15 +7258,15 @@ function parseKADFile(fileData) {
 			showModalMessage(
 				"File Import Warning",
 				"The file was imported but there were " +
-					parseResult.errors.length +
-					" parsing warnings:<br><br>" +
-					parseResult.errors
-						.slice(0, 5)
-						.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-						.join("") +
-					additionalErrors +
-					"<br><br>" +
-					"Some data may have been skipped. Check your results carefully.",
+				parseResult.errors.length +
+				" parsing warnings:<br><br>" +
+				parseResult.errors
+					.slice(0, 5)
+					.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+					.join("") +
+				additionalErrors +
+				"<br><br>" +
+				"Some data may have been skipped. Check your results carefully.",
 				"warning"
 			);
 		}
@@ -7421,17 +7484,17 @@ function parseKADFile(fileData) {
 			const errorDetailsHtml =
 				errorCount > 0
 					? "<details>" +
-					  "<summary>View Error Details (" +
-					  errorCount +
-					  " errors)</summary>" +
-					  '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-					  errorDetails
-							.slice(0, 10)
-							.map((error) => "<li>" + error + "</li>")
-							.join("") +
-					  (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-					  "</ul>" +
-					  "</details>"
+					"<summary>View Error Details (" +
+					errorCount +
+					" errors)</summary>" +
+					'<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+					errorDetails
+						.slice(0, 10)
+						.map((error) => "<li>" + error + "</li>")
+						.join("") +
+					(errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+					"</ul>" +
+					"</details>"
 					: "";
 
 			showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -8832,9 +8895,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
 	const table = new Uint32Array(256);
-	for (let i = 256; i--; ) {
+	for (let i = 256; i--;) {
 		let tmp = i;
-		for (let k = 8; k--; ) {
+		for (let k = 8; k--;) {
 			tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
 		}
 		table[i] = tmp;
@@ -12687,14 +12750,14 @@ function clipVoronoiCells(voronoiMetrics) {
 
 	const clipPathPolygons = contractedPolygons; // These are the actual geometric polygons
 	/*
-    console.log("nearest:", nearest);
-    console.log("expand:", expand);
-    console.log("unionedPolygons:", unionedPolygons);
-    console.log("simplifiedPolygons:", simplifiedPolygons);
-    console.log("contract:", contract);
-    console.log("contractedPolygons:", contractedPolygons);
-    console.log("clipPathPolygons for iteration:", clipPathPolygons);
-    */
+	console.log("nearest:", nearest);
+	console.log("expand:", expand);
+	console.log("unionedPolygons:", unionedPolygons);
+	console.log("simplifiedPolygons:", simplifiedPolygons);
+	console.log("contract:", contract);
+	console.log("contractedPolygons:", contractedPolygons);
+	console.log("clipPathPolygons for iteration:", clipPathPolygons);
+	*/
 
 	for (let cell of voronoiMetrics) {
 		if (!cell.polygon || cell.polygon.length < 3) continue;
@@ -13918,29 +13981,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
 			`
             <div style="text-align: center;">
                 <p><strong>` +
-				resultMessage +
-				`</strong></p>
+			resultMessage +
+			`</strong></p>
                 <p><strong>Input:</strong> ` +
-				selectedEntities.length +
-				` entities</p>
+			selectedEntities.length +
+			` entities</p>
                 <p><strong>Output:</strong> ` +
-				polygons.length +
-				` polygon(s)</p>
+			polygons.length +
+			` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-				params.radius +
-				`m</p>
+			params.radius +
+			`m</p>
                 <p><strong>Rotation:</strong> ` +
-				params.rotationOffset +
-				`°</p>
+			params.rotationOffset +
+			`°</p>
                 <p><strong>Starburst:</strong> ` +
-				params.starburstOffset * 100 +
-				`%</p>
+			params.starburstOffset * 100 +
+			`%</p>
                 <p><strong>Line Width:</strong> ` +
-				params.lineWidth +
-				`</p>
+			params.lineWidth +
+			`</p>
                 <p><strong>Location:</strong> ` +
-				(params.useToeLocation ? "End/Toe" : "Start/Collar") +
-				`</p>
+			(params.useToeLocation ? "End/Toe" : "Start/Collar") +
+			`</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -13957,8 +14020,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-				(error.message || "Unknown error occurred") +
-				`</p>
+			(error.message || "Unknown error occurred") +
+			`</p>
             </div>
         `
 		);
@@ -19798,9 +19861,9 @@ function timeChart() {
 			.flatMap((index) => {
 				return holeIDs[index]
 					? holeIDs[index].map((combinedID) => {
-							const [entityName, holeID] = combinedID.split(":");
-							return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-					  })
+						const [entityName, holeID] = combinedID.split(":");
+						return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+					})
 					: [];
 			})
 			.filter(Boolean);
@@ -19823,11 +19886,11 @@ function timeChart() {
 
 		timingWindowHolesSelected = holeIDs[clickedIndex]
 			? holeIDs[clickedIndex]
-					.map((combinedID) => {
-						const [entityName, holeID] = combinedID.split(":");
-						return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-					})
-					.filter(Boolean)
+				.map((combinedID) => {
+					const [entityName, holeID] = combinedID.split(":");
+					return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+				})
+				.filter(Boolean)
 			: [];
 
 		drawData(allBlastHoles, selectedHole);
@@ -21821,9 +21884,9 @@ function resetZoom() {
 function saveHolesToLocalStorage(allBlastHoles) {
 	if (allBlastHoles !== null) {
 		/* STRUCTURE OF THE POINTS ARRAY
-        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
-    */
+		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
+	*/
 		const lines = allBlastHoles.map((hole) => {
 			return `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation},${hole.startYLocation},${hole.startZLocation},${hole.endXLocation},${hole.endYLocation},${hole.endZLocation},${hole.gradeXLocation},${hole.gradeYLocation},${hole.gradeZLocation},${hole.subdrillAmount},${hole.subdrillLength},${hole.benchHeight},${hole.holeDiameter},${hole.holeType},${hole.fromHoleID},${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated},${hole.holeAngle},${hole.holeBearing},${hole.initiationTime},${hole.measuredLength},${hole.measuredLengthTimeStamp},${hole.measuredMass},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}\n`;
 		});
@@ -21908,9 +21971,9 @@ function loadHolesFromLocalStorage() {
 		allBlastHoles = [];
 	}
 	/* STRUCTURE OF THE POINTS ARRAY
-        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
-    */
+		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
+	*/
 	const csvString = localStorage.getItem("kirraDataPoints");
 	//console.log(csvString);
 	if (csvString) {
@@ -23972,6 +24035,10 @@ moveToTool.addEventListener("change", function () {
 });
 
 // Handle move tool mouse down - start dragging if holes are selected
+// Step 1) Move Tool Mouse Down Handler
+// NOTE: This tool SUSPENDS normal panning/dragging behavior
+// When Move tool is active, isDragging is not set and panning is disabled
+// The tool handles its own dragging behavior for moving KAD vertices/holes
 function handleMoveToolMouseDown(event) {
 	event.preventDefault();
 	event.stopPropagation();
@@ -24393,6 +24460,10 @@ function handleBearingToolKeyUp(event) {
 }
 
 // Handle bearing tool mouse down - start dragging if holes are selected
+// Step 1) Bearing Tool Mouse Down Handler
+// NOTE: This tool SUSPENDS normal panning/dragging behavior
+// When Bearing tool is active, isDragging is not set and panning is disabled
+// The tool handles its own dragging behavior for rotating holes
 function handleBearingToolMouseDown(event) {
 	event.preventDefault();
 	event.stopPropagation();
@@ -29765,10 +29836,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
 	return closestPoint
 		? {
-				point: closestPoint,
-				type: snapType,
-				distance: minDistance,
-		  }
+			point: closestPoint,
+			type: snapType,
+			distance: minDistance,
+		}
 		: null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
