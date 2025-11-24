@@ -5843,6 +5843,8 @@ async function handleFileUpload(event) {
 		} else if (file.name.endsWith(".csv") || file.name.endsWith(".CSV")) {
 			try {
 				allBlastHoles = parseK2Dcsv(data);
+				// Step 1) Save loaded file to IndexedDB
+				debouncedSaveHoles();
 
 				// Calculate centroid
 				let sumX = 0;
@@ -21881,6 +21883,8 @@ function resetZoom() {
 	zoomToFitAll();
 }
 ///SAVE and LOAD ALLBLASTHOLES ARRAY TO LOCAL STORAGE /////////////////////////////////
+// DEPRECATED: This function is deprecated. Use debouncedSaveHoles() or saveHolesToDB() instead.
+// Kept for backward compatibility but no longer used for persistence.
 function saveHolesToLocalStorage(allBlastHoles) {
 	if (allBlastHoles !== null) {
 		/* STRUCTURE OF THE POINTS ARRAY
@@ -21905,66 +21909,44 @@ function saveHolesToLocalStorage(allBlastHoles) {
 }
 
 function refreshPoints() {
-	saveHolesToLocalStorage(allBlastHoles);
+	// Step 1) Update play speed input based on hole count
 	const playSpeedInput = document.getElementById("playSpeed");
 	if (allBlastHoles.length > 1000) {
 		playSpeedInput.max = 50;
 	} else {
 		playSpeedInput.max = 15;
 	}
-	// Clear the current points array
-	allBlastHoles = [];
-	// console.log("Points array cleared - RefreshPoints()");
 
-	// Load allBlastHoles from local storage
-	const csvString = localStorage.getItem("kirraDataPoints");
-	if (csvString) {
-		allBlastHoles = parseK2Dcsv(csvString);
-
-		// CRITICAL: Validate data integrity after reload
-		const duplicateCheck = checkAndResolveDuplicateHoleIDs(allBlastHoles, "data reload");
-		if (duplicateCheck.hasDuplicates) {
-			console.warn("🚨 Data corruption detected during reload - duplicates resolved automatically");
-			// Save the corrected data back to localStorage
-			saveHolesToLocalStorage(allBlastHoles);
-		}
-
-		//updateCentroids();
-		holeTimes = calculateTimes(allBlastHoles);
-		const result = recalculateContours(allBlastHoles, deltaX, deltaY);
-		contourLinesArray = result.contourLinesArray;
-		directionArrows = result.directionArrows;
-
-		// directionArrows now contains the arrow data for later drawing
-
-		const { resultTriangles, reliefTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength); // Recalculate triangles
-
-		drawData(allBlastHoles, selectedHole);
-
-		// Debugging: Log the points array for each entity
-		const blastHolesMap = new Map();
-		for (const hole of allBlastHoles) {
-			if (!blastHolesMap.has(hole.entityName)) {
-				blastHolesMap.set(hole.entityName, {
-					entityName: hole.entityName,
-					data: [],
-				});
-			}
-			blastHolesMap.get(hole.entityName).data.push(hole);
-		}
-		for (const entity of blastHolesMap.values()) {
-			// console.log(entity);
-		}
-		debouncedUpdateTreeView(); // Use debounced version
-		return allBlastHoles;
+	// Step 2) Validate data integrity (duplicate check)
+	const duplicateCheck = checkAndResolveDuplicateHoleIDs(allBlastHoles, "data reload");
+	if (duplicateCheck.hasDuplicates) {
+		console.warn("🚨 Data corruption detected during reload - duplicates resolved automatically");
+		// Save the corrected data via debounced save
+		debouncedSaveHoles();
 	}
-	return null;
+
+	// Step 3) Recalculate all derived data
+	holeTimes = calculateTimes(allBlastHoles);
+	const result = recalculateContours(allBlastHoles, deltaX, deltaY);
+	contourLinesArray = result.contourLinesArray;
+	directionArrows = result.directionArrows;
+
+	// Step 4) Recalculate triangles
+	const { resultTriangles, reliefTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
+
+	// Step 5) Redraw and update tree view
+	drawData(allBlastHoles, selectedHole);
+	debouncedUpdateTreeView();
+
+	return allBlastHoles;
 }
 
 // Use this function whenever you need to refresh the state and redraw the canvas
 // For example, after deleting a hole or renumbering holes:
 // refreshPoints();
 
+// DEPRECATED: This function is deprecated. Use loadHolesFromDB() instead.
+// Kept for backward compatibility but no longer used for persistence.
 function loadHolesFromLocalStorage() {
 	// Initialize points as an empty array if it's null
 	if (allBlastHoles === null) {
@@ -22172,6 +22154,101 @@ function loadKADFromDB() {
 		};
 	});
 }
+
+// Step 1) Save blast holes to IndexedDB
+// Stores entire allBlastHoles array as single record with id "blastHolesData"
+function saveHolesToDB(holesArray) {
+	if (!db) {
+		console.error("DB not initialized. Cannot save holes.");
+		return;
+	}
+
+	const transaction = db.transaction([BLASTHOLES_STORE_NAME], "readwrite");
+	const store = transaction.objectStore(BLASTHOLES_STORE_NAME);
+	let request;
+
+	if (!holesArray || holesArray.length === 0) {
+		request = store.delete("blastHolesData"); // Delete record if array is empty
+	} else {
+		request = store.put({
+			id: "blastHolesData",
+			data: holesArray,
+		}); // Store entire array as data property
+	}
+
+	request.onerror = (event) => {
+		console.error("Error saving holes data to IndexedDB:", event.target.error);
+	};
+
+	request.onsuccess = () => {
+		console.log("✅ Blast holes saved to IndexedDB (" + holesArray.length + " holes)");
+	};
+}
+
+// Step 2) Load blast holes from IndexedDB
+// Returns Promise that resolves to boolean indicating if data was loaded
+function loadHolesFromDB() {
+	return new Promise((resolve, reject) => {
+		if (!db) {
+			console.error("DB not initialized. Cannot load holes.");
+			return reject("DB not initialized");
+		}
+		const transaction = db.transaction([BLASTHOLES_STORE_NAME], "readonly");
+		const store = transaction.objectStore(BLASTHOLES_STORE_NAME);
+		const request = store.get("blastHolesData"); // Use same record key
+
+		request.onsuccess = (event) => {
+			const dbResult = event.target.result;
+			if (dbResult && dbResult.data && Array.isArray(dbResult.data) && dbResult.data.length > 0) {
+				allBlastHoles = dbResult.data; // Populate array from stored data
+				console.log("✅ Loaded " + allBlastHoles.length + " blast holes from IndexedDB");
+
+				// Step 2a) Perform same initialization as loadHolesFromLocalStorage()
+				updateCentroids();
+				holeTimes = calculateTimes(allBlastHoles);
+				const contourResult = recalculateContours(allBlastHoles, deltaX, deltaY);
+				contourLinesArray = contourResult.contourLinesArray;
+				directionArrows = contourResult.directionArrows;
+
+				// Step 2b) Recalculate triangles
+				const { resultTriangles, reliefTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
+
+				// Step 2c) Redraw and update tree view
+				drawData(allBlastHoles, selectedHole);
+				debouncedUpdateTreeView();
+
+				resolve(true);
+			} else {
+				console.log("No holes data found in IndexedDB");
+				resolve(false);
+			}
+		};
+
+		request.onerror = (event) => {
+			console.error("Error loading holes data from IndexedDB:", event.target.error);
+			reject(event.target.error);
+		};
+	});
+}
+
+// Step 3) Debounced save function for blast holes
+// Staged saving for large files as these can't be saved on instant quit of window close
+let holesSaveTimeout;
+function debouncedSaveHoles() {
+	// Clear any existing pending save
+	clearTimeout(holesSaveTimeout);
+	// Set a new save to trigger after 2 seconds
+	holesSaveTimeout = setTimeout(() => {
+		console.log("Auto-saving blast holes to DB...");
+		// Only save if DB is initialized
+		if (db) {
+			saveHolesToDB(allBlastHoles);
+		} else {
+			console.log("DB not ready, skipping auto-save");
+		}
+	}, 2000);
+}
+
 //Improved saveSurfaceToDB
 async function saveSurfaceToDB(surfaceId) {
 	return new Promise((resolve, reject) => {
@@ -23028,41 +23105,63 @@ async function debugDatabaseContents() {
 }
 
 function checkAndPromptForStoredData() {
-	const allBlastHolesData = localStorage.getItem("kirraDataPoints");
+	// Step 1) Fallback check for localStorage (for backward compatibility)
+	const allBlastHolesDataLocalStorage = localStorage.getItem("kirraDataPoints");
 
 	if (!db) {
 		// Fallback for when DB fails to initialize
-		if (allBlastHolesData) showPopup(false);
+		if (allBlastHolesDataLocalStorage) showPopup(false);
 		return;
 	}
 
-	// Check for KAD drawings
-	const kadTransaction = db.transaction([STORE_NAME], "readonly");
-	const kadStore = kadTransaction.objectStore(STORE_NAME);
-	const kadRequest = kadStore.get("kadDrawingData");
+	// Step 2) Check for holes in IndexedDB
+	const holesTransaction = db.transaction([BLASTHOLES_STORE_NAME], "readonly");
+	const holesStore = holesTransaction.objectStore(BLASTHOLES_STORE_NAME);
+	const holesRequest = holesStore.get("blastHolesData");
 
-	kadRequest.onsuccess = (event) => {
-		const kadData = event.target.result;
+	holesRequest.onsuccess = (holesEvent) => {
+		const holesData = holesEvent.target.result;
+		const hasHolesInDB = holesData && holesData.data && Array.isArray(holesData.data) && holesData.data.length > 0;
 
-		// ALSO check for surfaces
-		const surfaceTransaction = db.transaction([SURFACE_STORE_NAME], "readonly");
-		const surfaceStore = surfaceTransaction.objectStore(SURFACE_STORE_NAME);
-		const surfaceRequest = surfaceStore.getAll();
+		// Step 3) Check for KAD drawings
+		const kadTransaction = db.transaction([STORE_NAME], "readonly");
+		const kadStore = kadTransaction.objectStore(STORE_NAME);
+		const kadRequest = kadStore.get("kadDrawingData");
 
-		surfaceRequest.onsuccess = (surfaceEvent) => {
-			const surfaceData = surfaceEvent.target.result || [];
+		kadRequest.onsuccess = (event) => {
+			const kadData = event.target.result;
 
-			// Show popup if ANY data exists: points, drawings, OR surfaces
-			if (allBlastHolesData || (kadData && kadData.data && kadData.data.length > 0) || surfaceData.length > 0) {
+			// Step 4) Check for surfaces
+			const surfaceTransaction = db.transaction([SURFACE_STORE_NAME], "readonly");
+			const surfaceStore = surfaceTransaction.objectStore(SURFACE_STORE_NAME);
+			const surfaceRequest = surfaceStore.getAll();
+
+			surfaceRequest.onsuccess = (surfaceEvent) => {
+				const surfaceData = surfaceEvent.target.result || [];
+
+				// Step 5) Show popup if ANY data exists: holes (IndexedDB or localStorage), KAD drawings, OR surfaces
+				if (hasHolesInDB || allBlastHolesDataLocalStorage || (kadData && kadData.data && kadData.data.length > 0) || surfaceData.length > 0) {
+					showPopup(true);
+					debouncedUpdateTreeView();
+				}
+			};
+		};
+
+		kadRequest.onerror = (event) => {
+			console.error("Could not check for KAD data in IndexedDB.", event.target.error);
+			// Still show popup if holes exist
+			if (hasHolesInDB || allBlastHolesDataLocalStorage) {
 				showPopup(true);
-				debouncedUpdateTreeView();
 			}
 		};
 	};
 
-	kadRequest.onerror = (event) => {
-		console.error("Could not check for KAD data in IndexedDB.", event.target.error);
-		if (allBlastHolesData) showPopup(false);
+	holesRequest.onerror = (event) => {
+		console.error("Could not check for holes data in IndexedDB.", event.target.error);
+		// Fallback to localStorage check
+		if (allBlastHolesDataLocalStorage) {
+			showPopup(false);
+		}
 	};
 }
 async function showPopup(isDBReady) {
@@ -23094,16 +23193,20 @@ async function showPopup(isDBReady) {
 			onConfirm: async () => {
 				// Step 5) User chose to continue previous work
 				console.log("User chose to continue previous work");
-				allBlastHoles = loadHolesFromLocalStorage();
 
+				// Step 5a) Load holes from IndexedDB
 				if (isDBReady) {
 					try {
+						await loadHolesFromDB();
 						await loadKADFromDB();
 						await loadAllSurfacesIntoMemory();
 						await loadAllImagesIntoMemory();
 					} catch (err) {
 						console.error("Failed to load data from DB.", err);
 					}
+				} else {
+					// Fallback to localStorage if DB not ready (shouldn't happen, but safety)
+					allBlastHoles = loadHolesFromLocalStorage();
 				}
 
 				zoomToFitAll();
@@ -23575,7 +23678,10 @@ function updateColorsForDarkMode() {
 }
 
 window.addEventListener("beforeunload", function () {
-	saveHolesToLocalStorage(allBlastHoles);
+	// Save holes immediately on page unload (don't use debounced save)
+	if (db && allBlastHoles && allBlastHoles.length > 0) {
+		saveHolesToDB(allBlastHoles);
+	}
 });
 
 function getKADBoundaries() {
@@ -23608,14 +23714,13 @@ function getKADBoundaries() {
 }
 
 async function clearLoadedData() {
-	// Clear hole data
-	localStorage.removeItem("kirraDataPoints");
+	// Step 1) Clear hole data from memory
 	allBlastHoles = [];
 
-	// Clear ALL data from IndexedDB - not just KAD data
+	// Step 2) Clear ALL data from IndexedDB - not just KAD data
 	if (db) {
 		try {
-			// Clear KAD data
+			// Step 2a) Clear KAD data
 			const kadTransaction = db.transaction([STORE_NAME], "readwrite");
 			const kadStore = kadTransaction.objectStore(STORE_NAME);
 			await new Promise((resolve, reject) => {
@@ -23624,11 +23729,20 @@ async function clearLoadedData() {
 				request.onerror = () => reject(request.error);
 			});
 
-			// Clear surface data
+			// Step 2b) Clear surface data
 			await deleteAllSurfacesFromDB();
 
-			// Clear image data
+			// Step 2c) Clear image data
 			await deleteAllImagesFromDB();
+
+			// Step 2d) Clear holes data from IndexedDB
+			const holesTransaction = db.transaction([BLASTHOLES_STORE_NAME], "readwrite");
+			const holesStore = holesTransaction.objectStore(BLASTHOLES_STORE_NAME);
+			await new Promise((resolve, reject) => {
+				const request = holesStore.clear();
+				request.onsuccess = () => resolve();
+				request.onerror = () => reject(request.error);
+			});
 
 			console.log("✅ All database data cleared");
 		} catch (error) {
@@ -23660,7 +23774,7 @@ window.addEventListener("resize", () => {
 	if (Array.isArray(holeTimes)) {
 		timeChart();
 	}
-	saveHolesToLocalStorage(allBlastHoles); // For smaller hole data
+	debouncedSaveHoles(); // Auto-save holes to IndexedDB
 
 	drawData(allBlastHoles, selectedHole);
 });
@@ -24315,7 +24429,7 @@ function handleMoveToolMouseUp(event) {
 
 		// Save changes and recalculate everything
 		if (moveToolSelectedHole) {
-			saveHolesToLocalStorage(allBlastHoles);
+			debouncedSaveHoles(); // Auto-save holes to IndexedDB
 
 			// Recalculate everything after holes are moved
 			if (allBlastHoles.length > 0) {
@@ -24581,7 +24695,7 @@ function handleBearingToolMouseUp(event) {
 
 		// Save changes
 		if (bearingToolSelectedHole) {
-			saveHolesToLocalStorage(allBlastHoles);
+			debouncedSaveHoles(); // Auto-save holes to IndexedDB
 		}
 		// Clear single selection and he multiple selection
 		selectedHole = null;
@@ -30200,7 +30314,7 @@ function generatePatternInPolygon(patternSettings) {
 
 	// Update display
 	drawData(allBlastHoles, selectedHole);
-	saveHolesToLocalStorage(allBlastHoles);
+	debouncedSaveHoles(); // Auto-save holes to IndexedDB
 }
 //! REDO with the FloatingDialog class
 // Function to show holes along line popup
@@ -30527,7 +30641,7 @@ function generateHolesAlongLine(params) {
 	// Redraw
 	debouncedUpdateTreeView(); // Use debounced version
 	drawData(allBlastHoles, selectedHole);
-	saveHolesToLocalStorage(allBlastHoles);
+	debouncedSaveHoles(); // Auto-save holes to IndexedDB
 
 	const holesAdded = allBlastHoles.length - originalHolesCount;
 	console.log("Generated " + holesAdded + " holes along line with rowID " + rowID);
@@ -31599,7 +31713,7 @@ function generateHolesAlongPolyline(params, vertices) {
 
 	// Redraw
 	drawData(allBlastHoles, selectedHole);
-	saveHolesToLocalStorage(allBlastHoles);
+	debouncedSaveHoles(); // Auto-save holes to IndexedDB
 
 	const holesAdded = allBlastHoles.length - originalPointsCount;
 	console.log("Generated " + holesAdded + " holes along polyline with rowID " + rowID);
