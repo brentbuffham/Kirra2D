@@ -149,6 +149,40 @@ export class InteractionManager {
 		return null;
 	}
 
+	// Step 6.5) Find clicked surface from intersects
+	findClickedSurface(intersects) {
+		if (!intersects || intersects.length === 0) return null;
+
+		for (const intersect of intersects) {
+			const userData = intersect.object.userData;
+
+			// Step 6.5a) Check if this object is a surface
+			if (userData && userData.type === "surface" && userData.surfaceId) {
+				console.log("🎯 Clicked surface:", userData.surfaceId, "at distance:", intersect.distance.toFixed(2));
+				return userData.surfaceId;
+			}
+		}
+
+		return null;
+	}
+
+	// Step 6.6) Find clicked image from intersects
+	findClickedImage(intersects) {
+		if (!intersects || intersects.length === 0) return null;
+
+		for (const intersect of intersects) {
+			const userData = intersect.object.userData;
+
+			// Step 6.6a) Check if this object is an image
+			if (userData && userData.type === "image" && userData.imageId) {
+				console.log("🎯 Clicked image:", userData.imageId, "at distance:", intersect.distance.toFixed(2));
+				return userData.imageId;
+			}
+		}
+
+		return null;
+	}
+
 	// Step 7) Get 3D world position from raycast hit
 	getWorldPosition(intersects) {
 		if (!intersects || intersects.length === 0) return null;

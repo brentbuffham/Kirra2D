@@ -1517,16 +1517,16 @@ function handle3DContextMenu(event) {
 		return;
 	}
 
-	// Step 13j) Find clicked KAD object
-	const clickedKAD = interactionManager.findClickedKAD(intersects, allKADDrawingsMap ? Array.from(allKADDrawingsMap.values()) : []);
+	// Step 13j) Get clicked KAD object using 3D raycast (mimics 2D getClickedKADObject)
+	const clickedKADObject = getClickedKADObject3D(intersects, clickX, clickY);
 
 	// Step 13k) Check for multiple KAD selection
 	if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 1) {
 		// Check if we clicked on one of the selected KAD objects
 		let clickedOnSelected = false;
-		if (clickedKAD) {
+		if (clickedKADObject) {
 			for (const kadObj of selectedMultipleKADObjects) {
-				if (kadObj.entityName === clickedKAD.userData.entityName && kadObj.id === clickedKAD.id) {
+				if (kadObj.entityName === clickedKADObject.entityName && kadObj.elementIndex === clickedKADObject.elementIndex) {
 					clickedOnSelected = true;
 					break;
 				}
@@ -1540,28 +1540,58 @@ function handle3DContextMenu(event) {
 		}
 	}
 
-	// Step 13l) Handle single KAD object click
-	if (clickedKAD && isSelectionPointerActive) {
-		// Find the full KAD object data
-		const kadEntity = allKADDrawingsMap ? allKADDrawingsMap.get(clickedKAD.userData.entityName) : null;
-		if (kadEntity) {
-			// Create KAD object structure matching 2D format
-			const kadObject = {
-				entityName: clickedKAD.userData.entityName,
-				selectionType: clickedKAD.userData.type === "kadLine" ? "segment" : "vertex",
-				elementIndex: clickedKAD.userData.elementIndex || 0,
-			};
-			showKADPropertyEditorPopup(kadObject);
-			debouncedUpdateTreeView();
-			return;
+	// Step 13l) Handle single KAD object click (mimics 2D behavior exactly)
+	if (isSelectionPointerActive || isPolygonSelectionActive) {
+		if (clickedKADObject) {
+			// Step 13l.1) Check if within snap radius (same as 2D)
+			let withinSnapRadius = false;
+			const entity = allKADDrawingsMap ? allKADDrawingsMap.get(clickedKADObject.entityName) : null;
+
+			if (entity) {
+				if (clickedKADObject.selectionType === "vertex") {
+					// Step 13l.1a) For vertex selection, check distance to the specific vertex
+					const point = entity.data[clickedKADObject.elementIndex];
+					if (point) {
+						// Get world position from raycast
+						const worldPos = interactionManager.getMouseWorldPositionOnPlane();
+						if (worldPos) {
+							const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
+							const snapRadius = getSnapToleranceInWorldUnits();
+							withinSnapRadius = distance <= snapRadius;
+						}
+					}
+				} else if (clickedKADObject.selectionType === "segment") {
+					// Step 13l.1b) For segment selection, already validated by getClickedKADObject3D
+					withinSnapRadius = true;
+				}
+			}
+
+			// Step 13l.2) Check if object is selected (same as 2D)
+			if (withinSnapRadius && isKADObjectSelected(clickedKADObject)) {
+				showKADPropertyEditorPopup(clickedKADObject);
+				debouncedUpdateTreeView();
+				return;
+			}
 		}
 	}
 
-	// Step 13m) Check for surfaces and images (if those functions exist)
-	// Note: Surface and image detection in 3D would need additional raycast logic
-	// For now, show default context menu
+	// Step 13m) Find clicked surface
+	const clickedSurfaceId = interactionManager.findClickedSurface(intersects);
+	if (clickedSurfaceId) {
+		showSurfaceContextMenu(event.clientX, event.clientY, clickedSurfaceId);
+		debouncedUpdateTreeView();
+		return;
+	}
 
-	// Step 13n) Default context menu - show status message instead of undefined function
+	// Step 13n) Find clicked image
+	const clickedImageId = interactionManager.findClickedImage(intersects);
+	if (clickedImageId) {
+		showImageContextMenu(event.clientX, event.clientY, clickedImageId);
+		debouncedUpdateTreeView();
+		return;
+	}
+
+	// Step 13o) Default context menu - show status message if no object clicked
 	updateStatusMessage("Right clicks need to be performed on an Object.");
 	setTimeout(() => {
 		updateStatusMessage("");
@@ -25121,6 +25151,146 @@ function getClickedKADObject(clickX, clickY) {
 
 	return null;
 }
+
+// Step 13j.1) Get clicked KAD object in 3D mode (mimics 2D getClickedKADObject)
+function getClickedKADObject3D(intersects, clickX, clickY) {
+	if (!intersects || intersects.length === 0) return null;
+	if (!allKADDrawingsMap || allKADDrawingsMap.size === 0) return null;
+
+	// Step 13j.1a) Find the first KAD object from raycast intersects
+	let clickedKADMesh = null;
+	for (const intersect of intersects) {
+		const userData = intersect.object.userData;
+		if (userData && userData.type && userData.type.startsWith("kad") && userData.kadId) {
+			clickedKADMesh = intersect.object;
+			break;
+		}
+	}
+
+	if (!clickedKADMesh) return null;
+
+	const userData = clickedKADMesh.userData;
+	const entityName = userData.kadId; // kadId is the entityName
+	const entity = allKADDrawingsMap.get(entityName);
+	if (!entity) return null;
+
+	// Step 13j.1b) Check entity visibility
+	if (!isEntityVisible(entityName)) return null;
+
+	// Step 13j.1c) Get world position from raycast for distance calculations
+	const worldPos = interactionManager.getMouseWorldPositionOnPlane();
+	if (!worldPos) return null;
+
+	const tolerance = getSnapToleranceInWorldUnits();
+
+	// Step 13j.1d) Handle single-point entities (points, circles, text)
+	if (entity.entityType === "point" || entity.entityType === "circle" || entity.entityType === "text") {
+		// Step 13j.1d.1) Find closest point within tolerance
+		let closestMatch = null;
+		let minDistance = tolerance;
+
+		for (let i = 0; i < entity.data.length; i++) {
+			const point = entity.data[i];
+			const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
+
+			if (distance <= tolerance && distance < minDistance) {
+				closestMatch = {
+					...point, // Include all point properties (pointXLocation, pointYLocation, color, etc.)
+					mapType: "allKADDrawingsMap",
+					entityName: entityName,
+					entityType: entity.entityType,
+					elementIndex: i,
+					segmentIndex: i,
+					selectionType: "point",
+				};
+				minDistance = distance;
+			}
+		}
+
+		return closestMatch;
+	}
+
+	// Step 13j.1e) Handle multi-point entities (lines and polygons)
+	if (entity.entityType === "line" || entity.entityType === "poly") {
+		const points = entity.data;
+		if (points.length < 2) return null;
+
+		// Step 13j.1e.1) Determine segment index from userData or by finding closest segment
+		let segmentIndex = userData.segmentIndex;
+		if (segmentIndex === undefined) {
+			// Step 13j.1e.1a) Find closest segment to clicked position
+			const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
+			let closestSegment = null;
+			let minSegmentDistance = tolerance;
+
+			for (let i = 0; i < numSegments; i++) {
+				const point1 = points[i];
+				const point2 = points[(i + 1) % points.length]; // Wrap for polygons
+
+				// Calculate distance from click to line segment
+				const segmentDistance = pointToLineSegmentDistance(worldPos.x, worldPos.y, point1.pointXLocation, point1.pointYLocation, point2.pointXLocation, point2.pointYLocation);
+
+				if (segmentDistance <= tolerance && segmentDistance < minSegmentDistance) {
+					closestSegment = i;
+					minSegmentDistance = segmentDistance;
+				}
+			}
+
+			if (closestSegment !== null) {
+				segmentIndex = closestSegment;
+			} else {
+				// Step 13j.1e.1b) If no segment found, check vertices
+				let closestVertex = null;
+				let minVertexDistance = tolerance;
+
+				for (let i = 0; i < points.length; i++) {
+					const point = points[i];
+					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
+
+					if (distance <= tolerance && distance < minVertexDistance) {
+						closestVertex = i;
+						minVertexDistance = distance;
+					}
+				}
+
+				if (closestVertex !== null) {
+					// Return vertex selection
+					const point = points[closestVertex];
+					return {
+						...point,
+						mapType: "allKADDrawingsMap",
+						entityName: entityName,
+						entityType: entity.entityType,
+						elementIndex: closestVertex,
+						segmentIndex: closestVertex,
+						selectionType: "vertex",
+					};
+				}
+
+				return null;
+			}
+		}
+
+		// Step 13j.1e.2) Return segment selection
+		const point1 = points[segmentIndex];
+		const closestPoint = getClosestPointOnLineSegment(worldPos.x, worldPos.y, point1.pointXLocation, point1.pointYLocation, points[(segmentIndex + 1) % points.length].pointXLocation, points[(segmentIndex + 1) % points.length].pointYLocation);
+
+		return {
+			...point1, // Use first point's properties as base
+			mapType: "allKADDrawingsMap",
+			entityName: entityName,
+			entityType: entity.entityType,
+			elementIndex: segmentIndex,
+			segmentIndex: segmentIndex,
+			selectionType: "segment",
+			clickedX: closestPoint.x,
+			clickedY: closestPoint.y,
+		};
+	}
+
+	return null;
+}
+
 // Helper function to check if a clicked KAD object is currently selected
 function isKADObjectSelected(clickedObject) {
 	if (!clickedObject) return false;
