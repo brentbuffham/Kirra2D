@@ -11,7 +11,10 @@ import { GeometryFactory } from "../three/GeometryFactory.js";
 // Mimics drawKADHighlightSelectionVisuals() for 2D canvas
 export function highlightSelectedKADThreeJS() {
     // Step 1a) Check if Three.js is initialized
-    if (!window.threeInitialized || !window.threeRenderer) return;
+    if (!window.threeInitialized || !window.threeRenderer) {
+        console.log("⚠️ highlightSelectedKADThreeJS - Three.js not initialized");
+        return;
+    }
 
     // Step 1b) Access globals from window object
     const selectedKADObject = window.selectedKADObject;
@@ -22,8 +25,17 @@ export function highlightSelectedKADThreeJS() {
     const worldToThreeLocal = window.worldToThreeLocal;
     const dataCentroidZ = window.dataCentroidZ;
 
+    console.log("🎨 highlightSelectedKADThreeJS called:");
+    console.log("  selectedKADObject:", selectedKADObject);
+    console.log("  selectedMultipleKADObjects.length:", selectedMultipleKADObjects ? selectedMultipleKADObjects.length : 0);
+
     // Step 1c) Early exit if no selection
-    if (!selectedKADObject && (!selectedMultipleKADObjects || selectedMultipleKADObjects.length === 0)) return;
+    if (!selectedKADObject && (!selectedMultipleKADObjects || selectedMultipleKADObjects.length === 0)) {
+        console.log("  → Early exit: No KAD selection");
+        return;
+    }
+    
+    console.log("  → Proceeding with KAD highlighting...");
 
     if (developerModeEnabled) {
         console.log("=== 3D SELECTION DRAWING DEBUG ===");
@@ -47,23 +59,32 @@ export function highlightSelectedKADThreeJS() {
 
     // Step 3) Handle multiple selections
     if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
-        if (developerModeEnabled) {
-            console.log("Drawing 3D multiple selections:", selectedMultipleKADObjects.length, "objects");
-        }
+        console.log("🎨 Drawing 3D multiple KAD selections:", selectedMultipleKADObjects.length, "objects");
 
         selectedMultipleKADObjects.forEach((kadObj, index) => {
-            if (developerModeEnabled) {
-                console.log("=== DRAWING 3D OBJECT " + index + " ===");
+            if (index < 3) {
+                console.log("=== DRAWING 3D KAD OBJECT " + index + " ===");
                 console.log("kadObj:", kadObj);
+                console.log("kadObj.entityName:", kadObj.entityName);
+                console.log("kadObj.entity:", kadObj.entity);
             }
 
             const entity = getEntityFromKADObject(kadObj);
+            if (index < 3) {
+                console.log("Entity from getEntityFromKADObject:", entity);
+            }
+            
             if (entity) {
+                if (index < 3) {
+                    console.log("✓ Drawing highlight for:", kadObj.entityName, "entityType:", kadObj.entityType || entity.entityType);
+                }
                 drawKADEntityHighlight(kadObj, entity, selectedSegmentColor, nonSelectedSegmentColor, verticesColor, worldToThreeLocal, dataCentroidZ, developerModeEnabled);
             } else {
-                console.log("ERROR: No entity found for:", kadObj.entityName);
+                console.log("❌ ERROR: No entity found for:", kadObj.entityName);
             }
         });
+        
+        console.log("✅ Finished drawing all KAD highlights");
     }
 }
 
@@ -81,7 +102,11 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
     const currentScale = window.currentScale || 5;
     const tolerance = snapRadiusPixels / currentScale; // 3D tolerance in world units
 
-    switch (kadObject.entityType) {
+    // Debug: Check entityType
+    const entityType = kadObject.entityType || entity.entityType;
+    console.log("🔍 drawKADEntityHighlight - entityName:", kadObject.entityName, "entityType:", entityType);
+    
+    switch (entityType) {
         case "point":
             // Step 4b) Highlight points
             entity.data.forEach((point, index) => {
@@ -108,12 +133,10 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
         case "poly":
             // Step 4c) Highlight line/poly segments using tube geometry (unified - only difference is closed vs open)
             const points = entity.data;
-            const isClosedShape = kadObject.entityType === "poly";
+            const isClosedShape = entityType === "poly";
             const numSegments = isClosedShape ? points.length : points.length - 1;
 
-            if (developerModeEnabled) {
-                console.log("🎨 [3D HIGHLIGHT] Drawing " + kadObject.entityType + " with " + numSegments + " segments");
-            }
+            console.log("🎨 [3D HIGHLIGHT] Drawing " + entityType + " with " + numSegments + " segments, isClosedShape:", isClosedShape);
 
             // Step 4c.1) Base radius for tube highlights (in world units)
             // Non-selected segments use smaller radius, selected uses larger
@@ -245,5 +268,8 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
     }
 
     // Step 5) Add highlight group to scene
+    const childCount = highlightGroup.children.length;
+    console.log("✅ Adding highlight group to scene - Children count:", childCount, "for entity:", kadObject.entityName);
     window.threeRenderer.kadGroup.add(highlightGroup);
+    console.log("✓ Highlight group added to kadGroup");
 }
