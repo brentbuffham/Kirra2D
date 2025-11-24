@@ -106,7 +106,7 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
 
         case "line":
         case "poly":
-            // Step 4c) Highlight line/poly segments (unified - only difference is closed vs open)
+            // Step 4c) Highlight line/poly segments using tube geometry (unified - only difference is closed vs open)
             const points = entity.data;
             const isClosedShape = kadObject.entityType === "poly";
             const numSegments = isClosedShape ? points.length : points.length - 1;
@@ -115,7 +115,12 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 console.log("🎨 [3D HIGHLIGHT] Drawing " + kadObject.entityType + " with " + numSegments + " segments");
             }
 
-            // Step 4c.1) Draw ALL segments first with standard green highlighting
+            // Step 4c.1) Base radius for tube highlights (in world units)
+            // Non-selected segments use smaller radius, selected uses larger
+            const baseRadiusNonSelected = 0.3; // Base radius for non-selected segments
+            const baseRadiusSelected = 0.6; // Base radius for selected segment
+
+            // Step 4c.2) Draw ALL segments first with standard green highlighting
             for (let i = 0; i < numSegments; i++) {
                 const point1 = points[i];
                 const point2 = isClosedShape ? points[(i + 1) % points.length] : points[i + 1];
@@ -126,12 +131,12 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 const z1 = point1.pointZLocation || dataCentroidZ || 0;
                 const z2 = point2.pointZLocation || dataCentroidZ || 0;
 
-                // Draw green segment (non-selected)
-                const lineMesh = GeometryFactory.createKADLineHighlight(local1.x, local1.y, z1, local2.x, local2.y, z2, 2 * 15, nonSelectedSegmentColor);
+                // Draw green segment (non-selected) using tube geometry
+                const lineMesh = GeometryFactory.createKADLineHighlight(local1.x, local1.y, z1, local2.x, local2.y, z2, baseRadiusNonSelected, nonSelectedSegmentColor);
                 highlightGroup.add(lineMesh);
             }
 
-            // Step 4c.2) Then overdraw ONLY the selected segment in magenta
+            // Step 4c.3) Then overdraw ONLY the selected segment in magenta
             if (kadObject.selectionType === "segment" && kadObject.segmentIndex !== undefined) {
                 const segmentIndex = kadObject.segmentIndex;
                 if (segmentIndex >= 0 && segmentIndex < numSegments) {
@@ -144,8 +149,8 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                     const z1 = point1.pointZLocation || dataCentroidZ || 0;
                     const z2 = point2.pointZLocation || dataCentroidZ || 0;
 
-                    // Overdraw with thicker magenta segment
-                    const selectedLineMesh = GeometryFactory.createKADLineHighlight(local1.x, local1.y, z1, local2.x, local2.y, z2, 5 * 15, selectedSegmentColor);
+                    // Overdraw with thicker magenta segment using tube geometry
+                    const selectedLineMesh = GeometryFactory.createKADLineHighlight(local1.x, local1.y, z1, local2.x, local2.y, z2, baseRadiusSelected, selectedSegmentColor);
                     highlightGroup.add(selectedLineMesh);
 
                     if (developerModeEnabled) {
@@ -154,20 +159,20 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 }
             }
 
-            // Step 4c.3) Draw vertices for all points
+            // Step 4c.4) Draw vertices for all points (with zoom-based scaling)
             points.forEach((point, index) => {
                 const local = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
                 const z = point.pointZLocation || dataCentroidZ || 0;
 
-                // Step 4c.3a) If this is the start vertex of the selected segment, draw it in magenta
+                // Step 4c.4a) If this is the start vertex of the selected segment, draw it in magenta
                 const isSelectedSegmentVertex = kadObject.selectionType === "segment" && kadObject.segmentIndex === index;
 
                 if (isSelectedSegmentVertex) {
-                    // Larger magenta sphere for selected segment's start vertex
+                    // Larger magenta sphere for selected segment's start vertex (with zoom scaling)
                     const selectedVertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 1.0, selectedSegmentColor);
                     highlightGroup.add(selectedVertex);
                 } else {
-                    // Standard red vertex marker
+                    // Standard red vertex marker (with zoom scaling)
                     const vertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
                     highlightGroup.add(vertex);
                 }

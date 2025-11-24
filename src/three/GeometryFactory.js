@@ -1142,9 +1142,23 @@ export class GeometryFactory {
         return { r: 1, g: 1, b: 1, a: 1 };
     }
 
-    // Step 20.8) Create KAD line highlight for selection
+    // Step 20.7.5) Calculate zoom scale factor based on current scale
+    // Returns a multiplier that increases highlight size when zoomed out
+    static getZoomScaleFactor() {
+        const currentScale = window.currentScale || 5;
+        // Base scale is 5, so when zoomed out (lower scale), increase highlight size
+        // When scale = 1 (very zoomed out), factor = 5
+        // When scale = 5 (normal), factor = 1
+        // When scale = 10 (zoomed in), factor = 0.5
+        const baseScale = 5;
+        const zoomFactor = baseScale / currentScale;
+        // Clamp between 0.5 and 5 to prevent extreme sizes
+        return Math.max(0.5, Math.min(5, zoomFactor));
+    }
+
+    // Step 20.8) Create KAD line highlight for selection using TubeGeometry
     // Used to highlight selected/non-selected line segments
-    static createKADLineHighlight(x1, y1, z1, x2, y2, z2, lineWidth, color) {
+    static createKADLineHighlight(x1, y1, z1, x2, y2, z2, baseRadius, color) {
         // Step 20.8a) Parse color
         let colorObj;
         if (typeof color === "string" && color.startsWith("#")) {
@@ -1159,29 +1173,37 @@ export class GeometryFactory {
             colorObj = { r: 0, g: 1, b: 0, a: 1 };
         }
 
-        // Step 20.8b) Create line geometry using MeshLine for thick lines
-        const points = [new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)];
-        const geometry = new THREE.BufferGeometry().setFromPoints(points);
-        const meshLine = new MeshLine();
-        meshLine.setGeometry(geometry);
+        // Step 20.8b) Calculate zoom scale factor and apply to radius
+        const zoomFactor = this.getZoomScaleFactor();
+        const radius = baseRadius * zoomFactor;
 
-        // Step 20.8c) Create material with specified width and color
-        const material = new MeshLineMaterial({
+        // Step 20.8c) Create straight line curve from point1 to point2
+        const point1 = new THREE.Vector3(x1, y1, z1);
+        const point2 = new THREE.Vector3(x2, y2, z2);
+        const curve = new THREE.LineCurve3(point1, point2);
+        
+        // Step 20.8d) Create tube geometry
+        // segments = 1 (minimal segments for straight line), radialSegments = 8, radius = scaled radius
+        const tubeGeometry = new THREE.TubeGeometry(curve, 1, radius, 8, false);
+        
+        // Step 20.8e) Create material with color
+        const material = new THREE.MeshBasicMaterial({
             color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
-            lineWidth: lineWidth * 0.01, // Scale lineWidth for MeshLine
             transparent: colorObj.a < 1,
             opacity: colorObj.a,
+            side: THREE.DoubleSide,
+            wireframe: false, // No wireframe
             depthTest: true,
             depthWrite: false
         });
 
-        const lineMesh = new THREE.Mesh(meshLine.geometry, material);
-        return lineMesh;
+        const tubeMesh = new THREE.Mesh(tubeGeometry, material);
+        return tubeMesh;
     }
 
     // Step 20.9) Create KAD point highlight for selection
-    // Creates a sphere to highlight a point
-    static createKADPointHighlight(x, y, z, radius, color) {
+    // Creates a sphere to highlight a point with zoom-based scaling
+    static createKADPointHighlight(x, y, z, baseRadius, color) {
         // Step 20.9a) Parse color
         let colorObj;
         if (typeof color === "string" && color.startsWith("#")) {
@@ -1196,7 +1218,11 @@ export class GeometryFactory {
             colorObj = { r: 1, g: 0, b: 0, a: 0.5 };
         }
 
-        // Step 20.9b) Create sphere geometry
+        // Step 20.9b) Calculate zoom scale factor and apply to radius
+        const zoomFactor = this.getZoomScaleFactor();
+        const radius = baseRadius * zoomFactor;
+
+        // Step 20.9c) Create sphere geometry with scaled radius
         const geometry = new THREE.SphereGeometry(radius, 16, 16);
         const material = new THREE.MeshBasicMaterial({
             color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
