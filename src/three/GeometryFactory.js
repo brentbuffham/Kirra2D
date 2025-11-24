@@ -1059,7 +1059,7 @@ export class GeometryFactory {
     // Step 20.6) Create selection highlight ring (matching drawHiHole style)
     // Uses torus flat on X-Y plane (horizontal in world coords) for plan view visibility
     // Plan view = looking from Z+ve to Z-ve, so torus should be flat on X-Y plane (no rotation needed)
-    static createSelectionHighlight(x, y, z, radius, fillColor, strokeColor) {
+    static createSelectionHighlight(x, y, z, radius, fillColor, strokeColor, collarX, collarY, collarZ, toeX, toeY, toeZ) {
         const group = new THREE.Group();
 
         // Step 20.6a) Parse RGBA colors
@@ -1097,6 +1097,32 @@ export class GeometryFactory {
         strokeTorusMesh.position.set(x, y, z);
         // No rotation - torus is flat on X-Y plane (horizontal in world coords), visible in plan view
         group.add(strokeTorusMesh);
+
+        // Step 20.6d) Create transparent tube geometry connecting collar to toe (visible when orbiting)
+        if (collarX !== undefined && collarY !== undefined && collarZ !== undefined && 
+            toeX !== undefined && toeY !== undefined && toeZ !== undefined) {
+            // Step 20.6d.1) Create straight line curve from collar to toe using LineCurve3
+            const collarPoint = new THREE.Vector3(collarX, collarY, collarZ);
+            const toePoint = new THREE.Vector3(toeX, toeY, toeZ);
+            const curve = new THREE.LineCurve3(collarPoint, toePoint);
+            
+            // Step 20.6d.2) Create tube geometry with transparent torus radius
+            // segments = 1, radialSegments = 8, radius = transparent torus radius (tubeRadius)
+            const tubeGeometry = new THREE.TubeGeometry(curve, 1, tubeRadius, 8, false);
+            
+            // Step 20.6d.3) Create transparent material matching fill color
+            const tubeMaterial = new THREE.MeshBasicMaterial({
+                color: new THREE.Color(fillColorObj.r, fillColorObj.g, fillColorObj.b),
+                transparent: true,
+                opacity: fillColorObj.a,
+                side: THREE.DoubleSide,
+                wireframe: false // No wireframe
+            });
+            
+            // Step 20.6d.4) Create mesh and add to group
+            const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
+            group.add(tubeMesh);
+        }
 
         return group;
     }

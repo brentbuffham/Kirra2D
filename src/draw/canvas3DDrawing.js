@@ -505,6 +505,12 @@ export function highlightSelectedHoleThreeJS(hole, highlightType) {
     const local = window.worldToThreeLocal(hole.startXLocation, hole.startYLocation);
     const z = hole.startZLocation || 0;
 
+    // Step 18a.1) Convert collar and toe coordinates to local Three.js coordinates for tube geometry
+    const collarLocal = window.worldToThreeLocal(hole.startXLocation, hole.startYLocation);
+    const collarZ = hole.startZLocation || 0;
+    const toeLocal = window.worldToThreeLocal(hole.endXLocation, hole.endYLocation);
+    const toeZ = hole.endZLocation || 0;
+
     // Step 18b) Determine colors based on highlight type
     let fillColor, strokeColor, radius;
 
@@ -552,8 +558,8 @@ export function highlightSelectedHoleThreeJS(hole, highlightType) {
             radius = baseRadius;
     }
 
-    // Step 18c) Create highlight geometry
-    const highlightGroup = GeometryFactory.createSelectionHighlight(local.x, local.y, z, radius, fillColor, strokeColor);
+    // Step 18c) Create highlight geometry with collar and toe coordinates for tube
+    const highlightGroup = GeometryFactory.createSelectionHighlight(local.x, local.y, z, radius, fillColor, strokeColor, collarLocal.x, collarLocal.y, collarZ, toeLocal.x, toeLocal.y, toeZ);
 
     // Step 18d) Add metadata
     highlightGroup.userData = {
