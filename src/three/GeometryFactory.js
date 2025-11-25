@@ -367,33 +367,33 @@ export class GeometryFactory {
         // Step 1) Create cache key (scale-independent - use pixel fontSize)
         const currentScale = window.currentScale || 5;
         const fontSizeWorldUnits = fontSize / currentScale;
-        const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," + 
-                        String(text) + "," + fontSize + "," + color; // Use pixel fontSize, not world units
-        
+        const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," +
+            String(text) + "," + fontSize + "," + color; // Use pixel fontSize, not world units
+
         // Step 1a) Return cached text if it exists
         if (textCache.has(cacheKey)) {
             const cachedText = textCache.get(cacheKey);
-            
+
             // Step 1a.1) Update fontSize if scale changed
             const newFontSizeWorldUnits = fontSize / currentScale;
             if (Math.abs(cachedText.fontSize - newFontSizeWorldUnits) > 0.001) {
                 cachedText.fontSize = newFontSizeWorldUnits;
                 cachedText.sync(); // Update geometry
             }
-            
+
             // Step 1a.2) Update position (might have changed)
             cachedText.position.set(worldX, worldY, worldZ);
-            
+
             return cachedText;
         }
-        
+
         // Step 2) Create troika Text object (only if not cached)
         const textMesh = new Text();
 
         // Step 3) Convert pixel-based fontSize to world units based on camera scale
         // fontSize is in pixels (e.g. 6px, 12px)
         // Need to convert to world units using current camera frustum
-        
+
         // Step 3a) Set text content and properties
         textMesh.text = String(text);
         textMesh.fontSize = fontSizeWorldUnits; // Properly scaled to world units
@@ -425,18 +425,18 @@ export class GeometryFactory {
         // Step 6) CRITICAL: Sync troika text to create geometry and material
         // Force immediate sync to prevent flashing (blocks briefly but ensures visibility)
         textMesh.sync();
-        
+
         // Step 6a) Configure material for depth testing and transparency immediately
         if (textMesh.material) {
             textMesh.material.depthTest = true; // Enable occlusion behind objects
             textMesh.material.depthWrite = false; // Don't write to depth buffer (for transparency)
             textMesh.material.transparent = true; // Enable transparency
         }
-        
+
         // Step 6b) Mark as cached text for special handling
         textMesh.userData.isCachedText = true;
         textMesh.userData.cacheKey = cacheKey;
-        
+
         // Step 6c) Request render after text is ready
         if (window.threeRenderer) {
             window.threeRenderer.requestRender();
@@ -473,7 +473,7 @@ export class GeometryFactory {
             group.userData.isTroikaText = true;
             group.userData.isCachedText = true; // Mark group as cached too
             group.userData.cacheKey = cacheKey;
-            
+
             // Step 7a) Store group in cache instead of textMesh when background exists
             textCache.set(cacheKey, group);
 
@@ -482,7 +482,7 @@ export class GeometryFactory {
 
             return group;
         }
-        
+
         // Step 7c) Store textMesh in cache when no background
         textCache.set(cacheKey, textMesh);
 
@@ -685,10 +685,10 @@ export class GeometryFactory {
             const colorMatch = colorString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
             const color = colorMatch
                 ? {
-                      r: parseInt(colorMatch[1]) / 255,
-                      g: parseInt(colorMatch[2]) / 255,
-                      b: parseInt(colorMatch[3]) / 255
-                  }
+                    r: parseInt(colorMatch[1]) / 255,
+                    g: parseInt(colorMatch[2]) / 255,
+                    b: parseInt(colorMatch[3]) / 255
+                }
                 : { r: 1, g: 1, b: 1 };
 
             // Step 16d) Add vertices and colors
@@ -790,10 +790,10 @@ export class GeometryFactory {
             const colorMatch = colorString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
             const color = colorMatch
                 ? {
-                      r: parseInt(colorMatch[1]) / 255,
-                      g: parseInt(colorMatch[2]) / 255,
-                      b: parseInt(colorMatch[3]) / 255
-                  }
+                    r: parseInt(colorMatch[1]) / 255,
+                    g: parseInt(colorMatch[2]) / 255,
+                    b: parseInt(colorMatch[3]) / 255
+                }
                 : { r: 1, g: 1, b: 1 };
 
             // Step 16.5e) Add vertices (using collar Z) and colors
@@ -960,22 +960,28 @@ export class GeometryFactory {
             const perpendicular = new THREE.Vector3(-direction.y, direction.x, 0);
             const arrowBase = new THREE.Vector3(toX, toY, toZ);
 
-            const arrowPoints = [
-                new THREE.Vector3(toX, toY, toZ),
-                arrowBase
-                    .clone()
-                    .add(direction.clone().multiplyScalar(-arrowSize))
-                    .add(perpendicular.clone().multiplyScalar(arrowSize * 0.5)),
-                arrowBase
-                    .clone()
-                    .add(direction.clone().multiplyScalar(-arrowSize))
-                    .add(perpendicular.clone().multiplyScalar(-arrowSize * 0.5)),
-                new THREE.Vector3(toX, toY, toZ)
-            ];
+            // Step 20.5d.2) Calculate arrow vertices
+            const tip = new THREE.Vector3(toX, toY, toZ);
+            const left = arrowBase
+                .clone()
+                .add(direction.clone().multiplyScalar(-arrowSize))
+                .add(perpendicular.clone().multiplyScalar(arrowSize * 0.5));
+            const right = arrowBase
+                .clone()
+                .add(direction.clone().multiplyScalar(-arrowSize))
+                .add(perpendicular.clone().multiplyScalar(-arrowSize * 0.5));
 
-            const arrowGeometry = new THREE.BufferGeometry().setFromPoints(arrowPoints);
-            const arrowMaterial = new THREE.MeshBasicMaterial({ color: threeColor });
+            // Step 20.5d.3) Create filled arrow using THREE.Shape (fixes missing arrows)
+            const arrowShape = new THREE.Shape();
+            arrowShape.moveTo(tip.x, tip.y);
+            arrowShape.lineTo(left.x, left.y);
+            arrowShape.lineTo(right.x, right.y);
+            arrowShape.lineTo(tip.x, tip.y);
+
+            const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
+            const arrowMaterial = new THREE.MeshBasicMaterial({ color: threeColor, side: THREE.DoubleSide });
             const arrowMesh = new THREE.Mesh(arrowGeometry, arrowMaterial);
+            arrowMesh.position.z = toZ;
             group.add(arrowMesh);
         } else {
             // Step 20.5e) Handle curved connector
@@ -1025,22 +1031,28 @@ export class GeometryFactory {
             const perpendicular = new THREE.Vector3(-direction.y, direction.x, 0);
             const arrowBase = new THREE.Vector3(toX, toY, toZ);
 
-            const arrowPoints = [
-                new THREE.Vector3(toX, toY, toZ),
-                arrowBase
-                    .clone()
-                    .add(direction.clone().multiplyScalar(-arrowSize))
-                    .add(perpendicular.clone().multiplyScalar(arrowSize * 0.5)),
-                arrowBase
-                    .clone()
-                    .add(direction.clone().multiplyScalar(-arrowSize))
-                    .add(perpendicular.clone().multiplyScalar(-arrowSize * 0.5)),
-                new THREE.Vector3(toX, toY, toZ)
-            ];
+            // Step 20.5h.1) Calculate arrow vertices
+            const tip = new THREE.Vector3(toX, toY, toZ);
+            const left = arrowBase
+                .clone()
+                .add(direction.clone().multiplyScalar(-arrowSize))
+                .add(perpendicular.clone().multiplyScalar(arrowSize * 0.5));
+            const right = arrowBase
+                .clone()
+                .add(direction.clone().multiplyScalar(-arrowSize))
+                .add(perpendicular.clone().multiplyScalar(-arrowSize * 0.5));
 
-            const arrowGeometry = new THREE.BufferGeometry().setFromPoints(arrowPoints);
-            const arrowMaterial = new THREE.MeshBasicMaterial({ color: threeColor });
+            // Step 20.5h.2) Create filled arrow using THREE.Shape (fixes missing arrows)
+            const arrowShape = new THREE.Shape();
+            arrowShape.moveTo(tip.x, tip.y);
+            arrowShape.lineTo(left.x, left.y);
+            arrowShape.lineTo(right.x, right.y);
+            arrowShape.lineTo(tip.x, tip.y);
+
+            const arrowGeometry = new THREE.ShapeGeometry(arrowShape);
+            const arrowMaterial = new THREE.MeshBasicMaterial({ color: threeColor, side: THREE.DoubleSide });
             const arrowMesh = new THREE.Mesh(arrowGeometry, arrowMaterial);
+            arrowMesh.position.z = toZ;
             group.add(arrowMesh);
         }
 
@@ -1099,17 +1111,17 @@ export class GeometryFactory {
         group.add(strokeTorusMesh);
 
         // Step 20.6d) Create transparent tube geometry connecting collar to toe (visible when orbiting)
-        if (collarX !== undefined && collarY !== undefined && collarZ !== undefined && 
+        if (collarX !== undefined && collarY !== undefined && collarZ !== undefined &&
             toeX !== undefined && toeY !== undefined && toeZ !== undefined) {
             // Step 20.6d.1) Create straight line curve from collar to toe using LineCurve3
             const collarPoint = new THREE.Vector3(collarX, collarY, collarZ);
             const toePoint = new THREE.Vector3(toeX, toeY, toeZ);
             const curve = new THREE.LineCurve3(collarPoint, toePoint);
-            
+
             // Step 20.6d.2) Create tube geometry with transparent torus radius
             // segments = 1, radialSegments = 8, radius = transparent torus radius (tubeRadius)
             const tubeGeometry = new THREE.TubeGeometry(curve, 1, tubeRadius, 8, false);
-            
+
             // Step 20.6d.3) Create transparent material matching fill color
             const tubeMaterial = new THREE.MeshBasicMaterial({
                 color: new THREE.Color(fillColorObj.r, fillColorObj.g, fillColorObj.b),
@@ -1118,7 +1130,7 @@ export class GeometryFactory {
                 side: THREE.DoubleSide,
                 wireframe: false // No wireframe
             });
-            
+
             // Step 20.6d.4) Create mesh and add to group
             const tubeMesh = new THREE.Mesh(tubeGeometry, tubeMaterial);
             group.add(tubeMesh);
@@ -1181,11 +1193,11 @@ export class GeometryFactory {
         const point1 = new THREE.Vector3(x1, y1, z1);
         const point2 = new THREE.Vector3(x2, y2, z2);
         const curve = new THREE.LineCurve3(point1, point2);
-        
+
         // Step 20.8d) Create tube geometry
         // segments = 1 (minimal segments for straight line), radialSegments = 8, radius = scaled radius
         const tubeGeometry = new THREE.TubeGeometry(curve, 1, radius, 8, false);
-        
+
         // Step 20.8e) Create material with color
         const material = new THREE.MeshBasicMaterial({
             color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
@@ -1423,10 +1435,10 @@ export class GeometryFactory {
         const tubeRadius = size * 0.1;
         const torusGeometry = new THREE.TorusGeometry(torusRadius, tubeRadius, 8, 16);
         const torusMesh = new THREE.Mesh(torusGeometry, material);
-        
+
         // Step 20.9d) Position and rotation
         torusMesh.position.set(x, y, z);
-        
+
         if (billboard) {
             // Step 20.9d.1) Billboard mode: rotate to face camera
             // Start flat (lying in XY plane) then will be rotated by camera quaternion
@@ -1436,7 +1448,7 @@ export class GeometryFactory {
             // Step 20.9d.2) Static mode: flat on XY plane (Z-up)
             // Already in correct orientation by default
         }
-        
+
         group.add(torusMesh);
 
         return group;
