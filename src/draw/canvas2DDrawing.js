@@ -16,7 +16,17 @@
 //=================================================
 
 export function clearCanvas() {
+	// Step 1) Reset transform state to identity matrix
+	// This prevents 3D rotation state from affecting 2D rendering
+	// Fixes quirk where surfaces render above KAD and Holes after 3D rotation
+	window.ctx.setTransform(1, 0, 0, 1, 0, 0);
+	
+	// Step 2) Clear the canvas
 	window.ctx.clearRect(0, 0, window.canvas.width, window.canvas.height);
+	
+	// Step 3) Reset other context state that may have been modified
+	window.ctx.globalAlpha = 1.0;
+	window.ctx.globalCompositeOperation = "source-over";
 }
 
 //=================================================

@@ -566,6 +566,14 @@ function initializeThreeJS() {
         };
         cameraControls.updateSettings(cameraSettings);
 
+        // Step 6a.1) START ANIMATION LOOP IMMEDIATELY for smooth 3D rendering
+        // This ensures the scene renders continuously even without user interaction
+        // Fixes QUIRK 1: Jerkiness on startup until user drags 2D then returns to 3D
+        if (cameraControls.animationFrameId === null) {
+            cameraControls.animationFrameId = requestAnimationFrame(cameraControls.animate);
+            console.log("✅ Started CameraControls animation loop for smooth 3D rendering");
+        }
+
         // Step 6b) Set gizmo display mode
         if (settings.gizmoDisplay !== undefined) {
             cameraControls.setGizmoDisplayMode(settings.gizmoDisplay);
@@ -873,6 +881,14 @@ function handle3DClick(event) {
     // Step 12h.5) Check radio button selection mode (Holes vs KAD) - matching 2D behavior
     const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
     const selectingKAD = selectKADRadio && selectKADRadio.checked;
+
+    // Step 12h.5a) Only allow selection if SelectPointer tool is active OR a connector tool is active
+    // Fixes QUIRK 2: Prevent selection when no tool is active
+    const isConnectorToolActive = isAddingConnector || isAddingMultiConnector;
+    if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled) {
+        console.log("⏭️ [3D CLICK] Select Pointer tool not active - skipping selection");
+        return;
+    }
 
     const clickedHole = selectingHoles ? interactionManager.findClickedHole(intersects, allBlastHoles || []) : null;
 
@@ -2027,6 +2043,14 @@ document.addEventListener("DOMContentLoaded", function () {
                     canvas.style.opacity = "1"; // Show 2D canvas
                     canvas.style.pointerEvents = "auto"; // Receive events
                 }
+
+                // Step 1db) Reset 2D canvas transform state to prevent 3D rotation artifacts
+                // This fixes the quirk where surfaces render above KAD and Holes after 3D rotation
+                if (ctx) {
+                    ctx.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
+                    console.log("🔄 Reset 2D canvas transform state on switch to 2D mode");
+                }
+
                 // Swap icon to 2D badge
                 if (iconImg) {
                     iconImg.src = "icons/badge-2d-v2.png";
@@ -2038,8 +2062,9 @@ document.addEventListener("DOMContentLoaded", function () {
             drawData(allBlastHoles);
         });
 
-        // Step 12) Set initial state (3D visible by default)
-        dimension2D3DBtn.checked = true;
+        // Step 12) Set initial state (2D visible by default for faster startup and smoother UX)
+        // Starting in 2D mode avoids choppy 3D navigation on initial load
+        dimension2D3DBtn.checked = false;
         dimension2D3DBtn.dispatchEvent(new Event("change"));
     }
 
@@ -2237,10 +2262,17 @@ let isDrawingLine = false;
 let isDrawingCircle = false;
 let isDrawingPoly = false;
 let isDrawingText = false;
-let isAddKADPointsToolActive = false;
+
+let selectedKADObject = null;
+let selectedKADPolygon = null;
+let selectedKADPoint = null;
+let selectedKADLine = null;
+let selectedKADCircle = null;
+let selectedKADText = null;
+
 let isAddKADLineToolActive = false;
 let isAddKADPolygonToolActive = false;
-let isAddKADPointToolActive = false;
+let isAddKADPointsToolActive = false;
 let isAddKADCircleToolActive = false;
 let isAddKADTextToolActive = false;
 let isTriangulateToolActive = false;
@@ -2284,6 +2316,7 @@ let toeSizeInMeters = 1;
 let connScale = 1;
 let isPlaying = false; // To track whether the animation is playing
 let animationInterval; // To store the interval ID for the animation
+let animationFrameId = null; // To store the requestAnimationFrame ID for smooth animation
 let playSpeed = 1; // Default play speed
 //COLOURS
 let noneColor = "rgba(0, 0, 0, 0)";
@@ -19802,7 +19835,22 @@ function calculateHoleGeometry(clickedHole, newValue, modeLAB) {
     // No need to reassign allBlastHoles[index] since we're working on the original object
 }
 
+let isUpdatingTimeChart = false;
+let timeChartUpdateTimer = null;
+
 function timeChart() {
+    if (isUpdatingTimeChart) {
+        console.log("⚠️ Preventing recursive timechart call");
+        return;
+    }
+
+    isUpdatingTimeChart = true;
+
+    // Step 1) Clear any pending timer
+    if (timeChartUpdateTimer) {
+        clearTimeout(timeChartUpdateTimer);
+    }
+
     const chart = document.getElementById("timeChart");
     // If no holeTimes data, create a blank chart instead of returning
     if (!Array.isArray(holeTimes) || holeTimes.length === 0) {
@@ -19876,9 +19924,14 @@ function timeChart() {
         Plotly.react("timeChart", [], layout, {
             responsive: true,
             displayModeBar: true,
-            modeBarButtonsToRemove: ["lasso2d", "hoverClosestCartesian", "hoverCompareCartesian", "toggleSpikelines"],
-            modeBarButtons: [["select2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "toImage", "pan2d"]]
+            modeBarButtonsToRemove: ["lasso2d", "select2d", "hoverClosestCartesian", "hoverCompareCartesian", "toggleSpikelines"],
+            modeBarButtons: [["zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "toImage", "pan2d"]]
         });
+
+        // Reset flag for blank chart
+        timeChartUpdateTimer = setTimeout(() => {
+            isUpdatingTimeChart = false;
+        }, 300);
 
         return; // Exit early after creating blank chart
     }
@@ -19950,14 +20003,22 @@ function timeChart() {
         return totalMass ? text + "<br>Mass: " + totalMass : text;
     });
 
-    const defaultColor = Array(numBins).fill("red");
-
     const currentLayout = chart?._fullLayout;
     const newYLabel = useMass && !fallbackToCount ? "Total Measured Mass (kg)" : "Holes Firing";
     const currentYLabel = currentLayout?.yaxis?.title?.text;
     const preserveYRange = currentYLabel === newYLabel;
 
     const maxYValue = Math.max(...yValues) + 1;
+
+    // Step 1) Extract numeric range values to avoid circular references
+    let yAxisRange = [0, maxYValue - 0.5];
+    if (preserveYRange && currentLayout && currentLayout.yaxis && currentLayout.yaxis.range) {
+        const r0 = Number(currentLayout.yaxis.range[0]);
+        const r1 = Number(currentLayout.yaxis.range[1]);
+        if (!isNaN(r0) && !isNaN(r1) && isFinite(r0) && isFinite(r1)) {
+            yAxisRange = [r0, r1];
+        }
+    }
 
     const layout = {
         title: {
@@ -20010,11 +20071,17 @@ function timeChart() {
             },
             showgrid: true,
             automargin: true,
-            range: preserveYRange && currentLayout ? [...currentLayout.yaxis.range] : [0, maxYValue - 0.5]
+            range: yAxisRange
         },
         height: 380,
         width: chart.offsetWidth - 50 // ✅ dynamic width based on container,
     };
+
+    // Step 1) Create fresh color array for initial chart - NEVER pass defaultColor directly
+    const initialColors = [];
+    for (let i = 0; i < numBins; i++) {
+        initialColors.push("red");
+    }
 
     const data = [
         {
@@ -20023,10 +20090,10 @@ function timeChart() {
             type: "bar",
             width: timeRange, // 🔧 match bin width
             marker: {
-                color: defaultColor
+                color: initialColors // Use fresh array, not defaultColor
             },
-            text: hoverText,
-            textposition: "none", // ✅ disables labels drawn on bars
+            // text: hoverText,
+            // textposition: "none", // ✅ disables labels drawn on bars
             //hoverinfo: "text+y",
             hovertemplate: "Bin: %{x} ms<br>" + (useMass && !fallbackToCount ? "Mass" : "Value") + ": %{y}<extra></extra>"
         }
@@ -20035,71 +20102,110 @@ function timeChart() {
     Plotly.react("timeChart", data, layout, {
         responsive: true,
         displayModeBar: true,
-        modeBarButtonsToRemove: ["lasso2d", "hoverClosestCartesian", "hoverCompareCartesian", "toggleSpikelines"],
-        modeBarButtons: [["select2d", "zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "toImage", "pan2d"]]
+        modeBarButtonsToRemove: ["lasso2d", "select2d", "hoverClosestCartesian", "hoverCompareCartesian", "toggleSpikelines"],
+        modeBarButtons: [["zoomIn2d", "zoomOut2d", "autoScale2d", "resetScale2d", "toImage", "pan2d"]]
     });
 
     // ✅ Clear previously registered listeners
-    chart.removeAllListeners?.("plotly_selected");
     chart.removeAllListeners?.("plotly_click");
     chart.removeAllListeners?.("plotly_deselect");
 
     let lastClickedIndex = null;
+    let eventThrottleTimer = null;
 
-    chart.on("plotly_selected", function (eventData) {
-        const selectedHoles = eventData?.points?.map((p) => p.pointNumber) || [];
-        const newColors = defaultColor.map((color, index) => (selectedHoles.includes(index) ? "lime" : color));
-        Plotly.restyle("timeChart", {
-            "marker.color": [newColors]
-        });
+    // Step 1) Helper to create fresh color array (NEVER reuse arrays - Plotly contaminates them)
+    function createFreshColorArray(binCount, selectedIndex = -1) {
+        const colors = [];
+        for (let i = 0; i < binCount; i++) {
+            if (i === selectedIndex) {
+                colors.push("lime");
+            } else {
+                colors.push("red");
+            }
+        }
+        return colors;
+    }
 
-        timingWindowHolesSelected = selectedHoles
-            .flatMap((index) => {
-                return holeIDs[index]
-                    ? holeIDs[index].map((combinedID) => {
+    // Step 2) Throttled handler for single bar selection
+    function handleSelection(selectedIndex) {
+        // Clear any pending throttle
+        if (eventThrottleTimer) {
+            clearTimeout(eventThrottleTimer);
+        }
+
+        // Throttle rapid events
+        eventThrottleTimer = setTimeout(() => {
+            // Update selected holes array for single bin
+            timingWindowHolesSelected = holeIDs[selectedIndex]
+                ? holeIDs[selectedIndex]
+                      .map((combinedID) => {
                           const [entityName, holeID] = combinedID.split(":");
                           return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
                       })
-                    : [];
-            })
-            .filter(Boolean);
+                      .filter(Boolean)
+                : [];
 
-        drawData(allBlastHoles, selectedHole);
-    });
+            // Redraw canvas WITHOUT calling timeChart
+            const wasUpdating = isUpdatingTimeChart;
+            isUpdatingTimeChart = true;
+            drawData(allBlastHoles, selectedHole);
+            isUpdatingTimeChart = wasUpdating;
+        }, 100); // 100ms throttle to batch rapid events
+    }
 
     chart.on("plotly_click", function (data) {
+        if (isUpdatingTimeChart) return; // Skip if already updating
+
         const clickedIndex = data.points?.[0]?.pointIndex;
         if (clickedIndex == null) return;
 
-        const currentColors = data.points[0].data.marker.color.slice();
-        if (lastClickedIndex !== null) currentColors[lastClickedIndex] = "red";
-        currentColors[clickedIndex] = "lime";
+        // Create FRESH color array - never reuse
+        const currentColors = createFreshColorArray(numBins, clickedIndex);
 
-        Plotly.restyle("timeChart", {
-            "marker.color": [currentColors]
-        });
+        try {
+            Plotly.restyle("timeChart", {
+                "marker.color": [currentColors]
+            });
+        } catch (e) {
+            console.warn("⚠️ Plotly.restyle error:", e);
+            return;
+        }
+
         lastClickedIndex = clickedIndex;
 
-        timingWindowHolesSelected = holeIDs[clickedIndex]
-            ? holeIDs[clickedIndex]
-                  .map((combinedID) => {
-                      const [entityName, holeID] = combinedID.split(":");
-                      return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                  })
-                  .filter(Boolean)
-            : [];
-
-        drawData(allBlastHoles, selectedHole);
+        // Handle selection with throttling
+        handleSelection(clickedIndex);
     });
 
     chart.on("plotly_deselect", function () {
-        Plotly.restyle("timeChart", {
-            "marker.color": [defaultColor]
-        });
+        if (isUpdatingTimeChart) return; // Skip if already updating
+
+        // Create FRESH color array - all red (no selection)
+        const resetColors = createFreshColorArray(numBins, -1);
+
+        try {
+            Plotly.restyle("timeChart", {
+                "marker.color": [resetColors]
+            });
+        } catch (e) {
+            console.warn("⚠️ Plotly.restyle error:", e);
+            return;
+        }
+
         timingWindowHolesSelected = [];
         lastClickedIndex = null;
+
+        // Redraw immediately without throttle for deselect
+        const wasUpdating = isUpdatingTimeChart;
+        isUpdatingTimeChart = true;
         drawData(allBlastHoles, selectedHole);
+        isUpdatingTimeChart = wasUpdating;
     });
+
+    // Step 2) Reset flag after Plotly has finished processing
+    timeChartUpdateTimer = setTimeout(() => {
+        isUpdatingTimeChart = false;
+    }, 300);
 }
 
 // Log Helper Functions for the play slider
@@ -20151,40 +20257,37 @@ function addPlaySpeedMarkers() {
 const playButton = document.getElementById("play");
 
 playButton.addEventListener("click", () => {
-    //refreshPoints();
-    updatePlaySpeed(); // Update play speed
-    /* const maxTime = Math.max(...holeTimes.map((time) => time[1])); // Get the max time */
-    // Safer maxTime calculation
+    // Step 1) Update play speed
+    updatePlaySpeed();
+
+    // Step 2) Calculate max time safely
     let maxTime = 0;
     if (holeTimes && holeTimes.length > 0) {
         const times = holeTimes.map((time) => time[1]).filter((t) => !isNaN(t) && isFinite(t));
         maxTime = times.length > 0 ? Math.max(...times) : 0;
     }
-    console.log("5. Calculated maxTime:", maxTime);
-    console.log("6. After maxTime calc, slider value:", playSpeedInput.value);
+    console.log("Calculated maxTime:", maxTime);
 
+    // Step 3) Set animation state
     isPlaying = true;
-    console.log("7. After setting isPlaying, slider value:", playSpeedInput.value);
 
-    clearInterval(animationInterval);
-    console.log("8. After clearInterval, slider value:", playSpeedInput.value);
+    // Step 4) Clear any existing animation
+    if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+    }
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+    }
 
-    updatePlaySpeed();
-    console.log("9. After updatePlaySpeed, slider value:", playSpeedInput.value);
-
-    isPlaying = true;
-    // Clear previous animation interval before starting a new one
-    clearInterval(animationInterval);
-
+    // Step 5) Initialize animation variables
     let currentTime = 0;
-    let lastFrameTime = performance.now(); // Track real-world time
-    const frameRate = 60; // 60 FPS
-    const frameInterval = 1000 / frameRate; // ~16.67ms per frame
+    let lastFrameTime = performance.now();
 
-    /* play.textContent = "Playing at " + parseFloat(playSpeed).toFixed(3) + "x speed"; */
+    // Step 6) Define the animation loop using requestAnimationFrame
+    function animationLoop() {
+        if (!isPlaying) return; // Exit if stopped
 
-    // Start the animation loop at 60fps
-    animationInterval = setInterval(() => {
         const now = performance.now();
         const realTimeElapsed = now - lastFrameTime; // Real milliseconds elapsed
         const blastTimeToAdvance = realTimeElapsed * playSpeed; // Scale by playSpeed
@@ -20192,24 +20295,43 @@ playButton.addEventListener("click", () => {
         currentTime += blastTimeToAdvance;
         lastFrameTime = now;
 
+        // Step 7) Update and render if within time bounds
         if (currentTime <= maxTime + playSpeed * 100) {
-            // Give some buffer at the end
             timingWindowHolesSelected = allBlastHoles.filter((hole) => hole.holeTime <= currentTime);
             drawData(allBlastHoles, timingWindowHolesSelected);
+
+            // Step 8) Request next frame
+            animationFrameId = requestAnimationFrame(animationLoop);
         } else {
+            // Step 9) Animation complete
             stopButton.click();
-            clearInterval(animationInterval);
         }
-    }, frameInterval); // Run at consistent 60fps
+    }
+
+    // Step 10) Start the animation loop
+    animationFrameId = requestAnimationFrame(animationLoop);
 });
 
 // Add click event listener to the "Stop" button
 const stopButton = document.getElementById("stop");
 stopButton.addEventListener("click", () => {
-    clearInterval(animationInterval); // Stop the ongoing animation
+    // Step 1) Stop animation state
     isPlaying = false;
-    timingWindowHolesSelected = []; // Reset the selected holes array
-    //drawData(points, timingWindowHolesSelected); // Call drawPoints to reset the highlights
+
+    // Step 2) Clear interval-based animation if exists
+    if (animationInterval) {
+        clearInterval(animationInterval);
+        animationInterval = null;
+    }
+
+    // Step 3) Cancel requestAnimationFrame-based animation if exists
+    if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+        animationFrameId = null;
+    }
+
+    // Step 4) Reset the selected holes array
+    timingWindowHolesSelected = [];
 });
 
 // Add input event listener to the playSpeed input range
@@ -24921,6 +25043,15 @@ selectPointerTool.addEventListener("change", function () {
         isPolygonSelectionActive = false;
         isMultiHoleSelectionEnabled = false;
         //selectedKADPolygon = null;
+
+        // Step X) Disable 3D polygon selection if active
+        // Fixes QUIRK 3: SelectPointer and SelectPolygon should turn each other off
+        if (onlyShowThreeJS && window.polygonSelection3D) {
+            window.polygonSelection3D.disable();
+            selectByPolygonTool.checked = false;
+            console.log("✅ Disabled 3D polygon selection (SelectPointer activated)");
+        }
+
         // Uncheck the other buttons
         resetFloatingToolbarButtons("selectPointerTool");
         clearAllSelectionState();
@@ -26201,15 +26332,23 @@ selectByPolygonTool.addEventListener("change", function () {
         if (onlyShowThreeJS) {
             console.log("✅ Enabling 3D polygon selection mode");
 
-            // Step 1a) Initialize 3D polygon selection if needed
+            // Step 1a.1) Reset other tool buttons (mutual exclusion)
+            // Fixes QUIRK 3: SelectPointer and SelectPolygon should turn each other off
+            resetFloatingToolbarButtons("selectByPolygonTool");
+
+            // Step 1a.2) Explicitly disable Select Pointer tool
+            isSelectionPointerActive = false;
+            selectPointerTool.checked = false;
+
+            // Step 1b) Initialize 3D polygon selection if needed
             if (!window.polygonSelection3D) {
                 window.polygonSelection3D = new PolygonSelection3D(threeRenderer);
             }
 
-            // Step 1b) Enable 3D polygon selection
+            // Step 1c) Enable 3D polygon selection
             window.polygonSelection3D.enable();
 
-            // Step 1c) Update status message
+            // Step 1d) Update status message
             updateStatusMessage("3D Polygon selection mode enabled\nClick to add vertices.\nDouble-click to complete selection.");
 
             return;
@@ -29831,8 +29970,6 @@ let patternStartPoint = null;
 let patternEndPoint = null;
 let patternReferencePoint = null;
 // KAD Polygon selection for editing
-let selectedKADPolygon = null; // Keep selectedKADPolygon for backward compatibility
-let selectedKADObject = null; // For all KAD objects (points, lines, circles, text)
 
 // Holes Along Line Tool state
 let holesLineStep = 0; // 0=select start point, 1=select end point
