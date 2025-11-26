@@ -7593,157 +7593,127 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
                 var url = URL.createObjectURL(textureBlobs[texName]);
                 textureURLs[texName] = url;
                 blobURLs.push(url);
-                console.log("📸 Created texture URL for: " + texName + " -> " + url);
             });
 
-            // Step 4) Extract texture references from MTL content
-            var textureRefs = extractTextureRefsFromMTL(mtlContent);
-            console.log("📄 MTL texture references:", textureRefs);
+            // Step 4) Parse MTL content and create materials
+            var mtlLoader = new MTLLoader();
 
-            // Step 5) Parse OBJ content first (without materials)
+            // Step 5) Set texture path resolver
+            mtlLoader.setResourcePath("");
+
+            // Step 6) Custom texture loader that uses our blob URLs
+            var textureLoader = new THREE.TextureLoader();
+
+            // Step 7) Parse MTL content
+            var materials = mtlLoader.parse(mtlContent);
+
+            // Step 8) Load textures for each material
+            var materialNames = Object.keys(materials.materials);
+            materialNames.forEach(function (matName) {
+                var mat = materials.materials[matName];
+
+                // Check if material has a map (texture) defined
+                if (mat.map && mat.map.sourceFile) {
+                    var texFileName = mat.map.sourceFile;
+                    // Try to find matching texture blob
+                    var matchingKey = Object.keys(textureURLs).find(function (key) {
+                        return key.toLowerCase() === texFileName.toLowerCase() || key.toLowerCase().includes(texFileName.toLowerCase());
+                    });
+
+                    if (matchingKey) {
+                        mat.map = textureLoader.load(textureURLs[matchingKey]);
+                        mat.map.wrapS = THREE.RepeatWrapping;
+                        mat.map.wrapT = THREE.RepeatWrapping;
+                    }
+                }
+            });
+
+            materials.preload();
+
+            // Step 9) Parse OBJ content with materials
             var objLoader = new OBJLoader();
+            objLoader.setMaterials(materials);
+
             var object3D = objLoader.parse(objContent);
             object3D.name = fileName;
 
-            // Step 6) Load textures and apply to meshes
-            var textureLoader = new THREE.TextureLoader();
-            var loadedTextures = {};
-            var textureLoadPromises = [];
-
-            // Step 7) Load each texture file
-            Object.keys(textureURLs).forEach(function (texName) {
-                var promise = new Promise(function (texResolve) {
-                    textureLoader.load(
-                        textureURLs[texName],
-                        function (texture) {
-                            texture.wrapS = THREE.RepeatWrapping;
-                            texture.wrapT = THREE.RepeatWrapping;
-                            texture.flipY = true; // OBJ typically needs Y flipped
-                            loadedTextures[texName] = texture;
-                            console.log("✅ Texture loaded: " + texName);
-                            texResolve();
-                        },
-                        undefined,
-                        function (err) {
-                            console.warn("⚠️ Failed to load texture: " + texName, err);
-                            texResolve();
-                        }
-                    );
-                });
-                textureLoadPromises.push(promise);
-            });
-
-            // Step 8) Wait for all textures to load
-            Promise.all(textureLoadPromises).then(function () {
-                console.log("📦 All textures loaded, applying to mesh...");
-
-                // Step 9) Find the first loaded texture to use
-                var primaryTexture = null;
-                var textureKeys = Object.keys(loadedTextures);
-                if (textureKeys.length > 0) {
-                    primaryTexture = loadedTextures[textureKeys[0]];
+            // Step 10) Apply world coordinate transformation
+            // Kirra uses Y-up North/South, X East/West coordinate system
+            object3D.traverse(function (child) {
+                if (child.isMesh) {
+                    child.material.side = THREE.DoubleSide;
                 }
+            });
 
-                // Step 10) Apply texture to all meshes in the object
-                object3D.traverse(function (child) {
-                    if (child.isMesh) {
-                        // Create new material with texture
-                        if (primaryTexture) {
-                            child.material = new THREE.MeshStandardMaterial({
-                                map: primaryTexture,
-                                side: THREE.DoubleSide,
-                                roughness: 0.8,
-                                metalness: 0.1
-                            });
-                            console.log("🎨 Applied texture to mesh: " + child.name);
-                        } else {
-                            // No texture, use default material
-                            child.material.side = THREE.DoubleSide;
-                        }
-                    }
+            // Step 11) Calculate mesh bounds for georeferencing
+            var bounds = new THREE.Box3().setFromObject(object3D);
+            var meshBounds = {
+                minX: bounds.min.x,
+                maxX: bounds.max.x,
+                minY: bounds.min.y,
+                maxY: bounds.max.y,
+                minZ: bounds.min.z,
+                maxZ: bounds.max.z
+            };
+
+            // Step 12) Create surface ID
+            var surfaceId = fileName;
+
+            // Step 13) Store in loadedSurfaces with all necessary data
+            loadedSurfaces.set(surfaceId, {
+                // Standard surface fields for Data Explorer
+                id: surfaceId,
+                name: fileName,
+                points: objData.points,
+                triangles: objData.triangles,
+                visible: true,
+                gradient: "default",
+                transparency: 1.0,
+
+                // Textured mesh specific fields
+                isTexturedMesh: true,
+                threeJSMesh: object3D,
+                meshBounds: meshBounds,
+
+                // Raw data for IndexedDB persistence
+                objContent: objContent,
+                mtlContent: mtlContent,
+                textureBlobs: textureBlobs
+            });
+
+            console.log("✅ Textured OBJ loaded: " + fileName + " (" + objData.points.length + " points, " + objData.triangles.length + " triangles)");
+
+            // Step 14) Create flattened 2D image for canvas rendering
+            flattenTexturedMeshToImage(surfaceId, object3D, meshBounds, fileName);
+
+            // Step 15) Save to database
+            saveSurfaceToDB(surfaceId)
+                .then(function () {
+                    console.log("💾 Textured surface saved to database: " + surfaceId);
+                })
+                .catch(function (err) {
+                    console.error("❌ Failed to save textured surface:", err);
                 });
 
-                // Continue with the rest of the loading process
-                finishTexturedMeshLoading(object3D, fileName, objData, textureBlobs, blobURLs, resolve, reject);
-            });
+            // Step 16) Update UI
+            updateCentroids();
+            drawData(allBlastHoles, selectedHole);
+            debouncedUpdateTreeView();
+            updateStatusMessage("Loaded textured surface: " + fileName);
+
+            // Step 17) Cleanup blob URLs after a delay (textures need time to load)
+            setTimeout(function () {
+                blobURLs.forEach(function (url) {
+                    URL.revokeObjectURL(url);
+                });
+            }, 5000);
+
+            resolve(object3D);
         } catch (error) {
             console.error("❌ Error in loadOBJWithTextureThreeJS:", error);
             reject(error);
         }
     });
-}
-
-// Step 11) Complete the textured mesh loading after textures are ready
-function finishTexturedMeshLoading(object3D, fileName, objData, textureBlobs, blobURLs, resolve, reject) {
-    try {
-        // Step 12) Calculate mesh bounds for georeferencing
-        var bounds = new THREE.Box3().setFromObject(object3D);
-        var meshBounds = {
-            minX: bounds.min.x,
-            maxX: bounds.max.x,
-            minY: bounds.min.y,
-            maxY: bounds.max.y,
-            minZ: bounds.min.z,
-            maxZ: bounds.max.z
-        };
-
-        // Step 13) Create surface ID
-        var surfaceId = fileName;
-
-        // Step 14) Store in loadedSurfaces with all necessary data
-        loadedSurfaces.set(surfaceId, {
-            // Standard surface fields for Data Explorer
-            id: surfaceId,
-            name: fileName,
-            points: objData.points,
-            triangles: objData.triangles,
-            visible: true,
-            gradient: "default",
-            transparency: 1.0,
-
-            // Textured mesh specific fields
-            isTexturedMesh: true,
-            threeJSMesh: object3D,
-            meshBounds: meshBounds,
-
-            // Raw data for IndexedDB persistence
-            objContent: objData.objContent,
-            mtlContent: objData.mtlContent,
-            textureBlobs: textureBlobs
-        });
-
-        console.log("✅ Textured OBJ loaded: " + fileName + " (" + objData.points.length + " points, " + objData.triangles.length + " triangles)");
-
-        // Step 15) Create flattened 2D image for canvas rendering
-        flattenTexturedMeshToImage(surfaceId, object3D, meshBounds, fileName);
-
-        // Step 16) Save to database
-        saveSurfaceToDB(surfaceId)
-            .then(function () {
-                console.log("💾 Textured surface saved to database: " + surfaceId);
-            })
-            .catch(function (err) {
-                console.error("❌ Failed to save textured surface:", err);
-            });
-
-        // Step 17) Update UI
-        updateCentroids();
-        drawData(allBlastHoles, selectedHole);
-        debouncedUpdateTreeView();
-        updateStatusMessage("Loaded textured surface: " + fileName);
-
-        // Step 18) Cleanup blob URLs after a delay (textures need time to fully load into GPU)
-        setTimeout(function () {
-            blobURLs.forEach(function (url) {
-                URL.revokeObjectURL(url);
-            });
-        }, 10000);
-
-        resolve(object3D);
-    } catch (error) {
-        console.error("❌ Error in finishTexturedMeshLoading:", error);
-        reject(error);
-    }
 }
 
 // Step 1) Rebuild textured mesh from stored data (called on app reload)
@@ -7771,91 +7741,71 @@ function rebuildTexturedMesh(surfaceId) {
                     var url = URL.createObjectURL(blob);
                     textureURLs[texName] = url;
                     blobURLs.push(url);
-                    console.log("📸 Created texture URL for rebuild: " + texName);
                 }
             });
         }
 
-        // Step 3) Parse OBJ first
-        var objLoader = new OBJLoader();
-        var object3D = objLoader.parse(surface.objContent);
-        object3D.name = surface.name;
+        // Step 3) Parse MTL and create materials
+        var materials = null;
+        if (surface.mtlContent) {
+            var mtlLoader = new MTLLoader();
+            materials = mtlLoader.parse(surface.mtlContent);
 
-        // Step 4) Load textures asynchronously
-        var textureLoader = new THREE.TextureLoader();
-        var loadedTextures = {};
-        var textureLoadPromises = [];
+            // Step 4) Load textures for materials
+            var textureLoader = new THREE.TextureLoader();
+            var materialNames = Object.keys(materials.materials);
 
-        Object.keys(textureURLs).forEach(function (texName) {
-            var promise = new Promise(function (texResolve) {
-                textureLoader.load(
-                    textureURLs[texName],
-                    function (texture) {
-                        texture.wrapS = THREE.RepeatWrapping;
-                        texture.wrapT = THREE.RepeatWrapping;
-                        texture.flipY = true;
-                        loadedTextures[texName] = texture;
-                        console.log("✅ Texture loaded for rebuild: " + texName);
-                        texResolve();
-                    },
-                    undefined,
-                    function (err) {
-                        console.warn("⚠️ Failed to load texture for rebuild: " + texName, err);
-                        texResolve();
-                    }
-                );
-            });
-            textureLoadPromises.push(promise);
-        });
+            materialNames.forEach(function (matName) {
+                var mat = materials.materials[matName];
+                if (mat.map && mat.map.sourceFile) {
+                    var texFileName = mat.map.sourceFile;
+                    var matchingKey = Object.keys(textureURLs).find(function (key) {
+                        return key.toLowerCase() === texFileName.toLowerCase() || key.toLowerCase().includes(texFileName.toLowerCase());
+                    });
 
-        // Step 5) Wait for textures then apply
-        Promise.all(textureLoadPromises).then(function () {
-            // Find the first loaded texture
-            var primaryTexture = null;
-            var textureKeys = Object.keys(loadedTextures);
-            if (textureKeys.length > 0) {
-                primaryTexture = loadedTextures[textureKeys[0]];
-            }
-
-            // Apply texture to all meshes
-            object3D.traverse(function (child) {
-                if (child.isMesh) {
-                    if (primaryTexture) {
-                        child.material = new THREE.MeshStandardMaterial({
-                            map: primaryTexture,
-                            side: THREE.DoubleSide,
-                            roughness: 0.8,
-                            metalness: 0.1
-                        });
-                    } else {
-                        child.material.side = THREE.DoubleSide;
+                    if (matchingKey) {
+                        mat.map = textureLoader.load(textureURLs[matchingKey]);
+                        mat.map.wrapS = THREE.RepeatWrapping;
+                        mat.map.wrapT = THREE.RepeatWrapping;
                     }
                 }
             });
 
-            // Store rebuilt mesh
-            surface.threeJSMesh = object3D;
-            console.log("✅ Rebuilt textured mesh: " + surfaceId);
+            materials.preload();
+        }
 
-            // Cleanup blob URLs after delay
-            setTimeout(function () {
-                blobURLs.forEach(function (url) {
-                    URL.revokeObjectURL(url);
-                });
-            }, 10000);
+        // Step 5) Parse OBJ with materials
+        var objLoader = new OBJLoader();
+        if (materials) {
+            objLoader.setMaterials(materials);
+        }
 
-            // Recreate flattened image for 2D canvas
-            if (surface.meshBounds) {
-                flattenTexturedMeshToImage(surfaceId, object3D, surface.meshBounds, surface.name);
-            }
+        var object3D = objLoader.parse(surface.objContent);
+        object3D.name = surface.name;
 
-            // Trigger redraw
-            if (typeof drawData === "function") {
-                drawData(allBlastHoles, selectedHole);
+        // Step 6) Apply double-sided materials
+        object3D.traverse(function (child) {
+            if (child.isMesh) {
+                child.material.side = THREE.DoubleSide;
             }
         });
 
-        return; // Exit here - the rest happens in the Promise callback
+        // Step 7) Store rebuilt mesh
+        surface.threeJSMesh = object3D;
+
+        console.log("✅ Rebuilt textured mesh: " + surfaceId);
+
+        // Step 8) Cleanup blob URLs after delay
+        setTimeout(function () {
+            blobURLs.forEach(function (url) {
+                URL.revokeObjectURL(url);
+            });
+        }, 5000);
+
+        // Step 9) Recreate flattened image for 2D canvas
+        if (surface.meshBounds) {
+            flattenTexturedMeshToImage(surfaceId, object3D, surface.meshBounds, surface.name);
+        }
     } catch (error) {
         console.error("❌ Error rebuilding textured mesh:", error);
     }
