@@ -2344,6 +2344,11 @@ let contourLines = [];
 let contourLinesArray = [];
 let directionArrows = [];
 let epsilon = 1;
+
+// Contour caching - only recalculate when hole positions/times change
+let cachedContourHash = null;
+let cachedContourLinesArray = [];
+let cachedDirectionArrows = [];
 let holeTimes = {};
 let deleteRenumberStart = document.getElementById("deleteRenumberStart").value;
 let firstSelectedHole = null;
@@ -5690,15 +5695,22 @@ function throttledRecalculateContours() {
     if (contourUpdatePending) return;
     contourUpdatePending = true;
 
-    requestAnimationFrame(() => {
+    requestAnimationFrame(function () {
         if (!displayContours.checked && !displayFirstMovements.checked && !displayRelief.checked) {
             contourUpdatePending = false;
             return;
         }
 
-        const result = recalculateContours(allBlastHoles, 0, 0);
-        contourLinesArray = result.contourLinesArray;
-        directionArrows = result.directionArrows;
+        // Step 2a) Use cached contours if available to avoid recalculation
+        if (cachedContourLinesArray && cachedContourLinesArray.length > 0) {
+            contourLinesArray = cachedContourLinesArray;
+            directionArrows = cachedDirectionArrows;
+        } else {
+            // Step 2b) Recalculate if cache is empty
+            var result = recalculateContours(allBlastHoles, 0, 0);
+            contourLinesArray = result.contourLinesArray;
+            directionArrows = result.directionArrows;
+        }
         updateOverlayColorsForTheme();
         contourUpdatePending = false;
     });
@@ -19797,9 +19809,115 @@ function handleHoleEditingSelection(event) {
     }
 }
 
+// Step 0) Invalidate contour cache - call this when holes are added/modified/deleted
+function invalidateContourCache() {
+    cachedContourHash = null;
+    cachedContourLinesArray = [];
+    cachedDirectionArrows = [];
+}
+
+// Step 0a) Force recalculate contours regardless of display options (for pre-caching)
+function forceRecalculateContours(blastHoles) {
+    if (!blastHoles || blastHoles.length === 0) {
+        return { contourLinesArray: [], directionArrows: [] };
+    }
+
+    try {
+        // Step 1) Calculate hole times
+        var times = calculateTimes(blastHoles);
+
+        // Step 2) Prepare contour data
+        var contourData = [];
+        for (var i = 0; i < times.length; i++) {
+            var parts = times[i][0].split(":::");
+            var entityName = parts[0];
+            var holeID = parts[1];
+            var time = times[i][1];
+
+            var hole = null;
+            for (var j = 0; j < blastHoles.length; j++) {
+                if (blastHoles[j].entityName === entityName && blastHoles[j].holeID === holeID) {
+                    hole = blastHoles[j];
+                    break;
+                }
+            }
+
+            if (hole) {
+                contourData.push({
+                    x: hole.startXLocation,
+                    y: hole.startYLocation,
+                    z: time
+                });
+            }
+        }
+
+        if (contourData.length === 0) {
+            return { contourLinesArray: [], directionArrows: [] };
+        }
+
+        // Step 3) Call delaunayContours
+        var result = delaunayContours(contourData, null, maxEdgeLength);
+
+        if (!result || !result.contourLinesArray) {
+            return { contourLinesArray: [], directionArrows: [] };
+        }
+
+        // Step 4) Cache the results
+        cachedContourHash = computeContourHash(blastHoles);
+        cachedContourLinesArray = result.contourLinesArray;
+        cachedDirectionArrows = result.directionArrows || [];
+
+        return {
+            contourLinesArray: cachedContourLinesArray,
+            directionArrows: cachedDirectionArrows
+        };
+    } catch (err) {
+        console.error("Error in forceRecalculateContours:", err);
+        return { contourLinesArray: [], directionArrows: [] };
+    }
+}
+
+// Step 1) Helper function to compute a hash of hole positions and times for caching
+function computeContourHash(holes) {
+    if (!holes || holes.length === 0) return "";
+    // Create a hash based on hole positions and times only
+    let hashStr = "";
+    for (var i = 0; i < holes.length; i++) {
+        var h = holes[i];
+        hashStr += h.startXLocation.toFixed(2) + "," + h.startYLocation.toFixed(2) + "," + (h.holeTime || 0) + ";";
+    }
+    // Simple hash function
+    var hash = 0;
+    for (var j = 0; j < hashStr.length; j++) {
+        var chr = hashStr.charCodeAt(j);
+        hash = ((hash << 5) - hash) + chr;
+        hash |= 0; // Convert to 32bit integer
+    }
+    return hash.toString();
+}
+
 function recalculateContours(allBlastHoles, deltaX, deltaY) {
-    // Only recalculate if contours or direction arrows are being displayed
+    // Step 1) Check if we have holes
+    if (!allBlastHoles || allBlastHoles.length === 0) {
+        return {
+            contourLinesArray: [],
+            directionArrows: []
+        };
+    }
+
+    // Step 2) Calculate hole times (always needed)
+    holeTimes = calculateTimes(allBlastHoles);
+    timeChart();
+
+    // Step 3) Only recalculate if contours or direction arrows are being displayed
     if (!displayContours.checked && !displayFirstMovements.checked && !displayRelief.checked) {
+        // Return cached if available, otherwise empty
+        if (cachedContourLinesArray && cachedContourLinesArray.length > 0) {
+            return {
+                contourLinesArray: cachedContourLinesArray,
+                directionArrows: cachedDirectionArrows
+            };
+        }
         return {
             contourLinesArray: [],
             directionArrows: []
@@ -19807,16 +19925,31 @@ function recalculateContours(allBlastHoles, deltaX, deltaY) {
     }
 
     try {
-        const contourData = [];
-        holeTimes = calculateTimes(allBlastHoles);
-        timeChart();
+        // Step 4) Compute hash to check if we can use cached contours
+        var currentHash = computeContourHash(allBlastHoles);
+        if (currentHash === cachedContourHash && cachedContourLinesArray && cachedContourLinesArray.length > 0) {
+            // Cache hit - return cached results
+            return {
+                contourLinesArray: cachedContourLinesArray,
+                directionArrows: cachedDirectionArrows
+            };
+        }
 
-        // Prepare contour data
-        for (let i = 0; i < holeTimes.length; i++) {
-            const [entityName, holeID] = holeTimes[i][0].split(":::");
-            const time = holeTimes[i][1];
+        // Step 5) Prepare contour data
+        var contourData = [];
+        for (var i = 0; i < holeTimes.length; i++) {
+            var parts = holeTimes[i][0].split(":::");
+            var entityName = parts[0];
+            var holeID = parts[1];
+            var time = holeTimes[i][1];
 
-            const hole = allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+            var hole = null;
+            for (var j = 0; j < allBlastHoles.length; j++) {
+                if (allBlastHoles[j].entityName === entityName && allBlastHoles[j].holeID === holeID) {
+                    hole = allBlastHoles[j];
+                    break;
+                }
+            }
 
             if (hole) {
                 contourData.push({
@@ -19831,13 +19964,10 @@ function recalculateContours(allBlastHoles, deltaX, deltaY) {
             throw new Error("No valid contour data holes found.");
         }
 
-        const maxHoleTime = Math.max(...contourData.map((hole) => hole.z));
+        // Step 6) Call delaunayContours ONCE - it calculates ALL contour levels
+        var result = delaunayContours(contourData, null, maxEdgeLength);
 
-        // Step 1) Call delaunayContours ONCE - it calculates ALL contour levels
-        // NOTE: delaunayContours() handles all levels internally, not per-level
-        const result = delaunayContours(contourData, null, maxEdgeLength);
-
-        // Step 2) Check if result is valid
+        // Step 7) Check if result is valid
         if (!result || !result.contourLinesArray) {
             console.warn("delaunayContours returned invalid result");
             return {
@@ -19846,10 +19976,15 @@ function recalculateContours(allBlastHoles, deltaX, deltaY) {
             };
         }
 
-        // Step 3) Return the complete result (already contains all contour levels)
+        // Step 8) Cache the results
+        cachedContourHash = currentHash;
+        cachedContourLinesArray = result.contourLinesArray;
+        cachedDirectionArrows = result.directionArrows || [];
+
+        // Step 9) Return the complete result (already contains all contour levels)
         return {
-            contourLinesArray: result.contourLinesArray,
-            directionArrows: result.directionArrows || []
+            contourLinesArray: cachedContourLinesArray,
+            directionArrows: cachedDirectionArrows
         };
     } catch (err) {
         console.error("Error in recalculateContours:", err);
@@ -22837,9 +22972,13 @@ function loadHolesFromDB() {
                 // Step 2a) Perform same initialization as loadHolesFromLocalStorage()
                 updateCentroids();
                 holeTimes = calculateTimes(allBlastHoles);
-                const contourResult = recalculateContours(allBlastHoles, deltaX, deltaY);
-                contourLinesArray = contourResult.contourLinesArray;
-                directionArrows = contourResult.directionArrows;
+
+                // Step 2a.1) Force pre-calculate contours regardless of display options
+                // This ensures contours are cached and ready when the user enables them
+                invalidateContourCache();
+                var forceCalcResult = forceRecalculateContours(allBlastHoles);
+                contourLinesArray = forceCalcResult.contourLinesArray;
+                directionArrows = forceCalcResult.directionArrows;
 
                 // Step 2b) Recalculate triangles
                 const { resultTriangles, reliefTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
@@ -43427,6 +43566,12 @@ function syncOverlayWithMainCanvas() {
 // Step 6) Draw contours on overlay with proper coordinate transformation
 function drawContoursOnOverlayFixed() {
     if (!contourOverlayCanvas || !useContourOverlay) return;
+
+    // Step 6.1) Don't draw 2D contour overlay when in 3D-only mode
+    if (onlyShowThreeJS) {
+        contourOverlayCtx.clearRect(0, 0, contourOverlayCanvas.width, contourOverlayCanvas.height);
+        return;
+    }
 
     contourOverlayCtx.clearRect(0, 0, contourOverlayCanvas.width, contourOverlayCanvas.height);
 
