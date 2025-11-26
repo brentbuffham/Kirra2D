@@ -592,6 +592,47 @@ export class GeometryFactory {
         return dipAngle;
     }
 
+    // Step 12.9) Helper function to calculate burden relief from triangle vertices with timing data
+    // Relief triangle format: [[x, y, holeTime], [x, y, holeTime], [x, y, holeTime]]
+    // Note: For relief triangles, the Z position contains the holeTime
+    static getBurdenRelief(triangle) {
+        // Step 12.9a) Extract timing data (time is in index 2 for relief triangles)
+        const tAX = triangle[0][0], tAY = triangle[0][1], tAZ = triangle[0][2] || 0;
+        const tBX = triangle[1][0], tBY = triangle[1][1], tBZ = triangle[1][2] || 0;
+        const tCX = triangle[2][0], tCY = triangle[2][1], tCZ = triangle[2][2] || 0;
+
+        // Step 12.9b) Find earliest and latest firing times
+        const earliestTime = Math.min(tAZ, tBZ, tCZ);
+        const latestTime = Math.max(tAZ, tBZ, tCZ);
+        const timeDifference = latestTime - earliestTime;
+
+        if (timeDifference <= 0) return 0;
+
+        // Step 12.9c) Find the earliest and latest points
+        let p1, p2;
+        if (earliestTime === tAZ) {
+            p1 = { x: tAX, y: tAY };
+        } else if (earliestTime === tBZ) {
+            p1 = { x: tBX, y: tBY };
+        } else {
+            p1 = { x: tCX, y: tCY };
+        }
+
+        if (latestTime === tAZ) {
+            p2 = { x: tAX, y: tAY };
+        } else if (latestTime === tBZ) {
+            p2 = { x: tBX, y: tBY };
+        } else {
+            p2 = { x: tCX, y: tCY };
+        }
+
+        // Step 12.9d) Calculate distance and burden relief
+        const distance = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
+        const burdenRelief = distance > 0 ? timeDifference / distance : 0;
+
+        return burdenRelief;
+    }
+
     // Step 13) Create surface from triangle objects (Kirra format)
     static createSurface(triangles, colorFunction, transparency = 1.0) {
         // Step 14) Build geometry from triangles
@@ -841,11 +882,21 @@ export class GeometryFactory {
     }
 
     // Step 17) Create contour lines (positioned at collar Z elevation)
+    // Uses fat dashed lines with alternating yellow (#FFFF00) and magenta (#FF00FF) colors
     static createContourLines(contourLinesArray, color, allBlastHoles, worldToThreeLocalFn) {
         const group = new THREE.Group();
 
+        // Step 17.1) Define alternating contour colors (yellow and magenta)
+        const contourColors = [
+            new THREE.Color(0xFFFF00), // Yellow
+            new THREE.Color(0xFF00FF)  // Magenta
+        ];
+
         for (let levelIndex = 0; levelIndex < contourLinesArray.length; levelIndex++) {
             const contourLines = contourLinesArray[levelIndex];
+
+            // Step 17.2) Alternate color based on contour level
+            const lineColor = contourColors[levelIndex % 2];
 
             for (let i = 0; i < contourLines.length; i++) {
                 const line = contourLines[i];
@@ -866,15 +917,27 @@ export class GeometryFactory {
                     const local1 = worldToThreeLocalFn ? worldToThreeLocalFn(worldX1, worldY1) : { x: worldX1, y: worldY1 };
                     const local2 = worldToThreeLocalFn ? worldToThreeLocalFn(worldX2, worldY2) : { x: worldX2, y: worldY2 };
 
-                    // Step 17d) Create line segment at collar elevation
-                    const points = [
-                        new THREE.Vector3(local1.x, local1.y, z1),
-                        new THREE.Vector3(local2.x, local2.y, z2)
-                    ];
+                    // Step 17d) Create fat dashed line segment using MeshLine
+                    const points = [];
+                    points.push(local1.x, local1.y, z1);
+                    points.push(local2.x, local2.y, z2);
 
-                    const geometry = new THREE.BufferGeometry().setFromPoints(points);
-                    const material = new THREE.LineBasicMaterial({ color: new THREE.Color(color) });
-                    const lineSegment = new THREE.Line(geometry, material);
+                    const meshLine = new MeshLine();
+                    meshLine.setPoints(points);
+
+                    // Step 17e) Create dashed material with line width 5 and dash pattern 10:10
+                    const material = new MeshLineMaterial({
+                        color: lineColor,
+                        lineWidth: 0.5, // Width in world units (approx 5 pixels at typical scale)
+                        dashArray: 0.1, // Dash pattern ratio (10:10)
+                        dashRatio: 0.5, // Equal dash and gap (0.5 = 50% dash, 50% gap)
+                        transparent: true,
+                        opacity: 0.9,
+                        depthTest: true,
+                        depthWrite: false
+                    });
+
+                    const lineSegment = new THREE.Mesh(meshLine, material);
                     group.add(lineSegment);
                 }
             }
@@ -1492,18 +1555,29 @@ export class GeometryFactory {
         return group;
     }
 
-    // Step 21) Create voronoi cells (extruded, positioned at collar Z)
-    static createVoronoiCells(cells, getColorFunction, allBlastHoles, worldToThreeLocalFn, extrusionHeight = 1.0) {
+    // Step 21) Create voronoi cells (extruded, positioned below reference Z)
+    // useToeLocation: false = collar (0.1m below, extrude 0.2m down), true = toe (0.1m above toe, extrude 0.2m up)
+    static createVoronoiCells(cells, getColorFunction, allBlastHoles, worldToThreeLocalFn, extrusionHeight = 0.2, useToeLocation = false) {
         const group = new THREE.Group();
 
         for (const cell of cells) {
             if (!cell.polygon || cell.polygon.length < 3) continue;
 
-            // Step 21a) Find nearest hole to get collar Z
+            // Step 21a) Find nearest hole to get reference Z (collar or toe)
             const cellCenterX = cell.polygon.reduce((sum, pt) => sum + (pt.x !== undefined ? pt.x : pt[0]), 0) / cell.polygon.length;
             const cellCenterY = cell.polygon.reduce((sum, pt) => sum + (pt.y !== undefined ? pt.y : pt[1]), 0) / cell.polygon.length;
             const nearestHole = this.findNearestHole(cellCenterX, cellCenterY, allBlastHoles);
-            const collarZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
+
+            let baseZ;
+            if (useToeLocation) {
+                // Step 21a.1) Toe mode: 0.1m above toe, extrude up 0.2m
+                const toeZ = nearestHole ? nearestHole.endZLocation || 0 : 0;
+                baseZ = toeZ + 0.1; // 0.1m above toe
+            } else {
+                // Step 21a.2) Collar mode: 0.1m below collar, extrude down 0.2m
+                const collarZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
+                baseZ = collarZ - 0.1 - extrusionHeight; // Start 0.1m + extrusion below collar
+            }
 
             // Step 21b) Create shape from polygon (convert to local coordinates)
             const shape = new THREE.Shape();
@@ -1532,7 +1606,7 @@ export class GeometryFactory {
                 bevelEnabled: false
             };
             const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
-            geometry.translate(0, 0, collarZ);
+            geometry.translate(0, 0, baseZ);
 
             const material = new THREE.MeshPhongMaterial({
                 color: new THREE.Color(color),

@@ -427,15 +427,17 @@ export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
                 // Step 13f) Convert to local coordinates
                 const local = window.worldToThreeLocal ? window.worldToThreeLocal(midX, midY) : { x: midX, y: midY };
 
-                // Step 13g) Create text label using GeometryFactory
+                // Step 13g) Create text label using GeometryFactory (no background)
+                // Step 13g.1) Alternate label color to match contour line color
+                const labelColor = (level % 2 === 0) ? "#FFFF00" : "#FF00FF"; // Yellow or Magenta
                 const textMesh = GeometryFactory.createKADText(
                     local.x,
                     local.y,
                     midZ + 0.5, // Slightly above the line
                     labelText,
                     12,
-                    "#FFFF00", // Yellow color for visibility
-                    "rgba(0, 0, 0, 0.6)" // Semi-transparent black background
+                    labelColor, // Match the contour line color
+                    null // No background
                 );
 
                 if (textMesh) {
@@ -838,6 +840,48 @@ export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
     };
 
     window.threeRenderer.surfacesGroup.add(slopeMesh);
+
+    // Step 20c) Add text labels for slope values on each triangle
+    for (const triangle of triangles) {
+        if (!triangle || triangle.length !== 3) continue;
+
+        // Step 20c.1) Calculate triangle centroid
+        const centroidX = (triangle[0][0] + triangle[1][0] + triangle[2][0]) / 3;
+        const centroidY = (triangle[0][1] + triangle[1][1] + triangle[2][1]) / 3;
+
+        // Step 20c.2) Find nearest hole for Z elevation
+        const nearestHole = GeometryFactory.findNearestHole(centroidX, centroidY, allBlastHoles);
+        const centroidZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
+
+        // Step 20c.3) Calculate slope angle using GeometryFactory helper
+        const triangleForSlope = [
+            [triangle[0][0], triangle[0][1], triangle[0][2] || centroidZ],
+            [triangle[1][0], triangle[1][1], triangle[1][2] || centroidZ],
+            [triangle[2][0], triangle[2][1], triangle[2][2] || centroidZ]
+        ];
+        const slopeAngle = GeometryFactory.getDipAngle(triangleForSlope);
+
+        // Step 20c.4) Convert to local coordinates
+        const local = window.worldToThreeLocal ? window.worldToThreeLocal(centroidX, centroidY) : { x: centroidX, y: centroidY };
+
+        // Step 20c.5) Create text label showing slope angle
+        const labelText = slopeAngle.toFixed(1) + "°";
+        const textColor = window.darkModeEnabled ? "#FFFFFF" : "#000000";
+        const textMesh = GeometryFactory.createKADText(
+            local.x,
+            local.y,
+            centroidZ + 0.3,
+            labelText,
+            8,
+            textColor,
+            null // No background
+        );
+
+        if (textMesh) {
+            textMesh.userData = { type: "slopeLabel" };
+            window.threeRenderer.surfacesGroup.add(textMesh);
+        }
+    }
 }
 
 // Step 21) Draw burden relief map in Three.js
@@ -854,15 +898,55 @@ export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
     };
 
     window.threeRenderer.surfacesGroup.add(reliefMesh);
+
+    // Step 21c) Add text labels for relief values on each triangle
+    // Relief triangle format: [[x, y, holeTime], [x, y, holeTime], [x, y, holeTime]]
+    for (const triangle of triangles) {
+        if (!triangle || triangle.length !== 3) continue;
+
+        // Step 21c.1) Calculate triangle centroid (X and Y only)
+        const centroidX = (triangle[0][0] + triangle[1][0] + triangle[2][0]) / 3;
+        const centroidY = (triangle[0][1] + triangle[1][1] + triangle[2][1]) / 3;
+
+        // Step 21c.2) Find nearest hole for Z elevation (relief triangles have holeTime in index 2, not Z)
+        const nearestHole = GeometryFactory.findNearestHole(centroidX, centroidY, allBlastHoles);
+        const centroidZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
+
+        // Step 21c.3) Calculate burden relief value using GeometryFactory helper
+        // Relief triangles already have the correct format: [[x, y, holeTime], ...]
+        const burdenRelief = GeometryFactory.getBurdenRelief(triangle);
+
+        // Step 21c.4) Convert to local coordinates
+        const local = window.worldToThreeLocal ? window.worldToThreeLocal(centroidX, centroidY) : { x: centroidX, y: centroidY };
+
+        // Step 21c.5) Create text label showing burden relief value (ms/m)
+        const labelText = burdenRelief.toFixed(1);
+        const textColor = window.darkModeEnabled ? "#FFFFFF" : "#000000";
+        const textMesh = GeometryFactory.createKADText(
+            local.x,
+            local.y,
+            centroidZ + 0.3,
+            labelText,
+            8,
+            textColor,
+            null // No background
+        );
+
+        if (textMesh) {
+            textMesh.userData = { type: "reliefLabel" };
+            window.threeRenderer.surfacesGroup.add(textMesh);
+        }
+    }
 }
 
 // Step 22) Draw Voronoi cells in Three.js
-export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlastHoles, extrusionHeight = 1.0) {
+export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlastHoles, extrusionHeight = 0.2, useToeLocation = false) {
     if (!window.threeInitialized || !window.threeRenderer) return;
     if (!clippedCells || clippedCells.length === 0) return;
 
     // Step 22a) Create Voronoi cells geometry
-    const voronoiGroup = GeometryFactory.createVoronoiCells(clippedCells, getColorFunction, allBlastHoles, window.worldToThreeLocal, extrusionHeight);
+    // Positioning: collar mode = 0.1m below collar, toe mode = 0.1m above toe
+    const voronoiGroup = GeometryFactory.createVoronoiCells(clippedCells, getColorFunction, allBlastHoles, window.worldToThreeLocal, extrusionHeight, useToeLocation);
 
     // Step 22b) Add metadata
     voronoiGroup.userData = {

@@ -20907,7 +20907,7 @@ function drawData(allBlastHoles, selectedHole) {
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getPFColor(value, minPF, maxPF), allBlastHoles, 1.0);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getPFColor(value, minPF, maxPF), allBlastHoles, 0.2, useToeLocation);
                     }
                     break;
                 case "mass":
@@ -20950,7 +20950,7 @@ function drawData(allBlastHoles, selectedHole) {
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getMassColor(value, minMass, maxMass), allBlastHoles, 1.0);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getMassColor(value, minMass, maxMass), allBlastHoles, 0.2, useToeLocation);
                     }
                     break;
                 case "volume": {
@@ -20991,7 +20991,7 @@ function drawData(allBlastHoles, selectedHole) {
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getVolumeColor(value, minVol, maxVol), allBlastHoles, 1.0);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getVolumeColor(value, minVol, maxVol), allBlastHoles, 0.2, useToeLocation);
                     }
                     break;
                 }
@@ -21033,7 +21033,7 @@ function drawData(allBlastHoles, selectedHole) {
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getAreaColor(value, minArea, maxArea), allBlastHoles, 1.0);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getAreaColor(value, minArea, maxArea), allBlastHoles, 0.2, useToeLocation);
                     }
                     break;
                 }
@@ -21083,7 +21083,7 @@ function drawData(allBlastHoles, selectedHole) {
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getLengthColor(value, minMLen, maxMLen), allBlastHoles, 1.0);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getLengthColor(value, minMLen, maxMLen), allBlastHoles, 0.2, useToeLocation);
                     }
                     break;
                 }
@@ -21133,7 +21133,7 @@ function drawData(allBlastHoles, selectedHole) {
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getLengthColor(value, minDLen, maxDLen), allBlastHoles, 1.0);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getLengthColor(value, minDLen, maxDLen), allBlastHoles, 0.2, useToeLocation);
                     }
                     break;
                 }
@@ -21175,7 +21175,7 @@ function drawData(allBlastHoles, selectedHole) {
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getHoleFiringTimeColor(value, minHTime, maxHTime), allBlastHoles, 1.0);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getHoleFiringTimeColor(value, minHTime, maxHTime), allBlastHoles, 0.2, useToeLocation);
                     }
                     break;
                 }
@@ -21399,8 +21399,10 @@ function drawData(allBlastHoles, selectedHole) {
             }
         }
 
-        // Step 4) Draw KAD entities in Three.js (during normal 2D+3D rendering)
-        if (drawingsGroupVisible && threeInitialized) {
+        // Step 4) Draw KAD entities in Three.js ONLY when in 3D mode (not when in 2D-only mode)
+        // Check if we're in 3D orbit mode or 3D-only mode
+        const isIn3DModeForKAD = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
+        if (drawingsGroupVisible && threeInitialized && (onlyShowThreeJS || isIn3DModeForKAD)) {
             for (const [name, entity] of allKADDrawingsMap.entries()) {
                 if (entity.visible === false) continue;
 
@@ -21706,7 +21708,7 @@ function drawData(allBlastHoles, selectedHole) {
                     default:
                         colorFunction = function (value) { return getPFColor(value, 0, 1); };
                 }
-                drawVoronoiCellsThreeJS(clippedCells, colorFunction, allBlastHoles, 1.0);
+                drawVoronoiCellsThreeJS(clippedCells, colorFunction, allBlastHoles, 0.2, useToeLocation);
             }
         }
 
@@ -43752,8 +43754,7 @@ function hookOverlayIntoResize() {
             contourOverlayCanvas.style.width = canvas.style.width;
             contourOverlayCanvas.style.height = canvas.style.height;
 
-            // Redraw with new size
-            setTimeout(() => updateContourOverlay(), 100);
+            // Redraw with new size - contour overlay updates on next drawData call
         }
     });
     console.log("Hooked into window resize");
