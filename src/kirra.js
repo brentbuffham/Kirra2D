@@ -476,8 +476,8 @@ function initializeThreeJS() {
     try {
         console.log("🎬 Initializing Three.js rendering system...");
 
-        // Step 1a) Load 3D settings
-        const settings = load3DSettings();
+        // Step 1a) Load 3D settings (guard against function not being defined yet)
+        const settings = typeof load3DSettings === "function" ? load3DSettings() : {};
 
         // Step 2) Create Three.js renderer
         const canvasContainer = canvas.parentElement;
@@ -851,27 +851,27 @@ function handle3DClick(event) {
             console.log("✏️ [3D CLICK] Adding KAD Point at:", worldX, worldY, worldZ);
             addKADPoint();
             updateLastKADDrawPoint(worldX, worldY);
-            debouncedUpdateTreeView();
+            if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         } else if (isDrawingLine) {
             console.log("✏️ [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
             addKADLine();
             updateLastKADDrawPoint(worldX, worldY);
-            debouncedUpdateTreeView();
+            if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         } else if (isDrawingPoly) {
             console.log("✏️ [3D CLICK] Adding KAD Polygon point at:", worldX, worldY, worldZ);
             addKADPoly();
             updateLastKADDrawPoint(worldX, worldY);
-            debouncedUpdateTreeView();
+            if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         } else if (isDrawingCircle) {
             console.log("✏️ [3D CLICK] Adding KAD Circle at:", worldX, worldY, worldZ);
             addKADCircle();
             updateLastKADDrawPoint(worldX, worldY);
-            debouncedUpdateTreeView();
+            if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         } else if (isDrawingText) {
             console.log("✏️ [3D CLICK] Adding KAD Text at:", worldX, worldY, worldZ);
             addKADText();
             updateLastKADDrawPoint(worldX, worldY);
-            debouncedUpdateTreeView();
+            if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         }
 
         // Step 12c.1d) Prevent default and stop propagation
@@ -2130,7 +2130,7 @@ document.addEventListener("DOMContentLoaded", function () {
                     canvas.style.pointerEvents = "none"; // Don't block events
                 }
                 // Step 1cc) Hide contour overlay canvas in 3D mode (labels render as 3D text)
-                if (contourOverlayCanvas) {
+                if (typeof contourOverlayCanvas !== "undefined" && contourOverlayCanvas) {
                     contourOverlayCanvas.style.display = "none";
                 }
                 // Swap icon to 3D badge
@@ -2166,7 +2166,7 @@ document.addEventListener("DOMContentLoaded", function () {
                 }
 
                 // Step 1dc) Show contour overlay canvas in 2D mode
-                if (contourOverlayCanvas) {
+                if (typeof contourOverlayCanvas !== "undefined" && contourOverlayCanvas) {
                     contourOverlayCanvas.style.display = "block";
                 }
                 // Swap icon to 2D badge
@@ -2278,6 +2278,14 @@ let linesGroupVisible = true;
 let polygonsGroupVisible = true;
 let circlesGroupVisible = true;
 let textsGroupVisible = true;
+
+// Forward declarations for functions/variables defined later in the file
+// These prevent "not defined" errors when used early
+let contourOverlayCanvas = null;
+let contourOverlayCtx = null;
+// debouncedUpdateTreeView is defined later - stub it to prevent errors
+let debouncedUpdateTreeView = function () { };
+
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
 let mouseIndicatorInitialized = false; // Track if mouse indicator has been initialized on startup
@@ -4289,6 +4297,12 @@ addConnectorButton.addEventListener("change", function () {
         selectByPolygonTool.checked = false;
         selectPointerTool.checked = false;
 
+        // Step: Force Holes radio to be selected for connector tools
+        if (selectHolesRadio) {
+            selectHolesRadio.checked = true;
+            selectHolesRadio.dispatchEvent(new Event("change"));
+        }
+
         displayConnectors.checked = true;
         // This function did not work and was causing issues with the tool
         // removeEventListenersExcluding(["tieConnectTool", "defaultListeners"]);
@@ -4328,6 +4342,13 @@ addMultiConnectorButton.addEventListener("change", function () {
         selectedMultipleHoles = [];
         selectByPolygonTool.checked = false;
         selectPointerTool.checked = false;
+
+        // Step: Force Holes radio to be selected for connector tools
+        if (selectHolesRadio) {
+            selectHolesRadio.checked = true;
+            selectHolesRadio.dispatchEvent(new Event("change"));
+        }
+
         displayConnectors.checked = true;
         // This function did not work and was causing issues with the tool
         // removeEventListenersExcluding(["tieConectMultiTool", "defaultListeners"]);
@@ -21247,8 +21268,10 @@ function drawData(allBlastHoles, selectedHole) {
             }
         }
 
-        // Step 3) Draw contours in Three.js (positioned at collar elevation)
-        if (displayOptions.contour && threeInitialized && contourLinesArray && contourLinesArray.length > 0) {
+        // Step 3) Draw contours in Three.js ONLY when in 3D mode (not 2D)
+        // Check if we're in 3D orbit mode to avoid drawing 3D contours in 2D view
+        const isIn3DModeForContours = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
+        if (displayOptions.contour && threeInitialized && (onlyShowThreeJS || isIn3DModeForContours) && contourLinesArray && contourLinesArray.length > 0) {
             drawContoursThreeJS(contourLinesArray, strokeColor, allBlastHoles);
         }
 
@@ -40770,14 +40793,15 @@ let treeView;
 // Add this debounced version
 let updateTreeViewTimeout;
 
-function debouncedUpdateTreeView(delay = 100) {
+// Assign the actual implementation to the forward-declared variable
+debouncedUpdateTreeView = function (delay = 100) {
     if (updateTreeViewTimeout) {
         clearTimeout(updateTreeViewTimeout);
     }
-    updateTreeViewTimeout = setTimeout(() => {
+    updateTreeViewTimeout = setTimeout(function () {
         updateTreeView(); // ✅ Call updateTreeView(), not itself!
     }, delay);
-}
+};
 // ✅ Function to update TreeView visual states based on actual visibility
 function updateTreeViewVisibilityStates() {
     if (!treeView) return;
@@ -43359,8 +43383,7 @@ function measuredCommentPopup() {
 // Around line 39636, replace the problematic section with this clean version:
 
 // Step 1) Initialize overlay system variables
-let contourOverlayCanvas = null;
-let contourOverlayCtx = null;
+// Note: contourOverlayCanvas and contourOverlayCtx are forward-declared earlier in the file
 let useContourOverlay = false;
 
 // Step 2) Create overlay canvas with proper positioning

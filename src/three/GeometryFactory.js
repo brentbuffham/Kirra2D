@@ -136,7 +136,7 @@ export class GeometryFactory {
             color: new THREE.Color(color),
             side: THREE.DoubleSide,
             transparent: true,
-            opacity: 0.7,
+            opacity: 0.2,
             depthTest: true,
             depthWrite: false // Prevent z-fighting with hole geometry
         });
@@ -291,31 +291,38 @@ export class GeometryFactory {
     }
 
     // Step 10) Create KAD line segment (single segment between two points)
+    // Uses MeshLine for fat lines that match 2D canvas appearance
     // Matches 2D canvas drawKADLines() - each segment has its own lineWidth and color
     static createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color) {
         // Step 10a) Create two-point line
         const points = [new THREE.Vector3(startX, startY, startZ), new THREE.Vector3(endX, endY, endZ)];
 
-        // Step 10b) Create MeshLine material with proper lineWidth
+        // Step 10b) Scale lineWidth to match 2D canvas appearance
+        // 2D canvas lineWidth is in pixels; for MeshLine with sizeAttenuation: 1, use world units
+        // Multiply by a factor to make the line visible at typical scales
+        const currentScale = window.currentScale || 5;
+        const scaledLineWidth = (lineWidth || 2) * 0.1; // Convert to world units, scale appropriately
+
+        // Step 10c) Create MeshLine material with proper lineWidth
         const material = new MeshLineMaterial({
             color: new THREE.Color(color),
-            lineWidth: lineWidth || 3, // Direct pixel width
+            lineWidth: scaledLineWidth, // World units
             resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
-            sizeAttenuation: 0, // 0 = constant screen size
+            sizeAttenuation: 1, // Size attenuation enabled for world-space sizing
             opacity: 1.0
         });
         material.transparent = true;
         material.depthTest = true;
         material.depthWrite = true;
 
-        // Step 10c) Create geometry from points
+        // Step 10d) Create geometry from points
         const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
-        // Step 10d) Create MeshLine and set geometry
+        // Step 10e) Create MeshLine and set geometry
         const line = new MeshLine();
         line.setGeometry(geometry);
 
-        // Step 10e) Create and return mesh
+        // Step 10f) Create and return mesh
         const mesh = new THREE.Mesh(line, material);
         mesh.name = "kad-line-segment";
 
@@ -495,6 +502,62 @@ export class GeometryFactory {
 
         // Step 7d) Mark as troika text for billboard behavior
         textMesh.userData.isTroikaText = true;
+
+        return textMesh;
+    }
+
+    // Step 12.4) Create contour label (billboarded, italic, no background)
+    // Used for timing contour labels that always face the camera
+    static createContourLabel(worldX, worldY, worldZ, text, fontSize, color) {
+        // Step 1) Create troika Text object
+        const textMesh = new Text();
+
+        // Step 2) Convert pixel-based fontSize to world units
+        const currentScale = window.currentScale || 5;
+        const fontSizeWorldUnits = fontSize / currentScale;
+
+        // Step 3) Set text content and properties
+        textMesh.text = String(text);
+        textMesh.fontSize = fontSizeWorldUnits;
+        textMesh.color = color;
+        textMesh.anchorX = "center";
+        textMesh.anchorY = "middle";
+        textMesh.fontStyle = "italic"; // Italicized text
+
+        // Step 4) Load italic font if available, else use regular with style
+        try {
+            const robotoFontUrl = new URL("../fonts/Roboto-Regular.ttf", import.meta.url).href;
+            textMesh.font = robotoFontUrl;
+        } catch (error) {
+            console.warn("⚠️ Could not load Roboto font, using Arial fallback:", error);
+            textMesh.font = "Arial";
+        }
+
+        // Step 5) Set position
+        textMesh.position.set(worldX, worldY, worldZ);
+
+        // Step 6) Configure for depth testing
+        textMesh.renderOrder = 100;
+
+        // Step 7) Sync troika text
+        textMesh.sync();
+
+        // Step 8) Configure material
+        if (textMesh.material) {
+            textMesh.material.depthTest = true;
+            textMesh.material.depthWrite = false;
+            textMesh.material.transparent = true;
+        }
+
+        // Step 9) Mark as billboard text (will be updated in render loop to face camera)
+        textMesh.userData.isTroikaText = true;
+        textMesh.userData.billboard = true;
+        textMesh.userData.isContourLabel = true;
+
+        // Step 10) Request render
+        if (window.threeRenderer) {
+            window.threeRenderer.requestRender();
+        }
 
         return textMesh;
     }
@@ -882,21 +945,12 @@ export class GeometryFactory {
     }
 
     // Step 17) Create contour lines (positioned at collar Z elevation)
-    // Uses fat dashed lines with alternating yellow (#FFFF00) and magenta (#FF00FF) colors
+    // Uses two overlapping fat dashed lines: yellow dashes and magenta dashes offset to create alternating pattern
     static createContourLines(contourLinesArray, color, allBlastHoles, worldToThreeLocalFn) {
         const group = new THREE.Group();
 
-        // Step 17.1) Define alternating contour colors (yellow and magenta)
-        const contourColors = [
-            new THREE.Color(0xFFFF00), // Yellow
-            new THREE.Color(0xFF00FF)  // Magenta
-        ];
-
         for (let levelIndex = 0; levelIndex < contourLinesArray.length; levelIndex++) {
             const contourLines = contourLinesArray[levelIndex];
-
-            // Step 17.2) Alternate color based on contour level
-            const lineColor = contourColors[levelIndex % 2];
 
             for (let i = 0; i < contourLines.length; i++) {
                 const line = contourLines[i];
@@ -917,28 +971,48 @@ export class GeometryFactory {
                     const local1 = worldToThreeLocalFn ? worldToThreeLocalFn(worldX1, worldY1) : { x: worldX1, y: worldY1 };
                     const local2 = worldToThreeLocalFn ? worldToThreeLocalFn(worldX2, worldY2) : { x: worldX2, y: worldY2 };
 
-                    // Step 17d) Create fat dashed line segment using MeshLine
+                    // Step 17d) Create points array
                     const points = [];
                     points.push(local1.x, local1.y, z1);
                     points.push(local2.x, local2.y, z2);
 
-                    const meshLine = new MeshLine();
-                    meshLine.setPoints(points);
+                    // Step 17e) Create YELLOW dashed line (first layer)
+                    const meshLineYellow = new MeshLine();
+                    meshLineYellow.setPoints(points);
 
-                    // Step 17e) Create dashed material with line width 5 and dash pattern 10:10
-                    const material = new MeshLineMaterial({
-                        color: lineColor,
-                        lineWidth: 0.5, // Width in world units (approx 5 pixels at typical scale)
-                        dashArray: 0.1, // Dash pattern ratio (10:10)
-                        dashRatio: 0.5, // Equal dash and gap (0.5 = 50% dash, 50% gap)
+                    const yellowMaterial = new MeshLineMaterial({
+                        color: new THREE.Color(0xFFFF00), // Yellow
+                        lineWidth: 0.3, // Reduced from 0.5 to 0.3 (approx 3 pixels)
+                        dashArray: 0.1, // Dash pattern
+                        dashRatio: 0.5, // 50% dash, 50% gap
+                        dashOffset: 0, // No offset for yellow
                         transparent: true,
-                        opacity: 0.9,
+                        opacity: 1.0,
                         depthTest: true,
                         depthWrite: false
                     });
 
-                    const lineSegment = new THREE.Mesh(meshLine, material);
-                    group.add(lineSegment);
+                    const yellowLine = new THREE.Mesh(meshLineYellow, yellowMaterial);
+                    group.add(yellowLine);
+
+                    // Step 17f) Create MAGENTA dashed line (second layer, offset)
+                    const meshLineMagenta = new MeshLine();
+                    meshLineMagenta.setPoints(points);
+
+                    const magentaMaterial = new MeshLineMaterial({
+                        color: new THREE.Color(0xFF00FF), // Magenta
+                        lineWidth: 0.3, // Same width
+                        dashArray: 0.1, // Same dash pattern
+                        dashRatio: 0.5, // Same ratio
+                        dashOffset: 0.05, // Offset by half a dash to fill the gaps
+                        transparent: true,
+                        opacity: 1.0,
+                        depthTest: true,
+                        depthWrite: false
+                    });
+
+                    const magentaLine = new THREE.Mesh(meshLineMagenta, magentaMaterial);
+                    group.add(magentaLine);
                 }
             }
         }

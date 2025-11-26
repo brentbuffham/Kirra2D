@@ -593,6 +593,8 @@ export class ThreeRenderer {
 		updateGroup(this.kadGroup);
 		updateGroup(this.holesGroup);
 		updateGroup(this.connectorsGroup);
+		updateGroup(this.contoursGroup); // Step 23b.1) Also update contour labels
+		updateGroup(this.surfacesGroup); // Step 23b.2) Also update slope/relief labels
 	}
 
 	// Step 23c) Update billboarded objects (mouse torus, etc.) to face camera

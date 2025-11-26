@@ -68,7 +68,7 @@ const controlY = midY - perpY * curveFactor;
 ### src/three/GeometryFactory.js
 1. **Lines 958-987**: Fixed straight connector arrowhead using THREE.Shape
 2. **Lines 1028-1060**: Fixed curved connector arrowhead using THREE.Shape  
-3. **Lines 1000-1001**: Reverted curve control point sign from `-` to `+`
+3. **Lines 1000-1001**: Reverted curve control point sign from `+` to `-`
 
 ## Technical Details
 

@@ -114,7 +114,13 @@ export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId
     const local = window.worldToThreeLocal(worldX, worldY);
 
     // Step 4b) Create toe mesh at local coordinates
-    const toeMesh = GeometryFactory.createHoleToe(local.x, local.y, worldZ, radius, color);
+    let color2;
+    if (window.darkModeEnabled) {
+        color2 = "rgb(94, 172, 255)";
+    } else {
+        color2 = "rgb(38, 255, 0)";
+    }
+    const toeMesh = GeometryFactory.createHoleToe(local.x, local.y, worldZ, radius, color2);
 
     // Step 4c) Add metadata for selection
     toeMesh.userData = {
@@ -427,21 +433,20 @@ export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
                 // Step 13f) Convert to local coordinates
                 const local = window.worldToThreeLocal ? window.worldToThreeLocal(midX, midY) : { x: midX, y: midY };
 
-                // Step 13g) Create text label using GeometryFactory (no background)
-                // Step 13g.1) Alternate label color to match contour line color
-                const labelColor = (level % 2 === 0) ? "#FFFF00" : "#FF00FF"; // Yellow or Magenta
-                const textMesh = GeometryFactory.createKADText(
+                // Step 13g) Create text label for contour (billboarded, italicized, dark/light mode aware)
+                // Step 13g.1) Use white text in dark mode, black in light mode
+                const labelColor = window.darkModeEnabled ? "#FFFFFF" : "#000000";
+                const textMesh = GeometryFactory.createContourLabel(
                     local.x,
                     local.y,
                     midZ + 0.5, // Slightly above the line
                     labelText,
                     12,
-                    labelColor, // Match the contour line color
-                    null // No background
+                    labelColor
                 );
 
                 if (textMesh) {
-                    textMesh.userData = { type: "contourLabel", time: contourTime };
+                    textMesh.userData = { type: "contourLabel", time: contourTime, billboard: true };
                     window.threeRenderer.contoursGroup.add(textMesh);
                 }
             }
