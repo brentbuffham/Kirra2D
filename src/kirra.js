@@ -56,7 +56,10 @@ import {
     drawConnectStadiumZoneThreeJS,
     drawMousePositionIndicatorThreeJS,
     drawSlopeMapThreeJS,
-    drawBurdenReliefMapThreeJS
+    drawBurdenReliefMapThreeJS,
+    drawVoronoiCellsThreeJS,
+    drawKADLeadingLineThreeJS,
+    clearKADLeadingLineThreeJS
 } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
@@ -824,6 +827,62 @@ function handle3DClick(event) {
         return;
     }
 
+    // Step 12c.1) Handle KAD drawing tools in 3D mode
+    // Check if any drawing tool is active and forward to appropriate handler
+    const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+    if (isAnyDrawingToolActive) {
+        console.log("✏️ [3D CLICK] KAD drawing tool active, forwarding to drawing handler");
+
+        // Step 12c.1a) Get world coordinates from current mouse position (updated by handle3DMouseMove)
+        // Apply snapping using existing snap logic
+        const snapResult = snapToNearestPoint(currentMouseWorldX, currentMouseWorldY);
+        worldX = snapResult.worldX;
+        worldY = snapResult.worldY;
+        worldZ = snapResult.worldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
+
+        // Step 12c.1b) Show snap feedback if snapped
+        if (snapResult.snapped) {
+            updateStatusMessage("Snapped to " + snapResult.snapTarget.description);
+            setTimeout(function () { updateStatusMessage(""); }, 1500);
+        }
+
+        // Step 12c.1c) Call appropriate KAD drawing function based on active tool
+        if (isDrawingPoint) {
+            console.log("✏️ [3D CLICK] Adding KAD Point at:", worldX, worldY, worldZ);
+            addKADPoint();
+            updateLastKADDrawPoint(worldX, worldY);
+            debouncedUpdateTreeView();
+        } else if (isDrawingLine) {
+            console.log("✏️ [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
+            addKADLine();
+            updateLastKADDrawPoint(worldX, worldY);
+            debouncedUpdateTreeView();
+        } else if (isDrawingPoly) {
+            console.log("✏️ [3D CLICK] Adding KAD Polygon point at:", worldX, worldY, worldZ);
+            addKADPoly();
+            updateLastKADDrawPoint(worldX, worldY);
+            debouncedUpdateTreeView();
+        } else if (isDrawingCircle) {
+            console.log("✏️ [3D CLICK] Adding KAD Circle at:", worldX, worldY, worldZ);
+            addKADCircle();
+            updateLastKADDrawPoint(worldX, worldY);
+            debouncedUpdateTreeView();
+        } else if (isDrawingText) {
+            console.log("✏️ [3D CLICK] Adding KAD Text at:", worldX, worldY, worldZ);
+            addKADText();
+            updateLastKADDrawPoint(worldX, worldY);
+            debouncedUpdateTreeView();
+        }
+
+        // Step 12c.1d) Prevent default and stop propagation
+        event.preventDefault();
+        event.stopPropagation();
+
+        // Step 12c.1e) Redraw to show new KAD object
+        drawData(allBlastHoles, selectedHole);
+        return; // Don't process as selection click
+    }
+
     // Step 12d) Get 3D canvas for coordinate conversion
     const threeCanvas = threeRenderer.getCanvas();
     if (!threeCanvas) {
@@ -848,10 +907,10 @@ function handle3DClick(event) {
         firstIntersect:
             intersects.length > 0
                 ? {
-                      object: intersects[0].object.type,
-                      userData: intersects[0].object.userData,
-                      distance: intersects[0].distance.toFixed(2)
-                  }
+                    object: intersects[0].object.type,
+                    userData: intersects[0].object.userData,
+                    distance: intersects[0].distance.toFixed(2)
+                }
                 : null
     });
 
@@ -1867,7 +1926,58 @@ function handle3DMouseMove(event) {
         }
 
         if (indicatorPos && isFinite(indicatorPos.x) && isFinite(indicatorPos.y)) {
-            drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z);
+            // Step 13f.6f) Determine torus color based on active tool
+            var torusColor = "rgba(128, 128, 128, 0.6)"; // Default grey
+            var isAnyDrawingToolActiveForTorus = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+            if (isAnyDrawingToolActiveForTorus) {
+                if (isDrawingPoint) {
+                    torusColor = "rgba(209, 0, 0, 0.8)"; // Red for points
+                } else if (isDrawingLine) {
+                    torusColor = "rgba(0, 255, 255, 0.8)"; // Cyan for lines
+                } else if (isDrawingPoly) {
+                    torusColor = "rgba(255, 0, 255, 0.8)"; // Magenta for polygons
+                } else if (isDrawingCircle) {
+                    torusColor = "rgba(255, 165, 0, 0.8)"; // Orange for circles
+                } else if (isDrawingText) {
+                    torusColor = "rgba(0, 255, 0, 0.8)"; // Green for text
+                }
+            }
+            drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z, torusColor);
+        }
+
+        // Step 13f.7) Draw KAD leading line preview if drawing tool is active
+        const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+        if (isAnyDrawingToolActive && lastKADDrawPoint) {
+            // Get drawing Z value
+            const drawZ = drawingZValue || document.getElementById("drawingElevation").value || 0;
+
+            // Determine color based on active tool
+            var leadingLineColor = "rgba(0, 255, 255, 0.8)"; // Cyan default
+            if (isDrawingPoint) {
+                leadingLineColor = "rgba(209, 0, 0, 0.8)"; // Red for points
+            } else if (isDrawingLine) {
+                leadingLineColor = "rgba(0, 255, 255, 0.8)"; // Cyan for lines
+            } else if (isDrawingPoly) {
+                leadingLineColor = "rgba(255, 0, 255, 0.8)"; // Magenta for polygons
+            } else if (isDrawingCircle) {
+                leadingLineColor = "rgba(255, 165, 0, 0.8)"; // Orange for circles
+            } else if (isDrawingText) {
+                leadingLineColor = "rgba(0, 255, 0, 0.8)"; // Green for text
+            }
+
+            // Draw leading line from last point to current mouse position
+            drawKADLeadingLineThreeJS(
+                lastKADDrawPoint.x,
+                lastKADDrawPoint.y,
+                parseFloat(drawZ),
+                currentMouseWorldX,
+                currentMouseWorldY,
+                parseFloat(drawZ),
+                leadingLineColor
+            );
+        } else {
+            // Clear leading line if no drawing tool active or no last point
+            clearKADLeadingLineThreeJS();
         }
 
         if (threeRenderer.renderer) {
@@ -2019,6 +2129,10 @@ document.addEventListener("DOMContentLoaded", function () {
                     canvas.style.opacity = "0"; // Hide 2D canvas
                     canvas.style.pointerEvents = "none"; // Don't block events
                 }
+                // Step 1cc) Hide contour overlay canvas in 3D mode (labels render as 3D text)
+                if (contourOverlayCanvas) {
+                    contourOverlayCanvas.style.display = "none";
+                }
                 // Swap icon to 3D badge
                 if (iconImg) {
                     iconImg.src = "icons/badge-3d-v2.png";
@@ -2051,6 +2165,10 @@ document.addEventListener("DOMContentLoaded", function () {
                     console.log("🔄 Reset 2D canvas transform state on switch to 2D mode");
                 }
 
+                // Step 1dc) Show contour overlay canvas in 2D mode
+                if (contourOverlayCanvas) {
+                    contourOverlayCanvas.style.display = "block";
+                }
                 // Swap icon to 2D badge
                 if (iconImg) {
                     iconImg.src = "icons/badge-2d-v2.png";
@@ -2208,6 +2326,7 @@ let firstMovementSize = document.getElementById("firstMovementSlider").value;
 let connectAmount = document.getElementById("connectSlider").value;
 let contourLevel = 0;
 let contourUpdatePending = false;
+let clipperUnionWarned = false; // Flag to prevent console spam for Clipper union warnings
 let minX;
 let minY;
 let worldX = null;
@@ -4903,7 +5022,7 @@ var i;
 for (i = 0; i < acc.length; i++) {
     acc[i].addEventListener("click", function () {
         /* Toggle between adding and removing the "active" class,
-	to highlight the button that controls the panel */
+    to highlight the button that controls the panel */
         this.classList.toggle("active");
         /* Toggle between hiding and showing the active panel */
         var panel = this.nextElementSibling;
@@ -5574,15 +5693,15 @@ optionConfigs.forEach((config) => {
 
             // REPLACE THIS SECTION:
             /*
-			// Calculate contours when any of these displays are turned on
-			if ((config.option === displayContours && displayContours.checked) || 
-				(config.option === displayFirstMovements && displayFirstMovements.checked) || 
-				(config.option === displayRelief && displayRelief.checked)) {
-				const result = recalculateContours(allBlastHoles, 0, 0);
-				contourLinesArray = result.contourLinesArray;
-				directionArrows = result.directionArrows;
-			}
-			*/
+            // Calculate contours when any of these displays are turned on
+            if ((config.option === displayContours && displayContours.checked) || 
+                (config.option === displayFirstMovements && displayFirstMovements.checked) || 
+                (config.option === displayRelief && displayRelief.checked)) {
+                const result = recalculateContours(allBlastHoles, 0, 0);
+                contourLinesArray = result.contourLinesArray;
+                directionArrows = result.directionArrows;
+            }
+            */
 
             // WITH THIS THROTTLED VERSION:
             if ((config.option === displayContours && displayContours.checked) || (config.option === displayFirstMovements && displayFirstMovements.checked) || (config.option === displayRelief && displayRelief.checked)) {
@@ -7410,14 +7529,14 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Parsing Error",
                 "Failed to parse the file properly:<br><br>" +
-                    criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
-                    "<br><br>" +
-                    "Common causes:<br><br>" +
-                    "<li>Mixed delimiters (commas and tabs in same file)</li>" +
-                    "<li>Unescaped quotes in text fields</li>" +
-                    "<li>Inconsistent number of columns</li>" +
-                    "<br><br>" +
-                    "Please check your file format and try again.",
+                criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
+                "<br><br>" +
+                "Common causes:<br><br>" +
+                "<li>Mixed delimiters (commas and tabs in same file)</li>" +
+                "<li>Unescaped quotes in text fields</li>" +
+                "<li>Inconsistent number of columns</li>" +
+                "<br><br>" +
+                "Please check your file format and try again.",
                 "error"
             );
             return; // Exit early
@@ -7431,15 +7550,15 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Import Warning",
                 "The file was imported but there were " +
-                    parseResult.errors.length +
-                    " parsing warnings:<br><br>" +
-                    parseResult.errors
-                        .slice(0, 5)
-                        .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-                        .join("") +
-                    additionalErrors +
-                    "<br><br>" +
-                    "Some data may have been skipped. Check your results carefully.",
+                parseResult.errors.length +
+                " parsing warnings:<br><br>" +
+                parseResult.errors
+                    .slice(0, 5)
+                    .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+                    .join("") +
+                additionalErrors +
+                "<br><br>" +
+                "Some data may have been skipped. Check your results carefully.",
                 "warning"
             );
         }
@@ -7657,17 +7776,17 @@ function parseKADFile(fileData) {
             const errorDetailsHtml =
                 errorCount > 0
                     ? "<details>" +
-                      "<summary>View Error Details (" +
-                      errorCount +
-                      " errors)</summary>" +
-                      '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-                      errorDetails
-                          .slice(0, 10)
-                          .map((error) => "<li>" + error + "</li>")
-                          .join("") +
-                      (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-                      "</ul>" +
-                      "</details>"
+                    "<summary>View Error Details (" +
+                    errorCount +
+                    " errors)</summary>" +
+                    '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+                    errorDetails
+                        .slice(0, 10)
+                        .map((error) => "<li>" + error + "</li>")
+                        .join("") +
+                    (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+                    "</ul>" +
+                    "</details>"
                     : "";
 
             showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -8403,11 +8522,9 @@ function convertPointsToAllDataCSV() {
         const hole = visibleBlastHoles[i];
         const row = `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation.toFixed(decimalPlaces)},${hole.startYLocation.toFixed(decimalPlaces)},${hole.startZLocation},${hole.endXLocation.toFixed(decimalPlaces)},${hole.endYLocation.toFixed(decimalPlaces)},${hole.endZLocation.toFixed(
             decimalPlaces
-        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${
-            hole.fromHoleID
-        },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${
-            hole.measuredMassTimeStamp
-        },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
+        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${hole.fromHoleID
+            },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${hole.measuredMassTimeStamp
+            },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
         csv += row + "\n";
     }
     return csv;
@@ -9071,9 +9188,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
     const table = new Uint32Array(256);
-    for (let i = 256; i--; ) {
+    for (let i = 256; i--;) {
         let tmp = i;
-        for (let k = 8; k--; ) {
+        for (let k = 8; k--;) {
             tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
         }
         table[i] = tmp;
@@ -12555,6 +12672,11 @@ function createBlastBoundaryPolygon(triangles) {
  * @returns {Array<Array<Object>>} An array of polygons. Each polygon is an array of points, where each point is an object with `x`, `y`, and `z` properties.  Returns an empty array if the Clipper union fails.
  */
 function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWidth, useToeLocation) {
+    // Step 0) Early return if no points provided
+    if (!points || points.length === 0) {
+        return [];
+    }
+
     const scale = 100000;
     const rawPolygons = [];
 
@@ -12719,6 +12841,11 @@ function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWi
 // Enhanced version with rotation and starburst capabilities
 // Enhanced version with rotation and starburst capabilities (with 8-step minimum)
 function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color, lineWidth, useToeLocation, rotationOffset, starburstOffset) {
+    // Step 0) Early return if no points provided
+    if (!points || points.length === 0) {
+        return [];
+    }
+
     // Step 1: Initialize variables and convert rotation to radians
     const scale = 100000;
     const rawPolygons = [];
@@ -12910,15 +13037,23 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 }
 
 function clipVoronoiCells(voronoiMetrics) {
+    // Step 0) Early return if no blast holes or voronoi metrics
+    if (!allBlastHoles || allBlastHoles.length === 0) {
+        return [];
+    }
+    if (!voronoiMetrics || voronoiMetrics.length === 0) {
+        return [];
+    }
+
     const scale = 100000;
     const allClippedCells = []; // Changed variable name for clarity
 
     // --- Your existing logic to calculate contractedPolygons ---
-    const nearest = getNearestNeighborDistancesByAggregation(points, "mode", useToeLocation);
+    const nearest = getNearestNeighborDistancesByAggregation(allBlastHoles, "mode", useToeLocation);
     const expand = nearest * 1.5;
     const contract = expand * 0.65;
     //----------------------getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWidth, useToeLocation)
-    const unionedPolygons = getRadiiPolygons(points, 36, expand, true, false, "red", 1, useToeLocation);
+    const unionedPolygons = getRadiiPolygons(allBlastHoles, 36, expand, true, false, "red", 1, useToeLocation);
     //----------------------
     const simplifiedPolygons = unionedPolygons.map((polygon) => simplifyPolygon(polygon, 0.1, true));
     const contractedPolygons = simplifiedPolygons.map((polygon) => offsetPolygonClipper(polygon, -contract));
@@ -12926,14 +13061,14 @@ function clipVoronoiCells(voronoiMetrics) {
 
     const clipPathPolygons = contractedPolygons; // These are the actual geometric polygons
     /*
-	console.log("nearest:", nearest);
-	console.log("expand:", expand);
-	console.log("unionedPolygons:", unionedPolygons);
-	console.log("simplifiedPolygons:", simplifiedPolygons);
-	console.log("contract:", contract);
-	console.log("contractedPolygons:", contractedPolygons);
-	console.log("clipPathPolygons for iteration:", clipPathPolygons);
-	*/
+    console.log("nearest:", nearest);
+    console.log("expand:", expand);
+    console.log("unionedPolygons:", unionedPolygons);
+    console.log("simplifiedPolygons:", simplifiedPolygons);
+    console.log("contract:", contract);
+    console.log("contractedPolygons:", contractedPolygons);
+    console.log("clipPathPolygons for iteration:", clipPathPolygons);
+    */
 
     for (let cell of voronoiMetrics) {
         if (!cell.polygon || cell.polygon.length < 3) continue;
@@ -14157,29 +14292,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
             `
             <div style="text-align: center;">
                 <p><strong>` +
-                resultMessage +
-                `</strong></p>
+            resultMessage +
+            `</strong></p>
                 <p><strong>Input:</strong> ` +
-                selectedEntities.length +
-                ` entities</p>
+            selectedEntities.length +
+            ` entities</p>
                 <p><strong>Output:</strong> ` +
-                polygons.length +
-                ` polygon(s)</p>
+            polygons.length +
+            ` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-                params.radius +
-                `m</p>
+            params.radius +
+            `m</p>
                 <p><strong>Rotation:</strong> ` +
-                params.rotationOffset +
-                `°</p>
+            params.rotationOffset +
+            `°</p>
                 <p><strong>Starburst:</strong> ` +
-                params.starburstOffset * 100 +
-                `%</p>
+            params.starburstOffset * 100 +
+            `%</p>
                 <p><strong>Line Width:</strong> ` +
-                params.lineWidth +
-                `</p>
+            params.lineWidth +
+            `</p>
                 <p><strong>Location:</strong> ` +
-                (params.useToeLocation ? "End/Toe" : "Start/Collar") +
-                `</p>
+            (params.useToeLocation ? "End/Toe" : "Start/Collar") +
+            `</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -14196,8 +14331,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-                (error.message || "Unknown error occurred") +
-                `</p>
+            (error.message || "Unknown error occurred") +
+            `</p>
             </div>
         `
         );
@@ -17466,7 +17601,8 @@ async function addKADText() {
         const pointID = allKADDrawingsMap.has(entityName) ? allKADDrawingsMap.get(entityName).data.length + 1 : 1;
         const pointXLocation = worldX;
         const pointYLocation = worldY;
-        const pointZLocation = drawingZValue || document.getElementById("drawingElevation").value || 0;
+        // Step 17.6a) Use worldZ for snapping like other KAD tools
+        const pointZLocation = worldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
 
         console.log("Before entity creation check:");
         console.log("  createNewEntity:", createNewEntity);
@@ -20138,11 +20274,11 @@ function timeChart() {
             // Update selected holes array for single bin
             timingWindowHolesSelected = holeIDs[selectedIndex]
                 ? holeIDs[selectedIndex]
-                      .map((combinedID) => {
-                          const [entityName, holeID] = combinedID.split(":");
-                          return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                      })
-                      .filter(Boolean)
+                    .map((combinedID) => {
+                        const [entityName, holeID] = combinedID.split(":");
+                        return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                    })
+                    .filter(Boolean)
                 : [];
 
             // Redraw canvas WITHOUT calling timeChart
@@ -20763,8 +20899,11 @@ function drawData(allBlastHoles, selectedHole) {
                             intervalPF = 0.2;
                         }
                     }
-                    drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getPFColor(value, minPF, maxPF), "Legend Powder Factor", minPF, maxPF, intervalPF);
-                    // Step 8) Draw Voronoi cells in Three.js
+                    // Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
+                    if (!onlyShowThreeJS) {
+                        drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getPFColor(value, minPF, maxPF), "Legend Powder Factor", minPF, maxPF, intervalPF);
+                    }
+                    // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
@@ -20803,8 +20942,11 @@ function drawData(allBlastHoles, selectedHole) {
                             intervalMass = 0.2;
                         }
                     }
-                    drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getMassColor(value, minMass, maxMass), "Legend Mass", minMass, maxMass, intervalMass);
-                    // Step 8) Draw Voronoi cells in Three.js
+                    // Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
+                    if (!onlyShowThreeJS) {
+                        drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getMassColor(value, minMass, maxMass), "Legend Mass", minMass, maxMass, intervalMass);
+                    }
+                    // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
                         const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
                         const clippedCells = clipVoronoiCells(voronoiMetrics);
@@ -20841,7 +20983,16 @@ function drawData(allBlastHoles, selectedHole) {
                             intervalVol = 0.2;
                         }
                     }
-                    drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getVolumeColor(value, minVol, maxVol), "Legend Volume", minVol, maxVol, intervalVol);
+                    // Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
+                    if (!onlyShowThreeJS) {
+                        drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getVolumeColor(value, minVol, maxVol), "Legend Volume", minVol, maxVol, intervalVol);
+                    }
+                    // Step 8b) Draw Voronoi cells in Three.js
+                    if (threeInitialized) {
+                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        const clippedCells = clipVoronoiCells(voronoiMetrics);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getVolumeColor(value, minVol, maxVol), allBlastHoles, 1.0);
+                    }
                     break;
                 }
                 case "area": {
@@ -20874,7 +21025,16 @@ function drawData(allBlastHoles, selectedHole) {
                             intervalArea = 0.2;
                         }
                     }
-                    drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getAreaColor(value, minArea, maxArea), "Legend Area", minArea, maxArea, intervalArea);
+                    // Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
+                    if (!onlyShowThreeJS) {
+                        drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getAreaColor(value, minArea, maxArea), "Legend Area", minArea, maxArea, intervalArea);
+                    }
+                    // Step 8b) Draw Voronoi cells in Three.js
+                    if (threeInitialized) {
+                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        const clippedCells = clipVoronoiCells(voronoiMetrics);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getAreaColor(value, minArea, maxArea), allBlastHoles, 1.0);
+                    }
                     break;
                 }
                 case "measuredLength": {
@@ -20915,7 +21075,16 @@ function drawData(allBlastHoles, selectedHole) {
                             intervalMLen = 0.2;
                         }
                     }
-                    drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getLengthColor(value, minMLen, maxMLen), "Legend Measured Length", minMLen, maxMLen, intervalMLen);
+                    // Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
+                    if (!onlyShowThreeJS) {
+                        drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getLengthColor(value, minMLen, maxMLen), "Legend Measured Length", minMLen, maxMLen, intervalMLen);
+                    }
+                    // Step 8b) Draw Voronoi cells in Three.js
+                    if (threeInitialized) {
+                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        const clippedCells = clipVoronoiCells(voronoiMetrics);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getLengthColor(value, minMLen, maxMLen), allBlastHoles, 1.0);
+                    }
                     break;
                 }
                 case "designedLength": {
@@ -20956,7 +21125,16 @@ function drawData(allBlastHoles, selectedHole) {
                             intervalDLen = 0.2;
                         }
                     }
-                    drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getLengthColor(value, minDLen, maxDLen), "Legend Designed Length", minDLen, maxDLen, intervalDLen);
+                    // Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
+                    if (!onlyShowThreeJS) {
+                        drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getLengthColor(value, minDLen, maxDLen), "Legend Designed Length", minDLen, maxDLen, intervalDLen);
+                    }
+                    // Step 8b) Draw Voronoi cells in Three.js
+                    if (threeInitialized) {
+                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        const clippedCells = clipVoronoiCells(voronoiMetrics);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getLengthColor(value, minDLen, maxDLen), allBlastHoles, 1.0);
+                    }
                     break;
                 }
                 case "holeFiringTime": {
@@ -20989,7 +21167,16 @@ function drawData(allBlastHoles, selectedHole) {
                             intervalHTime = 0.5;
                         }
                     }
-                    drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getHoleFiringTimeColor(value, minHTime, maxHTime), "Legend Hole Firing Time", minHTime, maxHTime, intervalHTime);
+                    // Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
+                    if (!onlyShowThreeJS) {
+                        drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getHoleFiringTimeColor(value, minHTime, maxHTime), "Legend Hole Firing Time", minHTime, maxHTime, intervalHTime);
+                    }
+                    // Step 8b) Draw Voronoi cells in Three.js
+                    if (threeInitialized) {
+                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        const clippedCells = clipVoronoiCells(voronoiMetrics);
+                        drawVoronoiCellsThreeJS(clippedCells, (value) => getHoleFiringTimeColor(value, minHTime, maxHTime), allBlastHoles, 1.0);
+                    }
                     break;
                 }
             }
@@ -21002,13 +21189,17 @@ function drawData(allBlastHoles, selectedHole) {
                 y: centroidY
             };
             const { resultTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
-            drawDelauanySlopeMap(resultTriangles, centroid, strokeColor);
-            for (const triangle of resultTriangles) {
-                drawTriangleAngleText(triangle, centroid, strokeColor);
-            }
-            drawLegend(strokeColor);
 
-            // Step 6) Draw slope map in Three.js
+            // Step 6a) Draw 2D slope map only when NOT in 3D-only mode
+            if (!onlyShowThreeJS) {
+                drawDelauanySlopeMap(resultTriangles, centroid, strokeColor);
+                for (const triangle of resultTriangles) {
+                    drawTriangleAngleText(triangle, centroid, strokeColor);
+                }
+                drawLegend(strokeColor);
+            }
+
+            // Step 6b) Draw slope map in Three.js when 3D is active
             if (threeInitialized && resultTriangles && resultTriangles.length > 0) {
                 drawSlopeMapThreeJS(resultTriangles, allBlastHoles);
             }
@@ -21021,13 +21212,17 @@ function drawData(allBlastHoles, selectedHole) {
                 y: centroidY
             };
             const { reliefTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
-            drawDelauanyBurdenRelief(reliefTriangles, centroid, strokeColor);
-            for (const triangle of reliefTriangles) {
-                drawTriangleBurdenReliefText(triangle, centroid, strokeColor);
-            }
-            drawReliefLegend(strokeColor);
 
-            // Step 7) Draw burden relief map in Three.js
+            // Step 7a) Draw 2D relief map only when NOT in 3D-only mode
+            if (!onlyShowThreeJS) {
+                drawDelauanyBurdenRelief(reliefTriangles, centroid, strokeColor);
+                for (const triangle of reliefTriangles) {
+                    drawTriangleBurdenReliefText(triangle, centroid, strokeColor);
+                }
+                drawReliefLegend(strokeColor);
+            }
+
+            // Step 7b) Draw burden relief map in Three.js when 3D is active
             if (threeInitialized && reliefTriangles && reliefTriangles.length > 0) {
                 drawBurdenReliefMapThreeJS(reliefTriangles, allBlastHoles);
             }
@@ -21036,21 +21231,25 @@ function drawData(allBlastHoles, selectedHole) {
         // First Movement Direction Arrows
         if (displayOptions.firstMovement) {
             connScale = document.getElementById("connSlider").value;
-            for (const arrow of directionArrows) {
-                const [startX, startY] = worldToCanvas(arrow[0], arrow[1]);
-                const [endX, endY] = worldToCanvas(arrow[2], arrow[3]);
-                drawDirectionArrow(startX, startY, endX, endY, arrow[4], strokeColor, arrow[5]);
+
+            // Step 8a) Draw 2D direction arrows only when NOT in 3D-only mode
+            if (!onlyShowThreeJS) {
+                for (const arrow of directionArrows) {
+                    const [startX, startY] = worldToCanvas(arrow[0], arrow[1]);
+                    const [endX, endY] = worldToCanvas(arrow[2], arrow[3]);
+                    drawDirectionArrow(startX, startY, endX, endY, arrow[4], strokeColor, arrow[5]);
+                }
             }
 
-            // Step 2) Draw first movement arrows in Three.js
+            // Step 8b) Draw first movement arrows in Three.js (positioned at collar elevation)
             if (threeInitialized && directionArrows && directionArrows.length > 0) {
-                drawDirectionArrowsThreeJS(directionArrows);
+                drawDirectionArrowsThreeJS(directionArrows, allBlastHoles);
             }
         }
 
-        // Step 3) Draw contours in Three.js
-        if (displayOptions.contours && threeInitialized && contourLinesArray && contourLinesArray.length > 0) {
-            drawContoursThreeJS(contourLinesArray, strokeColor);
+        // Step 3) Draw contours in Three.js (positioned at collar elevation)
+        if (displayOptions.contour && threeInitialized && contourLinesArray && contourLinesArray.length > 0) {
+            drawContoursThreeJS(contourLinesArray, strokeColor, allBlastHoles);
         }
 
         // Main hole loop
@@ -21122,6 +21321,14 @@ function drawData(allBlastHoles, selectedHole) {
                 if (threeInitialized && (isIn3DMode || onlyShowThreeJS)) {
                     // Draw complete hole in Three.js (collar + grade + toe lines)
                     drawHoleThreeJS(hole);
+
+                    // Step 3a) Draw toe circle in Three.js (if hole length is not zero)
+                    if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
+                        const toeRadiusWorld = parseFloat(toeSizeInMeters);
+                        const toeColor = strokeColor;
+                        const toeHoleId = hole.entityName + ":::" + hole.holeID;
+                        drawHoleToeThreeJS(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0, toeRadiusWorld, toeColor, toeHoleId);
+                    }
 
                     // Draw hole text labels in Three.js
                     //if (threeInitialized) {
@@ -21418,23 +21625,106 @@ function drawData(allBlastHoles, selectedHole) {
         // Draw surfaces (includes Three.js rendering)
         drawSurface();
 
-        // Step 2) Draw contours in Three.js (if needed)
+        // Step 2) Draw contours in Three.js (if needed, positioned at collar elevation)
         const displayOptions3D = getDisplayOptions();
-        if (displayOptions3D.contours && contourLinesArray && contourLinesArray.length > 0) {
-            drawContoursThreeJS(contourLinesArray, strokeColor);
+        if (displayOptions3D.contour && contourLinesArray && contourLinesArray.length > 0) {
+            drawContoursThreeJS(contourLinesArray, strokeColor, allBlastHoles);
         }
 
-        // Step 3) Draw first movement arrows in Three.js (if needed)
+        // Step 3) Draw first movement arrows in Three.js (if needed, positioned at collar elevation)
         if (displayOptions3D.firstMovement && directionArrows && directionArrows.length > 0) {
-            drawDirectionArrowsThreeJS(directionArrows);
+            drawDirectionArrowsThreeJS(directionArrows, allBlastHoles);
+        }
+
+        // Step 3.1) Draw slope map in Three.js (3D-only mode)
+        if (displayOptions3D.slopeMap && allBlastHoles && allBlastHoles.length > 0) {
+            const { resultTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
+            if (resultTriangles && resultTriangles.length > 0) {
+                drawSlopeMapThreeJS(resultTriangles, allBlastHoles);
+            }
+        }
+
+        // Step 3.2) Draw burden relief map in Three.js (3D-only mode)
+        if (displayOptions3D.burdenRelief && allBlastHoles && allBlastHoles.length > 0) {
+            const { reliefTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
+            if (reliefTriangles && reliefTriangles.length > 0) {
+                drawBurdenReliefMapThreeJS(reliefTriangles, allBlastHoles);
+            }
+        }
+
+        // Step 3.3) Draw Voronoi cells in Three.js (3D-only mode)
+        if (displayOptions3D.voronoiPF && allBlastHoles && allBlastHoles.length > 0) {
+            const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+            const clippedCells = clipVoronoiCells(voronoiMetrics);
+            if (clippedCells && clippedCells.length > 0) {
+                // Use the selected voronoi metric for coloring
+                const selectedMetric = selectedVoronoiMetric || "powder_factor";
+                let colorFunction;
+                switch (selectedMetric) {
+                    case "powder_factor":
+                        const pfValues = clippedCells.map(function (c) { return c.powderFactor; }).filter(function (v) { return v != null && !isNaN(v); });
+                        const minPF = pfValues.length > 0 ? Math.min.apply(null, pfValues) : 0;
+                        const maxPF = pfValues.length > 0 ? Math.max.apply(null, pfValues) : 1;
+                        colorFunction = function (value) { return getPFColor(value, minPF, maxPF); };
+                        break;
+                    case "mass":
+                        const massValues = clippedCells.map(function (c) { return c.mass; }).filter(function (v) { return v != null && !isNaN(v); });
+                        const minMass = massValues.length > 0 ? Math.min.apply(null, massValues) : 0;
+                        const maxMass = massValues.length > 0 ? Math.max.apply(null, massValues) : 100;
+                        colorFunction = function (value) { return getMassColor(value, minMass, maxMass); };
+                        break;
+                    case "volume":
+                        const volValues = clippedCells.map(function (c) { return c.volume; }).filter(function (v) { return v != null && !isNaN(v); });
+                        const minVol = volValues.length > 0 ? Math.min.apply(null, volValues) : 0;
+                        const maxVol = volValues.length > 0 ? Math.max.apply(null, volValues) : 100;
+                        colorFunction = function (value) { return getVolumeColor(value, minVol, maxVol); };
+                        break;
+                    case "area":
+                        const areaValues = clippedCells.map(function (c) { return c.area; }).filter(function (v) { return v != null && !isNaN(v); });
+                        const minArea = areaValues.length > 0 ? Math.min.apply(null, areaValues) : 0;
+                        const maxArea = areaValues.length > 0 ? Math.max.apply(null, areaValues) : 100;
+                        colorFunction = function (value) { return getAreaColor(value, minArea, maxArea); };
+                        break;
+                    case "measuredLength":
+                        const mLenValues = clippedCells.map(function (c) { return c.measuredLength; }).filter(function (v) { return v != null && !isNaN(v); });
+                        const minMLen = mLenValues.length > 0 ? Math.min.apply(null, mLenValues) : 0;
+                        const maxMLen = mLenValues.length > 0 ? Math.max.apply(null, mLenValues) : 50;
+                        colorFunction = function (value) { return getLengthColor(value, minMLen, maxMLen); };
+                        break;
+                    case "designedLength":
+                        const dLenValues = clippedCells.map(function (c) { return c.designedLength; }).filter(function (v) { return v != null && !isNaN(v); });
+                        const minDLen = dLenValues.length > 0 ? Math.min.apply(null, dLenValues) : 0;
+                        const maxDLen = dLenValues.length > 0 ? Math.max.apply(null, dLenValues) : 50;
+                        colorFunction = function (value) { return getLengthColor(value, minDLen, maxDLen); };
+                        break;
+                    case "holeFiringTime":
+                        const hTimeValues = clippedCells.map(function (c) { return c.holeFiringTime; }).filter(function (v) { return v != null && !isNaN(v); });
+                        const minHTime = hTimeValues.length > 0 ? Math.min.apply(null, hTimeValues) : 0;
+                        const maxHTime = hTimeValues.length > 0 ? Math.max.apply(null, hTimeValues) : 5000;
+                        colorFunction = function (value) { return getHoleFiringTimeColor(value, minHTime, maxHTime); };
+                        break;
+                    default:
+                        colorFunction = function (value) { return getPFColor(value, 0, 1); };
+                }
+                drawVoronoiCellsThreeJS(clippedCells, colorFunction, allBlastHoles, 1.0);
+            }
         }
 
         // Draw holes
+        const toeSizeInMeters3D = document.getElementById("toeSlider") ? document.getElementById("toeSlider").value : 1;
         if (blastGroupVisible && allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
             for (const hole of allBlastHoles) {
                 if (hole.visible === false) continue;
                 // Draw Three.js hole geometry
                 drawHoleThreeJS(hole);
+
+                // Step 3.4) Draw toe circle in Three.js (if hole has length)
+                if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
+                    const toeRadiusWorld = parseFloat(toeSizeInMeters3D);
+                    const toeColor = strokeColor;
+                    const toeHoleId = hole.entityName + ":::" + hole.holeID;
+                    drawHoleToeThreeJS(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0, toeRadiusWorld, toeColor, toeHoleId);
+                }
 
                 // Draw hole text labels in Three.js
                 if (threeInitialized) {
@@ -22204,9 +22494,9 @@ function resetZoom() {
 function saveHolesToLocalStorage(allBlastHoles) {
     if (allBlastHoles !== null) {
         /* STRUCTURE OF THE POINTS ARRAY
-		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
-	*/
+        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
+    */
         const lines = allBlastHoles.map((hole) => {
             return `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation},${hole.startYLocation},${hole.startZLocation},${hole.endXLocation},${hole.endYLocation},${hole.endZLocation},${hole.gradeXLocation},${hole.gradeYLocation},${hole.gradeZLocation},${hole.subdrillAmount},${hole.subdrillLength},${hole.benchHeight},${hole.holeDiameter},${hole.holeType},${hole.fromHoleID},${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated},${hole.holeAngle},${hole.holeBearing},${hole.initiationTime},${hole.measuredLength},${hole.measuredLengthTimeStamp},${hole.measuredMass},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}\n`;
         });
@@ -22269,9 +22559,9 @@ function loadHolesFromLocalStorage() {
         allBlastHoles = [];
     }
     /* STRUCTURE OF THE POINTS ARRAY
-		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
-	*/
+        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
+    */
     const csvString = localStorage.getItem("kirraDataPoints");
     //console.log(csvString);
     if (csvString) {
@@ -30500,10 +30790,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
     return closestPoint
         ? {
-              point: closestPoint,
-              type: snapType,
-              distance: minDistance
-          }
+            point: closestPoint,
+            type: snapType,
+            distance: minDistance
+        }
         : null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)

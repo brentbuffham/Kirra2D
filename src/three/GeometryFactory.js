@@ -129,17 +129,24 @@ export class GeometryFactory {
         return group;
     }
 
-    // Step 5) Create a hole toe mesh (simple circle)
+    // Step 5) Create a hole toe mesh (circle at toe elevation, facing upward for plan view visibility)
     static createHoleToe(worldX, worldY, worldZ, radius, color) {
         const geometry = new THREE.CircleGeometry(radius, 32);
         const material = new THREE.MeshBasicMaterial({
             color: new THREE.Color(color),
             side: THREE.DoubleSide,
-            transparent: false
+            transparent: true,
+            opacity: 0.7,
+            depthTest: true,
+            depthWrite: false // Prevent z-fighting with hole geometry
         });
 
         const mesh = new THREE.Mesh(geometry, material);
         mesh.position.set(worldX, worldY, worldZ);
+
+        // Step 5a) CircleGeometry is created in XY plane facing +Z
+        // In Kirra's Z-up coordinate system, this is already correct for plan view visibility
+        // No rotation needed - circle lies flat in XY plane, visible from above
 
         return mesh;
     }
@@ -833,8 +840,8 @@ export class GeometryFactory {
         return mesh;
     }
 
-    // Step 17) Create contour lines
-    static createContourLines(contourLinesArray, color) {
+    // Step 17) Create contour lines (positioned at collar Z elevation)
+    static createContourLines(contourLinesArray, color, allBlastHoles, worldToThreeLocalFn) {
         const group = new THREE.Group();
 
         for (let levelIndex = 0; levelIndex < contourLinesArray.length; levelIndex++) {
@@ -843,7 +850,27 @@ export class GeometryFactory {
             for (let i = 0; i < contourLines.length; i++) {
                 const line = contourLines[i];
                 if (line.length === 2) {
-                    const points = [new THREE.Vector3(line[0].x, line[0].y, 0), new THREE.Vector3(line[1].x, line[1].y, 0)];
+                    // Step 17a) Get world coordinates from contour line
+                    const worldX1 = line[0].x;
+                    const worldY1 = line[0].y;
+                    const worldX2 = line[1].x;
+                    const worldY2 = line[1].y;
+
+                    // Step 17b) Find nearest hole for each endpoint to get collar Z
+                    const nearestHole1 = this.findNearestHole(worldX1, worldY1, allBlastHoles);
+                    const nearestHole2 = this.findNearestHole(worldX2, worldY2, allBlastHoles);
+                    const z1 = nearestHole1 ? nearestHole1.startZLocation || 0 : 0;
+                    const z2 = nearestHole2 ? nearestHole2.startZLocation || 0 : 0;
+
+                    // Step 17c) Convert to local Three.js coordinates
+                    const local1 = worldToThreeLocalFn ? worldToThreeLocalFn(worldX1, worldY1) : { x: worldX1, y: worldY1 };
+                    const local2 = worldToThreeLocalFn ? worldToThreeLocalFn(worldX2, worldY2) : { x: worldX2, y: worldY2 };
+
+                    // Step 17d) Create line segment at collar elevation
+                    const points = [
+                        new THREE.Vector3(local1.x, local1.y, z1),
+                        new THREE.Vector3(local2.x, local2.y, z2)
+                    ];
 
                     const geometry = new THREE.BufferGeometry().setFromPoints(points);
                     const material = new THREE.LineBasicMaterial({ color: new THREE.Color(color) });
@@ -856,29 +883,40 @@ export class GeometryFactory {
         return group;
     }
 
-    // Step 18) Create direction arrows
-    static createDirectionArrows(directionArrows) {
+    // Step 18) Create direction arrows (positioned at collar Z elevation)
+    static createDirectionArrows(directionArrows, allBlastHoles, worldToThreeLocalFn) {
         const group = new THREE.Group();
 
         for (const arrow of directionArrows) {
             const [startX, startY, endX, endY, color, size] = arrow;
 
-            // Step 19) Create arrow line
-            const points = [new THREE.Vector3(startX, startY, 0), new THREE.Vector3(endX, endY, 0)];
+            // Step 18a) Find nearest hole for start position to get collar Z
+            const nearestHole = this.findNearestHole(startX, startY, allBlastHoles);
+            const collarZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
+
+            // Step 18b) Convert to local Three.js coordinates
+            const localStart = worldToThreeLocalFn ? worldToThreeLocalFn(startX, startY) : { x: startX, y: startY };
+            const localEnd = worldToThreeLocalFn ? worldToThreeLocalFn(endX, endY) : { x: endX, y: endY };
+
+            // Step 19) Create arrow line at collar elevation
+            const points = [
+                new THREE.Vector3(localStart.x, localStart.y, collarZ),
+                new THREE.Vector3(localEnd.x, localEnd.y, collarZ)
+            ];
 
             const geometry = new THREE.BufferGeometry().setFromPoints(points);
             const material = new THREE.LineBasicMaterial({ color: new THREE.Color(color) });
             const line = new THREE.Line(geometry, material);
 
-            // Step 20) Create arrowhead
-            const direction = new THREE.Vector3(endX - startX, endY - startY, 0).normalize();
+            // Step 20) Create arrowhead at collar elevation
+            const direction = new THREE.Vector3(localEnd.x - localStart.x, localEnd.y - localStart.y, 0).normalize();
             const arrowSize = size * 0.3;
 
             const perpendicular = new THREE.Vector3(-direction.y, direction.x, 0);
-            const arrowBase = new THREE.Vector3(endX, endY, 0);
+            const arrowBase = new THREE.Vector3(localEnd.x, localEnd.y, collarZ);
 
             const arrowPoints = [
-                new THREE.Vector3(endX, endY, 0),
+                new THREE.Vector3(localEnd.x, localEnd.y, collarZ),
                 arrowBase
                     .clone()
                     .add(direction.clone().multiplyScalar(-arrowSize))
@@ -887,7 +925,7 @@ export class GeometryFactory {
                     .clone()
                     .add(direction.clone().multiplyScalar(-arrowSize))
                     .add(perpendicular.clone().multiplyScalar(-arrowSize * 0.5)),
-                new THREE.Vector3(endX, endY, 0)
+                new THREE.Vector3(localEnd.x, localEnd.y, collarZ)
             ];
 
             const arrowGeometry = new THREE.BufferGeometry().setFromPoints(arrowPoints);

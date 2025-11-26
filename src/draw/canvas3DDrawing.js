@@ -5,6 +5,7 @@
 // All Three.js/WebGL drawing functions extracted from kirra.js
 // This module handles 3D rendering using Three.js
 
+import * as THREE from "three";
 import { GeometryFactory } from "../three/GeometryFactory.js";
 
 // Note: These functions access global variables from kirra.js via window object:
@@ -109,9 +110,13 @@ export function drawHoleThreeJS(hole) {
 export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId) {
     if (!window.threeInitialized || !window.threeRenderer) return;
 
-    const toeMesh = GeometryFactory.createHoleToe(worldX, worldY, worldZ, radius, color);
+    // Step 4a) Convert world coordinates to local Three.js coordinates for precision
+    const local = window.worldToThreeLocal(worldX, worldY);
 
-    // Step 4a) Add metadata for selection
+    // Step 4b) Create toe mesh at local coordinates
+    const toeMesh = GeometryFactory.createHoleToe(local.x, local.y, worldZ, radius, color);
+
+    // Step 4c) Add metadata for selection
     toeMesh.userData = {
         type: "holeToe",
         holeId: holeId
@@ -127,7 +132,7 @@ export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, colo
 
     const local = window.worldToThreeLocal(worldX, worldY);
     const textSprite = GeometryFactory.createKADText(local.x, local.y, worldZ, String(text), fontSize, color, null);
-    
+
     // Step 5a) Only add if not already in group (cached objects might already be there)
     if (!textSprite.parent) {
         window.threeRenderer.kadGroup.add(textSprite);
@@ -321,7 +326,7 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
     if (!window.threeInitialized || !window.threeRenderer) return;
 
     const textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor);
-    
+
     // Step 11a) Add metadata for selection
     if (kadId) {
         // Preserve existing userData if it exists (for cached objects)
@@ -331,7 +336,7 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
         textSprite.userData.type = "kadText";
         textSprite.userData.kadId = kadId;
     }
-    
+
     // Step 11b) Only add if not already in group (cached objects might already be there)
     if (!textSprite.parent) {
         window.threeRenderer.kadGroup.add(textSprite);
@@ -382,19 +387,72 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
     window.threeRenderer.surfaceMeshMap.set(surfaceId, surfaceMesh);
 }
 
-// Step 13) Draw contour lines in Three.js
-export function drawContoursThreeJS(contourLinesArray, color) {
+// Step 13) Draw contour lines in Three.js (positioned at collar elevation)
+export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
     if (!window.threeInitialized || !window.threeRenderer) return;
+    if (!contourLinesArray || contourLinesArray.length === 0) return;
 
-    const contourGroup = GeometryFactory.createContourLines(contourLinesArray, color);
+    // Step 13a) Pass allBlastHoles and worldToThreeLocal for collar Z positioning
+    const contourGroup = GeometryFactory.createContourLines(contourLinesArray, color, allBlastHoles, window.worldToThreeLocal);
     window.threeRenderer.contoursGroup.add(contourGroup);
+
+    // Step 13b) Add 3D text labels for each contour level (matching 2D overlay behavior)
+    const interval = window.intervalAmount || 100;
+
+    for (let level = 0; level < contourLinesArray.length; level++) {
+        const contourLevel = contourLinesArray[level];
+        if (!contourLevel || contourLevel.length === 0) continue;
+
+        const contourTime = level * interval;
+        const labelText = contourTime + "ms";
+        const totalLines = contourLevel.length;
+
+        // Step 13c) Add labels at 1/3 and 2/3 marks of this contour level
+        const oneThirdMark = Math.floor(totalLines / 3);
+        const twoThirdsMark = Math.floor((totalLines * 2) / 3);
+
+        for (let i = 0; i < contourLevel.length; i++) {
+            if (i === oneThirdMark || i === twoThirdsMark) {
+                const line = contourLevel[i];
+                if (!line || !line[0] || !line[1]) continue;
+
+                // Step 13d) Calculate midpoint of the line segment
+                const midX = (line[0].x + line[1].x) / 2;
+                const midY = (line[0].y + line[1].y) / 2;
+
+                // Step 13e) Find nearest hole for Z elevation
+                const nearestHole = GeometryFactory.findNearestHole(midX, midY, allBlastHoles);
+                const midZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
+
+                // Step 13f) Convert to local coordinates
+                const local = window.worldToThreeLocal ? window.worldToThreeLocal(midX, midY) : { x: midX, y: midY };
+
+                // Step 13g) Create text label using GeometryFactory
+                const textMesh = GeometryFactory.createKADText(
+                    local.x,
+                    local.y,
+                    midZ + 0.5, // Slightly above the line
+                    labelText,
+                    12,
+                    "#FFFF00", // Yellow color for visibility
+                    "rgba(0, 0, 0, 0.6)" // Semi-transparent black background
+                );
+
+                if (textMesh) {
+                    textMesh.userData = { type: "contourLabel", time: contourTime };
+                    window.threeRenderer.contoursGroup.add(textMesh);
+                }
+            }
+        }
+    }
 }
 
-// Step 14) Draw direction arrows in Three.js
-export function drawDirectionArrowsThreeJS(directionArrows) {
+// Step 14) Draw direction arrows in Three.js (positioned at collar elevation)
+export function drawDirectionArrowsThreeJS(directionArrows, allBlastHoles) {
     if (!window.threeInitialized || !window.threeRenderer) return;
 
-    const arrowGroup = GeometryFactory.createDirectionArrows(directionArrows);
+    // Step 14a) Pass allBlastHoles and worldToThreeLocal for collar Z positioning
+    const arrowGroup = GeometryFactory.createDirectionArrows(directionArrows, allBlastHoles, window.worldToThreeLocal);
     window.threeRenderer.contoursGroup.add(arrowGroup);
 }
 
@@ -621,13 +679,17 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 
 // Step 19.5) Draw mouse position indicator (crosshairs) in Three.js
 // Now uses view plane positioning and billboard rendering
-export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ) {
+// Optional color parameter to change torus color (e.g., when drawing tools are active)
+export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indicatorColor) {
     if (!window.threeInitialized || !window.threeRenderer) return;
     if (worldX === undefined || worldY === undefined || worldZ === undefined) return;
 
     // Step 19.5a) Convert world coordinates to local Three.js coordinates
     const local = window.worldToThreeLocal(worldX, worldY);
     const z = worldZ || 0;
+
+    // Step 19.5a.1) Use provided color or default grey
+    const torusColor = indicatorColor || "rgba(128, 128, 128, 0.6)";
 
     // Step 19.5b) Remove existing mouse indicator if present
     const connectorsGroup = window.threeRenderer.connectorsGroup;
@@ -673,7 +735,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ) {
         local.y,
         z,
         indicatorSize,
-        "rgba(128, 128, 128, 0.6)", // Grey, 60% transparent
+        torusColor, // Use provided color or default grey
         true // Enable billboarding to face camera
     );
 
@@ -681,7 +743,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ) {
     indicatorGroup.userData = {
         type: "mouseIndicator"
     };
-    
+
     // Step 19.5e) Mark torus mesh for billboarding
     indicatorGroup.traverse((child) => {
         if (child.isMesh && child.geometry && child.geometry.type === "TorusGeometry") {
@@ -690,6 +752,76 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ) {
     });
 
     connectorsGroup.add(indicatorGroup);
+}
+
+// Step 19.6) Draw KAD leading line preview in Three.js
+export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, toWorldX, toWorldY, toWorldZ, color) {
+    if (!window.threeInitialized || !window.threeRenderer) return;
+    if (fromWorldX === undefined || fromWorldY === undefined) return;
+    if (toWorldX === undefined || toWorldY === undefined) return;
+
+    // Step 19.6a) Convert world coordinates to local Three.js coordinates
+    const fromLocal = window.worldToThreeLocal(fromWorldX, fromWorldY);
+    const toLocal = window.worldToThreeLocal(toWorldX, toWorldY);
+    const fromZ = fromWorldZ || 0;
+    const toZ = toWorldZ || 0;
+
+    // Step 19.6b) Remove existing leading line if present
+    const connectorsGroup = window.threeRenderer.connectorsGroup;
+    const toRemove = [];
+    connectorsGroup.children.forEach(function (child) {
+        if (child.userData && child.userData.type === "kadLeadingLine") {
+            toRemove.push(child);
+        }
+    });
+    toRemove.forEach(function (obj) {
+        connectorsGroup.remove(obj);
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) obj.material.dispose();
+    });
+
+    // Step 19.6c) Create dashed line geometry from last point to current mouse position
+    const lineColor = color || "rgba(0, 255, 255, 0.8)";
+    const points = [
+        new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ),
+        new THREE.Vector3(toLocal.x, toLocal.y, toZ)
+    ];
+
+    const geometry = new THREE.BufferGeometry().setFromPoints(points);
+    const material = new THREE.LineDashedMaterial({
+        color: new THREE.Color(lineColor),
+        dashSize: 0.5,
+        gapSize: 0.25,
+        linewidth: 2
+    });
+
+    const line = new THREE.Line(geometry, material);
+    line.computeLineDistances(); // Required for dashed lines
+
+    // Step 19.6d) Add metadata
+    line.userData = {
+        type: "kadLeadingLine"
+    };
+
+    connectorsGroup.add(line);
+}
+
+// Step 19.7) Clear KAD leading line preview in Three.js
+export function clearKADLeadingLineThreeJS() {
+    if (!window.threeInitialized || !window.threeRenderer) return;
+
+    const connectorsGroup = window.threeRenderer.connectorsGroup;
+    const toRemove = [];
+    connectorsGroup.children.forEach(function (child) {
+        if (child.userData && child.userData.type === "kadLeadingLine") {
+            toRemove.push(child);
+        }
+    });
+    toRemove.forEach(function (obj) {
+        connectorsGroup.remove(obj);
+        if (obj.geometry) obj.geometry.dispose();
+        if (obj.material) obj.material.dispose();
+    });
 }
 
 // Step 20) Draw slope map in Three.js
