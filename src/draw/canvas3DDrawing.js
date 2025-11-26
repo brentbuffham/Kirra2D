@@ -354,15 +354,74 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
 //=================================================
 
 // Step 12) Draw surface in Three.js
-export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, transparency) {
+export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, transparency, surfaceData) {
     if (!window.threeInitialized || !window.threeRenderer) return;
 
-    // Step 9a) Convert triangle vertices from world coordinates to local Three.js coordinates
-    const localTriangles = triangles.map((triangle) => {
+    // Step 12a) Check if this is a textured mesh with pre-loaded Three.js object
+    if (surfaceData && surfaceData.isTexturedMesh && surfaceData.threeJSMesh) {
+        // Step 12b) Check if already added to scene
+        var existingMesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
+        if (existingMesh) {
+            // Already in scene, just ensure visibility
+            existingMesh.visible = true;
+            return;
+        }
+        
+        // Step 12c) Clone the pre-loaded mesh for rendering
+        var texturedMesh = surfaceData.threeJSMesh.clone(true);
+        
+        // Step 12d) Transform mesh position to local Three.js coordinates
+        // Instead of transforming each vertex, transform the mesh group position
+        if (surfaceData.meshBounds) {
+            var centerX = (surfaceData.meshBounds.minX + surfaceData.meshBounds.maxX) / 2;
+            var centerY = (surfaceData.meshBounds.minY + surfaceData.meshBounds.maxY) / 2;
+            var localCenter = window.worldToThreeLocal(centerX, centerY);
+            
+            // Calculate offset from world to local
+            var offsetX = localCenter.x - centerX;
+            var offsetY = localCenter.y - centerY;
+            
+            // Apply offset to mesh position
+            texturedMesh.position.x += offsetX;
+            texturedMesh.position.y += offsetY;
+        }
+        
+        // Step 12e) Set userData for selection
+        texturedMesh.userData = {
+            type: "surface",
+            surfaceId: surfaceId,
+            isTexturedMesh: true
+        };
+        
+        // Step 12f) Apply transparency if specified
+        if (transparency < 1.0) {
+            texturedMesh.traverse(function(child) {
+                if (child.isMesh && child.material) {
+                    child.material.transparent = true;
+                    child.material.opacity = transparency;
+                }
+            });
+        }
+        
+        // Step 12g) Add to scene
+        window.threeRenderer.surfacesGroup.add(texturedMesh);
+        window.threeRenderer.surfaceMeshMap.set(surfaceId, texturedMesh);
+        
+        // Step 12h) Request render
+        if (window.threeRenderer.needsRender !== undefined) {
+            window.threeRenderer.needsRender = true;
+        }
+        
+        console.log("🎨 Added textured mesh to 3D scene: " + surfaceId);
+        return;
+    }
+
+    // Step 9a) Standard surface rendering - Convert triangle vertices from world coordinates to local Three.js coordinates
+    var localTriangles = triangles.map(function(triangle) {
         if (!triangle.vertices || triangle.vertices.length !== 3) return triangle;
 
-        const localVertices = triangle.vertices.map((v) => {
-            const local = window.worldToThreeLocal(v.x, v.y);
+        var localVertices = triangle.vertices.map(function(v) {
+            var local = window.worldToThreeLocal(v.x, v.y);
             return {
                 x: local.x,
                 y: local.y,
@@ -370,20 +429,17 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
             };
         });
 
-        return {
-            ...triangle,
-            vertices: localVertices
-        };
+        return Object.assign({}, triangle, { vertices: localVertices });
     });
 
     // Step 10) Create color function for this surface
-    const colorFunction = (z) => {
-        const rgbString = window.elevationToColor(z, minZ, maxZ, gradient);
+    var colorFunction = function(z) {
+        var rgbString = window.elevationToColor(z, minZ, maxZ, gradient);
         return window.rgbStringToThreeColor(rgbString);
     };
 
     // Step 11) Create mesh with vertex colors (using local coordinates)
-    const surfaceMesh = GeometryFactory.createSurface(localTriangles, colorFunction, transparency);
+    var surfaceMesh = GeometryFactory.createSurface(localTriangles, colorFunction, transparency);
     surfaceMesh.userData = {
         type: "surface",
         surfaceId: surfaceId

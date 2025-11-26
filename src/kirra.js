@@ -31,6 +31,9 @@ import { CameraControls } from "./three/CameraControls.js";
 import { GeometryFactory } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
 import { PolygonSelection3D } from "./three/PolygonSelection3D.js";
+// OBJ/MTL Loaders for textured mesh import
+import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 //=================================================
 // Drawing Modules
 //=================================================
@@ -7431,52 +7434,544 @@ function handleGeotiffUpload(event) {
 }
 
 function handleSurfaceUpload(event) {
-    const file = event.target.files[0];
-    if (!file) return;
+    var allFiles = event.target.files;
+    if (!allFiles || allFiles.length === 0) return;
 
-    updateStatusMessage("Loading surface: " + file.name);
+    // Step 1) Categorize selected files
+    var objFiles = [];
+    var pointCloudFiles = [];
+    var companionFiles = []; // MTL, JPG, PNG, etc.
+    var pointCloudExtensions = ["xyz", "csv", "txt", "asc", "ply", "pts"];
+    var companionExtensions = ["mtl", "jpg", "jpeg", "png", "gif", "bmp"];
 
-    // If it's an OBJ file, check for MTL first
-    if (file.name.toLowerCase().endsWith(".obj")) {
-        loadOBJWithMTL(file, event.target.files);
-    } else {
-        loadPointCloudFile(file);
+    for (var i = 0; i < allFiles.length; i++) {
+        var file = allFiles[i];
+        var ext = file.name.split(".").pop().toLowerCase();
+
+        if (ext === "obj") {
+            objFiles.push(file);
+        } else if (pointCloudExtensions.indexOf(ext) !== -1) {
+            pointCloudFiles.push(file);
+        } else if (companionExtensions.indexOf(ext) !== -1) {
+            companionFiles.push(file);
+        }
     }
-    debouncedUpdateTreeView(); // Use debounced version
+
+    // Step 2) OBJ file(s) selected - load with MTL/texture support
+    if (objFiles.length > 0) {
+        // Load each OBJ with all selected files (for MTL/texture matching)
+        objFiles.forEach(function (objFile) {
+            updateStatusMessage("Loading OBJ surface: " + objFile.name);
+            loadOBJWithMTL(objFile, allFiles);
+        });
+    }
+    // Step 3) No OBJ but point cloud files selected - load those
+    else if (pointCloudFiles.length > 0) {
+        pointCloudFiles.forEach(function (pcFile) {
+            updateStatusMessage("Loading surface: " + pcFile.name);
+            loadPointCloudFile(pcFile);
+        });
+    }
+    // Step 4) Only MTL/JPG files without OBJ - ignore with message
+    else if (companionFiles.length > 0) {
+        updateStatusMessage("⚠️ Please select an OBJ file along with MTL/texture files");
+        console.warn(
+            "MTL/texture files selected without OBJ - ignoring. Selected:",
+            companionFiles
+                .map(function (f) {
+                    return f.name;
+                })
+                .join(", ")
+        );
+    }
+    // Step 5) No valid files
+    else {
+        updateStatusMessage("No valid surface files found");
+    }
+
+    debouncedUpdateTreeView();
 }
 
 // ENHANCED: Update OBJ loading to pass texture data
 async function loadOBJWithMTL(objFile, allFiles) {
     try {
-        const objContent = await readFileAsText(objFile);
-        const baseName = objFile.name.replace(/\.obj$/i, "");
+        // Step 1) Read OBJ file content
+        var objContent = await readFileAsText(objFile);
+        var baseName = objFile.name.replace(/\.obj$/i, "");
 
-        // Look for MTL file
-        let mtlContent = null;
-        for (const file of allFiles) {
+        // Step 2) Look for MTL file
+        var mtlContent = null;
+        var mtlFile = null;
+        for (var i = 0; i < allFiles.length; i++) {
+            var file = allFiles[i];
             if (file.name.toLowerCase() === baseName.toLowerCase() + ".mtl") {
                 mtlContent = await readFileAsText(file);
+                mtlFile = file;
                 updateStatusMessage("Found material file: " + file.name);
                 break;
             }
         }
 
-        // Parse OBJ (with or without MTL)
-        const objData = parseOBJFile(objContent, mtlContent);
+        // Step 3) Look for texture files (JPG, PNG, etc.)
+        var textureFiles = [];
+        var textureBlobs = {};
+        for (var j = 0; j < allFiles.length; j++) {
+            var texFile = allFiles[j];
+            var ext = texFile.name.split(".").pop().toLowerCase();
+            if (ext === "jpg" || ext === "jpeg" || ext === "png" || ext === "gif" || ext === "bmp") {
+                textureFiles.push(texFile);
+                // Read texture as blob for storage
+                textureBlobs[texFile.name] = await readFileAsBlob(texFile);
+                updateStatusMessage("Found texture file: " + texFile.name);
+            }
+        }
 
-        // Create surface using existing method
-        if (objData.points && objData.points.length > 0) {
-            if (objData.points.length > 10000) {
-                showDecimationWarning(objData.points, objFile.name, objData);
-            } else {
-                processSurfacePoints(objData.points, objFile.name, objData);
+        // Step 4) Parse OBJ to get points/triangles for Data Explorer
+        var objData = parseOBJFile(objContent, mtlContent);
+
+        // Step 5) Check if this is a textured mesh (has MTL + texture files)
+        var hasTextures = mtlContent && textureFiles.length > 0;
+
+        if (hasTextures) {
+            console.log("🎨 Loading textured OBJ mesh: " + objFile.name);
+            // Step 6) Use Three.js loaders for textured mesh
+            await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, objData);
+        } else {
+            // Step 7) No textures - use existing point cloud/surface method
+            if (objData.points && objData.points.length > 0) {
+                if (objData.points.length > 10000) {
+                    showDecimationWarning(objData.points, objFile.name, objData);
+                } else {
+                    processSurfacePoints(objData.points, objFile.name, objData);
+                }
             }
         }
     } catch (error) {
+        console.error("❌ Error loading OBJ with MTL:", error);
         // If anything fails, use normal OBJ loading
         loadPointCloudFile(objFile);
     }
 }
+
+// Step 1) Read file as Text helper function
+async function readFileAsText(file) {
+    return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            resolve(e.target.result);
+        };
+        reader.onerror = function (e) {
+            reject(e);
+        };
+        reader.readAsText(file);
+    });
+}
+
+// Step 2) Read file as Blob helper function
+async function readFileAsBlob(file) {
+    return new Promise(function (resolve, reject) {
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            resolve(new Blob([e.target.result], { type: file.type }));
+        };
+        reader.onerror = function (e) {
+            reject(e);
+        };
+        reader.readAsArrayBuffer(file);
+    });
+}
+
+// Step 3) Load OBJ with texture using Three.js loaders
+async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textureBlobs, objData) {
+    return new Promise(function (resolve, reject) {
+        try {
+            // Step 3) Create texture URLs from blobs
+            var textureURLs = {};
+            var blobURLs = []; // Track for cleanup
+
+            Object.keys(textureBlobs).forEach(function (texName) {
+                var url = URL.createObjectURL(textureBlobs[texName]);
+                textureURLs[texName] = url;
+                blobURLs.push(url);
+                console.log("📸 Created texture URL for: " + texName + " -> " + url);
+            });
+
+            // Step 4) Extract texture references from MTL content
+            var textureRefs = extractTextureRefsFromMTL(mtlContent);
+            console.log("📄 MTL texture references:", textureRefs);
+
+            // Step 5) Parse OBJ content first (without materials)
+            var objLoader = new OBJLoader();
+            var object3D = objLoader.parse(objContent);
+            object3D.name = fileName;
+
+            // Step 6) Load textures and apply to meshes
+            var textureLoader = new THREE.TextureLoader();
+            var loadedTextures = {};
+            var textureLoadPromises = [];
+
+            // Step 7) Load each texture file
+            Object.keys(textureURLs).forEach(function (texName) {
+                var promise = new Promise(function (texResolve) {
+                    textureLoader.load(
+                        textureURLs[texName],
+                        function (texture) {
+                            texture.wrapS = THREE.RepeatWrapping;
+                            texture.wrapT = THREE.RepeatWrapping;
+                            texture.flipY = true; // OBJ typically needs Y flipped
+                            loadedTextures[texName] = texture;
+                            console.log("✅ Texture loaded: " + texName);
+                            texResolve();
+                        },
+                        undefined,
+                        function (err) {
+                            console.warn("⚠️ Failed to load texture: " + texName, err);
+                            texResolve();
+                        }
+                    );
+                });
+                textureLoadPromises.push(promise);
+            });
+
+            // Step 8) Wait for all textures to load
+            Promise.all(textureLoadPromises).then(function () {
+                console.log("📦 All textures loaded, applying to mesh...");
+
+                // Step 9) Find the first loaded texture to use
+                var primaryTexture = null;
+                var textureKeys = Object.keys(loadedTextures);
+                if (textureKeys.length > 0) {
+                    primaryTexture = loadedTextures[textureKeys[0]];
+                }
+
+                // Step 10) Apply texture to all meshes in the object
+                object3D.traverse(function (child) {
+                    if (child.isMesh) {
+                        // Create new material with texture
+                        if (primaryTexture) {
+                            child.material = new THREE.MeshStandardMaterial({
+                                map: primaryTexture,
+                                side: THREE.DoubleSide,
+                                roughness: 0.8,
+                                metalness: 0.1
+                            });
+                            console.log("🎨 Applied texture to mesh: " + child.name);
+                        } else {
+                            // No texture, use default material
+                            child.material.side = THREE.DoubleSide;
+                        }
+                    }
+                });
+
+                // Continue with the rest of the loading process
+                finishTexturedMeshLoading(object3D, fileName, objData, textureBlobs, blobURLs, resolve, reject);
+            });
+        } catch (error) {
+            console.error("❌ Error in loadOBJWithTextureThreeJS:", error);
+            reject(error);
+        }
+    });
+}
+
+// Step 11) Complete the textured mesh loading after textures are ready
+function finishTexturedMeshLoading(object3D, fileName, objData, textureBlobs, blobURLs, resolve, reject) {
+    try {
+        // Step 12) Calculate mesh bounds for georeferencing
+        var bounds = new THREE.Box3().setFromObject(object3D);
+        var meshBounds = {
+            minX: bounds.min.x,
+            maxX: bounds.max.x,
+            minY: bounds.min.y,
+            maxY: bounds.max.y,
+            minZ: bounds.min.z,
+            maxZ: bounds.max.z
+        };
+
+        // Step 13) Create surface ID
+        var surfaceId = fileName;
+
+        // Step 14) Store in loadedSurfaces with all necessary data
+        loadedSurfaces.set(surfaceId, {
+            // Standard surface fields for Data Explorer
+            id: surfaceId,
+            name: fileName,
+            points: objData.points,
+            triangles: objData.triangles,
+            visible: true,
+            gradient: "default",
+            transparency: 1.0,
+
+            // Textured mesh specific fields
+            isTexturedMesh: true,
+            threeJSMesh: object3D,
+            meshBounds: meshBounds,
+
+            // Raw data for IndexedDB persistence
+            objContent: objData.objContent,
+            mtlContent: objData.mtlContent,
+            textureBlobs: textureBlobs
+        });
+
+        console.log("✅ Textured OBJ loaded: " + fileName + " (" + objData.points.length + " points, " + objData.triangles.length + " triangles)");
+
+        // Step 15) Create flattened 2D image for canvas rendering
+        flattenTexturedMeshToImage(surfaceId, object3D, meshBounds, fileName);
+
+        // Step 16) Save to database
+        saveSurfaceToDB(surfaceId)
+            .then(function () {
+                console.log("💾 Textured surface saved to database: " + surfaceId);
+            })
+            .catch(function (err) {
+                console.error("❌ Failed to save textured surface:", err);
+            });
+
+        // Step 17) Update UI
+        updateCentroids();
+        drawData(allBlastHoles, selectedHole);
+        debouncedUpdateTreeView();
+        updateStatusMessage("Loaded textured surface: " + fileName);
+
+        // Step 18) Cleanup blob URLs after a delay (textures need time to fully load into GPU)
+        setTimeout(function () {
+            blobURLs.forEach(function (url) {
+                URL.revokeObjectURL(url);
+            });
+        }, 10000);
+
+        resolve(object3D);
+    } catch (error) {
+        console.error("❌ Error in finishTexturedMeshLoading:", error);
+        reject(error);
+    }
+}
+
+// Step 1) Rebuild textured mesh from stored data (called on app reload)
+function rebuildTexturedMesh(surfaceId) {
+    var surface = loadedSurfaces.get(surfaceId);
+    if (!surface || !surface.isTexturedMesh) {
+        console.warn("⚠️ Cannot rebuild mesh - not a textured surface:", surfaceId);
+        return;
+    }
+
+    if (!surface.objContent) {
+        console.warn("⚠️ Cannot rebuild mesh - missing OBJ content:", surfaceId);
+        return;
+    }
+
+    try {
+        // Step 2) Create texture URLs from stored blobs
+        var textureURLs = {};
+        var blobURLs = [];
+
+        if (surface.textureBlobs) {
+            Object.keys(surface.textureBlobs).forEach(function (texName) {
+                var blob = surface.textureBlobs[texName];
+                if (blob) {
+                    var url = URL.createObjectURL(blob);
+                    textureURLs[texName] = url;
+                    blobURLs.push(url);
+                    console.log("📸 Created texture URL for rebuild: " + texName);
+                }
+            });
+        }
+
+        // Step 3) Parse OBJ first
+        var objLoader = new OBJLoader();
+        var object3D = objLoader.parse(surface.objContent);
+        object3D.name = surface.name;
+
+        // Step 4) Load textures asynchronously
+        var textureLoader = new THREE.TextureLoader();
+        var loadedTextures = {};
+        var textureLoadPromises = [];
+
+        Object.keys(textureURLs).forEach(function (texName) {
+            var promise = new Promise(function (texResolve) {
+                textureLoader.load(
+                    textureURLs[texName],
+                    function (texture) {
+                        texture.wrapS = THREE.RepeatWrapping;
+                        texture.wrapT = THREE.RepeatWrapping;
+                        texture.flipY = true;
+                        loadedTextures[texName] = texture;
+                        console.log("✅ Texture loaded for rebuild: " + texName);
+                        texResolve();
+                    },
+                    undefined,
+                    function (err) {
+                        console.warn("⚠️ Failed to load texture for rebuild: " + texName, err);
+                        texResolve();
+                    }
+                );
+            });
+            textureLoadPromises.push(promise);
+        });
+
+        // Step 5) Wait for textures then apply
+        Promise.all(textureLoadPromises).then(function () {
+            // Find the first loaded texture
+            var primaryTexture = null;
+            var textureKeys = Object.keys(loadedTextures);
+            if (textureKeys.length > 0) {
+                primaryTexture = loadedTextures[textureKeys[0]];
+            }
+
+            // Apply texture to all meshes
+            object3D.traverse(function (child) {
+                if (child.isMesh) {
+                    if (primaryTexture) {
+                        child.material = new THREE.MeshStandardMaterial({
+                            map: primaryTexture,
+                            side: THREE.DoubleSide,
+                            roughness: 0.8,
+                            metalness: 0.1
+                        });
+                    } else {
+                        child.material.side = THREE.DoubleSide;
+                    }
+                }
+            });
+
+            // Store rebuilt mesh
+            surface.threeJSMesh = object3D;
+            console.log("✅ Rebuilt textured mesh: " + surfaceId);
+
+            // Cleanup blob URLs after delay
+            setTimeout(function () {
+                blobURLs.forEach(function (url) {
+                    URL.revokeObjectURL(url);
+                });
+            }, 10000);
+
+            // Recreate flattened image for 2D canvas
+            if (surface.meshBounds) {
+                flattenTexturedMeshToImage(surfaceId, object3D, surface.meshBounds, surface.name);
+            }
+
+            // Trigger redraw
+            if (typeof drawData === "function") {
+                drawData(allBlastHoles, selectedHole);
+            }
+        });
+
+        return; // Exit here - the rest happens in the Promise callback
+    } catch (error) {
+        console.error("❌ Error rebuilding textured mesh:", error);
+    }
+}
+
+// Step 1) Flatten textured mesh to 2D image for canvas rendering
+function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
+    try {
+        // Step 2) Calculate image dimensions based on mesh bounds
+        var worldWidth = meshBounds.maxX - meshBounds.minX;
+        var worldHeight = meshBounds.maxY - meshBounds.minY;
+
+        // Step 3) Determine resolution (max 2048px, maintain aspect ratio)
+        var maxResolution = 2048;
+        var aspectRatio = worldWidth / worldHeight;
+        var imgWidth, imgHeight;
+
+        if (aspectRatio > 1) {
+            imgWidth = Math.min(maxResolution, Math.ceil(worldWidth));
+            imgHeight = Math.ceil(imgWidth / aspectRatio);
+        } else {
+            imgHeight = Math.min(maxResolution, Math.ceil(worldHeight));
+            imgWidth = Math.ceil(imgHeight * aspectRatio);
+        }
+
+        // Ensure minimum size
+        imgWidth = Math.max(256, imgWidth);
+        imgHeight = Math.max(256, imgHeight);
+
+        console.log("📸 Creating flattened image: " + imgWidth + "x" + imgHeight + " for mesh bounds: " + worldWidth.toFixed(2) + "x" + worldHeight.toFixed(2));
+
+        // Step 4) Create offscreen renderer
+        var offscreenRenderer = new THREE.WebGLRenderer({
+            antialias: true,
+            preserveDrawingBuffer: true
+        });
+        offscreenRenderer.setSize(imgWidth, imgHeight);
+        offscreenRenderer.setClearColor(0xffffff, 0); // Transparent background
+
+        // Step 5) Create orthographic camera looking down (top-down view)
+        var camera = new THREE.OrthographicCamera(
+            meshBounds.minX, // left
+            meshBounds.maxX, // right
+            meshBounds.maxY, // top
+            meshBounds.minY, // bottom
+            -10000, // near
+            10000 // far
+        );
+        camera.position.set((meshBounds.minX + meshBounds.maxX) / 2, (meshBounds.minY + meshBounds.maxY) / 2, meshBounds.maxZ + 1000);
+        camera.lookAt((meshBounds.minX + meshBounds.maxX) / 2, (meshBounds.minY + meshBounds.maxY) / 2, 0);
+        camera.up.set(0, 1, 0); // Y is North
+
+        // Step 6) Create scene with the mesh
+        var scene = new THREE.Scene();
+        scene.background = null; // Transparent
+
+        // Add ambient light
+        var ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+        scene.add(ambientLight);
+
+        // Clone mesh for rendering
+        var meshClone = mesh.clone();
+        scene.add(meshClone);
+
+        // Step 7) Render the scene
+        offscreenRenderer.render(scene, camera);
+
+        // Step 8) Extract image data
+        var canvas = offscreenRenderer.domElement;
+        var imageDataURL = canvas.toDataURL("image/png");
+
+        // Step 9) Create georeferenced image entry for loadedImages
+        var imageId = "flattened_" + surfaceId;
+        var imageEntry = {
+            id: imageId,
+            name: fileName + "_flattened",
+            dataURL: imageDataURL,
+            width: imgWidth,
+            height: imgHeight,
+            visible: true,
+            opacity: 1.0,
+
+            // Georeferencing data
+            isGeoReferenced: true,
+            bounds: {
+                minX: meshBounds.minX,
+                maxX: meshBounds.maxX,
+                minY: meshBounds.minY,
+                maxY: meshBounds.maxY
+            },
+
+            // Pixel to world transformation
+            pixelWidth: worldWidth / imgWidth,
+            pixelHeight: worldHeight / imgHeight,
+
+            // Source info
+            sourceType: "flattened_obj",
+            sourceSurfaceId: surfaceId
+        };
+
+        // Step 10) Store in loadedImages
+        loadedImages.set(imageId, imageEntry);
+
+        console.log("✅ Created flattened image for 2D canvas: " + imageId);
+
+        // Step 11) Cleanup
+        offscreenRenderer.dispose();
+        scene.clear();
+
+        // Step 12) Update tree view
+        debouncedUpdateTreeView();
+    } catch (error) {
+        console.error("❌ Error flattening textured mesh:", error);
+    }
+}
+
 async function handleMeasuredUpload(event) {
     // Measured data format: EntityName,EntityType,PointID,MeasuredLength,MeasuredLengthTimeStamp,MeasuredMass,MeasuredMassTimeStamp,MeasuredComment,MeasuredCommentTimeStamp
 
@@ -23254,7 +23749,7 @@ async function saveSurfaceToDB(surfaceId) {
             const store = transaction.objectStore(SURFACE_STORE_NAME);
 
             // ✅ FIX: Create properly structured surface record
-            const surfaceRecord = {
+            var surfaceRecord = {
                 id: surfaceId,
                 name: surface.name,
                 type: surface.type || "triangulated",
@@ -23266,6 +23761,21 @@ async function saveSurfaceToDB(surfaceId) {
                 created: surface.created || new Date().toISOString(),
                 metadata: surface.metadata || {}
             };
+
+            // Step 1) Add textured mesh fields if this is a textured OBJ
+            if (surface.isTexturedMesh) {
+                surfaceRecord.isTexturedMesh = true;
+                surfaceRecord.objContent = surface.objContent || null;
+                surfaceRecord.mtlContent = surface.mtlContent || null;
+                surfaceRecord.meshBounds = surface.meshBounds || null;
+
+                // Step 2) Store texture blobs if present
+                if (surface.textureBlobs) {
+                    surfaceRecord.textureBlobs = surface.textureBlobs;
+                }
+
+                console.log("💾 Saving textured mesh data for surface: " + surfaceId);
+            }
 
             // ✅ FIX: Add proper transaction handlers
             transaction.oncomplete = () => {
@@ -23339,28 +23849,58 @@ async function loadAllSurfacesIntoMemory() {
     try {
         if (!db) return;
 
-        const transaction = db.transaction([SURFACE_STORE_NAME], "readonly");
-        const store = transaction.objectStore(SURFACE_STORE_NAME);
-        const request = store.getAll();
+        var transaction = db.transaction([SURFACE_STORE_NAME], "readonly");
+        var store = transaction.objectStore(SURFACE_STORE_NAME);
+        var request = store.getAll();
 
-        return new Promise((resolve) => {
-            request.onsuccess = () => {
-                const surfaces = request.result || [];
-                surfaces.forEach((surfaceData) => {
-                    loadedSurfaces.set(surfaceData.id, {
+        return new Promise(function (resolve) {
+            request.onsuccess = function () {
+                var surfaces = request.result || [];
+                var texturedSurfaceIds = [];
+
+                surfaces.forEach(function (surfaceData) {
+                    // Step 1) Create base surface entry
+                    var surfaceEntry = {
                         id: surfaceData.id,
                         name: surfaceData.name,
                         points: surfaceData.points,
                         triangles: surfaceData.triangles,
                         visible: surfaceData.visible !== false,
                         gradient: surfaceData.gradient || "default",
-                        transparency: surfaceData.transparency || 1.0 // Add this line
-                    });
+                        transparency: surfaceData.transparency || 1.0
+                    };
+
+                    // Step 2) Check if this is a textured mesh
+                    if (surfaceData.isTexturedMesh) {
+                        surfaceEntry.isTexturedMesh = true;
+                        surfaceEntry.objContent = surfaceData.objContent || null;
+                        surfaceEntry.mtlContent = surfaceData.mtlContent || null;
+                        surfaceEntry.textureBlobs = surfaceData.textureBlobs || null;
+                        surfaceEntry.meshBounds = surfaceData.meshBounds || null;
+                        surfaceEntry.threeJSMesh = null; // Will be rebuilt
+
+                        // Track for later rebuilding
+                        texturedSurfaceIds.push(surfaceData.id);
+                    }
+
+                    loadedSurfaces.set(surfaceData.id, surfaceEntry);
                 });
+
                 console.log("📊 Loaded " + loadedSurfaces.size + " surfaces into memory");
+
+                // Step 3) Rebuild Three.js meshes for textured surfaces
+                if (texturedSurfaceIds.length > 0) {
+                    console.log("🎨 Rebuilding " + texturedSurfaceIds.length + " textured meshes...");
+                    texturedSurfaceIds.forEach(function (surfaceId) {
+                        rebuildTexturedMesh(surfaceId);
+                    });
+                }
+
                 resolve();
             };
-            request.onerror = () => resolve();
+            request.onerror = function () {
+                resolve();
+            };
         });
     } catch (error) {
         console.error("Error loading surfaces:", error);
@@ -33200,22 +33740,26 @@ function interpolateZFromSurface(x, y, surfaceId = null) {
 
 // Loads a point cloud file and processes it.
 function loadPointCloudFile(file) {
-    const reader = new FileReader();
+    var fileExtension = file.name.split(".").pop().toLowerCase();
+
+    // Step 1) OBJ files should use the textured mesh loader with auto-discovery
+    if (fileExtension === "obj") {
+        loadOBJWithAutoDiscovery(file);
+        return;
+    }
+
+    // Step 2) All other point cloud formats - standard loading
+    var reader = new FileReader();
 
     // Show loading progress
     updateStatusMessage("Loading surface file: " + file.name + "...");
 
     reader.onload = function (e) {
-        const content = e.target.result;
-        const fileExtension = file.name.split(".").pop().toLowerCase();
-
-        let points;
+        var content = e.target.result;
+        var points;
 
         try {
             switch (fileExtension) {
-                case "obj":
-                    points = parseOBJFile(content);
-                    break;
                 case "xyz":
                     points = parseXYZFile(content);
                     break;
@@ -33257,6 +33801,271 @@ function loadPointCloudFile(file) {
     reader.readAsText(file);
 }
 
+// Step 1) Auto-discover companion MTL/texture files for OBJ
+async function loadOBJWithAutoDiscovery(objFile) {
+    try {
+        updateStatusMessage("Loading OBJ: " + objFile.name + " (searching for MTL/textures...)");
+
+        var objContent = await readFileAsText(objFile);
+        var baseName = objFile.name.replace(/\.obj$/i, "");
+
+        // Step 2) Parse OBJ to check for material library reference
+        var objData = parseOBJFile(objContent, null);
+
+        // Step 3) Try to auto-discover companion files using File System Access API
+        var mtlContent = null;
+        var textureBlobs = {};
+        var companionFilesFound = false;
+
+        // Step 4) Check if browser supports File System Access API and file has handle
+        if (objFile.handle && objFile.handle.getParent) {
+            // We have directory access - can auto-discover
+            try {
+                var dirHandle = await objFile.handle.getParent();
+                var result = await discoverCompanionFiles(dirHandle, baseName);
+                mtlContent = result.mtlContent;
+                textureBlobs = result.textureBlobs;
+                companionFilesFound = result.found;
+            } catch (err) {
+                console.log("📂 Directory access not available, trying alternative method");
+            }
+        }
+
+        // Step 5) If no companion files found via directory access, try URL-based discovery
+        if (!companionFilesFound && objData.materialLibrary) {
+            // Check if we're running locally with file:// protocol or have server access
+            try {
+                var result = await discoverCompanionFilesViaFetch(objFile, baseName, objData.materialLibrary);
+                mtlContent = result.mtlContent;
+                textureBlobs = result.textureBlobs;
+                companionFilesFound = result.found;
+            } catch (err) {
+                console.log("📂 Fetch-based discovery not available");
+            }
+        }
+
+        // Step 6) If companion files found, use textured mesh loader
+        if (companionFilesFound && mtlContent && Object.keys(textureBlobs).length > 0) {
+            console.log("✅ Found companion files - loading as textured mesh");
+            updateStatusMessage("Found MTL and textures - loading textured mesh...");
+
+            // Update objData with mtlContent
+            objData.mtlContent = mtlContent;
+
+            await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, objData);
+        }
+        // Step 7) If MTL found but no textures, still try textured loading
+        else if (companionFilesFound && mtlContent) {
+            console.log("✅ Found MTL file - loading with materials (no textures)");
+            updateStatusMessage("Found MTL - loading with materials...");
+
+            objData.mtlContent = mtlContent;
+            await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, objData);
+        }
+        // Step 8) No companion files - check if OBJ has faces, use appropriate method
+        else if (objData.hasFaces && objData.triangles.length > 0) {
+            console.log("📦 OBJ has faces - loading as surface with original topology");
+            updateStatusMessage("Loading OBJ surface: " + objFile.name);
+
+            // Use the parsed triangles directly (preserves original mesh topology)
+            createSurfaceFromOBJData(objData, objFile.name);
+        }
+        // Step 9) Fallback - no faces, use as point cloud
+        else {
+            console.log("📍 OBJ has no faces - loading as point cloud");
+            updateStatusMessage("Loading OBJ as point cloud: " + objFile.name);
+
+            if (objData.points && objData.points.length > 0) {
+                if (objData.points.length > 10000) {
+                    showDecimationWarning(objData.points, objFile.name, objData);
+                } else {
+                    processSurfacePoints(objData.points, objFile.name, objData);
+                }
+            } else {
+                updateStatusMessage("No valid points found in: " + objFile.name);
+            }
+        }
+    } catch (error) {
+        console.error("❌ Error in loadOBJWithAutoDiscovery:", error);
+        updateStatusMessage("Error loading OBJ: " + error.message);
+    }
+}
+
+// Step 1) Discover companion files via directory handle (File System Access API)
+async function discoverCompanionFiles(dirHandle, baseName) {
+    var mtlContent = null;
+    var textureBlobs = {};
+    var found = false;
+
+    try {
+        // Step 2) Iterate through directory entries
+        for await (var entry of dirHandle.values()) {
+            if (entry.kind !== "file") continue;
+
+            var fileName = entry.name;
+            var fileNameLower = fileName.toLowerCase();
+            var baseNameLower = baseName.toLowerCase();
+
+            // Step 3) Check for MTL file
+            if (fileNameLower === baseNameLower + ".mtl") {
+                var mtlFile = await entry.getFile();
+                mtlContent = await mtlFile.text();
+                found = true;
+                console.log("📄 Found MTL: " + fileName);
+            }
+
+            // Step 4) Check for texture files (same base name or referenced in MTL)
+            var ext = fileName.split(".").pop().toLowerCase();
+            if (ext === "jpg" || ext === "jpeg" || ext === "png" || ext === "gif" || ext === "bmp") {
+                // Check if it starts with base name or is commonly used
+                if (fileNameLower.startsWith(baseNameLower) || fileNameLower.includes(baseNameLower) || fileNameLower === "texture." + ext || fileNameLower === "diffuse." + ext) {
+                    var texFile = await entry.getFile();
+                    textureBlobs[fileName] = await texFile.arrayBuffer().then(function (buf) {
+                        return new Blob([buf], { type: texFile.type });
+                    });
+                    found = true;
+                    console.log("🖼️ Found texture: " + fileName);
+                }
+            }
+        }
+    } catch (err) {
+        console.warn("Error discovering companion files:", err);
+    }
+
+    return { mtlContent: mtlContent, textureBlobs: textureBlobs, found: found };
+}
+
+// Step 1) Discover companion files via fetch (for server-hosted files)
+async function discoverCompanionFilesViaFetch(objFile, baseName, materialLibrary) {
+    var mtlContent = null;
+    var textureBlobs = {};
+    var found = false;
+
+    // Step 2) This only works if we have URL access to the files
+    // For local file:// URLs, this won't work due to CORS
+    // For http:// URLs, it might work if same-origin
+
+    try {
+        // Step 3) Get the base URL from the file
+        var fileURL = "";
+        if (objFile.path) {
+            // Electron or similar - has path
+            var pathParts = objFile.path.split(/[/\\]/);
+            pathParts.pop(); // Remove filename
+            fileURL = pathParts.join("/") + "/";
+        } else if (objFile.webkitRelativePath) {
+            // Directory upload
+            var pathParts = objFile.webkitRelativePath.split("/");
+            pathParts.pop();
+            fileURL = pathParts.join("/") + "/";
+        }
+
+        if (!fileURL) {
+            return { mtlContent: null, textureBlobs: {}, found: false };
+        }
+
+        // Step 4) Try to fetch MTL
+        var mtlFileName = materialLibrary || baseName + ".mtl";
+        try {
+            var mtlResponse = await fetch(fileURL + mtlFileName);
+            if (mtlResponse.ok) {
+                mtlContent = await mtlResponse.text();
+                found = true;
+                console.log("📄 Fetched MTL: " + mtlFileName);
+
+                // Step 5) Parse MTL to find texture references
+                var textureRefs = extractTextureRefsFromMTL(mtlContent);
+
+                // Step 6) Fetch each texture
+                for (var i = 0; i < textureRefs.length; i++) {
+                    var texName = textureRefs[i];
+                    try {
+                        var texResponse = await fetch(fileURL + texName);
+                        if (texResponse.ok) {
+                            var blob = await texResponse.blob();
+                            textureBlobs[texName] = blob;
+                            console.log("🖼️ Fetched texture: " + texName);
+                        }
+                    } catch (texErr) {
+                        console.warn("Could not fetch texture: " + texName);
+                    }
+                }
+            }
+        } catch (mtlErr) {
+            console.warn("Could not fetch MTL: " + mtlFileName);
+        }
+    } catch (err) {
+        console.warn("Error in fetch-based discovery:", err);
+    }
+
+    return { mtlContent: mtlContent, textureBlobs: textureBlobs, found: found };
+}
+
+// Step 1) Extract texture file references from MTL content
+function extractTextureRefsFromMTL(mtlContent) {
+    var textureRefs = [];
+    var lines = mtlContent.split("\n");
+
+    lines.forEach(function (line) {
+        var trimmed = line.trim();
+        // Look for map_Kd (diffuse texture), map_Ka (ambient), map_Ks (specular), etc.
+        if (trimmed.startsWith("map_Kd ") || trimmed.startsWith("map_Ka ") || trimmed.startsWith("map_Ks ") || trimmed.startsWith("map_Bump ") || trimmed.startsWith("bump ")) {
+            var parts = trimmed.split(/\s+/);
+            if (parts.length >= 2) {
+                var texFile = parts[parts.length - 1]; // Last part is usually the filename
+                if (textureRefs.indexOf(texFile) === -1) {
+                    textureRefs.push(texFile);
+                }
+            }
+        }
+    });
+
+    return textureRefs;
+}
+
+// Step 1) Create surface from parsed OBJ data (preserves original faces)
+function createSurfaceFromOBJData(objData, fileName) {
+    var surfaceId = fileName;
+
+    // Step 2) Use triangles from OBJ parser (preserves original mesh topology)
+    var triangles = objData.triangles;
+
+    if (!triangles || triangles.length === 0) {
+        console.warn("No triangles in OBJ data, falling back to Delaunator");
+        createSurfaceFromPoints(objData.points, fileName, true);
+        return;
+    }
+
+    // Step 3) Add to loadedSurfaces
+    loadedSurfaces.set(surfaceId, {
+        id: surfaceId,
+        name: fileName,
+        points: objData.points,
+        triangles: triangles,
+        visible: true,
+        gradient: "default",
+        transparency: 1.0,
+        isTexturedMesh: false
+    });
+
+    console.log("✅ Surface created from OBJ: " + fileName + " (" + objData.points.length + " points, " + triangles.length + " triangles)");
+
+    // Step 4) Save to database
+    saveSurfaceToDB(surfaceId)
+        .then(function () {
+            console.log("💾 OBJ surface saved to database: " + surfaceId);
+        })
+        .catch(function (err) {
+            console.error("❌ Failed to save OBJ surface:", err);
+        });
+
+    // Step 5) Update UI
+    updateCentroids();
+    drawData(allBlastHoles, selectedHole);
+    debouncedUpdateTreeView();
+    updateStatusMessage("Loaded OBJ surface: " + fileName + " (" + triangles.length + " triangles)");
+}
+
 // Process surface points with progress indication
 function processSurfacePoints(points, fileName) {
     updateStatusMessage("Creating surface from " + points.length.toLocaleString() + " points...");
@@ -33282,33 +34091,191 @@ function processSurfacePoints(points, fileName) {
         }
     }, 100);
 }
-// Enhanced OBJ parser
-function parseOBJFile(content) {
+// Step 1) Enhanced OBJ parser - extracts vertices, faces, UVs, normals, and material references
+function parseOBJFile(content, mtlContent) {
+    // Step 2) Initialize data structures
+    const vertices = []; // Vertex positions (v lines)
+    const uvs = []; // Texture coordinates (vt lines)
+    const normals = []; // Vertex normals (vn lines)
+    const faces = []; // Face indices (f lines)
+    let materialLibrary = ""; // MTL file reference (mtllib line)
+    let currentMaterial = ""; // Current material name (usemtl line)
+    const materialGroups = []; // Track which faces use which material
+
+    // Step 3) Parse OBJ content line by line
     const lines = content.split("\n");
-    const points = [];
 
-    lines.forEach((line) => {
+    lines.forEach(function (line) {
         const trimmedLine = line.trim();
-        if (trimmedLine.startsWith("v ")) {
-            // Only vertex lines
-            const parts = trimmedLine.split(/\s+/);
-            if (parts.length >= 4) {
-                const x = parseFloat(parts[1]);
-                const y = parseFloat(parts[2]);
-                const z = parseFloat(parts[3]);
 
-                if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-                    points.push({
-                        x,
-                        y,
-                        z
-                    });
+        // Step 4) Skip empty lines and comments
+        if (!trimmedLine || trimmedLine.startsWith("#")) {
+            return;
+        }
+
+        const parts = trimmedLine.split(/\s+/);
+        const command = parts[0];
+
+        // Step 5) Parse vertex positions (v x y z)
+        if (command === "v" && parts.length >= 4) {
+            const x = parseFloat(parts[1]);
+            const y = parseFloat(parts[2]);
+            const z = parseFloat(parts[3]);
+
+            if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
+                vertices.push({ x: x, y: y, z: z });
+            }
+        }
+        // Step 6) Parse texture coordinates (vt u v)
+        else if (command === "vt" && parts.length >= 3) {
+            const u = parseFloat(parts[1]);
+            const v = parseFloat(parts[2]);
+
+            if (!isNaN(u) && !isNaN(v)) {
+                uvs.push({ u: u, v: v });
+            }
+        }
+        // Step 7) Parse vertex normals (vn x y z)
+        else if (command === "vn" && parts.length >= 4) {
+            const nx = parseFloat(parts[1]);
+            const ny = parseFloat(parts[2]);
+            const nz = parseFloat(parts[3]);
+
+            if (!isNaN(nx) && !isNaN(ny) && !isNaN(nz)) {
+                normals.push({ x: nx, y: ny, z: nz });
+            }
+        }
+        // Step 8) Parse faces (f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 ...)
+        else if (command === "f" && parts.length >= 4) {
+            var faceVertices = [];
+            var faceUVs = [];
+            var faceNormals = [];
+
+            // Step 9) Parse each vertex reference in the face
+            for (var i = 1; i < parts.length; i++) {
+                var indices = parts[i].split("/");
+
+                // Vertex index (1-based in OBJ, convert to 0-based)
+                var vIdx = parseInt(indices[0], 10) - 1;
+                if (!isNaN(vIdx)) {
+                    faceVertices.push(vIdx);
                 }
+
+                // UV index (optional)
+                if (indices.length > 1 && indices[1] !== "") {
+                    var uvIdx = parseInt(indices[1], 10) - 1;
+                    if (!isNaN(uvIdx)) {
+                        faceUVs.push(uvIdx);
+                    }
+                }
+
+                // Normal index (optional)
+                if (indices.length > 2 && indices[2] !== "") {
+                    var nIdx = parseInt(indices[2], 10) - 1;
+                    if (!isNaN(nIdx)) {
+                        faceNormals.push(nIdx);
+                    }
+                }
+            }
+
+            // Step 10) Triangulate faces with more than 3 vertices (fan triangulation)
+            if (faceVertices.length >= 3) {
+                for (var j = 1; j < faceVertices.length - 1; j++) {
+                    var triangle = {
+                        vertices: [faceVertices[0], faceVertices[j], faceVertices[j + 1]],
+                        uvs: [],
+                        normals: [],
+                        material: currentMaterial
+                    };
+
+                    if (faceUVs.length >= faceVertices.length) {
+                        triangle.uvs = [faceUVs[0], faceUVs[j], faceUVs[j + 1]];
+                    }
+
+                    if (faceNormals.length >= faceVertices.length) {
+                        triangle.normals = [faceNormals[0], faceNormals[j], faceNormals[j + 1]];
+                    }
+
+                    faces.push(triangle);
+                }
+            }
+        }
+        // Step 11) Parse material library reference (mtllib filename.mtl)
+        else if (command === "mtllib") {
+            materialLibrary = parts.slice(1).join(" ");
+        }
+        // Step 12) Parse material usage (usemtl materialname)
+        else if (command === "usemtl") {
+            currentMaterial = parts.slice(1).join(" ");
+            materialGroups.push({
+                name: currentMaterial,
+                startFace: faces.length
+            });
+        }
+    });
+
+    // Step 13) Create points array for backward compatibility (same as vertices)
+    var points = vertices.map(function (v) {
+        return { x: v.x, y: v.y, z: v.z };
+    });
+
+    // Step 14) Build triangles array for surface rendering (Kirra format)
+    var triangles = [];
+    faces.forEach(function (face) {
+        if (face.vertices.length === 3) {
+            var v0 = vertices[face.vertices[0]];
+            var v1 = vertices[face.vertices[1]];
+            var v2 = vertices[face.vertices[2]];
+
+            if (v0 && v1 && v2) {
+                var minZ = Math.min(v0.z, v1.z, v2.z);
+                var maxZ = Math.max(v0.z, v1.z, v2.z);
+
+                triangles.push({
+                    vertices: [
+                        { x: v0.x, y: v0.y, z: v0.z },
+                        { x: v1.x, y: v1.y, z: v1.z },
+                        { x: v2.x, y: v2.y, z: v2.z }
+                    ],
+                    minZ: minZ,
+                    maxZ: maxZ,
+                    uvs: face.uvs.length === 3 ? [uvs[face.uvs[0]], uvs[face.uvs[1]], uvs[face.uvs[2]]] : null,
+                    material: face.material
+                });
             }
         }
     });
 
-    return points;
+    // Step 15) Determine if this OBJ has texture data
+    var hasTexture = uvs.length > 0 && materialLibrary !== "";
+    var hasFaces = faces.length > 0;
+
+    console.log("📦 OBJ Parser: " + vertices.length + " vertices, " + faces.length + " faces, " + uvs.length + " UVs, " + normals.length + " normals, hasTexture: " + hasTexture);
+
+    // Step 16) Return enhanced data structure
+    return {
+        // For backward compatibility
+        points: points,
+
+        // Enhanced data
+        vertices: vertices,
+        faces: faces,
+        uvs: uvs,
+        normals: normals,
+        triangles: triangles,
+
+        // Material information
+        materialLibrary: materialLibrary,
+        materialGroups: materialGroups,
+
+        // Flags
+        hasTexture: hasTexture,
+        hasFaces: hasFaces,
+
+        // Raw content for persistence
+        objContent: content,
+        mtlContent: mtlContent || null
+    };
 }
 // XYZ parser (space-delimited X Y Z format)
 function parseXYZFile(content) {
@@ -33670,8 +34637,8 @@ function drawSurface() {
         // console.log("🎨 Surface Z range:", surfaceMinZ, "to", surfaceMaxZ);
         // console.log("🎨 Drawing", surface.triangles.length, "triangles");
 
-        // Step 1) Draw surface in Three.js (always)
-        drawSurfaceThreeJS(surfaceId, surface.triangles, surfaceMinZ, surfaceMaxZ, surface.gradient || "default", surface.transparency || 1.0);
+        // Step 1) Draw surface in Three.js (always) - pass full surface data for textured mesh support
+        drawSurfaceThreeJS(surfaceId, surface.triangles, surfaceMinZ, surfaceMaxZ, surface.gradient || "default", surface.transparency || 1.0, surface);
 
         // Step 2) Draw surface in 2D canvas (only when not in Three.js-only mode)
         if (!onlyShowThreeJS) {
