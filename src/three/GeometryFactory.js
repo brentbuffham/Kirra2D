@@ -1631,65 +1631,89 @@ export class GeometryFactory {
 
     // Step 21) Create voronoi cells (extruded, positioned below reference Z)
     // useToeLocation: false = collar (0.1m below, extrude 0.2m down), true = toe (0.1m above toe, extrude 0.2m up)
-    static createVoronoiCells(cells, getColorFunction, allBlastHoles, worldToThreeLocalFn, extrusionHeight = 0.2, useToeLocation = false) {
-        const group = new THREE.Group();
+    // selectedMetric: the property name to use for coloring (e.g., "powderFactor", "mass", "volume", "area", "measuredLength", "designedLength", "holeFiringTime")
+    static createVoronoiCells(cells, getColorFunction, allBlastHoles, worldToThreeLocalFn, extrusionHeight, useToeLocation, selectedMetric) {
+        var group = new THREE.Group();
 
-        for (const cell of cells) {
+        // Step 21a) Default parameters
+        if (extrusionHeight === undefined || extrusionHeight === null) {
+            extrusionHeight = 0.2;
+        }
+        if (useToeLocation === undefined || useToeLocation === null) {
+            useToeLocation = false;
+        }
+        // Default to powderFactor if no metric specified (backward compatibility)
+        if (!selectedMetric) {
+            selectedMetric = "powderFactor";
+        }
+
+        for (var c = 0; c < cells.length; c++) {
+            var cell = cells[c];
             if (!cell.polygon || cell.polygon.length < 3) continue;
 
-            // Step 21a) Find nearest hole to get reference Z (collar or toe)
-            const cellCenterX = cell.polygon.reduce((sum, pt) => sum + (pt.x !== undefined ? pt.x : pt[0]), 0) / cell.polygon.length;
-            const cellCenterY = cell.polygon.reduce((sum, pt) => sum + (pt.y !== undefined ? pt.y : pt[1]), 0) / cell.polygon.length;
-            const nearestHole = this.findNearestHole(cellCenterX, cellCenterY, allBlastHoles);
+            // Step 21b) Find nearest hole to get reference Z (collar or toe)
+            var sumX = 0, sumY = 0;
+            for (var p = 0; p < cell.polygon.length; p++) {
+                var pt = cell.polygon[p];
+                sumX += (pt.x !== undefined ? pt.x : pt[0]);
+                sumY += (pt.y !== undefined ? pt.y : pt[1]);
+            }
+            var cellCenterX = sumX / cell.polygon.length;
+            var cellCenterY = sumY / cell.polygon.length;
+            var nearestHole = this.findNearestHole(cellCenterX, cellCenterY, allBlastHoles);
 
-            let baseZ;
+            var baseZ;
             if (useToeLocation) {
-                // Step 21a.1) Toe mode: 0.1m above toe, extrude up 0.2m
-                const toeZ = nearestHole ? nearestHole.endZLocation || 0 : 0;
+                // Step 21b.1) Toe mode: 0.1m above toe, extrude up 0.2m
+                var toeZ = nearestHole ? (nearestHole.endZLocation || 0) : 0;
                 baseZ = toeZ + 0.1; // 0.1m above toe
             } else {
-                // Step 21a.2) Collar mode: 0.1m below collar, extrude down 0.2m
-                const collarZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
+                // Step 21b.2) Collar mode: 0.1m below collar, extrude down 0.2m
+                var collarZ = nearestHole ? (nearestHole.startZLocation || 0) : 0;
                 baseZ = collarZ - 0.1 - extrusionHeight; // Start 0.1m + extrusion below collar
             }
 
-            // Step 21b) Create shape from polygon (convert to local coordinates)
-            const shape = new THREE.Shape();
-            const firstPt = cell.polygon[0];
-            const firstX = firstPt.x !== undefined ? firstPt.x : firstPt[0];
-            const firstY = firstPt.y !== undefined ? firstPt.y : firstPt[1];
-            const firstLocal = worldToThreeLocalFn ? worldToThreeLocalFn(firstX, firstY) : { x: firstX, y: firstY };
+            // Step 21c) Create shape from polygon (convert to local coordinates)
+            var shape = new THREE.Shape();
+            var firstPt = cell.polygon[0];
+            var firstX = firstPt.x !== undefined ? firstPt.x : firstPt[0];
+            var firstY = firstPt.y !== undefined ? firstPt.y : firstPt[1];
+            var firstLocal = worldToThreeLocalFn ? worldToThreeLocalFn(firstX, firstY) : { x: firstX, y: firstY };
             shape.moveTo(firstLocal.x, firstLocal.y);
 
-            for (let i = 1; i < cell.polygon.length; i++) {
-                const pt = cell.polygon[i];
-                const x = pt.x !== undefined ? pt.x : pt[0];
-                const y = pt.y !== undefined ? pt.y : pt[1];
-                const local = worldToThreeLocalFn ? worldToThreeLocalFn(x, y) : { x: x, y: y };
+            for (var i = 1; i < cell.polygon.length; i++) {
+                var pt2 = cell.polygon[i];
+                var x = pt2.x !== undefined ? pt2.x : pt2[0];
+                var y = pt2.y !== undefined ? pt2.y : pt2[1];
+                var local = worldToThreeLocalFn ? worldToThreeLocalFn(x, y) : { x: x, y: y };
                 shape.lineTo(local.x, local.y);
             }
             shape.closePath();
 
-            // Step 21c) Get color based on selected metric
-            const value = cell.powderFactor || cell.mass || cell.volume || cell.length || cell.holeFiringTime || 0;
-            const color = getColorFunction(value);
+            // Step 21d) Get color based on selected metric - matches 2D behavior (line 22172 in kirra.js)
+            // Use cell[selectedMetric] to dynamically get the correct property value
+            var value = cell[selectedMetric];
+            if (value === undefined || value === null || isNaN(value)) {
+                value = 0;
+            }
+            var color = getColorFunction(value);
 
-            // Step 21d) Create extruded geometry
-            const extrudeSettings = {
+            // Step 21e) Create extruded geometry
+            var extrudeSettings = {
                 depth: extrusionHeight,
                 bevelEnabled: false
             };
-            const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+            var geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
             geometry.translate(0, 0, baseZ);
 
-            const material = new THREE.MeshPhongMaterial({
+            var material = new THREE.MeshPhongMaterial({
                 color: new THREE.Color(color),
                 side: THREE.DoubleSide,
                 transparent: true,
                 opacity: 0.6
             });
 
-            const mesh = new THREE.Mesh(geometry, material);
+            var mesh = new THREE.Mesh(geometry, material);
             group.add(mesh);
         }
 

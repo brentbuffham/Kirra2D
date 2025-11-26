@@ -843,7 +843,9 @@ function handle3DClick(event) {
         // Step 12c.1b) Show snap feedback if snapped
         if (snapResult.snapped) {
             updateStatusMessage("Snapped to " + snapResult.snapTarget.description);
-            setTimeout(function () { updateStatusMessage(""); }, 1500);
+            setTimeout(function () {
+                updateStatusMessage("");
+            }, 1500);
         }
 
         // Step 12c.1c) Call appropriate KAD drawing function based on active tool
@@ -907,10 +909,10 @@ function handle3DClick(event) {
         firstIntersect:
             intersects.length > 0
                 ? {
-                    object: intersects[0].object.type,
-                    userData: intersects[0].object.userData,
-                    distance: intersects[0].distance.toFixed(2)
-                }
+                      object: intersects[0].object.type,
+                      userData: intersects[0].object.userData,
+                      distance: intersects[0].distance.toFixed(2)
+                  }
                 : null
     });
 
@@ -1966,15 +1968,7 @@ function handle3DMouseMove(event) {
             }
 
             // Draw leading line from last point to current mouse position
-            drawKADLeadingLineThreeJS(
-                lastKADDrawPoint.x,
-                lastKADDrawPoint.y,
-                parseFloat(drawZ),
-                currentMouseWorldX,
-                currentMouseWorldY,
-                parseFloat(drawZ),
-                leadingLineColor
-            );
+            drawKADLeadingLineThreeJS(lastKADDrawPoint.x, lastKADDrawPoint.y, parseFloat(drawZ), currentMouseWorldX, currentMouseWorldY, parseFloat(drawZ), leadingLineColor);
         } else {
             // Clear leading line if no drawing tool active or no last point
             clearKADLeadingLineThreeJS();
@@ -2284,7 +2278,7 @@ let textsGroupVisible = true;
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
 // debouncedUpdateTreeView is defined later - stub it to prevent errors
-let debouncedUpdateTreeView = function () { };
+let debouncedUpdateTreeView = function () {};
 
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
@@ -7562,14 +7556,14 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Parsing Error",
                 "Failed to parse the file properly:<br><br>" +
-                criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
-                "<br><br>" +
-                "Common causes:<br><br>" +
-                "<li>Mixed delimiters (commas and tabs in same file)</li>" +
-                "<li>Unescaped quotes in text fields</li>" +
-                "<li>Inconsistent number of columns</li>" +
-                "<br><br>" +
-                "Please check your file format and try again.",
+                    criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
+                    "<br><br>" +
+                    "Common causes:<br><br>" +
+                    "<li>Mixed delimiters (commas and tabs in same file)</li>" +
+                    "<li>Unescaped quotes in text fields</li>" +
+                    "<li>Inconsistent number of columns</li>" +
+                    "<br><br>" +
+                    "Please check your file format and try again.",
                 "error"
             );
             return; // Exit early
@@ -7583,15 +7577,15 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Import Warning",
                 "The file was imported but there were " +
-                parseResult.errors.length +
-                " parsing warnings:<br><br>" +
-                parseResult.errors
-                    .slice(0, 5)
-                    .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-                    .join("") +
-                additionalErrors +
-                "<br><br>" +
-                "Some data may have been skipped. Check your results carefully.",
+                    parseResult.errors.length +
+                    " parsing warnings:<br><br>" +
+                    parseResult.errors
+                        .slice(0, 5)
+                        .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+                        .join("") +
+                    additionalErrors +
+                    "<br><br>" +
+                    "Some data may have been skipped. Check your results carefully.",
                 "warning"
             );
         }
@@ -7809,17 +7803,17 @@ function parseKADFile(fileData) {
             const errorDetailsHtml =
                 errorCount > 0
                     ? "<details>" +
-                    "<summary>View Error Details (" +
-                    errorCount +
-                    " errors)</summary>" +
-                    '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-                    errorDetails
-                        .slice(0, 10)
-                        .map((error) => "<li>" + error + "</li>")
-                        .join("") +
-                    (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-                    "</ul>" +
-                    "</details>"
+                      "<summary>View Error Details (" +
+                      errorCount +
+                      " errors)</summary>" +
+                      '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+                      errorDetails
+                          .slice(0, 10)
+                          .map((error) => "<li>" + error + "</li>")
+                          .join("") +
+                      (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+                      "</ul>" +
+                      "</details>"
                     : "";
 
             showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -8555,9 +8549,11 @@ function convertPointsToAllDataCSV() {
         const hole = visibleBlastHoles[i];
         const row = `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation.toFixed(decimalPlaces)},${hole.startYLocation.toFixed(decimalPlaces)},${hole.startZLocation},${hole.endXLocation.toFixed(decimalPlaces)},${hole.endYLocation.toFixed(decimalPlaces)},${hole.endZLocation.toFixed(
             decimalPlaces
-        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${hole.fromHoleID
-            },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${hole.measuredMassTimeStamp
-            },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
+        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${
+            hole.fromHoleID
+        },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${
+            hole.measuredMassTimeStamp
+        },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
         csv += row + "\n";
     }
     return csv;
@@ -9221,9 +9217,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
     const table = new Uint32Array(256);
-    for (let i = 256; i--;) {
+    for (let i = 256; i--; ) {
         let tmp = i;
-        for (let k = 8; k--;) {
+        for (let k = 8; k--; ) {
             tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
         }
         table[i] = tmp;
@@ -14325,29 +14321,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
             `
             <div style="text-align: center;">
                 <p><strong>` +
-            resultMessage +
-            `</strong></p>
+                resultMessage +
+                `</strong></p>
                 <p><strong>Input:</strong> ` +
-            selectedEntities.length +
-            ` entities</p>
+                selectedEntities.length +
+                ` entities</p>
                 <p><strong>Output:</strong> ` +
-            polygons.length +
-            ` polygon(s)</p>
+                polygons.length +
+                ` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-            params.radius +
-            `m</p>
+                params.radius +
+                `m</p>
                 <p><strong>Rotation:</strong> ` +
-            params.rotationOffset +
-            `°</p>
+                params.rotationOffset +
+                `°</p>
                 <p><strong>Starburst:</strong> ` +
-            params.starburstOffset * 100 +
-            `%</p>
+                params.starburstOffset * 100 +
+                `%</p>
                 <p><strong>Line Width:</strong> ` +
-            params.lineWidth +
-            `</p>
+                params.lineWidth +
+                `</p>
                 <p><strong>Location:</strong> ` +
-            (params.useToeLocation ? "End/Toe" : "Start/Collar") +
-            `</p>
+                (params.useToeLocation ? "End/Toe" : "Start/Collar") +
+                `</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -14364,8 +14360,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-            (error.message || "Unknown error occurred") +
-            `</p>
+                (error.message || "Unknown error occurred") +
+                `</p>
             </div>
         `
         );
@@ -19890,7 +19886,7 @@ function computeContourHash(holes) {
     var hash = 0;
     for (var j = 0; j < hashStr.length; j++) {
         var chr = hashStr.charCodeAt(j);
-        hash = ((hash << 5) - hash) + chr;
+        hash = (hash << 5) - hash + chr;
         hash |= 0; // Convert to 32bit integer
     }
     return hash.toString();
@@ -20430,11 +20426,11 @@ function timeChart() {
             // Update selected holes array for single bin
             timingWindowHolesSelected = holeIDs[selectedIndex]
                 ? holeIDs[selectedIndex]
-                    .map((combinedID) => {
-                        const [entityName, holeID] = combinedID.split(":");
-                        return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                    })
-                    .filter(Boolean)
+                      .map((combinedID) => {
+                          const [entityName, holeID] = combinedID.split(":");
+                          return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                      })
+                      .filter(Boolean)
                 : [];
 
             // Redraw canvas WITHOUT calling timeChart
@@ -21061,9 +21057,18 @@ function drawData(allBlastHoles, selectedHole) {
                     }
                     // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
-                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-                        const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getPFColor(value, minPF, maxPF), allBlastHoles, 0.2, useToeLocation);
+                        var voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        var clippedCells = clipVoronoiCells(voronoiMetrics);
+                        drawVoronoiCellsThreeJS(
+                            clippedCells,
+                            function (value) {
+                                return getPFColor(value, minPF, maxPF);
+                            },
+                            allBlastHoles,
+                            0.2,
+                            useToeLocation,
+                            "powderFactor"
+                        );
                     }
                     break;
                 case "mass":
@@ -21104,9 +21109,18 @@ function drawData(allBlastHoles, selectedHole) {
                     }
                     // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
-                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-                        const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getMassColor(value, minMass, maxMass), allBlastHoles, 0.2, useToeLocation);
+                        var voronoiMetricsMass = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        var clippedCellsMass = clipVoronoiCells(voronoiMetricsMass);
+                        drawVoronoiCellsThreeJS(
+                            clippedCellsMass,
+                            function (value) {
+                                return getMassColor(value, minMass, maxMass);
+                            },
+                            allBlastHoles,
+                            0.2,
+                            useToeLocation,
+                            "mass"
+                        );
                     }
                     break;
                 case "volume": {
@@ -21145,9 +21159,18 @@ function drawData(allBlastHoles, selectedHole) {
                     }
                     // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
-                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-                        const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getVolumeColor(value, minVol, maxVol), allBlastHoles, 0.2, useToeLocation);
+                        var voronoiMetricsVol = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        var clippedCellsVol = clipVoronoiCells(voronoiMetricsVol);
+                        drawVoronoiCellsThreeJS(
+                            clippedCellsVol,
+                            function (value) {
+                                return getVolumeColor(value, minVol, maxVol);
+                            },
+                            allBlastHoles,
+                            0.2,
+                            useToeLocation,
+                            "volume"
+                        );
                     }
                     break;
                 }
@@ -21187,9 +21210,18 @@ function drawData(allBlastHoles, selectedHole) {
                     }
                     // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
-                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-                        const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getAreaColor(value, minArea, maxArea), allBlastHoles, 0.2, useToeLocation);
+                        var voronoiMetricsArea = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        var clippedCellsArea = clipVoronoiCells(voronoiMetricsArea);
+                        drawVoronoiCellsThreeJS(
+                            clippedCellsArea,
+                            function (value) {
+                                return getAreaColor(value, minArea, maxArea);
+                            },
+                            allBlastHoles,
+                            0.2,
+                            useToeLocation,
+                            "area"
+                        );
                     }
                     break;
                 }
@@ -21237,9 +21269,18 @@ function drawData(allBlastHoles, selectedHole) {
                     }
                     // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
-                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-                        const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getLengthColor(value, minMLen, maxMLen), allBlastHoles, 0.2, useToeLocation);
+                        var voronoiMetricsMLen = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        var clippedCellsMLen = clipVoronoiCells(voronoiMetricsMLen);
+                        drawVoronoiCellsThreeJS(
+                            clippedCellsMLen,
+                            function (value) {
+                                return getLengthColor(value, minMLen, maxMLen);
+                            },
+                            allBlastHoles,
+                            0.2,
+                            useToeLocation,
+                            "measuredLength"
+                        );
                     }
                     break;
                 }
@@ -21287,9 +21328,18 @@ function drawData(allBlastHoles, selectedHole) {
                     }
                     // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
-                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-                        const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getLengthColor(value, minDLen, maxDLen), allBlastHoles, 0.2, useToeLocation);
+                        var voronoiMetricsDLen = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        var clippedCellsDLen = clipVoronoiCells(voronoiMetricsDLen);
+                        drawVoronoiCellsThreeJS(
+                            clippedCellsDLen,
+                            function (value) {
+                                return getLengthColor(value, minDLen, maxDLen);
+                            },
+                            allBlastHoles,
+                            0.2,
+                            useToeLocation,
+                            "designedLength"
+                        );
                     }
                     break;
                 }
@@ -21329,9 +21379,18 @@ function drawData(allBlastHoles, selectedHole) {
                     }
                     // Step 8b) Draw Voronoi cells in Three.js
                     if (threeInitialized) {
-                        const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-                        const clippedCells = clipVoronoiCells(voronoiMetrics);
-                        drawVoronoiCellsThreeJS(clippedCells, (value) => getHoleFiringTimeColor(value, minHTime, maxHTime), allBlastHoles, 0.2, useToeLocation);
+                        var voronoiMetricsHTime = getVoronoiMetrics(allBlastHoles, useToeLocation);
+                        var clippedCellsHTime = clipVoronoiCells(voronoiMetricsHTime);
+                        drawVoronoiCellsThreeJS(
+                            clippedCellsHTime,
+                            function (value) {
+                                return getHoleFiringTimeColor(value, minHTime, maxHTime);
+                            },
+                            allBlastHoles,
+                            0.2,
+                            useToeLocation,
+                            "holeFiringTime"
+                        );
                     }
                     break;
                 }
@@ -21814,59 +21873,182 @@ function drawData(allBlastHoles, selectedHole) {
 
         // Step 3.3) Draw Voronoi cells in Three.js (3D-only mode)
         if (displayOptions3D.voronoiPF && allBlastHoles && allBlastHoles.length > 0) {
-            const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-            const clippedCells = clipVoronoiCells(voronoiMetrics);
-            if (clippedCells && clippedCells.length > 0) {
-                // Use the selected voronoi metric for coloring
-                const selectedMetric = selectedVoronoiMetric || "powder_factor";
-                let colorFunction;
-                switch (selectedMetric) {
-                    case "powder_factor":
-                        const pfValues = clippedCells.map(function (c) { return c.powderFactor; }).filter(function (v) { return v != null && !isNaN(v); });
-                        const minPF = pfValues.length > 0 ? Math.min.apply(null, pfValues) : 0;
-                        const maxPF = pfValues.length > 0 ? Math.max.apply(null, pfValues) : 1;
-                        colorFunction = function (value) { return getPFColor(value, minPF, maxPF); };
+            var voronoiMetrics3D = getVoronoiMetrics(allBlastHoles, useToeLocation);
+            var clippedCells3D = clipVoronoiCells(voronoiMetrics3D);
+            if (clippedCells3D && clippedCells3D.length > 0) {
+                // Step 3.3a) Use the selected voronoi metric for coloring
+                var selectedMetric3D = selectedVoronoiMetric || "powder_factor";
+                var colorFunction3D;
+                // Step 3.3b) Map metric name to cell property name
+                var cellPropertyName = selectedMetric3D;
+                if (selectedMetric3D === "powder_factor") {
+                    cellPropertyName = "powderFactor";
+                }
+
+                // Step 3.3c) Apply isVoronoiLegendFixed check to match 2D behavior
+                switch (selectedMetric3D) {
+                    case "powderFactor":
+                        var minPF3D, maxPF3D;
+                        if (!isVoronoiLegendFixed) {
+                            // Step 3.3c.1) Min-Max mode: calculate from data (min always 0 for PF)
+                            var pfValues3D = clippedCells3D
+                                .map(function (c) {
+                                    return c.powderFactor;
+                                })
+                                .filter(function (v) {
+                                    return v != null && !isNaN(v);
+                                });
+                            minPF3D = 0; // PF min is always 0 per 2D logic (line 21031)
+                            maxPF3D = pfValues3D.length > 0 ? Math.max.apply(null, pfValues3D) : 3;
+                        } else {
+                            // Step 3.3c.2) Fixed mode: use hardcoded values matching 2D (lines 21043-21044)
+                            minPF3D = 0;
+                            maxPF3D = 3;
+                        }
+                        colorFunction3D = function (value) {
+                            return getPFColor(value, minPF3D, maxPF3D);
+                        };
                         break;
                     case "mass":
-                        const massValues = clippedCells.map(function (c) { return c.mass; }).filter(function (v) { return v != null && !isNaN(v); });
-                        const minMass = massValues.length > 0 ? Math.min.apply(null, massValues) : 0;
-                        const maxMass = massValues.length > 0 ? Math.max.apply(null, massValues) : 100;
-                        colorFunction = function (value) { return getMassColor(value, minMass, maxMass); };
+                        var minMass3D, maxMass3D;
+                        if (!isVoronoiLegendFixed) {
+                            // Step 3.3c.3) Min-Max mode: calculate from data (lines 21083-21084)
+                            var massValues3D = clippedCells3D
+                                .map(function (c) {
+                                    return c.mass;
+                                })
+                                .filter(function (v) {
+                                    return v != null && !isNaN(v);
+                                });
+                            minMass3D = massValues3D.length > 0 ? Math.min.apply(null, massValues3D) : 0;
+                            maxMass3D = massValues3D.length > 0 ? Math.max.apply(null, massValues3D) : 500;
+                        } else {
+                            // Step 3.3c.4) Fixed mode: use hardcoded values matching 2D (lines 21095-21096)
+                            minMass3D = 0;
+                            maxMass3D = 1000;
+                        }
+                        colorFunction3D = function (value) {
+                            return getMassColor(value, minMass3D, maxMass3D);
+                        };
                         break;
                     case "volume":
-                        const volValues = clippedCells.map(function (c) { return c.volume; }).filter(function (v) { return v != null && !isNaN(v); });
-                        const minVol = volValues.length > 0 ? Math.min.apply(null, volValues) : 0;
-                        const maxVol = volValues.length > 0 ? Math.max.apply(null, volValues) : 100;
-                        colorFunction = function (value) { return getVolumeColor(value, minVol, maxVol); };
+                        var minVol3D, maxVol3D;
+                        if (!isVoronoiLegendFixed) {
+                            // Step 3.3c.5) Min-Max mode: calculate from data (lines 21120-21121)
+                            var volValues3D = clippedCells3D
+                                .map(function (c) {
+                                    return c.volume;
+                                })
+                                .filter(function (v) {
+                                    return v != null && !isNaN(v);
+                                });
+                            minVol3D = volValues3D.length > 0 ? Math.min.apply(null, volValues3D) : 0;
+                            maxVol3D = volValues3D.length > 0 ? Math.max.apply(null, volValues3D) : 100;
+                        } else {
+                            // Step 3.3c.6) Fixed mode: use hardcoded values matching 2D (lines 21131-21132)
+                            minVol3D = 0;
+                            maxVol3D = 5000;
+                        }
+                        colorFunction3D = function (value) {
+                            return getVolumeColor(value, minVol3D, maxVol3D);
+                        };
                         break;
                     case "area":
-                        const areaValues = clippedCells.map(function (c) { return c.area; }).filter(function (v) { return v != null && !isNaN(v); });
-                        const minArea = areaValues.length > 0 ? Math.min.apply(null, areaValues) : 0;
-                        const maxArea = areaValues.length > 0 ? Math.max.apply(null, areaValues) : 100;
-                        colorFunction = function (value) { return getAreaColor(value, minArea, maxArea); };
+                        var minArea3D, maxArea3D;
+                        if (!isVoronoiLegendFixed) {
+                            // Step 3.3c.7) Min-Max mode: calculate from data (lines 21161-21162)
+                            var areaValues3D = clippedCells3D
+                                .map(function (c) {
+                                    return c.area;
+                                })
+                                .filter(function (v) {
+                                    return v != null && !isNaN(v);
+                                });
+                            minArea3D = areaValues3D.length > 0 ? Math.min.apply(null, areaValues3D) : 0;
+                            maxArea3D = areaValues3D.length > 0 ? Math.max.apply(null, areaValues3D) : 100;
+                        } else {
+                            // Step 3.3c.8) Fixed mode: use hardcoded values matching 2D (lines 21172-21173)
+                            minArea3D = 0;
+                            maxArea3D = 500;
+                        }
+                        colorFunction3D = function (value) {
+                            return getAreaColor(value, minArea3D, maxArea3D);
+                        };
                         break;
                     case "measuredLength":
-                        const mLenValues = clippedCells.map(function (c) { return c.measuredLength; }).filter(function (v) { return v != null && !isNaN(v); });
-                        const minMLen = mLenValues.length > 0 ? Math.min.apply(null, mLenValues) : 0;
-                        const maxMLen = mLenValues.length > 0 ? Math.max.apply(null, mLenValues) : 50;
-                        colorFunction = function (value) { return getLengthColor(value, minMLen, maxMLen); };
+                        var minMLen3D, maxMLen3D;
+                        if (!isVoronoiLegendFixed) {
+                            // Step 3.3c.9) Min-Max mode: calculate from data (lines 21204-21205)
+                            var mLenValues3D = clippedCells3D
+                                .map(function (c) {
+                                    return c.measuredLength;
+                                })
+                                .filter(function (v) {
+                                    return v != null && !isNaN(v);
+                                });
+                            minMLen3D = mLenValues3D.length > 0 ? Math.min.apply(null, mLenValues3D) : 0;
+                            maxMLen3D = mLenValues3D.length > 0 ? Math.max.apply(null, mLenValues3D) : 50;
+                        } else {
+                            // Step 3.3c.10) Fixed mode: use hardcoded values matching 2D (lines 21219-21220)
+                            minMLen3D = 0;
+                            maxMLen3D = 50;
+                        }
+                        colorFunction3D = function (value) {
+                            return getLengthColor(value, minMLen3D, maxMLen3D);
+                        };
                         break;
                     case "designedLength":
-                        const dLenValues = clippedCells.map(function (c) { return c.designedLength; }).filter(function (v) { return v != null && !isNaN(v); });
-                        const minDLen = dLenValues.length > 0 ? Math.min.apply(null, dLenValues) : 0;
-                        const maxDLen = dLenValues.length > 0 ? Math.max.apply(null, dLenValues) : 50;
-                        colorFunction = function (value) { return getLengthColor(value, minDLen, maxDLen); };
+                        var minDLen3D, maxDLen3D;
+                        if (!isVoronoiLegendFixed) {
+                            // Step 3.3c.11) Min-Max mode: calculate from data (lines 21254-21255)
+                            var dLenValues3D = clippedCells3D
+                                .map(function (c) {
+                                    return c.designedLength;
+                                })
+                                .filter(function (v) {
+                                    return v != null && !isNaN(v);
+                                });
+                            minDLen3D = dLenValues3D.length > 0 ? Math.min.apply(null, dLenValues3D) : 0;
+                            maxDLen3D = dLenValues3D.length > 0 ? Math.max.apply(null, dLenValues3D) : 50;
+                        } else {
+                            // Step 3.3c.12) Fixed mode: use hardcoded values matching 2D (lines 21269-21270)
+                            minDLen3D = 0;
+                            maxDLen3D = 50;
+                        }
+                        colorFunction3D = function (value) {
+                            return getLengthColor(value, minDLen3D, maxDLen3D);
+                        };
                         break;
                     case "holeFiringTime":
-                        const hTimeValues = clippedCells.map(function (c) { return c.holeFiringTime; }).filter(function (v) { return v != null && !isNaN(v); });
-                        const minHTime = hTimeValues.length > 0 ? Math.min.apply(null, hTimeValues) : 0;
-                        const maxHTime = hTimeValues.length > 0 ? Math.max.apply(null, hTimeValues) : 5000;
-                        colorFunction = function (value) { return getHoleFiringTimeColor(value, minHTime, maxHTime); };
+                        var minHTime3D, maxHTime3D;
+                        if (!isVoronoiLegendFixed) {
+                            // Step 3.3c.13) Min-Max mode: calculate from data (lines 21354-21355)
+                            var hTimeValues3D = clippedCells3D
+                                .map(function (c) {
+                                    return c.holeFiringTime;
+                                })
+                                .filter(function (v) {
+                                    return v != null && !isNaN(v);
+                                });
+                            minHTime3D = hTimeValues3D.length > 0 ? Math.min.apply(null, hTimeValues3D) : 0;
+                            maxHTime3D = hTimeValues3D.length > 0 ? Math.max.apply(null, hTimeValues3D) : 5000;
+                        } else {
+                            // Step 3.3c.14) Fixed mode: use hardcoded values matching 2D (lines 21365-21366)
+                            minHTime3D = 0;
+                            maxHTime3D = 5000;
+                        }
+                        colorFunction3D = function (value) {
+                            return getHoleFiringTimeColor(value, minHTime3D, maxHTime3D);
+                        };
                         break;
                     default:
-                        colorFunction = function (value) { return getPFColor(value, 0, 1); };
+                        // Step 3.3c.15) Default to PF with fixed range
+                        colorFunction3D = function (value) {
+                            return getPFColor(value, 0, 3);
+                        };
+                        cellPropertyName = "powderFactor";
                 }
-                drawVoronoiCellsThreeJS(clippedCells, colorFunction, allBlastHoles, 0.2, useToeLocation);
+                drawVoronoiCellsThreeJS(clippedCells3D, colorFunction3D, allBlastHoles, 0.2, useToeLocation, cellPropertyName);
             }
         }
 
@@ -30954,10 +31136,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
     return closestPoint
         ? {
-            point: closestPoint,
-            type: snapType,
-            distance: minDistance
-        }
+              point: closestPoint,
+              type: snapType,
+              distance: minDistance
+          }
         : null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)

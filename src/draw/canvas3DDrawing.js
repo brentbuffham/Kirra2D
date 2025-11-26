@@ -789,10 +789,7 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 
     // Step 19.6c) Create dashed line geometry from last point to current mouse position
     const lineColor = color || "rgba(0, 255, 255, 0.8)";
-    const points = [
-        new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ),
-        new THREE.Vector3(toLocal.x, toLocal.y, toZ)
-    ];
+    const points = [new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ), new THREE.Vector3(toLocal.x, toLocal.y, toZ)];
 
     const geometry = new THREE.BufferGeometry().setFromPoints(points);
     const material = new THREE.LineDashedMaterial({
@@ -945,15 +942,21 @@ export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
 }
 
 // Step 22) Draw Voronoi cells in Three.js
-export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlastHoles, extrusionHeight = 0.2, useToeLocation = false) {
+// selectedMetric: the metric name to use for coloring (e.g., "powderFactor", "mass", "volume", "area", "measuredLength", "designedLength", "holeFiringTime")
+export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlastHoles, extrusionHeight, useToeLocation, selectedMetric) {
     if (!window.threeInitialized || !window.threeRenderer) return;
     if (!clippedCells || clippedCells.length === 0) return;
 
-    // Step 22a) Create Voronoi cells geometry
-    // Positioning: collar mode = 0.1m below collar, toe mode = 0.1m above toe
-    const voronoiGroup = GeometryFactory.createVoronoiCells(clippedCells, getColorFunction, allBlastHoles, window.worldToThreeLocal, extrusionHeight, useToeLocation);
+    // Step 22a) Default extrusionHeight if not provided
+    if (extrusionHeight === undefined || extrusionHeight === null) {
+        extrusionHeight = 0.2;
+    }
 
-    // Step 22b) Add metadata
+    // Step 22b) Create Voronoi cells geometry
+    // Positioning: collar mode = 0.1m below collar, toe mode = 0.1m above toe
+    var voronoiGroup = GeometryFactory.createVoronoiCells(clippedCells, getColorFunction, allBlastHoles, window.worldToThreeLocal, extrusionHeight, useToeLocation, selectedMetric);
+
+    // Step 22c) Add metadata
     voronoiGroup.userData = {
         type: "voronoiCells"
     };
