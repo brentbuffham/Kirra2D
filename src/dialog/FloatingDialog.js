@@ -227,10 +227,11 @@ class FloatingDialog {
 			header.addEventListener("mousedown", this.startDrag.bind(this));
 		}
 
-		// Step 19) Close on outside click
+		// Step 19) Close on outside click - store bound function for proper cleanup
 		if (this.options.closeOnOutsideClick) {
+			this.handleOutsideClickBound = this.handleOutsideClick.bind(this);
 			setTimeout(() => {
-				document.addEventListener("click", this.handleOutsideClick.bind(this));
+				document.addEventListener("click", this.handleOutsideClickBound);
 			}, 0);
 		}
 
@@ -285,6 +286,8 @@ class FloatingDialog {
 	}
 
 	handleOutsideClick(e) {
+		// Step 1) Guard against null element (dialog may already be closed)
+		if (!this.element) return;
 		if (!this.element.contains(e.target)) {
 			this.close();
 		}

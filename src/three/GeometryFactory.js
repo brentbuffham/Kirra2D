@@ -1721,12 +1721,29 @@ export class GeometryFactory {
     }
 
     // Step 23) Create background image plane
-    static createImagePlane(imageCanvas, bbox, transparency = 1.0) {
+    // zElevation parameter allows placing image at specific Z level in 3D space
+    // Default uses drawingZLevel, then dataCentroidZ, then 0
+    static createImagePlane(imageCanvas, bbox, transparency = 1.0, zElevation = null) {
         // Step 24) Calculate dimensions
         const width = bbox[2] - bbox[0];
         const height = bbox[3] - bbox[1];
         const centerX = (bbox[0] + bbox[2]) / 2;
         const centerY = (bbox[1] + bbox[3]) / 2;
+
+        // Step 24a) Determine Z elevation for the image plane
+        // Priority: explicit zElevation > drawingZLevel > dataCentroidZ > 0
+        var z;
+        if (zElevation !== null && zElevation !== undefined && isFinite(zElevation)) {
+            z = zElevation;
+        } else if (window.drawingZLevel !== undefined && isFinite(window.drawingZLevel)) {
+            z = window.drawingZLevel;
+        } else if (window.dataCentroidZ !== undefined && isFinite(window.dataCentroidZ)) {
+            z = window.dataCentroidZ;
+        } else {
+            z = 0;
+        }
+        // Offset slightly below to avoid z-fighting with data at same elevation
+        z = z - 1;
 
         // Step 25) Create texture from canvas
         const texture = new THREE.CanvasTexture(imageCanvas);
@@ -1743,7 +1760,7 @@ export class GeometryFactory {
         });
 
         const mesh = new THREE.Mesh(geometry, material);
-        mesh.position.set(centerX, centerY, -100); // Behind other geometry
+        mesh.position.set(centerX, centerY, z);
 
         return mesh;
     }

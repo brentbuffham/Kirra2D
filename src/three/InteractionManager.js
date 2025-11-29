@@ -219,6 +219,23 @@ export class InteractionManager {
 		return { x: worldX, y: worldY, z: worldZ };
 	}
 
+	//=============================================================================
+	// AGENT NOTE - DO NOT REVERT THIS FUNCTION OR ITS USAGE
+	//=============================================================================
+	// This function returns mouse position on a plane PERPENDICULAR to the camera
+	// view direction. This is the CORRECT method for 3D cursor positioning when
+	// NOT raycasting an object.
+	//
+	// DO NOT replace calls to getMouseWorldPositionOnViewPlane() with 
+	// getMouseWorldPositionOnPlane() for cursor/torus positioning.
+	//
+	// getMouseWorldPositionOnViewPlane() = plane perpendicular to camera (CORRECT)
+	// getMouseWorldPositionOnPlane() = horizontal XY plane at Z level (WRONG for cursor)
+	//
+	// This has been incorrectly reverted multiple times. The 3D cursor should follow
+	// the camera view plane, NOT be stuck on a horizontal XY plane at Z=0.
+	//=============================================================================
+	
 	// Step 7.4b) Get mouse world position on camera view plane (frustum plane)
 	// This returns position on a plane perpendicular to camera view direction
 	// passing through the orbit center or specified point
