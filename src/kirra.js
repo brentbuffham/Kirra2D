@@ -35,10 +35,6 @@ import { PolygonSelection3D } from "./three/PolygonSelection3D.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 //=================================================
-// Context Menu Manager
-//=================================================
-import { handle2DContextMenu, handle3DContextMenu, closeAllContextMenus, kadContextMenu } from "./dialog/contextMenu/ContextMenuManager.js";
-//=================================================
 // Drawing Modules
 //=================================================
 import {
@@ -831,7 +827,7 @@ function setup3DMouseEvents() {
 	// IMPORTANT: Use capture phase for click to run before camera controls
 	// IMPORTANT: Use DOCUMENT for mousemove to track mouse even when it leaves canvas (for stadium zone)
 	container.addEventListener("click", handle3DClick, true); // Capture phase for selection priority
-	container.addEventListener("contextmenu", handle3DContextMenu, true); // Capture phase for context menu
+	container.addEventListener("contextmenu", window.handle3DContextMenu, true); // Capture phase for context menu
 	document.addEventListener("mousemove", handle3DMouseMove, false); // Document-wide to track all mouse movement
 	container.addEventListener("touchstart", handle3DTouchStart, { passive: false, capture: true });
 	container.addEventListener("touchend", handle3DTouchEnd, { passive: false, capture: true });
@@ -26184,9 +26180,10 @@ function closeAllContextMenus() {
 // END OF MOVED FUNCTION - closeAllContextMenus now loaded from ContextMenuManager.js
 
 // Step 1) 2D context menu event listener - now using ContextMenuManager
+// Step 1) 2D context menu event listener - now using ContextMenuManager
 canvas.addEventListener("contextmenu", function (e) {
 	// Delegate to the centralized context menu manager
-	handle2DContextMenu(e);
+	window.handle2DContextMenu(e);
 });
 
 function isClickOnSelectedPolygon(worldX, worldY, selectedPolygon) {

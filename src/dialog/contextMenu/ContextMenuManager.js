@@ -3,9 +3,6 @@
 // CONTEXT MENU MANAGER
 //=============================================================
 
-// Import THREE.js for Vector3 projection
-import * as THREE from "three";
-
 // Step 1) Central dispatcher that handles all context menu routing
 // Detects 2D vs 3D environment and routes right-clicks to appropriate context menu
 
@@ -169,17 +166,10 @@ function handle2DContextMenu(event) {
 	}
 }
 
-// Step 3) Handle 3D context menu - COPIED FROM LEFT-CLICK LOGIC (handle3DClick)
+// Step 3) Handle 3D context menu
 function handle3DContextMenu(event) {
-	// CRITICAL: Prevent default context menu FIRST (before any other logic)
-	event.preventDefault();
-	event.stopImmediatePropagation();
-
-	console.log("🔴 [3D CONTEXT] Function called - browser menu should be blocked");
-
 	// Step 3a) Only handle if in 3D mode
 	if (!window.onlyShowThreeJS) {
-		console.log("⏭️ [3D CONTEXT] Not in 3D mode, exiting");
 		return;
 	}
 
@@ -188,7 +178,8 @@ function handle3DContextMenu(event) {
 		window.cameraControls.cancelRightClickDrag();
 	}
 
-	// Step 3b) Close all existing context menus
+	// Step 3b) Prevent default context menu
+	event.preventDefault();
 	closeAllContextMenus();
 
 	// Step 3c) Early return if dependencies not ready
@@ -202,41 +193,70 @@ function handle3DContextMenu(event) {
 		return;
 	}
 
-	// Step 3d) Get 3D canvas
+	// Step 3d) Get 3D canvas and update mouse position
 	const threeCanvas = window.threeRenderer.getCanvas();
 	if (!threeCanvas) {
 		return;
 	}
 
-	// Step 3e) Update mouse position and perform raycast (COPIED FROM LEFT-CLICK)
 	window.interactionManager.updateMousePosition(event, threeCanvas);
+
+	// Step 3e) Perform raycast to find clicked objects
+	console.log("🔍 [3D] Performing raycast...");
 	const intersects = window.interactionManager.raycast();
+	console.log("🔍 [3D] Raycast result: " + (intersects ? intersects.length : 0) + " intersects");
 
-	console.log("🎯 [3D CONTEXT] Raycast results:", intersects.length, "intersects");
-
-	// Step 3f) Find clicked hole (same as left-click)
-	const clickedHole = window.interactionManager.findClickedHole ? window.interactionManager.findClickedHole(intersects, window.allBlastHoles || []) : null;
-
-	if (clickedHole) {
-		console.log("✅ [3D CONTEXT] Found hole:", clickedHole.holeID);
-		// Show hole context menu
-		if (typeof window.showHolePropertyEditor === "function") {
-			window.showHolePropertyEditor(clickedHole);
+	if (intersects && intersects.length > 0) {
+		for (let i = 0; i < Math.min(3, intersects.length); i++) {
+			const obj = intersects[i].object;
+			console.log("  [" + i + "] distance:", intersects[i].distance.toFixed(2), "| type:", obj.type, "| userData:", obj.userData);
 		}
-		if (typeof window.debouncedUpdateTreeView === "function") {
+	}
+
+	// Step 3f) Get click position for context menu placement
+	const rect = threeCanvas.getBoundingClientRect();
+	const clickX = event.clientX - rect.left;
+	const clickY = event.clientY - rect.top;
+
+	// Step 3g) Find clicked hole
+	const clickedHole = window.interactionManager.findClickedHole(intersects, window.allBlastHoles);
+
+	// Step 3h) Check for multiple hole selection
+	if (window.selectedMultipleHoles && window.selectedMultipleHoles.length > 1) {
+		// Check if we clicked on one of the selected holes
+		let clickedOnSelected = false;
+		if (clickedHole) {
+			for (const hole of window.selectedMultipleHoles) {
+				if (hole.entityName === clickedHole.entityName && hole.holeID === clickedHole.holeID) {
+					clickedOnSelected = true;
+					break;
+				}
+			}
+		}
+
+		if (clickedOnSelected) {
+			window.showHolePropertyEditor(window.selectedMultipleHoles);
 			window.debouncedUpdateTreeView();
+			return;
 		}
+	}
+
+	// Step 3i) Handle single hole click
+	if (clickedHole) {
+		window.showHolePropertyEditor(clickedHole);
+		window.debouncedUpdateTreeView();
 		return;
 	}
 
-	// Step 3g) No hole found - check for KAD objects (COPIED FROM LEFT-CLICK lines 1213-1515)
+	// Step 3j) Get clicked KAD object using 3D raycast (mimics LEFT-CLICK logic)
+	// IMPORTANT: Iterate through ALL intersects like left-click does!
 	let clickedKADObject = null;
 
-	// Step 3g.1) Search raycast intersects for KAD objects
+	// Search intersects for KAD objects (they have userData.kadId)
 	for (const intersect of intersects) {
 		let object = intersect.object;
 
-		// Skip selection highlights
+		// Skip if this intersect is a selection highlight
 		let isHighlight = false;
 		let checkObj = object;
 		let depth = 0;
@@ -256,18 +276,23 @@ function handle3DContextMenu(event) {
 		// Traverse up to find actual KAD object
 		depth = 0;
 		while (object && depth < 10) {
+			// Check for actual KAD objects (kadPoint, kadLine, kadPolygon, kadCircle, kadText)
 			if (object.userData && object.userData.kadId && object.userData.type && (object.userData.type === "kadPoint" || object.userData.type === "kadLine" || object.userData.type === "kadPolygon" || object.userData.type === "kadCircle" || object.userData.type === "kadText")) {
-				console.log("✅ [3D CONTEXT] Found KAD object via raycast:", object.userData.kadId, "type:", object.userData.type);
+				console.log("✅ [3D CONTEXT] Found KAD object:", object.userData.kadId, "type:", object.userData.type);
 
+				// Get the KAD entity from the map
 				const entity = window.allKADDrawingsMap ? window.allKADDrawingsMap.get(object.userData.kadId) : null;
 				if (entity) {
+					// Find which specific element was clicked
 					let closestElementIndex = 0;
 					let minDistance = Infinity;
 
 					if (entity.data && entity.data.length > 1 && intersect.point) {
+						// Convert intersection point from local to world coordinates
 						const intersectWorldX = intersect.point.x + (window.threeLocalOriginX || 0);
 						const intersectWorldY = intersect.point.y + (window.threeLocalOriginY || 0);
 
+						// Find closest element by distance
 						entity.data.forEach((element, index) => {
 							const elemX = element.pointXLocation || element.centerX;
 							const elemY = element.pointYLocation || element.centerY;
@@ -282,14 +307,15 @@ function handle3DContextMenu(event) {
 						});
 					}
 
+					// Create KAD object descriptor (matching left-click format)
 					clickedKADObject = {
 						entityName: object.userData.kadId,
 						entityType: entity.entityType,
 						elementIndex: closestElementIndex,
-						selectionType: "vertex",
+						selectionType: "vertex", // Use "vertex" to match 2D
 					};
 
-					break;
+					break; // Found it, stop searching
 				}
 			}
 			object = object.parent;
@@ -297,189 +323,132 @@ function handle3DContextMenu(event) {
 		}
 
 		if (clickedKADObject) {
-			break;
+			break; // Found a KAD object, stop searching intersects
 		}
 	}
 
-	// Step 3g.2) FALLBACK: Screen-space distance selection (COPIED FROM LEFT-CLICK lines 1308-1515)
-	if (!clickedKADObject && window.allKADDrawingsMap && window.allKADDrawingsMap.size > 0) {
-		console.log("🔍 [3D CONTEXT] No raycast hit, trying screen-space distance selection...");
+	// FALLBACK: If no KAD object found via raycast, try screen-space distance selection (like left-click)
+	// CRITICAL: Run this even if intersects.length > 0, because intersects might only be surface meshes!
+	if (!clickedKADObject && window.allKADDrawingsMap) {
+		console.log("🔍 [3D CONTEXT] No KAD found in raycast, trying screen-space distance selection...");
 
-		const camera = window.threeRenderer.camera;
-		const canvas = window.threeRenderer.getCanvas();
+		// Get snap tolerance from global or default to 13px
+		const tolerancePx = window.snapRadiusPixels || 13;
 
-		if (camera && canvas) {
-			const rect = canvas.getBoundingClientRect();
-			const mouseScreenX = event.clientX - rect.left;
-			const mouseScreenY = event.clientY - rect.top;
-			const canvasWidth = rect.width;
-			const canvasHeight = rect.height;
+		console.log("📏 [3D CONTEXT] Mouse at (" + clickX + "px, " + clickY + "px), tolerance: " + tolerancePx + "px");
 
-			const snapTolerancePixels = window.snapRadiusPixels || 20;
-			console.log("📏 [3D CONTEXT] Mouse at (" + mouseScreenX.toFixed(0) + "px, " + mouseScreenY.toFixed(0) + "px), tolerance: " + snapTolerancePixels + "px");
+		let closestEntity = null;
+		let closestDistance = tolerancePx;
 
-			// Helper function to project 3D world position to 2D screen pixels
-			const worldToScreen = function (worldX, worldY, worldZ) {
-				const local = window.worldToThreeLocal(worldX, worldY);
-				const vector = new THREE.Vector3(local.x, local.y, worldZ);
-				vector.project(camera);
-				const screenX = ((vector.x + 1) * canvasWidth) / 2;
-				const screenY = ((-vector.y + 1) * canvasHeight) / 2;
-				return { x: screenX, y: screenY };
-			};
+		// Check all KAD entities - LINES AND POLYGONS (segment-by-segment like left-click)
+		for (const [name, entity] of window.allKADDrawingsMap.entries()) {
+			if (entity.visible === false) continue;
 
-			// Helper function for segment distance
-			const screenPointToSegmentDistance = function (px, py, x1, y1, x2, y2) {
-				const A = px - x1;
-				const B = py - y1;
-				const C = x2 - x1;
-				const D = y2 - y1;
-				const dot = A * C + B * D;
-				const lenSq = C * C + D * D;
+			if (entity.entityType === "line" || entity.entityType === "poly") {
+				// Check segments (same logic as left-click lines 1392-1470)
+				const points = entity.data.filter((p) => p.visible !== false);
+				if (points.length < 2) continue;
 
-				if (lenSq === 0) {
-					return Math.sqrt(A * A + B * B);
-				}
+				const isClosedShape = entity.entityType === "poly";
+				const numSegments = isClosedShape ? points.length : points.length - 1;
 
-				let t = dot / lenSq;
-				t = Math.max(0, Math.min(1, t));
+				for (let i = 0; i < numSegments; i++) {
+					const p1 = points[i];
+					const p2 = isClosedShape ? points[(i + 1) % points.length] : points[i + 1];
 
-				const projX = x1 + t * C;
-				const projY = y1 + t * D;
-				const dx = px - projX;
-				const dy = py - projY;
+					// Project to screen
+					const screen1 = window.worldToScreen ? window.worldToScreen(p1.pointXLocation, p1.pointYLocation, p1.pointZLocation || 0) : null;
+					const screen2 = window.worldToScreen ? window.worldToScreen(p2.pointXLocation, p2.pointYLocation, p2.pointZLocation || 0) : null;
 
-				return Math.sqrt(dx * dx + dy * dy);
-			};
+					if (screen1 && screen2) {
+						// Calculate distance from mouse to line segment
+						const dx = screen2.x - screen1.x;
+						const dy = screen2.y - screen1.y;
+						const lengthSq = dx * dx + dy * dy;
 
-			let closestEntity = null;
-			let closestEntityName = null;
-			let closestDistance = Infinity;
-			let closestElementIndex = 0;
+						let t = 0;
+						if (lengthSq > 0) {
+							t = ((clickX - screen1.x) * dx + (clickY - screen1.y) * dy) / lengthSq;
+							t = Math.max(0, Math.min(1, t));
+						}
 
-			window.allKADDrawingsMap.forEach((entity, entityName) => {
-				if (!entity.data || entity.data.length === 0) return;
-
-				if (entity.entityType === "point") {
-					entity.data.forEach((point, index) => {
-						const screenPos = worldToScreen(point.pointXLocation, point.pointYLocation, point.pointZLocation || window.dataCentroidZ || 0);
-						const dx = screenPos.x - mouseScreenX;
-						const dy = screenPos.y - mouseScreenY;
-						const distance = Math.sqrt(dx * dx + dy * dy);
+						const projX = screen1.x + t * dx;
+						const projY = screen1.y + t * dy;
+						const distX = clickX - projX;
+						const distY = clickY - projY;
+						const distance = Math.sqrt(distX * distX + distY * distY);
 
 						if (distance < closestDistance) {
 							closestDistance = distance;
-							closestEntity = entity;
-							closestEntityName = entityName;
-							closestElementIndex = index;
-						}
-					});
-				} else if (entity.entityType === "line" || entity.entityType === "poly") {
-					const points = entity.data;
-					if (points.length >= 2) {
-						const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
-
-						let closestSegmentIndex = 0;
-						let closestSegmentDistance = Infinity;
-
-						for (let i = 0; i < numSegments; i++) {
-							const p1 = points[i];
-							const p2 = points[(i + 1) % points.length];
-
-							const screen1 = worldToScreen(p1.pointXLocation, p1.pointYLocation, p1.pointZLocation || window.dataCentroidZ || 0);
-							const screen2 = worldToScreen(p2.pointXLocation, p2.pointYLocation, p2.pointZLocation || window.dataCentroidZ || 0);
-
-							const segmentDist = screenPointToSegmentDistance(mouseScreenX, mouseScreenY, screen1.x, screen1.y, screen2.x, screen2.y);
-
-							if (segmentDist < closestSegmentDistance) {
-								closestSegmentDistance = segmentDist;
-								closestSegmentIndex = i;
-							}
-						}
-
-						if (closestSegmentDistance < closestDistance) {
-							closestDistance = closestSegmentDistance;
-							closestEntity = entity;
-							closestEntityName = entityName;
-							closestElementIndex = closestSegmentIndex;
+							closestEntity = {
+								entityName: name,
+								entityType: entity.entityType,
+								elementIndex: i,
+								selectionType: "vertex",
+								distance: distance,
+							};
 						}
 					}
-				} else if (entity.entityType === "circle") {
-					entity.data.forEach((circle, index) => {
-						const centerX = circle.pointXLocation || circle.centerX;
-						const centerY = circle.pointYLocation || circle.centerY;
-						const centerZ = circle.pointZLocation || window.dataCentroidZ || 0;
+				}
+			} else {
+				// Points, circles, text - check each data point
+				for (let i = 0; i < entity.data.length; i++) {
+					const point = entity.data[i];
+					if (point.visible === false) continue;
 
-						const screenCenter = worldToScreen(centerX, centerY, centerZ);
-						const dx = screenCenter.x - mouseScreenX;
-						const dy = screenCenter.y - mouseScreenY;
+					// Project world position to screen position
+					const screenPos = window.worldToScreen ? window.worldToScreen(point.pointXLocation, point.pointYLocation, point.pointZLocation || 0) : null;
+
+					if (screenPos) {
+						const dx = screenPos.x - clickX;
+						const dy = screenPos.y - clickY;
 						const distance = Math.sqrt(dx * dx + dy * dy);
 
 						if (distance < closestDistance) {
 							closestDistance = distance;
-							closestEntity = entity;
-							closestEntityName = entityName;
-							closestElementIndex = index;
+							closestEntity = {
+								entityName: name,
+								entityType: entity.entityType,
+								elementIndex: i,
+								selectionType: "vertex",
+								distance: distance,
+							};
 						}
-					});
-				} else if (entity.entityType === "text") {
-					entity.data.forEach((text, index) => {
-						const screenPos = worldToScreen(text.pointXLocation, text.pointYLocation, text.pointZLocation || window.dataCentroidZ || 0);
-						const dx = screenPos.x - mouseScreenX;
-						const dy = screenPos.y - mouseScreenY;
-						const distance = Math.sqrt(dx * dx + dy * dy);
-
-						if (distance < closestDistance) {
-							closestDistance = distance;
-							closestEntity = entity;
-							closestEntityName = entityName;
-							closestElementIndex = index;
-						}
-					});
-				}
-			});
-
-			// Check if within tolerance
-			if (closestEntity && closestDistance <= snapTolerancePixels) {
-				console.log("✅ [3D CONTEXT] Found entity by screen distance:", closestEntityName, "type:", closestEntity.entityType, "distance:", closestDistance.toFixed(1) + "px");
-
-				let selectionType = "vertex";
-				if (closestEntity.entityType === "line" || closestEntity.entityType === "poly") {
-					selectionType = "segment";
-				}
-
-				clickedKADObject = {
-					entityName: closestEntityName,
-					entityType: closestEntity.entityType,
-					elementIndex: closestElementIndex,
-					segmentIndex: closestElementIndex,
-					selectionType: selectionType,
-				};
-
-				// Add type-specific properties
-				if (closestEntity.data && closestEntity.data[closestElementIndex]) {
-					const clickedElement = closestEntity.data[closestElementIndex];
-					if (closestEntity.entityType === "circle") {
-						clickedKADObject.pointXLocation = clickedElement.pointXLocation || clickedElement.centerX;
-						clickedKADObject.pointYLocation = clickedElement.pointYLocation || clickedElement.centerY;
-						clickedKADObject.radius = clickedElement.radius;
-					} else if (closestEntity.entityType === "text") {
-						clickedKADObject.pointXLocation = clickedElement.pointXLocation;
-						clickedKADObject.pointYLocation = clickedElement.pointYLocation;
-						clickedKADObject.text = clickedElement.text;
-					} else {
-						clickedKADObject.pointXLocation = clickedElement.pointXLocation;
-						clickedKADObject.pointYLocation = clickedElement.pointYLocation;
 					}
 				}
 			}
 		}
+
+		if (closestEntity) {
+			console.log("✅ [3D CONTEXT] Found entity by screen distance:", closestEntity.entityName, "type:", closestEntity.entityType, "distance:", closestEntity.distance.toFixed(1) + "px");
+			clickedKADObject = closestEntity;
+		}
 	}
 
-	// Step 3h) Now show context menu based on what was clicked
-	console.log("🖱️  [3D CONTEXT] Final result - Hole:", clickedHole ? clickedHole.holeID : "null", "| KAD:", clickedKADObject ? clickedKADObject.entityType + " - " + clickedKADObject.entityName : "null");
+	console.log("🖱️  [3D Context Menu] Clicked objects - Hole:", clickedHole ? clickedHole.holeID : "null", "| KAD:", clickedKADObject ? clickedKADObject.entityType + " - " + clickedKADObject.entityName : "null");
 
-	// Step 3i) Show context menu for KAD objects
+	// Step 3k) Check for multiple KAD selection
+	if (window.selectedMultipleKADObjects && window.selectedMultipleKADObjects.length > 1) {
+		// Check if we clicked on one of the selected KAD objects
+		let clickedOnSelected = false;
+		if (clickedKADObject) {
+			for (const kadObj of window.selectedMultipleKADObjects) {
+				if (kadObj.entityName === clickedKADObject.entityName && kadObj.elementIndex === clickedKADObject.elementIndex) {
+					clickedOnSelected = true;
+					break;
+				}
+			}
+		}
+
+		if (clickedOnSelected) {
+			window.showMultipleKADPropertyEditor(window.selectedMultipleKADObjects);
+			window.debouncedUpdateTreeView();
+			return;
+		}
+	}
+
+	// Step 3l) Handle KAD object click in 3D (any entity type)
+	// IMPORTANT: Screen-space distance check already validated tolerance, so just show menu if we found an object
 	if (clickedKADObject) {
 		console.log("📋 [3D CONTEXT] Showing context menu for KAD:", clickedKADObject.entityType, clickedKADObject.entityName);
 		if (typeof window.showKADPropertyEditorPopup === "function") {
@@ -489,12 +458,13 @@ function handle3DContextMenu(event) {
 			window.debouncedUpdateTreeView();
 		}
 		return;
+	} else {
+		console.log("📋 [3D CONTEXT] No KAD object detected");
 	}
 
-	// Step 3j) Show context menu for surfaces
-	const clickedSurfaceId = window.interactionManager.findClickedSurface ? window.interactionManager.findClickedSurface(intersects) : null;
+	// Step 3m) Find clicked surface
+	const clickedSurfaceId = window.interactionManager.findClickedSurface(intersects);
 	if (clickedSurfaceId) {
-		console.log("📋 [3D CONTEXT] Showing context menu for surface:", clickedSurfaceId);
 		if (typeof window.showSurfaceContextMenu === "function") {
 			window.showSurfaceContextMenu(event.clientX, event.clientY, clickedSurfaceId);
 		}
@@ -504,10 +474,9 @@ function handle3DContextMenu(event) {
 		return;
 	}
 
-	// Step 3k) Show context menu for images
-	const clickedImageId = window.interactionManager.findClickedImage ? window.interactionManager.findClickedImage(intersects) : null;
+	// Step 3n) Find clicked image
+	const clickedImageId = window.interactionManager.findClickedImage(intersects);
 	if (clickedImageId) {
-		console.log("📋 [3D CONTEXT] Showing context menu for image:", clickedImageId);
 		if (typeof window.showImageContextMenu === "function") {
 			window.showImageContextMenu(event.clientX, event.clientY, clickedImageId);
 		}
@@ -517,8 +486,7 @@ function handle3DContextMenu(event) {
 		return;
 	}
 
-	// Step 3l) Default - no object clicked
-	console.log("📋 [3D CONTEXT] No object clicked - showing default message");
+	// Step 3o) Default context menu - show status message if no object clicked
 	if (typeof window.updateStatusMessage === "function") {
 		window.updateStatusMessage("Right clicks need to be performed on an Object.");
 		setTimeout(() => {
@@ -578,5 +546,16 @@ function kadContextMenu(e) {
 // CONTEXT MENU MANAGER END
 //===========================================
 
-// Export functions as ES6 module
-export { handle2DContextMenu, handle3DContextMenu, closeAllContextMenus, kadContextMenu };
+// Make functions available globally via namespace
+window.ContextMenuManager = {
+	handle2DContextMenu: handle2DContextMenu,
+	handle3DContextMenu: handle3DContextMenu,
+	closeAllContextMenus: closeAllContextMenus,
+	kadContextMenu: kadContextMenu,
+};
+
+// Also expose directly for backwards compatibility
+window.handle2DContextMenu = handle2DContextMenu;
+window.handle3DContextMenu = handle3DContextMenu;
+window.closeAllContextMenus = closeAllContextMenus;
+window.kadContextMenu = kadContextMenu;
