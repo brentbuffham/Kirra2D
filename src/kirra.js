@@ -35,6 +35,10 @@ import { PolygonSelection3D } from "./three/PolygonSelection3D.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
 //=================================================
+// Context Menu Manager
+//=================================================
+import { handle2DContextMenu, handle3DContextMenu, closeAllContextMenus, kadContextMenu } from "./dialog/contextMenu/ContextMenuManager.js";
+//=================================================
 // Drawing Modules
 //=================================================
 import {
@@ -399,6 +403,49 @@ function exposeGlobalsToWindow() {
 	// Step 6c) Expose context menu functions for tree view and 3D interactions
 	window.showSurfaceContextMenu = showSurfaceContextMenu;
 	window.showImageContextMenu = showImageContextMenu;
+
+	// Step 6d) Expose additional functions needed by ContextMenuManager
+	window.getClickedHole = getClickedHole;
+	window.getClickedKADObject = getClickedKADObject;
+	window.getClickedKADObject3D = getClickedKADObject3D;
+	window.getSnapToleranceInWorldUnits = getSnapToleranceInWorldUnits;
+	window.canvasToWorld = canvasToWorld;
+	window.isKADObjectSelected = isKADObjectSelected;
+	window.isPointInSurface = isPointInSurface;
+	window.isPointInBackgroundImage = isPointInBackgroundImage;
+	window.loadedImages = loadedImages;
+	window.loadedSurfaces = loadedSurfaces;
+	window.debouncedUpdateTreeView = debouncedUpdateTreeView;
+	window.clearCurrentDrawingEntity = clearCurrentDrawingEntity;
+	window.addPointDraw = addPointDraw;
+	window.addLineDraw = addLineDraw;
+	window.addCircleDraw = addCircleDraw;
+	window.addPolyDraw = addPolyDraw;
+	window.addTextDraw = addTextDraw;
+	window.onlyShowThreeJS = onlyShowThreeJS;
+	window.cameraControls = cameraControls;
+	window.interactionManager = interactionManager;
+	window.isPolygonSelectionActive = isPolygonSelectionActive;
+
+	// Step 6e) Expose state variables needed by context menus
+	window.isDragging = isDragging;
+	window.longPressTimeout = longPressTimeout;
+	window.createNewEntity = createNewEntity;
+	window.lastKADDrawPoint = lastKADDrawPoint;
+
+	// Step 6f) ONLY expose functions that actually exist in kirra.js
+	window.calculateHoleGeometry = calculateHoleGeometry;
+	window.debouncedSaveHoles = debouncedSaveHoles;
+	window.debouncedSaveKAD = debouncedSaveKAD;
+	window.clearAllSelectionState = clearAllSelectionState;
+	window.setKADEntityVisibility = setKADEntityVisibility;
+	window.setSurfaceVisibility = setSurfaceVisibility;
+	window.showSurfaceLegend = showSurfaceLegend;
+	window.deleteSurfaceFromDB = deleteSurfaceFromDB;
+	window.deleteAllSurfacesFromDB = deleteAllSurfacesFromDB;
+	window.saveSurfaceToDB = saveSurfaceToDB;
+	window.deleteImageFromDB = deleteImageFromDB;
+	window.deleteAllImagesFromDB = deleteAllImagesFromDB;
 }
 
 // Step 3) Set local origin from first hole, surface, or current centroid
@@ -1565,6 +1612,8 @@ function handle3DClick(event) {
 }
 
 // Step 13) Handle 3D context menu (right-click) - matches 2D behavior
+// MOVED TO ContextMenuManager.js - This function is now loaded from external module
+/*
 function handle3DContextMenu(event) {
 	// Step 13a) Only handle if in 3D mode
 	if (!onlyShowThreeJS) {
@@ -1715,6 +1764,8 @@ function handle3DContextMenu(event) {
 		updateStatusMessage("");
 	}, 2000);
 }
+*/
+// END OF MOVED FUNCTION - handle3DContextMenu now loaded from ContextMenuManager.js
 
 // Step 13) Handle 3D mouse move - hover effects and stadium zone tracking
 function handle3DMouseMove(event) {
@@ -21922,12 +21973,8 @@ function drawData(allBlastHoles, selectedHole) {
 			}
 		}
 
-		// Step 3) Draw contours in Three.js ONLY when in 3D mode (not 2D)
-		// Check if we're in 3D orbit mode to avoid drawing 3D contours in 2D view
-		const isIn3DModeForContours = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
-		if (displayOptions.contour && threeInitialized && (onlyShowThreeJS || isIn3DModeForContours) && contourLinesArray && contourLinesArray.length > 0) {
-			drawContoursThreeJS(contourLinesArray, strokeColor, allBlastHoles);
-		}
+		// Step 3) DO NOT draw contours in 2D block - moved to 3D-only block
+		// Contours will render in 3D-only block at line 22373
 
 		// Main hole loop
 		ctx.lineWidth = 1;
@@ -21993,185 +22040,20 @@ function drawData(allBlastHoles, selectedHole) {
 				// Draw main hole geometry, with selection highlight logic
 				drawHoleMainShape(hole, x, y, selectedHole);
 
-				// Step 3) Only draw Three.js geometry when in 3D mode (not in pure 2D mode)
-				const isIn3DMode = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
-				if (threeInitialized && (isIn3DMode || onlyShowThreeJS)) {
-					// Draw complete hole in Three.js (collar + grade + toe lines)
-					drawHoleThreeJS(hole);
-
-					// Step 3a) Draw toe circle in Three.js (if hole length is not zero)
-					if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
-						const toeRadiusWorld = parseFloat(toeSizeInMeters);
-						const toeColor = strokeColor;
-						const toeHoleId = hole.entityName + ":::" + hole.holeID;
-						drawHoleToeThreeJS(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0, toeRadiusWorld, toeColor, toeHoleId);
-					}
-
-					// Draw hole text labels in Three.js
-					//if (threeInitialized) {
-					drawHoleTextsAndConnectorsThreeJS(hole, displayOptions);
-					//}
-
-					// Step 4) Draw connectors in Three.js
-					if (threeInitialized && displayOptions.connector && hole.fromHoleID) {
-						const [splitEntityName, splitFromHoleID] = hole.fromHoleID.split(":::");
-						const fromHole = holeMap.get(splitEntityName + ":::" + splitFromHoleID);
-						if (fromHole) {
-							const connColor = hole.colorHexDecimal || hole.holeColor || "#FF0000";
-							const delayText = displayOptions.delayValue ? hole.timingDelayMilliseconds : null;
-							drawConnectorThreeJS(fromHole, hole, connColor, hole.connectorCurve || 0, delayText, connScale);
-						}
-					}
-
-					// Step 4b) Draw selection highlighting in Three.js (matching 2D style)
-					// Only draw 3D highlighting when in 3D mode
-					if (threeInitialized && onlyShowThreeJS) {
-						// Connector mode highlighting
-						if (isAddingConnector || isAddingMultiConnector) {
-							// Step 4b.1) Check if this is the fromHoleStore (compare by entityName and holeID)
-							const isFromHole = fromHoleStore && fromHoleStore.entityName === hole.entityName && fromHoleStore.holeID === hole.holeID;
-							if (isFromHole) {
-								highlightSelectedHoleThreeJS(hole, "first");
-								if (isAddingMultiConnector && currentMouseWorldX !== undefined && currentMouseWorldY !== undefined) {
-									drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY, z: hole.startZLocation || window.dataCentroidZ || 0 }, connectAmount);
-								}
-								drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
-							} else if (firstSelectedHole && firstSelectedHole.entityName === hole.entityName && firstSelectedHole.holeID === hole.holeID) {
-								highlightSelectedHoleThreeJS(hole, "first");
-								drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName, { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
-							} else if (secondSelectedHole && secondSelectedHole === hole) {
-								highlightSelectedHoleThreeJS(hole, "second");
-								drawToolPromptThreeJS("2nd Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Click to connect)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 200, 0, .8)");
-							}
-							// IMPORTANT: Also check selectedHole in connector mode (for yellow highlight after creating connector)
-							else if (selectedHole && selectedHole === hole) {
-								highlightSelectedHoleThreeJS(hole, "selected");
-								drawToolPromptThreeJS("Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + " with Single Selection Mode \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
-							}
-						}
-						// Regular selection highlighting
-						else if (selectedHole && selectedHole === hole) {
-							highlightSelectedHoleThreeJS(hole, "selected");
-							drawToolPromptThreeJS("Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + " with Single Selection Mode \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
-						}
-						// Multiple selection highlighting
-						else if (selectedMultipleHoles && selectedMultipleHoles.find((h) => h.entityName === hole.entityName && h.holeID === hole.holeID)) {
-							highlightSelectedHoleThreeJS(hole, "multi");
-							if (hole === selectedMultipleHoles[0]) {
-								drawToolPromptThreeJS("Editing Selected Holes: {" + selectedMultipleHoles.map((h) => h.holeID).join(",") + "} \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
-							}
-						}
-						// Animation/timing window highlighting
-						if (timingWindowHolesSelected && timingWindowHolesSelected.find((h) => h.entityName === hole.entityName && h.holeID === hole.holeID)) {
-							if (isPlaying) {
-								highlightSelectedHoleThreeJS(hole, "animation-playing");
-							} else {
-								highlightSelectedHoleThreeJS(hole, "animation-paused");
-							}
-						}
-					}
-				}
+				// Step 3) DO NOT draw Three.js geometry in 2D block
+				// 3D hole rendering happens in 3D-only block at line 22587
+				// This prevents dual rendering when camera is orbited
 
 				// Font slider/label only needs to be updated once, after loop
 			}
 		}
 
-		// Step 4) Draw KAD entities in Three.js ONLY when in 3D mode (not when in 2D-only mode)
-		// Check if we're in 3D orbit mode or 3D-only mode
-		const isIn3DModeForKAD = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
-		if (drawingsGroupVisible && threeInitialized && (onlyShowThreeJS || isIn3DModeForKAD)) {
-			for (const [name, entity] of allKADDrawingsMap.entries()) {
-				if (entity.visible === false) continue;
+		// Step 4) DO NOT draw KAD 3D geometry in 2D block
+		// KAD 3D rendering happens in 3D-only block
+		// This prevents dual rendering when camera is orbited
 
-				// Step 5) Check sub-group visibility
-				let subGroupVisible = true;
-				switch (entity.entityType) {
-					case "point":
-						subGroupVisible = pointsGroupVisible;
-						break;
-					case "line":
-						subGroupVisible = linesGroupVisible;
-						break;
-					case "poly":
-						subGroupVisible = polygonsGroupVisible;
-						break;
-					case "circle":
-						subGroupVisible = circlesGroupVisible;
-						break;
-					case "text":
-						subGroupVisible = textsGroupVisible;
-						break;
-				}
-
-				if (!subGroupVisible) continue;
-
-				// Step 6) Render each KAD entity type in Three.js
-				if (entity.entityType === "point") {
-					for (const pointData of entity.data) {
-						if (pointData.visible === false) continue;
-						const size = ((pointData.lineWidth || 2) / 2) * 0.5; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
-						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
-						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", entity.entityName);
-					}
-				} else if (entity.entityType === "line" || entity.entityType === "poly") {
-					// Step 7) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
-					// Each segment gets its own lineWidth and color from point data
-					const visiblePoints = entity.data.filter((point) => point.visible !== false);
-
-					if (visiblePoints.length >= 2) {
-						// Step 7a) Draw segments between consecutive points
-						for (let i = 0; i < visiblePoints.length - 1; i++) {
-							const currentPoint = visiblePoints[i];
-							const nextPoint = visiblePoints[i + 1];
-
-							const currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
-							const nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
-
-							const lineWidth = currentPoint.lineWidth || 1;
-							const color = currentPoint.color || "#FF0000";
-
-							if (entity.entityType === "line") {
-								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-							} else {
-								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-							}
-						}
-
-						// Step 7b) For polygons, close the loop with final segment
-						if (entity.entityType === "poly" && visiblePoints.length > 2) {
-							const firstPoint = visiblePoints[0];
-							const lastPoint = visiblePoints[visiblePoints.length - 1];
-
-							const firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
-							const lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
-
-							const lineWidth = lastPoint.lineWidth || 1;
-							const color = lastPoint.color || "#FF0000";
-
-							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
-						}
-					}
-				} else if (entity.entityType === "circle") {
-					for (const circleData of entity.data) {
-						if (circleData.visible === false) continue;
-						const centerX = circleData.centerX || circleData.pointXLocation;
-						const centerY = circleData.centerY || circleData.pointYLocation;
-						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
-						const radius = circleData.radius || 10; // Radius in world units
-						const local = worldToThreeLocal(centerX, centerY);
-						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", entity.entityName);
-					}
-				} else if (entity.entityType === "text") {
-					for (const textData of entity.data) {
-						if (textData.visible === false) continue;
-						const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, entity.entityName);
-					}
-				}
-			}
-		}
-
-		// Step 7) Highlight selected KAD objects in Three.js (after KAD drawing)
+		// Step 7) Highlight selected KAD objects in 2D only (no 3D highlights in 2D mode)
+		// Three.js highlights happen in 3D-only block
 		highlightSelectedKADThreeJS();
 
 		// After all other drawing operations but before font updates
@@ -22282,12 +22164,29 @@ function drawData(allBlastHoles, selectedHole) {
 		// This is normal, not an error
 	}
 
-	// Step 1b) Check if we're in 3D mode (orbit angles are non-zero)
-	const isIn3DMode = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
+	// ===================================================================================
+	// CRITICAL AI AGENT NOTICE - DO NOT MODIFY THIS RENDERING LOGIC
+	// ===================================================================================
+	// When in a Dimension Mode (2D or 3D), the alternate mode must NOT render.
+	//
+	// REASONS:
+	// 1. Performance/Overheads: Rendering both modes doubles the computational load
+	// 2. Responsiveness: Dual rendering causes lag and poor user experience
+	// 3. Confusion: Users expect only ONE rendering mode active at a time
+	//
+	// RULE: Use ONLY the onlyShowThreeJS flag to determine which mode renders.
+	// DO NOT use isIn3DMode or camera orbit angles - they cause dual rendering!
+	//
+	// CORRECT LOGIC:
+	// - if (onlyShowThreeJS) → Render ONLY 3D, skip ALL 2D
+	// - if (!onlyShowThreeJS) → Render ONLY 2D, skip ALL 3D
+	//
+	// This has been broken and fixed multiple times. DO NOT BREAK IT AGAIN.
+	// ===================================================================================
 
-	// Step 1c) Create Three.js geometry when in Three.js-only mode OR when in 3D orbit mode
-	// (When both are visible in 2D mode, Three.js geometry is created during 2D canvas loop)
-	if ((onlyShowThreeJS || isIn3DMode) && threeInitialized) {
+	// Step 1c) Create Three.js geometry ONLY when in Three.js-only mode
+	// DO NOT check isIn3DMode or orbit angles - that causes dual rendering!
+	if (onlyShowThreeJS && threeInitialized) {
 		// Draw background images
 		drawBackgroundImage();
 
@@ -22630,7 +22529,7 @@ function drawData(allBlastHoles, selectedHole) {
 						if (pointData.visible === false) continue;
 						const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
 						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
-						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", entity.entityName);
+						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", name); // Pass 'name' (entityName) as kadId
 					}
 				} else if (entity.entityType === "line" || entity.entityType === "poly") {
 					// Step 6) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
@@ -22650,9 +22549,9 @@ function drawData(allBlastHoles, selectedHole) {
 							const color = currentPoint.color || "#FF0000";
 
 							if (entity.entityType === "line") {
-								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name); // Pass 'name' (entityName) as kadId
 							} else {
-								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name); // Pass 'name' (entityName) as kadId
 							}
 						}
 
@@ -22667,7 +22566,7 @@ function drawData(allBlastHoles, selectedHole) {
 							const lineWidth = lastPoint.lineWidth || 1;
 							const color = lastPoint.color || "#FF0000";
 
-							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, entity.entityName);
+							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name); // Pass 'name' (entityName) as kadId
 						}
 					}
 				} else if (entity.entityType === "circle") {
@@ -22678,13 +22577,13 @@ function drawData(allBlastHoles, selectedHole) {
 						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
 						const radius = circleData.radius || 10; // Radius in world units
 						const local = worldToThreeLocal(centerX, centerY);
-						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", entity.entityName);
+						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", name); // Pass 'name' (entityName) as kadId
 					}
 				} else if (entity.entityType === "text") {
 					for (const textData of entity.data) {
 						if (textData.visible === false) continue;
 						const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, entity.entityName);
+						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, name); // Pass 'name' (entityName) as kadId
 					}
 				}
 			}
@@ -22694,9 +22593,9 @@ function drawData(allBlastHoles, selectedHole) {
 		highlightSelectedKADThreeJS();
 	}
 
-	// Step 2) Render Three.js scene only when in 3D mode or Three.js-only mode
-	// (reuse isIn3DMode variable declared above)
-	if (isIn3DMode || onlyShowThreeJS) {
+	// Step 2) Render Three.js scene ONLY when in Three.js-only mode
+	// CRITICAL: DO NOT check isIn3DMode - use ONLY onlyShowThreeJS flag
+	if (onlyShowThreeJS) {
 		// Step 2a) Ensure mouse indicator is always visible in 3D mode
 		// Draw it at current mouse position or camera center if no mouse position yet
 		if (onlyShowThreeJS && threeInitialized && threeRenderer && interactionManager) {
@@ -26231,6 +26130,8 @@ selectPointerTool.addEventListener("change", function () {
 });
 
 // Update the function to properly check and handle KAD tools
+// MOVED TO ContextMenuManager.js - This function is now loaded from external module
+/*
 function kadContextMenu(e) {
 	e.preventDefault(); // Prevent context menu
 
@@ -26254,10 +26155,13 @@ function kadContextMenu(e) {
 		drawData(allBlastHoles, selectedHole);
 	}
 }
+*/
+// END OF MOVED FUNCTION - kadContextMenu now loaded from ContextMenuManager.js
 
 ///-----------------------------RIGHT CLICK STUFF GOES HERE-----------------------------//
 
-// Add this function near your other menu functions
+// MOVED TO ContextMenuManager.js - This function is now loaded from external module
+/*
 function closeAllContextMenus() {
 	// Find all elements that could be context menus
 	const existingMenus = document.querySelectorAll('.context-menu, [style*="position: absolute"][style*="background"], div[onclick]');
@@ -26276,152 +26180,13 @@ function closeAllContextMenus() {
 		}
 	});
 }
+*/
+// END OF MOVED FUNCTION - closeAllContextMenus now loaded from ContextMenuManager.js
 
-// Modified context menu handler to support multiple KAD objects
+// Step 1) 2D context menu event listener - now using ContextMenuManager
 canvas.addEventListener("contextmenu", function (e) {
-	e.preventDefault();
-	closeAllContextMenus();
-
-	// Prevent right-click from triggering drag behavior
-	isDragging = false;
-	clearTimeout(longPressTimeout);
-
-	const anyKADToolActive = addPointDraw.checked || addLineDraw.checked || addCircleDraw.checked || addPolyDraw.checked || addTextDraw.checked;
-
-	const rect = canvas.getBoundingClientRect();
-	const clickX = e.clientX - rect.left;
-	const clickY = e.clientY - rect.top;
-
-	// If a KAD tool is active, handle new object creation
-	if (anyKADToolActive) {
-		clearCurrentDrawingEntity();
-		kadContextMenu(e);
-		return;
-	}
-
-	// Get the clicked object to check if it's within snap radius
-	const clickedHole = getClickedHole(clickX, clickY);
-	const clickedKADObject = getClickedKADObject(clickX, clickY);
-
-	// Check if we clicked within snap radius of a selected object
-	const snapRadius = getSnapToleranceInWorldUnits();
-	const worldCoords = canvasToWorld(clickX, clickY);
-
-	// For multiple KAD objects selected
-	if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 1) {
-		// Check if we clicked on one of the selected objects
-		let clickedOnSelected = false;
-
-		for (const kadObj of selectedMultipleKADObjects) {
-			const entity = allKADDrawingsMap.get(kadObj.entityName);
-			if (entity) {
-				for (const point of entity.data) {
-					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldCoords[0], 2) + Math.pow(point.pointYLocation - worldCoords[1], 2));
-					if (distance <= snapRadius) {
-						clickedOnSelected = true;
-						break;
-					}
-				}
-			}
-			if (clickedOnSelected) break;
-		}
-
-		if (clickedOnSelected) {
-			showMultipleKADPropertyEditor(selectedMultipleKADObjects);
-			debouncedUpdateTreeView();
-			return;
-		}
-	}
-
-	// For holes: Check multiple selection first, then single hole
-	if (selectedMultipleHoles && selectedMultipleHoles.length > 1) {
-		// Check if we clicked on one of the selected holes
-		let clickedOnSelected = false;
-		for (const hole of selectedMultipleHoles) {
-			const distance = Math.sqrt(Math.pow(hole.startXLocation - worldCoords[0], 2) + Math.pow(hole.startYLocation - worldCoords[1], 2));
-			if (distance <= snapRadius) {
-				clickedOnSelected = true;
-				break;
-			}
-		}
-
-		if (clickedOnSelected) {
-			showHolePropertyEditor(selectedMultipleHoles);
-			debouncedUpdateTreeView();
-			return;
-		}
-	}
-
-	if (clickedHole) {
-		const holeDistance = Math.sqrt(Math.pow(clickedHole.startXLocation - worldCoords[0], 2) + Math.pow(clickedHole.startYLocation - worldCoords[1], 2));
-		if (holeDistance <= snapRadius) {
-			showHolePropertyEditor(clickedHole);
-			debouncedUpdateTreeView();
-			return;
-		}
-	}
-
-	// For single KAD objects
-	if (isSelectionPointerActive || isPolygonSelectionActive) {
-		if (clickedKADObject) {
-			// Check if within snap radius
-			let withinSnapRadius = false;
-			const entity = allKADDrawingsMap.get(clickedKADObject.entityName);
-
-			if (entity) {
-				if (clickedKADObject.selectionType === "vertex") {
-					// For vertex selection, check distance to the specific vertex
-					const point = entity.data[clickedKADObject.elementIndex];
-					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldCoords[0], 2) + Math.pow(point.pointYLocation - worldCoords[1], 2));
-					withinSnapRadius = distance <= snapRadius;
-				} else if (clickedKADObject.selectionType === "segment") {
-					// For segment selection, use the clicked position
-					withinSnapRadius = true; // Already validated by getClickedKADObject
-				}
-			}
-
-			if (withinSnapRadius && isKADObjectSelected(clickedKADObject)) {
-				showKADPropertyEditorPopup(clickedKADObject);
-				debouncedUpdateTreeView();
-				return;
-			}
-		}
-	}
-
-	// Check for surfaces and other context menus...
-	const clickedSurfaceId = isPointInSurface(clickX, clickY);
-	if (clickedSurfaceId) {
-		showSurfaceContextMenu(clickX, clickY, clickedSurfaceId);
-		return;
-	}
-
-	// Check for background images...
-	let clickedImageId = null;
-	for (const [imageId, image] of loadedImages.entries()) {
-		if (image.visible && isPointInBackgroundImage(clickX, clickY, image)) {
-			clickedImageId = imageId;
-			break;
-		}
-	}
-
-	if (clickedImageId) {
-		showImageContextMenu(clickX, clickY, clickedImageId);
-		return;
-	}
-
-	// Default canvas context menu...
-	try {
-		showContextMenu(e);
-	} catch (err) {
-		// Step 1) Show status message for right clicks without objects
-		updateStatusMessage("Right clicks need to be performed on an Object.");
-
-		// Step 2) Set timeout to clear message after 1000ms
-		setTimeout(() => {
-			updateStatusMessage("");
-		}, 2000);
-		console.log(err);
-	}
+	// Delegate to the centralized context menu manager
+	handle2DContextMenu(e);
 });
 
 function isClickOnSelectedPolygon(worldX, worldY, selectedPolygon) {
@@ -26504,22 +26269,32 @@ function getClickedKADObject(clickX, clickY) {
 	const worldX = (clickX - canvas.width / 2) / currentScale + centroidX;
 	const worldY = -(clickY - canvas.height / 2) / currentScale + centroidY;
 
+	console.log("🎯 [getClickedKADObject] Click at canvas:", clickX, clickY, "| world:", worldX, worldY);
+
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 		const tolerance = getSnapToleranceInWorldUnits();
+		console.log("🎯 Snap tolerance:", tolerance, "| Total entities:", allKADDrawingsMap.size);
 		let closestMatch = null;
 		let minDistance = tolerance;
 
 		// Iterate through all entities
 		for (const [entityName, entity] of allKADDrawingsMap.entries()) {
 			// ✅ CHECK VISIBILITY FIRST - Skip hidden entities
-			if (!isEntityVisible(entityName)) continue;
+			if (!isEntityVisible(entityName)) {
+				console.log("  ⏭️  Skipping hidden entity:", entityName);
+				continue;
+			}
+			console.log("  🔍 Checking entity:", entityName, "| Type:", entity.entityType, "| Elements:", entity.data.length);
+
 			// For single-point entities (points, circles, text)
 			if (entity.entityType === "point" || entity.entityType === "circle" || entity.entityType === "text") {
 				for (let i = 0; i < entity.data.length; i++) {
 					const point = entity.data[i];
 					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldX, 2) + Math.pow(point.pointYLocation - worldY, 2));
+					console.log("    📍 Element", i, "distance:", distance.toFixed(2), "| tolerance:", tolerance.toFixed(2));
 
 					if (distance <= tolerance && distance < minDistance) {
+						console.log("    ✅ MATCH FOUND! Entity:", entityName, "Type:", entity.entityType, "Element:", i);
 						closestMatch = {
 							...point,
 							mapType: "allKADDrawingsMap",
@@ -26527,7 +26302,7 @@ function getClickedKADObject(clickX, clickY) {
 							entityType: entity.entityType,
 							elementIndex: i,
 							segmentIndex: i,
-							selectionType: "point",
+							selectionType: "vertex", // Changed from "point" to "vertex" to match ContextMenuManager expectations
 						};
 						minDistance = distance;
 					}
@@ -26590,28 +26365,49 @@ function getClickedKADObject(clickX, clickY) {
 			}
 		}
 
+		console.log("🎯 [getClickedKADObject] Final result:", closestMatch ? closestMatch.entityType + " - " + closestMatch.entityName : "null");
 		return closestMatch;
 	}
 
+	console.log("🎯 [getClickedKADObject] No entities available or empty map");
 	return null;
 }
 
 // Step 13j.1) Get clicked KAD object in 3D mode (mimics 2D getClickedKADObject)
 function getClickedKADObject3D(intersects, clickX, clickY) {
-	if (!intersects || intersects.length === 0) return null;
-	if (!allKADDrawingsMap || allKADDrawingsMap.size === 0) return null;
+	console.log("🎯3D [getClickedKADObject3D] Starting - Intersects:", intersects ? intersects.length : 0, "| Click:", clickX, clickY);
+
+	if (!intersects || intersects.length === 0) {
+		console.log("🎯3D [getClickedKADObject3D] No intersects - raycast missed everything");
+		return null;
+	}
+
+	if (!allKADDrawingsMap || allKADDrawingsMap.size === 0) {
+		console.log("🎯3D [getClickedKADObject3D] No KAD entities in map");
+		return null;
+	}
 
 	// Step 13j.1a) Find the first KAD object from raycast intersects
+	console.log("🎯3D Inspecting " + intersects.length + " intersects:");
+	for (let i = 0; i < Math.min(5, intersects.length); i++) {
+		const userData = intersects[i].object.userData;
+		console.log("  [" + i + "] distance:", intersects[i].distance.toFixed(2), "| userData:", userData);
+	}
+
 	let clickedKADMesh = null;
 	for (const intersect of intersects) {
 		const userData = intersect.object.userData;
 		if (userData && userData.type && userData.type.startsWith("kad") && userData.kadId) {
 			clickedKADMesh = intersect.object;
+			console.log("🎯3D ✅ Found KAD mesh! Type:", userData.type, "| kadId:", userData.kadId);
 			break;
 		}
 	}
 
-	if (!clickedKADMesh) return null;
+	if (!clickedKADMesh) {
+		console.log("🎯3D ❌ No KAD mesh in raycast results");
+		return null;
+	}
 
 	const userData = clickedKADMesh.userData;
 	const entityName = userData.kadId; // kadId is the entityName
@@ -26645,7 +26441,7 @@ function getClickedKADObject3D(intersects, clickX, clickY) {
 					entityType: entity.entityType,
 					elementIndex: i,
 					segmentIndex: i,
-					selectionType: "point",
+					selectionType: "vertex", // Changed from "point" to "vertex" to match 2D and ContextMenuManager
 				};
 				minDistance = distance;
 			}
@@ -26753,6 +26549,9 @@ function isKADObjectSelected(clickedObject) {
 }
 
 // ENHANCED: Unified KAD Property Editor with FloatingDialog and hide functionality
+// MOVED TO KADContextMenu.js - These functions are now loaded from external module
+// showKADPropertyEditorPopup, showMultipleKADPropertyEditor, convertLinePolyType, updateKADObjectProperties
+/*
 function showKADPropertyEditorPopup(kadObject) {
 	const isMultiElement = kadObject.entityType === "line" || kadObject.entityType === "poly" || kadObject.entityType === "point" || kadObject.entityType === "circle" || kadObject.entityType === "text";
 
@@ -27177,6 +26976,9 @@ function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
 		console.error("Entity not found:", kadObject.entityName, "in unified map");
 	}
 }
+*/
+// END OF MOVED FUNCTIONS - KAD functions now loaded from KADContextMenu.js
+
 // Helper to update KAD object in map
 function updateKADObjectInMap(kadObject) {
 	const map = window[kadObject.mapType]; // Get the map (, etc.)
@@ -27192,6 +26994,8 @@ function updateKADObjectInMap(kadObject) {
 	}
 }
 
+// MOVED TO SurfacesContextMenu.js - This function is now loaded from external module
+/*
 // Step 1) Surface Context Menu using FloatingDialog for consistent styling
 function showSurfaceContextMenu(x, y, surfaceId = null) {
 	// Step 2) Get the specific surface if ID provided, otherwise first visible surface
@@ -27467,6 +27271,9 @@ function showSurfaceContextMenu(x, y, surfaceId = null) {
 		dialogInstance.element.style.top = posY + "px";
 	}
 }
+*/
+// END OF MOVED FUNCTION - showSurfaceContextMenu now loaded from SurfacesContextMenu.js
+
 // Add this helper function near your other menu functions
 function safeRemoveMenu(menu) {
 	try {
@@ -34555,11 +34362,9 @@ function drawSurface() {
 		if (!surface.visible) return;
 
 		// Step 0a) Check if we should render 3D geometry
-		// threeInitialized ensures Three.js is ready
-		// onlyShowThreeJS means 3D-only mode
-		// isIn3DMode means user is orbiting (hybrid mode with both canvases visible)
-		const isIn3DMode = cameraControls && (cameraControls.orbitX !== 0 || cameraControls.orbitY !== 0);
-		const should3DRender = threeInitialized && (onlyShowThreeJS || isIn3DMode);
+		// CRITICAL: Use ONLY onlyShowThreeJS flag - DO NOT check camera orbit angles
+		// Checking isIn3DMode causes dual rendering (2D and 3D at same time)
+		const should3DRender = threeInitialized && onlyShowThreeJS;
 
 		// Step 0) Handle textured meshes (OBJ files) - only for texture gradient with actual textures
 		if (surface.isTexturedMesh && surface.threeJSMesh) {
@@ -34581,7 +34386,9 @@ function drawSurface() {
 				});
 			}
 
-			console.log("🎨 drawSurface textured mesh: " + surfaceId + ", gradient: " + gradient + ", hasTexture: " + hasTexture + ", should3DRender: " + should3DRender + ", onlyShowThreeJS: " + onlyShowThreeJS);
+			if (developerModeEnabled) {
+				console.log("🎨 drawSurface textured mesh: " + surfaceId + ", gradient: " + gradient + ", hasTexture: " + hasTexture + ", should3DRender: " + should3DRender + ", onlyShowThreeJS: " + onlyShowThreeJS);
+			}
 
 			// If gradient is "texture" AND mesh has textures, use textured mesh rendering (original JPG texture)
 			if (gradient === "texture" && hasTexture) {
@@ -36889,6 +36696,8 @@ function drawBackgroundImage() {
 }
 
 // Step 1) Image Context Menu using FloatingDialog for consistent styling
+// MOVED TO ImagesContextMenu.js - This function is now loaded from external module
+/*
 function showImageContextMenu(x, y, imageId = null) {
 	// Step 2) Get the specific image if ID provided, otherwise first visible image
 	var image = imageId
@@ -37127,6 +36936,9 @@ function showImageContextMenu(x, y, imageId = null) {
 		dialogInstance.element.style.top = posY + "px";
 	}
 }
+*/
+// END OF MOVED FUNCTION - showImageContextMenu now loaded from ImagesContextMenu.js
+
 // REPLACE this function to accept image parameter:
 function isPointInBackgroundImage(canvasX, canvasY, image = null) {
 	// If no specific image provided, check all visible images
@@ -40451,7 +40263,7 @@ function getBlastStatisticsPerEntity() {
 //===========================
 
 //----------------- Floating Tree View for File interactions ------------------///
-
+// DATA EXPLORER - Data Explorer - dataExplorer
 // Tree View System
 class TreeView {
 	constructor(containerId) {
@@ -43411,6 +43223,9 @@ function showModalMessage(title, message, type = "info", callback = null) {
 }
 
 //CONTEXT DIALOG FOR HOLE MODIFICATION
+// MOVED TO HolesContextMenu.js - These functions are now loaded from external module
+// showHolePropertyEditor, processHolePropertyUpdates
+/*
 function showHolePropertyEditor(hole) {
 	// ✅ CHECK VISIBILITY FIRST - Filter out hidden holes
 	const visibleHoles = allBlastHoles.filter((hole) => isHoleVisible(hole));
@@ -43956,6 +43771,8 @@ function processHolePropertyUpdates(holes, formData, originalValues, isMultiple)
 	updateStatusMessage(statusMessage);
 	setTimeout(() => updateStatusMessage(""), 3000);
 }
+*/
+// END OF MOVED FUNCTIONS - Holes functions now loaded from HolesContextMenu.js
 
 //For Kad entities
 function renameEntityDialog(entityType, oldEntityName) {

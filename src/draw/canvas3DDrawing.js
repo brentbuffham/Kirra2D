@@ -288,11 +288,16 @@ export function drawKADPointThreeJS(worldX, worldY, worldZ, size, color, kadId) 
 export function drawKADLineSegmentThreeJS(startX, startY, startZ, endX, endY, endZ, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
+	console.log("🔧 [drawKADLineSegmentThreeJS] kadId:", kadId);
+
 	const lineMesh = GeometryFactory.createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
 
 	// Step 8a) Add metadata for selection
 	if (kadId) {
 		lineMesh.userData = { type: "kadLine", kadId: kadId };
+		console.log("✅ [drawKADLineSegmentThreeJS] userData set:", lineMesh.userData);
+	} else {
+		console.log("❌ [drawKADLineSegmentThreeJS] kadId is falsy, NOT setting userData");
 	}
 
 	window.threeRenderer.kadGroup.add(lineMesh);
@@ -303,11 +308,16 @@ export function drawKADLineSegmentThreeJS(startX, startY, startZ, endX, endY, en
 export function drawKADPolygonSegmentThreeJS(startX, startY, startZ, endX, endY, endZ, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
+	console.log("🔧 [drawKADPolygonSegmentThreeJS] kadId:", kadId);
+
 	const polyMesh = GeometryFactory.createKADPolygonSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
 
 	// Step 9a) Add metadata for selection
 	if (kadId) {
 		polyMesh.userData = { type: "kadPolygon", kadId: kadId };
+		console.log("✅ [drawKADPolygonSegmentThreeJS] userData set:", polyMesh.userData);
+	} else {
+		console.log("❌ [drawKADPolygonSegmentThreeJS] kadId is falsy, NOT setting userData");
 	}
 
 	window.threeRenderer.kadGroup.add(polyMesh);
@@ -383,17 +393,20 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		// Step 12b) Check if already added to scene
 		var existingMesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
 		if (existingMesh) {
-			// Already in scene, just ensure visibility
-			console.log("🎨 drawSurfaceThreeJS: Mesh already in scene for " + surfaceId + ", setting visible");
-			existingMesh.visible = true;
+			if (developerModeEnabled) {
+				// Already in scene, just ensure visibility
+				console.log("🎨 drawSurfaceThreeJS: Mesh already in scene for " + surfaceId + ", setting visible");
+				existingMesh.visible = true;
 
-			// Log mesh position and bounding box for debugging
-			console.log("🎨 Existing mesh position: (" + existingMesh.position.x.toFixed(2) + ", " + existingMesh.position.y.toFixed(2) + ", " + existingMesh.position.z.toFixed(2) + ")");
+				// Log mesh position and bounding box for debugging
+				console.log("🎨 Existing mesh position: (" + existingMesh.position.x.toFixed(2) + ", " + existingMesh.position.y.toFixed(2) + ", " + existingMesh.position.z.toFixed(2) + ")");
 
-			return;
+				return;
+			}
 		}
-
-		console.log("🎨 Mesh NOT in scene yet, creating new instance for " + surfaceId);
+		if (developerModeEnabled) {
+			console.log("🎨 Mesh NOT in scene yet, creating new instance for " + surfaceId);
+		}
 
 		// Step 12c) Clone the pre-loaded mesh for rendering
 		// CRITICAL: Use deep clone with geometry cloning to preserve original mesh
@@ -407,8 +420,10 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 				firstVertexOriginal = { x: pos[0], y: pos[1], z: pos[2] };
 			}
 		});
-		console.log("🎨 First vertex BEFORE transform: (" + (firstVertexOriginal ? firstVertexOriginal.x.toFixed(2) : "N/A") + ", " + (firstVertexOriginal ? firstVertexOriginal.y.toFixed(2) : "N/A") + ", " + (firstVertexOriginal ? firstVertexOriginal.z.toFixed(2) : "N/A") + ")");
-		console.log("🎨 Mesh group position BEFORE transform: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
+		if (developerModeEnabled) {
+			console.log("🎨 First vertex BEFORE transform: (" + (firstVertexOriginal ? firstVertexOriginal.x.toFixed(2) : "N/A") + ", " + (firstVertexOriginal ? firstVertexOriginal.y.toFixed(2) : "N/A") + ", " + (firstVertexOriginal ? firstVertexOriginal.z.toFixed(2) : "N/A") + ")");
+			console.log("🎨 Mesh group position BEFORE transform: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
+		}
 
 		// Step 12c.1) CRITICAL FIX: OBJ vertices are already in relative coordinates (centered around their own origin)
 		// DO NOT transform vertices! Instead, position the mesh GROUP at the correct local coordinates.
@@ -424,8 +439,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		var meshCenterLocalX = meshCenterWorldX - originX;
 		var meshCenterLocalY = meshCenterWorldY - originY;
 
-		console.log("🎨 Mesh center in world coords: (" + meshCenterWorldX.toFixed(2) + ", " + meshCenterWorldY.toFixed(2) + ")");
-		console.log("🎨 Positioning mesh group at local coords: (" + meshCenterLocalX.toFixed(2) + ", " + meshCenterLocalY.toFixed(2) + ")");
+		if (developerModeEnabled) {
+			console.log("🎨 Mesh center in world coords: (" + meshCenterWorldX.toFixed(2) + ", " + meshCenterWorldY.toFixed(2) + ")");
+		}
+		if (developerModeEnabled) {
+			console.log("🎨 Positioning mesh group at local coords: (" + meshCenterLocalX.toFixed(2) + ", " + meshCenterLocalY.toFixed(2) + ")");
+		}
 
 		// Position the mesh group (NOT the vertices)
 		texturedMesh.position.set(meshCenterLocalX, meshCenterLocalY, 0);
@@ -486,9 +505,15 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		window.threeRenderer.surfaceMeshMap.set(surfaceId, texturedMesh);
 
 		// Step 12g.1) Log final mesh position and details
-		console.log("🎨 Added textured mesh to 3D scene: " + surfaceId);
-		console.log("🎨 Mesh position: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
-		console.log("🎨 Mesh visible: " + texturedMesh.visible + ", children count: " + texturedMesh.children.length);
+		if (developerModeEnabled) {
+			console.log("🎨 Added textured mesh to 3D scene: " + surfaceId);
+		}
+		if (developerModeEnabled) {
+			console.log("🎨 Mesh position: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
+		}
+		if (developerModeEnabled) {
+			console.log("🎨 Mesh visible: " + texturedMesh.visible + ", children count: " + texturedMesh.children.length);
+		}
 
 		// Step 12h) Request render
 		if (window.threeRenderer.needsRender !== undefined) {
