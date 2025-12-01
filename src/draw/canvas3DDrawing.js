@@ -882,8 +882,17 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
     const local = window.worldToThreeLocal(worldX, worldY);
     const z = worldZ || 0;
 
-    // Step 19.5a.1) Use provided color or default grey
-    const torusColor = indicatorColor || "rgba(128, 128, 128, 0.6)";
+    // Step 19.5a.1) Use provided color or apply cursor opacity setting
+    const cursorOpacity = window.cursorOpacity3D !== undefined ? window.cursorOpacity3D : 0.2;
+    let sphereColor = indicatorColor;
+
+    // If no custom color provided, use default grey with user-defined opacity
+    if (!sphereColor) {
+        sphereColor = `rgba(128, 128, 128, ${cursorOpacity})`;
+    } else if (sphereColor.startsWith("rgba")) {
+        // If custom color provided, replace its opacity with user setting
+        sphereColor = sphereColor.replace(/[\d.]+\)$/, `${cursorOpacity})`);
+    }
 
     // Step 19.5b) Remove existing mouse indicator if present
     const connectorsGroup = window.threeRenderer.connectorsGroup;
@@ -937,7 +946,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
         local.y,
         z,
         indicatorSize,
-        torusColor, // Use provided color or default grey with 20% opacity
+        sphereColor, // Use sphere color with user-defined opacity
         false // No billboarding needed for sphere!
     );
 

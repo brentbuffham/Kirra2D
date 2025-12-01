@@ -110,6 +110,22 @@ export class ThreeRenderer {
 		this.axisHelper.visible = false;
 		this.scene.add(this.axisHelper);
 		this.axisHelperBaseSize = 50; // Store base size for screen-space scaling
+
+		// Step 13) Create grid helper (default 10m divisions, 50 divisions = 500m total)
+		const defaultGridSize = 10; // meters per division
+		const gridDivisions = 50;
+		const totalGridSize = defaultGridSize * gridDivisions;
+		const gridColor = 0x888888; // Grey
+		this.gridHelper = new THREE.GridHelper(totalGridSize, gridDivisions, gridColor, gridColor);
+		this.gridHelper.rotation.x = Math.PI / 2; // Rotate to XY plane (Z-up)
+		this.gridHelper.position.z = 0;
+		this.gridHelper.material.opacity = 0.3;
+		this.gridHelper.material.transparent = true;
+		this.scene.add(this.gridHelper);
+		
+		// Store grid settings
+		this.gridOpacity = 0.3;
+		this.gridSize = defaultGridSize;
 	}
 
 	// Step 11b) Create XYZ axis helper widget (fixed 50px screen size)
@@ -364,6 +380,108 @@ export class ThreeRenderer {
 		if (this.directionalLight) {
 			this.directionalLight.intensity = intensity;
 			this.requestRender();
+		}
+	}
+
+	// Step 16e) Update shadow intensity
+	updateShadowIntensity(intensity) {
+		// Store the shadow intensity setting
+		this.shadowIntensity = intensity;
+		
+		// Update all shadow-casting lights
+		if (this.directionalLight && this.directionalLight.shadow) {
+			// Adjust shadow darkness (0 = no shadow, 1 = max shadow)
+			this.directionalLight.shadow.darkness = intensity;
+			this.requestRender();
+		}
+		
+		// Note: For more advanced shadow control, this could also affect:
+		// - Shadow bias
+		// - Shadow map resolution
+		// - Shadow camera bounds
+		console.log("🌑 Shadow intensity updated to:", intensity);
+	}
+
+	// Step 16f) Set clipping plane visualization
+	setClippingPlaneVisualization(visible) {
+		console.log("✂️ setClippingPlaneVisualization called with visible =", visible, "type:", typeof visible);
+		
+		if (visible) {
+			// Create clipping plane helper if it doesn't exist
+			if (!this.clippingPlaneHelper) {
+				console.log("✂️ Creating new clipping plane helper");
+				const clippingPlane = new THREE.Plane(new THREE.Vector3(0, 0, 1), 0);
+				this.clippingPlaneHelper = new THREE.PlaneHelper(clippingPlane, 100, 0xff0000);
+				this.clippingPlaneHelper.userData = { type: "clippingPlaneHelper" };
+				this.scene.add(this.clippingPlaneHelper);
+			}
+			this.clippingPlaneHelper.visible = true;
+			console.log("✂️ Clipping plane helper is now visible");
+		} else {
+			// Hide clipping plane helper
+			if (this.clippingPlaneHelper) {
+				this.clippingPlaneHelper.visible = false;
+				console.log("✂️ Clipping plane helper is now hidden");
+			} else {
+				console.log("✂️ Clipping plane helper doesn't exist yet (skipping hide)");
+			}
+		}
+		
+		this.requestRender();
+		console.log("✂️ Clipping plane visualization final state:", visible ? "ON" : "OFF");
+	}
+
+	// Step 16g) Set grid visibility
+	setGridVisible(visible) {
+		console.log("📐 setGridVisible called with visible =", visible, "type:", typeof visible);
+		
+		if (this.gridHelper) {
+			this.gridHelper.visible = visible;
+			this.requestRender();
+			console.log("📐 Grid visibility set to:", visible ? "ON" : "OFF");
+		} else {
+			console.log("📐 Grid helper doesn't exist yet");
+		}
+	}
+
+	// Step 16h) Update grid size
+	updateGridSize(size) {
+		// Remove old grid if exists
+		if (this.gridHelper) {
+			this.scene.remove(this.gridHelper);
+			this.gridHelper.geometry.dispose();
+			this.gridHelper.material.dispose();
+		}
+		
+		// Create new grid with updated size
+		const divisions = 50; // Number of grid divisions
+		const gridSize = size * divisions; // Total grid size
+		const gridColor = window.darkModeEnabled ? 0x444444 : 0xcccccc;
+		
+		this.gridHelper = new THREE.GridHelper(gridSize, divisions, gridColor, gridColor);
+		this.gridHelper.rotation.x = Math.PI / 2; // Rotate to XY plane (Z-up)
+		this.gridHelper.position.z = 0;
+		
+		// Apply current opacity if set
+		if (this.gridOpacity !== undefined) {
+			this.gridHelper.material.opacity = this.gridOpacity;
+			this.gridHelper.material.transparent = true;
+		}
+		
+		this.scene.add(this.gridHelper);
+		this.requestRender();
+		console.log("📐 Grid size updated to:", size, "m per division");
+	}
+
+	// Step 16i) Update grid opacity
+	updateGridOpacity(opacity) {
+		this.gridOpacity = opacity;
+		
+		if (this.gridHelper && this.gridHelper.material) {
+			this.gridHelper.material.opacity = opacity;
+			this.gridHelper.material.transparent = true;
+			this.requestRender();
+			console.log("📐 Grid opacity updated to:", opacity);
 		}
 	}
 
