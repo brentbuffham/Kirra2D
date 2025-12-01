@@ -447,17 +447,49 @@ function handle3DContextMenu(event) {
 		}
 	}
 
-	// Step 3l) Handle KAD object click in 3D (any entity type)
-	// IMPORTANT: Screen-space distance check already validated tolerance, so just show menu if we found an object
+	// Step 3l) For KAD objects (Points, Lines, Polys, Circles, Text)
+	// IMPORTANT: Show context menu for ANY clicked KAD object, not just when selection tools are active (matches 2D behavior)
 	if (clickedKADObject) {
-		console.log("📋 [3D CONTEXT] Showing context menu for KAD:", clickedKADObject.entityType, clickedKADObject.entityName);
-		if (typeof window.showKADPropertyEditorPopup === "function") {
-			window.showKADPropertyEditorPopup(clickedKADObject);
+		console.log("📋 [3D CONTEXT] KAD object detected:", clickedKADObject.entityType, clickedKADObject.entityName);
+		// Step 3l.1) Check if within snap radius (same as 2D)
+		let withinSnapRadius = false;
+		const entity = window.allKADDrawingsMap ? window.allKADDrawingsMap.get(clickedKADObject.entityName) : null;
+
+		if (entity) {
+			if (clickedKADObject.selectionType === "vertex") {
+				// Step 3l.1a) For vertex selection, check distance to the specific vertex
+				const point = entity.data[clickedKADObject.elementIndex];
+				if (point) {
+					// Get world position from raycast
+					const worldPos = window.interactionManager.getMouseWorldPositionOnPlane();
+					if (worldPos) {
+						const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
+						const snapRadius = window.getSnapToleranceInWorldUnits ? window.getSnapToleranceInWorldUnits() : 1.0;
+						withinSnapRadius = distance <= snapRadius;
+						console.log("  📏 [3D CONTEXT] Vertex distance:", distance.toFixed(2), "| Snap radius:", snapRadius.toFixed(2), "| Within:", withinSnapRadius);
+					}
+				}
+			} else if (clickedKADObject.selectionType === "segment") {
+				// Step 3l.1b) For segment selection, already validated by screen-space check
+				withinSnapRadius = true;
+				console.log("  📏 [3D CONTEXT] Segment - auto within snap radius");
+			}
+		} else {
+			console.log("  ❌ [3D CONTEXT] Entity not found in allKADDrawingsMap:", clickedKADObject.entityName);
 		}
-		if (typeof window.debouncedUpdateTreeView === "function") {
-			window.debouncedUpdateTreeView();
+
+		if (withinSnapRadius) {
+			console.log("  ✅ [3D CONTEXT] Showing KAD property editor");
+			if (typeof window.showKADPropertyEditorPopup === "function") {
+				window.showKADPropertyEditorPopup(clickedKADObject);
+			}
+			if (typeof window.debouncedUpdateTreeView === "function") {
+				window.debouncedUpdateTreeView();
+			}
+			return;
+		} else {
+			console.log("  ❌ [3D CONTEXT] Outside snap radius - not showing context menu");
 		}
-		return;
 	} else {
 		console.log("📋 [3D CONTEXT] No KAD object detected");
 	}

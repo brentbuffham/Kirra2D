@@ -308,16 +308,22 @@ export function drawKADLineSegmentThreeJS(startX, startY, startZ, endX, endY, en
 export function drawKADPolygonSegmentThreeJS(startX, startY, startZ, endX, endY, endZ, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
-	console.log("🔧 [drawKADPolygonSegmentThreeJS] kadId:", kadId);
+	if (developerModeEnabled) {
+		console.log("🔧 [drawKADPolygonSegmentThreeJS] kadId:", kadId);
+	}
 
 	const polyMesh = GeometryFactory.createKADPolygonSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
 
 	// Step 9a) Add metadata for selection
 	if (kadId) {
 		polyMesh.userData = { type: "kadPolygon", kadId: kadId };
-		console.log("✅ [drawKADPolygonSegmentThreeJS] userData set:", polyMesh.userData);
+		if (developerModeEnabled) {
+			console.log("✅ [drawKADPolygonSegmentThreeJS] userData set:", polyMesh.userData);
+		}
 	} else {
-		console.log("❌ [drawKADPolygonSegmentThreeJS] kadId is falsy, NOT setting userData");
+		if (developerModeEnabled) {
+			console.log("❌ [drawKADPolygonSegmentThreeJS] kadId is falsy, NOT setting userData");
+		}
 	}
 
 	window.threeRenderer.kadGroup.add(polyMesh);
@@ -327,11 +333,18 @@ export function drawKADPolygonSegmentThreeJS(startX, startY, startZ, endX, endY,
 export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
+	if (developerModeEnabled) {
+		console.log("🔧 [drawKADCircleThreeJS] kadId:", kadId);
+	}
+
 	const circleMesh = GeometryFactory.createKADCircle(worldX, worldY, worldZ, radius, lineWidth, color);
 
 	// Step 10a) Add metadata for selection
 	if (kadId) {
 		circleMesh.userData = { type: "kadCircle", kadId: kadId };
+		if (developerModeEnabled) {
+			console.log("✅ [drawKADCircleThreeJS] userData set:", circleMesh.userData);
+		}
 	}
 
 	window.threeRenderer.kadGroup.add(circleMesh);
@@ -340,6 +353,10 @@ export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, 
 // Step 11) Draw KAD text in Three.js
 export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, kadId = null) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	if (developerModeEnabled) {
+		console.log("🔧 [drawKADTextThreeJS] kadId:", kadId);
+	}
 
 	const textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor);
 
@@ -351,6 +368,9 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
 		}
 		textSprite.userData.type = "kadText";
 		textSprite.userData.kadId = kadId;
+		if (developerModeEnabled) {
+			console.log("✅ [drawKADTextThreeJS] userData set:", textSprite.userData);
+		}
 	}
 
 	// Step 11b) Only add if not already in group (cached objects might already be there)
