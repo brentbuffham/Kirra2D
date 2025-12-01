@@ -944,27 +944,27 @@ function handle3DClick(event) {
         if (isDrawingPoint) {
             console.log("✏️ [3D CLICK] Adding KAD Point at:", worldX, worldY, worldZ);
             addKADPoint();
-            updateLastKADDrawPoint(worldX, worldY);
+            updateLastKADDrawPoint(worldX, worldY, worldZ);
             if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         } else if (isDrawingLine) {
             console.log("✏️ [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
             addKADLine();
-            updateLastKADDrawPoint(worldX, worldY);
+            updateLastKADDrawPoint(worldX, worldY, worldZ);
             if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         } else if (isDrawingPoly) {
             console.log("✏️ [3D CLICK] Adding KAD Polygon point at:", worldX, worldY, worldZ);
             addKADPoly();
-            updateLastKADDrawPoint(worldX, worldY);
+            updateLastKADDrawPoint(worldX, worldY, worldZ);
             if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         } else if (isDrawingCircle) {
             console.log("✏️ [3D CLICK] Adding KAD Circle at:", worldX, worldY, worldZ);
             addKADCircle();
-            updateLastKADDrawPoint(worldX, worldY);
+            updateLastKADDrawPoint(worldX, worldY, worldZ);
             if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         } else if (isDrawingText) {
             console.log("✏️ [3D CLICK] Adding KAD Text at:", worldX, worldY, worldZ);
             addKADText();
-            updateLastKADDrawPoint(worldX, worldY);
+            updateLastKADDrawPoint(worldX, worldY, worldZ);
             if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
         }
 
@@ -1957,6 +1957,7 @@ function handle3DMouseMove(event) {
     if (mouseWorldPos) {
         currentMouseWorldX = mouseWorldPos.x;
         currentMouseWorldY = mouseWorldPos.y;
+        currentMouseWorldZ = mouseWorldPos.z || document.getElementById("drawingElevation").value;
 
         // Step 13f.5) Draw stadium zone if in multi-connector mode
         // Check fromHoleStore by entityName and holeID to ensure it matches
@@ -2075,8 +2076,15 @@ function handle3DMouseMove(event) {
                 leadingLineColor = "rgba(0, 255, 0, 0.8)"; // Green for text
             }
 
-            // Draw leading line from last point to current mouse position
-            drawKADLeadingLineThreeJS(lastKADDrawPoint.x, lastKADDrawPoint.y, parseFloat(drawZ), currentMouseWorldX, currentMouseWorldY, parseFloat(drawZ), leadingLineColor);
+            drawKADLeadingLineThreeJS(
+                lastKADDrawPoint.x,
+                lastKADDrawPoint.y,
+                lastKADDrawPoint.z || parseFloat(drawZ),
+                currentMouseWorldX,
+                currentMouseWorldY,
+                currentMouseWorldZ || parseFloat(drawZ), // Use raycast Z, fallback to drawZ
+                leadingLineColor
+            );
         } else {
             // Clear leading line if no drawing tool active or no last point
             clearKADLeadingLineThreeJS();
@@ -15743,10 +15751,11 @@ function drawKADPreviewLine(ctx) {
     }
 }
 // Function to update the last KAD draw point when user draws something
-function updateLastKADDrawPoint(x, y) {
+function updateLastKADDrawPoint(x, y, z) {
     lastKADDrawPoint = {
         x: x,
-        y: y
+        y: y,
+        z: z
     };
 }
 // Simplified test version of the KAD preview function
