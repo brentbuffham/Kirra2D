@@ -5,242 +5,200 @@
 
 // Step 1) Show image context menu
 function showImageContextMenu(x, y, imageId = null) {
-	// Step 2) Get the specific image if ID provided, otherwise first visible image
-	var image = imageId
-		? window.loadedImages.get(imageId)
-		: Array.from(window.loadedImages.values()).find(function (img) {
-				return img.visible;
-		  });
-	if (!image) return;
+    // Step 1a) Stop any ongoing drag operations
+    window.isDragging = false;
 
-	// Step 3) Store reference for dialog callbacks
-	var currentImage = image;
-	var currentImageId = imageId;
-	var dialogInstance = null;
+    // Step 1b) Clear any pending long press timeouts
+    if (typeof window.longPressTimeout !== "undefined") {
+        clearTimeout(window.longPressTimeout);
+        window.longPressTimeout = null;
+    }
 
-	// Step 4) Create content builder function
-	var contentBuilder = function (dialog) {
-		var container = document.createElement("div");
-		container.style.display = "flex";
-		container.style.flexDirection = "column";
-		container.style.gap = "12px";
-		container.style.padding = "12px";
+    // Step 1c) Reset pan start positions to prevent jump when next drag starts
+    if (typeof window.startPanX !== "undefined") {
+        window.startPanX = null;
+        window.startPanY = null;
+    }
+    // Step 2) Get the specific image if ID provided, otherwise first visible image
+    var image = imageId
+        ? window.loadedImages.get(imageId)
+        : Array.from(window.loadedImages.values()).find(function (img) {
+              return img.visible;
+          });
+    if (!image) return;
 
-		// Step 5) Create action buttons section with full-width buttons
-		var buttonsSection = document.createElement("div");
-		buttonsSection.style.display = "flex";
-		buttonsSection.style.flexDirection = "column";
-		buttonsSection.style.gap = "8px";
-		buttonsSection.style.marginBottom = "16px";
+    // Step 3) Store reference for dialog callbacks
+    var currentImage = image;
+    var currentImageId = imageId;
 
-		// Step 5a) Helper function to create styled full-width button
-		var createActionButton = function (text, onClick) {
-			var btn = document.createElement("button");
-			btn.className = "floating-dialog-btn";
-			btn.textContent = text;
-			btn.style.width = "100%";
-			btn.style.padding = "10px 16px";
-			btn.style.fontSize = "13px";
-			btn.style.cursor = "pointer";
-			btn.style.borderRadius = "4px";
-			btn.style.border = "1px solid #ccc";
-			btn.style.backgroundColor = "#f5f5f5";
-			btn.style.color = "#333";
-			btn.style.transition = "background-color 0.2s";
-			btn.onmouseover = function () {
-				btn.style.backgroundColor = "#e0e0e0";
-			};
-			btn.onmouseout = function () {
-				btn.style.backgroundColor = "#f5f5f5";
-			};
-			btn.onclick = onClick;
-			return btn;
-		};
+    // Step 4) Create fields array for form content
+    var initialTransparency = Math.round((currentImage.transparency !== undefined ? currentImage.transparency : 1.0) * 100);
+    var initialZ = currentImage.zElevation !== undefined ? currentImage.zElevation : window.drawingZLevel || 0;
 
-		// Step 6) Toggle visibility button
-		buttonsSection.appendChild(
-			createActionButton(currentImage.visible ? "Hide Image" : "Show Image", function () {
-				if (currentImageId && window.loadedImages.has(currentImageId)) {
-					var targetImage = window.loadedImages.get(currentImageId);
-					if (targetImage) {
-						targetImage.visible = !targetImage.visible;
-					}
-				} else {
-					currentImage.visible = !currentImage.visible;
-				}
-				window.drawData(window.allBlastHoles, window.selectedHole);
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
+    var fields = [
+        {
+            label: "Transparency",
+            name: "transparency",
+            type: "range",
+            value: initialTransparency,
+            min: "0",
+            max: "100",
+            step: "1"
+        },
+        {
+            label: "Z Elevation",
+            name: "zElevation",
+            type: "number",
+            value: initialZ,
+            step: "0.1"
+        }
+    ];
 
-		// Step 7) Remove image button
-		buttonsSection.appendChild(
-			createActionButton("Remove Image", function () {
-				if (currentImageId && window.loadedImages.has(currentImageId)) {
-					window.deleteImageFromDB(currentImageId)
-						.then(function () {
-							window.loadedImages.delete(currentImageId);
-							window.drawData(window.allBlastHoles, window.selectedHole);
-							window.debouncedUpdateTreeView();
-						})
-						.catch(function (error) {
-							console.error("Error removing image:", error);
-							window.loadedImages.delete(currentImageId);
-							window.drawData(window.allBlastHoles, window.selectedHole);
-						});
-				}
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
+    // Step 5) Create form content using enhanced form helper
+    var formContent = window.createEnhancedFormContent ? window.createEnhancedFormContent(fields, false, false) : document.createElement("div");
 
-		// Step 8) Delete all images button
-		buttonsSection.appendChild(
-			createActionButton("Delete All Images", function () {
-				window.deleteAllImagesFromDB()
-					.then(function () {
-						window.loadedImages.clear();
-						window.debouncedUpdateTreeView();
-						window.drawData(window.allBlastHoles, window.selectedHole);
-					})
-					.catch(function (error) {
-						console.error("Error deleting all images:", error);
-					});
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
+    // Step 5a) Fallback if createEnhancedFormContent doesn't exist
+    if (!window.createEnhancedFormContent) {
+        fields.forEach(function (field) {
+            var fieldDiv = document.createElement("div");
+            fieldDiv.className = "form-field";
+            fieldDiv.style.marginBottom = "10px";
 
-		container.appendChild(buttonsSection);
+            var label = document.createElement("label");
+            label.textContent = field.label + ":";
+            label.style.display = "inline-block";
+            label.style.width = "100px";
+            fieldDiv.appendChild(label);
 
-		// Step 9) Create transparency slider section with proper styling
-		var sliderSection = document.createElement("div");
-		sliderSection.style.marginBottom = "12px";
+            var input = document.createElement("input");
+            input.type = field.type;
+            input.name = field.name;
+            input.value = field.value;
 
-		var sliderLabel = document.createElement("div");
-		sliderLabel.textContent = "Transparency:";
-		sliderLabel.style.fontSize = "13px";
-		sliderLabel.style.marginBottom = "8px";
-		sliderLabel.style.color = "#333";
-		sliderSection.appendChild(sliderLabel);
+            if (field.type === "number") {
+                input.step = field.step || "1";
+                if (field.min) input.min = field.min;
+                if (field.max) input.max = field.max;
+            }
 
-		// Step 9a) Create styled range slider matching app theme
-		var sliderContainer = document.createElement("div");
-		sliderContainer.style.display = "flex";
-		sliderContainer.style.alignItems = "center";
-		sliderContainer.style.gap = "12px";
+            fieldDiv.appendChild(input);
+            formContent.appendChild(fieldDiv);
+        });
+    }
 
-		var initialValue = Math.round((currentImage.transparency !== undefined ? currentImage.transparency : 1.0) * 100);
-		var slider = document.createElement("input");
-		slider.type = "range";
-		slider.min = "0";
-		slider.max = "100";
-		slider.value = initialValue;
-		slider.style.flex = "1";
-		slider.style.height = "6px";
-		slider.style.cursor = "pointer";
-		slider.style.appearance = "none";
-		slider.style.webkitAppearance = "none";
-		slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + initialValue + "%, #ddd " + initialValue + "%, #ddd 100%)";
-		slider.style.borderRadius = "3px";
-		slider.style.outline = "none";
+    // Step 5b) Customize transparency slider to show percentage
+    var transparencyInput = formContent.querySelector('input[name="transparency"]');
+    if (transparencyInput && transparencyInput.type === "range") {
+        transparencyInput.style.height = "12px";
+        transparencyInput.style.cursor = "pointer";
+        transparencyInput.style.appearance = "none";
+        transparencyInput.style.webkitAppearance = "none";
+        transparencyInput.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + initialTransparency + "%, #ddd " + initialTransparency + "%, #ddd 100%)";
+        transparencyInput.style.borderRadius = "3px";
+        transparencyInput.style.outline = "none";
+        transparencyInput.style.width = "90%";
+        transparencyInput.style.marginLeft = "-2px";
 
-		var sliderValue = document.createElement("span");
-		sliderValue.textContent = initialValue + "%";
-		sliderValue.style.minWidth = "45px";
-		sliderValue.style.fontSize = "12px";
-		sliderValue.style.color = "#666";
-		sliderValue.style.textAlign = "right";
+        // Create value display - modify the grid to accommodate slider + value
+        var sliderRow = transparencyInput.closest(".button-container-2col");
+        if (sliderRow) {
+            // Change grid to 3 columns: label, slider, value
+            sliderRow.style.gridTemplateColumns = "40% 1fr 50px";
+            var valueSpan = document.createElement("span");
+            valueSpan.textContent = initialTransparency + "%";
+            valueSpan.style.fontSize = "12px";
+            valueSpan.style.color = "#aaa";
+            valueSpan.style.textAlign = "right";
+            sliderRow.appendChild(valueSpan);
+            // Update on input
+            transparencyInput.oninput = function () {
+                var val = parseInt(transparencyInput.value);
+                valueSpan.textContent = val + "%";
+                transparencyInput.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
+            };
+        }
+    }
 
-		// Step 9b) Update slider appearance and value on input
-		slider.oninput = function () {
-			var val = parseInt(slider.value);
-			sliderValue.textContent = val + "%";
-			slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
-			var newTransparency = val / 100;
+    // Step 6) Create dialog with footer buttons
+    var dialog = new window.FloatingDialog({
+        title: currentImage.name || "Image Properties",
+        content: formContent,
+        layoutType: "compact",
+        width: 350,
+        height: 200,
+        showConfirm: true, // "Ok" button
+        showCancel: true, // "Cancel" button
+        showOption1: true, // "Delete" button
+        showOption2: true, // "Hide" button
+        confirmText: "Ok",
+        cancelText: "Cancel",
+        option1Text: "Delete",
+        option2Text: currentImage.visible ? "Hide" : "Show",
+        onConfirm: function () {
+            // Step 6a) Get form values and commit changes
+            var formData = window.getFormData ? window.getFormData(formContent) : {};
+            var newTransparency = formData.transparency !== undefined ? parseFloat(formData.transparency) / 100 : currentImage.transparency;
+            var newZ = formData.zElevation !== undefined ? parseFloat(formData.zElevation) : currentImage.zElevation;
 
-			if (currentImageId && window.loadedImages.has(currentImageId)) {
-				var targetImage = window.loadedImages.get(currentImageId);
-				if (targetImage) {
-					targetImage.transparency = newTransparency;
-				}
-			} else {
-				currentImage.transparency = newTransparency;
-			}
-			window.drawData(window.allBlastHoles, window.selectedHole);
-		};
+            if (currentImageId && window.loadedImages.has(currentImageId)) {
+                var targetImage = window.loadedImages.get(currentImageId);
+                if (targetImage) {
+                    targetImage.transparency = newTransparency;
+                    targetImage.zElevation = newZ;
+                }
+            } else {
+                currentImage.transparency = newTransparency;
+                currentImage.zElevation = newZ;
+            }
+            window.drawData(window.allBlastHoles, window.selectedHole);
+        },
+        onCancel: function () {
+            // Step 6b) Just close, no changes
+        },
+        onOption1: function () {
+            // Step 6c) Delete image
+            if (currentImageId && window.loadedImages.has(currentImageId)) {
+                window
+                    .deleteImageFromDB(currentImageId)
+                    .then(function () {
+                        window.loadedImages.delete(currentImageId);
+                        window.drawData(window.allBlastHoles, window.selectedHole);
+                        window.debouncedUpdateTreeView();
+                    })
+                    .catch(function (error) {
+                        console.error("Error removing image:", error);
+                        window.loadedImages.delete(currentImageId);
+                        window.drawData(window.allBlastHoles, window.selectedHole);
+                    });
+            }
+        },
+        onOption2: function () {
+            // Step 6d) Toggle visibility
+            if (currentImageId && window.loadedImages.has(currentImageId)) {
+                var targetImage = window.loadedImages.get(currentImageId);
+                if (targetImage) {
+                    targetImage.visible = !targetImage.visible;
+                }
+            } else {
+                currentImage.visible = !currentImage.visible;
+            }
+            window.drawData(window.allBlastHoles, window.selectedHole);
+        }
+    });
 
-		sliderContainer.appendChild(slider);
-		sliderContainer.appendChild(sliderValue);
-		sliderSection.appendChild(sliderContainer);
-		container.appendChild(sliderSection);
+    dialog.show();
 
-		// Step 10) Create Z elevation section for 3D positioning
-		var zSection = document.createElement("div");
-		zSection.style.marginBottom = "12px";
-
-		var zLabel = document.createElement("div");
-		zLabel.textContent = "Z Elevation:";
-		zLabel.style.fontSize = "13px";
-		zLabel.style.marginBottom = "8px";
-		zLabel.style.color = "#333";
-		zSection.appendChild(zLabel);
-
-		var zInput = document.createElement("input");
-		zInput.type = "number";
-		zInput.value = currentImage.zElevation !== undefined ? currentImage.zElevation : window.drawingZLevel || 0;
-		zInput.style.width = "100%";
-		zInput.style.padding = "8px 12px";
-		zInput.style.fontSize = "13px";
-		zInput.style.borderRadius = "4px";
-		zInput.style.border = "1px solid #ccc";
-		zInput.style.backgroundColor = "#fff";
-		zInput.style.boxSizing = "border-box";
-
-	zInput.onchange = function () {
-		var newZ = parseFloat(zInput.value) || 0;
-		if (currentImageId && window.loadedImages.has(currentImageId)) {
-			var targetImage = window.loadedImages.get(currentImageId);
-			if (targetImage) {
-				targetImage.zElevation = newZ;
-			}
-		} else {
-			currentImage.zElevation = newZ;
-		}
-		window.drawData(window.allBlastHoles, window.selectedHole);
-	};
-
-		zSection.appendChild(zInput);
-		container.appendChild(zSection);
-
-		return container;
-	};
-
-	// Step 11) Create and show the FloatingDialog
-	dialogInstance = new window.FloatingDialog({
-		title: currentImage.name || "Image Properties",
-		content: contentBuilder,
-		width: 320,
-		height: 380,
-		showConfirm: false,
-		showCancel: false,
-		draggable: true,
-		resizable: false,
-		closeOnOutsideClick: true,
-		layoutType: "compact",
-	});
-
-	dialogInstance.show();
-
-	// Step 12) Position dialog near click location (adjusted for viewport bounds)
-	if (dialogInstance.element) {
-		var dialogWidth = 320;
-		var dialogHeight = 380;
-		var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
-		var posY = Math.min(y, window.innerHeight - dialogHeight - 20);
-		posX = Math.max(10, posX);
-		posY = Math.max(10, posY);
-		dialogInstance.element.style.left = posX + "px";
-		dialogInstance.element.style.top = posY + "px";
-	}
+    // Step 7) Position dialog near click location (adjusted for viewport bounds)
+    if (dialog.element) {
+        var dialogWidth = 350;
+        var dialogHeight = 200;
+        var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
+        var posY = Math.min(y, window.innerHeight - dialogHeight - 20);
+        posX = Math.max(10, posX);
+        posY = Math.max(10, posY);
+        dialog.element.style.left = posX + "px";
+        dialog.element.style.top = posY + "px";
+    }
 }
 
 //===========================================
@@ -249,4 +207,3 @@ function showImageContextMenu(x, y, imageId = null) {
 
 // Make functions available globally
 window.showImageContextMenu = showImageContextMenu;
-
