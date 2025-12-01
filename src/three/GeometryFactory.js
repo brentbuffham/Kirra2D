@@ -1588,7 +1588,7 @@ export class GeometryFactory {
 
     // Step 20.9) Create mouse position indicator (single grey torus)
     // Now supports billboarding to always face camera
-    static createMousePositionIndicator(x, y, z, size = 1.0, color = "rgba(128, 128, 128, 0.6)", billboard = true) {
+    static createMousePositionIndicator(x, y, z, size = 1.0, color = "rgba(128, 128, 128, 0.2)", billboard = false) {
         const group = new THREE.Group();
 
         // Step 20.9a) Validate inputs
@@ -1596,35 +1596,28 @@ export class GeometryFactory {
             return group; // Return empty group if invalid
         }
 
-        // Step 20.9b) Parse color (grey, 60% transparent)
+        // Step 20.9b) Parse color (grey, 20% opaque / 80% transparent)
         const colorObj = this.parseRGBA(color);
         const material = new THREE.MeshBasicMaterial({
             color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
             transparent: true,
             opacity: colorObj.a,
-            side: THREE.DoubleSide
+            side: THREE.DoubleSide,
+            depthTest: true,  // Respect depth for proper 3D visualization
+            depthWrite: false // But don't block other transparent objects
         });
 
-        // Step 20.9c) Create single torus
-        const torusRadius = size;
-        const tubeRadius = size * 0.1;
-        const torusGeometry = new THREE.TorusGeometry(torusRadius, tubeRadius, 8, 16);
-        const torusMesh = new THREE.Mesh(torusGeometry, material);
+        // Step 20.9c) Create sphere to represent snap radius zone (no billboarding needed!)
+        const sphereRadius = size; // Radius matches snap tolerance
+        const sphereGeometry = new THREE.SphereGeometry(sphereRadius, 16, 12); // 16x12 segments for smoothness
+        const sphereMesh = new THREE.Mesh(sphereGeometry, material);
 
-        // Step 20.9d) Position and rotation
-        torusMesh.position.set(x, y, z);
+        // Step 20.9d) Position sphere at mouse location
+        sphereMesh.position.set(x, y, z);
 
-        if (billboard) {
-            // Step 20.9d.1) Billboard mode: rotate to face camera
-            // Start flat (lying in XY plane) then will be rotated by camera quaternion
-            // The torus will be updated in the render loop to always face camera
-            torusMesh.userData.billboard = true;
-        } else {
-            // Step 20.9d.2) Static mode: flat on XY plane (Z-up)
-            // Already in correct orientation by default
-        }
+        // No billboarding needed - sphere looks the same from all angles!
 
-        group.add(torusMesh);
+        group.add(sphereMesh);
 
         return group;
     }

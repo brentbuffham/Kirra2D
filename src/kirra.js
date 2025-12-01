@@ -364,6 +364,7 @@ function worldToScreen(worldX, worldY, worldZ) {
 // Expose globals for canvas3DDrawing.js module
 window.worldToThreeLocal = worldToThreeLocal;
 window.worldToScreen = worldToScreen;
+window.getSnapRadiusInWorldUnits3D = getSnapRadiusInWorldUnits3D;
 
 // Function to sync globals to window for module access
 // Called before rendering to ensure all values are current
@@ -925,12 +926,31 @@ function handle3DClick(event) {
     if (isAnyDrawingToolActive) {
         console.log("✏️ [3D CLICK] KAD drawing tool active, forwarding to drawing handler");
 
-        // Step 12c.1a) Get world coordinates from current mouse position (updated by handle3DMouseMove)
-        // Apply snapping using existing snap logic
-        const snapResult = snapToNearestPoint(currentMouseWorldX, currentMouseWorldY);
-        worldX = snapResult.worldX;
-        worldY = snapResult.worldY;
-        worldZ = snapResult.worldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
+        // Step 12c.1a) Get world coordinates using 3D cylindrical snap
+        let snapResult;
+
+        // Calculate snap radius in world units based on camera view
+        const snapRadiusPixels = window.snapRadiusPixels || 15; // 15 pixels on screen
+        const snapRadiusWorld = getSnapRadiusInWorldUnits3D(snapRadiusPixels);
+
+        if (interactionManager && interactionManager.raycaster) {
+            // 3D Mode: Use cylindrical snap along view ray
+            // Update raycaster to current mouse position
+            interactionManager.updateMousePosition(event, threeRenderer.getCanvas());
+            interactionManager.raycaster.setFromCamera(interactionManager.mouse, threeRenderer.camera);
+
+            // Get ray from raycaster
+            const ray = interactionManager.raycaster.ray;
+
+            snapResult = snapToNearestPointWithRay(ray.origin, ray.direction, snapRadiusWorld);
+        } else {
+            // Fallback to 2D snap (shouldn't happen in 3D mode, but safe fallback)
+            snapResult = snapToNearestPoint(currentMouseWorldX, currentMouseWorldY, snapRadiusWorld);
+        }
+
+        worldX = snapResult.worldX || currentMouseWorldX;
+        worldY = snapResult.worldY || currentMouseWorldY;
+        worldZ = snapResult.worldZ || currentMouseWorldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
 
         // Step 12c.1b) Show snap feedback if snapped
         if (snapResult.snapped) {
@@ -36342,6 +36362,272 @@ function snapToNearestPointExcludingKAD(rawWorldX, rawWorldY, excludeEntityName,
         worldX: rawWorldX,
         worldY: rawWorldY,
         worldZ: drawingZValue || document.getElementById("drawingElevation").value || 0,
+        snapped: false,
+        snapTarget: null
+    };
+}
+
+// Convert pixel radius to world radius for 3D snapping
+// This ensures snap radius is always N pixels on screen regardless of zoom
+function getSnapRadiusInWorldUnits3D(pixelRadius) {
+    if (!threeRenderer || !threeRenderer.camera || !threeRenderer.renderer) {
+        // Fallback to 2D calculation
+        return pixelRadius / (currentScale || 1.0);
+    }
+
+    const camera = threeRenderer.camera;
+    const canvas = threeRenderer.renderer.domElement;
+
+    if (camera.isOrthographicCamera) {
+        // Orthographic: World units per pixel is constant across the view
+        // frustumWidth / screenWidth = world units per pixel
+        const frustumWidth = camera.right - camera.left;
+        const frustumHeight = camera.top - camera.bottom;
+        const canvasWidth = canvas.width;
+        const canvasHeight = canvas.height;
+
+        // Use the smaller dimension to ensure radius works in both X and Y
+        const worldUnitsPerPixelX = frustumWidth / canvasWidth;
+        const worldUnitsPerPixelY = frustumHeight / canvasHeight;
+        const worldUnitsPerPixel = Math.min(worldUnitsPerPixelX, worldUnitsPerPixelY);
+
+        return pixelRadius * worldUnitsPerPixel;
+    } else if (camera.isPerspectiveCamera) {
+        // Perspective: World units per pixel depends on distance from camera
+        // This is more complex - for now, fall back to a reasonable estimate
+        // based on the camera distance to the orbit center
+        const distance = camera.position.length() || 1000;
+        const fov = (camera.fov * Math.PI) / 180; // Convert to radians
+        const canvasHeight = canvas.height;
+
+        // At the focal distance, world size = 2 * distance * tan(fov/2)
+        const worldHeight = 2 * distance * Math.tan(fov / 2);
+        const worldUnitsPerPixel = worldHeight / canvasHeight;
+
+        return pixelRadius * worldUnitsPerPixel;
+    } else {
+        // Unknown camera type, fallback
+        return pixelRadius / (currentScale || 1.0);
+    }
+}
+
+// Helper function: Calculate perpendicular distance from a point to a ray (infinite line)
+function distanceFromPointToRay(point, rayOrigin, rayDirection) {
+    // Vector from ray origin to point
+    const v = {
+        x: point.x - rayOrigin.x,
+        y: point.y - rayOrigin.y,
+        z: point.z - rayOrigin.z
+    };
+
+    // Project v onto ray direction to get distance along ray (t parameter)
+    const t = v.x * rayDirection.x + v.y * rayDirection.y + v.z * rayDirection.z;
+
+    // Point on ray closest to target point
+    const closestPoint = {
+        x: rayOrigin.x + t * rayDirection.x,
+        y: rayOrigin.y + t * rayDirection.y,
+        z: rayOrigin.z + t * rayDirection.z
+    };
+
+    // Perpendicular distance from point to ray
+    const distance = Math.sqrt(Math.pow(point.x - closestPoint.x, 2) + Math.pow(point.y - closestPoint.y, 2) + Math.pow(point.z - closestPoint.z, 2));
+
+    return {
+        distance: distance, // Perpendicular distance to ray (for snap radius check)
+        rayT: t, // Distance along ray (for depth sorting)
+        closestPoint: closestPoint // Actual 3D snap point
+    };
+}
+
+// 3D Cylindrical Snap: Snap to anything in the "shadow" along the view ray
+// Uses same priorities as 2D snap but works in 3D space
+function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
+    if (!snapEnabled) {
+        return {
+            snapped: false,
+            snapTarget: null
+        };
+    }
+
+    const snapCandidates = [];
+
+    // 1. Search holes (collar, grade, toe) - same as 2D
+    if (allBlastHoles && allBlastHoles.length > 0) {
+        allBlastHoles.forEach((hole) => {
+            // Hole collar (start)
+            const collarResult = distanceFromPointToRay({ x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation || 0 }, rayOrigin, rayDirection);
+            if (collarResult.distance <= snapRadius && collarResult.rayT > 0) {
+                snapCandidates.push({
+                    distance: collarResult.distance,
+                    rayT: collarResult.rayT,
+                    point: collarResult.closestPoint,
+                    type: "HOLE_COLLAR",
+                    priority: SNAP_PRIORITIES.HOLE_COLLAR,
+                    description: "Hole " + hole.holeID + " collar"
+                });
+            }
+
+            // Hole grade
+            const gradeResult = distanceFromPointToRay({ x: hole.gradeXLocation, y: hole.gradeYLocation, z: hole.gradeZLocation || 0 }, rayOrigin, rayDirection);
+            if (gradeResult.distance <= snapRadius && gradeResult.rayT > 0) {
+                snapCandidates.push({
+                    distance: gradeResult.distance,
+                    rayT: gradeResult.rayT,
+                    point: gradeResult.closestPoint,
+                    type: "HOLE_GRADE",
+                    priority: SNAP_PRIORITIES.HOLE_GRADE,
+                    description: "Hole " + hole.holeID + " grade"
+                });
+            }
+
+            // Hole toe (end)
+            const toeResult = distanceFromPointToRay({ x: hole.endXLocation, y: hole.endYLocation, z: hole.endZLocation || 0 }, rayOrigin, rayDirection);
+            if (toeResult.distance <= snapRadius && toeResult.rayT > 0) {
+                snapCandidates.push({
+                    distance: toeResult.distance,
+                    rayT: toeResult.rayT,
+                    point: toeResult.closestPoint,
+                    type: "HOLE_TOE",
+                    priority: SNAP_PRIORITIES.HOLE_TOE,
+                    description: "Hole " + hole.holeID + " toe"
+                });
+            }
+        });
+    }
+
+    // 2. Search ALL KAD Objects in unified map
+    if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+        allKADDrawingsMap.forEach((entity) => {
+            // Check vertices (points, line endpoints, polygon vertices, etc.)
+            entity.data.forEach((dataPoint) => {
+                const pointResult = distanceFromPointToRay({ x: dataPoint.pointXLocation, y: dataPoint.pointYLocation, z: dataPoint.pointZLocation || 0 }, rayOrigin, rayDirection);
+
+                if (pointResult.distance <= snapRadius && pointResult.rayT > 0) {
+                    // Determine type and priority based on entity type
+                    let snapType = "KAD_POINT";
+                    let priority = SNAP_PRIORITIES.KAD_POINT;
+
+                    if (entity.entityType === "point") {
+                        snapType = "KAD_POINT";
+                        priority = SNAP_PRIORITIES.KAD_POINT;
+                    } else if (entity.entityType === "line") {
+                        snapType = "KAD_LINE_VERTEX";
+                        priority = SNAP_PRIORITIES.KAD_LINE_VERTEX;
+                    } else if (entity.entityType === "poly") {
+                        snapType = "KAD_POLYGON_VERTEX";
+                        priority = SNAP_PRIORITIES.KAD_POLYGON_VERTEX;
+                    } else if (entity.entityType === "circle") {
+                        snapType = "KAD_CIRCLE_CENTER";
+                        priority = SNAP_PRIORITIES.KAD_CIRCLE_CENTER;
+                    } else if (entity.entityType === "text") {
+                        snapType = "KAD_TEXT_POSITION";
+                        priority = SNAP_PRIORITIES.KAD_TEXT_POSITION;
+                    }
+
+                    snapCandidates.push({
+                        distance: pointResult.distance,
+                        rayT: pointResult.rayT,
+                        point: pointResult.closestPoint,
+                        type: snapType,
+                        priority: priority,
+                        description: entity.entityType + " " + (dataPoint.pointID || "item")
+                    });
+                }
+            });
+
+            // Check segments for lines and polygons
+            if (entity.entityType === "line" || entity.entityType === "poly") {
+                const points = entity.data;
+                if (points.length >= 2) {
+                    const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
+
+                    for (let i = 0; i < numSegments; i++) {
+                        const p1 = points[i];
+                        const p2 = points[(i + 1) % points.length];
+
+                        // For segment snapping in 3D, sample points along the segment
+                        const samples = 10;
+                        for (let s = 0; s <= samples; s++) {
+                            const t = s / samples;
+                            const samplePoint = {
+                                x: p1.pointXLocation + t * (p2.pointXLocation - p1.pointXLocation),
+                                y: p1.pointYLocation + t * (p2.pointYLocation - p1.pointYLocation),
+                                z: (p1.pointZLocation || 0) + t * ((p2.pointZLocation || 0) - (p1.pointZLocation || 0))
+                            };
+
+                            const segmentResult = distanceFromPointToRay(samplePoint, rayOrigin, rayDirection);
+
+                            if (segmentResult.distance <= snapRadius && segmentResult.rayT > 0) {
+                                const segmentType = entity.entityType === "line" ? "KAD_LINE_SEGMENT" : "KAD_POLYGON_SEGMENT";
+                                const priority = SNAP_PRIORITIES[segmentType];
+
+                                snapCandidates.push({
+                                    distance: segmentResult.distance,
+                                    rayT: segmentResult.rayT,
+                                    point: segmentResult.closestPoint,
+                                    type: segmentType,
+                                    priority: priority,
+                                    description: entity.entityType + " segment " + (i + 1),
+                                    segmentInfo: {
+                                        entityName: entity.entityName,
+                                        segmentIndex: i,
+                                        interpolationT: t
+                                    }
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 3. Search Surface Points (if surfaces are loaded)
+    if (loadedSurfaces && loadedSurfaces.size > 0) {
+        for (const [surfaceId, surface] of loadedSurfaces.entries()) {
+            if (surface.visible && surface.points && surface.points.length > 0) {
+                surface.points.forEach((surfacePoint, index) => {
+                    const pointResult = distanceFromPointToRay({ x: surfacePoint.x, y: surfacePoint.y, z: surfacePoint.z || 0 }, rayOrigin, rayDirection);
+
+                    if (pointResult.distance <= snapRadius && pointResult.rayT > 0) {
+                        snapCandidates.push({
+                            distance: pointResult.distance,
+                            rayT: pointResult.rayT,
+                            point: pointResult.closestPoint,
+                            type: "SURFACE_POINT",
+                            priority: SNAP_PRIORITIES.SURFACE_POINT,
+                            description: surface.name + " point " + index
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    // Find the best snap candidate
+    // Sort by: 1) Priority (lower number = higher priority), 2) Distance along ray (closer to camera)
+    if (snapCandidates.length > 0) {
+        snapCandidates.sort((a, b) => {
+            if (a.priority !== b.priority) {
+                return a.priority - b.priority; // Lower priority number wins
+            }
+            return a.rayT - b.rayT; // Closer to camera wins
+        });
+
+        const bestCandidate = snapCandidates[0];
+
+        return {
+            worldX: bestCandidate.point.x,
+            worldY: bestCandidate.point.y,
+            worldZ: bestCandidate.point.z,
+            snapped: true,
+            snapTarget: bestCandidate
+        };
+    }
+
+    // No snap target found
+    return {
         snapped: false,
         snapTarget: null
     };
