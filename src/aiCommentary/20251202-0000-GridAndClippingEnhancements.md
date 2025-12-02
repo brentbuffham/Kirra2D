@@ -285,3 +285,5 @@ if (threeRenderer && settings.showClippingPlane !== undefined && !settings.previ
 **Date**: 2025-12-02  
 **Related Issues**: Grid disposal, Grid positioning, Clipping visualization
 
+
+

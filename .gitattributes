@@ -1,0 +1,16 @@
+# Force LF line endings for all text files
+* text=auto eol=lf
+
+# Explicitly set JavaScript files to LF
+*.js text eol=lf
+
+
+# Binary files
+*.png binary
+*.jpg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.ttf binary
+*.woff binary
+*.woff2 binary
