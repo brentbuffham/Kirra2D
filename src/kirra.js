@@ -2168,7 +2168,7 @@ function handle3DMouseMove(event) {
 		// Step 13f.7h) If snapped, change color to indicate snap (bright green)
 		// MUST use rgba() format - parseRGBA only handles rgba/rgb, not hex colors!
 		if (snapResult && snapResult.snapped && snapResult.snapTarget) {
-			torusColor = "rgba(0, 255, 0, 0.8)"; // Bright green for snap feedback (high opacity to be visible)
+			torusColor = "rgba(0, 255, 100, 0.8)"; // Bright green for snap feedback (high opacity to be visible)
 		} else {
 			// Otherwise use tool-specific colors
 			var isAnyDrawingToolActiveForTorus = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
@@ -2182,7 +2182,7 @@ function handle3DMouseMove(event) {
 				} else if (isDrawingCircle) {
 					torusColor = "rgba(255, 165, 0, 0.8)"; // Orange for circles
 				} else if (isDrawingText) {
-					torusColor = "rgba(0, 255, 0, 0.8)"; // Green for text
+					torusColor = "rgba(0, 150, 50, 0.8)"; // Green for text
 				}
 			}
 		}
