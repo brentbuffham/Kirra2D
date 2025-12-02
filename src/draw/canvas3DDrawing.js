@@ -883,7 +883,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
     const z = worldZ || 0;
 
     // Step 19.5a.1) Use provided color or apply cursor opacity setting
-    const cursorOpacity = window.cursorOpacity3D !== undefined ? window.cursorOpacity3D : 0.2;
+    const cursorOpacity = 0.2;
     let sphereColor = indicatorColor;
 
     // If no custom color provided, use default grey with user-defined opacity
@@ -891,7 +891,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
         sphereColor = `rgba(128, 128, 128, ${cursorOpacity})`;
     } else if (sphereColor.startsWith("rgba")) {
         // If custom color provided, replace its opacity with user setting
-        sphereColor = sphereColor.replace(/[\d.]+\)$/, `${cursorOpacity})`);
+        //sphereColor = sphereColor.replace(/[\d.]+\)$/, `${cursorOpacity})`);
     }
 
     // Step 19.5b) Remove existing mouse indicator if present
