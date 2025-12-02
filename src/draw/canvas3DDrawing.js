@@ -654,7 +654,17 @@ export function drawDirectionArrowsThreeJS(directionArrows, allBlastHoles) {
 export function drawBackgroundImageThreeJS(imageId, imageCanvas, bbox, transparency, zElevation) {
     if (!window.threeInitialized || !window.threeRenderer) return;
 
-    const imageMesh = GeometryFactory.createImagePlane(imageCanvas, bbox, transparency, zElevation);
+    // Convert world bbox to local Three.js coordinates
+    // bbox format: [minX, minY, maxX, maxY] in world coordinates
+    const minLocal = window.worldToThreeLocal(bbox[0], bbox[1]);
+    const maxLocal = window.worldToThreeLocal(bbox[2], bbox[3]);
+    
+    // Create local bbox
+    const localBbox = [minLocal.x, minLocal.y, maxLocal.x, maxLocal.y];
+    
+    console.log("🖼️ [3D IMAGE COORDS] World bbox:", bbox, "-> Local bbox:", localBbox);
+
+    const imageMesh = GeometryFactory.createImagePlane(imageCanvas, localBbox, transparency, zElevation);
     imageMesh.userData = {
         type: "image",
         imageId: imageId

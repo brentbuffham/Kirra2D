@@ -2165,35 +2165,30 @@ function handle3DMouseMove(event) {
 
     if (indicatorPos && isFinite(indicatorPos.x) && isFinite(indicatorPos.y)) {
         // Step 13f.7g) Determine torus color based on active tool or snap state
-		var torusColor = "rgba(128, 128, 128, 0.4)"; // Default grey
+        var torusColor = "rgba(128, 128, 128, 0.4)"; // Default grey
 
         // Step 13f.7h) If snapped, change color to indicate snap (bright green)
         // MUST use rgba() format - parseRGBA only handles rgba/rgb, not hex colors!
         if (snapResult && snapResult.snapped && snapResult.snapTarget) {
             torusColor = "rgba(0, 255, 0, 0.8)";
-            
         } else {
             // Otherwise use tool-specific colors
             var isAnyDrawingToolActiveForTorus = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
             if (isAnyDrawingToolActiveForTorus) {
                 if (isDrawingPoint) {
                     torusColor = "rgba(209, 0, 0, 0.5)"; // Red for points
-                    
                 } else if (isDrawingLine) {
                     torusColor = "rgba(0, 255, 255, 0.5)"; // Cyan for lines
-                    
                 } else if (isDrawingPoly) {
                     torusColor = "rgba(255, 0, 255, 0.5)"; // Magenta for polygons
-                    
                 } else if (isDrawingCircle) {
                     torusColor = "rgba(255, 165, 0, 0.5)"; // Orange for circles
-                    
                 } else if (isDrawingText) {
                     torusColor = "rgba(0, 150, 50, 0.5)"; // Green for text
-                    
                 }
             }
-        }drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z, torusColor);
+        }
+        drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z, torusColor);
     }
 
     // Step 13f.8) Draw KAD leading line preview if drawing tool is active
@@ -22510,19 +22505,28 @@ function drawData(allBlastHoles, selectedHole) {
     // Step 1c) Create Three.js geometry ONLY when in Three.js-only mode
     // DO NOT check isIn3DMode or orbit angles - that causes dual rendering!
     if (onlyShowThreeJS && threeInitialized) {
-        // Draw background images
-        drawBackgroundImage();
-
         // Step 1d) Draw background images in Three.js
         if (imagesGroupVisible) {
-            loadedImages.forEach((image) => {
+            console.log("🖼️ [3D IMAGE] Processing images for 3D display. Total images:", loadedImages.size);
+            loadedImages.forEach((image, imageKey) => {
+                console.log("🖼️ [3D IMAGE] Checking image:", imageKey, {
+                    visible: image.visible,
+                    hasCanvas: !!image.canvas,
+                    hasBbox: !!image.bbox,
+                    bbox: image.bbox,
+                    zElevation: image.zElevation
+                });
+
                 if (image.visible && image.canvas && image.bbox) {
                     const imageId = image.id || image.name || "image_" + Date.now();
                     const imageTransparency = image.transparency !== undefined && image.transparency !== null ? image.transparency : 1.0;
                     const imageZElevation = image.zElevation !== undefined ? image.zElevation : null;
+                    console.log("🖼️ [3D IMAGE] Drawing image in 3D:", imageId, "transparency:", imageTransparency, "zElevation:", imageZElevation);
                     drawBackgroundImageThreeJS(imageId, image.canvas, image.bbox, imageTransparency, imageZElevation);
                 }
             });
+        } else {
+            console.log("🖼️ [3D IMAGE] Images group NOT visible");
         }
 
         // Draw surfaces (includes Three.js rendering)
@@ -24545,6 +24549,7 @@ async function saveImageToDB(imageId) {
                 blob: blob,
                 visible: image.visible,
                 transparency: image.transparency,
+                zElevation: image.zElevation !== undefined ? image.zElevation : window.drawingZLevel || 0,
                 savedAt: new Date().toISOString()
             };
 
@@ -24594,7 +24599,8 @@ async function loadImageIntoMemory(imageId) {
                             bbox: imageData.bbox,
                             type: imageData.type,
                             visible: imageData.visible !== false,
-                            transparency: imageData.transparency || 1.0
+                            transparency: imageData.transparency || 1.0,
+                            zElevation: imageData.zElevation !== undefined ? imageData.zElevation : window.drawingZLevel || 0
                         });
 
                         console.log("✅ Image " + imageData.name + " loaded into memory");
@@ -24646,7 +24652,8 @@ async function loadAllImagesIntoMemory() {
                                 bbox: imageData.bbox,
                                 type: imageData.type,
                                 visible: imageData.visible !== false,
-                                transparency: imageData.transparency || 1.0
+                                transparency: imageData.transparency || 1.0,
+                                zElevation: imageData.zElevation !== undefined ? imageData.zElevation : window.drawingZLevel || 0
                             });
 
                             imgResolve();
@@ -36278,6 +36285,9 @@ function snapToNearestPointExcludingKAD(rawWorldX, rawWorldY, excludeEntityName,
     // 1. Search holes (collar, grade, toe)
     if (allBlastHoles && allBlastHoles.length > 0) {
         allBlastHoles.forEach((hole) => {
+            // Skip hidden holes - check both group visibility and individual hole visibility
+            if (!isHoleVisible(hole)) return;
+
             // Hole collar (start)
             const collarDist = Math.sqrt(Math.pow(hole.startXLocation - rawWorldX, 2) + Math.pow(hole.startYLocation - rawWorldY, 2));
             if (collarDist <= searchRadius) {
@@ -36595,6 +36605,9 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
     // Step 3) Search holes (collar, grade, toe) - convert to local coords for comparison
     if (allBlastHoles && allBlastHoles.length > 0) {
         allBlastHoles.forEach((hole) => {
+            // Skip hidden holes - check both group visibility and individual hole visibility
+            if (!isHoleVisible(hole)) return;
+
             // Hole collar (start) - convert world coords to local for ray comparison
             const collarLocal = worldToLocal(hole.startXLocation, hole.startYLocation, hole.startZLocation || 0);
             const collarResult = distanceFromPointToRay(collarLocal, rayOrigin, rayDirection);
@@ -36644,7 +36657,10 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
 
     // Step 4) Search ALL KAD Objects in unified map - convert to local coords for comparison
     if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-        allKADDrawingsMap.forEach((entity) => {
+        allKADDrawingsMap.forEach((entity, entityName) => {
+            // Skip hidden KAD entities
+            if (!isEntityVisible(entityName)) return;
+
             // Check vertices (points, line endpoints, polygon vertices, etc.)
             entity.data.forEach((dataPoint) => {
                 // Convert world coords to local for ray comparison
@@ -36810,6 +36826,9 @@ function snapToNearestPoint(rawWorldX, rawWorldY, searchRadius = getSnapToleranc
     // 1. Search holes (collar, grade, toe)
     if (allBlastHoles && allBlastHoles.length > 0) {
         allBlastHoles.forEach((hole) => {
+            // Skip hidden holes - check both group visibility and individual hole visibility
+            if (!isHoleVisible(hole)) return;
+
             // Hole collar (start)
             const collarDist = Math.sqrt(Math.pow(hole.startXLocation - rawWorldX, 2) + Math.pow(hole.startYLocation - rawWorldY, 2));
             if (collarDist <= searchRadius) {
@@ -36862,7 +36881,10 @@ function snapToNearestPoint(rawWorldX, rawWorldY, searchRadius = getSnapToleranc
 
     // 2. Search ALL KAD Objects in unified map
     if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-        allKADDrawingsMap.forEach((entity) => {
+        allKADDrawingsMap.forEach((entity, entityName) => {
+            // Skip hidden KAD entities
+            if (!isEntityVisible(entityName)) return;
+
             // First, check vertices (existing behavior)
             entity.data.forEach((dataPoint) => {
                 const dist = Math.sqrt(Math.pow(dataPoint.pointXLocation - rawWorldX, 2) + Math.pow(dataPoint.pointYLocation - rawWorldY, 2));
