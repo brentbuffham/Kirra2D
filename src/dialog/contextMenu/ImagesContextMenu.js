@@ -39,11 +39,13 @@ function showImageContextMenu(x, y, imageId = null) {
         {
             label: "Transparency",
             name: "transparency",
-            type: "range",
+            type: "slider",
             value: initialTransparency,
-            min: "0",
-            max: "100",
-            step: "1"
+            min: 0,
+            max: 100,
+            step: 1,
+            minLabel: "0%",
+            maxLabel: "100%"
         },
         {
             label: "Z Elevation",
@@ -84,39 +86,6 @@ function showImageContextMenu(x, y, imageId = null) {
             fieldDiv.appendChild(input);
             formContent.appendChild(fieldDiv);
         });
-    }
-
-    // Step 5b) Customize transparency slider to show percentage
-    var transparencyInput = formContent.querySelector('input[name="transparency"]');
-    if (transparencyInput && transparencyInput.type === "range") {
-        transparencyInput.style.height = "12px";
-        transparencyInput.style.cursor = "pointer";
-        transparencyInput.style.appearance = "none";
-        transparencyInput.style.webkitAppearance = "none";
-        transparencyInput.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + initialTransparency + "%, #ddd " + initialTransparency + "%, #ddd 100%)";
-        transparencyInput.style.borderRadius = "3px";
-        transparencyInput.style.outline = "none";
-        transparencyInput.style.width = "90%";
-        transparencyInput.style.marginLeft = "-2px";
-
-        // Create value display - modify the grid to accommodate slider + value
-        var sliderRow = transparencyInput.closest(".button-container-2col");
-        if (sliderRow) {
-            // Change grid to 3 columns: label, slider, value
-            sliderRow.style.gridTemplateColumns = "40% 1fr 50px";
-            var valueSpan = document.createElement("span");
-            valueSpan.textContent = initialTransparency + "%";
-            valueSpan.style.fontSize = "12px";
-            valueSpan.style.color = "#aaa";
-            valueSpan.style.textAlign = "right";
-            sliderRow.appendChild(valueSpan);
-            // Update on input
-            transparencyInput.oninput = function () {
-                var val = parseInt(transparencyInput.value);
-                valueSpan.textContent = val + "%";
-                transparencyInput.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
-            };
-        }
     }
 
     // Step 6) Create dialog with footer buttons
