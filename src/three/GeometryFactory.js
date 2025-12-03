@@ -276,8 +276,8 @@ export class GeometryFactory {
         return mesh;
     }
 
-    // Step 9) Create KAD point
-    static createKADPoint(worldX, worldY, worldZ, size, color) {
+    // Step 9) Create KAD point as flat circle Not used
+    static createKADPointAsFlatCircle(worldX, worldY, worldZ, size, color) {
         const geometry = new THREE.CircleGeometry(size, 16);
         const material = new THREE.MeshBasicMaterial({
             color: new THREE.Color(color),
@@ -288,6 +288,76 @@ export class GeometryFactory {
         mesh.position.set(worldX, worldY, worldZ);
 
         return mesh;
+    }
+
+    static createKADPointAsOctahedron(worldX, worldY, worldZ, size, color) {
+        // Step 1) Convert pixel size to world units
+        const currentScale = window.currentScale || 5;
+        const pixelRadius = size * 10;
+        const worldRadius = pixelRadius / currentScale;
+
+        // Step 2) Use OctahedronGeometry (cheaper than Cuboctahedron - 8 faces vs 14)
+        const geometry = new THREE.OctahedronGeometry(worldRadius, 0);
+        const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(color),
+            side: THREE.DoubleSide
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.set(worldX, worldY, worldZ);
+
+        // Step 3) Store for screen-space scaling
+        mesh.userData.screenSpaceSize = pixelRadius;
+        mesh.userData.isScreenSpacePoint = true;
+
+        return mesh;
+    }
+
+    static createKADPoint(worldX, worldY, worldZ, size, color) {
+        // Step 1) Convert pixel size to world units for screen-space sizing
+        const currentScale = window.currentScale || 5;
+        const pixelRadius = size * 10; // size is diameter, radius is half
+        const worldRadius = pixelRadius / currentScale;
+
+        // Step 2) Create group to hold 3 orthogonal circles
+        const group = new THREE.Group();
+
+        // Step 3) Create shared material for all circles
+        const material = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(color),
+            side: THREE.DoubleSide, // Visible from both sides
+            transparent: false,
+            opacity: 1.0,
+            depthTest: true,
+            depthWrite: true
+        });
+
+        // Step 4) Circle 1: XY plane (flat/horizontal) - default orientation
+        const circleXY = new THREE.CircleGeometry(worldRadius, 16);
+        const meshXY = new THREE.Mesh(circleXY, material);
+        // CircleGeometry is already in XY plane facing +Z, no rotation needed
+        group.add(meshXY);
+
+        // Step 5) Circle 2: XZ plane (upright/vertical) - rotate 90° around X axis
+        const circleXZ = new THREE.CircleGeometry(worldRadius, 16);
+        const meshXZ = new THREE.Mesh(circleXZ, material);
+        meshXZ.rotation.x = Math.PI / 2; // Rotate 90° around X axis
+        group.add(meshXZ);
+
+        // Step 6) Circle 3: YZ plane (across/vertical) - rotate 90° around Y axis
+        const circleYZ = new THREE.CircleGeometry(worldRadius, 16);
+        const meshYZ = new THREE.Mesh(circleYZ, material);
+        meshYZ.rotation.y = Math.PI / 2; // Rotate 90° around Y axis
+        group.add(meshYZ);
+
+        // Step 7) Position the entire group
+        group.position.set(worldX, worldY, worldZ);
+
+        // Step 8) Store pixel size for screen-space scaling in render loop
+        group.userData.screenSpaceSize = pixelRadius; // Store pixel radius for scaling
+        group.userData.isScreenSpacePoint = true; // Flag for render loop scaling
+
+        return group;
     }
 
     // Step 10) Create KAD line segment (single segment between two points)
@@ -301,14 +371,16 @@ export class GeometryFactory {
         // 2D canvas lineWidth is in pixels; for MeshLine with sizeAttenuation: 1, use world units
         // Multiply by a factor to make the line visible at typical scales
         const currentScale = window.currentScale || 5;
-        const scaledLineWidth = (lineWidth || 2) * 0.1; // Convert to world units, scale appropriately
+        //const scaledLineWidth = (lineWidth || 2) * 0.1; // Convert to world units, scale appropriately
+        const scaledLineWidth = lineWidth * 2 || 4; // Convert to world units, scale appropriately
 
         // Step 10c) Create MeshLine material with proper lineWidth
         const material = new MeshLineMaterial({
             color: new THREE.Color(color),
             lineWidth: scaledLineWidth, // World units
             resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
-            sizeAttenuation: 1, // Size attenuation enabled for world-space sizing
+            //sizeAttenuation: 1, // Size attenuation enabled for world-space sizing
+            sizeAttenuation: 0, // Size attenuation disabled for world-space sizing
             opacity: 1.0
         });
         material.transparent = true;
