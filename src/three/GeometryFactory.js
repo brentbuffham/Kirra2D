@@ -314,50 +314,46 @@ export class GeometryFactory {
     }
 
     static createKADPoint(worldX, worldY, worldZ, size, color) {
-        // Step 1) Convert pixel size to world units for screen-space sizing
-        const currentScale = window.currentScale || 5;
-        const pixelRadius = size * 10; // size is diameter, radius is half
-        const worldRadius = pixelRadius / currentScale;
+        // Step 1) Convert pixel size to world units
+        const pixelSize = size * 20; // size is diameter in pixels
 
-        // Step 2) Create group to hold 3 orthogonal circles
-        const group = new THREE.Group();
+        // Step 2) Create BufferGeometry with single point
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute('position', new THREE.Float32BufferAttribute([worldX, worldY, worldZ], 3));
 
-        // Step 3) Create shared material for all circles
-        const material = new THREE.MeshBasicMaterial({
-            color: new THREE.Color(color),
-            side: THREE.DoubleSide, // Visible from both sides
-            transparent: false,
+        // Step 3) Create circular texture for points (programmatically)
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+
+        // Draw white circle on transparent background
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(32, 32, 30, 0, Math.PI * 2);
+        ctx.fill();
+
+        const circleTexture = new THREE.CanvasTexture(canvas);
+        circleTexture.needsUpdate = true;
+
+        // Step 4) Create PointsMaterial with circular texture and sizeAttenuation: false
+        const material = new THREE.PointsMaterial({
+            map: circleTexture, // Apply circular texture
+            color: new THREE.Color(color), // Color tinting
+            size: pixelSize, // Size in pixels when sizeAttenuation is false
+            sizeAttenuation: false, // KEY: Maintains constant pixel size regardless of zoom
+            transparent: true, // Required for texture transparency
             opacity: 1.0,
             depthTest: true,
-            depthWrite: true
+            depthWrite: true,
+            alphaTest: 0.1 // Discard transparent pixels for better performance
         });
 
-        // Step 4) Circle 1: XY plane (flat/horizontal) - default orientation
-        const circleXY = new THREE.CircleGeometry(worldRadius, 16);
-        const meshXY = new THREE.Mesh(circleXY, material);
-        // CircleGeometry is already in XY plane facing +Z, no rotation needed
-        group.add(meshXY);
+        // Step 5) Create Points object
+        const points = new THREE.Points(geometry, material);
+        points.position.set(0, 0, 0); // Points are positioned via geometry attributes
 
-        // Step 5) Circle 2: XZ plane (upright/vertical) - rotate 90° around X axis
-        const circleXZ = new THREE.CircleGeometry(worldRadius, 16);
-        const meshXZ = new THREE.Mesh(circleXZ, material);
-        meshXZ.rotation.x = Math.PI / 2; // Rotate 90° around X axis
-        group.add(meshXZ);
-
-        // Step 6) Circle 3: YZ plane (across/vertical) - rotate 90° around Y axis
-        const circleYZ = new THREE.CircleGeometry(worldRadius, 16);
-        const meshYZ = new THREE.Mesh(circleYZ, material);
-        meshYZ.rotation.y = Math.PI / 2; // Rotate 90° around Y axis
-        group.add(meshYZ);
-
-        // Step 7) Position the entire group
-        group.position.set(worldX, worldY, worldZ);
-
-        // Step 8) Store pixel size for screen-space scaling in render loop
-        group.userData.screenSpaceSize = pixelRadius; // Store pixel radius for scaling
-        group.userData.isScreenSpacePoint = true; // Flag for render loop scaling
-
-        return group;
+        return points;
     }
 
     // Step 10) Create KAD line segment (single segment between two points)

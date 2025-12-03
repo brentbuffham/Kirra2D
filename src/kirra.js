@@ -21722,8 +21722,8 @@ function drawData(allBlastHoles, selectedHole) {
 						const screenX = (point.pointXLocation - centroidX) * currentScale + canvas.width / 2;
 						const screenY = -(point.pointYLocation - centroidY) * currentScale + canvas.height / 2;
 						let lineWidthForDisplay = point.lineWidth;
-						if (point.lineWidth < 2) {
-							lineWidthForDisplay = 2;
+						if (point.lineWidth <= 1) {
+							lineWidthForDisplay = 1;
 						}
 						drawKADPoints(screenX, screenY, point.pointZLocation, lineWidthForDisplay, point.color);
 						drawKADCoordinates(point, screenX, screenY);
@@ -21735,8 +21735,8 @@ function drawData(allBlastHoles, selectedHole) {
 
 					for (const pointData of simplifiedPoints) {
 						let lineWidthForDisplay = pointData.lineWidth;
-						if (pointData.lineWidth < 2) {
-							lineWidthForDisplay = 2;
+						if (pointData.lineWidth <= 1) {
+							lineWidthForDisplay = 1;
 						}
 						const [x, y] = worldToCanvas(pointData.pointXLocation, pointData.pointYLocation);
 						drawKADPoints(x, y, pointData.pointZLocation, lineWidthForDisplay, pointData.color);
