@@ -560,7 +560,21 @@ function calculateDataCentroid() {
 			}
 		}
 	}
-
+    // Step 4c) Add KAD drawing XYZ values if available
+    if (typeof allKADDrawingsMap !== "undefined" && allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+        for (const [entityName, entity] of allKADDrawingsMap.entries()) {
+            if (entity && entity.data && Array.isArray(entity.data) && entity.data.length > 0) {
+                for (const point of entity.data) {
+                    if (point && typeof point === "object") {
+                        sumX += point.pointXLocation || 0;
+                        sumY += point.pointYLocation || 0;
+                        sumZ += point.pointZLocation || 0;
+                        count += 1;
+                    }
+                }
+            }
+        }
+    }
 	return {
 		x: count > 0 ? sumX / count : 0,
 		y: count > 0 ? sumY / count : 0,
