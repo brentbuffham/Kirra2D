@@ -473,9 +473,10 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 	const container = document.createElement("div");
 	container.style.display = "flex";
 	container.style.flexDirection = "column";
-	container.style.gap = "6px";
+	container.style.gap = "4px";
 	container.style.width = "100%";
-	container.style.marginTop = "4px";
+	container.style.marginTop = "2px";
+	container.style.marginBottom = "2px";
 
 	fields.forEach((field) => {
 		const row = document.createElement("div");
@@ -492,9 +493,14 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 			// Regular input fields
 			row.className = "button-container-2col";
 			row.style.display = "grid";
-			row.style.gridTemplateColumns = "60% 40%";
+			// Step 35a) Use 55% 45% for slider fields to give more room for slider with labels
+			if (field.type === "slider") {
+				row.style.gridTemplateColumns = "55% 45%";
+			} else {
+				row.style.gridTemplateColumns = "60% 40%";
+			}
 			row.style.columnGap = "8px";
-			row.style.rowGap = "4px";
+			row.style.rowGap = "2px";
 			row.style.alignItems = "center";
 			row.style.width = "100%";
 		}
@@ -657,30 +663,75 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 			if (field.max !== undefined) input.max = field.max;
 			if (field.step !== undefined) input.step = field.step;
 
-			// Step 37b) Create value display next to slider
+			// Step 37b) Create slider container with labels and value display
 			const sliderContainer = document.createElement("div");
 			sliderContainer.style.display = "flex";
 			sliderContainer.style.alignItems = "center";
-			sliderContainer.style.gap = "8px";
+			sliderContainer.style.gap = "4px";
 			sliderContainer.style.width = "100%";
+			sliderContainer.style.flexWrap = "nowrap";
+			sliderContainer.style.overflow = "visible";
+			sliderContainer.style.minWidth = "0";
+			sliderContainer.style.boxSizing = "border-box";
 
-			input.style.flex = "1";
-			input.style.minWidth = "100px";
+			// Step 37b.1) Create min label (left side) - always create if minLabel exists
+			if (field.minLabel !== undefined && field.minLabel !== null && field.minLabel !== "") {
+				const minLabel = document.createElement("span");
+				minLabel.textContent = field.minLabel;
+				minLabel.className = "labelWhite12";
+				minLabel.style.fontSize = "11px";
+				minLabel.style.fontFamily = "sans-serif";
+				minLabel.style.color = "var(--light-mode-text)";
+				minLabel.style.minWidth = "45px";
+				minLabel.style.maxWidth = "45px";
+				minLabel.style.textAlign = "left";
+				minLabel.style.whiteSpace = "nowrap";
+				minLabel.style.flexShrink = "0";
+				minLabel.style.overflow = "visible";
+				sliderContainer.appendChild(minLabel);
+			}
 
-			const valueDisplay = document.createElement("span");
-			valueDisplay.style.minWidth = "50px";
-			valueDisplay.style.textAlign = "right";
-			valueDisplay.style.fontSize = "11px";
-			valueDisplay.style.color = "#000";
-			valueDisplay.textContent = field.value !== undefined && field.value !== null ? field.value : "";
-
-			// Step 37c) Update value display when slider changes
-			input.addEventListener("input", () => {
-				valueDisplay.textContent = input.value;
-			});
-
+			// Step 37b.2) Add slider input
+			input.style.flex = "1 1 0%";
+			input.style.minWidth = "0";
+			input.style.maxWidth = "none";
+			input.style.width = "auto";
+			input.style.margin = "0";
 			sliderContainer.appendChild(input);
-			sliderContainer.appendChild(valueDisplay);
+
+			// Step 37b.3) Create max label (right side) - always create if maxLabel exists
+			if (field.maxLabel !== undefined && field.maxLabel !== null && field.maxLabel !== "") {
+				const maxLabel = document.createElement("span");
+				maxLabel.textContent = field.maxLabel;
+				maxLabel.className = "labelWhite12";
+				maxLabel.style.fontSize = "11px";
+				maxLabel.style.fontFamily = "sans-serif";
+				maxLabel.style.color = "var(--light-mode-text)";
+				maxLabel.style.minWidth = "45px";
+				maxLabel.style.maxWidth = "45px";
+				maxLabel.style.textAlign = "right";
+				maxLabel.style.whiteSpace = "nowrap";
+				maxLabel.style.flexShrink = "0";
+				maxLabel.style.overflow = "visible";
+				sliderContainer.appendChild(maxLabel);
+			}
+
+			// Step 37c) Create value display (if no maxLabel, show value on right)
+			if (!field.maxLabel) {
+				const valueDisplay = document.createElement("span");
+				valueDisplay.style.minWidth = "50px";
+				valueDisplay.style.textAlign = "right";
+				valueDisplay.style.fontSize = "11px";
+				valueDisplay.style.color = "var(--light-mode-text)";
+				valueDisplay.textContent = field.value !== undefined && field.value !== null ? field.value : "";
+
+				// Step 37c.1) Update value display when slider changes
+				input.addEventListener("input", () => {
+					valueDisplay.textContent = input.value;
+				});
+
+				sliderContainer.appendChild(valueDisplay);
+			}
 
 			// Step 37d) Replace input with container for slider
 			input = sliderContainer;

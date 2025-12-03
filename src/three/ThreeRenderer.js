@@ -114,6 +114,7 @@ export class ThreeRenderer {
 		this.axisHelperBaseSize = 50; // Store base size for screen-space scaling
 
 	// Step 13) Create grid helper (default 10m divisions, 50 divisions = 500m total)
+	// Step 13a) Grid is created but hidden by default - visibility controlled by settings
 	const defaultGridSize = 10; // meters per division
 	const gridDivisions = 50;
 	const totalGridSize = defaultGridSize * gridDivisions;
@@ -123,7 +124,7 @@ export class ThreeRenderer {
 	this.gridHelper.position.z = 0;
 	this.gridHelper.material.opacity = 0.3;
 	this.gridHelper.material.transparent = true;
-	this.gridHelper.visible = true; // Ensure grid is visible
+	this.gridHelper.visible = false; // Step 13b) Hidden by default - controlled by settings
 	this.scene.add(this.gridHelper);
 	
 	// Store grid settings

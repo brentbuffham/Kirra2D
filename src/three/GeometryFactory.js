@@ -319,16 +319,16 @@ export class GeometryFactory {
 
         // Step 2) Create BufferGeometry with single point
         const geometry = new THREE.BufferGeometry();
-        geometry.setAttribute('position', new THREE.Float32BufferAttribute([worldX, worldY, worldZ], 3));
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute([worldX, worldY, worldZ], 3));
 
         // Step 3) Create circular texture for points (programmatically)
-        const canvas = document.createElement('canvas');
+        const canvas = document.createElement("canvas");
         canvas.width = 64;
         canvas.height = 64;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext("2d");
 
         // Draw white circle on transparent background
-        ctx.fillStyle = '#ffffff';
+        ctx.fillStyle = "#ffffff";
         ctx.beginPath();
         ctx.arc(32, 32, 30, 0, Math.PI * 2);
         ctx.fill();
@@ -449,8 +449,7 @@ export class GeometryFactory {
         // Step 1) Create cache key (scale-independent - use pixel fontSize)
         const currentScale = window.currentScale || 5;
         const fontSizeWorldUnits = fontSize / currentScale;
-        const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," +
-            String(text) + "," + fontSize + "," + color; // Use pixel fontSize, not world units
+        const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," + String(text) + "," + fontSize + "," + color; // Use pixel fontSize, not world units
 
         // Step 1a) Return cached text if it exists
         if (textCache.has(cacheKey)) {
@@ -728,9 +727,15 @@ export class GeometryFactory {
     // Note: For relief triangles, the Z position contains the holeTime
     static getBurdenRelief(triangle) {
         // Step 12.9a) Extract timing data (time is in index 2 for relief triangles)
-        const tAX = triangle[0][0], tAY = triangle[0][1], tAZ = triangle[0][2] || 0;
-        const tBX = triangle[1][0], tBY = triangle[1][1], tBZ = triangle[1][2] || 0;
-        const tCX = triangle[2][0], tCY = triangle[2][1], tCZ = triangle[2][2] || 0;
+        const tAX = triangle[0][0],
+            tAY = triangle[0][1],
+            tAZ = triangle[0][2] || 0;
+        const tBX = triangle[1][0],
+            tBY = triangle[1][1],
+            tBZ = triangle[1][2] || 0;
+        const tCX = triangle[2][0],
+            tCY = triangle[2][1],
+            tCZ = triangle[2][2] || 0;
 
         // Step 12.9b) Find earliest and latest firing times
         const earliestTime = Math.min(tAZ, tBZ, tCZ);
@@ -864,10 +869,10 @@ export class GeometryFactory {
             const colorMatch = colorString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
             const color = colorMatch
                 ? {
-                    r: parseInt(colorMatch[1]) / 255,
-                    g: parseInt(colorMatch[2]) / 255,
-                    b: parseInt(colorMatch[3]) / 255
-                }
+                      r: parseInt(colorMatch[1]) / 255,
+                      g: parseInt(colorMatch[2]) / 255,
+                      b: parseInt(colorMatch[3]) / 255
+                  }
                 : { r: 1, g: 1, b: 1 };
 
             // Step 16d) Add vertices and colors
@@ -969,10 +974,10 @@ export class GeometryFactory {
             const colorMatch = colorString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
             const color = colorMatch
                 ? {
-                    r: parseInt(colorMatch[1]) / 255,
-                    g: parseInt(colorMatch[2]) / 255,
-                    b: parseInt(colorMatch[3]) / 255
-                }
+                      r: parseInt(colorMatch[1]) / 255,
+                      g: parseInt(colorMatch[2]) / 255,
+                      b: parseInt(colorMatch[3]) / 255
+                  }
                 : { r: 1, g: 1, b: 1 };
 
             // Step 16.5e) Add vertices (using collar Z) and colors
@@ -1049,7 +1054,7 @@ export class GeometryFactory {
                     meshLineYellow.setPoints(points);
 
                     const yellowMaterial = new MeshLineMaterial({
-                        color: new THREE.Color(0xFFFF00), // Yellow
+                        color: new THREE.Color(0xffff00), // Yellow
                         lineWidth: 0.3, // Reduced from 0.5 to 0.3 (approx 3 pixels)
                         dashArray: 0.1, // Dash pattern
                         dashRatio: 0.5, // 50% dash, 50% gap
@@ -1068,7 +1073,7 @@ export class GeometryFactory {
                     meshLineMagenta.setPoints(points);
 
                     const magentaMaterial = new MeshLineMaterial({
-                        color: new THREE.Color(0xFF00FF), // Magenta
+                        color: new THREE.Color(0xff00ff), // Magenta
                         lineWidth: 0.3, // Same width
                         dashArray: 0.1, // Same dash pattern
                         dashRatio: 0.5, // Same ratio
@@ -1104,10 +1109,7 @@ export class GeometryFactory {
             const localEnd = worldToThreeLocalFn ? worldToThreeLocalFn(endX, endY) : { x: endX, y: endY };
 
             // Step 19) Create arrow line at collar elevation
-            const points = [
-                new THREE.Vector3(localStart.x, localStart.y, collarZ),
-                new THREE.Vector3(localEnd.x, localEnd.y, collarZ)
-            ];
+            const points = [new THREE.Vector3(localStart.x, localStart.y, collarZ), new THREE.Vector3(localEnd.x, localEnd.y, collarZ)];
 
             const geometry = new THREE.BufferGeometry().setFromPoints(points);
             const material = new THREE.LineBasicMaterial({ color: new THREE.Color(color) });
@@ -1354,8 +1356,7 @@ export class GeometryFactory {
         group.add(strokeTorusMesh);
 
         // Step 20.6d) Create transparent tube geometry connecting collar to toe (visible when orbiting)
-        if (collarX !== undefined && collarY !== undefined && collarZ !== undefined &&
-            toeX !== undefined && toeY !== undefined && toeZ !== undefined) {
+        if (collarX !== undefined && collarY !== undefined && collarZ !== undefined && toeX !== undefined && toeY !== undefined && toeZ !== undefined) {
             // Step 20.6d.1) Create straight line curve from collar to toe using LineCurve3
             const collarPoint = new THREE.Vector3(collarX, collarY, collarZ);
             const toePoint = new THREE.Vector3(toeX, toeY, toeZ);
@@ -1411,8 +1412,9 @@ export class GeometryFactory {
         return Math.max(0.5, Math.min(5, zoomFactor));
     }
 
-    // Step 20.8) Create KAD line highlight for selection using TubeGeometry
+    // Step 20.8) Create KAD line highlight for selection using MeshLine
     // Used to highlight selected/non-selected line segments
+    // Uses MeshLine with sizeAttenuation: 0 for screen-space sizing (constant width regardless of distance)
     static createKADLineHighlight(x1, y1, z1, x2, y2, z2, baseRadius, color) {
         // Step 20.8a) Parse color
         let colorObj;
@@ -1428,36 +1430,39 @@ export class GeometryFactory {
             colorObj = { r: 0, g: 1, b: 0, a: 1 };
         }
 
-        // Step 20.8b) Calculate zoom scale factor and apply to radius
-        const zoomFactor = this.getZoomScaleFactor();
-        const radius = baseRadius * zoomFactor;
+        // Step 20.8b) Convert baseRadius to pixel line width
+        // baseRadius is in world units (typically 0.3-0.6), convert to pixel width
+        const lineWidth = baseRadius * 20; // Convert to pixel width
 
-        // Step 20.8c) Create straight line curve from point1 to point2
-        const point1 = new THREE.Vector3(x1, y1, z1);
-        const point2 = new THREE.Vector3(x2, y2, z2);
-        const curve = new THREE.LineCurve3(point1, point2);
+        // Step 20.8c) Create two-point line geometry
+        const points = [new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)];
+        const geometry = new THREE.BufferGeometry().setFromPoints(points);
 
-        // Step 20.8d) Create tube geometry
-        // segments = 1 (minimal segments for straight line), radialSegments = 8, radius = scaled radius
-        const tubeGeometry = new THREE.TubeGeometry(curve, 1, radius, 8, false);
-
-        // Step 20.8e) Create material with color
-        const material = new THREE.MeshBasicMaterial({
+        // Step 20.8d) Create MeshLine material with sizeAttenuation: 0 for screen-space sizing
+        const material = new MeshLineMaterial({
             color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
+            lineWidth: lineWidth, // Pixel width
+            resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+            sizeAttenuation: 0, // KEY: Disable size attenuation for constant screen-space width
             transparent: colorObj.a < 1,
             opacity: colorObj.a,
-            side: THREE.DoubleSide,
-            wireframe: false, // No wireframe
             depthTest: true,
             depthWrite: false
         });
 
-        const tubeMesh = new THREE.Mesh(tubeGeometry, material);
-        return tubeMesh;
+        // Step 20.8e) Create MeshLine and set geometry
+        const line = new MeshLine();
+        line.setGeometry(geometry);
+
+        // Step 20.8f) Create and return mesh
+        const mesh = new THREE.Mesh(line, material);
+        mesh.name = "kad-line-highlight";
+
+        return mesh;
     }
 
     // Step 20.9) Create KAD point highlight for selection
-    // Creates a sphere to highlight a point with zoom-based scaling
+    // Uses Points geometry for efficient vertex rendering (more efficient than spheres)
     static createKADPointHighlight(x, y, z, baseRadius, color) {
         // Step 20.9a) Parse color
         let colorObj;
@@ -1473,23 +1478,47 @@ export class GeometryFactory {
             colorObj = { r: 1, g: 0, b: 0, a: 0.5 };
         }
 
-        // Step 20.9b) Calculate zoom scale factor and apply to radius
-        const zoomFactor = this.getZoomScaleFactor();
-        const radius = baseRadius * zoomFactor;
+        // Step 20.9b) Convert baseRadius to pixel size (baseRadius is in world units, convert to pixels)
+        // baseRadius typically ranges from 0.5 to 1.0, convert to pixel size
+        const pixelSize = baseRadius * 20; // Convert world units to pixels
 
-        // Step 20.9c) Create sphere geometry with scaled radius
-        const geometry = new THREE.SphereGeometry(radius, 16, 16);
-        const material = new THREE.MeshBasicMaterial({
-            color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
+        // Step 20.9c) Create BufferGeometry with single point
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute([x, y, z], 3));
+
+        // Step 20.9d) Create circular texture for points (reuse pattern from createKADPoint)
+        const canvas = document.createElement("canvas");
+        canvas.width = 64;
+        canvas.height = 64;
+        const ctx = canvas.getContext("2d");
+
+        // Draw circle on transparent background
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(32, 32, 30, 0, Math.PI * 2);
+        ctx.fill();
+
+        const circleTexture = new THREE.CanvasTexture(canvas);
+        circleTexture.needsUpdate = true;
+
+        // Step 20.9e) Create PointsMaterial with circular texture and sizeAttenuation: false
+        const material = new THREE.PointsMaterial({
+            map: circleTexture, // Apply circular texture
+            color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b), // Color tinting
+            size: pixelSize, // Size in pixels when sizeAttenuation is false
+            sizeAttenuation: false, // KEY: Maintains constant pixel size regardless of zoom/distance
             transparent: colorObj.a < 1,
             opacity: colorObj.a,
             depthTest: true,
-            depthWrite: false
+            depthWrite: false,
+            alphaTest: 0.1 // Discard transparent pixels for better performance
         });
 
-        const sphere = new THREE.Mesh(geometry, material);
-        sphere.position.set(x, y, z);
-        return sphere;
+        // Step 20.9f) Create Points object
+        const points = new THREE.Points(geometry, material);
+        points.position.set(0, 0, 0); // Points are positioned via geometry attributes
+
+        return points;
     }
 
     // Step 20.10) Create KAD circle highlight for selection
@@ -1671,7 +1700,7 @@ export class GeometryFactory {
             transparent: true,
             opacity: colorObj.a,
             side: THREE.DoubleSide,
-            depthTest: true,  // Respect depth for proper 3D visualization
+            depthTest: true, // Respect depth for proper 3D visualization
             depthWrite: false // But don't block other transparent objects
         });
 
@@ -1713,11 +1742,12 @@ export class GeometryFactory {
             if (!cell.polygon || cell.polygon.length < 3) continue;
 
             // Step 21b) Find nearest hole to get reference Z (collar or toe)
-            var sumX = 0, sumY = 0;
+            var sumX = 0,
+                sumY = 0;
             for (var p = 0; p < cell.polygon.length; p++) {
                 var pt = cell.polygon[p];
-                sumX += (pt.x !== undefined ? pt.x : pt[0]);
-                sumY += (pt.y !== undefined ? pt.y : pt[1]);
+                sumX += pt.x !== undefined ? pt.x : pt[0];
+                sumY += pt.y !== undefined ? pt.y : pt[1];
             }
             var cellCenterX = sumX / cell.polygon.length;
             var cellCenterY = sumY / cell.polygon.length;
@@ -1726,11 +1756,11 @@ export class GeometryFactory {
             var baseZ;
             if (useToeLocation) {
                 // Step 21b.1) Toe mode: 0.1m above toe, extrude up 0.2m
-                var toeZ = nearestHole ? (nearestHole.endZLocation || 0) : 0;
+                var toeZ = nearestHole ? nearestHole.endZLocation || 0 : 0;
                 baseZ = toeZ + 0.1; // 0.1m above toe
             } else {
                 // Step 21b.2) Collar mode: 0.1m below collar, extrude down 0.2m
-                var collarZ = nearestHole ? (nearestHole.startZLocation || 0) : 0;
+                var collarZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
                 baseZ = collarZ - 0.1 - extrusionHeight; // Start 0.1m + extrusion below collar
             }
 

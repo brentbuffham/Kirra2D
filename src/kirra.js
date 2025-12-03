@@ -2443,7 +2443,11 @@ document.addEventListener("DOMContentLoaded", function () {
         dimension2D3DSettingsBtn.addEventListener("change", function () {
             if (this.checked) {
                 // Step 13a) Show settings dialog
-                show3DSettingsDialog();
+                if (window.show3DSettingsDialog) {
+                    window.show3DSettingsDialog();
+                } else {
+                    console.warn("⚠️ 3D Settings Dialog not loaded");
+                }
                 // Step 13b) Uncheck button after dialog is shown (dialog handles its own state)
                 setTimeout(() => {
                     this.checked = false;
@@ -43711,13 +43715,15 @@ function load3DSettings() {
         lightBearing: 135,
         lightElevation: 15,
         ambientLightIntensity: 0.8,
-        directionalLightIntensity: 0.5,
+        directionalLightIntensity: 2.5,
         shadowIntensity: 0.5,
+        // Step 14a) Grid and Clipping Plane settings removed - not working properly
+        // Keeping defaults for backward compatibility but not used in dialog
         clippingNear: -50000,
         clippingFar: 50000,
         showClippingPlane: false,
         previewClippingPlane: false,
-        showGrid: true,
+        showGrid: false,
         gridSize: 10,
         gridOpacity: 0.3,
         gridPlane: "XY",
@@ -43749,269 +43755,13 @@ function save3DSettings(settings) {
     }
 }
 
+// Step 15a) Expose 3D settings functions on window for ThreeDSettingsDialog module
+window.load3DSettings = load3DSettings;
+window.save3DSettings = save3DSettings;
+
 // Step 16) Show 3D Scene, Camera and Lighting Settings dialog
-function show3DSettingsDialog() {
-    // Step 16a) Load current settings
-    const currentSettings = load3DSettings();
-
-    // Step 16b) Create form fields
-    const fields = [
-        {
-            type: "number",
-            name: "dampingFactor",
-            label: "Damping Factor:",
-            value: currentSettings.dampingFactor !== undefined ? currentSettings.dampingFactor : 0.05,
-            min: 0,
-            max: 1,
-            step: 0.0001,
-            placeholder: "0.05 (0 = spin effect)"
-        },
-        {
-            type: "checkbox",
-            name: "cursorZoom",
-            label: "Cursor Zoom:",
-            checked: currentSettings.cursorZoom !== false
-        },
-        {
-            type: "number",
-            name: "cursorOpacity",
-            label: "3D Cursor Transparency:",
-            value: currentSettings.cursorOpacity !== undefined ? currentSettings.cursorOpacity : 0.2,
-            min: 0,
-            max: 1,
-            step: 0.05,
-            placeholder: "0.2 (0=invisible, 1=opaque)"
-        },
-        {
-            type: "number",
-            name: "lightBearing",
-            label: "Light Bearing (deg):",
-            value: currentSettings.lightBearing || 135,
-            min: 0,
-            max: 360,
-            step: 1,
-            placeholder: "135"
-        },
-        {
-            type: "number",
-            name: "lightElevation",
-            label: "Light Elevation (deg):",
-            value: currentSettings.lightElevation || 15,
-            min: 0,
-            max: 180,
-            step: 1,
-            placeholder: "15"
-        },
-        {
-            type: "number",
-            name: "ambientLightIntensity",
-            label: "Ambient Light Intensity:",
-            value: currentSettings.ambientLightIntensity !== undefined ? currentSettings.ambientLightIntensity : 0.8,
-            min: 0,
-            max: 2,
-            step: 0.1,
-            placeholder: "0.8 (0=off)"
-        },
-        {
-            type: "number",
-            name: "directionalLightIntensity",
-            label: "Directional Light Intensity:",
-            value: currentSettings.directionalLightIntensity !== undefined ? currentSettings.directionalLightIntensity : 0.5,
-            min: 0,
-            max: 10,
-            step: 0.1,
-            placeholder: "0.5"
-        },
-        {
-            type: "number",
-            name: "shadowIntensity",
-            label: "Shadow Intensity:",
-            value: currentSettings.shadowIntensity !== undefined ? currentSettings.shadowIntensity : 0.5,
-            min: 0,
-            max: 1,
-            step: 0.05,
-            placeholder: "0.5 (0=none, 1=max)"
-        },
-        {
-            type: "select",
-            name: "axisLock",
-            label: "Axis Lock (Orbit Constraint):",
-            value: currentSettings.axisLock || "none",
-            options: [
-                { value: "none", text: "None" },
-                { value: "pitch", text: "Pitch" },
-                { value: "roll", text: "Roll" },
-                { value: "yaw", text: "Yaw" }
-            ]
-        },
-        {
-            type: "number",
-            name: "clippingNear",
-            label: "Clipping Near:",
-            value: currentSettings.clippingNear || -50000,
-            min: -100000,
-            max: 0,
-            step: 1000,
-            placeholder: "-50000"
-        },
-        {
-            type: "number",
-            name: "clippingFar",
-            label: "Clipping Far:",
-            value: currentSettings.clippingFar || 50000,
-            min: 0,
-            max: 100000,
-            step: 1000,
-            placeholder: "50000"
-        },
-        {
-            type: "checkbox",
-            name: "previewClippingPlane",
-            label: "Preview Clipping Planes:",
-            checked: currentSettings.previewClippingPlane === true || currentSettings.previewClippingPlane === "true"
-        },
-        {
-            type: "checkbox",
-            name: "showClippingPlane",
-            label: "Apply Clipping Planes:",
-            checked: currentSettings.showClippingPlane === true || currentSettings.showClippingPlane === "true"
-        },
-        {
-            type: "checkbox",
-            name: "showGrid",
-            label: "Show Grid:",
-            checked: currentSettings.showGrid === true || currentSettings.showGrid === "true" || currentSettings.showGrid === undefined
-        },
-        {
-            type: "select",
-            name: "gridPlane",
-            label: "Grid Plane:",
-            value: currentSettings.gridPlane || "XY",
-            options: [
-                { value: "XY", text: "XY (Horizontal)" },
-                { value: "XZ", text: "XZ (Vertical North-South)" },
-                { value: "YZ", text: "YZ (Vertical East-West)" },
-                { value: "Camera", text: "Camera Frustum" }
-            ]
-        },
-        {
-            type: "number",
-            name: "gridSize",
-            label: "Grid Size (m):",
-            value: currentSettings.gridSize !== undefined ? currentSettings.gridSize : 10,
-            min: 0,
-            max: 100,
-            step: 0.01,
-            placeholder: "10"
-        },
-        {
-            type: "number",
-            name: "gridOpacity",
-            label: "Grid Transparency:",
-            value: currentSettings.gridOpacity !== undefined ? currentSettings.gridOpacity : 0.3,
-            min: 0,
-            max: 1,
-            step: 0.05,
-            placeholder: "0.3 (0=invisible, 1=opaque)"
-        },
-        {
-            type: "select",
-            name: "gizmoDisplay",
-            label: "Gizmo Display:",
-            value: currentSettings.gizmoDisplay || "only_when_orbit_or_rotate",
-            options: [
-                { value: "always", text: "Always" },
-                { value: "only_when_orbit_or_rotate", text: "Only When Orbit or Rotate" },
-                { value: "never", text: "Never" }
-            ]
-        }
-    ];
-
-    // Step 16c) Create form content
-    const formContent = createEnhancedFormContent(fields, false, false);
-
-    // Step 16c.1) Add event listener for preview clipping plane checkbox
-    setTimeout(() => {
-        const previewCheckbox = formContent.querySelector("input[name='previewClippingPlane']");
-        if (previewCheckbox) {
-            previewCheckbox.addEventListener("change", (e) => {
-                const isChecked = e.target.checked;
-                console.log("🔍 Preview clipping plane changed:", isChecked);
-
-                // Step 16c.1a) Apply preview visualization immediately
-                if (threeRenderer && typeof threeRenderer.setClippingPlaneVisualization === "function") {
-                    threeRenderer.setClippingPlaneVisualization(isChecked);
-                }
-            });
-        }
-    }, 100);
-
-    // Step 16d) Create dialog
-    const dialog = new FloatingDialog({
-        title: "3D Scene, Camera and Lighting Settings",
-        content: formContent,
-        width: 520,
-        height: 780,
-        layoutType: "default",
-        draggable: true,
-        resizable: true,
-        closeOnOutsideClick: false,
-        showConfirm: true,
-        showCancel: true,
-        confirmText: "Save",
-        cancelText: "Cancel",
-        onConfirm: () => {
-            // Step 16e) Get form data
-            const formData = getFormData(formContent);
-
-            // Step 16f) Convert form data types
-            formData.dampingFactor = parseFloat(formData.dampingFactor);
-            if (isNaN(formData.dampingFactor)) formData.dampingFactor = 0.05;
-
-            // Parse checkbox values (come as strings "true" or "false")
-            formData.cursorZoom = formData.cursorZoom === "true" || formData.cursorZoom === true;
-            formData.showClippingPlane = formData.showClippingPlane === "true" || formData.showClippingPlane === true;
-            formData.previewClippingPlane = formData.previewClippingPlane === "true" || formData.previewClippingPlane === true;
-            formData.showGrid = formData.showGrid === "true" || formData.showGrid === true;
-
-            formData.cursorOpacity = parseFloat(formData.cursorOpacity);
-            if (isNaN(formData.cursorOpacity)) formData.cursorOpacity = 0.2;
-            formData.lightBearing = parseInt(formData.lightBearing) || 135;
-            formData.lightElevation = parseInt(formData.lightElevation) || 15;
-            formData.ambientLightIntensity = parseFloat(formData.ambientLightIntensity);
-            if (isNaN(formData.ambientLightIntensity)) formData.ambientLightIntensity = 0.8;
-            formData.directionalLightIntensity = parseFloat(formData.directionalLightIntensity);
-            if (isNaN(formData.directionalLightIntensity)) formData.directionalLightIntensity = 0.5;
-            formData.shadowIntensity = parseFloat(formData.shadowIntensity);
-            if (isNaN(formData.shadowIntensity)) formData.shadowIntensity = 0.5;
-            formData.axisLock = formData.axisLock || "none";
-            formData.clippingNear = parseInt(formData.clippingNear) || -50000;
-            formData.clippingFar = parseInt(formData.clippingFar) || 50000;
-            formData.gridSize = parseFloat(formData.gridSize);
-            if (isNaN(formData.gridSize)) formData.gridSize = 10;
-            formData.gridOpacity = parseFloat(formData.gridOpacity);
-            if (isNaN(formData.gridOpacity)) formData.gridOpacity = 0.3;
-            formData.gridPlane = formData.gridPlane || "XY";
-            formData.gizmoDisplay = formData.gizmoDisplay || "only_when_orbit_or_rotate";
-
-            // Step 16h) Save settings
-            console.log("💾 Saving 3D settings:", formData);
-            save3DSettings(formData);
-
-            // Step 16i) Apply settings
-            console.log("⚙️ Applying 3D settings:", formData);
-            apply3DSettings(formData);
-
-            console.log("✅ 3D settings saved and applied");
-        },
-        onCancel: () => {
-            console.log("❌ 3D settings dialog cancelled");
-        }
-    });
-
-    // Step 16j) Show dialog
-    dialog.show();
-}
+// Step 16a) Moved to separate module: src/dialog/popups/ThreeDSettingsDialog.js
+// Step 16b) Function is now available via window.show3DSettingsDialog
 
 // Step 17) Apply 3D settings
 function apply3DSettings(settings) {
@@ -44024,7 +43774,7 @@ function apply3DSettings(settings) {
         };
         cameraControls.updateSettings(cameraSettings);
 
-        // Update gizmo display immediately
+        // Step 17a.1) Update gizmo display immediately
         if (settings.gizmoDisplay !== undefined) {
             updateGizmoDisplay();
         }
@@ -44051,65 +43801,22 @@ function apply3DSettings(settings) {
         }
     }
 
-    // Step 17d) Update clipping planes
-    if (threeRenderer && settings.clippingNear !== undefined && settings.clippingFar !== undefined) {
-        threeRenderer.updateClippingPlanes(settings.clippingNear, settings.clippingFar);
-    }
-
-    // Step 17e) Update clipping plane visualization (only if not preview)
-    if (threeRenderer && settings.showClippingPlane !== undefined && !settings.previewClippingPlane) {
-        console.log("⚙️ Applying showClippingPlane:", settings.showClippingPlane, "type:", typeof settings.showClippingPlane);
-        if (typeof threeRenderer.setClippingPlaneVisualization === "function") {
-            threeRenderer.setClippingPlaneVisualization(settings.showClippingPlane);
-        }
-    }
-
-    // Step 17f) Update grid settings
+    // Step 17d) Update orbit center (needed for camera controls, removed grid-specific code)
     if (threeRenderer) {
-        // Step 17f.1) Update data centroid for grid positioning
         const centroid = calculateDataCentroid();
         if (typeof threeRenderer.setOrbitCenter === "function") {
             threeRenderer.setOrbitCenter(centroid.x, centroid.y, centroid.z);
         }
-
-        // Step 17f.2) Update grid size (stores settings even if grid is off)
-        if (settings.gridSize !== undefined) {
-            console.log("⚙️ Applying gridSize:", settings.gridSize);
-            if (typeof threeRenderer.updateGridSize === "function") {
-                threeRenderer.updateGridSize(settings.gridSize);
-            }
-        }
-
-        // Step 17f.3) Update grid opacity (stores settings even if grid is off)
-        if (settings.gridOpacity !== undefined) {
-            console.log("⚙️ Applying gridOpacity:", settings.gridOpacity);
-            if (typeof threeRenderer.updateGridOpacity === "function") {
-                threeRenderer.updateGridOpacity(settings.gridOpacity);
-            }
-        }
-
-        // Step 17f.4) Update grid plane (stores settings even if grid is off)
-        if (settings.gridPlane !== undefined) {
-            console.log("⚙️ Applying gridPlane:", settings.gridPlane);
-            if (typeof threeRenderer.updateGridPlane === "function") {
-                threeRenderer.updateGridPlane(settings.gridPlane);
-            }
-        }
-
-        // Step 17f.5) Update grid visibility (do this LAST so grid is created with correct settings)
-        if (settings.showGrid !== undefined) {
-            console.log("⚙️ Applying showGrid:", settings.showGrid, "type:", typeof settings.showGrid);
-            if (typeof threeRenderer.setGridVisible === "function") {
-                threeRenderer.setGridVisible(settings.showGrid);
-            }
-        }
     }
 
-    // Step 17g) Request re-render to apply changes
+    // Step 17e) Request re-render to apply changes
     if (threeRenderer) {
         threeRenderer.requestRender();
     }
 }
+
+// Step 17f) Expose apply3DSettings on window for ThreeDSettingsDialog module
+window.apply3DSettings = apply3DSettings;
 
 // Step 17g) Update gizmo display based on current mode and state
 function updateGizmoDisplay() {
