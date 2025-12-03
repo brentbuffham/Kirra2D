@@ -1010,4 +1010,32 @@ export class CameraControls {
         // Step 32e) Continue animation loop
         this.animationFrameId = requestAnimationFrame(this.animate);
     }
+
+    // Step 33) Dispose method to cleanup all resources and prevent memory leaks
+    dispose() {
+        // Step 33a) Cancel animation frame if active
+        if (this.animationFrameId !== null) {
+            cancelAnimationFrame(this.animationFrameId);
+            this.animationFrameId = null;
+        }
+
+        // Step 33b) Detach all event listeners
+        this.detachEvents();
+
+        // Step 33c) Clear all references
+        this.threeRenderer = null;
+        this.canvas2D = null;
+        this.container = null;
+        this.contextMenuHandler = null;
+
+        // Step 33d) Reset all state
+        this.resetStateFlags();
+        this.velocityX = 0;
+        this.velocityY = 0;
+        this.velocityOrbitX = 0;
+        this.velocityOrbitY = 0;
+        this.velocityRotation = 0;
+
+        console.log("🧹 CameraControls disposed - all resources cleaned up");
+    }
 }
