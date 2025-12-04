@@ -482,20 +482,11 @@ export class GeometryFactory {
         textMesh.anchorX = "center"; // Center horizontally
         textMesh.anchorY = "middle"; // Center vertically
 
-        // Step 2a) Load Roboto font from fonts folder
-        // For Vite: fonts in src/fonts/ can be accessed via import or moved to public/
-        // Using dynamic import path - Vite will handle the asset
-        // If font is in src/fonts/, use: new URL('../fonts/Roboto-Regular.ttf', import.meta.url).href
-        // If font is in public/fonts/, use: "/fonts/Roboto-Regular.ttf"
-        try {
-            // Try to load Roboto font - Vite will resolve the path
-            const robotoFontUrl = new URL("../fonts/Roboto-Regular.ttf", import.meta.url).href;
-            textMesh.font = robotoFontUrl;
-        } catch (error) {
-            // Fallback to system font if Roboto not found
-            console.warn("⚠️ Could not load Roboto font, using Arial fallback:", error);
-            textMesh.font = "Arial"; // System font fallback
-        }
+        // Step 2a) Font loading removed - using shared SDF texture baked at app startup
+        // The shared texture (set via Text.textureManager.sdfTexture in kirra.js) is automatically
+        // used by all Text instances, eliminating per-instance font loading and SDF generation.
+        // This provides: faster load times, lower memory usage, zero texture re-generation.
+        // If shared texture baking failed, Troika will fall back to default behavior.
 
         // Step 4) Set position
         textMesh.position.set(worldX, worldY, worldZ);
@@ -591,14 +582,10 @@ export class GeometryFactory {
         textMesh.anchorY = "middle";
         textMesh.fontStyle = "italic"; // Italicized text
 
-        // Step 4) Load italic font if available, else use regular with style
-        try {
-            const robotoFontUrl = new URL("../fonts/Roboto-Regular.ttf", import.meta.url).href;
-            textMesh.font = robotoFontUrl;
-        } catch (error) {
-            console.warn("⚠️ Could not load Roboto font, using Arial fallback:", error);
-            textMesh.font = "Arial";
-        }
+        // Step 4) Font loading removed - using shared SDF texture baked at app startup
+        // The shared texture (set via Text.textureManager.sdfTexture in kirra.js) is automatically
+        // used by all Text instances. Font style (italic) is applied via fontStyle property.
+        // If shared texture baking failed, Troika will fall back to default behavior.
 
         // Step 5) Set position
         textMesh.position.set(worldX, worldY, worldZ);

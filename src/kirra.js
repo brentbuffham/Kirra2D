@@ -31,6 +31,9 @@ import { CameraControls } from "./three/CameraControls.js";
 import { GeometryFactory } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
 import { PolygonSelection3D } from "./three/PolygonSelection3D.js";
+// Troika text optimization - configure builder and preload font for optimal performance
+import { configureTextBuilder, preloadFont } from "troika-three-text";
+import { Text } from "troika-three-text";
 // OBJ/MTL Loaders for textured mesh import
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
@@ -314,6 +317,7 @@ let interactionManager = null; // 3D raycasting and interaction manager
 let threeInitialized = false;
 let threeInitializationFailed = false; // Step 0a) Prevent retry storm if initialization fails
 let onlyShowThreeJS = false; // Toggle to show only Three.js rendering
+let troikaFontBaked = false; // Step 0b) Track if Troika font SDF texture has been baked
 
 // Step 1) Local coordinate offset for precision with large UTM coordinates
 // Three.js uses these local coordinates (offset from origin) to avoid floating-point errors
@@ -588,7 +592,64 @@ function calculateDataZCentroid() {
     return centroid.z;
 }
 
-function initializeThreeJS() {
+// Step 5a) Configure Troika text builder and preload font once at app startup for optimal performance
+// This configures optimal SDF settings and preloads all glyphs into Troika's shared texture atlas.
+// Troika automatically uses a shared atlas per sdfGlyphSize, so all Text instances benefit.
+// Result: faster load times, lower memory usage, zero texture re-generation after startup.
+async function optimizeTroikaFont() {
+    if (troikaFontBaked) {
+        console.log("✅ Troika font already optimized, skipping...");
+        return;
+    }
+
+    try {
+        console.log("🎨 Optimizing Troika font rendering...");
+
+        // Step 1) Configure text builder with optimal settings BEFORE any text is created
+        // This must be called before the first font request, or it will be ignored
+        configureTextBuilder({
+            sdfGlyphSize: 64, // Higher = sharper when zoomed, 64 is sweet spot
+            textureWidth: 2048, // Power of 2, safe maximum for most GPUs
+            sdfExponent: 9, // Default exponent for SDF encoding
+            sdfMargin: 1 / 16, // Margin outside glyph path (default)
+            useWorker: true // Use web worker for typesetting (default)
+        });
+
+        // Step 2) Define all characters that will be used in the app
+        const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-+*/=()[]{}<>|&^%$#@:;\"'\\/~`_";
+
+        // Step 3) Load font file (Roboto-Regular.ttf from src/fonts/)
+        const robotoFontUrl = new URL("./fonts/Roboto-Regular.ttf", import.meta.url).href;
+
+        // Step 4) Preload font with all glyphs - this populates Troika's shared texture atlas
+        // Troika maintains a shared atlas per sdfGlyphSize, so all Text instances will use it
+        await new Promise((resolve, reject) => {
+            preloadFont(
+                {
+                    font: robotoFontUrl,
+                    characters: glyphs,
+                    sdfGlyphSize: 64
+                },
+                (error) => {
+                    if (error) {
+                        reject(error);
+                    } else {
+                        resolve();
+                    }
+                }
+            );
+        });
+
+        troikaFontBaked = true;
+        console.log("✅ Troika font optimized successfully (2048x2048 texture, 64px glyphs, all characters preloaded)");
+    } catch (error) {
+        console.warn("⚠️ Failed to optimize Troika font, falling back to default behavior:", error);
+        // Don't set troikaFontBaked = true, so it will retry next time
+        // Text instances will still work, just without the optimization
+    }
+}
+
+async function initializeThreeJS() {
     if (threeInitialized) return;
 
     // Step 0a) Prevent retry storm - if initialization failed once, don't retry on every mouse move
@@ -617,7 +678,12 @@ function initializeThreeJS() {
         }
         threeRenderer = new ThreeRenderer(canvasContainer, canvas.clientWidth, canvas.clientHeight);
 
-        // Step 2a) Apply lighting settings
+        // Step 2a) Optimize Troika font rendering for optimal performance (one-time, shared by all text)
+        // This configures optimal SDF settings and preloads all glyphs into Troika's shared atlas.
+        // This must happen before creating any Text instances
+        await optimizeTroikaFont();
+
+        // Step 2b) Apply lighting settings
         if (settings.lightBearing !== undefined && settings.lightElevation !== undefined) {
             threeRenderer.updateLighting(settings.lightBearing, settings.lightElevation);
         }
@@ -1072,10 +1138,10 @@ function handle3DClick(event) {
         firstIntersect:
             intersects.length > 0
                 ? {
-                    object: intersects[0].object.type,
-                    userData: intersects[0].object.userData,
-                    distance: intersects[0].distance.toFixed(2)
-                }
+                      object: intersects[0].object.type,
+                      userData: intersects[0].object.userData,
+                      distance: intersects[0].distance.toFixed(2)
+                  }
                 : null
     });
 
@@ -2539,7 +2605,7 @@ let textsGroupVisible = true;
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
 // debouncedUpdateTreeView is defined later - stub it to prevent errors
-let debouncedUpdateTreeView = function () { };
+let debouncedUpdateTreeView = function () {};
 
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
@@ -8523,14 +8589,14 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Parsing Error",
                 "Failed to parse the file properly:<br><br>" +
-                criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
-                "<br><br>" +
-                "Common causes:<br><br>" +
-                "<li>Mixed delimiters (commas and tabs in same file)</li>" +
-                "<li>Unescaped quotes in text fields</li>" +
-                "<li>Inconsistent number of columns</li>" +
-                "<br><br>" +
-                "Please check your file format and try again.",
+                    criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
+                    "<br><br>" +
+                    "Common causes:<br><br>" +
+                    "<li>Mixed delimiters (commas and tabs in same file)</li>" +
+                    "<li>Unescaped quotes in text fields</li>" +
+                    "<li>Inconsistent number of columns</li>" +
+                    "<br><br>" +
+                    "Please check your file format and try again.",
                 "error"
             );
             return; // Exit early
@@ -8544,15 +8610,15 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Import Warning",
                 "The file was imported but there were " +
-                parseResult.errors.length +
-                " parsing warnings:<br><br>" +
-                parseResult.errors
-                    .slice(0, 5)
-                    .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-                    .join("") +
-                additionalErrors +
-                "<br><br>" +
-                "Some data may have been skipped. Check your results carefully.",
+                    parseResult.errors.length +
+                    " parsing warnings:<br><br>" +
+                    parseResult.errors
+                        .slice(0, 5)
+                        .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+                        .join("") +
+                    additionalErrors +
+                    "<br><br>" +
+                    "Some data may have been skipped. Check your results carefully.",
                 "warning"
             );
         }
@@ -8770,17 +8836,17 @@ function parseKADFile(fileData) {
             const errorDetailsHtml =
                 errorCount > 0
                     ? "<details>" +
-                    "<summary>View Error Details (" +
-                    errorCount +
-                    " errors)</summary>" +
-                    '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-                    errorDetails
-                        .slice(0, 10)
-                        .map((error) => "<li>" + error + "</li>")
-                        .join("") +
-                    (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-                    "</ul>" +
-                    "</details>"
+                      "<summary>View Error Details (" +
+                      errorCount +
+                      " errors)</summary>" +
+                      '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+                      errorDetails
+                          .slice(0, 10)
+                          .map((error) => "<li>" + error + "</li>")
+                          .join("") +
+                      (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+                      "</ul>" +
+                      "</details>"
                     : "";
 
             showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -9516,9 +9582,11 @@ function convertPointsToAllDataCSV() {
         const hole = visibleBlastHoles[i];
         const row = `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation.toFixed(decimalPlaces)},${hole.startYLocation.toFixed(decimalPlaces)},${hole.startZLocation},${hole.endXLocation.toFixed(decimalPlaces)},${hole.endYLocation.toFixed(decimalPlaces)},${hole.endZLocation.toFixed(
             decimalPlaces
-        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${hole.fromHoleID
-            },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${hole.measuredMassTimeStamp
-            },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
+        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${
+            hole.fromHoleID
+        },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${
+            hole.measuredMassTimeStamp
+        },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
         csv += row + "\n";
     }
     return csv;
@@ -10182,9 +10250,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
     const table = new Uint32Array(256);
-    for (let i = 256; i--;) {
+    for (let i = 256; i--; ) {
         let tmp = i;
-        for (let k = 8; k--;) {
+        for (let k = 8; k--; ) {
             tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
         }
         table[i] = tmp;
@@ -15286,29 +15354,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
             `
             <div style="text-align: center;">
                 <p><strong>` +
-            resultMessage +
-            `</strong></p>
+                resultMessage +
+                `</strong></p>
                 <p><strong>Input:</strong> ` +
-            selectedEntities.length +
-            ` entities</p>
+                selectedEntities.length +
+                ` entities</p>
                 <p><strong>Output:</strong> ` +
-            polygons.length +
-            ` polygon(s)</p>
+                polygons.length +
+                ` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-            params.radius +
-            `m</p>
+                params.radius +
+                `m</p>
                 <p><strong>Rotation:</strong> ` +
-            params.rotationOffset +
-            `°</p>
+                params.rotationOffset +
+                `°</p>
                 <p><strong>Starburst:</strong> ` +
-            params.starburstOffset * 100 +
-            `%</p>
+                params.starburstOffset * 100 +
+                `%</p>
                 <p><strong>Line Width:</strong> ` +
-            params.lineWidth +
-            `</p>
+                params.lineWidth +
+                `</p>
                 <p><strong>Location:</strong> ` +
-            (params.useToeLocation ? "End/Toe" : "Start/Collar") +
-            `</p>
+                (params.useToeLocation ? "End/Toe" : "Start/Collar") +
+                `</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -15325,8 +15393,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-            (error.message || "Unknown error occurred") +
-            `</p>
+                (error.message || "Unknown error occurred") +
+                `</p>
             </div>
         `
         );
@@ -21394,11 +21462,11 @@ function timeChart() {
             // Update selected holes array for single bin
             timingWindowHolesSelected = holeIDs[selectedIndex]
                 ? holeIDs[selectedIndex]
-                    .map((combinedID) => {
-                        const [entityName, holeID] = combinedID.split(":");
-                        return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                    })
-                    .filter(Boolean)
+                      .map((combinedID) => {
+                          const [entityName, holeID] = combinedID.split(":");
+                          return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                      })
+                      .filter(Boolean)
                 : [];
 
             // Redraw canvas WITHOUT calling timeChart
@@ -28432,8 +28500,7 @@ function calculateMissingGeometry(hole) {
             // This fixes the issue where grade coordinates remain at default values (startZ - 10)
             // when importing CSV files with end coordinates but grade set to "-- calculate --"
             // Check if grade coordinates are still at default values (indicating they need calculation)
-            const gradeAtDefault = (hole.gradeXLocation === hole.startXLocation && hole.gradeYLocation === hole.startYLocation && hole.gradeZLocation === hole.startZLocation - 10) ||
-                (hole.gradeXLocation === hole.startXLocation && hole.gradeYLocation === hole.startYLocation);
+            const gradeAtDefault = (hole.gradeXLocation === hole.startXLocation && hole.gradeYLocation === hole.startYLocation && hole.gradeZLocation === hole.startZLocation - 10) || (hole.gradeXLocation === hole.startXLocation && hole.gradeYLocation === hole.startYLocation);
 
             if (gradeAtDefault) {
                 // Step 3a) Calculate grade coordinates based on actual length and subdrill
@@ -31965,10 +32032,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
     return closestPoint
         ? {
-            point: closestPoint,
-            type: snapType,
-            distance: minDistance
-        }
+              point: closestPoint,
+              type: snapType,
+              distance: minDistance
+          }
         : null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
