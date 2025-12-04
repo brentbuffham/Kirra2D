@@ -75,7 +75,7 @@ export function drawHoleThreeJS(hole) {
         // Step 3b) Zero diameter hole - draw unfilled square
         const squareSize = 10 / window.currentScale; // 10 pixels converted to world units, influenced by scale
         const color = window.darkModeEnabled ? 0xffffff : 0x000000;
-        holeGroup = GeometryFactory.createSquareHole(collarLocal.x, collarLocal.y, collarZ, squareSize, color);
+        holeGroup = GeometryFactory.createZeroDiameterHole(collarLocal.x, collarLocal.y, collarZ, gradeLocal.x, gradeLocal.y, gradeZ, toeLocal.x, toeLocal.y, toeZ, squareSize, hole.subdrillAmount || 0, window.darkModeEnabled);
     } else {
         // Step 3c) Normal hole - full visualization
         holeGroup = GeometryFactory.createHole(collarLocal.x, collarLocal.y, collarZ, gradeLocal.x, gradeLocal.y, gradeZ, toeLocal.x, toeLocal.y, toeZ, hole.holeDiameter, hole.holeColor || "#FF0000", window.holeScale, hole.subdrillAmount || 0, window.darkModeEnabled);
@@ -658,10 +658,10 @@ export function drawBackgroundImageThreeJS(imageId, imageCanvas, bbox, transpare
     // bbox format: [minX, minY, maxX, maxY] in world coordinates
     const minLocal = window.worldToThreeLocal(bbox[0], bbox[1]);
     const maxLocal = window.worldToThreeLocal(bbox[2], bbox[3]);
-    
+
     // Create local bbox
     const localBbox = [minLocal.x, minLocal.y, maxLocal.x, maxLocal.y];
-    
+
     console.log("🖼️ [3D IMAGE COORDS] World bbox:", bbox, "-> Local bbox:", localBbox);
 
     const imageMesh = GeometryFactory.createImagePlane(imageCanvas, localBbox, transparency, zElevation);
