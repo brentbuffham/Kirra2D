@@ -154,9 +154,21 @@ export class InteractionManager {
 		if (!intersects || intersects.length === 0) return null;
 
 		for (const intersect of intersects) {
-			const userData = intersect.object.userData;
+			let object = intersect.object;
+			let userData = object.userData;
 
-			// Step 6.5a) Check if this object is a surface
+			// Step 6.5a) Traverse up the parent chain to find surface userData
+			// Raycast might hit child meshes that don't have userData (especially for textured meshes)
+			while (object && (!userData || !userData.type || userData.type !== "surface" || !userData.surfaceId)) {
+				object = object.parent;
+				if (object) {
+					userData = object.userData;
+				} else {
+					break;
+				}
+			}
+
+			// Step 6.5b) Check if this object is a surface
 			if (userData && userData.type === "surface" && userData.surfaceId) {
 				console.log("🎯 Clicked surface:", userData.surfaceId, "at distance:", intersect.distance.toFixed(2));
 				return userData.surfaceId;
@@ -171,9 +183,21 @@ export class InteractionManager {
 		if (!intersects || intersects.length === 0) return null;
 
 		for (const intersect of intersects) {
-			const userData = intersect.object.userData;
+			let object = intersect.object;
+			let userData = object.userData;
 
-			// Step 6.6a) Check if this object is an image
+			// Step 6.6a) Traverse up the parent chain to find image userData
+			// Raycast might hit child meshes that don't have userData
+			while (object && (!userData || !userData.type || userData.type !== "image" || !userData.imageId)) {
+				object = object.parent;
+				if (object) {
+					userData = object.userData;
+				} else {
+					break;
+				}
+			}
+
+			// Step 6.6b) Check if this object is an image
 			if (userData && userData.type === "image" && userData.imageId) {
 				console.log("🎯 Clicked image:", userData.imageId, "at distance:", intersect.distance.toFixed(2));
 				return userData.imageId;
