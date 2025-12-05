@@ -1,6 +1,7 @@
 ///------------------ PRINT RENDERING FUNCTIONS ------------------///
 
 import { printCanvas, printCtx, getPrintBoundary, printMode } from "./PrintSystem.js";
+import * as SVG from "./SVGBuilder.js";
 
 const magnifyFont = 1.7;
 
@@ -136,6 +137,9 @@ export function printVoronoiMetric(metrics, metricName, getColorForMetric) {
     }
 }
 // Fix printBlastBoundary function
+/**
+ * @deprecated Use printBlastBoundarySVG() for vector PDF generation
+ */
 export function printBlastBoundary(polygon, color) {
     // FIX: Use window.worldToCanvas instead of manual coordinate transformation
     const screenCoords = polygon.map((point) => {
@@ -157,6 +161,17 @@ export function printBlastBoundary(polygon, color) {
     printCtx.stroke();
 }
 
+export function printBlastBoundarySVG(polygon, color) {
+    const screenCoords = polygon.map((point) => {
+        const [x, y] = window.worldToCanvas(point.x, point.y);
+        return {x, y};
+    });
+    return SVG.createSVGPolyline(screenCoords, "none", color, 2, true);
+}
+
+/**
+ * @deprecated Use printKADPointsSVG() for vector PDF generation
+ */
 export function printKADPoints(x, y, z, color) {
     printCtx.beginPath();
     printCtx.arc(x, y, 2, 0, 2 * Math.PI);
@@ -166,6 +181,13 @@ export function printKADPoints(x, y, z, color) {
     printCtx.fill();
 }
 
+export function printKADPointsSVG(x, y, z, color) {
+    return SVG.createSVGCircle(x, y, 2, color, color, 1);
+}
+
+/**
+ * @deprecated Use printKADLinesSVG() for vector PDF generation
+ */
 export function printKADLines(sx, sy, ex, ey, sz, ez, lineWidth, color) {
     printCtx.beginPath();
     printCtx.moveTo(sx, sy);
@@ -175,6 +197,13 @@ export function printKADLines(sx, sy, ex, ey, sz, ez, lineWidth, color) {
     printCtx.stroke();
 }
 
+export function printKADLinesSVG(sx, sy, ex, ey, sz, ez, lineWidth, color) {
+    return SVG.createSVGLine(sx, sy, ex, ey, color, lineWidth);
+}
+
+/**
+ * @deprecated Use printKADPolysSVG() for vector PDF generation
+ */
 export function printKADPolys(sx, sy, ex, ey, sz, ez, lineWidth, color, isClosed) {
     printCtx.beginPath();
     printCtx.moveTo(sx, sy);
@@ -187,6 +216,13 @@ export function printKADPolys(sx, sy, ex, ey, sz, ez, lineWidth, color, isClosed
     }
 }
 
+export function printKADPolysSVG(sx, sy, ex, ey, sz, ez, lineWidth, color, isClosed) {
+    return SVG.createSVGPolyline([{x: sx, y: sy}, {x: ex, y: ey}], "none", color, lineWidth, isClosed);
+}
+
+/**
+ * @deprecated Use printKADCirclesSVG() for vector PDF generation
+ */
 export function printKADCircles(x, y, z, radius, lineWidth, strokeColor, context) {
     printCtx.strokeStyle = strokeColor;
     printCtx.beginPath();
@@ -197,12 +233,35 @@ export function printKADCircles(x, y, z, radius, lineWidth, strokeColor, context
     printCtx.stroke();
 }
 
+export function printKADCirclesSVG(x, y, z, radius, lineWidth, strokeColor, context) {
+    const radiusInPixels = radius * context.currentScale;
+    return SVG.createSVGCircle(x, y, radiusInPixels, "none", strokeColor, lineWidth);
+}
+
+/**
+ * @deprecated Use printKADTextsSVG() for vector PDF generation
+ */
 export function printKADTexts(x, y, z, text, color, context) {
     //printCtx.fillStyle = color;
     printCtx.font = parseInt(context.currentFontSize * magnifyFont - 2) + "px Arial";
     printMultilineText(printCtx, text, x, y, context.currentFontSize * magnifyFont, "left", color, color, false);
 }
 
+export function printKADTextsSVG(x, y, z, text, color, context) {
+    const fontSize = parseInt(context.currentFontSize * magnifyFont - 2);
+    const lines = text.split("\n");
+    let svgText = "";
+    const lineHeight = context.currentFontSize * magnifyFont;
+    for (let i = 0; i < lines.length; i++) {
+        svgText += SVG.createSVGText(x, y + i * lineHeight, lines[i], color, fontSize + "", "Arial", "normal", "start", "auto");
+    }
+    return svgText;
+}
+
+/**
+ * @deprecated Use printTrackSVG() for vector PDF generation
+ * Kept for backward compatibility with raster PDF generation
+ */
 export function printTrack(lineStartX, lineStartY, lineEndX, lineEndY, gradeX, gradeY, color, subdrillAmount) {
     printCtx.lineWidth = 1;
     const printColor = "black";
@@ -251,6 +310,9 @@ export function printTrack(lineStartX, lineStartY, lineEndX, lineEndY, gradeX, g
     }
 }
 
+/**
+ * @deprecated Use printHoleToeSVG() for vector PDF generation
+ */
 export function printHoleToe(x, y, fillColor, strokeColor, radius) {
     printCtx.beginPath();
     // Use the toeSizeInMeters directly to set the radius
@@ -262,6 +324,13 @@ export function printHoleToe(x, y, fillColor, strokeColor, radius) {
     printCtx.fill();
 }
 
+export function printHoleToeSVG(x, y, fillColor, strokeColor, radius) {
+    return SVG.createSVGCircle(x, y, radius, fillColor, "black", 1);
+}
+
+/**
+ * @deprecated Use printHoleSVG() for vector PDF generation
+ */
 export function printHole(x, y, radius, strokeColor) {
     printCtx.strokeStyle = "black";
     printCtx.fillStyle = "black";
@@ -272,6 +341,12 @@ export function printHole(x, y, radius, strokeColor) {
     printCtx.arc(x, y, drawRadius, 0, 2 * Math.PI);
     printCtx.fill(); // fill the circle with the fill color
     printCtx.stroke(); // draw the circle border with the stroke color
+}
+
+export function printHoleSVG(x, y, radius, strokeColor) {
+    const minRadius = 1.5;
+    const drawRadius = radius > minRadius ? radius : minRadius;
+    return SVG.createSVGCircle(x, y, drawRadius, "black", "black", 1);
 }
 
 export function printDummy(x, y, radius, strokeColor) {
@@ -308,18 +383,36 @@ export function printHiHole(x, y, radius, fillColor, strokeColor) {
     printCtx.stroke(); // draw the circle border with the stroke color
 }
 
+/**
+ * @deprecated Use printTextSVG() for vector PDF generation
+ */
 export function printText(x, y, text, color, context) {
     printCtx.font = parseInt(context.currentFontSize * magnifyFont - 2) + "px Arial";
     printCtx.fillStyle = color;
     printCtx.fillText(text, x, y);
 }
 
+export function printTextSVG(x, y, text, color, context) {
+    const fontSize = parseInt(context.currentFontSize * magnifyFont - 2);
+    return SVG.createSVGText(x, y, text, color, fontSize + "", "Arial", "normal", "start", "auto");
+}
+
+/**
+ * @deprecated Use printRightAlignedTextSVG() for vector PDF generation
+ */
 export function printRightAlignedText(x, y, text, color, context) {
     printCtx.font = parseInt(context.currentFontSize * magnifyFont - 2) + "px Arial";
     const textWidth = printCtx.measureText(text).width;
     printCtx.fillStyle = color;
     // Draw the text at an x position minus the text width for right alignment
     printText(x - textWidth, y, text, color, context);
+}
+
+export function printRightAlignedTextSVG(x, y, text, color, context) {
+    const fontSize = parseInt(context.currentFontSize * magnifyFont - 2);
+    // Approximate text width (rough estimate: 0.6 * fontSize * text.length)
+    const textWidth = fontSize * 0.6 * text.length;
+    return SVG.createSVGText(x - textWidth, y, text, color, fontSize + "", "Arial", "normal", "end", "auto");
 }
 
 export function printMultilineText(printCtx, text, x, y, lineHeight = 16, alignment = "left", textColor, boxColor, showBox = false) {
@@ -2086,4 +2179,287 @@ export function printBackgroundImage(context) {
             printCtx.restore();
         }
     });
+}
+
+// ==================== SVG RENDERING FUNCTIONS ====================
+// These functions generate SVG strings for vector PDF generation
+
+export function printTrackSVG(lineStartX, lineStartY, lineEndX, lineEndY, gradeX, gradeY, color, subdrillAmount) {
+    let svg = SVG.createSVGLine(lineStartX, lineStartY, lineEndX, lineEndY, color, 1);
+    if (subdrillAmount < 0) {
+        // Negative subdrill - draw red dashed line
+        svg += SVG.createSVGLine(lineEndX, lineEndY, gradeX, gradeY, "rgba(255, 0, 0, 0.2)", 1, "5,5");
+    }
+    return svg;
+}
+
+export function printArrowSVG(startX, startY, endX, endY, color, connScale, connectorCurve, context) {
+    const arrowWidth = (connScale / 4) * context.currentScale;
+    const arrowLength = 2 * (connScale / 4) * context.currentScale;
+    
+    if (endX === startX && endY === startY) {
+        // Self-referencing - house shape
+        const size = (connScale / 4) * context.currentScale;
+        const points = [
+            {x: endX, y: endY},
+            {x: endX - size / 2, y: endY + size},
+            {x: endX - size / 2, y: endY + 1.5 * size},
+            {x: endX + size / 2, y: endY + 1.5 * size},
+            {x: endX + size / 2, y: endY + size}
+        ];
+        return SVG.createSVGPolyline(points, color, color, 2, true);
+    }
+    
+    let pathData = "";
+    let angle;
+    
+    if (connectorCurve === 0) {
+        // Straight arrow
+        pathData = "M " + startX + " " + startY + " L " + endX + " " + endY;
+        angle = Math.atan2(startX - endX, startY - endY);
+    } else {
+        // Curved arrow
+        const midX = (startX + endX) / 2;
+        const midY = (startY + endY) / 2;
+        const dx = endX - startX;
+        const dy = endY - startY;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const radians = (connectorCurve * Math.PI) / 180;
+        const curveFactor = (connectorCurve / 90) * distance * 0.5;
+        const perpX = -dy / distance;
+        const perpY = dx / distance;
+        const controlX = midX + perpX * curveFactor;
+        const controlY = midY + perpY * curveFactor;
+        
+        pathData = "M " + startX + " " + startY + " Q " + controlX + " " + controlY + " " + endX + " " + endY;
+        
+        // Calculate tangent at end point
+        const tangentX = 2 * (endX - controlX);
+        const tangentY = 2 * (endY - controlY);
+        angle = Math.atan2(tangentY, tangentX);
+    }
+    
+    // Add arrowhead
+    const arrowX1 = endX - arrowLength * Math.cos(angle - Math.PI / 6);
+    const arrowY1 = endY - arrowLength * Math.sin(angle - Math.PI / 6);
+    const arrowX2 = endX - arrowLength * Math.cos(angle + Math.PI / 6);
+    const arrowY2 = endY - arrowLength * Math.sin(angle + Math.PI / 6);
+    
+    pathData += " M " + arrowX1 + " " + arrowY1 + " L " + endX + " " + endY + " L " + arrowX2 + " " + arrowY2;
+    
+    return SVG.createSVGPath(pathData, color, color, 2);
+}
+
+export function printSurfaceSVG(context) {
+    let svg = "";
+    let hasSurfaces = false;
+    let allMinZ = Infinity;
+    let allMaxZ = -Infinity;
+    
+    // Check all loaded surfaces for visibility and calculate global Z range
+    for (const [surfaceId, surface] of context.loadedSurfaces.entries()) {
+        if (surface.visible === false) continue;
+        if (surface.isTexturedMesh) continue;
+        
+        if (surface.points && surface.points.length > 0) {
+            hasSurfaces = true;
+            surface.points.forEach((point) => {
+                if (point.z < allMinZ) allMinZ = point.z;
+                if (point.z > allMaxZ) allMaxZ = point.z;
+            });
+        }
+    }
+    
+    if (!hasSurfaces) return "";
+    
+    // Draw all visible surfaces with their individual gradients
+    for (const [surfaceId, surface] of context.loadedSurfaces.entries()) {
+        if (surface.visible === false) continue;
+        if (surface.isTexturedMesh) continue;
+        
+        if (surface.triangles && surface.triangles.length > 0) {
+            surface.triangles.forEach((triangle) => {
+                svg += printTriangleWithGradientSVG(triangle, allMinZ, allMaxZ, surface.transparency || 1.0, surface.gradient || "default", context);
+            });
+        }
+    }
+    
+    return svg;
+}
+
+export function printTriangleWithGradientSVG(triangle, globalMinZ, globalMaxZ, alpha, gradient, context) {
+    const [p1, p2, p3] = triangle.vertices;
+    const [x1, y1] = context.worldToCanvas(p1.x, p1.y);
+    const [x2, y2] = context.worldToCanvas(p2.x, p2.y);
+    const [x3, y3] = context.worldToCanvas(p3.x, p3.y);
+    
+    // Check if surface is flat
+    if (globalMaxZ - globalMinZ < 0.001) {
+        return SVG.createSVGPolyline([{x: x1, y: y1}, {x: x2, y: y2}, {x: x3, y: y3}], "rgba(255, 165, 0, 0.7)", "none", 0, true);
+    }
+    
+    // Create gradient
+    const gradientId = "grad_" + Math.random().toString(36).substr(2, 9);
+    const color1 = context.elevationToColor(p1.z, globalMinZ, globalMaxZ, gradient);
+    const color2 = context.elevationToColor(p2.z, globalMinZ, globalMaxZ, gradient);
+    const color3 = context.elevationToColor(p3.z, globalMinZ, globalMaxZ, gradient);
+    
+    const stops = [
+        {offset: "0%", color: color1},
+        {offset: "50%", color: color2},
+        {offset: "100%", color: color3}
+    ];
+    
+    const gradientDef = SVG.createSVGLinearGradient(gradientId, stops, x1, y1, x3, y3);
+    const trianglePath = SVG.createSVGPolyline([{x: x1, y: y1}, {x: x2, y: y2}, {x: x3, y: y3}], "url(#" + gradientId + ")", "none", 0, true);
+    
+    return gradientDef + trianglePath;
+}
+
+/**
+ * @deprecated Use printBoundarySVG() for vector PDF generation
+ */
+export function drawPrintBoundary(ctx, canvas) {
+    // Original implementation in PrintSystem.js
+}
+
+export function printBoundarySVG(boundary) {
+    if (!boundary) return "";
+    let svg = "";
+    
+    // Outer boundary (red dashed)
+    svg += SVG.createSVGRect(boundary.x, boundary.y, boundary.width, boundary.height, "none", "#ff0000", 2, "10,5");
+    
+    // Inner boundary (blue dashed)
+    const margin = boundary.width * boundary.marginPercent;
+    svg += SVG.createSVGRect(boundary.x + margin, boundary.y + margin, boundary.width - margin * 2, boundary.height - margin * 2, "none", "#0066cc", 1, "5,3");
+    
+    return svg;
+}
+
+/**
+ * SVG version of printData - generates SVG for all print elements
+ * This mirrors the functionality of printData but generates SVG strings instead of drawing to canvas
+ */
+export function printDataSVG(allBlastHoles, selectedHole, context) {
+    let svg = "";
+    
+    const displayOptions = context.getDisplayOptions();
+    
+    // Debug logging
+    console.log("printDataSVG called:");
+    console.log("  allBlastHoles param:", allBlastHoles ? allBlastHoles.length : 0);
+    console.log("  context.allBlastHoles:", context.allBlastHoles ? context.allBlastHoles.length : 0);
+    console.log("  allKADDrawingsMap:", context.allKADDrawingsMap ? context.allKADDrawingsMap.size : 0);
+    console.log("  loadedSurfaces:", context.loadedSurfaces ? context.loadedSurfaces.size : 0);
+    
+    const visibleBlastHoles = allBlastHoles ? allBlastHoles.filter((hole) => hole.visible !== false) : [];
+    console.log("  visibleBlastHoles after filter:", visibleBlastHoles.length);
+    
+    let holeMap = new Map();
+    if (visibleBlastHoles && visibleBlastHoles.length > 0) {
+        holeMap = context.buildHoleMap(visibleBlastHoles);
+    }
+
+    // Draw background images (as raster - handled separately)
+    // Note: Images will be added as raster layer in PrintSystem.js
+
+    // Draw surfaces
+    svg += printSurfaceSVG(context);
+
+    // Draw KAD entities
+    if (context.allKADDrawingsMap && context.allKADDrawingsMap.size > 0) {
+        for (const [name, entity] of context.allKADDrawingsMap.entries()) {
+            if (entity.visible === false) continue;
+            
+            if (entity.entityType === "point") {
+                const simplifiedPoints = context.simplifyByPxDist ? context.simplifyByPxDist(entity.data, 3) : entity.data;
+                for (const pointData of simplifiedPoints) {
+                    const [x, y] = context.worldToCanvas(pointData.pointXLocation, pointData.pointYLocation);
+                    let lineWidthForDisplay = pointData.lineWidth || 2;
+                    if (lineWidthForDisplay < 2) lineWidthForDisplay = 4;
+                    svg += printKADPointsSVG(x, y, pointData.pointZLocation, pointData.color);
+                }
+            } else if (entity.entityType === "circle") {
+                entity.data.forEach((circle) => {
+                    const [x, y] = context.worldToCanvas(circle.pointXLocation, circle.pointYLocation);
+                    svg += printKADCirclesSVG(x, y, circle.pointZLocation, circle.radius, circle.lineWidth, circle.color, context);
+                });
+            } else if (entity.entityType === "text") {
+                entity.data.forEach((textData) => {
+                    if (textData && textData.text) {
+                        const [x, y] = context.worldToCanvas(textData.pointXLocation, textData.pointYLocation);
+                        svg += printKADTextsSVG(x, y, textData.pointZLocation, textData.text, textData.color, context);
+                    }
+                });
+            } else if (entity.entityType === "line" || entity.entityType === "poly") {
+                const points = entity.data;
+                if (points.length < 2) return;
+                
+                for (let i = 0; i < points.length - 1; i++) {
+                    const [sx, sy] = context.worldToCanvas(points[i].pointXLocation, points[i].pointYLocation);
+                    const [ex, ey] = context.worldToCanvas(points[i + 1].pointXLocation, points[i + 1].pointYLocation);
+                    svg += printKADPolysSVG(sx, sy, ex, ey, points[i].pointZLocation, points[i + 1].pointZLocation, points[i].lineWidth || 1, points[i].color, false);
+                }
+                
+                if (entity.entityType === "poly" && points.length > 2) {
+                    const [sx, sy] = context.worldToCanvas(points[points.length - 1].pointXLocation, points[points.length - 1].pointYLocation);
+                    const [ex, ey] = context.worldToCanvas(points[0].pointXLocation, points[0].pointYLocation);
+                    svg += printKADPolysSVG(sx, sy, ex, ey, points[points.length - 1].pointZLocation, points[0].pointZLocation, points[0].lineWidth || 1, points[0].color, true);
+                }
+            }
+        }
+    }
+
+    // Draw Voronoi overlays if enabled
+    if (displayOptions.voronoiPF && context.selectedVoronoiMetric) {
+        // Voronoi rendering would go here - simplified for now
+        // Full implementation would call printVoronoiLegendAndCellsSVG
+    }
+
+    // Draw holes
+    if (visibleBlastHoles && visibleBlastHoles.length > 0) {
+        const toeSizeInMeters = parseFloat(document.getElementById("toeSlider")?.value || 3);
+        const connScale = parseFloat(document.getElementById("connSlider")?.value || 17);
+        
+        for (const hole of visibleBlastHoles) {
+            const [x, y] = context.worldToCanvas(hole.startXLocation, hole.startYLocation);
+            const [gradeX, gradeY] = context.worldToCanvas(hole.gradeXLocation, hole.gradeYLocation);
+            const [lineEndX, lineEndY] = context.worldToCanvas(hole.endXLocation, hole.endYLocation);
+
+            // Draw track if angled
+            if (hole.holeAngle > 0) {
+                svg += printTrackSVG(x, y, lineEndX, lineEndY, gradeX, gradeY, "black", hole.subdrillAmount);
+            }
+
+            // Draw toe
+            if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
+                const radiusInPixels = toeSizeInMeters * context.currentScale;
+                svg += printHoleToeSVG(lineEndX, lineEndY, context.transparentFillColor || "rgba(255,255,255,0.5)", "black", radiusInPixels);
+            }
+
+            // Draw hole main shape
+            const holeRadius = (hole.holeDiameter / 1000 / 2) * context.holeScale * context.currentScale;
+            svg += printHoleSVG(x, y, holeRadius, "black");
+
+            // Draw hole labels/text (simplified - full implementation would call printHoleTextsAndConnectorsSVG)
+            if (displayOptions.holeID) {
+                svg += printTextSVG(x + holeRadius + 5, y, hole.holeID, "black", context);
+            }
+        }
+    }
+
+    // Draw footer info text
+    const fontSize = 16;
+    const canvasHeight = context.canvasHeight || (context.canvas ? context.canvas.height : 1000);
+    if (visibleBlastHoles && visibleBlastHoles.length > 0) {
+        svg += SVG.createSVGText(10, canvasHeight - 85, "Holes Displayed: " + visibleBlastHoles.length, "black", fontSize + "", "Arial");
+        svg += SVG.createSVGText(10, canvasHeight - 70, "Scale [ 1:" + context.currentScale.toFixed(4) + " ]", "black", fontSize + "", "Arial");
+    }
+    svg += SVG.createSVGText(10, canvasHeight - 55, "Version Build: " + (context.buildVersion || "unknown"), "blue", fontSize + "", "Arial");
+    const now = new Date();
+    const dateNow = now.toLocaleDateString("en-AU", { year: "numeric", month: "long", day: "numeric" }) + " " + now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+    svg += SVG.createSVGText(10, canvasHeight - 35, "Date: " + dateNow, "black", fontSize + "", "Arial");
+
+    return svg;
 }

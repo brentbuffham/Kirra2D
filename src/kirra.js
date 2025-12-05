@@ -78,7 +78,7 @@ import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
 // Print and Statistics Modules
 //=================================================
 import { getBlastStatisticsPerEntity } from "./helpers/BlastStatistics.js";
-import { printMode, printOrientation, printPaperSize, isPrinting, paperRatios, printCanvas, printCtx, togglePrintMode, getPrintBoundary, drawPrintBoundary, printCanvasHiRes, printToPDF } from "./print/PrintSystem.js";
+import { printMode, printOrientation, printPaperSize, isPrinting, paperRatios, printCanvas, printCtx, togglePrintMode, getPrintBoundary, drawPrintBoundary, printCanvasHiRes, printToPDF, setupPrintEventHandlers } from "./print/PrintSystem.js";
 import {
 	drawDataForPrinting,
 	drawCompleteBlastDataForPrint,
@@ -3528,94 +3528,69 @@ document.getElementById("deleteHoleButton").addEventListener("click", deleteSele
 
 // Print event listeners
 document.addEventListener("DOMContentLoaded", function () {
-	const printPreviewToggle = document.getElementById("addPrintPreviewToggle");
-	if (printPreviewToggle) {
-		printPreviewToggle.addEventListener("change", function () {
-			togglePrintMode(updateStatusMessage, () => drawData(allBlastHoles, selectedHole));
-		});
-	}
-
-	const paperSizeSelect = document.getElementById("paperSize");
-	if (paperSizeSelect) {
-		paperSizeSelect.addEventListener("change", function () {
-			changePaperSize(() => drawData(allBlastHoles, selectedHole));
-		});
-	}
-
-	const orientationSelect = document.getElementById("orientation");
-	if (orientationSelect) {
-		orientationSelect.addEventListener("change", function () {
-			changeOrientation(() => drawData(allBlastHoles, selectedHole));
-		});
-	}
-
-	const printToPDFBtn = document.getElementById("printToPDFBtn");
-	if (printToPDFBtn) {
-		printToPDFBtn.addEventListener("click", function () {
-			// Create context object with all necessary dependencies
-			const context = {
-				allBlastHoles: allBlastHoles,
-				allKADDrawingsMap: allKADDrawingsMap,
-				allAvailableSurfaces: allAvailableSurfaces,
-				selectedHole: selectedHole,
-				canvas: canvas,
-				currentScale: currentScale,
-				centroidX: centroidX,
-				centroidY: centroidY,
-				imageVisible: imageVisible,
-				surfaceVisible: surfaceVisible,
-				getDisplayOptions: getDisplayOptions,
-				buildHoleMap: buildHoleMap,
-				allKADDrawingsMap: allKADDrawingsMap,
-				developerModeEnabled: developerModeEnabled,
-				simplifyByPxDist: simplifyByPxDist,
-				worldToCanvas: worldToCanvas,
-				delaunayTriangles: delaunayTriangles,
-				maxEdgeLength: maxEdgeLength,
-				createBlastBoundaryPolygon: createBlastBoundaryPolygon,
-				offsetPolygonClipper: offsetPolygonClipper,
-				getAverageDistance: getAverageDistance,
-				selectedVoronoiMetric: selectedVoronoiMetric,
-				isVoronoiLegendFixed: isVoronoiLegendFixed,
-				getVoronoiMetrics: getVoronoiMetrics,
-				useToeLocation: useToeLocation,
-				clipVoronoiCells: clipVoronoiCells,
-				getPFColor: getPFColor,
-				getMassColor: getMassColor,
-				getVolumeColor: getVolumeColor,
-				getAreaColor: getAreaColor,
-				getLengthColor: getLengthColor,
-				getHoleFiringTimeColor: getHoleFiringTimeColor,
-				strokeColor: strokeColor,
-				directionArrows: directionArrows,
-				contourLinesArray: contourLinesArray,
-				firstMovementSize: firstMovementSize,
-				currentFontSize: currentFontSize,
-				holeScale: holeScale,
-				transparentFillColor: transparentFillColor,
-				textFillColor: textFillColor,
-				fillColor: fillColor,
-				depthColor: depthColor,
-				angleDipColor: angleDipColor,
-				isAddingConnector: isAddingConnector,
-				isAddingMultiConnector: isAddingMultiConnector,
-				fromHoleStore: fromHoleStore,
-				firstSelectedHole: firstSelectedHole,
-				secondSelectedHole: secondSelectedHole,
-				selectedMultipleHoles: selectedMultipleHoles,
-				loadedSurfaces: loadedSurfaces,
-				showSurfaceLegend: showSurfaceLegend,
-				elevationToColor: elevationToColor,
-				currentGradient: currentGradient,
-				surfaceTextureData: surfaceTextureData,
-				loadedImages: loadedImages,
-				buildVersion: buildVersion,
-				showModalMessage: showModalMessage,
-				FloatingDialog: FloatingDialog,
-			};
-			printToPDF(context);
-		});
-	}
+	// Setup print event handlers - pass a function that returns fresh context
+	// This ensures we always get current data values when printing
+	setupPrintEventHandlers(() => ({
+		updateStatusMessage: updateStatusMessage,
+		drawData: () => drawData(allBlastHoles, selectedHole),
+		allBlastHoles: allBlastHoles,
+		allKADDrawingsMap: allKADDrawingsMap,
+		allAvailableSurfaces: allAvailableSurfaces,
+		selectedHole: selectedHole,
+		canvas: canvas,
+		currentScale: currentScale,
+		centroidX: centroidX,
+		centroidY: centroidY,
+		imageVisible: imageVisible,
+		surfaceVisible: surfaceVisible,
+		getDisplayOptions: getDisplayOptions,
+		buildHoleMap: buildHoleMap,
+		developerModeEnabled: developerModeEnabled,
+		simplifyByPxDist: simplifyByPxDist,
+		worldToCanvas: worldToCanvas,
+		delaunayTriangles: delaunayTriangles,
+		maxEdgeLength: maxEdgeLength,
+		createBlastBoundaryPolygon: createBlastBoundaryPolygon,
+		offsetPolygonClipper: offsetPolygonClipper,
+		getAverageDistance: getAverageDistance,
+		selectedVoronoiMetric: selectedVoronoiMetric,
+		isVoronoiLegendFixed: isVoronoiLegendFixed,
+		getVoronoiMetrics: getVoronoiMetrics,
+		useToeLocation: useToeLocation,
+		clipVoronoiCells: clipVoronoiCells,
+		getPFColor: getPFColor,
+		getMassColor: getMassColor,
+		getVolumeColor: getVolumeColor,
+		getAreaColor: getAreaColor,
+		getLengthColor: getLengthColor,
+		getHoleFiringTimeColor: getHoleFiringTimeColor,
+		strokeColor: strokeColor,
+		directionArrows: directionArrows,
+		contourLinesArray: contourLinesArray,
+		firstMovementSize: firstMovementSize,
+		currentFontSize: currentFontSize,
+		holeScale: holeScale,
+		transparentFillColor: transparentFillColor,
+		textFillColor: textFillColor,
+		fillColor: fillColor,
+		depthColor: depthColor,
+		angleDipColor: angleDipColor,
+		isAddingConnector: isAddingConnector,
+		isAddingMultiConnector: isAddingMultiConnector,
+		fromHoleStore: fromHoleStore,
+		firstSelectedHole: firstSelectedHole,
+		secondSelectedHole: secondSelectedHole,
+		selectedMultipleHoles: selectedMultipleHoles,
+		loadedSurfaces: loadedSurfaces,
+		showSurfaceLegend: showSurfaceLegend,
+		elevationToColor: elevationToColor,
+		currentGradient: currentGradient,
+		surfaceTextureData: surfaceTextureData,
+		loadedImages: loadedImages,
+		buildVersion: buildVersion,
+		showModalMessage: showModalMessage,
+		FloatingDialog: FloatingDialog,
+	}));
 });
 document.getElementById("deletePatternButton").addEventListener("click", deleteSelectedPattern);
 document.getElementById("deleteAllPatternsButton").addEventListener("click", deleteSelectedAllPatterns);

@@ -1,0 +1,206 @@
+# Vector PDF Matching Plan
+**Date**: 2025-12-05  
+**Goal**: Make vector PDF output match the working raster PDF exactly
+
+## Issues Identified from PDF Comparison
+
+### 1. Header Section Issues
+- ❌ QR Code: Completely missing
+- ❌ Title: Font correct (30px bold) but positioning may need adjustment
+- ❌ URL: Should be at y+155, currently missing or mispositioned
+- ❌ Stats Table: Present but needs correct positioning at (x+10, y+175)
+- ❌ Delay Table: Colored cells not showing properly
+
+### 2. Content Area Issues
+- ❌ Holes: Circles are too large - radius calculation may be wrong
+- ⚠️  Hole Text: Present but spacing needs fine-tuning
+- ✅ KAD Entities: Appear to be rendering
+- ⚠️  Surfaces: Need to verify they're rendering
+
+### 3. Footer Section Issues
+- ❌ Missing hole count, scale info on left
+- ❌ Missing version, date on right
+- ⚠️  Center text may be present but needs verification
+
+## Root Cause Analysis
+
+### Canvas Units vs PDF Units
+**Problem**: Canvas uses **pixels**, PDF uses **millimeters**
+
+Working code (canvas):
+```javascript
+// Canvas at 300 DPI
+printCanvas.width = pageWidth * mmToPx;  // e.g., 210mm * 11.8 = 2480px
+printCanvas.height = pageHeight * mmToPx; // e.g., 297mm * 11.8 = 3508px
+
+// Header positioning in pixels
+y = margin; // ~20-30px margin
+printHeader(printCtx, margin, margin, width, height);
+```
+
+Vector code (jsPDF):
+```javascript
+// PDF in mm
+const pageWidth = 297mm (A4 landscape)
+const pageHeight = 210mm
+
+// Header positioning in mm
+const margin = pageWidth * 0.02; // ~6mm
+drawStatsTableVector(pdf, margin + 35, margin + 25, stats);
+```
+
+### Key Conversion Factors
+- Canvas: 300 DPI = 11.8 pixels/mm
+- Header height in canvas: ~200px = ~17mm
+- But we're using 50mm in PDF (too much!)
+
+## Detailed Fixes Required
+
+### Fix 1: QR Code Loading
+**Location**: `PrintVectorPDF.js` - Header section
+
+**Current**: Missing entirely
+
+**Working Code Pattern**:
+```javascript
+const qrCode = new Image();
+qrCode.onload = function() {
+    printCtx.drawImage(qrCode, x, y + 35, 110, 110); // 110px = ~9mm
+};
+qrCode.src = "icons/kirra2d-qr-code.png";
+```
+
+**Vector Fix**: Load QR code, convert to data URL, add to PDF:
+```javascript
+const qrImg = new Image();
+qrImg.onload = function() {
+    const qrCanvas = document.createElement('canvas');
+    qrCanvas.width = 110;
+    qrCanvas.height = 110;
+    const qrCtx = qrCanvas.getContext('2d');
+    qrCtx.drawImage(qrImg, 0, 0, 110, 110);
+    const qrDataURL = qrCanvas.toDataURL('image/png');
+    
+    // In PDF: 110px ÷ 11.8 px/mm = ~9.3mm
+    pdf.addImage(qrDataURL, 'PNG', margin, margin + 3, 9.3, 9.3);
+};
+qrImg.src = "icons/kirra2d-qr-code.png";
+```
+
+### Fix 2: Header Layout (Canvas Pixels → PDF mm)
+**Canvas Layout** (at 300 DPI):
+- Title: x=margin, y=margin+10 (pixels)
+- QR Code: x=margin, y=margin+35, size=110x110px
+- URL: x=margin, y=margin+155
+- Stats: x=margin+10, y=margin+175
+
+**PDF Layout** (convert to mm):
+- Margin in canvas: ~30px = 2.5mm
+- Title: (margin, margin + 1mm) - font 30px = ~2.5mm height
+- QR Code: (margin, margin + 3mm), size 9.3x9.3mm
+- URL: (margin, margin + 13mm) - font 18px = ~1.5mm height
+- Stats: (margin + 1mm, margin + 15mm)
+
+**Font Size Conversions**:
+- Canvas 30px bold → PDF 10pt bold
+- Canvas 18px → PDF 6pt
+- Canvas 16px → PDF 5.3pt
+
+### Fix 3: Header Height Adjustment
+**Current**: `headerHeight = 50mm` (too large!)
+
+**Working Canvas**: ~200px = 200 / 11.8 = **17mm**
+
+**Fix**: Change to `headerHeight = 20mm`
+
+### Fix 4: Statistics Table Colors
+**Current Issue**: Colors exist but may not be rendering
+
+**Working Code**:
+```javascript
+printCtx.fillStyle = color; // Set background color
+printCtx.fillRect(tableX, tableY + row * rowHeight, col1Width, rowHeight);
+printCtx.strokeRect(...); // Draw border
+```
+
+**Vector Code Status**: ✅ Already implemented correctly
+- Uses `pdf.setFillColor(rgb.r, rgb.g, rgb.b)`
+- Uses `pdf.rect(x, y, w, h, "FD")` for filled+stroked
+
+**Likely Issue**: Positioning or size makes it invisible
+
+### Fix 5: Hole Radius Calculation
+**Working Code** (canvas pixels):
+```javascript
+const holeRadius = (hole.holeDiameter / 1000 / 2) * context.holeScale * printScale;
+// Example: diameter=165mm, holeScale=17, printScale=varies
+// radius = (0.165 / 2) * 17 * printScale
+```
+
+**Vector Code**: Same formula but printScale is in mm/m not px/m
+
+**Issue**: `printScale` represents different things:
+- Canvas: pixels per meter
+- PDF: millimeters per meter
+
+**Fix**: Holes may actually be correct size, just looks big due to page scale
+
+### Fix 6: Footer Info Layout
+**Working Code**:
+```javascript
+// Bottom left
+pdf.text("Holes: " + count, margin, pageHeight - margin - 5);
+pdf.text("Scale: 1:" + scale, margin, pageHeight - margin);
+
+// Bottom right
+pdf.text("Version: " + version, pageWidth - margin, pageHeight - margin - 5, {align: "right"});
+pdf.text("Date: " + date, pageWidth - margin, pageHeight - margin, {align: "right"});
+
+// Bottom center
+pdf.text("Generated by KIRRA...", pageWidth/2, pageHeight - margin, {align: "center"});
+```
+
+**Current**: Only has center text
+
+## Implementation Plan
+
+### Phase 1: Fix Header Dimensions
+1. Change `headerHeight` from 50mm to 20mm
+2. Recalculate font sizes (divide canvas px by ~3 for PDF pt)
+3. Adjust all y-positions in header
+
+### Phase 2: Add QR Code
+1. Load image asynchronously
+2. Convert to data URL
+3. Add to PDF at correct position (9.3mm x 9.3mm)
+
+### Phase 3: Fix Statistics Table Positioning
+1. Position at (margin, margin + 12mm) to right of QR
+2. Adjust font sizes to match canvas rendering
+3. Verify colored delay cells render
+
+### Phase 4: Fix Footer Layout
+1. Add bottom-left info (holes, scale)
+2. Add bottom-right info (version, date)
+3. Keep center text
+
+### Phase 5: Verify Hole Sizing
+1. Check if radius is actually wrong or just appears large
+2. Adjust if needed
+
+### Phase 6: Fine-tune Text Spacing
+1. Adjust textOffset calculation for PDF units
+2. Test with various hole sizes
+
+## Testing Checklist
+- [ ] QR code appears in top-left
+- [ ] Title "Kirra 2D" at correct size
+- [ ] URL below title
+- [ ] Statistics table with values
+- [ ] Colored delay cells visible
+- [ ] Holes are correct size
+- [ ] Hole text properly spaced
+- [ ] Footer has all 3 sections
+- [ ] Overall layout matches working PDF
+
+
