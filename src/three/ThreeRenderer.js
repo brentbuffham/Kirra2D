@@ -34,20 +34,43 @@ export class ThreeRenderer {
 			50000 // far (large range for mining elevations)
 		);
 
-		// Step 4) Position camera looking down at origin (will be updated to look at data centroid)
-		this.camera.position.set(0, 0, 5000);
-		this.camera.lookAt(0, 0, 0);
-		this.camera.up.set(0, 0, 1); // Z-up orientation
+	// Step 4) Position camera looking down at origin (will be updated to look at data centroid)
+	this.camera.position.set(0, 0, 5000);
+	this.camera.lookAt(0, 0, 0);
+	this.camera.up.set(0, 0, 1); // Z-up orientation
 
-		// Step 5) Create WebGL renderer with transparency
+	// Step 5) Create WebGL renderer with transparency
+	// Let Three.js handle WebGL creation - it has better error handling than our test
+	try {
 		this.renderer = new THREE.WebGLRenderer({
 			antialias: true,
 			alpha: true,
 			preserveDrawingBuffer: true, // Needed for screenshots/printing
 		});
+		
+		// Step 5a) Verify renderer was created successfully
+		if (!this.renderer || !this.renderer.getContext()) {
+			throw new Error("WebGL context creation failed - renderer created but no context available");
+		}
+		
 		this.renderer.setSize(width, height);
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setClearColor(0x000000, 0); // Transparent
+	} catch (webglError) {
+		// Step 5b) Clean up any partially created renderer
+		if (this.renderer) {
+			try {
+				this.renderer.dispose();
+			} catch (disposeError) {
+				// Ignore dispose errors during error recovery
+			}
+			this.renderer = null;
+		}
+		
+		// Step 5c) Re-throw with more context
+		const errorMessage = "Failed to create WebGL renderer: " + (webglError.message || String(webglError));
+		throw new Error(errorMessage);
+	}
 
 		// Step 6) Add lighting
 		this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -1032,6 +1055,29 @@ export class ThreeRenderer {
 			}
 		});
 
-		this.renderer.dispose();
+		// Step 31a) Properly dispose WebGL renderer and context
+		if (this.renderer) {
+			try {
+				// Dispose renderer (this also disposes the WebGL context)
+				this.renderer.dispose();
+				
+				// Step 31b) Remove canvas from DOM if it exists
+				if (this.renderer.domElement && this.renderer.domElement.parentNode) {
+					this.renderer.domElement.parentNode.removeChild(this.renderer.domElement);
+				}
+				
+				// Step 31c) Force WebGL context loss to ensure cleanup
+				const gl = this.renderer.getContext();
+				if (gl) {
+					const loseContext = gl.getExtension("WEBGL_lose_context");
+					if (loseContext) {
+						loseContext.loseContext();
+					}
+				}
+			} catch (disposeError) {
+				console.warn("⚠️ Error disposing WebGL renderer:", disposeError);
+			}
+			this.renderer = null;
+		}
 	}
 }

@@ -1616,6 +1616,11 @@ export function printHoleMainShape(hole, x, y, selectedHole, context) {
 }
 //Update printSurface function (around line 23909)
 export function printSurface(context) {
+    // Skip if no surfaces are available
+    if (!context.loadedSurfaces || context.loadedSurfaces.size === 0) {
+        return;
+    }
+
     // Check if any surfaces are visible
     let hasSurfaces = false;
     let allMinZ = Infinity;
@@ -1626,8 +1631,25 @@ export function printSurface(context) {
     for (const [surfaceId, surface] of context.loadedSurfaces.entries()) {
         // Skip non-visible surfaces
         if (surface.visible === false) continue;
-        // Skip textured surfaces - they use flattened images instead of triangles
-        if (surface.isTexturedMesh) continue;
+        // Handle textured meshes separately by drawing their raster texture if available
+        if (surface.isTexturedMesh) {
+            if (surface.meshBounds && surface.textureCanvas) {
+                const meshBounds = surface.meshBounds;
+                const canvasBoundsX1 = window.worldToCanvas(meshBounds.minX, meshBounds.maxY);
+                const canvasBoundsX2 = window.worldToCanvas(meshBounds.maxX, meshBounds.minY);
+                if (canvasBoundsX1 && canvasBoundsX2) {
+                    const drawX = Math.min(canvasBoundsX1[0], canvasBoundsX2[0]);
+                    const drawY = Math.min(canvasBoundsX1[1], canvasBoundsX2[1]);
+                    const drawW = Math.abs(canvasBoundsX2[0] - canvasBoundsX1[0]);
+                    const drawH = Math.abs(canvasBoundsX2[1] - canvasBoundsX1[1]);
+                    printCtx.save();
+                    printCtx.globalAlpha = surface.transparency !== undefined && surface.transparency !== null ? surface.transparency : 1.0;
+                    printCtx.drawImage(surface.textureCanvas, drawX, drawY, drawW, drawH);
+                    printCtx.restore();
+                }
+            }
+            continue;
+        }
         
         if (surface.points && surface.points.length > 0) {
             hasSurfaces = true;
@@ -2063,7 +2085,7 @@ export function drawCompleteBlastDataForPrint(printCtx, printArea, context) {
 }
 
 export function printBackgroundImage(context) {
-    if (context.loadedImages.size === 0) return;
+    if (!context.loadedImages || context.loadedImages.size === 0) return;
 
     context.loadedImages.forEach((image) => {
         // Only print visible images
