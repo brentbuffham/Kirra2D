@@ -134,6 +134,8 @@ document.addEventListener("DOMContentLoaded", function () {
 
 //-----------------------------------------
 // Using SweetAlert Library Create a popup that gets input from the user.
+// Step 1) updatePopup() has been moved to src/dialog/popups/info/InfoDialogs.js
+// Step 2) This function is now loaded via script tag in HTML
 function updatePopup() {
     console.log("function updatePopup()");
     Swal.fire({
@@ -1138,10 +1140,10 @@ function handle3DClick(event) {
         firstIntersect:
             intersects.length > 0
                 ? {
-                      object: intersects[0].object.type,
-                      userData: intersects[0].object.userData,
-                      distance: intersects[0].distance.toFixed(2)
-                  }
+                    object: intersects[0].object.type,
+                    userData: intersects[0].object.userData,
+                    distance: intersects[0].distance.toFixed(2)
+                }
                 : null
     });
 
@@ -2605,7 +2607,7 @@ let textsGroupVisible = true;
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
 // debouncedUpdateTreeView is defined later - stub it to prevent errors
-let debouncedUpdateTreeView = function () {};
+let debouncedUpdateTreeView = function () { };
 
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
@@ -8589,14 +8591,14 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Parsing Error",
                 "Failed to parse the file properly:<br><br>" +
-                    criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
-                    "<br><br>" +
-                    "Common causes:<br><br>" +
-                    "<li>Mixed delimiters (commas and tabs in same file)</li>" +
-                    "<li>Unescaped quotes in text fields</li>" +
-                    "<li>Inconsistent number of columns</li>" +
-                    "<br><br>" +
-                    "Please check your file format and try again.",
+                criticalErrors.map((error) => "<li>" + error.message + "</li>").join("") +
+                "<br><br>" +
+                "Common causes:<br><br>" +
+                "<li>Mixed delimiters (commas and tabs in same file)</li>" +
+                "<li>Unescaped quotes in text fields</li>" +
+                "<li>Inconsistent number of columns</li>" +
+                "<br><br>" +
+                "Please check your file format and try again.",
                 "error"
             );
             return; // Exit early
@@ -8610,15 +8612,15 @@ function parseKADFile(fileData) {
             showModalMessage(
                 "File Import Warning",
                 "The file was imported but there were " +
-                    parseResult.errors.length +
-                    " parsing warnings:<br><br>" +
-                    parseResult.errors
-                        .slice(0, 5)
-                        .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-                        .join("") +
-                    additionalErrors +
-                    "<br><br>" +
-                    "Some data may have been skipped. Check your results carefully.",
+                parseResult.errors.length +
+                " parsing warnings:<br><br>" +
+                parseResult.errors
+                    .slice(0, 5)
+                    .map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+                    .join("") +
+                additionalErrors +
+                "<br><br>" +
+                "Some data may have been skipped. Check your results carefully.",
                 "warning"
             );
         }
@@ -8836,17 +8838,17 @@ function parseKADFile(fileData) {
             const errorDetailsHtml =
                 errorCount > 0
                     ? "<details>" +
-                      "<summary>View Error Details (" +
-                      errorCount +
-                      " errors)</summary>" +
-                      '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-                      errorDetails
-                          .slice(0, 10)
-                          .map((error) => "<li>" + error + "</li>")
-                          .join("") +
-                      (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-                      "</ul>" +
-                      "</details>"
+                    "<summary>View Error Details (" +
+                    errorCount +
+                    " errors)</summary>" +
+                    '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+                    errorDetails
+                        .slice(0, 10)
+                        .map((error) => "<li>" + error + "</li>")
+                        .join("") +
+                    (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+                    "</ul>" +
+                    "</details>"
                     : "";
 
             showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -9582,11 +9584,9 @@ function convertPointsToAllDataCSV() {
         const hole = visibleBlastHoles[i];
         const row = `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation.toFixed(decimalPlaces)},${hole.startYLocation.toFixed(decimalPlaces)},${hole.startZLocation},${hole.endXLocation.toFixed(decimalPlaces)},${hole.endYLocation.toFixed(decimalPlaces)},${hole.endZLocation.toFixed(
             decimalPlaces
-        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${
-            hole.fromHoleID
-        },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${
-            hole.measuredMassTimeStamp
-        },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
+        )},${hole.gradeXLocation.toFixed(decimalPlaces)},${hole.gradeYLocation.toFixed(decimalPlaces)},${hole.gradeZLocation.toFixed(decimalPlaces)},${hole.subdrillAmount.toFixed(decimalPlaces)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${hole.fromHoleID
+            },${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(decimalPlaces)},${hole.measuredMassTimeStamp
+            },${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
         csv += row + "\n";
     }
     return csv;
@@ -10250,9 +10250,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
     const table = new Uint32Array(256);
-    for (let i = 256; i--; ) {
+    for (let i = 256; i--;) {
         let tmp = i;
-        for (let k = 8; k--; ) {
+        for (let k = 8; k--;) {
             tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
         }
         table[i] = tmp;
@@ -15354,29 +15354,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
             `
             <div style="text-align: center;">
                 <p><strong>` +
-                resultMessage +
-                `</strong></p>
+            resultMessage +
+            `</strong></p>
                 <p><strong>Input:</strong> ` +
-                selectedEntities.length +
-                ` entities</p>
+            selectedEntities.length +
+            ` entities</p>
                 <p><strong>Output:</strong> ` +
-                polygons.length +
-                ` polygon(s)</p>
+            polygons.length +
+            ` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-                params.radius +
-                `m</p>
+            params.radius +
+            `m</p>
                 <p><strong>Rotation:</strong> ` +
-                params.rotationOffset +
-                `°</p>
+            params.rotationOffset +
+            `°</p>
                 <p><strong>Starburst:</strong> ` +
-                params.starburstOffset * 100 +
-                `%</p>
+            params.starburstOffset * 100 +
+            `%</p>
                 <p><strong>Line Width:</strong> ` +
-                params.lineWidth +
-                `</p>
+            params.lineWidth +
+            `</p>
                 <p><strong>Location:</strong> ` +
-                (params.useToeLocation ? "End/Toe" : "Start/Collar") +
-                `</p>
+            (params.useToeLocation ? "End/Toe" : "Start/Collar") +
+            `</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -15393,8 +15393,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-                (error.message || "Unknown error occurred") +
-                `</p>
+            (error.message || "Unknown error occurred") +
+            `</p>
             </div>
         `
         );
@@ -21462,11 +21462,11 @@ function timeChart() {
             // Update selected holes array for single bin
             timingWindowHolesSelected = holeIDs[selectedIndex]
                 ? holeIDs[selectedIndex]
-                      .map((combinedID) => {
-                          const [entityName, holeID] = combinedID.split(":");
-                          return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-                      })
-                      .filter(Boolean)
+                    .map((combinedID) => {
+                        const [entityName, holeID] = combinedID.split(":");
+                        return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+                    })
+                    .filter(Boolean)
                 : [];
 
             // Redraw canvas WITHOUT calling timeChart
@@ -32032,10 +32032,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
     return closestPoint
         ? {
-              point: closestPoint,
-              type: snapType,
-              distance: minDistance
-          }
+            point: closestPoint,
+            type: snapType,
+            distance: minDistance
+        }
         : null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
@@ -44871,8 +44871,6 @@ function editBlastNamePopup(selectedHole) {
             //selectedMultiplePoints = []
             selectedMultipleHoles = [];
             selectedKADObject = null;
-            selectedKADObjects = [];
-            selectedMultipleKADObjects = [];
             selectedMultipleKADObjects = [];
             drawData(allBlastHoles, selectedHole);
             debouncedUpdateTreeView(); // Use debounced version
@@ -44945,8 +44943,6 @@ function editHoleTypePopup() {
             //selectedMultiplePoints = []
             selectedMultipleHoles = [];
             selectedKADObject = null;
-            selectedKADObjects = [];
-            selectedMultipleKADObjects = [];
             selectedMultipleKADObjects = [];
             drawData(allBlastHoles, selectedHole);
             debouncedUpdateTreeView(); // Use debounced version
@@ -45064,8 +45060,6 @@ function editHoleLengthPopup() {
             //selectedMultiplePoints = []
             selectedMultipleHoles = [];
             selectedKADObject = null;
-            selectedKADObjects = [];
-            selectedMultipleKADObjects = [];
             selectedMultipleKADObjects = [];
             drawData(allBlastHoles, selectedHole);
             debouncedUpdateTreeView(); // Use debounced version
@@ -45141,8 +45135,6 @@ function measuredLengthPopup() {
             //selectedMultiplePoints = []
             selectedMultipleHoles = [];
             selectedKADObject = null;
-            selectedKADObjects = [];
-            selectedMultipleKADObjects = [];
             selectedMultipleKADObjects = [];
             drawData(allBlastHoles, selectedHole);
             debouncedUpdateTreeView(); // Use debounced version
@@ -45219,8 +45211,6 @@ function measuredMassPopup() {
             //selectedMultiplePoints = []
             selectedMultipleHoles = [];
             selectedKADObject = null;
-            selectedKADObjects = [];
-            selectedMultipleKADObjects = [];
             selectedMultipleKADObjects = [];
             drawData(allBlastHoles, selectedHole);
             debouncedUpdateTreeView(); // Use debounced version
@@ -45306,8 +45296,6 @@ function measuredCommentPopup() {
             //selectedMultiplePoints = []
             selectedMultipleHoles = [];
             selectedKADObject = null;
-            selectedKADObjects = [];
-            selectedMultipleKADObjects = [];
             selectedMultipleKADObjects = [];
             drawData(allBlastHoles, selectedHole);
             debouncedUpdateTreeView(); // Use debounced version
