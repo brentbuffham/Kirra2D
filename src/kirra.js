@@ -2674,6 +2674,7 @@ let startPanX, startPanY;
 let isAddingHole = false;
 let isAddingPattern = false;
 let isDeletingHole = false;
+let isDeletingPattern = false;
 let isMovingCanvas = false;
 let isDragging = false;
 let isModifyingKAD = false;
@@ -19506,227 +19507,9 @@ function handlePatternAddingClick(event) {
     }
 }
 //TODO use the FloatingDialog class to create this popup
+// Moved to src/dialog/popups/generic/PatternGenerationDialogs.js
 function addPatternPopup(worldX, worldY) {
-    //Retrieve the last entered values from local storage
-    let savedAddPatternPopupSettings = JSON.parse(localStorage.getItem("savedAddPatternPopupSettings")) || {};
-    let lastValues = {
-        blastName: savedAddPatternPopupSettings.blastName || "Created_Blast" + Date.now(),
-        nameTypeIsNumerical: savedAddPatternPopupSettings.nameTypeIsNumerical !== undefined ? savedAddPatternPopupSettings.nameTypeIsNumerical : false,
-        rowOrientation: savedAddPatternPopupSettings.rowOrientation || 90.0,
-        x: savedAddPatternPopupSettings.x || worldX,
-        y: savedAddPatternPopupSettings.y || worldY,
-        z: savedAddPatternPopupSettings.z || 100,
-        useGradeZ: savedAddPatternPopupSettings.useGradeZ || false,
-        gradeZ: savedAddPatternPopupSettings.gradeZ || 94,
-        diameter: savedAddPatternPopupSettings.diameter || 115,
-        type: savedAddPatternPopupSettings.type || "Production",
-        angle: savedAddPatternPopupSettings.angle || 0,
-        bearing: savedAddPatternPopupSettings.bearing || 180,
-        length: savedAddPatternPopupSettings.length || 6.2,
-        subdrill: savedAddPatternPopupSettings.subdrill || 0,
-        spacingOffset: savedAddPatternPopupSettings.spacingOffset || 0.5,
-        burden: savedAddPatternPopupSettings.burden || 3.0,
-        spacing: savedAddPatternPopupSettings.spacing || 3.3,
-        rows: savedAddPatternPopupSettings.rows || 6,
-        holesPerRow: savedAddPatternPopupSettings.holesPerRow || 10,
-    };
-
-    // Show loading spinner while the popup is created
-    Swal.showLoading();
-
-    // Create the SweetAlert popup
-    Swal.fire({
-        title: "Add a Pattern?",
-        showCancelButton: true,
-        confirmButtonText: "Confirm",
-        cancelButtonText: "Cancel",
-        html: `
-        <div class="button-container-2col">
-          <label class="labelWhite18" for="blastName">Blast Name</label>
-          <input type="text3" id="blastName" name="blastName" placeholder="Blast Name" value="${lastValues.blastName}"/>
-          <label class="labelWhite18" for="nameTypeIsNumerical">Numerical Names</label>
-          <input type="checkbox" id="nameTypeIsNumerical" name="nameTypeIsNumerical" ${lastValues.nameTypeIsNumerical ? "checked" : ""}>
-          
-          <label class="labelWhite18" for="rowOrientation">Orientation</label>
-          <input type="number3" id="rowOrientation" name="rowOrientation" placeholder="rowOrientation" value="${lastValues.rowOrientation}" step=0.1 min="0" max="359.999" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="x">Start X</label>
-          <input type="number3" id="x" name="x" placeholder="X" value="${worldX}" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="y">Start Y</label>
-          <input type="number3" id="y" name="y" placeholder="Y" value="${worldY}" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="z">Start Z</label>
-          <input type="number3" id="z" name="z" placeholder="Z" value="${lastValues.z}" inputmode="decimal" pattern="[0-9]*"/>
-          
-          <label class="labelWhite18" for="useGradeZ">Use Grade Z</label>
-          <input type="checkbox" id="useGradeZ" name="useGradeZ" ${lastValues.useGradeZ ? "checked" : ""}>
-          
-          <label class="labelWhite18" for="gradeZ">Grade Z</label>
-          <input type="number3" id="gradeZ" placeholder="Grade Z" value="${lastValues.gradeZ}" inputmode="decimal" pattern="[0-9]*" ${!lastValues.useGradeZ ? "disabled" : ""}/>
-          
-          <label class="labelWhite18" for="diameter">Diameter</label>
-          <input type="number3" id="diameter" name="diameter" placeholder="Diameter" value="${lastValues.diameter}" step=1 min="0" max="1000" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="type">Type</label>
-          <input type="text3" id="type" name="type" placeholder="Type" value="${lastValues.type}"/>
-          <label class="labelWhite18" for="angle">Angle</label>
-          <input type="number3" id="angle" name="angle" placeholder="Angle" value="${lastValues.angle}" step="1" min="0" max="60" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="bearing">Bearing</label>
-          <input type="number3" id="bearing" name="bearing" placeholder="Bearing" value="${lastValues.bearing}" step=0.1 min="0" max="359.999" inputmode="decimal" pattern="[0-9]*"/>
-          
-          <label class="labelWhite18" for="length">Length</label>
-          <input type="number3" id="length" name="length" placeholder="Length" value="${lastValues.length}" inputmode="decimal" pattern="[0-9]*" ${lastValues.useGradeZ ? "disabled" : ""}/>
-          
-          <label class="labelWhite18" for="subdrill">Subdrill</label>
-          <input type="number3" id="subdrill" name="subdrill" placeholder="Subdrill" value="${lastValues.subdrill}" step="0.1" min="0.0" max="100" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="spacingOffset">Offset</label>
-          <input type="number3" id="spacingOffset" name="spacingOffset" placeholder="SpacingOffset" value="${lastValues.spacingOffset}" step="0.1" min="-1.0" max="1.0" inputmode="decimal" pattern="[0-9]*"/>
-          <div class="labelWhite12" id="infolabel1" name="infolabel1">Offset Information: </div> 
-          <div class="labelWhite12" id="infolabel2" name="infolabel2">Staggered = -0.5 or 0.5, Square = -1, 0, 1</div> 
-          <label class="labelWhite18" for="burden">Burden</label>
-          <input type="number3" id="burden" name="burden" placeholder="Burden" value="${lastValues.burden}" step="0.1" min="0.1" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="spacing">Spacing</label>
-          <input type="number3" id="spacing" name="spacing" placeholder="Spacing" value="${lastValues.spacing}" step="0.1" min="0.1" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="rows">Rows</label>
-          <input type="number3" id="rows" name="rows" placeholder="Rows" value="${lastValues.rows}" step="1" min="1" max="500" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="holesPerRow">Holes Per Row</label>
-          <input type="number3" id="holesPerRow" name="holesPerRow" placeholder="Per Row" value="${lastValues.holesPerRow}" step="1" min="1" max="500" inputmode="decimal" pattern="[0-9]*"/>
-        </div>
-      `,
-        customClass: {
-            container: "custom-popup-container",
-            title: "swal2-title",
-            confirmButton: "confirm",
-            cancelButton: "cancel",
-            content: "swal2-content",
-            htmlContainer: "swal2-html-container",
-            icon: "swal2-icon",
-        },
-        didOpen: () => {
-            // Get references to form elements
-            const useGradeZCheckbox = document.getElementById("useGradeZ");
-            const gradeZInput = document.getElementById("gradeZ");
-            const lengthInput = document.getElementById("length");
-            const zInput = document.getElementById("z");
-            const angleInput = document.getElementById("angle");
-            const subdrillInput = document.getElementById("subdrill");
-
-            // Function to update fields based on checkbox state
-            function updateFieldsBasedOnUseGradeZ() {
-                const useGradeZ = useGradeZCheckbox.checked;
-
-                // Enable/disable fields
-                gradeZInput.disabled = !useGradeZ;
-                lengthInput.disabled = useGradeZ;
-
-                // Update calculations
-                if (useGradeZ) {
-                    // Calculate length from grade
-                    const collarZ = parseFloat(zInput.value) || 0;
-                    const gradeZ = parseFloat(gradeZInput.value) || 0;
-                    const subdrill = parseFloat(subdrillInput.value) || 0;
-                    const angle = parseFloat(angleInput.value) || 0;
-                    const angleRad = angle * (Math.PI / 180);
-
-                    const calculatedLength = Math.abs((collarZ - gradeZ + subdrill) / Math.cos(angleRad));
-                    lengthInput.value = calculatedLength.toFixed(2);
-                } else {
-                    // Calculate grade from length
-                    const collarZ = parseFloat(zInput.value) || 0;
-                    const length = parseFloat(lengthInput.value) || 0;
-                    const subdrill = parseFloat(subdrillInput.value) || 0;
-                    const angle = parseFloat(angleInput.value) || 0;
-                    const angleRad = angle * (Math.PI / 180);
-
-                    const calculatedGradeZ = collarZ - (length - subdrill) * Math.cos(angleRad);
-                    gradeZInput.value = calculatedGradeZ.toFixed(2);
-                }
-            }
-
-            // Add event listeners for changes
-            useGradeZCheckbox.addEventListener("change", updateFieldsBasedOnUseGradeZ);
-            gradeZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            lengthInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            zInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            angleInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            subdrillInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-
-            // Initial update
-            updateFieldsBasedOnUseGradeZ();
-        },
-    })
-        .then((result) => {
-            if (result.isConfirmed) {
-                // Retrieve values from the input fields
-                const entityName = document.getElementById("blastName").value;
-                const offset = document.getElementById("spacingOffset").value;
-                const nameTypeIsNumerical = document.getElementById("nameTypeIsNumerical").checked; // This boolean controls naming
-                const rowOrientation = parseFloat(document.getElementById("rowOrientation").value);
-                const useGradeZ = document.getElementById("useGradeZ").checked;
-                const x = parseFloat(document.getElementById("x").value);
-                const y = parseFloat(document.getElementById("y").value);
-                const z = parseFloat(document.getElementById("z").value);
-                const gradeZ = parseFloat(document.getElementById("gradeZ").value);
-                const diameter = parseFloat(document.getElementById("diameter").value);
-                const type = document.getElementById("type").value;
-                const angle = parseFloat(document.getElementById("angle").value);
-                const bearing = parseFloat(document.getElementById("bearing").value);
-                const length = parseFloat(document.getElementById("length").value);
-                const subdrill = parseFloat(document.getElementById("subdrill").value);
-                const burden = parseFloat(document.getElementById("burden").value);
-                const spacing = parseFloat(document.getElementById("spacing").value);
-                const rows = parseInt(document.getElementById("rows").value);
-                const holesPerRow = parseInt(document.getElementById("holesPerRow").value);
-
-                // Add this line to debug
-                console.log("nameTypeIsNumerical received:", nameTypeIsNumerical);
-
-                let patternnameTypeIsNumerical = nameTypeIsNumerical;
-                console.log("patternnameTypeIsNumerical set to:", patternnameTypeIsNumerical);
-
-                // Input validation
-                if (entityName === null || entityName === "") {
-                    showModalMessage("Entity Name Invalid", "Please enter a valid Entity Name.", "warning");
-                    return; // Stop execution if validation fails
-                }
-                // [Add any other validation checks here, ensure they return to stop execution if invalid]
-
-                // Save settings to localStorage
-                lastValues = {
-                    blastName: entityName,
-                    offset: offset,
-                    nameTypeIsNumerical: nameTypeIsNumerical,
-                    useGradeZ: useGradeZ,
-                    rowOrientation: rowOrientation,
-                    x: x,
-                    y: y,
-                    z: z,
-                    gradeZ: gradeZ,
-                    diameter: diameter,
-                    type: type,
-                    angle: angle,
-                    bearing: bearing,
-                    length: length,
-                    subdrill: subdrill,
-                    burden: burden,
-                    spacing: spacing,
-                    rows: rows,
-                    holesPerRow: holesPerRow,
-                };
-                localStorage.setItem("savedAddPatternPopupSettings", JSON.stringify(lastValues));
-
-                // Use the obtained values to add the pattern
-                addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrientation, x, y, z, gradeZ, diameter, type, angle, bearing, length, subdrill, burden, spacing, rows, holesPerRow);
-
-                // ⭐ Crucial: Update the TreeView after adding the pattern
-                if (typeof debouncedUpdateTreeView === "function") {
-                    debouncedUpdateTreeView();
-                } else if (typeof updateTreeView === "function") {
-                    updateTreeView();
-                }
-            }
-        })
-        .finally(() => {
-            // Hide the loading spinner when the popup is closed
-            Swal.hideLoading();
-        });
+    window.showPatternDialog("add_pattern", worldX, worldY);
 }
 
 // Same Space Checker
@@ -19894,6 +19677,9 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 
     console.log("Generated pattern with " + patternrows + " rows (rowIDs " + startingRowID + "-" + (startingRowID + patternrows - 1) + ")");
 }
+
+// Expose addPattern globally for PatternGenerationDialogs.js
+window.addPattern = addPattern;
 
 function incrementLetter(str) {
     // Helper function to increment letters
@@ -32318,6 +32104,10 @@ function generatePatternInPolygon(patternSettings) {
     drawData(allBlastHoles, selectedHole);
     debouncedSaveHoles(); // Auto-save holes to IndexedDB
 }
+
+// Expose generatePatternInPolygon globally for PatternGenerationDialogs.js
+window.generatePatternInPolygon = generatePatternInPolygon;
+
 //! REDO with the FloatingDialog class
 // Function to show holes along line popup
 function showHolesAlongLinePopup() {
@@ -32926,239 +32716,11 @@ function pointToLineSegmentDistance(px, py, x1, y1, x2, y2, z1 = null, z2 = null
 }
 
 // Add this new function for the pattern in polygon popup
+// Moved to src/dialog/popups/generic/PatternGenerationDialogs.js
 function showPatternInPolygonPopup() {
-    let blastNameValue = "PolygonPattern_" + Date.now();
-    // Retrieve the last entered values from local storage
-    let savedPatternInPolygonSettings = JSON.parse(localStorage.getItem("savedPatternInPolygonSettings")) || {};
-    let lastValues = {
-        blastName: savedPatternInPolygonSettings.blastName || blastNameValue,
-        burden: savedPatternInPolygonSettings.burden || 3.0,
-        spacing: savedPatternInPolygonSettings.spacing || 3.3,
-        spacingOffset: savedPatternInPolygonSettings.spacingOffset || 0.5,
-        collarZ: savedPatternInPolygonSettings.collarZ || 0,
-        gradeZ: savedPatternInPolygonSettings.gradeZ || -10,
-        subdrill: savedPatternInPolygonSettings.subdrill || 1,
-        angle: savedPatternInPolygonSettings.angle || 0,
-        bearing: savedPatternInPolygonSettings.bearing || 180,
-        diameter: savedPatternInPolygonSettings.diameter || 115,
-        type: savedPatternInPolygonSettings.type || "Production",
-        startNumber: savedPatternInPolygonSettings.startNumber || 1,
-        nameTypeIsNumerical: savedPatternInPolygonSettings.nameTypeIsNumerical || true,
-        useGradeZ: savedPatternInPolygonSettings.useGradeZ !== undefined ? savedPatternInPolygonSettings.useGradeZ : true,
-        length: savedPatternInPolygonSettings.length || 10,
-    };
-
-    // Calculate default length if using grade Z
-    const defaultLength = lastValues.useGradeZ ? Math.abs((lastValues.collarZ - lastValues.gradeZ + lastValues.subdrill) / Math.cos(lastValues.angle * (Math.PI / 180))) : lastValues.length;
-
-    // Calculate default grade if using length
-    const defaultGradeZ = !lastValues.useGradeZ ? lastValues.collarZ - (lastValues.length - lastValues.subdrill) * Math.cos(lastValues.angle * (Math.PI / 180)) : lastValues.gradeZ;
-
-    //! REDO with the FloatingDialog class
-    // Show loading spinner while the popup is created
-    Swal.showLoading();
-    //! REDO with the FloatingDialog class
-    // Create the SweetAlert popup
-    Swal.fire({
-        title: "Generate Pattern in Polygon",
-        showCancelButton: true,
-        confirmButtonText: "OK",
-        cancelButtonText: "Cancel",
-        html: `
-        <div class="button-container-2col">
-          <label class="labelWhite18" for="blastName">Blast Name</label>
-          <input type="text3" id="blastName" name="blastName" placeholder="Blast Name" value="${lastValues.blastName}"/>
-          <label class="labelWhite18" for="nameTypeIsNumerical">Numerical Names</label>
-          <input type="checkbox" id="nameTypeIsNumerical" name="nameTypeIsNumerical" ${lastValues.nameTypeIsNumerical ? "checked" : ""}>
-          <label class="labelWhite18" for="startNumber">Starting Hole Number</label>
-          <input type="number3" id="startNumber" name="startNumber" placeholder="Start Number" value="${lastValues.startNumber}" step="1" min="1" max="9999" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="burden">Burden (m)</label>
-          <input type="number3" id="burden" name="burden" placeholder="Burden" value="${lastValues.burden}" step="0.1" min="0.1" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="spacing">Spacing (m)</label>
-          <input type="number3" id="spacing" name="spacing" placeholder="Spacing" value="${lastValues.spacing}" step="0.1" min="0.1" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="spacingOffset">Offset</label>
-          <input type="number3" id="spacingOffset" name="spacingOffset" placeholder="SpacingOffset" value="${lastValues.spacingOffset}" step="0.1" min="-1.0" max="1.0" inputmode="decimal" pattern="[0-9]*"/>
-          <div class="labelWhite12" id="infolabel1" name="infolabel1">Offset Information: </div> 
-          <div class="labelWhite12" id="infolabel2" name="infolabel2">Staggered = -0.5 or 0.5, Square = -1, 0, 1</div>
-          <label class="labelWhite18" for="collarZ">Collar Elevation (m)</label>
-          <input type="number3" id="collarZ" name="collarZ" placeholder="Collar Z" value="${lastValues.collarZ}" step="0.1" min="-1000" max="5000" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="useGradeZ">Use Grade Z</label>
-          <input type="checkbox" id="useGradeZ" name="useGradeZ" ${lastValues.useGradeZ ? "checked" : ""}>
-          <label class="labelWhite18" for="gradeZ">Grade Elevation (m)</label>
-          <input type="number3" id="gradeZ" name="gradeZ" placeholder="Grade Z" value="${defaultGradeZ}" step="0.1" min="-1000" max="5000" inputmode="decimal" pattern="[0-9]*" ${!lastValues.useGradeZ ? "disabled" : ""}>
-          <label class="labelWhite18" for="length">Length (m)</label>
-          <input type="number3" id="length" name="length" placeholder="Length" value="${defaultLength}" step="0.1" min="0.1" max="1000" inputmode="decimal" pattern="[0-9]*" ${lastValues.useGradeZ ? "disabled" : ""}>
-          <label class="labelWhite18" for="subdrill">Subdrill (m)</label>
-          <input type="number3" id="subdrill" name="subdrill" placeholder="Subdrill" value="${lastValues.subdrill}" step="0.1" min="-50" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="angle">Hole Angle (° from vertical)</label>
-          <input type="number3" id="angle" name="angle" placeholder="Angle" value="${lastValues.angle}" step="1" min="0" max="60" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="bearing">Hole Bearing (°)</label>
-          <input type="number3" id="bearing" name="bearing" placeholder="Bearing" value="${lastValues.bearing}" step="0.1" min="0" max="359.999" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="diameter">Diameter (mm)</label>
-          <input type="number3" id="diameter" name="diameter" placeholder="Diameter" value="${lastValues.diameter}" step="1" min="1" max="1000" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="type">Hole Type</label>
-          <input type="text3" id="type" name="type" placeholder="Type" value="${lastValues.type}"/>
-        </div>
-      `,
-        customClass: {
-            container: "custom-popup-container",
-            title: "swal2-title",
-            confirmButton: "confirm",
-            cancelButton: "cancel",
-            content: "swal2-content",
-            htmlContainer: "swal2-html-container",
-            icon: "swal2-icon",
-        },
-        didOpen: () => {
-            //! REDO with the FloatingDialog class
-            // Add event listeners after the popup is opened
-            const useGradeZCheckbox = document.getElementById("useGradeZ");
-            const gradeZInput = document.getElementById("gradeZ");
-            const lengthInput = document.getElementById("length");
-            const collarZInput = document.getElementById("collarZ");
-            const angleInput = document.getElementById("angle");
-            const subdrillInput = document.getElementById("subdrill");
-
-            //! REDO with the FloatingDialog class
-            // Function to update fields based on checkbox state
-            function updateFieldsBasedOnUseGradeZ() {
-                const useGradeZ = useGradeZCheckbox.checked;
-
-                // Enable/disable fields
-                gradeZInput.disabled = !useGradeZ;
-                lengthInput.disabled = useGradeZ;
-
-                // Update calculations
-                if (useGradeZ) {
-                    // Calculate length from grade
-                    const collarZ = parseFloat(collarZInput.value) || 0;
-                    const gradeZ = parseFloat(gradeZInput.value) || 0;
-                    const subdrill = parseFloat(subdrillInput.value) || 0;
-                    const angle = parseFloat(angleInput.value) || 0;
-                    const angleRad = angle * (Math.PI / 180);
-
-                    const calculatedLength = Math.abs((collarZ - gradeZ + subdrill) / Math.cos(angleRad));
-                    lengthInput.value = calculatedLength.toFixed(2);
-                } else {
-                    // Calculate grade from length
-                    const collarZ = parseFloat(collarZInput.value) || 0;
-                    const length = parseFloat(lengthInput.value) || 0;
-                    const subdrill = parseFloat(subdrillInput.value) || 0;
-                    const angle = parseFloat(angleInput.value) || 0;
-                    const angleRad = angle * (Math.PI / 180);
-
-                    const calculatedGradeZ = collarZ - (length - subdrill) * Math.cos(angleRad);
-                    gradeZInput.value = calculatedGradeZ.toFixed(2);
-                }
-            }
-
-            // Add event listeners for changes
-            useGradeZCheckbox.addEventListener("change", updateFieldsBasedOnUseGradeZ);
-            gradeZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            lengthInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            collarZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            angleInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            subdrillInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-
-            // Initial update
-            updateFieldsBasedOnUseGradeZ();
-        },
-    })
-        .then((result) => {
-            if (result.isConfirmed) {
-                // Retrieve values from the input fields
-                const blastName = document.getElementById("blastName").value;
-                const nameTypeIsNumerical = document.getElementById("nameTypeIsNumerical").checked;
-                const useGradeZ = document.getElementById("useGradeZ").checked;
-                const startNumber = parseInt(document.getElementById("startNumber").value);
-                const burden = parseFloat(document.getElementById("burden").value);
-                const spacing = parseFloat(document.getElementById("spacing").value);
-                const spacingOffset = parseFloat(document.getElementById("spacingOffset").value);
-                const collarZ = parseFloat(document.getElementById("collarZ").value);
-                const gradeZ = parseFloat(document.getElementById("gradeZ").value);
-                const length = parseFloat(document.getElementById("length").value);
-                const subdrill = parseFloat(document.getElementById("subdrill").value);
-                const angle = parseFloat(document.getElementById("angle").value);
-                const bearing = parseFloat(document.getElementById("bearing").value);
-                const diameter = parseFloat(document.getElementById("diameter").value);
-                const type = document.getElementById("type").value;
-
-                // Validation checks
-                if (!blastName || blastName.trim() === "") {
-                    showModalMessage("Invalid Blast Name", "Please enter a Blast Name.", "warning");
-                    return;
-                }
-
-                if (isNaN(spacingOffset) || spacingOffset < -1 || spacingOffset > 1) {
-                    showModalMessage("Invalid Offset", "Please enter an offset between -1 and 1.", "warning");
-                    return;
-                }
-
-                if (isNaN(burden) || burden < 0.1 || burden > 50) {
-                    showModalMessage("Invalid Burden", "Please enter burden between 0.1 and 50 meters.", "warning");
-                    return;
-                }
-
-                if (isNaN(spacing) || spacing < 0.1 || spacing > 50) {
-                    showModalMessage("Invalid Spacing", "Please enter spacing between 0.1 and 50 meters.", "warning");
-                    return;
-                }
-
-                // Save values to localStorage
-                const newValues = {
-                    blastName: blastName,
-                    nameTypeIsNumerical: nameTypeIsNumerical,
-                    startNumber: startNumber,
-                    burden: burden,
-                    spacing: spacing,
-                    spacingOffset: spacingOffset,
-                    collarZ: collarZ,
-                    gradeZ: gradeZ,
-                    length: length,
-                    subdrill: subdrill,
-                    angle: angle,
-                    bearing: bearing,
-                    diameter: diameter,
-                    type: type,
-                    useGradeZ: useGradeZ,
-                };
-                localStorage.setItem("savedPatternInPolygonSettings", JSON.stringify(newValues));
-
-                // Initialize allBlastHoles array if it's null
-                if (allBlastHoles === null) {
-                    allBlastHoles = [];
-                }
-
-                // Generate the pattern
-                generatePatternInPolygon({
-                    blastName: blastName,
-                    nameTypeIsNumerical: nameTypeIsNumerical,
-                    useGradeZ: useGradeZ,
-                    startNumber: startNumber,
-                    burden: burden,
-                    spacing: spacing,
-                    spacingOffset: spacingOffset,
-                    collarZ: collarZ,
-                    gradeZ: gradeZ,
-                    length: length,
-                    subdrill: subdrill,
-                    angle: angle,
-                    bearing: bearing,
-                    diameter: diameter,
-                    type: type,
-                    patternType: spacingOffset === 0 ? "square" : "staggered",
-                });
-            }
-        })
-        .finally(() => {
-            // Hide the loading spinner when the popup is closed
-            Swal.hideLoading();
-            debouncedUpdateTreeView(); // Use debounced version
-            // Reset tool
-            patternInPolygonTool.checked = false;
-            patternInPolygonTool.dispatchEvent(new Event("change"));
-        });
+    window.showPatternDialog("polygon_pattern", null, null);
 }
+
 
 function drawPatternInPolygonVisual() {
     if (!isPatternInPolygonActive) return;
