@@ -61,7 +61,7 @@ function showPatternDialog(mode, worldX, worldY) {
     // Step 2a) Add pattern-specific fields ONLY if mode is "add_pattern"
     if (isAddPattern) {
         fields.push(
-            { label: "Orientation", name: "rowOrientation", type: "number", value: lastValues.rowOrientation, placeholder: "Orientation", step: 0.1, min: 0, max: 359.999 },
+            { label: "Orientation", name: "rowOrientation", type: "number", value: lastValues.rowOrientation, placeholder: "Orientation", step: 0.1 },
             { label: "Start X", name: "x", type: "number", value: worldX !== undefined ? worldX : lastValues.x, placeholder: "X" },
             { label: "Start Y", name: "y", type: "number", value: worldY !== undefined ? worldY : lastValues.y, placeholder: "Y" },
             { label: "Start Z", name: "z", type: "number", value: lastValues.z, placeholder: "Z" }
@@ -70,11 +70,11 @@ function showPatternDialog(mode, worldX, worldY) {
     
     // Step 2b) Add startNumber and elevation field (different for each mode)
     if (!isAddPattern) {
-        fields.push({ label: "Starting Hole Number", name: "startNumber", type: "number", value: lastValues.startNumber, step: 1, min: 1, max: 9999 });
-        fields.push({ label: "Burden (m)", name: "burden", type: "number", value: lastValues.burden, step: 0.1, min: 0.1, max: 50 });
-        fields.push({ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1, min: 0.1, max: 50 });
-        fields.push({ label: "Offset", name: "spacingOffset", type: "number", value: lastValues.spacingOffset, step: 0.1, min: -1.0, max: 1.0 });
-        fields.push({ label: "Collar Elevation (m)", name: "collarZ", type: "number", value: lastValues.collarZ, step: 0.1, min: -1000, max: 5000 });
+        fields.push({ label: "Starting Hole Number", name: "startNumber", type: "number", value: lastValues.startNumber, step: 1 });
+        fields.push({ label: "Burden (m)", name: "burden", type: "number", value: lastValues.burden, step: 0.1 });
+        fields.push({ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1 });
+        fields.push({ label: "Offset", name: "spacingOffset", type: "number", value: lastValues.spacingOffset, step: 0.1 });
+        fields.push({ label: "Collar Elevation (m)", name: "collarZ", type: "number", value: lastValues.collarZ, step: 0.1 });
     }
     
     // Step 2c) Add common fields
@@ -86,21 +86,21 @@ function showPatternDialog(mode, worldX, worldY) {
     
     // Step 2d) Add remaining common fields (different order for add pattern)
     if (isAddPattern) {
-        fields.push({ label: "Diameter (mm)", name: "diameter", type: "number", value: lastValues.diameter, step: 1, min: 0, max: 1000 });
+        fields.push({ label: "Diameter (mm)", name: "diameter", type: "number", value: lastValues.diameter, step: 1 });
         fields.push({ label: "Type", name: "type", type: "text", value: lastValues.type, placeholder: "Type" });
-        fields.push({ label: "Angle (°)", name: "angle", type: "number", value: lastValues.angle, step: 1, min: 0, max: 60 });
-        fields.push({ label: "Bearing (°)", name: "bearing", type: "number", value: lastValues.bearing, step: 0.1, min: 0, max: 359.999 });
-        fields.push({ label: "Subdrill (m)", name: "subdrill", type: "number", value: lastValues.subdrill, step: 0.1, min: 0.0, max: 100 });
-        fields.push({ label: "Offset", name: "spacingOffset", type: "number", value: lastValues.spacingOffset, step: 0.1, min: -1.0, max: 1.0 });
-        fields.push({ label: "Burden (m)", name: "burden", type: "number", value: lastValues.burden, step: 0.1, min: 0.1, max: 50 });
-        fields.push({ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1, min: 0.1, max: 50 });
-        fields.push({ label: "Rows", name: "rows", type: "number", value: lastValues.rows, step: 1, min: 1, max: 500 });
-        fields.push({ label: "Holes Per Row", name: "holesPerRow", type: "number", value: lastValues.holesPerRow, step: 1, min: 1, max: 500 });
+        fields.push({ label: "Angle (°)", name: "angle", type: "number", value: lastValues.angle, step: 1 });
+        fields.push({ label: "Bearing (°)", name: "bearing", type: "number", value: lastValues.bearing, step: 0.1 });
+        fields.push({ label: "Subdrill (m)", name: "subdrill", type: "number", value: lastValues.subdrill, step: 0.1 });
+        fields.push({ label: "Offset", name: "spacingOffset", type: "number", value: lastValues.spacingOffset, step: 0.1 });
+        fields.push({ label: "Burden (m)", name: "burden", type: "number", value: lastValues.burden, step: 0.1 });
+        fields.push({ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1 });
+        fields.push({ label: "Rows", name: "rows", type: "number", value: lastValues.rows, step: 1 });
+        fields.push({ label: "Holes Per Row", name: "holesPerRow", type: "number", value: lastValues.holesPerRow, step: 1 });
     } else {
-        fields.push({ label: "Subdrill (m)", name: "subdrill", type: "number", value: lastValues.subdrill, step: 0.1, min: -50, max: 50 });
-        fields.push({ label: "Hole Angle (° from vertical)", name: "angle", type: "number", value: lastValues.angle, step: 1, min: 0, max: 60 });
-        fields.push({ label: "Hole Bearing (°)", name: "bearing", type: "number", value: lastValues.bearing, step: 0.1, min: 0, max: 359.999 });
-        fields.push({ label: "Diameter (mm)", name: "diameter", type: "number", value: lastValues.diameter, step: 1, min: 1, max: 1000 });
+        fields.push({ label: "Subdrill (m)", name: "subdrill", type: "number", value: lastValues.subdrill, step: 0.1 });
+        fields.push({ label: "Hole Angle (° from vertical)", name: "angle", type: "number", value: lastValues.angle, step: 1 });
+        fields.push({ label: "Hole Bearing (°)", name: "bearing", type: "number", value: lastValues.bearing, step: 0.1 });
+        fields.push({ label: "Diameter (mm)", name: "diameter", type: "number", value: lastValues.diameter, step: 1 });
         fields.push({ label: "Hole Type", name: "type", type: "text", value: lastValues.type, placeholder: "Type" });
     }
     
@@ -265,75 +265,15 @@ function setupPatternDialogEventListeners(formContent, isAddPattern) {
 function processPatternGeneration(formData, mode, worldX, worldY) {
     const isAddPattern = (mode === "add_pattern");
     
-    // Step 7a) Validation checks
+    // Step 7a) Basic validation checks (removed restrictive min/max limits)
     if (!formData.blastName || formData.blastName.trim() === "") {
         window.showModalMessage("Invalid Blast Name", "Please enter a Blast Name.", "warning");
-        return;
-    }
-    
-    if (isNaN(formData.spacingOffset) || formData.spacingOffset < -1 || formData.spacingOffset > 1) {
-        window.showModalMessage("Invalid Offset", "Please enter an offset between -1 and 1.", "warning");
-        return;
-    }
-    
-    if (isNaN(formData.burden) || formData.burden < 0.1 || formData.burden > 50) {
-        window.showModalMessage("Invalid Burden", "Please enter burden between 0.1 and 50 meters.", "warning");
-        return;
-    }
-    
-    if (isNaN(formData.spacing) || formData.spacing < 0.1 || formData.spacing > 50) {
-        window.showModalMessage("Invalid Spacing", "Please enter spacing between 0.1 and 50 meters.", "warning");
-        return;
-    }
-    
-    if (isNaN(formData.diameter) || formData.diameter < 0 || formData.diameter > 1000) {
-        window.showModalMessage("Invalid Diameter", "Please enter diameter between 0 and 1000mm.", "warning");
         return;
     }
     
     if (!formData.type || formData.type.trim() === "") {
         window.showModalMessage("Invalid Type", "Please enter a hole type.", "warning");
         return;
-    }
-    
-    if (isNaN(formData.angle) || formData.angle < 0 || formData.angle > 60) {
-        window.showModalMessage("Invalid Angle", "Please enter angle between 0 and 60 degrees.", "warning");
-        return;
-    }
-    
-    if (isNaN(formData.bearing) || formData.bearing < 0 || formData.bearing > 360) {
-        window.showModalMessage("Invalid Bearing", "Please enter bearing between 0 and 360 degrees.", "warning");
-        return;
-    }
-    
-    if (isNaN(formData.subdrill) || formData.subdrill < (isAddPattern ? 0 : -50) || formData.subdrill > (isAddPattern ? 100 : 50)) {
-        const min = isAddPattern ? 0 : -50;
-        const max = isAddPattern ? 100 : 50;
-        window.showModalMessage("Invalid Subdrill", "Please enter subdrill between " + min + " and " + max + " meters.", "warning");
-        return;
-    }
-    
-    if (isNaN(formData.length) || formData.length < 0.1 || formData.length > 1000) {
-        window.showModalMessage("Invalid Length", "Please enter length between 0.1 and 1000 meters.", "warning");
-        return;
-    }
-    
-    // Additional validation for add pattern mode
-    if (isAddPattern) {
-        if (isNaN(formData.rows) || formData.rows < 1 || formData.rows > 500) {
-            window.showModalMessage("Invalid Rows", "Please enter rows between 1 and 500.", "warning");
-            return;
-        }
-        
-        if (isNaN(formData.holesPerRow) || formData.holesPerRow < 1 || formData.holesPerRow > 500) {
-            window.showModalMessage("Invalid Holes Per Row", "Please enter holes per row between 1 and 500.", "warning");
-            return;
-        }
-        
-        if (isNaN(formData.rowOrientation) || formData.rowOrientation < 0 || formData.rowOrientation > 360) {
-            window.showModalMessage("Invalid Orientation", "Please enter orientation between 0 and 360 degrees.", "warning");
-            return;
-        }
     }
     
     // Step 7b) Save to localStorage

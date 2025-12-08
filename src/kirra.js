@@ -2291,10 +2291,10 @@ function handle3DMouseMove(event) {
             torusColor = "rgba(0, 255, 0, 0.8)";
         } else {
             // Otherwise use tool-specific colors
-            var isAnyDrawingToolActiveForTorus = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+            var isAnyDrawingToolActiveForTorus = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText || isAddingHole;
             if (isAnyDrawingToolActiveForTorus) {
-                if (isDrawingPoint) {
-                    torusColor = "rgba(209, 0, 0, 0.5)"; // Red for points
+                if (isDrawingPoint || isAddingHole) {
+                    torusColor = "rgba(209, 0, 0, 0.5)"; // Red for points and holes
                 } else if (isDrawingLine) {
                     torusColor = "rgba(0, 255, 255, 0.5)"; // Cyan for lines
                 } else if (isDrawingPoly) {
@@ -2310,15 +2310,15 @@ function handle3DMouseMove(event) {
     }
 
     // Step 13f.8) Draw KAD leading line preview if drawing tool is active
-    const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+    const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText || isAddingHole;
     if (isAnyDrawingToolActive && lastKADDrawPoint) {
         // Get drawing Z value
         const drawZ = drawingZValue || document.getElementById("drawingElevation").value || 0;
 
         // Determine color based on active tool
         var leadingLineColor = "rgba(0, 255, 255, 0.8)"; // Cyan default
-        if (isDrawingPoint) {
-            leadingLineColor = "rgba(209, 0, 0, 0.8)"; // Red for points
+        if (isDrawingPoint || isAddingHole) {
+            leadingLineColor = "rgba(209, 0, 0, 0.8)"; // Red for points and holes
         } else if (isDrawingLine) {
             leadingLineColor = "rgba(0, 255, 255, 0.8)"; // Cyan for lines
         } else if (isDrawingPoly) {
@@ -4922,6 +4922,7 @@ addHoleSwitch.addEventListener("change", function () {
         }
 
         addHoleSwitch.checked = true;
+
         isAddingHole = true;
         isAddingPattern = false;
         isDeletingHole = false;
@@ -4947,6 +4948,14 @@ addHoleSwitch.addEventListener("change", function () {
         //Just in case this sliped through
         canvas.removeEventListener("click", handlePatternAddingClick);
         canvas.removeEventListener("touchstart", handlePatternAddingClick);
+
+        // Clear multiple mode data when tool is turned off
+        if (window.isAddingSingleHole !== undefined) {
+            window.isAddingSingleHole = false;
+        }
+        if (window.multipleAddHoleFormData !== undefined) {
+            window.multipleAddHoleFormData = null;
+        }
 
         deleteHoleSwitch.disabled = false;
         selectedHole = null;
@@ -6468,12 +6477,8 @@ function handleMouseUp(event) {
     if (isDraggingBearing || isDraggingHole) return;
     //touchDuration = Date.now() - touchStartTime;
 
-    if (isAddingHole && touchDuration <= longPressDuration) {
-        // Short click behavior
-        touchStartX = event.clientX;
-        touchStartY = event.clientY;
-        addHolePopup();
-    }
+    // Note: Add hole dialog is now shown in handleHoleAddingClick, not here
+    // This prevents duplicate dialogs
     if (isAddingPattern && touchDuration <= longPressDuration) {
         touchStartX = event.clientX;
         touchStartY = event.clientY;
@@ -6551,11 +6556,8 @@ function handleTouchEnd(event) {
     // Block tool-specific behaviors if tools are dragging
     if (isDraggingBearing || isDraggingHole) return;
 
-    if (isAddingHole && touchDuration <= longPressDuration) {
-        touchStartX = event.changedTouches[0].clientX;
-        touchStartY = event.changedTouches[0].clientY;
-        addHolePopup();
-    }
+    // Note: Add hole dialog is now shown in handleHoleAddingClick, not here
+    // This prevents duplicate dialogs
     if (event.touches.length === 1) {
         initialPinchDistance = null;
         initialScale = currentScale;
@@ -17985,10 +17987,14 @@ function deleteHoleAndRenumber(holeToDelete) {
     const rowID = holeToDelete.rowID;
     const posID = holeToDelete.posID;
 
-    // Step #2: Remove the hole from allBlastHoles
-    const holeIndex = allBlastHoles.indexOf(holeToDelete);
-    if (holeIndex > -1) {
+    // Step #2: Find the hole in allBlastHoles and remove it
+    const holeIndex = allBlastHoles.findIndex((hole) => hole.entityName === entityName && hole.holeID === holeID);
+    if (holeIndex !== -1) {
         allBlastHoles.splice(holeIndex, 1);
+        console.log("🗑️ Deleted hole:", entityName + ":" + holeID);
+
+        // Save to IndexedDB after deletion
+        debouncedSaveHoles();
     }
 
     // Step #3: If rowID/posID exist, use rowID/posID logic
@@ -18064,6 +18070,7 @@ function deleteHoleAndRenumber(holeToDelete) {
 
 function handleHoleAddingClick(event) {
     if (isAddingHole) {
+        console.log("🔹 handleHoleAddingClick fired");
         // Get the click/touch coordinates relative to the canvas
         const rect = canvas.getBoundingClientRect();
         let clickX = event.clientX - rect.left;
@@ -18080,17 +18087,54 @@ function handleHoleAddingClick(event) {
         }
         // SNAPPIN SNAP:
         const snapResult = canvasToWorldWithSnap(clickX, clickY);
-        worldX = snapResult.worldX;
-        worldY = snapResult.worldY;
+        worldX = parseFloat(snapResult.worldX);
+        worldY = parseFloat(snapResult.worldY);
+
+        // Set worldZ if available from snap result, otherwise use current elevation
+        if (snapResult.worldZ !== undefined && snapResult.worldZ !== null) {
+            worldZ = parseFloat(snapResult.worldZ);
+        } else {
+            // Use drawing elevation or default
+            worldZ = parseFloat(document.getElementById("drawingElevation")?.value || 0);
+        }
+
+        // Expose on window object for AddHoleDialog.js to access
+        window.worldX = worldX;
+        window.worldY = worldY;
+        window.worldZ = worldZ;
 
         // Show snap feedback if snapped
         if (snapResult.snapped) {
             updateStatusMessage("Snapped to " + snapResult.snapTarget.description);
             setTimeout(() => updateStatusMessage(""), 1500);
         }
+
+        console.log("🔹 worldX/worldY/worldZ set:", worldX, worldY, worldZ);
+        console.log("🔹 window.worldX/worldY/worldZ:", window.worldX, window.worldY, window.worldZ);
+
+        // Step 1) Check if we're in multiple mode (have stored form data)
+        if (window.isAddingSingleHole && window.multipleAddHoleFormData) {
+            // Multiple mode: Reuse stored form data, don't show dialog
+            console.log("🔹 Multiple mode: Reusing stored form data");
+            if (typeof window.addHoleMultipleMode === "function") {
+                window.addHoleMultipleMode(worldX, worldY);
+            } else {
+                console.error("❌ addHoleMultipleMode function not found");
+                addHolePopup(); // Fallback to showing dialog
+            }
+        } else {
+            // Single mode or first click: Show dialog
+            console.log("🔹 Single mode or first click: Showing dialog");
+            addHolePopup();
+        }
     } else {
         worldX = null;
         worldY = null;
+        worldZ = null;
+        // Clear window properties too
+        window.worldX = null;
+        window.worldY = null;
+        window.worldZ = null;
     }
 }
 
@@ -19167,308 +19211,8 @@ function saveAQMPopup() {
 // Using SweetAlert Library Create a popup that gets input from the user.
 // Updated addHolePopup function with proper field handling
 function addHolePopup() {
-    let blastNameValue = "Added_hole_" + new Date().getTime();
-    //Retrieve the last entered values from local storage
-    let savedAddHolePopupSettings = JSON.parse(localStorage.getItem("savedAddHolePopupSettings")) || {};
-    let lastValues = {
-        blastName: savedAddHolePopupSettings.blastName || blastNameValue,
-        useCustomHoleID: savedAddHolePopupSettings.useCustomHoleID !== undefined ? savedAddHolePopupSettings.useCustomHoleID : false,
-        useGradeZ: savedAddHolePopupSettings.useGradeZ !== undefined ? savedAddHolePopupSettings.useGradeZ : false,
-        customHoleID: savedAddHolePopupSettings.customHoleID || "",
-        elevation: savedAddHolePopupSettings.elevation || 0,
-        gradeZ: savedAddHolePopupSettings.gradeZ || 0,
-        diameter: savedAddHolePopupSettings.diameter || 115,
-        type: savedAddHolePopupSettings.type || "Production",
-        length: savedAddHolePopupSettings.length || 0,
-        subdrill: savedAddHolePopupSettings.subdrill || 0,
-        angle: savedAddHolePopupSettings.angle || 0,
-        bearing: savedAddHolePopupSettings.bearing || 0,
-        burden: savedAddHolePopupSettings.burden || 3.0,
-        spacing: savedAddHolePopupSettings.spacing || 3.5,
-    };
-
-    // Calculate default length if using grade Z
-    const defaultLength = lastValues.useGradeZ ? Math.abs((lastValues.elevation - lastValues.gradeZ + lastValues.subdrill) / Math.cos(lastValues.angle * (Math.PI / 180))) : lastValues.length;
-
-    // Calculate default grade if using length
-    const defaultGradeZ = !lastValues.useGradeZ ? lastValues.elevation - (lastValues.length - lastValues.subdrill) * Math.cos(lastValues.angle * (Math.PI / 180)) : lastValues.gradeZ;
-
-    Swal.fire({
-        title: "Add a hole to the Pattern?",
-        showCancelButton: true,
-        confirmButtonText: "Confirm",
-        cancelButtonText: "Cancel",
-        html: `
-		<div class="button-container-2col">
-			<label class="labelWhite18" for="blastName">Blast Name</label>
-			<input type="text3" id="blastName" placeholder="Blast Name" value="${lastValues.blastName}" />
-		  	<label class="labelWhite18" for="useCustomHoleID">Use Custom Hole ID</label>
-		  	<input type="checkbox" id="useCustomHoleID" name="useCustomHoleID" ${lastValues.useCustomHoleID ? "checked" : ""}>
-            <label class="labelWhite18" for="useGradeZ">Use Grade Z</label>
-		  	<input type="checkbox" id="useGradeZ" name="useGradeZ" ${lastValues.useGradeZ ? "checked" : ""}>
-		  	<label class="labelWhite18" for="customHoleID">Hole ID</label>
-		  	<input type="text3" id="customHoleID" placeholder="Custom Hole ID" value="${lastValues.customHoleID}" />
-		  	<label class="labelWhite18" for="elevation">Start Z</label>
-		  	<input type="number3" id="elevation" placeholder="Elevation" value="${lastValues.elevation}" inputmode="decimal" pattern="[0-9]*"/>
-            <label class="labelWhite18" for="gradeZ">Grade Z</label>
-		  	<input type="number3" id="gradeZ" placeholder="Grade Z" value="${defaultGradeZ}" inputmode="decimal" pattern="[0-9]*" ${!lastValues.useGradeZ ? "disabled" : ""}/>
-			<label class="labelWhite18" for="diameter">Diameter</label>
-			<input type="number3" id="diameter" name="diameter" placeholder="Diameter" value="${lastValues.diameter}" step=1 min="0" max="1000" inputmode="decimal" pattern="[0-9]*"/>
-			<label class="labelWhite18" for="type">Type</label>
-			<input type="text3" id="type" name="type" placeholder="Type" value="${lastValues.type}"/>
-		  	<label class="labelWhite18" for="length">Length</label>
-		  	<input type="number3" id="length" placeholder="Length" value="${defaultLength}" inputmode="decimal" pattern="[0-9]*" ${lastValues.useGradeZ ? "disabled" : ""}/>
-            <label class="labelWhite18" for="subdrill">Subdrill</label>
-		  	<input type="number3" id="subdrill" placeholder="Subdrill" value="${lastValues.subdrill}" inputmode="decimal" pattern="[0-9]*"/>
-		  	<label class="labelWhite18" for="angle">Angle</label>
-		  	<input type="number3" id="angle" placeholder="Angle" value="${lastValues.angle}" min="0" max="60" inputmode="decimal" pattern="[0-9]*"/>
-		  	<label class="labelWhite18" for="bearing">Bearing</label>
-		  	<input type="number3" id="bearing" placeholder="Bearing" value="${lastValues.bearing}" inputmode="decimal" pattern="[0-9]*"/>
-			<label class="labelWhite18" for="burden">Burden</label>
-			<input type="number3" id="burden" name="burden" placeholder="Burden" value="${lastValues.burden}" step="0.1" min="0.1" max="50" inputmode="decimal" pattern="[0-9]*"/>
-			<label class="labelWhite18" for="spacing">Spacing</label>
-			<input type="number3" id="spacing" name="spacing" placeholder="Spacing" value="${lastValues.spacing}" step="0.1" min="0.1" max="50" inputmode="decimal" pattern="[0-9]*"/>
-		  </div>
-	  `,
-        customClass: {
-            container: "custom-popup-container",
-            title: "swal2-title",
-            confirmButton: "confirm",
-            cancelButton: "cancel",
-            content: "swal2-content",
-            htmlContainer: "swal2-html-container",
-            icon: "swal2-icon",
-        },
-        didOpen: () => {
-            // Add event listeners after the popup is opened
-            const useGradeZCheckbox = document.getElementById("useGradeZ");
-            const gradeZInput = document.getElementById("gradeZ");
-            const lengthInput = document.getElementById("length");
-            const elevationInput = document.getElementById("elevation");
-            const angleInput = document.getElementById("angle");
-            const subdrillInput = document.getElementById("subdrill");
-
-            // Function to update fields based on checkbox state
-            function updateFieldsBasedOnUseGradeZ() {
-                const useGradeZ = useGradeZCheckbox.checked;
-
-                // Enable/disable fields
-                gradeZInput.disabled = !useGradeZ;
-                lengthInput.disabled = useGradeZ;
-
-                // Update calculations
-                if (useGradeZ) {
-                    // Calculate length from grade
-                    const elevation = parseFloat(elevationInput.value) || 0;
-                    const gradeZ = parseFloat(gradeZInput.value) || 0;
-                    const subdrill = parseFloat(subdrillInput.value) || 0;
-                    const angle = parseFloat(angleInput.value) || 0;
-                    const angleRad = angle * (Math.PI / 180);
-
-                    const calculatedLength = Math.abs((elevation - gradeZ + subdrill) / Math.cos(angleRad));
-                    lengthInput.value = calculatedLength.toFixed(2);
-                } else {
-                    // Calculate grade from length
-                    const elevation = parseFloat(elevationInput.value) || 0;
-                    const length = parseFloat(lengthInput.value) || 0;
-                    const subdrill = parseFloat(subdrillInput.value) || 0;
-                    const angle = parseFloat(angleInput.value) || 0;
-                    const angleRad = angle * (Math.PI / 180);
-
-                    const calculatedGradeZ = elevation - (length - subdrill) * Math.cos(angleRad);
-                    gradeZInput.value = calculatedGradeZ.toFixed(2);
-                }
-            }
-
-            // Add event listeners for changes
-            useGradeZCheckbox.addEventListener("change", updateFieldsBasedOnUseGradeZ);
-            gradeZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            lengthInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            elevationInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            angleInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-            subdrillInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-
-            // Initial update
-            updateFieldsBasedOnUseGradeZ();
-        },
-    }).then((result) => {
-        if (result.isConfirmed) {
-            const useCustomHoleID = document.getElementById("useCustomHoleID").checked;
-            const useGradeZ = document.getElementById("useGradeZ").checked;
-            const customHoleID = document.getElementById("customHoleID").value;
-
-            const blastNameInput = document.getElementById("blastName");
-            const blastNameValue = blastNameInput.value;
-            if (blastNameValue === null || blastNameValue === "") {
-                // Show an alert to the user
-                Swal.fire({
-                    title: "Invalid Blast Name",
-                    showCancelButton: true,
-                    showConfirmButton: false,
-                    html: `<label class="labelWhite18">Error parsing Blast Name</label>`,
-                    customClass: {
-                        container: "custom-popup-container",
-                        title: "swal2-title",
-                        cancelButton: "Try Again",
-                        content: "swal2-content",
-                        htmlContainer: "swal2-html-container",
-                        icon: "error",
-                    },
-                });
-                return; // Exit the function
-            }
-
-            //diameter checks
-            const diameterInput = document.getElementById("diameter");
-            const diameterValue = parseFloat(diameterInput.value);
-            if (isNaN(diameterValue) || diameterValue < 0 || diameterValue > 1000) {
-                // Show an alert to the user
-                showModalMessage("Diameter Invalid", "Please enter a valid diameter between 0 to 1000 millimeters", "info", () => {
-                    console.log("User acknowledged the Invalid Diameter");
-                });
-                return; // Exit the function
-            }
-            //type checks which is only text
-            const typeInput = document.getElementById("type");
-            const typeValue = typeInput.value;
-            if (typeValue === null || typeValue === "") {
-                // Show an alert to the user
-                showModalMessage("Type Invalid", "Please enter a valid Type.", "info", () => {
-                    console.log("User acknowledged the Invalid Type");
-                });
-                return; // Exit the function
-            }
-            const elevationInput = document.getElementById("elevation");
-            const elevationValue = parseFloat(elevationInput.value);
-            if (isNaN(elevationValue) || elevationValue < -20000 || elevationValue > 20000) {
-                // Show an alert to the user
-                showModalMessage("Elevation Invalid", "Please enter a valid elevation -20000 to 20000 meters", "info", () => {
-                    console.log("User acknowledged the the invalid elevation");
-                });
-                return; // Exit the function
-            }
-            const gradeZInput = document.getElementById("gradeZ");
-            const gradeZValue = parseFloat(gradeZInput.value);
-            if (isNaN(gradeZValue) || gradeZValue < -20000 || gradeZValue > 20000) {
-                // Show an alert to the user
-                showModalMessage("Grade Z Invalid", "Please enter an grade Z between -20000 and 20000 meters.", "info", () => {
-                    console.log("User acknowledged the the invalid grade Z");
-                });
-                return; // Exit the function
-            }
-            const lengthInput = document.getElementById("length");
-            const lengthValue = parseFloat(lengthInput.value);
-            if (isNaN(lengthValue) || lengthValue < 0 || lengthValue > 100) {
-                // Show an alert to the user
-                showModalMessage("Length Invalid", "Please enter a length between 0 and 100 meters.", "info", () => {
-                    console.log("User acknowledged the the invalid length");
-                });
-                return; // Exit the function
-            }
-
-            const subdrillInput = document.getElementById("subdrill");
-            const subdrillValue = parseFloat(subdrillInput.value);
-            if (isNaN(subdrillValue) || subdrillValue < 0 || subdrillValue > 100) {
-                // Show an alert to the user
-                showModalMessage("Subdrill Invalid", "Please enter an subdrill between 0 and 100 meters.", "info", () => {
-                    console.log("User acknowledged the the invalid subdrill");
-                });
-                return; // Exit the function
-            }
-
-            const angleInput = document.getElementById("angle");
-            const angleValue = parseFloat(angleInput.value);
-
-            if (isNaN(angleValue) || angleValue < 0 || angleValue > 60) {
-                // Show an alert to the user
-                showModalMessage("Angle Invalid", "Please enter an angle between 0 and 60 degrees.", "info", () => {
-                    console.log("User acknowledged the the invalid angle");
-                });
-                return; // Exit the function
-            }
-            const bearingInput = document.getElementById("bearing");
-            const bearingValue = parseFloat(bearingInput.value);
-
-            if (isNaN(bearingValue) || bearingValue < 0 || bearingValue > 360) {
-                // Show an alert to the user
-                showModalMessage("Bearing Invalid", "Please enter an bearing between 0 and 360 degrees.", "info", () => {
-                    console.log("User acknowledged the the invalid bearing");
-                });
-                return; // Exit the function
-            }
-            // Step 1) Get burden value and validate
-            const burdenInput = document.getElementById("burden");
-            const burdenValue = parseFloat(burdenInput.value);
-
-            if (isNaN(burdenValue) || burdenValue <= 0 || burdenValue > 50) {
-                // Show an alert to the user
-                showModalMessage("Burden Invalid", "Please enter a burden between 0.1 and 50 meters.", "info", () => {
-                    console.log("User acknowledged the invalid burden");
-                });
-                return; // Exit the function
-            }
-
-            // Step 2) Get spacing value and validate
-            const spacingInput = document.getElementById("spacing");
-            const spacingValue = parseFloat(spacingInput.value);
-
-            if (isNaN(spacingValue) || spacingValue <= 0 || spacingValue > 50) {
-                // Show an alert to the user
-                showModalMessage("Spacing Invalid", "Please enter a spacing between 0.1 and 50 meters.", "info", () => {
-                    console.log("User acknowledged the invalid spacing");
-                });
-                return; // Exit the function
-            }
-
-            lastValues = {
-                blastName: blastNameValue,
-                useCustomHoleID: useCustomHoleID,
-                useGradeZ: useGradeZ,
-                customHoleID: customHoleID,
-                elevation: elevationValue,
-                gradeZ: gradeZValue,
-                diameter: diameterValue,
-                type: typeValue,
-                length: lengthValue,
-                subdrill: subdrillValue,
-                angle: angleValue,
-                bearing: bearingValue,
-                burden: burdenValue,
-                spacing: spacingValue,
-            };
-            localStorage.setItem("savedAddHolePopupSettings", JSON.stringify(lastValues));
-
-            // PROXIMITY CHECK: Check for nearby holes before adding
-            const proximityHoles = checkHoleProximity(parseFloat(worldX), parseFloat(worldY), parseFloat(diameterValue), points);
-
-            if (proximityHoles.length > 0) {
-                const newHoleInfo = {
-                    entityName: blastNameValue,
-                    holeID: useCustomHoleID ? customHoleID : (points.length + 1).toString(),
-                    x: parseFloat(worldX),
-                    y: parseFloat(worldY),
-                    diameter: parseFloat(diameterValue),
-                };
-
-                showProximityWarning(proximityHoles, newHoleInfo).then((proximityResult) => {
-                    if (proximityResult.isConfirmed) {
-                        // User chose to continue - add the hole
-                        addHole(useCustomHoleID, useGradeZ, blastNameValue, useCustomHoleID ? customHoleID : points.length + 1, parseFloat(worldX), parseFloat(worldY), parseFloat(elevationValue), parseFloat(gradeZValue), parseFloat(diameterValue), typeValue, parseFloat(lengthValue), parseFloat(subdrillValue), parseFloat(angleValue), parseFloat(bearingValue), parseFloat(burdenValue), parseFloat(spacingValue));
-                    } else if (proximityResult.isDenied) {
-                        // User chose to skip - don't add this hole
-                        console.log("Skipped hole due to proximity");
-                    }
-                    // If proximityResult.isDismissed (cancel), do nothing
-                });
-            } else {
-                // No proximity issues - add the hole normally
-                addHole(useCustomHoleID, useGradeZ, blastNameValue, useCustomHoleID ? customHoleID : points.length + 1, parseFloat(worldX), parseFloat(worldY), parseFloat(elevationValue), parseFloat(gradeZValue), parseFloat(diameterValue), typeValue, parseFloat(lengthValue), parseFloat(subdrillValue), parseFloat(angleValue), parseFloat(bearingValue), parseFloat(burdenValue), parseFloat(spacingValue));
-            }
-        } else {
-            worldX = null;
-            worldY = null;
-        }
-    });
+    // Moved to src/dialog/popups/generic/AddHoleDialog.js
+    window.showAddHoleDialog();
 }
 
 function handlePatternAddingClick(event) {
@@ -19680,6 +19424,14 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 
 // Expose addPattern globally for PatternGenerationDialogs.js
 window.addPattern = addPattern;
+// Expose functions globally for AddHoleDialog.js
+window.addHole = addHole;
+window.checkHoleProximity = checkHoleProximity;
+window.showProximityWarning = showProximityWarning;
+// Expose world coordinate variables globally for AddHoleDialog.js
+window.worldX = worldX;
+window.worldY = worldY;
+window.worldZ = worldZ;
 
 function incrementLetter(str) {
     // Helper function to increment letters
@@ -22367,6 +22119,27 @@ function drawData(allBlastHoles, selectedHole) {
 
         if (drawMouseLines) {
             drawMouseCrossHairs(mouseX, mouseY, snapRadiusPixels, true, true);
+        }
+
+        // Draw crosshair indicator for Add Hole tool
+        if (isAddingHole) {
+            ctx.beginPath();
+            ctx.strokeStyle = "rgba(209, 0, 0, 0.8)"; // Red crosshair
+            ctx.lineWidth = 2;
+
+            // Horizontal line
+            ctx.moveTo(mouseX - snapRadiusPixels * 1.5, mouseY);
+            ctx.lineTo(mouseX + snapRadiusPixels * 1.5, mouseY);
+            // Vertical line
+            ctx.moveTo(mouseX, mouseY - snapRadiusPixels * 1.5);
+            ctx.lineTo(mouseX, mouseY + snapRadiusPixels * 1.5);
+            ctx.stroke();
+
+            // Optional: Draw small circle at center
+            ctx.beginPath();
+            ctx.arc(mouseX, mouseY, 3, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(209, 0, 0, 0.6)";
+            ctx.fill();
         }
 
         // Draw live ruler while measuring
@@ -38724,6 +38497,9 @@ class TreeView {
 
                     this.updateTreeData();
                     drawData(allBlastHoles, selectedHole);
+
+                    // Save to IndexedDB after deletion
+                    debouncedSaveHoles();
 
                     // Show success message
                     if (shouldRenumber && newStartValue) {

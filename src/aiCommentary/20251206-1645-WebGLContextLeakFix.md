@@ -246,3 +246,4 @@ function checkWebGL() {
 **Severity**: 🔴 CRITICAL (broken functionality)  
 **Status**: ✅ RESOLVED
 
+

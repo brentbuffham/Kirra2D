@@ -237,3 +237,4 @@ To implement manual release button:
 
 **Bottom Line**: This is a **browser limitation**, not a bug. The current protections are good. Adding a manual release button in the error dialog would be the best UX improvement.
 
+
