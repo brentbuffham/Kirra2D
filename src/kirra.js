@@ -17574,9 +17574,10 @@ function deleteSelectedHoles() {
 
     if (isDeletingHole) {
         const entitiesToRenumber = new Set(); // Store unique entity names that need renumbering
+        const deletedCombinedIDs = new Set(); // Track deleted holes for fromHoleID cleanup
 
         if (selectedMultipleHoles.length > 0) {
-            console.log(`Processing deletion for ${selectedMultipleHoles.length} selected holes.`);
+            console.log("Processing deletion for " + selectedMultipleHoles.length + " selected holes.");
             const originalPointsLength = allBlastHoles.length;
 
             // Create a Set of hole references for efficient filtering
@@ -17585,6 +17586,7 @@ function deleteSelectedHoles() {
             allBlastHoles = allBlastHoles.filter((hole) => {
                 if (holesToDeleteReferences.has(hole)) {
                     //console.log("Deleting Hole ID:", point.holeID, "in:", point.entityName);
+                    deletedCombinedIDs.add(hole.entityName + ":::" + hole.holeID);
                     if (isRenumberingHoles) {
                         entitiesToRenumber.add(hole.entityName);
                     }
@@ -17605,6 +17607,7 @@ function deleteSelectedHoles() {
         } else if (selectedHole !== null) {
             //console.log("Processing deletion for single Hole ID:", selectedHole.holeID, "in:", selectedHole.entityName);
             const holeToRemove = selectedHole; // Cache before selectedHole is nulled
+            deletedCombinedIDs.add(holeToRemove.entityName + ":::" + holeToRemove.holeID);
             const originalPointsLength = allBlastHoles.length;
 
             allBlastHoles = allBlastHoles.filter((hole) => hole !== holeToRemove);
@@ -17622,6 +17625,15 @@ function deleteSelectedHoles() {
         }
 
         if (holesWereActuallyDeleted) {
+            // Clean up orphaned fromHoleID references before renumbering
+            allBlastHoles.forEach((hole) => {
+                if (deletedCombinedIDs.has(hole.fromHoleID)) {
+                    const selfReference = hole.entityName + ":::" + hole.holeID;
+                    console.log("🔗 Orphaned hole " + selfReference + " now references itself");
+                    hole.fromHoleID = selfReference;
+                }
+            });
+
             // Perform renumbering for all affected entities if enabled
             if (isRenumberingHoles) {
                 entitiesToRenumber.forEach((entityName) => {
@@ -17630,6 +17642,9 @@ function deleteSelectedHoles() {
                     renumberHolesFunction(deleteRenumberStart, entityName);
                 });
             }
+
+            // Save to IndexedDB after deletion
+            debouncedSaveHoles();
 
             // Reset fromHoleStore as selections involving it are now gone
             fromHoleStore = null;
@@ -17986,6 +18001,7 @@ function deleteHoleAndRenumber(holeToDelete) {
     const holeID = holeToDelete.holeID;
     const rowID = holeToDelete.rowID;
     const posID = holeToDelete.posID;
+    const deletedCombinedID = entityName + ":::" + holeID;
 
     // Step #2: Find the hole in allBlastHoles and remove it
     const holeIndex = allBlastHoles.findIndex((hole) => hole.entityName === entityName && hole.holeID === holeID);
@@ -17993,8 +18009,20 @@ function deleteHoleAndRenumber(holeToDelete) {
         allBlastHoles.splice(holeIndex, 1);
         console.log("🗑️ Deleted hole:", entityName + ":" + holeID);
 
-        // Save to IndexedDB after deletion
+        // Step #2a: Clean up fromHoleID references - orphaned holes should reference themselves
+        allBlastHoles.forEach((hole) => {
+            if (hole.fromHoleID === deletedCombinedID) {
+                const selfReference = hole.entityName + ":::" + hole.holeID;
+                console.log("🔗 Orphaned hole " + selfReference + " now references itself");
+                hole.fromHoleID = selfReference;
+            }
+        });
+
+        // Step #2b: Save to IndexedDB after deletion
         debouncedSaveHoles();
+    } else {
+        console.warn("⚠️ Hole not found for deletion:", entityName + ":" + holeID);
+        return;
     }
 
     // Step #3: If rowID/posID exist, use rowID/posID logic
@@ -38463,12 +38491,15 @@ class TreeView {
 
                     nodeIds.forEach((nodeId) => {
                         const type = nodeId.split("⣿")[0];
-                        const itemId = nodeId.split("⣿").slice(1).join("⣿");
+                        const parts = nodeId.split("⣿");
 
                         if (type === "hole") {
-                            const holeIndex = allBlastHoles.findIndex((hole) => hole.holeID === itemId);
+                            // Format: "hole⣿entityName⣿holeID"
+                            const entityName = parts[1];
+                            const holeID = parts[2];
+
+                            const holeIndex = allBlastHoles.findIndex((hole) => hole.entityName === entityName && hole.holeID === holeID);
                             if (holeIndex !== -1) {
-                                const entityName = allBlastHoles[holeIndex].entityName;
                                 const holeToDelete = allBlastHoles[holeIndex];
                                 affectedEntities.add(entityName);
 
@@ -38476,7 +38507,20 @@ class TreeView {
                                 if (shouldRenumber) {
                                     deleteHoleAndRenumber(holeToDelete);
                                 } else {
+                                    const deletedCombinedID = entityName + ":::" + holeID;
                                     allBlastHoles.splice(holeIndex, 1);
+
+                                    // Clean up fromHoleID references - orphaned holes should reference themselves
+                                    allBlastHoles.forEach((hole) => {
+                                        if (hole.fromHoleID === deletedCombinedID) {
+                                            const selfReference = hole.entityName + ":::" + hole.holeID;
+                                            console.log("🔗 Orphaned hole " + selfReference + " now references itself");
+                                            hole.fromHoleID = selfReference;
+                                        }
+                                    });
+
+                                    // Save to IndexedDB after deletion
+                                    debouncedSaveHoles();
                                 }
                             }
                         }
@@ -38839,7 +38883,7 @@ class TreeView {
                 label: entityName,
                 meta: "(" + holes.length + ", " + parseFloat(totalLength).toFixed(1) + "m, " + parseFloat(volume).toFixed(1) + "m³)",
                 children: holes.map((hole, index) => ({
-                    id: "hole⣿" + (hole.holeID || index),
+                    id: "hole⣿" + entityName + "⣿" + (hole.holeID || index),
                     type: "hole",
                     label: hole.holeID || "Hole " + (index + 1),
                     meta: "L:" + (hole.holeLengthCalculated || 0).toFixed(2) + "m, S:" + (hole.subdrillAmount || 0).toFixed(2) + "m, R:" + (hole.rowID || "?") + ", P:" + (hole.posID || "?"),

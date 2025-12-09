@@ -2129,7 +2129,7 @@
 					<div class="switch-container">
 						<div class="label2" id="elevationName">Elevation
 							(z):&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</div>
-						<input type="number3" step="1" min="-5000" max="10000" id="drawingElevation" name="elevation" value="200" placeholder="Elevation (z)">
+						<input type="number3" step="1" min="-10000" max="10000" id="drawingElevation" name="elevation" value="200" placeholder="Elevation (z)">
 					</div>
 					<br>
 					<div class="switch-container">
@@ -2353,8 +2353,12 @@
 						<img src="icons/line.png" alt="Holes Along Line">
 					</label>
 					<input type="checkbox" id="holesAlongPolyLineTool" name="holesAlongPolyLineTool" value="holesAlongPolyLineTool">
-					<label for="holesAlongPolyLineTool" class="toggle-buttons-custom icon-button single" title="Holes Along PolyLine">
+					<label for="holesAlongPolyLineTool" class="toggle-buttons-custom icon-button" title="Holes Along PolyLine">
 						<img src="icons/shape-2.png" alt="Holes Along PolyLine">
+					</label>
+					<input type="checkbox" id="holesAddingTool" name="holesAddingTool" value="holesAddingTool">
+					<label for="holesAddingTool" class="toggle-buttons-custom icon-button" title="Holes Adding">
+						<img src="icons/circle-plus-2.png" alt="Holes Adding">
 					</label>
 
 					<label class="label2" id="triangulateLabel">Surface</label>
@@ -2364,7 +2368,10 @@
 					</label>
 
 					<label class="label2" id="addKADLabel">Draw</label>
+					<!--<label class="label3" id="elevationNameToolbar">Z:</label> -->
+					<input type="number2" step="0.1" min="-10000" max="10000" id="drawingElevationToolbar" name="drawingElevationToolbar" value="200" placeholder="Elev Z" class="single">
 					<input type="checkbox" id="addKADPointsTool" name="addKADPointsTool" value="addKADPointsTool">
+					<input type="button" id="floatingKADColor" name="floatingKADColor" data-jscolor="{value:'#777777'}" title="KAD Color" placeholder="KAD Color">
 					<label for="addKADPointsTool" class="toggle-buttons-custom icon-button" title="Add KAD Points">
 						<img src="icons/add-kad-points.png" alt="Add KAD Points">
 					</label>

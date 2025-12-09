@@ -12,10 +12,19 @@ function showAddHoleDialog() {
 
     // Step 3b) Retrieve last entered values from localStorage
     const savedAddHolePopupSettings = JSON.parse(localStorage.getItem("savedAddHolePopupSettings")) || {};
+
+    // Step 3b-1) Helper to convert string "true"/"false" to boolean
+    const toBool = (value, defaultValue = false) => {
+        if (value === undefined || value === null) return defaultValue;
+        if (typeof value === "boolean") return value;
+        if (typeof value === "string") return value === "true";
+        return defaultValue;
+    };
+
     const lastValues = {
         blastName: savedAddHolePopupSettings.blastName || blastNameValue,
-        useCustomHoleID: savedAddHolePopupSettings.useCustomHoleID !== undefined ? savedAddHolePopupSettings.useCustomHoleID : false,
-        useGradeZ: savedAddHolePopupSettings.useGradeZ !== undefined ? savedAddHolePopupSettings.useGradeZ : false,
+        useCustomHoleID: toBool(savedAddHolePopupSettings.useCustomHoleID, false),
+        useGradeZ: toBool(savedAddHolePopupSettings.useGradeZ, false),
         customHoleID: savedAddHolePopupSettings.customHoleID || "",
         elevation: savedAddHolePopupSettings.elevation || 0,
         gradeZ: savedAddHolePopupSettings.gradeZ || 0,
@@ -492,7 +501,17 @@ function addHoleToBlastDirect(formData, finalX, finalY, holeID) {
         return;
     }
 
-    // Step 19b) Update display
+    // Step 19b) Save to IndexedDB
+    if (typeof window.debouncedSaveHoles === "function") {
+        window.debouncedSaveHoles();
+    }
+
+    // Step 19c) Update tree view
+    if (typeof window.updateTreeFromBlastHoles === "function") {
+        window.updateTreeFromBlastHoles();
+    }
+
+    // Step 19d) Update display
     window.drawData(window.allBlastHoles, window.selectedHole);
     window.updateStatusMessage("Hole added to " + formData.blastName);
 }

@@ -115,3 +115,40 @@ The expression `formData.useCustomHoleID === "true" || formData.useCustomHoleID 
 ## Status
 ✅ **FIXED** - Holes now display with correct IDs on canvas
 
+## Follow-up Fix: Checkbox State Persistence
+
+**Date:** 2024-12-08 09:15  
+**Issue:** User reported that checkbox states (e.g., "Use Custom Hole ID") were not being remembered correctly. When set to `false`, they would reappear as `true` on next dialog open.
+
+### Root Cause
+Similar data type issue with localStorage:
+1. `localStorage.setItem()` stores `formData` as JSON, which includes string values `"true"`/`"false"` for checkboxes
+2. When retrieving, `savedAddHolePopupSettings.useCustomHoleID` is the string `"false"`
+3. JavaScript treats any non-empty string as truthy, so `"false"` → true when used in boolean context
+4. The ternary check `savedAddHolePopupSettings.useCustomHoleID !== undefined ? savedAddHolePopupSettings.useCustomHoleID : false` returns the string `"false"`, which the checkbox interprets as truthy
+
+### Solution
+Added a helper function `toBool()` to properly convert stored string values back to booleans:
+
+```javascript
+// Step 3b-1) Helper to convert string "true"/"false" to boolean
+const toBool = (value, defaultValue = false) => {
+    if (value === undefined || value === null) return defaultValue;
+    if (typeof value === "boolean") return value;
+    if (typeof value === "string") return value === "true";
+    return defaultValue;
+};
+
+const lastValues = {
+    blastName: savedAddHolePopupSettings.blastName || blastNameValue,
+    useCustomHoleID: toBool(savedAddHolePopupSettings.useCustomHoleID, false),
+    useGradeZ: toBool(savedAddHolePopupSettings.useGradeZ, false),
+    // ... rest of fields
+};
+```
+
+### Result
+✅ Checkbox states now persist correctly across dialog opens
+✅ Setting to `false` stays `false`
+✅ Setting to `true` stays `true`
+
