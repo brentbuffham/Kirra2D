@@ -2136,7 +2136,7 @@
 						<div class="label2" id="colorLabel" for="drawingColorLabel">
 							Color:&nbsp;&nbsp;&nbsp;&nbsp;</div>
 						<!-- Add a Color picker-->
-						<input type="jscolor" id="drawingColor" name="drawingColor" data-jscolor="{value:'#FF0000'}" title="Drawing Color" placeholder="Drawing Color">&nbsp;&nbsp;&nbsp;
+						<input type="jscolor" id="drawingColor" name="drawingColor" data-jscolor="{value:'777777'}" title="Drawing Color" placeholder="Drawing Color">&nbsp;&nbsp;&nbsp;
 					</div>
 					<br>
 					<div class="switch-container">
@@ -2357,8 +2357,8 @@
 						<img src="icons/shape-2.png" alt="Holes Along PolyLine">
 					</label>
 					<input type="checkbox" id="holesAddingTool" name="holesAddingTool" value="holesAddingTool">
-					<label for="holesAddingTool" class="toggle-buttons-custom icon-button" title="Holes Adding">
-						<img src="icons/circle-plus-2.png" alt="Holes Adding">
+					<label for="holesAddingTool" class="toggle-buttons-custom icon-button" title="Add Holes">
+						<img src="icons/circle-plus-2.png" alt="Add Holes">
 					</label>
 
 					<label class="label2" id="triangulateLabel">Surface</label>
@@ -2367,11 +2367,21 @@
 						<img src="icons/triangulation.png" alt="Triangulate">
 					</label>
 
+					<!-- Add a radio button to snap to the surface-->
+					<!-- TODO: Add this if the snap performance can't be improved
+					<input type="radio" id="snapToSurface" name="snapToSurface" value="snap" checked>
+					<label for="snapToSurface" class="toggle-buttons-custom" title="Snap to Surface">
+						snap
+					</label>
+					<input type="radio" id="noSnapToSurface" name="snapToSurface" value="free">
+					<label for="noSnapToSurface" class="toggle-buttons-custom" title="No Snap to Surface">
+						free
+					</label>-->
+
 					<label class="label2" id="addKADLabel">Draw</label>
-					<!--<label class="label3" id="elevationNameToolbar">Z:</label> -->
 					<input type="number2" step="0.1" min="-10000" max="10000" id="drawingElevationToolbar" name="drawingElevationToolbar" value="200" placeholder="Elev Z" class="single">
-					<input type="checkbox" id="addKADPointsTool" name="addKADPointsTool" value="addKADPointsTool">
 					<input type="button" id="floatingKADColor" name="floatingKADColor" data-jscolor="{value:'#777777'}" title="KAD Color" placeholder="KAD Color">
+					<input type="checkbox" id="addKADPointsTool" name="addKADPointsTool" value="addKADPointsTool">
 					<label for="addKADPointsTool" class="toggle-buttons-custom icon-button" title="Add KAD Points">
 						<img src="icons/add-kad-points.png" alt="Add KAD Points">
 					</label>
@@ -2512,27 +2522,27 @@
 
 		<!-- END OF MAIN CONTENT -->
 
-	<!-- Link to your JavaScript file -->
-	<script src="src/dialog/FloatingDialog.js"></script>
-	<!-- Context Menu Scripts -->
-	<script src="src/dialog/contextMenu/HolesContextMenu.js"></script>
-	<script src="src/dialog/contextMenu/KADContextMenu.js"></script>
-	<script src="src/dialog/contextMenu/SurfacesContextMenu.js"></script>
-	<script src="src/dialog/contextMenu/ImagesContextMenu.js"></script>
-	<script src="src/dialog/contextMenu/ContextMenuManager.js"></script>
-	<!-- Settings Dialogs -->
-	<script src="src/dialog/settings/ThreeDSettingsDialog.js"></script>
-	<!-- Popup Dialogs -->
-	<script src="src/dialog/popups/confirm/ConfirmDialogs.js"></script>
-	<script src="src/dialog/popups/error/ErrorDialogs.js"></script>
-	<script src="src/dialog/popups/info/InfoDialogs.js"></script>
-	<script src="src/dialog/popups/generic/PatternGenerationDialogs.js"></script>
-	<script src="src/dialog/popups/generic/AddHoleDialog.js"></script>
-	<script src="src/dialog/popups/generic/HolePatternDialogs.js"></script>
-	<script src="src/dialog/popups/generic/HolePropertyDialogs.js"></script>
-	<script src="src/dialog/popups/generic/ExportDialogs.js"></script>
-	<script src="src/dialog/popups/generic/KADDialogs.js"></script>
-	<script type="module" src="/src/kirra.js"></script>
+		<!-- Link to your JavaScript file -->
+		<script src="src/dialog/FloatingDialog.js"></script>
+		<!-- Context Menu Scripts -->
+		<script src="src/dialog/contextMenu/HolesContextMenu.js"></script>
+		<script src="src/dialog/contextMenu/KADContextMenu.js"></script>
+		<script src="src/dialog/contextMenu/SurfacesContextMenu.js"></script>
+		<script src="src/dialog/contextMenu/ImagesContextMenu.js"></script>
+		<script src="src/dialog/contextMenu/ContextMenuManager.js"></script>
+		<!-- Settings Dialogs -->
+		<script src="src/dialog/settings/ThreeDSettingsDialog.js"></script>
+		<!-- Popup Dialogs -->
+		<script src="src/dialog/popups/confirm/ConfirmDialogs.js"></script>
+		<script src="src/dialog/popups/error/ErrorDialogs.js"></script>
+		<script src="src/dialog/popups/info/InfoDialogs.js"></script>
+		<script src="src/dialog/popups/generic/PatternGenerationDialogs.js"></script>
+		<script src="src/dialog/popups/generic/AddHoleDialog.js"></script>
+		<script src="src/dialog/popups/generic/HolePatternDialogs.js"></script>
+		<script src="src/dialog/popups/generic/HolePropertyDialogs.js"></script>
+		<script src="src/dialog/popups/generic/ExportDialogs.js"></script>
+		<script src="src/dialog/popups/generic/KADDialogs.js"></script>
+		<script type="module" src="/src/kirra.js"></script>
 
 	</body>
 
