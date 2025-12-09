@@ -133,7 +133,18 @@ function showHolePropertyEditor(hole) {
 	const avgBurden = burdenSum / count;
 	const avgSpacing = spacingSum / count;
 
-	// Step 5) Add to originalValues object around line 37275
+	// Step 5) Helper to normalize color for storage and comparison
+	function normalizeColorValue(color) {
+		if (!color) return "#000000";
+		var c = String(color).trim().toUpperCase();
+		if (!c.startsWith("#")) c = "#" + c;
+		if (c.length === 4) {
+			c = "#" + c[1] + c[1] + c[2] + c[2] + c[3] + c[3];
+		}
+		return c;
+	}
+
+	// Step 5a) Add to originalValues object around line 37275
 	const originalValues = {
 		delay: avgDelay.toFixed(1),
 		diameter: avgDiameter.toFixed(0),
@@ -143,10 +154,10 @@ function showHolePropertyEditor(hole) {
 		collarZ: avgCollarZ.toFixed(2),
 		gradeZ: avgGradeZ.toFixed(2),
 		holeType: mostCommonType,
-		delayColor: firstDelayColor,
+		delayColor: normalizeColorValue(firstDelayColor),
 		rowID: firstRowID,
 		posID: firstPosID,
-		// Step 5a) Add new original values
+		// Step 5b) Add new original values
 		connectorCurve: avgConnectorCurve.toFixed(0),
 		burden: avgBurden.toFixed(2),
 		spacing: avgSpacing.toFixed(2),
@@ -186,7 +197,7 @@ function showHolePropertyEditor(hole) {
 			label: "Delay Color" + colorNote,
 			name: "delayColor",
 			type: "color",
-			value: firstDelayColor,
+			value: normalizeColorValue(firstDelayColor),
 		},
 		{
 			label: "Connector Curve (°)",
@@ -380,9 +391,22 @@ function processHolePropertyUpdates(holes, formData, originalValues, isMultiple)
 	// Step 11b) NEW: Track which fields were actually modified by the user
 	const modifiedFields = new Set();
 
+	// Step 11b.1) Helper to normalize color values for comparison
+	function normalizeColor(color) {
+		if (!color) return "#000000";
+		var c = String(color).trim().toUpperCase();
+		if (!c.startsWith("#")) c = "#" + c;
+		// Ensure 6 digits
+		if (c.length === 4) {
+			c = "#" + c[1] + c[1] + c[2] + c[2] + c[3] + c[3];
+		}
+		return c;
+	}
+
 	// Check each field to see if it was actually changed from the original average
 	if (formData.delay !== originalValues.delay) modifiedFields.add("delay");
-	if (formData.delayColor !== originalValues.delayColor) modifiedFields.add("delayColor");
+	// Step 11b.2) Normalize colors before comparing
+	if (normalizeColor(formData.delayColor) !== normalizeColor(originalValues.delayColor)) modifiedFields.add("delayColor");
 	if (formData.holeType !== originalValues.holeType) modifiedFields.add("holeType");
 	if (formData.diameter !== originalValues.diameter) modifiedFields.add("diameter");
 	if (formData.bearing !== originalValues.bearing) modifiedFields.add("bearing");
@@ -557,4 +581,3 @@ function processHolePropertyUpdates(holes, formData, originalValues, isMultiple)
 // Make functions available globally
 window.showHolePropertyEditor = showHolePropertyEditor;
 window.processHolePropertyUpdates = processHolePropertyUpdates;
-
