@@ -21600,18 +21600,26 @@ function drawData(allBlastHoles, selectedHole) {
 					});
 				} else if (developerModeEnabled && (entity.entityType === "line" || entity.entityType === "poly")) {
 					// ✅ FIXED: Filter visible points first, then use filtered data
-					const visiblePoints = entity.data.filter((point) => point.visible !== false);
+					var visiblePoints = entity.data.filter(function (point) {
+						return point.visible !== false;
+					});
 					if (visiblePoints.length < 2) continue;
 
 					// Draw all segments without any simplification
-					for (let i = 0; i < visiblePoints.length - 1; i++) {
-						const currentPoint = visiblePoints[i];
-						const nextPoint = visiblePoints[i + 1];
+					// NOTE: Use nextPoint's color - segment TO the point uses that point's color
+					for (var i = 0; i < visiblePoints.length - 1; i++) {
+						var currentPoint = visiblePoints[i];
+						var nextPoint = visiblePoints[i + 1];
 
-						const [sx, sy] = worldToCanvas(currentPoint.pointXLocation, currentPoint.pointYLocation);
-						const [ex, ey] = worldToCanvas(nextPoint.pointXLocation, nextPoint.pointYLocation);
+						var coords1 = worldToCanvas(currentPoint.pointXLocation, currentPoint.pointYLocation);
+						var coords2 = worldToCanvas(nextPoint.pointXLocation, nextPoint.pointYLocation);
+						var sx = coords1[0],
+							sy = coords1[1],
+							ex = coords2[0],
+							ey = coords2[1];
 
-						drawKADPolys(sx, sy, ex, ey, currentPoint.pointZLocation, nextPoint.pointZLocation, currentPoint.lineWidth, currentPoint.color, false);
+						// Step #) Use nextPoint's color and lineWidth - segment TO the point uses that point's attributes
+						drawKADPolys(sx, sy, ex, ey, currentPoint.pointZLocation, nextPoint.pointZLocation, nextPoint.lineWidth, nextPoint.color, false);
 						drawKADCoordinates(currentPoint, sx, sy);
 						if (nextPoint === visiblePoints[visiblePoints.length - 1]) {
 							drawKADCoordinates(nextPoint, ex, ey);
@@ -21619,41 +21627,52 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 
 					// Handle closing segment for polygons
-					const isClosed = entity.entityType === "poly";
+					var isClosed = entity.entityType === "poly";
 					if (isClosed && visiblePoints.length > 2) {
-						const firstPoint = visiblePoints[0];
-						const lastPoint = visiblePoints[visiblePoints.length - 1];
-						const [sx, sy] = worldToCanvas(lastPoint.pointXLocation, lastPoint.pointYLocation);
-						const [ex, ey] = worldToCanvas(firstPoint.pointXLocation, firstPoint.pointYLocation);
+						var firstPoint = visiblePoints[0];
+						var lastPoint = visiblePoints[visiblePoints.length - 1];
+						var coordsLast = worldToCanvas(lastPoint.pointXLocation, lastPoint.pointYLocation);
+						var coordsFirst = worldToCanvas(firstPoint.pointXLocation, firstPoint.pointYLocation);
+						var sx = coordsLast[0],
+							sy = coordsLast[1],
+							ex = coordsFirst[0],
+							ey = coordsFirst[1];
 
-						drawKADPolys(sx, sy, ex, ey, lastPoint.pointZLocation, firstPoint.pointZLocation, lastPoint.lineWidth, lastPoint.color, false);
-
-						// drawKADCoordinates(lastPoint, ex, ey);
+						// For closing segment, use firstPoint's color (the segment goes TO firstPoint)
+						drawKADPolys(sx, sy, ex, ey, lastPoint.pointZLocation, firstPoint.pointZLocation, firstPoint.lineWidth, firstPoint.color, false);
 					}
 				} else if (!developerModeEnabled && (entity.entityType === "line" || entity.entityType === "poly")) {
 					// --- Pixel-distance simplification for performance ---
-					const originalPoints = entity.data.filter((point) => point.visible !== false);
+					var originalPoints = entity.data.filter(function (point) {
+						return point.visible !== false;
+					});
 					if (originalPoints.length < 2) continue;
 
 					// Simplify by pixel distance
-					let pointThreshold = 2;
+					var pointThreshold = 2;
 					if (currentScale > 1) {
 						pointThreshold = 2;
 					} else {
 						pointThreshold = 1;
 					}
 
-					const simplifiedPoints = simplifyByPxDist(originalPoints, pointThreshold);
+					var simplifiedPoints = simplifyByPxDist(originalPoints, pointThreshold);
 
 					// Draw the simplified line/polygon
-					for (let i = 0; i < simplifiedPoints.length - 1; i++) {
-						const currentPoint = simplifiedPoints[i];
-						const nextPoint = simplifiedPoints[i + 1];
+					// NOTE: Use nextPoint's color - segment TO the point uses that point's color
+					for (var i = 0; i < simplifiedPoints.length - 1; i++) {
+						var currentPoint = simplifiedPoints[i];
+						var nextPoint = simplifiedPoints[i + 1];
 
-						const [sx, sy] = worldToCanvas(currentPoint.pointXLocation, currentPoint.pointYLocation);
-						const [ex, ey] = worldToCanvas(nextPoint.pointXLocation, nextPoint.pointYLocation);
+						var coords1 = worldToCanvas(currentPoint.pointXLocation, currentPoint.pointYLocation);
+						var coords2 = worldToCanvas(nextPoint.pointXLocation, nextPoint.pointYLocation);
+						var sx = coords1[0],
+							sy = coords1[1],
+							ex = coords2[0],
+							ey = coords2[1];
 
-						drawKADPolys(sx, sy, ex, ey, currentPoint.pointZLocation, nextPoint.pointZLocation, currentPoint.lineWidth, currentPoint.color, false);
+						// Step #) Use nextPoint's color and lineWidth - segment TO the point uses that point's attributes
+						drawKADPolys(sx, sy, ex, ey, currentPoint.pointZLocation, nextPoint.pointZLocation, nextPoint.lineWidth, nextPoint.color, false);
 						drawKADCoordinates(currentPoint, sx, sy);
 						if (nextPoint === simplifiedPoints[simplifiedPoints.length - 1]) {
 							drawKADCoordinates(nextPoint, ex, ey);
@@ -21661,14 +21680,19 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 
 					// Handle closing segment for polygons
-					const isClosed = entity.entityType === "poly";
+					var isClosed = entity.entityType === "poly";
 					if (isClosed && simplifiedPoints.length > 2) {
-						const firstPoint = simplifiedPoints[0];
-						const lastPoint = simplifiedPoints[simplifiedPoints.length - 1];
-						const [sx, sy] = worldToCanvas(lastPoint.pointXLocation, lastPoint.pointYLocation);
-						const [ex, ey] = worldToCanvas(firstPoint.pointXLocation, firstPoint.pointYLocation);
+						var firstPoint = simplifiedPoints[0];
+						var lastPoint = simplifiedPoints[simplifiedPoints.length - 1];
+						var coordsLast = worldToCanvas(lastPoint.pointXLocation, lastPoint.pointYLocation);
+						var coordsFirst = worldToCanvas(firstPoint.pointXLocation, firstPoint.pointYLocation);
+						var sx = coordsLast[0],
+							sy = coordsLast[1],
+							ex = coordsFirst[0],
+							ey = coordsFirst[1];
 
-						drawKADPolys(sx, sy, ex, ey, lastPoint.pointZLocation, firstPoint.pointZLocation, lastPoint.lineWidth, lastPoint.color, false);
+						// For closing segment, use firstPoint's color (the segment goes TO firstPoint)
+						drawKADPolys(sx, sy, ex, ey, lastPoint.pointZLocation, firstPoint.pointZLocation, firstPoint.lineWidth, firstPoint.color, false);
 					}
 				}
 			}
@@ -22721,35 +22745,40 @@ function drawData(allBlastHoles, selectedHole) {
 
 					if (visiblePoints.length >= 2) {
 						// Step 6a) Draw segments between consecutive points
-						for (let i = 0; i < visiblePoints.length - 1; i++) {
-							const currentPoint = visiblePoints[i];
-							const nextPoint = visiblePoints[i + 1];
+						// NOTE: Segment color uses nextPoint.color (the "to" point) because when user clicks
+						// a point with a new color, that color should apply to the segment leading TO that point
+						for (var i = 0; i < visiblePoints.length - 1; i++) {
+							var currentPoint = visiblePoints[i];
+							var nextPoint = visiblePoints[i + 1];
 
-							const currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
-							const nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
+							var currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
+							var nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
 
-							const lineWidth = currentPoint.lineWidth || 1;
-							const color = currentPoint.color || "#FF0000";
+							// Step 6a.1) Use nextPoint's color and lineWidth - the segment TO the point uses that point's attributes
+							var lineWidth = nextPoint.lineWidth || 1;
+							var color = nextPoint.color || "#FF0000";
 
 							if (entity.entityType === "line") {
-								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name); // Pass 'name' (entityName) as kadId
+								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name);
 							} else {
-								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name); // Pass 'name' (entityName) as kadId
+								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name);
 							}
 						}
 
 						// Step 6b) For polygons, close the loop with final segment
+						// NOTE: Closing segment goes TO firstPoint, so use firstPoint's color
 						if (entity.entityType === "poly" && visiblePoints.length > 2) {
-							const firstPoint = visiblePoints[0];
-							const lastPoint = visiblePoints[visiblePoints.length - 1];
+							var firstPoint = visiblePoints[0];
+							var lastPoint = visiblePoints[visiblePoints.length - 1];
 
-							const firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
-							const lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
+							var firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
+							var lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
 
-							const lineWidth = lastPoint.lineWidth || 1;
-							const color = lastPoint.color || "#FF0000";
+							// Use firstPoint's color - the closing segment goes TO the first point
+							var lineWidth = firstPoint.lineWidth || 1;
+							var color = firstPoint.color || "#FF0000";
 
-							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name); // Pass 'name' (entityName) as kadId
+							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name);
 						}
 					}
 				} else if (entity.entityType === "circle") {
@@ -24971,44 +25000,59 @@ darkModeToggle.addEventListener("change", () => {
 });
 
 function endKadTools() {
-	// Check if any KAD drawing tool is active
-	const anyKADToolActive = addPointDraw.checked || addLineDraw.checked || addCircleDraw.checked || addPolyDraw.checked || addTextDraw.checked;
+	// Step 1) Check if any KAD drawing tool is active
+	var anyKADToolActive = addPointDraw.checked || addLineDraw.checked || addCircleDraw.checked || addPolyDraw.checked || addTextDraw.checked;
 
 	if (anyKADToolActive) {
-		// Cancel current tool entirely
-		addPointDraw.checked = false;
-		addLineDraw.checked = false;
-		addCircleDraw.checked = false;
-		addPolyDraw.checked = false;
-		addTextDraw.checked = false;
+		// Step 2) Check if we're actively drawing (createNewEntity is false means we have started an entity)
+		if (!createNewEntity) {
+			// Step 2a) Actively drawing - just end the current entity, keep tool active
+			createNewEntity = true;
+			lastKADDrawPoint = null;
+			entityName = null; // CRITICAL: Reset entityName so next click creates NEW entity
+			clearCurrentDrawingEntity();
+			updateStatusMessage("Entity finished. Click to start new " + (isDrawingLine ? "line" : isDrawingPoly ? "polygon" : isDrawingCircle ? "circle" : isDrawingPoint ? "point" : "text"));
+			setTimeout(function () {
+				updateStatusMessage("");
+			}, 2000);
+			// Redraw to clear preview line
+			drawData(allBlastHoles, selectedHole);
+		} else {
+			// Step 2b) Not actively drawing (no points added yet) - turn off tool entirely
+			addPointDraw.checked = false;
+			addLineDraw.checked = false;
+			addCircleDraw.checked = false;
+			addPolyDraw.checked = false;
+			addTextDraw.checked = false;
 
-		// Reset states
-		createNewEntity = true;
-		lastKADDrawPoint = null;
+			// Reset states
+			createNewEntity = true;
+			lastKADDrawPoint = null;
+			entityName = null; // Reset entityName
 
-		// Update drawing flags
-		isDrawingPoint = false;
-		isDrawingLine = false;
-		isDrawingCircle = false;
-		isDrawingPoly = false;
-		isDrawingText = false;
-		clearCurrentDrawingEntity(); // Clear current drawing entity
-		updateStatusMessage("Drawing tools cancelled");
-		setTimeout(() => {
-			updateStatusMessage("");
-		}, 1500);
+			// Update drawing flags
+			isDrawingPoint = false;
+			isDrawingLine = false;
+			isDrawingCircle = false;
+			isDrawingPoly = false;
+			isDrawingText = false;
+			clearCurrentDrawingEntity();
+			updateStatusMessage("Drawing tools cancelled");
+			setTimeout(function () {
+				updateStatusMessage("");
+			}, 1500);
 
-		// Redraw to clear any preview lines/indicators
-		drawData(allBlastHoles, selectedHole);
+			// Redraw to clear any preview lines/indicators
+			drawData(allBlastHoles, selectedHole);
+		}
 	}
 
-	// Also handle polygon selection escape
+	// Step 3) Also handle polygon selection escape
 	if (isPolygonSelectionActive) {
-		// isPolygonSelectionActive = false;
 		polyPointsX = [];
 		polyPointsY = [];
 		updateStatusMessage("Polygon selection cancelled");
-		setTimeout(() => {
+		setTimeout(function () {
 			updateStatusMessage("");
 		}, 1500);
 		drawData(allBlastHoles, selectedHole);
@@ -35761,7 +35805,14 @@ function loadViewControlsSliderValues() {
 	if (localStorage.getItem("floatingDelay")) floatingDelay.value = localStorage.getItem("floatingDelay");
 	if (localStorage.getItem("floatingConnectorColor")) floatingConnectorColor.jscolor.fromString(localStorage.getItem("floatingConnectorColor"));
 	// Drawing controls
-	if (localStorage.getItem("drawingColor")) drawingColor.jscolor.fromString(localStorage.getItem("drawingColor"));
+	if (localStorage.getItem("drawingColor")) {
+		drawingColor.jscolor.fromString(localStorage.getItem("drawingColor"));
+		// Step #) Also sync floatingKADColor to the saved drawingColor
+		var floatingKADColorEl = document.getElementById("floatingKADColor");
+		if (floatingKADColorEl && floatingKADColorEl.jscolor) {
+			floatingKADColorEl.jscolor.fromString(localStorage.getItem("drawingColor"));
+		}
+	}
 	if (localStorage.getItem("drawingRadius")) circleRadius.value = localStorage.getItem("drawingRadius");
 	if (localStorage.getItem("drawingText")) drawingText.value = localStorage.getItem("drawingText");
 	if (localStorage.getItem("drawingPolygonRadius")) polygonRadius.value = localStorage.getItem("drawingPolygonRadius");
@@ -35803,6 +35854,13 @@ function setupAutoSavePreferences() {
 	drawingColor.addEventListener("input", function () {
 		setTimeout(saveViewControlsSliderValues, 100); // Small delay for jscolor
 	});
+	// Step #) Also save when floatingKADColor changes
+	var floatingKADColorEl = document.getElementById("floatingKADColor");
+	if (floatingKADColorEl) {
+		floatingKADColorEl.addEventListener("input", function () {
+			setTimeout(saveViewControlsSliderValues, 100);
+		});
+	}
 	lineThickness.addEventListener("input", saveViewControlsSliderValues);
 }
 
