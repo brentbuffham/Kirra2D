@@ -10,25 +10,49 @@ function showKADPropertyEditorPopup(kadObject) {
     const entity = window.getEntityFromKADObject(kadObject);
     const hasMultipleElements = entity && entity.data.length > 1;
 
-    // Step 1a) Populate kadObject with element data if missing (fixes 3D mode issue)
+    // Step 1a) Populate kadObject with element data
+    // CRITICAL: For segments, ALWAYS get properties from the endpoint (next point), not the start point
+    // The 2D getClickedKADObject spreads point1 properties, so we must override them here
     if (entity && entity.data && kadObject.elementIndex !== undefined) {
-        const element = entity.data[kadObject.elementIndex];
+        let dataIndex = kadObject.elementIndex;
+        
+        // For segment selections in lines/polygons, use the endpoint (next point)
+        const isLineOrPolySegment = (kadObject.entityType === "line" || kadObject.entityType === "poly") && 
+                                     kadObject.selectionType === "segment";
+        if (isLineOrPolySegment) {
+            const isPoly = kadObject.entityType === "poly";
+            const numPoints = entity.data.length;
+            dataIndex = isPoly ? (dataIndex + 1) % numPoints : dataIndex + 1;
+            console.log("🎨 [KAD DIALOG] Segment selected - loading properties from endpoint index " + dataIndex + " instead of " + kadObject.elementIndex);
+        }
+        
+        const element = entity.data[dataIndex];
         if (element) {
-            // Populate missing properties from element data
-            if (kadObject.pointXLocation === undefined) kadObject.pointXLocation = element.pointXLocation || 0;
-            if (kadObject.pointYLocation === undefined) kadObject.pointYLocation = element.pointYLocation || 0;
-            if (kadObject.pointZLocation === undefined) kadObject.pointZLocation = element.pointZLocation || 0;
-            if (kadObject.color === undefined) kadObject.color = element.color || "#FF0000";
-            if (kadObject.lineWidth === undefined) kadObject.lineWidth = element.lineWidth || 1;
-            if (kadObject.radius === undefined) kadObject.radius = element.radius;
-            if (kadObject.text === undefined) kadObject.text = element.text || "";
+            // ALWAYS populate from the correct element (override any spread properties from getClickedKADObject)
+            kadObject.pointXLocation = element.pointXLocation || 0;
+            kadObject.pointYLocation = element.pointYLocation || 0;
+            kadObject.pointZLocation = element.pointZLocation || 0;
+            kadObject.color = element.color || "#FF0000";
+            kadObject.lineWidth = element.lineWidth || 1;
+            kadObject.radius = element.radius;
+            kadObject.text = element.text || "";
         }
     }
 
     // Step 1b) Determine if this is a line/poly (they share the same dialog)
     const isLineOrPoly = kadObject.entityType === "line" || kadObject.entityType === "poly";
 
-    const title = hasMultipleElements ? "Edit " + kadObject.entityType.toUpperCase() + " - " + kadObject.entityName + " - Element " + (kadObject.elementIndex + 1) : "Edit " + kadObject.entityType.toUpperCase() + " - " + kadObject.entityName;
+    // Step 1c) Create title showing correct element/segment number
+    let displayIndex = kadObject.elementIndex + 1;
+    let elementTypeLabel = "Element";
+    
+    // For segments, show "Segment X" instead of "Element X"
+    if (kadObject.selectionType === "segment") {
+        elementTypeLabel = "Segment";
+        displayIndex = kadObject.elementIndex + 1; // Segments are numbered starting from 1
+    }
+    
+    const title = hasMultipleElements ? "Edit " + kadObject.entityType.toUpperCase() + " - " + kadObject.entityName + " - " + elementTypeLabel + " " + displayIndex : "Edit " + kadObject.entityType.toUpperCase() + " - " + kadObject.entityName;
 
     const currentColor = kadObject.color || "#FF0000";
 
@@ -402,8 +426,20 @@ function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
     if (entity) {
         const onlyZ = newProperties.onlyZ;
         if (scope === "element") {
-            // Step 8a) Only this point
-            const elementIndex = kadObject.elementIndex;
+            // Step 8a) Only this point/segment
+            let elementIndex = kadObject.elementIndex;
+            
+            // Step 8a.1) CRITICAL FIX: For segments in lines/polygons, modify the endpoint (next point)
+            // A segment from point[i] to point[i+1] uses point[i+1]'s color/properties
+            const isLineOrPoly = entity.entityType === "line" || entity.entityType === "poly";
+            if (isLineOrPoly && kadObject.selectionType === "segment") {
+                // For a segment, we want to modify the "to" point (endpoint), not the "from" point
+                const isPoly = entity.entityType === "poly";
+                const numPoints = entity.data.length;
+                elementIndex = isPoly ? (elementIndex + 1) % numPoints : elementIndex + 1;
+                console.log("🔧 [KAD MODIFY] Segment selected - modifying endpoint at index " + elementIndex + " instead of " + kadObject.elementIndex);
+            }
+            
             if (elementIndex !== undefined && elementIndex < entity.data.length) {
                 const item = entity.data[elementIndex];
                 if (newProperties.color) item.color = newProperties.color;
@@ -418,7 +454,9 @@ function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
                     if (newProperties.pointYLocation !== undefined) item.pointYLocation = parseFloat(newProperties.pointYLocation);
                     if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
                 }
-                updateStatusMessage("Updated element " + (elementIndex + 1) + " of " + kadObject.entityType + " " + kadObject.entityName);
+                
+                const displayIndex = kadObject.selectionType === "segment" ? (kadObject.elementIndex + 1) : (elementIndex + 1);
+                updateStatusMessage("Updated element " + displayIndex + " of " + kadObject.entityType + " " + kadObject.entityName);
             }
         } else {
             // Step 8b) All points

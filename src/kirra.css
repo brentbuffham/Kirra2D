@@ -636,6 +636,15 @@ input[type="number2"] {
     position: relative;
 }
 
+input[type="number#"] {
+    cursor: pointer;
+    color: #333;
+    font-size: 8pt;
+    width: 5ch;
+    text-align: center;
+    position: relative;
+}
+
 input[type="number3"] {
     cursor: pointer;
     color: #333;
@@ -2968,6 +2977,19 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
     box-shadow: 0 0 4px rgba(255, 0, 0, 0.5);
 }
 
+/* Step #) Smaller font input type for toolbar */
+.toolbar-grid input[type="number#"] {
+    width: calc(80%);
+    text-align: center;
+    font-size: 8pt;
+}
+
+.toolbar-grid input[type="number#"]:hover {
+    border-color: #ff0000;
+    border-width: 2px;
+    box-shadow: 0 0 4px rgba(255, 0, 0, 0.5);
+}
+
 /* Fix color button styling */
 .toolbar-grid input[type="button"][data-jscolor],
 #floatingConnectorColor {
@@ -2981,6 +3003,15 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
     cursor: pointer;
     justify-self: center;
     transition: all 0.2s ease;
+}
+
+/* Step #) Override for color pickers that share a row with input */
+.toolbar-grid input[type="button"][data-jscolor].color-with-input,
+#floatingConnectorColor.color-with-input {
+    grid-column: 1 / 2;
+    /* Left column only */
+    width: calc(100% - 4px);
+    justify-self: center;
 }
 
 .toolbar-grid input[type="button"][data-jscolor]:hover,
@@ -3063,6 +3094,29 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-cu
     /* Account for padding */
     max-width: 70px;
     /* Prevent them from getting too wide */
+}
+
+/* Step #) Color picker with input on same row - color goes first (left) */
+.toolbar-grid .color-with-input {
+    grid-column: 1 / 2;
+    /* Left column */
+    width: calc(100% - 4px);
+    height: 24px;
+    border: 1px solid var(--light-mode-border);
+    border-radius: 4px !important;
+    margin: 2px;
+    cursor: pointer;
+    justify-self: center;
+}
+
+/* Step #) Input field with color on same row - input goes second (right) */
+.toolbar-grid .input-with-color {
+    grid-column: 2 / 3;
+    /* Right column */
+    width: calc(100% - 4px);
+    text-align: center;
+    justify-self: center;
+    margin: 2px;
 }
 
 /* Ensure consistent icon button sizing */
@@ -3174,6 +3228,29 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
     /* Account for padding */
     max-width: 70px;
     /* Prevent them from getting too wide */
+}
+
+/* Step #) Color picker with input on same row - color goes first (left) */
+.toolbar-grid .color-with-input {
+    grid-column: 1 / 2;
+    /* Left column */
+    width: calc(100% - 4px);
+    height: 24px;
+    border: 1px solid var(--light-mode-border);
+    border-radius: 4px !important;
+    margin: 2px;
+    cursor: pointer;
+    justify-self: center;
+}
+
+/* Step #) Input field with color on same row - input goes second (right) */
+.toolbar-grid .input-with-color {
+    grid-column: 2 / 3;
+    /* Right column */
+    width: calc(100% - 4px);
+    text-align: center;
+    justify-self: center;
+    margin: 2px;
 }
 
 /* Ensure consistent icon button sizing */

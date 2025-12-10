@@ -572,19 +572,26 @@ function kadContextMenu(e) {
     const anyKADToolActive = window.addPointDraw.checked || window.addLineDraw.checked || window.addCircleDraw.checked || window.addPolyDraw.checked || window.addTextDraw.checked;
 
     if (anyKADToolActive) {
-        // Start a new object within the same tool
+        // Step 5a) Start a new object within the same tool (mimics Escape key behavior)
         window.createNewEntity = true; // This will create a new entity name on next click
         window.lastKADDrawPoint = null; // Reset preview line
+        window.entityName = null; // CRITICAL: Reset entityName so next click creates NEW entity
+        
+        // Step 5b) Clear current drawing entity state
+        if (typeof window.clearCurrentDrawingEntity === "function") {
+            window.clearCurrentDrawingEntity();
+        }
 
-        // Show status message
-        window.updateStatusMessage("Starting new object - continue drawing");
+        // Step 5c) Show status message
+        const toolName = window.isDrawingLine ? "line" : window.isDrawingPoly ? "polygon" : window.isDrawingCircle ? "circle" : window.isDrawingPoint ? "point" : "text";
+        window.updateStatusMessage("Entity finished. Click to start new " + toolName);
 
-        // Brief visual feedback
+        // Step 5d) Brief visual feedback
         setTimeout(() => {
             window.updateStatusMessage("");
-        }, 1500);
+        }, 2000);
 
-        // Redraw to clear any preview lines
+        // Step 5e) Redraw to clear any preview lines
         window.drawData(window.allBlastHoles, window.selectedHole);
     }
 }

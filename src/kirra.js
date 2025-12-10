@@ -6157,7 +6157,24 @@ drawingElevation.addEventListener("change", function () {
 const lineThickness = document.getElementById("drawingLineWidth");
 lineThickness.addEventListener("change", function () {
 	lineThickness.value = parseFloat(lineThickness.value);
+	// Step #) Sync with floating toolbar
+	const toolbarLineWidth = document.getElementById("drawingKADSizeToolbar");
+	if (toolbarLineWidth) {
+		toolbarLineWidth.value = lineThickness.value;
+	}
 });
+
+// Step #) Sync floating toolbar line width back to sidebar
+const drawingKADSizeToolbar = document.getElementById("drawingKADSizeToolbar");
+if (drawingKADSizeToolbar) {
+	drawingKADSizeToolbar.addEventListener("input", function () {
+		const sidebarLineWidth = document.getElementById("drawingLineWidth");
+		if (sidebarLineWidth) {
+			sidebarLineWidth.value = drawingKADSizeToolbar.value;
+		}
+	});
+}
+
 const circleRadius = document.getElementById("drawingRadius");
 circleRadius.addEventListener("change", function () {
 	circleRadius.value = parseFloat(circleRadius.value);
@@ -17136,6 +17153,27 @@ document.addEventListener("DOMContentLoaded", function () {
 		drawingElevationToolbarElement.addEventListener("change", function () {
 			drawingElevationElement.value = this.value;
 			drawingZValue = parseFloat(this.value) || 0.0;
+		});
+	}
+
+	// Step #) Sync Radius inputs (drawingKADRadiusToolbar <-> drawingRadius)
+	var drawingKADRadiusToolbarElement = document.getElementById("drawingKADRadiusToolbar");
+	var drawingRadiusElement = document.getElementById("drawingRadius");
+	if (drawingKADRadiusToolbarElement && drawingRadiusElement) {
+		// Sync from main drawingRadius to toolbar
+		drawingRadiusElement.addEventListener("input", function () {
+			drawingKADRadiusToolbarElement.value = this.value;
+		});
+		drawingRadiusElement.addEventListener("change", function () {
+			drawingKADRadiusToolbarElement.value = this.value;
+		});
+
+		// Sync from toolbar to main drawingRadius
+		drawingKADRadiusToolbarElement.addEventListener("input", function () {
+			drawingRadiusElement.value = this.value;
+		});
+		drawingKADRadiusToolbarElement.addEventListener("change", function () {
+			drawingRadiusElement.value = this.value;
 		});
 	}
 
