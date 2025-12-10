@@ -2500,34 +2500,40 @@ document.addEventListener("DOMContentLoaded", function () {
 					iconImg.src = "icons/badge-3d-v2.png";
 					iconImg.alt = "3D View Active (3D Only)";
 				}
-			} else {
-				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
-				onlyShowThreeJS = false;
-				// Step 1da) Reset camera pan state to prevent stuck drag
-				if (cameraControls && cameraControls.resetPanState) {
-					cameraControls.resetPanState();
-				}
-				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
+		} else {
+			// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
+			onlyShowThreeJS = false;
+			// Step 1da) Reset camera pan state to prevent stuck drag
+			if (cameraControls && cameraControls.resetPanState) {
+				cameraControls.resetPanState();
+			}
+			console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
 
-				if (threeCanvas) {
-					threeCanvas.style.zIndex = "0"; // Three.js behind
-					threeCanvas.style.opacity = "0"; // Hide 3D canvas
-					threeCanvas.style.pointerEvents = "none"; // Don't block events
-				}
-				if (canvas) {
-					canvas.style.zIndex = "2"; // 2D canvas on top
-					canvas.style.opacity = "1"; // Show 2D canvas
-					canvas.style.pointerEvents = "auto"; // Receive events
-				}
+			// Step 1db) Clear all Three.js geometry when switching to 2D mode
+			if (typeof clearThreeJS === "function") {
+				clearThreeJS();
+				console.log("🧹 Cleared Three.js geometry on switch to 2D mode");
+			}
 
-				// Step 1db) Reset 2D canvas transform state to prevent 3D rotation artifacts
-				// This fixes the quirk where surfaces render above KAD and Holes after 3D rotation
-				if (ctx) {
-					ctx.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
-					console.log("🔄 Reset 2D canvas transform state on switch to 2D mode");
-				}
+			if (threeCanvas) {
+				threeCanvas.style.zIndex = "0"; // Three.js behind
+				threeCanvas.style.opacity = "0"; // Hide 3D canvas
+				threeCanvas.style.pointerEvents = "none"; // Don't block events
+			}
+			if (canvas) {
+				canvas.style.zIndex = "2"; // 2D canvas on top
+				canvas.style.opacity = "1"; // Show 2D canvas
+				canvas.style.pointerEvents = "auto"; // Receive events
+			}
 
-				// Step 1dc) Show contour overlay canvas in 2D mode
+			// Step 1dc) Reset 2D canvas transform state to prevent 3D rotation artifacts
+			// This fixes the quirk where surfaces render above KAD and Holes after 3D rotation
+			if (ctx) {
+				ctx.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
+				console.log("🔄 Reset 2D canvas transform state on switch to 2D mode");
+			}
+
+			// Step 1dd) Show contour overlay canvas in 2D mode
 				if (typeof contourOverlayCanvas !== "undefined" && contourOverlayCanvas) {
 					contourOverlayCanvas.style.display = "block";
 				}
@@ -22267,9 +22273,9 @@ function drawData(allBlastHoles, selectedHole) {
 		// KAD 3D rendering happens in 3D-only block
 		// This prevents dual rendering when camera is orbited
 
-		// Step 7) Highlight selected KAD objects in 2D only (no 3D highlights in 2D mode)
-		// Three.js highlights happen in 3D-only block
-		highlightSelectedKADThreeJS();
+		// Step 7) Highlight selected KAD objects in 2D mode
+		// Draw 2D selection visuals only (3D highlights happen in 3D-only block below)
+		// highlightSelectedKADThreeJS(); // ← REMOVED: This was causing 3D highlights in 2D mode
 
 		// After all other drawing operations but before font updates
 		if (isPolygonSelectionActive) {
