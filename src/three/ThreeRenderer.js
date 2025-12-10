@@ -200,7 +200,7 @@ export class ThreeRenderer {
 	}
 
 	// Step 13) Update camera to match world coordinates and 2D canvas transformation
-	updateCamera(centroidX, centroidY, scale, rotation = 0, orbitX = 0, orbitY = 0, orbitZ = 0) {
+	updateCamera(centroidX, centroidY, scale, rotation = 0, orbitX = 0, orbitY = 0, orbitZ = 0, skipRender = false) {
 		this.cameraState.centroidX = centroidX;
 		this.cameraState.centroidY = centroidY;
 		this.cameraState.scale = scale;
@@ -304,7 +304,10 @@ export class ThreeRenderer {
 			this.directionalLight.target.updateMatrixWorld();
 		}
 
-		this.needsRender = true;
+		// Step 15b) Skip render during wheel zoom for performance (text billboard updates are expensive)
+		if (!skipRender) {
+			this.needsRender = true;
+		}
 	}
 
 	// Step 16) Set orbit center Z coordinate (backward compatibility - use setOrbitCenter for full 3D)

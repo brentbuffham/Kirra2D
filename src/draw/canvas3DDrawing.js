@@ -132,12 +132,12 @@ export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId
 }
 
 // Step 5) Draw hole label text in Three.js
-export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, color) {
+export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, anchorX = "center") {
     if (!window.threeInitialized || !window.threeRenderer) return;
     if (!text || text === "" || text === "null" || text === "undefined") return;
 
     const local = window.worldToThreeLocal(worldX, worldY);
-    const textSprite = GeometryFactory.createKADText(local.x, local.y, worldZ, String(text), fontSize, color, null);
+    const textSprite = GeometryFactory.createKADText(local.x, local.y, worldZ, String(text), fontSize, color, null, anchorX);
 
     // Step 5a) Only add if not already in group (cached objects might already be there)
     if (!textSprite.parent) {
@@ -208,60 +208,60 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
     const middleSideToe = toeY + textOffsetWorld + fontSizeQuarterOffsetWorld;
     const bottomSideToe = toeY + textOffsetWorld + fontSizeOffsetWorld;
 
-    // Step 3) Right side of collar labels (positive X offset)
+    // Step 3) Right side of collar labels (positive X offset) - LEFT-aligned
     if (displayOptions.holeID) {
-        drawHoleTextThreeJS(collarX + textOffsetWorld, topSideCollar, collarZ, hole.holeID, fontSize, window.textFillColor);
+        drawHoleTextThreeJS(collarX + textOffsetWorld, topSideCollar, collarZ, hole.holeID, fontSize, window.textFillColor, "left");
     }
     if (displayOptions.holeDia) {
-        drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, parseFloat(hole.holeDiameter).toFixed(0), fontSize, "green");
+        drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, parseFloat(hole.holeDiameter).toFixed(0), fontSize, "green", "left");
     }
     if (displayOptions.holeLen) {
-        drawHoleTextThreeJS(collarX + textOffsetWorld, bottomSideCollar, collarZ, parseFloat(hole.holeLengthCalculated).toFixed(1), fontSize, window.depthColor);
+        drawHoleTextThreeJS(collarX + textOffsetWorld, bottomSideCollar, collarZ, parseFloat(hole.holeLengthCalculated).toFixed(1), fontSize, window.depthColor, "left");
     }
     if (displayOptions.holeType) {
-        drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, hole.holeType, fontSize, "green");
+        drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, hole.holeType, fontSize, "green", "left");
     }
     if (displayOptions.measuredComment) {
-        drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, hole.measuredComment, fontSize, "#FF8800");
+        drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, hole.measuredComment, fontSize, "#FF8800", "left");
     }
 
-    // Step 4) Left side of collar labels (negative X offset)
+    // Step 4) Left side of collar labels (negative X offset) - RIGHT-aligned
     if (displayOptions.holeAng) {
-        drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, parseFloat(hole.holeAngle).toFixed(0), fontSize, window.angleDipColor);
+        drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, parseFloat(hole.holeAngle).toFixed(0), fontSize, window.angleDipColor, "right");
     }
     if (displayOptions.initiationTime) {
-        drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, hole.holeTime, fontSize, "red");
+        drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, hole.holeTime, fontSize, "red", "right");
     }
-    // Step 4a) XYZ coordinates with proper vertical spacing (matching 2D)
+    // Step 4a) XYZ coordinates with proper vertical spacing (matching 2D) - RIGHT-aligned
     if (displayOptions.xValue) {
-        drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, parseFloat(hole.startXLocation).toFixed(2), fontSize, window.textFillColor);
+        drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, parseFloat(hole.startXLocation).toFixed(2), fontSize, window.textFillColor, "right");
     }
     if (displayOptions.yValue) {
-        drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, parseFloat(hole.startYLocation).toFixed(2), fontSize, window.textFillColor);
+        drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, parseFloat(hole.startYLocation).toFixed(2), fontSize, window.textFillColor, "right");
     }
     if (displayOptions.zValue) {
-        drawHoleTextThreeJS(collarX - textOffsetWorld, bottomSideCollar, collarZ, parseFloat(hole.startZLocation).toFixed(2), fontSize, window.textFillColor);
+        drawHoleTextThreeJS(collarX - textOffsetWorld, bottomSideCollar, collarZ, parseFloat(hole.startZLocation).toFixed(2), fontSize, window.textFillColor, "right");
     }
     if (displayOptions.displayRowAndPosId) {
-        drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, "Row:" + hole.rowID, fontSize, "#FF00FF");
-        drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, "Pos:" + hole.posID, fontSize, "#FF00FF");
+        drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, "Row:" + hole.rowID, fontSize, "#FF00FF", "right");
+        drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, "Pos:" + hole.posID, fontSize, "#FF00FF", "right");
     }
     if (displayOptions.measuredLength) {
-        drawHoleTextThreeJS(collarX - textOffsetWorld, bottomSideCollar + fontSizeOffsetWorld, collarZ, hole.measuredLength, fontSize, "#FF4400");
+        drawHoleTextThreeJS(collarX - textOffsetWorld, bottomSideCollar + fontSizeOffsetWorld, collarZ, hole.measuredLength, fontSize, "#FF4400", "right");
     }
     if (displayOptions.measuredMass) {
-        drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar - fontSizeOffsetWorld, collarZ, hole.measuredMass, fontSize, "#FF6600");
+        drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar - fontSizeOffsetWorld, collarZ, hole.measuredMass, fontSize, "#FF6600", "right");
     }
 
-    // Step 5) Toe labels with proper spacing (matching 2D)
+    // Step 5) Toe labels with proper spacing (matching 2D) - RIGHT-aligned
     if (displayOptions.holeDip) {
-        drawHoleTextThreeJS(toeX - textOffsetWorld, topSideToe, toeZ, (90 - parseFloat(hole.holeAngle)).toFixed(0), fontSize, window.angleDipColor);
+        drawHoleTextThreeJS(toeX - textOffsetWorld, topSideToe, toeZ, (90 - parseFloat(hole.holeAngle)).toFixed(0), fontSize, window.angleDipColor, "right");
     }
     if (displayOptions.holeBea) {
-        drawHoleTextThreeJS(toeX - textOffsetWorld, bottomSideToe, toeZ, parseFloat(hole.holeBearing).toFixed(1), fontSize, "red");
+        drawHoleTextThreeJS(toeX - textOffsetWorld, bottomSideToe, toeZ, parseFloat(hole.holeBearing).toFixed(1), fontSize, "red", "right");
     }
     if (displayOptions.holeSubdrill) {
-        drawHoleTextThreeJS(toeX - textOffsetWorld, bottomSideToe + fontSizeOffsetWorld, toeZ, parseFloat(hole.subdrillAmount).toFixed(1), fontSize, "blue");
+        drawHoleTextThreeJS(toeX - textOffsetWorld, bottomSideToe + fontSizeOffsetWorld, toeZ, parseFloat(hole.subdrillAmount).toFixed(1), fontSize, "blue", "right");
     }
 }
 

@@ -306,9 +306,9 @@ export class CameraControls {
                 // Step 16b) Get world point under mouse at old scale
                 const worldPointOld = targetOld.clone();
 
-                // Step 16c) Update scale and camera to new scale
+                // Step 16c) Update scale and camera to new scale (skip render during zoom)
                 this.scale = newScale;
-                this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+                this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
 
                 // Step 16d) Raycast again at new scale
                 const raycasterNew = new THREE.Raycaster();
@@ -325,16 +325,16 @@ export class CameraControls {
                     this.centroidX += deltaX;
                     this.centroidY += deltaY;
 
-                    // Step 16f) Update camera again with adjusted centroid
-                    this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+                    // Step 16f) Update camera again with adjusted centroid (skip render during zoom)
+                    this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
                 } else {
-                    // If raycast fails at new scale, just update scale
-                    this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+                    // If raycast fails at new scale, just update scale (skip render during zoom)
+                    this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
                 }
             } else {
-                // If raycast fails, just update scale
+                // If raycast fails, just update scale (skip render during zoom)
                 this.scale = newScale;
-                this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+                this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
             }
 
             // Early return since camera was already updated in 3D mode
@@ -363,8 +363,8 @@ export class CameraControls {
             this.threeRenderer.showAxisHelper(false);
         }
 
-        // Step 18) Update camera with preserved orbit state
-        this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+        // Step 18) Update camera with preserved orbit state (skip render during zoom)
+        this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
 
         // Step 19) Re-show gizmo if always mode
         if (this.gizmoDisplayMode === "always") {

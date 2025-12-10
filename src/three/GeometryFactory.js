@@ -445,11 +445,11 @@ export class GeometryFactory {
     }
 
     // Step 12b) Create KAD text using troika-three-text (crisp SDF rendering)
-    static createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null) {
+    static createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, anchorX = "center") {
         // Step 1) Create cache key (scale-independent - use pixel fontSize)
         const currentScale = window.currentScale || 5;
         const fontSizeWorldUnits = fontSize / currentScale;
-        const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," + String(text) + "," + fontSize + "," + color; // Use pixel fontSize, not world units
+        const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," + String(text) + "," + fontSize + "," + color + "," + anchorX; // Include anchor in cache key
 
         // Step 1a) Return cached text if it exists
         if (textCache.has(cacheKey)) {
@@ -479,7 +479,7 @@ export class GeometryFactory {
         textMesh.text = String(text);
         textMesh.fontSize = fontSizeWorldUnits; // Properly scaled to world units
         textMesh.color = color;
-        textMesh.anchorX = "center"; // Center horizontally
+        textMesh.anchorX = anchorX; // Left, center, or right alignment
         textMesh.anchorY = "middle"; // Center vertically
 
         // Step 2a) Font loading removed - using shared SDF texture baked at app startup
