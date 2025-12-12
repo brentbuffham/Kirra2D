@@ -923,6 +923,9 @@ async function initializeThreeJS() {
 		// Step 0c) Use centralized cleanup function to ensure all resources are cleaned up
 		cleanupAllResources();
 
+		// Step 0c.1) CRITICAL: Restore failure flag after cleanup (cleanup resets it, but we need to prevent retry storm)
+		threeInitializationFailed = true;
+
 		// Step 0d) Show user-friendly error message
 		console.error("⚠️ WebGL initialization failed. This may be caused by:");
 		console.error("  - Browser WebGL context limit exhausted (refresh page)");
@@ -8280,13 +8283,20 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				text.textContent = "Applying textures to mesh...";
 				bar.style.width = "85%";
 
-				// Step 9) Apply textures to mesh materials by matching texture filenames
+				// Step 9) Extract material properties from MTL for storage
+				var materialProperties = extractMaterialProperties(mtlContent);
+				console.log("📦 Extracted material properties: " + Object.keys(materialProperties).length + " materials");
+
+				// Step 9a) Apply textures to mesh materials by matching texture filenames
+				// Also collect final material properties (after texture application) for storage
+				var finalMaterialProperties = {};
 				object3D.traverse(function (child) {
 					if (child.isMesh) {
 						child.material.side = THREE.DoubleSide;
 
-						// Step 9a) Find matching texture for this material
+						// Step 9a.1) Find matching texture for this material
 						var appliedTexture = false;
+						var appliedTextureName = null;
 
 						// Try to find texture by checking each loaded texture
 						Object.keys(loadedTextures).forEach(function (texKey) {
@@ -8295,6 +8305,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 								child.material.map = loadedTextures[texKey];
 								child.material.needsUpdate = true;
 								appliedTexture = true;
+								appliedTextureName = texKey;
 								console.log("🎨 Applied texture '" + texKey + "' to mesh: " + (child.name || "unnamed"));
 							}
 						});
@@ -8302,6 +8313,24 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 						if (!appliedTexture) {
 							console.warn("⚠️ No texture applied to mesh: " + (child.name || "unnamed"));
 						}
+
+						// Step 9a.2) Store final material properties (after texture application)
+						var materialName = child.name || "default";
+						var matProps = materialProperties[materialName] || materialProperties[Object.keys(materialProperties)[0]] || {
+							Kd: [1, 1, 1],
+							Ns: 0,
+							map_Kd: appliedTextureName
+						};
+
+						finalMaterialProperties[materialName] = {
+							name: materialName,
+							Ka: matProps.Ka || [0, 0, 0],
+							Kd: matProps.Kd || [1, 1, 1],
+							Ks: matProps.Ks || [0, 0, 0],
+							Ns: matProps.Ns || 0,
+							map_Kd: appliedTextureName || matProps.map_Kd || null,
+							illum: matProps.illum || 2
+						};
 					}
 				});
 
@@ -8362,6 +8391,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					objContent: objContent,
 					mtlContent: mtlContent,
 					textureBlobs: textureBlobs,
+					materialProperties: finalMaterialProperties, // Store serializable material properties
 				});
 
 				console.log("✅ Textured OBJ loaded: " + fileName + " (" + objData.points.length + " points, " + objData.triangles.length + " triangles)");
@@ -8428,11 +8458,6 @@ function rebuildTexturedMesh(surfaceId) {
 	// Step 1a) Prevent multiple rebuilds - if mesh already exists, skip
 	if (surface.threeJSMesh) {
 		console.log("♻️ Mesh already rebuilt for: " + surfaceId + ", skipping rebuild");
-		// #region agent log
-		var logDataG1 = { location: 'kirra.js:8403', message: 'Mesh already exists - skipping rebuild', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'G' };
-		console.log('[DEBUG G1] Mesh already rebuilt', logDataG1);
-		fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataG1) }).catch(() => { });
-		// #endregion
 		return;
 	}
 
@@ -8442,28 +8467,14 @@ function rebuildTexturedMesh(surfaceId) {
 		var blobURLs = [];
 
 		if (surface.textureBlobs) {
-			// #region agent log
-			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8410', message: 'Processing texture blobs from IndexedDB', data: { surfaceId: surfaceId, blobCount: Object.keys(surface.textureBlobs).length, blobNames: Object.keys(surface.textureBlobs) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-			// #endregion
 			Object.keys(surface.textureBlobs).forEach(function (texName) {
 				var blob = surface.textureBlobs[texName];
 				if (blob) {
-					// #region agent log
-					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8414', message: 'Creating blob URL from IndexedDB blob', data: { surfaceId: surfaceId, texName: texName, blobType: blob.type, blobSize: blob.size, isBlob: blob instanceof Blob }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-					// #endregion
 					var url = URL.createObjectURL(blob);
 					textureURLs[texName] = url;
 					blobURLs.push(url);
-				} else {
-					// #region agent log
-					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8413', message: 'Texture blob is null/undefined', data: { surfaceId: surfaceId, texName: texName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-					// #endregion
 				}
 			});
-		} else {
-			// #region agent log
-			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8410', message: 'No texture blobs found in surface', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
-			// #endregion
 		}
 
 		// Step 3) Pre-load all textures into a map (same approach as initial load)
@@ -8496,86 +8507,96 @@ function rebuildTexturedMesh(surfaceId) {
 
 		// Step 4) Wait for ALL textures to pre-load before proceeding
 		Promise.all(texturePromises).then(function () {
-			// #region agent log
-			var logDataE1 = { location: 'kirra.js:8450', message: 'All textures loaded - starting mesh rebuild', data: { surfaceId: surfaceId, loadedTextureCount: Object.keys(loadedTextures).length, textureNames: Object.keys(loadedTextures) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
-			console.log('[DEBUG E1] Textures loaded, rebuilding mesh', logDataE1);
-			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE1) }).catch(() => { });
-			// #endregion
 
-			// Step 5) Parse MTL and create materials
-			var materials = null;
-			if (surface.mtlContent) {
-				var mtlLoader = new MTLLoader();
-				mtlLoader.setResourcePath("");
-				materials = mtlLoader.parse(surface.mtlContent);
-				materials.preload();
-				// #region agent log
-				var logDataE2 = { location: 'kirra.js:8456', message: 'MTL parsed and materials created', data: { surfaceId: surfaceId, hasMaterials: !!materials, materialCount: materials ? Object.keys(materials.materials).length : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
-				console.log('[DEBUG E2] MTL parsed', logDataE2);
-				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE2) }).catch(() => { });
-				// #endregion
-			} else {
-				// #region agent log
-				var logDataE3 = { location: 'kirra.js:8453', message: 'No MTL content found', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
-				console.warn('[DEBUG E3] ⚠️ No MTL content', logDataE3);
-				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE3) }).catch(() => { });
-				// #endregion
-			}
-
-			// Step 6) Parse OBJ with materials
+			// Step 5) Parse OBJ WITHOUT materials (we'll apply materials manually from stored properties)
 			var objLoader = new OBJLoader();
-			if (materials) {
-				objLoader.setMaterials(materials);
-			}
-
 			var object3D = objLoader.parse(surface.objContent);
 			object3D.name = surface.name;
 
-			// #region agent log
-			var meshCount = 0;
-			object3D.traverse(function (child) { if (child.isMesh) meshCount++; });
-			var logDataE4 = { location: 'kirra.js:8480', message: 'OBJ parsed - applying textures', data: { surfaceId: surfaceId, meshCount: meshCount, hasTextures: Object.keys(loadedTextures).length > 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
-			console.log('[DEBUG E4] OBJ parsed, applying textures', logDataE4);
-			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE4) }).catch(() => { });
-			// #endregion
+			// Step 5a) Create materials from stored properties + texture blobs
+			// This is more reliable than MTLLoader which expects file URLs
+			var materialMap = {};
+			if (surface.materialProperties && Object.keys(surface.materialProperties).length > 0) {
+				console.log("🎨 Creating materials from stored properties");
+				Object.keys(surface.materialProperties).forEach(function (matName) {
+					var matProps = surface.materialProperties[matName];
+					var textureName = matProps.map_Kd;
+					// Find texture from already-loaded textures map (textures loaded from blobs above)
+					var texture = null;
+					if (textureName && loadedTextures[textureName]) {
+						texture = loadedTextures[textureName];
+					} else if (textureName && loadedTextures[textureName.toLowerCase()]) {
+						texture = loadedTextures[textureName.toLowerCase()];
+					} else {
+						// Use first available texture
+						var firstTexKey = Object.keys(loadedTextures)[0];
+						if (firstTexKey) {
+							texture = loadedTextures[firstTexKey];
+							console.log("🎨 Using first available loaded texture: " + firstTexKey);
+						}
+					}
 
-			// Step 7) Apply textures to mesh materials
+					materialMap[matName] = createMaterialFromProperties(matProps, texture, textureName);
+					console.log("✅ Created material '" + matName + "' with texture: " + (texture ? textureName : "none"));
+				});
+			} else {
+				// Fallback: Create default material with first available loaded texture
+				console.warn("⚠️ No material properties found, creating default material");
+				var firstTexKey = Object.keys(loadedTextures)[0];
+				var firstTexture = firstTexKey ? loadedTextures[firstTexKey] : null;
+				materialMap["default"] = createMaterialFromProperties(null, firstTexture, firstTexKey);
+			}
+
+			// Step 7) Apply materials to mesh (from materialMap created from stored properties)
 			var texturesApplied = 0;
 			var texturesFailed = 0;
 			object3D.traverse(function (child) {
 				if (child.isMesh) {
-					child.material.side = THREE.DoubleSide;
+					// Find matching material from materialMap
+					var materialName = child.name || "default";
+					var material = materialMap[materialName] || materialMap["default"] || materialMap[Object.keys(materialMap)[0]];
 
-					// Apply first available texture
-					var appliedTexture = false;
-					Object.keys(loadedTextures).forEach(function (texKey) {
-						if (!appliedTexture && loadedTextures[texKey]) {
-							child.material.map = loadedTextures[texKey];
-							child.material.needsUpdate = true;
-							appliedTexture = true;
-							texturesApplied++;
-							// #region agent log
-							console.log('[DEBUG E5] ✅ Applied texture to mesh:', { surfaceId: surfaceId, meshName: child.name || 'unnamed', textureKey: texKey, hasMap: !!child.material.map });
-							// #endregion
-						}
-					});
-
-					if (!appliedTexture) {
+					if (material) {
+						child.material = material.clone();
+						child.material.side = THREE.DoubleSide;
+						texturesApplied++;
+					} else {
+						// Fallback: use default material
+						child.material = new THREE.MeshStandardMaterial({
+							color: 0xffffff,
+							side: THREE.DoubleSide
+						});
 						texturesFailed++;
-						// #region agent log
-						console.warn('[DEBUG E6] ⚠️ No texture applied to mesh:', { surfaceId: surfaceId, meshName: child.name || 'unnamed', availableTextures: Object.keys(loadedTextures) });
-						// #endregion
 					}
 				}
 			});
 
-			// #region agent log
-			var logDataE7 = { location: 'kirra.js:8500', message: 'Texture application complete', data: { surfaceId: surfaceId, texturesApplied: texturesApplied, texturesFailed: texturesFailed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
-			console.log('[DEBUG E7] Texture application summary', logDataE7);
-			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE7) }).catch(() => { });
-			// #endregion
+			// Step 8) Remove old mesh from scene if it exists (ensures new mesh with textures replaces old one)
+			if (window.threeRenderer && window.threeRenderer.surfaceMeshMap) {
+				var oldMesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
+				if (oldMesh) {
+					// Remove old mesh from scene
+					if (window.threeRenderer.surfacesGroup) {
+						window.threeRenderer.surfacesGroup.remove(oldMesh);
+					}
+					// Dispose old mesh to free resources
+					oldMesh.traverse(function (child) {
+						if (child.geometry) child.geometry.dispose();
+						if (child.material) {
+							if (Array.isArray(child.material)) {
+								child.material.forEach(function (mat) { mat.dispose(); });
+							} else {
+								child.material.dispose();
+							}
+						}
+					});
+					// Remove from map
+					window.threeRenderer.surfaceMeshMap.delete(surfaceId);
+					console.log("🧹 Removed old mesh from scene - will be re-added with textures on next render");
+				}
+			}
 
-			// Step 8) Store rebuilt mesh
+			// Step 8a) Store rebuilt mesh
 			surface.threeJSMesh = object3D;
 
 			console.log("✅ Rebuilt textured mesh: " + surfaceId);
@@ -8586,20 +8607,10 @@ function rebuildTexturedMesh(surfaceId) {
 			if (surface.gradient !== "texture") {
 				surface.gradient = "texture";
 				console.log("🎨 FORCED gradient to 'texture' for rebuilt textured mesh: " + surfaceId + " (was: " + (oldGradient || "default") + ")");
-				// #region agent log
-				var logDataF2 = { location: 'kirra.js:8584', message: 'FORCED gradient to texture after rebuild', data: { surfaceId: surfaceId, oldGradient: oldGradient || 'default' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' };
-				console.log('[DEBUG F2] ⚠️ FORCED gradient to texture', logDataF2);
-				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataF2) }).catch(() => { });
-				// #endregion
 			}
 
 			// Step 8b) Mesh is rebuilt - it will render automatically on next drawData call
 			// Don't force redraw here to avoid excessive redraws - let natural rendering cycle handle it
-			// #region agent log
-			var logDataF3 = { location: 'kirra.js:8597', message: 'Mesh rebuilt - will render on next draw cycle', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' };
-			console.log('[DEBUG F3] Mesh rebuilt, ready for rendering', logDataF3);
-			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataF3) }).catch(() => { });
-			// #endregion
 
 			// Step 9) Cleanup blob URLs after delay
 			setTimeout(function () {
@@ -8611,28 +8622,14 @@ function rebuildTexturedMesh(surfaceId) {
 			// Step 10) Recreate flattened image for 2D canvas
 			// This is now called AFTER textures are loaded
 			// Step 10a) Check if we have a saved flattened image first
-			// #region agent log
-			var logDataB1 = { location: 'kirra.js:8501', message: 'Checking for saved flattened image', data: { surfaceId: surfaceId, hasDataURL: !!surface.flattenedImageDataURL, hasBounds: !!surface.flattenedImageBounds, hasDimensions: !!surface.flattenedImageDimensions, threeInitialized: threeInitialized, threeInitializationFailed: threeInitializationFailed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
-			console.log('[DEBUG B1] Checking flattened image:', logDataB1);
-			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB1) }).catch(() => { });
-			// #endregion
 			if (surface.flattenedImageDataURL && surface.flattenedImageBounds && surface.flattenedImageDimensions) {
 				console.log("♻️ Reusing saved flattened image for: " + surfaceId);
-				// #region agent log
-				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8503', message: 'Using saved flattened image - no WebGL needed', data: { surfaceId: surfaceId, dataURLLength: surface.flattenedImageDataURL.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-				// #endregion
 				loadFlattenedImageFromData(surfaceId, surface.flattenedImageDataURL, surface.flattenedImageBounds, surface.flattenedImageDimensions, surface.name);
 			} else if (surface.meshBounds && threeInitialized && !threeInitializationFailed) {
 				// Step 10b) Only flatten if ThreeJS is initialized and no saved image exists
 				console.log("🎨 Creating new flattened image for: " + surfaceId);
-				// #region agent log
-				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8507', message: 'Creating NEW flattened image - will create WebGL context', data: { surfaceId: surfaceId, reason: 'no saved image', hasMeshBounds: !!surface.meshBounds }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-				// #endregion
 				flattenTexturedMeshToImage(surfaceId, object3D, surface.meshBounds, surface.name);
 			} else if (!threeInitialized || threeInitializationFailed) {
-				// #region agent log
-				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8509', message: 'Skipping flatten - ThreeJS not available', data: { surfaceId: surfaceId, threeInitialized: threeInitialized, threeInitializationFailed: threeInitializationFailed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
-				// #endregion
 				console.warn("⚠️ Skipping texture flattening - ThreeJS not available, will retry when ThreeJS initializes");
 			}
 		});
@@ -8742,18 +8739,12 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 		console.log("📸 Creating flattened image: " + imgWidth + "x" + imgHeight + " for mesh bounds: " + worldWidth.toFixed(2) + "x" + worldHeight.toFixed(2));
 
 		// Step 4) Create offscreen renderer
-		// #region agent log
-		fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8610', message: 'Creating offscreen WebGL renderer for flattening', data: { surfaceId: surfaceId, imgWidth: imgWidth, imgHeight: imgHeight, threeInitialized: threeInitialized }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-		// #endregion
 		var offscreenRenderer = new THREE.WebGLRenderer({
 			antialias: true,
 			preserveDrawingBuffer: true,
 		});
 		offscreenRenderer.setSize(imgWidth, imgHeight);
 		offscreenRenderer.setClearColor(0xffffff, 0); // Transparent background
-		// #region agent log
-		fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8613', message: 'Offscreen renderer created successfully', data: { surfaceId: surfaceId, hasContext: !!offscreenRenderer.getContext() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
-		// #endregion
 
 		// Step 4a) Calculate mesh center as local origin for this specific render
 		// CRITICAL: Use mesh's own center as origin, NOT threeLocalOriginX/Y
@@ -8901,25 +8892,8 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 				surface.flattenedImageBounds = meshBounds;
 				surface.flattenedImageDimensions = { width: imgWidth, height: imgHeight };
 
-				// #region agent log
-				var logDataB3 = { location: 'kirra.js:8767', message: 'Flattened image created - saving to surface', data: { surfaceId: surfaceId, dataURLLength: imageDataURL ? imageDataURL.length : 0, hasBounds: !!meshBounds, hasDimensions: !!surface.flattenedImageDimensions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
-				console.log('[DEBUG B3] ✅ Flattened image created - saving to surface', logDataB3);
-				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB3) }).catch(() => { });
-				// #endregion
-
 				// Step 12b) Save to IndexedDB
-				saveSurfaceToDB(surfaceId).then(function () {
-					// #region agent log
-					var logDataB4 = { location: 'kirra.js:8812', message: 'Flattened image saved to IndexedDB successfully', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
-					console.log('[DEBUG B4] ✅ Flattened image saved to IndexedDB', logDataB4);
-					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB4) }).catch(() => { });
-					// #endregion
-				}).catch(function (err) {
-					// #region agent log
-					var logDataB5 = { location: 'kirra.js:8816', message: 'Failed to save flattened image to DB', data: { surfaceId: surfaceId, error: err ? err.message : 'unknown' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
-					console.error('[DEBUG B5] ❌ Failed to save flattened image to DB', logDataB5);
-					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB5) }).catch(() => { });
-					// #endregion
+				saveSurfaceToDB(surfaceId).catch(function (err) {
 					console.warn("⚠️ Failed to save flattened image to DB:", err);
 				});
 			}
@@ -24209,34 +24183,23 @@ async function saveSurfaceToDB(surfaceId) {
 
 				// Step 2) Store texture blobs if present
 				if (surface.textureBlobs) {
-					// #region agent log
-					var blobKeys = Object.keys(surface.textureBlobs);
-					var logDataH1 = { location: 'kirra.js:24188', message: 'Saving texture blobs to IndexedDB', data: { surfaceId: surfaceId, blobCount: blobKeys.length, blobNames: blobKeys, blobTypes: blobKeys.map(function (k) { return surface.textureBlobs[k] ? surface.textureBlobs[k].type : 'null'; }) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' };
-					console.log('[DEBUG H1] Saving texture blobs', logDataH1);
-					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataH1) }).catch(() => { });
-					// #endregion
 					surfaceRecord.textureBlobs = surface.textureBlobs;
-				} else {
-					// #region agent log
-					var logDataH2 = { location: 'kirra.js:24188', message: 'NO texture blobs to save', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' };
-					console.warn('[DEBUG H2] ⚠️ NO TEXTURE BLOBS', logDataH2);
-					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataH2) }).catch(() => { });
-					// #endregion
 				}
 
-				// Step 2a) Store flattened image data if present (saves recreation on reload)
+				// Step 2a) Store material properties (serializable, no WebGL resources)
+				if (surface.materialProperties) {
+					surfaceRecord.materialProperties = surface.materialProperties;
+					console.log("💾 Saving material properties for surface: " + surfaceId);
+				} else {
+					console.warn("⚠️ No material properties to save for textured mesh: " + surfaceId);
+				}
+
+				// Step 2b) Store flattened image data if present (saves recreation on reload)
 				if (surface.flattenedImageDataURL) {
-					// #region agent log
-					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:24066', message: 'Saving flattened image data to IndexedDB', data: { surfaceId: surfaceId, dataURLLength: surface.flattenedImageDataURL.length, hasBounds: !!surface.flattenedImageBounds, hasDimensions: !!surface.flattenedImageDimensions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-					// #endregion
 					surfaceRecord.flattenedImageDataURL = surface.flattenedImageDataURL;
 					surfaceRecord.flattenedImageBounds = surface.flattenedImageBounds;
 					surfaceRecord.flattenedImageDimensions = surface.flattenedImageDimensions;
 					console.log("💾 Saving flattened image data for surface: " + surfaceId);
-				} else {
-					// #region agent log
-					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:24071', message: 'No flattened image data to save', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-					// #endregion
 				}
 
 				console.log("💾 Saving textured mesh data for surface: " + surfaceId);
@@ -24464,13 +24427,6 @@ async function loadAllSurfacesIntoMemory() {
 						gradient: surfaceData.isTexturedMesh ? "texture" : (surfaceData.gradient || "default"),
 						transparency: surfaceData.transparency || 1.0,
 					};
-					// #region agent log
-					if (surfaceData.isTexturedMesh) {
-						var logDataF1 = { location: 'kirra.js:24395', message: 'Loaded textured surface gradient', data: { surfaceId: surfaceData.id, savedGradient: surfaceData.gradient, finalGradient: surfaceEntry.gradient }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' };
-						console.log('[DEBUG F1] Gradient for textured mesh', logDataF1);
-						fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataF1) }).catch(() => { });
-					}
-					// #endregion
 
 					// Step 2) Check if this is a textured mesh
 					if (surfaceData.isTexturedMesh) {
@@ -24478,36 +24434,22 @@ async function loadAllSurfacesIntoMemory() {
 						surfaceEntry.objContent = surfaceData.objContent || null;
 						surfaceEntry.mtlContent = surfaceData.mtlContent || null;
 						surfaceEntry.textureBlobs = surfaceData.textureBlobs || null;
-						// #region agent log
-						var blobKeys = surfaceData.textureBlobs ? Object.keys(surfaceData.textureBlobs) : [];
-						var logDataH3 = { location: 'kirra.js:24404', message: 'Loading texture blobs from IndexedDB', data: { surfaceId: surfaceData.id, blobCount: blobKeys.length, blobNames: blobKeys, hasBlobs: !!surfaceData.textureBlobs, gradient: surfaceEntry.gradient }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' };
-						console.log('[DEBUG H3] Loading texture blobs', logDataH3);
-						if (!surfaceData.textureBlobs || blobKeys.length === 0) {
-							console.error('[DEBUG H3] ⚠️ NO TEXTURE BLOBS IN INDEXEDDB!', logDataH3);
-						} else {
-							console.log('[DEBUG H3] ✅ Texture blobs found: ' + blobKeys.join(', '));
-						}
-						console.log('[DEBUG H3] Gradient set to: ' + surfaceEntry.gradient + ' (should be "texture" for textured mesh)');
-						fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataH3) }).catch(() => { });
-						// #endregion
 						surfaceEntry.meshBounds = surfaceData.meshBounds || null;
+						surfaceEntry.materialProperties = surfaceData.materialProperties || null;
 						surfaceEntry.threeJSMesh = null; // Will be rebuilt
+
+						if (surfaceEntry.materialProperties) {
+							console.log("💾 Loaded material properties for surface: " + surfaceData.id);
+						} else {
+							console.warn("⚠️ No material properties found for textured mesh: " + surfaceData.id);
+						}
 
 						// Step 2a) Load flattened image from saved data if available
 						if (surfaceData.flattenedImageDataURL) {
-							// #region agent log
-							fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:24308', message: 'Found saved flattened image in IndexedDB', data: { surfaceId: surfaceData.id, dataURLLength: surfaceData.flattenedImageDataURL.length, hasBounds: !!surfaceData.flattenedImageBounds, hasDimensions: !!surfaceData.flattenedImageDimensions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
-							// #endregion
 							surfaceEntry.flattenedImageDataURL = surfaceData.flattenedImageDataURL;
 							surfaceEntry.flattenedImageBounds = surfaceData.flattenedImageBounds;
 							surfaceEntry.flattenedImageDimensions = surfaceData.flattenedImageDimensions;
 							console.log("✅ Loaded flattened image data from DB for: " + surfaceData.id);
-						} else {
-							// #region agent log
-							var logDataB2 = { location: 'kirra.js:24311', message: 'NO saved flattened image in IndexedDB - will need to flatten', data: { surfaceId: surfaceData.id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
-							console.log('[DEBUG B2] ⚠️ NO SAVED IMAGE - FLATTENING WILL HAPPEN ON RELOAD', logDataB2);
-							fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB2) }).catch(() => { });
-							// #endregion
 						}
 
 						// Track for later rebuilding
@@ -34362,6 +34304,119 @@ function extractTextureRefsFromMTL(mtlContent) {
 	});
 
 	return textureRefs;
+}
+
+// Step 1a) Extract material properties from MTL content (serializable for IndexedDB)
+function extractMaterialProperties(mtlContent) {
+	var materialProperties = {};
+	var lines = mtlContent.split("\n");
+	var currentMaterial = null;
+
+	lines.forEach(function (line) {
+		var trimmed = line.trim();
+
+		// Skip empty lines and comments
+		if (!trimmed || trimmed.startsWith("#")) {
+			return;
+		}
+
+		var parts = trimmed.split(/\s+/);
+		var command = parts[0];
+
+		// New material definition
+		if (command === "newmtl") {
+			currentMaterial = parts.slice(1).join(" ").trim();
+			materialProperties[currentMaterial] = {
+				name: currentMaterial,
+				Ka: [0, 0, 0],  // Ambient color (default black)
+				Kd: [1, 1, 1],  // Diffuse color (default white)
+				Ks: [0, 0, 0],  // Specular color (default black)
+				Ns: 0,          // Shininess (default 0)
+				map_Kd: null,   // Diffuse texture filename
+				map_Ka: null,   // Ambient texture filename
+				map_Ks: null,   // Specular texture filename
+				illum: 2,       // Illumination model (default 2)
+			};
+		}
+		// Ambient color
+		else if (command === "Ka" && currentMaterial && parts.length >= 4) {
+			materialProperties[currentMaterial].Ka = [
+				parseFloat(parts[1]) || 0,
+				parseFloat(parts[2]) || 0,
+				parseFloat(parts[3]) || 0
+			];
+		}
+		// Diffuse color
+		else if (command === "Kd" && currentMaterial && parts.length >= 4) {
+			materialProperties[currentMaterial].Kd = [
+				parseFloat(parts[1]) || 1,
+				parseFloat(parts[2]) || 1,
+				parseFloat(parts[3]) || 1
+			];
+		}
+		// Specular color
+		else if (command === "Ks" && currentMaterial && parts.length >= 4) {
+			materialProperties[currentMaterial].Ks = [
+				parseFloat(parts[1]) || 0,
+				parseFloat(parts[2]) || 0,
+				parseFloat(parts[3]) || 0
+			];
+		}
+		// Shininess
+		else if (command === "Ns" && currentMaterial && parts.length >= 2) {
+			materialProperties[currentMaterial].Ns = parseFloat(parts[1]) || 0;
+		}
+		// Diffuse texture map
+		else if (command === "map_Kd" && currentMaterial && parts.length >= 2) {
+			materialProperties[currentMaterial].map_Kd = parts.slice(1).join(" ").trim();
+		}
+		// Ambient texture map
+		else if (command === "map_Ka" && currentMaterial && parts.length >= 2) {
+			materialProperties[currentMaterial].map_Ka = parts.slice(1).join(" ").trim();
+		}
+		// Specular texture map
+		else if (command === "map_Ks" && currentMaterial && parts.length >= 2) {
+			materialProperties[currentMaterial].map_Ks = parts.slice(1).join(" ").trim();
+		}
+		// Illumination model
+		else if (command === "illum" && currentMaterial && parts.length >= 2) {
+			materialProperties[currentMaterial].illum = parseInt(parts[1]) || 2;
+		}
+	});
+
+	return materialProperties;
+}
+
+// Step 1b) Create THREE.Material from stored properties + texture (already loaded THREE.Texture object)
+function createMaterialFromProperties(materialProps, texture, textureName) {
+	if (!materialProps) {
+		// Fallback: create default material
+		materialProps = {
+			Kd: [1, 1, 1],
+			Ns: 0,
+			map_Kd: textureName
+		};
+	}
+
+	var material = new THREE.MeshStandardMaterial({
+		color: new THREE.Color(
+			materialProps.Kd[0] || 1,
+			materialProps.Kd[1] || 1,
+			materialProps.Kd[2] || 1
+		),
+		shininess: materialProps.Ns || 0,
+		side: THREE.DoubleSide,
+		transparent: false,
+		opacity: 1.0
+	});
+
+	// Apply texture if available (texture is already a THREE.Texture object)
+	if (texture && texture instanceof THREE.Texture) {
+		material.map = texture;
+		material.needsUpdate = true;
+	}
+
+	return material;
 }
 
 // Step 1) Create surface from parsed OBJ data (preserves original faces)
