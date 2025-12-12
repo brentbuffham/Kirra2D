@@ -527,7 +527,7 @@ export class CameraControls {
 
             // Step 23a) If camera is orbited in 3D, use Raycast Pan on Ground Plane
             if (this.orbitX !== 0 || this.orbitY !== 0) {
-                // Calculate intersection of ray from previous mouse position to ground (Z=orbitCenterZ)
+                // Step 23a.1) Calculate intersection of ray from previous mouse position to ground (Z=orbitCenterZ)
                 const groundZ = this.threeRenderer.orbitCenterZ || 0;
                 const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -groundZ); // Z-up plane
 
@@ -547,18 +547,23 @@ export class CameraControls {
                 const endPoint = getRayIntersection(event.clientX, event.clientY);
 
                 if (startPoint && endPoint) {
-                    // Move camera by the difference
+                    // Step 23a.2) Move camera by the difference (pan on ground plane)
                     const moveX = startPoint.x - endPoint.x;
                     const moveY = startPoint.y - endPoint.y;
 
                     this.centroidX += moveX;
                     this.centroidY += moveY;
 
-                    // Store velocity
+                    // Step 23a.3) Store velocity for momentum
                     this.velocityX = moveX;
                     this.velocityY = moveY;
+
+                    console.log("🎯 Raycast pan: moveX=" + moveX.toFixed(2) + " moveY=" + moveY.toFixed(2));
                 } else {
-                    // Fallback to screen-space pan if raycast fails (e.g. looking at horizon)
+                    // Step 23a.4) Fallback to screen-space pan if raycast fails (e.g. looking at horizon)
+                    // NOTE: This fallback is less accurate when orbited but necessary for extreme angles
+                    console.warn("⚠️ Raycast pan failed, using screen-space fallback");
+                    
                     const panDeltaX = deltaX / this.scale;
                     const panDeltaY = -deltaY / this.scale; // Screen Y is inverted
 

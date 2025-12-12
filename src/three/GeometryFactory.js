@@ -856,10 +856,10 @@ export class GeometryFactory {
             const colorMatch = colorString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
             const color = colorMatch
                 ? {
-                      r: parseInt(colorMatch[1]) / 255,
-                      g: parseInt(colorMatch[2]) / 255,
-                      b: parseInt(colorMatch[3]) / 255
-                  }
+                    r: parseInt(colorMatch[1]) / 255,
+                    g: parseInt(colorMatch[2]) / 255,
+                    b: parseInt(colorMatch[3]) / 255
+                }
                 : { r: 1, g: 1, b: 1 };
 
             // Step 16d) Add vertices and colors
@@ -961,10 +961,10 @@ export class GeometryFactory {
             const colorMatch = colorString.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
             const color = colorMatch
                 ? {
-                      r: parseInt(colorMatch[1]) / 255,
-                      g: parseInt(colorMatch[2]) / 255,
-                      b: parseInt(colorMatch[3]) / 255
-                  }
+                    r: parseInt(colorMatch[1]) / 255,
+                    g: parseInt(colorMatch[2]) / 255,
+                    b: parseInt(colorMatch[3]) / 255
+                }
                 : { r: 1, g: 1, b: 1 };
 
             // Step 16.5e) Add vertices (using collar Z) and colors

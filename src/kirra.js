@@ -1183,10 +1183,10 @@ function handle3DClick(event) {
 		firstIntersect:
 			intersects.length > 0
 				? {
-						object: intersects[0].object.type,
-						userData: intersects[0].object.userData,
-						distance: intersects[0].distance.toFixed(2),
-				  }
+					object: intersects[0].object.type,
+					userData: intersects[0].object.userData,
+					distance: intersects[0].distance.toFixed(2),
+				}
 				: null,
 	});
 
@@ -1821,154 +1821,154 @@ function handle3DClick(event) {
 // MOVED TO ContextMenuManager.js - This function is now loaded from external module
 /*
 function handle3DContextMenu(event) {
-    // Step 13a) Only handle if in 3D mode
-    if (!onlyShowThreeJS) {
-        return;
-    }
+	// Step 13a) Only handle if in 3D mode
+	if (!onlyShowThreeJS) {
+		return;
+	}
 
-    // Step 13a1) Cancel right-click drag delay if context menu is shown
-    if (cameraControls && typeof cameraControls.cancelRightClickDrag === "function") {
-        cameraControls.cancelRightClickDrag();
-    }
+	// Step 13a1) Cancel right-click drag delay if context menu is shown
+	if (cameraControls && typeof cameraControls.cancelRightClickDrag === "function") {
+		cameraControls.cancelRightClickDrag();
+	}
 
-    // Step 13b) Prevent default context menu
-    event.preventDefault();
-    closeAllContextMenus();
+	// Step 13b) Prevent default context menu
+	event.preventDefault();
+	closeAllContextMenus();
 
-    // Step 13c) Early return if dependencies not ready
-    if (!threeInitialized || !threeRenderer || !interactionManager) {
-        updateStatusMessage("Right clicks need to be performed on an Object.");
-        setTimeout(() => {
-            updateStatusMessage("");
-        }, 2000);
-        return;
-    }
+	// Step 13c) Early return if dependencies not ready
+	if (!threeInitialized || !threeRenderer || !interactionManager) {
+		updateStatusMessage("Right clicks need to be performed on an Object.");
+		setTimeout(() => {
+			updateStatusMessage("");
+		}, 2000);
+		return;
+	}
 
-    // Step 13d) Get 3D canvas and update mouse position
-    const threeCanvas = threeRenderer.getCanvas();
-    if (!threeCanvas) {
-        return;
-    }
+	// Step 13d) Get 3D canvas and update mouse position
+	const threeCanvas = threeRenderer.getCanvas();
+	if (!threeCanvas) {
+		return;
+	}
 
-    interactionManager.updateMousePosition(event, threeCanvas);
+	interactionManager.updateMousePosition(event, threeCanvas);
 
-    // Step 13e) Perform raycast to find clicked objects
-    const intersects = interactionManager.raycast();
+	// Step 13e) Perform raycast to find clicked objects
+	const intersects = interactionManager.raycast();
 
-    // Step 13f) Get click position for context menu placement
-    const rect = threeCanvas.getBoundingClientRect();
-    const clickX = event.clientX - rect.left;
-    const clickY = event.clientY - rect.top;
+	// Step 13f) Get click position for context menu placement
+	const rect = threeCanvas.getBoundingClientRect();
+	const clickX = event.clientX - rect.left;
+	const clickY = event.clientY - rect.top;
 
-    // Step 13g) Find clicked hole
-    const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles);
+	// Step 13g) Find clicked hole
+	const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles);
 
-    // Step 13h) Check for multiple hole selection
-    if (selectedMultipleHoles && selectedMultipleHoles.length > 1) {
-        // Check if we clicked on one of the selected holes
-        let clickedOnSelected = false;
-        if (clickedHole) {
-            for (const hole of selectedMultipleHoles) {
-                if (hole.entityName === clickedHole.entityName && hole.holeID === clickedHole.holeID) {
-                    clickedOnSelected = true;
-                    break;
-                }
-            }
-        }
+	// Step 13h) Check for multiple hole selection
+	if (selectedMultipleHoles && selectedMultipleHoles.length > 1) {
+		// Check if we clicked on one of the selected holes
+		let clickedOnSelected = false;
+		if (clickedHole) {
+			for (const hole of selectedMultipleHoles) {
+				if (hole.entityName === clickedHole.entityName && hole.holeID === clickedHole.holeID) {
+					clickedOnSelected = true;
+					break;
+				}
+			}
+		}
 
-        if (clickedOnSelected) {
-            showHolePropertyEditor(selectedMultipleHoles);
-            debouncedUpdateTreeView();
-            return;
-        }
-    }
+		if (clickedOnSelected) {
+			showHolePropertyEditor(selectedMultipleHoles);
+			debouncedUpdateTreeView();
+			return;
+		}
+	}
 
-    // Step 13i) Handle single hole click
-    if (clickedHole) {
-        showHolePropertyEditor(clickedHole);
-        debouncedUpdateTreeView();
-        return;
-    }
+	// Step 13i) Handle single hole click
+	if (clickedHole) {
+		showHolePropertyEditor(clickedHole);
+		debouncedUpdateTreeView();
+		return;
+	}
 
-    // Step 13j) Get clicked KAD object using 3D raycast (mimics 2D getClickedKADObject)
-    const clickedKADObject = getClickedKADObject3D(intersects, clickX, clickY);
+	// Step 13j) Get clicked KAD object using 3D raycast (mimics 2D getClickedKADObject)
+	const clickedKADObject = getClickedKADObject3D(intersects, clickX, clickY);
 
-    // Step 13k) Check for multiple KAD selection
-    if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 1) {
-        // Check if we clicked on one of the selected KAD objects
-        let clickedOnSelected = false;
-        if (clickedKADObject) {
-            for (const kadObj of selectedMultipleKADObjects) {
-                if (kadObj.entityName === clickedKADObject.entityName && kadObj.elementIndex === clickedKADObject.elementIndex) {
-                    clickedOnSelected = true;
-                    break;
-                }
-            }
-        }
+	// Step 13k) Check for multiple KAD selection
+	if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 1) {
+		// Check if we clicked on one of the selected KAD objects
+		let clickedOnSelected = false;
+		if (clickedKADObject) {
+			for (const kadObj of selectedMultipleKADObjects) {
+				if (kadObj.entityName === clickedKADObject.entityName && kadObj.elementIndex === clickedKADObject.elementIndex) {
+					clickedOnSelected = true;
+					break;
+				}
+			}
+		}
 
-        if (clickedOnSelected) {
-            showMultipleKADPropertyEditor(selectedMultipleKADObjects);
-            debouncedUpdateTreeView();
-            return;
-        }
-    }
+		if (clickedOnSelected) {
+			showMultipleKADPropertyEditor(selectedMultipleKADObjects);
+			debouncedUpdateTreeView();
+			return;
+		}
+	}
 
-    // Step 13l) Handle single KAD object click (mimics 2D behavior exactly)
-    if (isSelectionPointerActive || isPolygonSelectionActive) {
-        if (clickedKADObject) {
-            // Step 13l.1) Check if within snap radius (same as 2D)
-            let withinSnapRadius = false;
-            const entity = allKADDrawingsMap ? allKADDrawingsMap.get(clickedKADObject.entityName) : null;
+	// Step 13l) Handle single KAD object click (mimics 2D behavior exactly)
+	if (isSelectionPointerActive || isPolygonSelectionActive) {
+		if (clickedKADObject) {
+			// Step 13l.1) Check if within snap radius (same as 2D)
+			let withinSnapRadius = false;
+			const entity = allKADDrawingsMap ? allKADDrawingsMap.get(clickedKADObject.entityName) : null;
 
-            if (entity) {
-                if (clickedKADObject.selectionType === "vertex") {
-                    // Step 13l.1a) For vertex selection, check distance to the specific vertex
-                    const point = entity.data[clickedKADObject.elementIndex];
-                    if (point) {
-                        // Get world position from raycast
-                        const worldPos = interactionManager.getMouseWorldPositionOnPlane();
-                        if (worldPos) {
-                            const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
-                            const snapRadius = getSnapToleranceInWorldUnits();
-                            withinSnapRadius = distance <= snapRadius;
-                        }
-                    }
-                } else if (clickedKADObject.selectionType === "segment") {
-                    // Step 13l.1b) For segment selection, already validated by getClickedKADObject3D
-                    withinSnapRadius = true;
-                }
-            }
+			if (entity) {
+				if (clickedKADObject.selectionType === "vertex") {
+					// Step 13l.1a) For vertex selection, check distance to the specific vertex
+					const point = entity.data[clickedKADObject.elementIndex];
+					if (point) {
+						// Get world position from raycast
+						const worldPos = interactionManager.getMouseWorldPositionOnPlane();
+						if (worldPos) {
+							const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
+							const snapRadius = getSnapToleranceInWorldUnits();
+							withinSnapRadius = distance <= snapRadius;
+						}
+					}
+				} else if (clickedKADObject.selectionType === "segment") {
+					// Step 13l.1b) For segment selection, already validated by getClickedKADObject3D
+					withinSnapRadius = true;
+				}
+			}
 
-            // Step 13l.2) Check if object is selected (same as 2D)
-            if (withinSnapRadius && isKADObjectSelected(clickedKADObject)) {
-                showKADPropertyEditorPopup(clickedKADObject);
-                debouncedUpdateTreeView();
-                return;
-            }
-        }
-    }
+			// Step 13l.2) Check if object is selected (same as 2D)
+			if (withinSnapRadius && isKADObjectSelected(clickedKADObject)) {
+				showKADPropertyEditorPopup(clickedKADObject);
+				debouncedUpdateTreeView();
+				return;
+			}
+		}
+	}
 
-    // Step 13m) Find clicked surface
-    const clickedSurfaceId = interactionManager.findClickedSurface(intersects);
-    if (clickedSurfaceId) {
-        showSurfaceContextMenu(event.clientX, event.clientY, clickedSurfaceId);
-        debouncedUpdateTreeView();
-        return;
-    }
+	// Step 13m) Find clicked surface
+	const clickedSurfaceId = interactionManager.findClickedSurface(intersects);
+	if (clickedSurfaceId) {
+		showSurfaceContextMenu(event.clientX, event.clientY, clickedSurfaceId);
+		debouncedUpdateTreeView();
+		return;
+	}
 
-    // Step 13n) Find clicked image
-    const clickedImageId = interactionManager.findClickedImage(intersects);
-    if (clickedImageId) {
-        showImageContextMenu(event.clientX, event.clientY, clickedImageId);
-        debouncedUpdateTreeView();
-        return;
-    }
+	// Step 13n) Find clicked image
+	const clickedImageId = interactionManager.findClickedImage(intersects);
+	if (clickedImageId) {
+		showImageContextMenu(event.clientX, event.clientY, clickedImageId);
+		debouncedUpdateTreeView();
+		return;
+	}
 
-    // Step 13o) Default context menu - show status message if no object clicked
-    updateStatusMessage("Right clicks need to be performed on an Object.");
-    setTimeout(() => {
-        updateStatusMessage("");
-    }, 2000);
+	// Step 13o) Default context menu - show status message if no object clicked
+	updateStatusMessage("Right clicks need to be performed on an Object.");
+	setTimeout(() => {
+		updateStatusMessage("");
+	}, 2000);
 }
 */
 // END OF MOVED FUNCTION - handle3DContextMenu now loaded from ContextMenuManager.js
@@ -2500,40 +2500,40 @@ document.addEventListener("DOMContentLoaded", function () {
 					iconImg.src = "icons/badge-3d-v2.png";
 					iconImg.alt = "3D View Active (3D Only)";
 				}
-		} else {
-			// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
-			onlyShowThreeJS = false;
-			// Step 1da) Reset camera pan state to prevent stuck drag
-			if (cameraControls && cameraControls.resetPanState) {
-				cameraControls.resetPanState();
-			}
-			console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
+			} else {
+				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
+				onlyShowThreeJS = false;
+				// Step 1da) Reset camera pan state to prevent stuck drag
+				if (cameraControls && cameraControls.resetPanState) {
+					cameraControls.resetPanState();
+				}
+				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
 
-			// Step 1db) Clear all Three.js geometry when switching to 2D mode
-			if (typeof clearThreeJS === "function") {
-				clearThreeJS();
-				console.log("🧹 Cleared Three.js geometry on switch to 2D mode");
-			}
+				// Step 1db) Clear all Three.js geometry when switching to 2D mode
+				if (typeof clearThreeJS === "function") {
+					clearThreeJS();
+					console.log("🧹 Cleared Three.js geometry on switch to 2D mode");
+				}
 
-			if (threeCanvas) {
-				threeCanvas.style.zIndex = "0"; // Three.js behind
-				threeCanvas.style.opacity = "0"; // Hide 3D canvas
-				threeCanvas.style.pointerEvents = "none"; // Don't block events
-			}
-			if (canvas) {
-				canvas.style.zIndex = "2"; // 2D canvas on top
-				canvas.style.opacity = "1"; // Show 2D canvas
-				canvas.style.pointerEvents = "auto"; // Receive events
-			}
+				if (threeCanvas) {
+					threeCanvas.style.zIndex = "0"; // Three.js behind
+					threeCanvas.style.opacity = "0"; // Hide 3D canvas
+					threeCanvas.style.pointerEvents = "none"; // Don't block events
+				}
+				if (canvas) {
+					canvas.style.zIndex = "2"; // 2D canvas on top
+					canvas.style.opacity = "1"; // Show 2D canvas
+					canvas.style.pointerEvents = "auto"; // Receive events
+				}
 
-			// Step 1dc) Reset 2D canvas transform state to prevent 3D rotation artifacts
-			// This fixes the quirk where surfaces render above KAD and Holes after 3D rotation
-			if (ctx) {
-				ctx.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
-				console.log("🔄 Reset 2D canvas transform state on switch to 2D mode");
-			}
+				// Step 1dc) Reset 2D canvas transform state to prevent 3D rotation artifacts
+				// This fixes the quirk where surfaces render above KAD and Holes after 3D rotation
+				if (ctx) {
+					ctx.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
+					console.log("🔄 Reset 2D canvas transform state on switch to 2D mode");
+				}
 
-			// Step 1dd) Show contour overlay canvas in 2D mode
+				// Step 1dd) Show contour overlay canvas in 2D mode
 				if (typeof contourOverlayCanvas !== "undefined" && contourOverlayCanvas) {
 					contourOverlayCanvas.style.display = "block";
 				}
@@ -2656,7 +2656,7 @@ let textsGroupVisible = true;
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
 // debouncedUpdateTreeView is defined later - stub it to prevent errors
-let debouncedUpdateTreeView = function () {};
+let debouncedUpdateTreeView = function () { };
 
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
@@ -3516,7 +3516,33 @@ function cleanupAllResources() {
 
 	console.log("✅ Resource cleanup completed");
 }
+// Step 3h) Force Three.js re-initialization (call after cleanupAllResources)
+function forceThreeJSReset() {
+	console.log("🔄 Forcing Three.js reset and re-initialization...");
 
+	// Step 1) Clean up all resources first
+	cleanupAllResources();
+
+	// Step 2) Wait for cleanup to complete (browser needs time to release contexts)
+	setTimeout(function () {
+		console.log("✅ Cleanup complete, attempting re-initialization...");
+
+		// Step 3) Try to initialize again
+		initializeThreeJS().then(function () {
+			console.log("✅ Three.js re-initialized successfully!");
+			// Step 4) Redraw existing data
+			if (allBlastHoles && allBlastHoles.length > 0) {
+				drawData();
+			}
+		}).catch(function (error) {
+			console.error("❌ Re-initialization failed:", error);
+			alert("WebGL initialization failed. Try:\n\n1. Refresh the page (F5)\n2. Close other browser tabs\n3. Close and reopen browser\n4. Update graphics drivers");
+		});
+	}, 500); // Wait 500ms for browser to release contexts
+}
+
+// Step 3i) Expose to window for console access
+window.forceThreeJSReset = forceThreeJSReset;
 // Master function to reset everything
 function resetAppToDefaults() {
 	// Step 3) Clear all pending timers before reset
@@ -5600,7 +5626,7 @@ var i;
 for (i = 0; i < acc.length; i++) {
 	acc[i].addEventListener("click", function () {
 		/* Toggle between adding and removing the "active" class,
-    to highlight the button that controls the panel */
+	to highlight the button that controls the panel */
 		this.classList.toggle("active");
 		/* Toggle between hiding and showing the active panel */
 		var panel = this.nextElementSibling;
@@ -6314,15 +6340,15 @@ optionConfigs.forEach((config) => {
 
 			// REPLACE THIS SECTION:
 			/*
-            // Calculate contours when any of these displays are turned on
-            if ((config.option === displayContours && displayContours.checked) || 
-                (config.option === displayFirstMovements && displayFirstMovements.checked) || 
-                (config.option === displayRelief && displayRelief.checked)) {
-                const result = recalculateContours(allBlastHoles, 0, 0);
-                contourLinesArray = result.contourLinesArray;
-                directionArrows = result.directionArrows;
-            }
-            */
+			// Calculate contours when any of these displays are turned on
+			if ((config.option === displayContours && displayContours.checked) || 
+				(config.option === displayFirstMovements && displayFirstMovements.checked) || 
+				(config.option === displayRelief && displayRelief.checked)) {
+				const result = recalculateContours(allBlastHoles, 0, 0);
+				contourLinesArray = result.contourLinesArray;
+				directionArrows = result.directionArrows;
+			}
+			*/
 
 			// WITH THIS THROTTLED VERSION:
 			if ((config.option === displayContours && displayContours.checked) || (config.option === displayFirstMovements && displayFirstMovements.checked) || (config.option === displayRelief && displayRelief.checked)) {
@@ -8150,11 +8176,34 @@ async function readFileAsBlob(file) {
 
 // Step 3) Load OBJ with texture using Three.js loaders
 async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textureBlobs, objData) {
+	// Step 1) Create progress dialog
+	const progressContent = document.createElement("div");
+	progressContent.style.textAlign = "center";
+	progressContent.innerHTML = '<p>Loading OBJ File: ' + fileName + '</p><p>Please wait...</p><div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;"><div id="objProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div></div><p id="objProgressText">Initializing...</p>';
+
+	const progressDialog = new FloatingDialog({
+		title: "Loading OBJ",
+		content: progressContent,
+		layoutType: "standard",
+		width: 350,
+		height: 200,
+		showConfirm: false,
+		showCancel: false,
+		allowOutsideClick: false,
+	});
+
+	progressDialog.show();
+
+	const bar = document.getElementById("objProgressBar");
+	const text = document.getElementById("objProgressText");
+
 	return new Promise(function (resolve, reject) {
 		try {
 			// Step 3) Create texture URLs from blobs
 			var textureURLs = {};
 			var blobURLs = []; // Track for cleanup
+			text.textContent = "Creating texture URLs...";
+			bar.style.width = "10%";
 
 			Object.keys(textureBlobs).forEach(function (texName) {
 				var url = URL.createObjectURL(textureBlobs[texName]);
@@ -8167,6 +8216,8 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 			// This is more reliable than depending on MTLLoader's internal structure
 			var textureRefs = extractTextureRefsFromMTL(mtlContent);
 			console.log("📋 Texture references from MTL: " + textureRefs.join(", "));
+			text.textContent = "Loading textures (" + Object.keys(textureBlobs).length + ")...";
+			bar.style.width = "20%";
 
 			// Step 5) Pre-load all textures into a map
 			var textureLoader = new THREE.TextureLoader();
@@ -8187,6 +8238,12 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 							loadedTextures[texName] = texture;
 							loadedTextures[texName.toLowerCase()] = texture; // Also store lowercase for matching
 							console.log("✅ Texture pre-loaded: " + texName);
+							// Update progress
+							const loadedCount = Object.keys(loadedTextures).length / 2; // Divide by 2 (we store twice)
+							const totalCount = Object.keys(textureBlobs).length;
+							const progress = 20 + (loadedCount / totalCount) * 30; // 20% to 50%
+							bar.style.width = progress + "%";
+							text.textContent = "Loaded texture " + loadedCount + " of " + totalCount;
 							resolveTexture();
 						},
 						undefined, // onProgress
@@ -8202,6 +8259,8 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 			// Step 6) Wait for ALL textures to pre-load
 			Promise.all(texturePromises).then(function () {
 				console.log("✅ All " + Object.keys(loadedTextures).length + " textures pre-loaded for: " + fileName);
+				text.textContent = "Parsing MTL materials...";
+				bar.style.width = "55%";
 
 				// Step 7) Parse MTL content
 				var mtlLoader = new MTLLoader();
@@ -8209,11 +8268,17 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				var materials = mtlLoader.parse(mtlContent);
 				materials.preload();
 
+				text.textContent = "Parsing OBJ geometry...";
+				bar.style.width = "70%";
+
 				// Step 8) Parse OBJ content with materials
 				var objLoader = new OBJLoader();
 				objLoader.setMaterials(materials);
 				var object3D = objLoader.parse(objContent);
 				object3D.name = fileName;
+
+				text.textContent = "Applying textures to mesh...";
+				bar.style.width = "85%";
 
 				// Step 9) Apply textures to mesh materials by matching texture filenames
 				object3D.traverse(function (child) {
@@ -8241,15 +8306,38 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				});
 
 				// Step 12) Calculate mesh bounds for georeferencing
-				var bounds = new THREE.Box3().setFromObject(object3D);
-				var meshBounds = {
-					minX: bounds.min.x,
-					maxX: bounds.max.x,
-					minY: bounds.min.y,
-					maxY: bounds.max.y,
-					minZ: bounds.min.z,
-					maxZ: bounds.max.z,
-				};
+				// CRITICAL: Use objData.points (UTM world coordinates) NOT object3D (object-local coordinates)
+				// OBJ vertices are in UTM world coordinates, but object3D is in object-local space
+				var meshBounds = null;
+				if (objData && objData.points && objData.points.length > 0) {
+					// Calculate bounds from UTM world coordinates (objData.points)
+					var minX = Infinity, maxX = -Infinity;
+					var minY = Infinity, maxY = -Infinity;
+					var minZ = Infinity, maxZ = -Infinity;
+					for (var i = 0; i < objData.points.length; i++) {
+						var pt = objData.points[i];
+						if (pt.x < minX) minX = pt.x;
+						if (pt.x > maxX) maxX = pt.x;
+						if (pt.y < minY) minY = pt.y;
+						if (pt.y > maxY) maxY = pt.y;
+						if (pt.z < minZ) minZ = pt.z;
+						if (pt.z > maxZ) maxZ = pt.z;
+					}
+					meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
+					console.log("🎯 Calculated meshBounds from UTM points: " + minX.toFixed(2) + " " + maxX.toFixed(2) + " " + minY.toFixed(2) + " " + maxY.toFixed(2));
+				} else {
+					// Fallback: use object3D bounds (object-local) if points not available
+					var bounds = new THREE.Box3().setFromObject(object3D);
+					meshBounds = {
+						minX: bounds.min.x,
+						maxX: bounds.max.x,
+						minY: bounds.min.y,
+						maxY: bounds.max.y,
+						minZ: bounds.min.z,
+						maxZ: bounds.max.z,
+					};
+					console.warn("⚠️ Using object-local bounds (fallback) - meshBounds may be incorrect!");
+				}
 
 				// Step 13) Create surface ID
 				var surfaceId = fileName;
@@ -8304,10 +8392,21 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					});
 				}, 5000);
 
+				// Step 19) Close progress dialog
+				text.textContent = "Complete!";
+				bar.style.width = "100%";
+				setTimeout(function () {
+					progressDialog.close();
+				}, 500);
+
 				resolve(object3D);
 			});
 		} catch (error) {
 			console.error("❌ Error in loadOBJWithTextureThreeJS:", error);
+			// Close progress dialog on error
+			if (progressDialog) {
+				progressDialog.close();
+			}
 			reject(error);
 		}
 	});
@@ -8326,20 +8425,45 @@ function rebuildTexturedMesh(surfaceId) {
 		return;
 	}
 
+	// Step 1a) Prevent multiple rebuilds - if mesh already exists, skip
+	if (surface.threeJSMesh) {
+		console.log("♻️ Mesh already rebuilt for: " + surfaceId + ", skipping rebuild");
+		// #region agent log
+		var logDataG1 = { location: 'kirra.js:8403', message: 'Mesh already exists - skipping rebuild', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'G' };
+		console.log('[DEBUG G1] Mesh already rebuilt', logDataG1);
+		fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataG1) }).catch(() => { });
+		// #endregion
+		return;
+	}
+
 	try {
 		// Step 2) Create texture URLs from stored blobs
 		var textureURLs = {};
 		var blobURLs = [];
 
 		if (surface.textureBlobs) {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8410', message: 'Processing texture blobs from IndexedDB', data: { surfaceId: surfaceId, blobCount: Object.keys(surface.textureBlobs).length, blobNames: Object.keys(surface.textureBlobs) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+			// #endregion
 			Object.keys(surface.textureBlobs).forEach(function (texName) {
 				var blob = surface.textureBlobs[texName];
 				if (blob) {
+					// #region agent log
+					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8414', message: 'Creating blob URL from IndexedDB blob', data: { surfaceId: surfaceId, texName: texName, blobType: blob.type, blobSize: blob.size, isBlob: blob instanceof Blob }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+					// #endregion
 					var url = URL.createObjectURL(blob);
 					textureURLs[texName] = url;
 					blobURLs.push(url);
+				} else {
+					// #region agent log
+					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8413', message: 'Texture blob is null/undefined', data: { surfaceId: surfaceId, texName: texName }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+					// #endregion
 				}
 			});
+		} else {
+			// #region agent log
+			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8410', message: 'No texture blobs found in surface', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'A' }) }).catch(() => { });
+			// #endregion
 		}
 
 		// Step 3) Pre-load all textures into a map (same approach as initial load)
@@ -8372,6 +8496,12 @@ function rebuildTexturedMesh(surfaceId) {
 
 		// Step 4) Wait for ALL textures to pre-load before proceeding
 		Promise.all(texturePromises).then(function () {
+			// #region agent log
+			var logDataE1 = { location: 'kirra.js:8450', message: 'All textures loaded - starting mesh rebuild', data: { surfaceId: surfaceId, loadedTextureCount: Object.keys(loadedTextures).length, textureNames: Object.keys(loadedTextures) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
+			console.log('[DEBUG E1] Textures loaded, rebuilding mesh', logDataE1);
+			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE1) }).catch(() => { });
+			// #endregion
+
 			// Step 5) Parse MTL and create materials
 			var materials = null;
 			if (surface.mtlContent) {
@@ -8379,6 +8509,17 @@ function rebuildTexturedMesh(surfaceId) {
 				mtlLoader.setResourcePath("");
 				materials = mtlLoader.parse(surface.mtlContent);
 				materials.preload();
+				// #region agent log
+				var logDataE2 = { location: 'kirra.js:8456', message: 'MTL parsed and materials created', data: { surfaceId: surfaceId, hasMaterials: !!materials, materialCount: materials ? Object.keys(materials.materials).length : 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
+				console.log('[DEBUG E2] MTL parsed', logDataE2);
+				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE2) }).catch(() => { });
+				// #endregion
+			} else {
+				// #region agent log
+				var logDataE3 = { location: 'kirra.js:8453', message: 'No MTL content found', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
+				console.warn('[DEBUG E3] ⚠️ No MTL content', logDataE3);
+				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE3) }).catch(() => { });
+				// #endregion
 			}
 
 			// Step 6) Parse OBJ with materials
@@ -8390,7 +8531,17 @@ function rebuildTexturedMesh(surfaceId) {
 			var object3D = objLoader.parse(surface.objContent);
 			object3D.name = surface.name;
 
+			// #region agent log
+			var meshCount = 0;
+			object3D.traverse(function (child) { if (child.isMesh) meshCount++; });
+			var logDataE4 = { location: 'kirra.js:8480', message: 'OBJ parsed - applying textures', data: { surfaceId: surfaceId, meshCount: meshCount, hasTextures: Object.keys(loadedTextures).length > 0 }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
+			console.log('[DEBUG E4] OBJ parsed, applying textures', logDataE4);
+			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE4) }).catch(() => { });
+			// #endregion
+
 			// Step 7) Apply textures to mesh materials
+			var texturesApplied = 0;
+			var texturesFailed = 0;
 			object3D.traverse(function (child) {
 				if (child.isMesh) {
 					child.material.side = THREE.DoubleSide;
@@ -8402,15 +8553,53 @@ function rebuildTexturedMesh(surfaceId) {
 							child.material.map = loadedTextures[texKey];
 							child.material.needsUpdate = true;
 							appliedTexture = true;
+							texturesApplied++;
+							// #region agent log
+							console.log('[DEBUG E5] ✅ Applied texture to mesh:', { surfaceId: surfaceId, meshName: child.name || 'unnamed', textureKey: texKey, hasMap: !!child.material.map });
+							// #endregion
 						}
 					});
+
+					if (!appliedTexture) {
+						texturesFailed++;
+						// #region agent log
+						console.warn('[DEBUG E6] ⚠️ No texture applied to mesh:', { surfaceId: surfaceId, meshName: child.name || 'unnamed', availableTextures: Object.keys(loadedTextures) });
+						// #endregion
+					}
 				}
 			});
+
+			// #region agent log
+			var logDataE7 = { location: 'kirra.js:8500', message: 'Texture application complete', data: { surfaceId: surfaceId, texturesApplied: texturesApplied, texturesFailed: texturesFailed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'E' };
+			console.log('[DEBUG E7] Texture application summary', logDataE7);
+			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataE7) }).catch(() => { });
+			// #endregion
 
 			// Step 8) Store rebuilt mesh
 			surface.threeJSMesh = object3D;
 
 			console.log("✅ Rebuilt textured mesh: " + surfaceId);
+
+			// Step 8a) CRITICAL: Force gradient to "texture" for textured meshes (overrides any saved gradient)
+			// Textured meshes MUST use "texture" gradient to show JPG textures, not color gradients
+			var oldGradient = surface.gradient;
+			if (surface.gradient !== "texture") {
+				surface.gradient = "texture";
+				console.log("🎨 FORCED gradient to 'texture' for rebuilt textured mesh: " + surfaceId + " (was: " + (oldGradient || "default") + ")");
+				// #region agent log
+				var logDataF2 = { location: 'kirra.js:8584', message: 'FORCED gradient to texture after rebuild', data: { surfaceId: surfaceId, oldGradient: oldGradient || 'default' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' };
+				console.log('[DEBUG F2] ⚠️ FORCED gradient to texture', logDataF2);
+				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataF2) }).catch(() => { });
+				// #endregion
+			}
+
+			// Step 8b) Mesh is rebuilt - it will render automatically on next drawData call
+			// Don't force redraw here to avoid excessive redraws - let natural rendering cycle handle it
+			// #region agent log
+			var logDataF3 = { location: 'kirra.js:8597', message: 'Mesh rebuilt - will render on next draw cycle', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' };
+			console.log('[DEBUG F3] Mesh rebuilt, ready for rendering', logDataF3);
+			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataF3) }).catch(() => { });
+			// #endregion
 
 			// Step 9) Cleanup blob URLs after delay
 			setTimeout(function () {
@@ -8421,8 +8610,30 @@ function rebuildTexturedMesh(surfaceId) {
 
 			// Step 10) Recreate flattened image for 2D canvas
 			// This is now called AFTER textures are loaded
-			if (surface.meshBounds) {
+			// Step 10a) Check if we have a saved flattened image first
+			// #region agent log
+			var logDataB1 = { location: 'kirra.js:8501', message: 'Checking for saved flattened image', data: { surfaceId: surfaceId, hasDataURL: !!surface.flattenedImageDataURL, hasBounds: !!surface.flattenedImageBounds, hasDimensions: !!surface.flattenedImageDimensions, threeInitialized: threeInitialized, threeInitializationFailed: threeInitializationFailed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
+			console.log('[DEBUG B1] Checking flattened image:', logDataB1);
+			fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB1) }).catch(() => { });
+			// #endregion
+			if (surface.flattenedImageDataURL && surface.flattenedImageBounds && surface.flattenedImageDimensions) {
+				console.log("♻️ Reusing saved flattened image for: " + surfaceId);
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8503', message: 'Using saved flattened image - no WebGL needed', data: { surfaceId: surfaceId, dataURLLength: surface.flattenedImageDataURL.length }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+				// #endregion
+				loadFlattenedImageFromData(surfaceId, surface.flattenedImageDataURL, surface.flattenedImageBounds, surface.flattenedImageDimensions, surface.name);
+			} else if (surface.meshBounds && threeInitialized && !threeInitializationFailed) {
+				// Step 10b) Only flatten if ThreeJS is initialized and no saved image exists
+				console.log("🎨 Creating new flattened image for: " + surfaceId);
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8507', message: 'Creating NEW flattened image - will create WebGL context', data: { surfaceId: surfaceId, reason: 'no saved image', hasMeshBounds: !!surface.meshBounds }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
+				// #endregion
 				flattenTexturedMeshToImage(surfaceId, object3D, surface.meshBounds, surface.name);
+			} else if (!threeInitialized || threeInitializationFailed) {
+				// #region agent log
+				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8509', message: 'Skipping flatten - ThreeJS not available', data: { surfaceId: surfaceId, threeInitialized: threeInitialized, threeInitializationFailed: threeInitializationFailed }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'D' }) }).catch(() => { });
+				// #endregion
+				console.warn("⚠️ Skipping texture flattening - ThreeJS not available, will retry when ThreeJS initializes");
 			}
 		});
 	} catch (error) {
@@ -8430,9 +8641,76 @@ function rebuildTexturedMesh(surfaceId) {
 	}
 }
 
+// Step 0) Load flattened image from saved data URL (avoids WebGL context creation)
+function loadFlattenedImageFromData(surfaceId, imageDataURL, meshBounds, dimensions, fileName) {
+	try {
+		console.log("♻️ Loading flattened image from saved data for: " + surfaceId);
+
+		var imageId = "flattened_" + surfaceId;
+		var imageCanvas = document.createElement("canvas");
+		imageCanvas.width = dimensions.width;
+		imageCanvas.height = dimensions.height;
+		var imageCtx = imageCanvas.getContext("2d");
+
+		var img = new Image();
+		img.onload = function () {
+			imageCtx.drawImage(img, 0, 0);
+
+			var worldWidth = meshBounds.maxX - meshBounds.minX;
+			var worldHeight = meshBounds.maxY - meshBounds.minY;
+
+			var imageEntry = {
+				id: imageId,
+				name: fileName + "_flattened",
+				canvas: imageCanvas,
+				bbox: [meshBounds.minX, meshBounds.minY, meshBounds.maxX, meshBounds.maxY],
+				width: dimensions.width,
+				height: dimensions.height,
+				visible: true,
+				transparency: 1.0,
+				zElevation: window.drawingZLevel || meshBounds.minZ || 0,
+				isGeoReferenced: true,
+				bounds: {
+					minX: meshBounds.minX,
+					maxX: meshBounds.maxX,
+					minY: meshBounds.minY,
+					maxY: meshBounds.maxY,
+				},
+				pixelWidth: worldWidth / dimensions.width,
+				pixelHeight: worldHeight / dimensions.height,
+				sourceType: "flattened_obj",
+				sourceSurfaceId: surfaceId,
+			};
+
+			loadedImages.set(imageId, imageEntry);
+			console.log("✅ Loaded flattened image from saved data: " + imageId);
+			debouncedUpdateTreeView();
+		};
+		img.onerror = function () {
+			console.error("❌ Failed to load flattened image from saved data");
+		};
+		img.src = imageDataURL;
+	} catch (error) {
+		console.error("❌ Error loading flattened image from data:", error);
+	}
+}
+
 // Step 1) Flatten textured mesh to 2D image for canvas rendering
 function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 	try {
+		// Step 1a) Check WebGL availability before attempting to create offscreen renderer
+		// This prevents context exhaustion errors on page reload when OBJ is in IndexedDB
+		if (!threeInitialized) {
+			console.warn("⚠️ Skipping texture flattening - ThreeJS not initialized yet for: " + surfaceId);
+			return;
+		}
+
+		// Step 1b) Additional check - don't create offscreen renderer if main renderer failed
+		if (threeInitializationFailed) {
+			console.warn("⚠️ Skipping texture flattening - ThreeJS initialization previously failed for: " + surfaceId);
+			return;
+		}
+
 		// Step 2) Calculate image dimensions based on mesh bounds
 		var worldWidth = meshBounds.maxX - meshBounds.minX;
 		var worldHeight = meshBounds.maxY - meshBounds.minY;
@@ -8464,12 +8742,18 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 		console.log("📸 Creating flattened image: " + imgWidth + "x" + imgHeight + " for mesh bounds: " + worldWidth.toFixed(2) + "x" + worldHeight.toFixed(2));
 
 		// Step 4) Create offscreen renderer
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8610', message: 'Creating offscreen WebGL renderer for flattening', data: { surfaceId: surfaceId, imgWidth: imgWidth, imgHeight: imgHeight, threeInitialized: threeInitialized }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
+		// #endregion
 		var offscreenRenderer = new THREE.WebGLRenderer({
 			antialias: true,
 			preserveDrawingBuffer: true,
 		});
 		offscreenRenderer.setSize(imgWidth, imgHeight);
 		offscreenRenderer.setClearColor(0xffffff, 0); // Transparent background
+		// #region agent log
+		fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:8613', message: 'Offscreen renderer created successfully', data: { surfaceId: surfaceId, hasContext: !!offscreenRenderer.getContext() }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'C' }) }).catch(() => { });
+		// #endregion
 
 		// Step 4a) Calculate mesh center as local origin for this specific render
 		// CRITICAL: Use mesh's own center as origin, NOT threeLocalOriginX/Y
@@ -8610,6 +8894,36 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 
 			console.log("✅ Created flattened image for 2D canvas: " + imageId);
 
+			// Step 12a) Save flattened image data URL back to surface for IndexedDB persistence
+			var surface = loadedSurfaces.get(surfaceId);
+			if (surface) {
+				surface.flattenedImageDataURL = imageDataURL;
+				surface.flattenedImageBounds = meshBounds;
+				surface.flattenedImageDimensions = { width: imgWidth, height: imgHeight };
+
+				// #region agent log
+				var logDataB3 = { location: 'kirra.js:8767', message: 'Flattened image created - saving to surface', data: { surfaceId: surfaceId, dataURLLength: imageDataURL ? imageDataURL.length : 0, hasBounds: !!meshBounds, hasDimensions: !!surface.flattenedImageDimensions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
+				console.log('[DEBUG B3] ✅ Flattened image created - saving to surface', logDataB3);
+				fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB3) }).catch(() => { });
+				// #endregion
+
+				// Step 12b) Save to IndexedDB
+				saveSurfaceToDB(surfaceId).then(function () {
+					// #region agent log
+					var logDataB4 = { location: 'kirra.js:8812', message: 'Flattened image saved to IndexedDB successfully', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
+					console.log('[DEBUG B4] ✅ Flattened image saved to IndexedDB', logDataB4);
+					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB4) }).catch(() => { });
+					// #endregion
+				}).catch(function (err) {
+					// #region agent log
+					var logDataB5 = { location: 'kirra.js:8816', message: 'Failed to save flattened image to DB', data: { surfaceId: surfaceId, error: err ? err.message : 'unknown' }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
+					console.error('[DEBUG B5] ❌ Failed to save flattened image to DB', logDataB5);
+					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB5) }).catch(() => { });
+					// #endregion
+					console.warn("⚠️ Failed to save flattened image to DB:", err);
+				});
+			}
+
 			// Step 13) Update tree view to show new image
 			debouncedUpdateTreeView();
 		};
@@ -8714,15 +9028,15 @@ function parseKADFile(fileData) {
 			showModalMessage(
 				"File Import Warning",
 				"The file was imported but there were " +
-					parseResult.errors.length +
-					" parsing warnings:<br><br>" +
-					parseResult.errors
-						.slice(0, 5)
-						.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-						.join("") +
-					additionalErrors +
-					"<br><br>" +
-					"Some data may have been skipped. Check your results carefully.",
+				parseResult.errors.length +
+				" parsing warnings:<br><br>" +
+				parseResult.errors
+					.slice(0, 5)
+					.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+					.join("") +
+				additionalErrors +
+				"<br><br>" +
+				"Some data may have been skipped. Check your results carefully.",
 				"warning"
 			);
 		}
@@ -8940,17 +9254,17 @@ function parseKADFile(fileData) {
 			const errorDetailsHtml =
 				errorCount > 0
 					? "<details>" +
-					  "<summary>View Error Details (" +
-					  errorCount +
-					  " errors)</summary>" +
-					  '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-					  errorDetails
-							.slice(0, 10)
-							.map((error) => "<li>" + error + "</li>")
-							.join("") +
-					  (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-					  "</ul>" +
-					  "</details>"
+					"<summary>View Error Details (" +
+					errorCount +
+					" errors)</summary>" +
+					'<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+					errorDetails
+						.slice(0, 10)
+						.map((error) => "<li>" + error + "</li>")
+						.join("") +
+					(errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+					"</ul>" +
+					"</details>"
 					: "";
 
 			showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -10351,9 +10665,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
 	const table = new Uint32Array(256);
-	for (let i = 256; i--; ) {
+	for (let i = 256; i--;) {
 		let tmp = i;
-		for (let k = 8; k--; ) {
+		for (let k = 8; k--;) {
 			tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
 		}
 		table[i] = tmp;
@@ -14224,14 +14538,14 @@ function clipVoronoiCells(voronoiMetrics) {
 
 	const clipPathPolygons = contractedPolygons; // These are the actual geometric polygons
 	/*
-    console.log("nearest:", nearest);
-    console.log("expand:", expand);
-    console.log("unionedPolygons:", unionedPolygons);
-    console.log("simplifiedPolygons:", simplifiedPolygons);
-    console.log("contract:", contract);
-    console.log("contractedPolygons:", contractedPolygons);
-    console.log("clipPathPolygons for iteration:", clipPathPolygons);
-    */
+	console.log("nearest:", nearest);
+	console.log("expand:", expand);
+	console.log("unionedPolygons:", unionedPolygons);
+	console.log("simplifiedPolygons:", simplifiedPolygons);
+	console.log("contract:", contract);
+	console.log("contractedPolygons:", contractedPolygons);
+	console.log("clipPathPolygons for iteration:", clipPathPolygons);
+	*/
 
 	for (let cell of voronoiMetrics) {
 		if (!cell.polygon || cell.polygon.length < 3) continue;
@@ -15455,29 +15769,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
 			`
             <div style="text-align: center;">
                 <p><strong>` +
-				resultMessage +
-				`</strong></p>
+			resultMessage +
+			`</strong></p>
                 <p><strong>Input:</strong> ` +
-				selectedEntities.length +
-				` entities</p>
+			selectedEntities.length +
+			` entities</p>
                 <p><strong>Output:</strong> ` +
-				polygons.length +
-				` polygon(s)</p>
+			polygons.length +
+			` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-				params.radius +
-				`m</p>
+			params.radius +
+			`m</p>
                 <p><strong>Rotation:</strong> ` +
-				params.rotationOffset +
-				`°</p>
+			params.rotationOffset +
+			`°</p>
                 <p><strong>Starburst:</strong> ` +
-				params.starburstOffset * 100 +
-				`%</p>
+			params.starburstOffset * 100 +
+			`%</p>
                 <p><strong>Line Width:</strong> ` +
-				params.lineWidth +
-				`</p>
+			params.lineWidth +
+			`</p>
                 <p><strong>Location:</strong> ` +
-				(params.useToeLocation ? "End/Toe" : "Start/Collar") +
-				`</p>
+			(params.useToeLocation ? "End/Toe" : "Start/Collar") +
+			`</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -15494,8 +15808,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-				(error.message || "Unknown error occurred") +
-				`</p>
+			(error.message || "Unknown error occurred") +
+			`</p>
             </div>
         `
 		);
@@ -21142,11 +21456,11 @@ function timeChart() {
 			// Update selected holes array for single bin
 			timingWindowHolesSelected = holeIDs[selectedIndex]
 				? holeIDs[selectedIndex]
-						.map((combinedID) => {
-							const [entityName, holeID] = combinedID.split(":");
-							return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-						})
-						.filter(Boolean)
+					.map((combinedID) => {
+						const [entityName, holeID] = combinedID.split(":");
+						return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+					})
+					.filter(Boolean)
 				: [];
 
 			// Redraw canvas WITHOUT calling timeChart
@@ -21506,7 +21820,7 @@ function drawData(allBlastHoles, selectedHole) {
 	}
 
 	// Step 0) Initialize Three.js on first draw
-	if (!threeInitialized) {
+	if (!threeInitialized && !threeInitializationFailed) {
 		initializeThreeJS();
 	}
 
@@ -23455,9 +23769,9 @@ function resetZoom() {
 function saveHolesToLocalStorage(allBlastHoles) {
 	if (allBlastHoles !== null) {
 		/* STRUCTURE OF THE POINTS ARRAY
-        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
-    */
+		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
+	*/
 		const lines = allBlastHoles.map((hole) => {
 			return `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation},${hole.startYLocation},${hole.startZLocation},${hole.endXLocation},${hole.endYLocation},${hole.endZLocation},${hole.gradeXLocation},${hole.gradeYLocation},${hole.gradeZLocation},${hole.subdrillAmount},${hole.subdrillLength},${hole.benchHeight},${hole.holeDiameter},${hole.holeType},${hole.fromHoleID},${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated},${hole.holeAngle},${hole.holeBearing},${hole.initiationTime},${hole.measuredLength},${hole.measuredLengthTimeStamp},${hole.measuredMass},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}\n`;
 		});
@@ -23520,9 +23834,9 @@ function loadHolesFromLocalStorage() {
 		allBlastHoles = [];
 	}
 	/* STRUCTURE OF THE POINTS ARRAY
-        0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-        entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
-    */
+		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
+		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
+	*/
 	const csvString = localStorage.getItem("kirraDataPoints");
 	//console.log(csvString);
 	if (csvString) {
@@ -23895,7 +24209,34 @@ async function saveSurfaceToDB(surfaceId) {
 
 				// Step 2) Store texture blobs if present
 				if (surface.textureBlobs) {
+					// #region agent log
+					var blobKeys = Object.keys(surface.textureBlobs);
+					var logDataH1 = { location: 'kirra.js:24188', message: 'Saving texture blobs to IndexedDB', data: { surfaceId: surfaceId, blobCount: blobKeys.length, blobNames: blobKeys, blobTypes: blobKeys.map(function (k) { return surface.textureBlobs[k] ? surface.textureBlobs[k].type : 'null'; }) }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' };
+					console.log('[DEBUG H1] Saving texture blobs', logDataH1);
+					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataH1) }).catch(() => { });
+					// #endregion
 					surfaceRecord.textureBlobs = surface.textureBlobs;
+				} else {
+					// #region agent log
+					var logDataH2 = { location: 'kirra.js:24188', message: 'NO texture blobs to save', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' };
+					console.warn('[DEBUG H2] ⚠️ NO TEXTURE BLOBS', logDataH2);
+					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataH2) }).catch(() => { });
+					// #endregion
+				}
+
+				// Step 2a) Store flattened image data if present (saves recreation on reload)
+				if (surface.flattenedImageDataURL) {
+					// #region agent log
+					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:24066', message: 'Saving flattened image data to IndexedDB', data: { surfaceId: surfaceId, dataURLLength: surface.flattenedImageDataURL.length, hasBounds: !!surface.flattenedImageBounds, hasDimensions: !!surface.flattenedImageDimensions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+					// #endregion
+					surfaceRecord.flattenedImageDataURL = surface.flattenedImageDataURL;
+					surfaceRecord.flattenedImageBounds = surface.flattenedImageBounds;
+					surfaceRecord.flattenedImageDimensions = surface.flattenedImageDimensions;
+					console.log("💾 Saving flattened image data for surface: " + surfaceId);
+				} else {
+					// #region agent log
+					fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:24071', message: 'No flattened image data to save', data: { surfaceId: surfaceId }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+					// #endregion
 				}
 
 				console.log("💾 Saving textured mesh data for surface: " + surfaceId);
@@ -23969,6 +24310,134 @@ async function loadSurfaceIntoMemory(surfaceId) {
 	}
 }
 
+// Step 0a) Load all data types with unified progress dialog
+async function loadAllDataWithProgress() {
+	var loadingDialog = null;
+
+	try {
+		// Step 1) Show progress dialog
+		loadingDialog = showLoadingProgressDialog();
+		updateLoadingProgress(loadingDialog, "Initializing data load...", 0);
+
+		// Step 2) Load blast holes (0-25%)
+		updateLoadingProgress(loadingDialog, "Loading blast holes from IndexedDB...", 5);
+		await loadHolesFromDB();
+		var holeCount = allBlastHoles ? allBlastHoles.length : 0;
+		updateLoadingProgress(loadingDialog, "Loaded " + holeCount + " blast holes", 25);
+
+		// Step 3) Load KAD entities (25-40%)
+		updateLoadingProgress(loadingDialog, "Loading KAD entities...", 30);
+		await loadKADFromDB();
+		var kadCount = allKADDrawingsMap ? allKADDrawingsMap.size : 0;
+		updateLoadingProgress(loadingDialog, "Loaded " + kadCount + " KAD entities", 40);
+
+		// Step 4) Load surfaces (40-70%)
+		updateLoadingProgress(loadingDialog, "Loading surfaces...", 45);
+		await loadAllSurfacesIntoMemory();
+		var surfaceCount = loadedSurfaces ? loadedSurfaces.size : 0;
+		updateLoadingProgress(loadingDialog, "Loaded " + surfaceCount + " surface(s)", 70);
+
+		// Step 5) Load images (70-90%)
+		updateLoadingProgress(loadingDialog, "Loading images...", 75);
+		await loadAllImagesIntoMemory();
+		var imageCount = loadedImages ? loadedImages.size : 0;
+		updateLoadingProgress(loadingDialog, "Loaded " + imageCount + " image(s)", 90);
+
+		// Step 6) Complete
+		updateLoadingProgress(loadingDialog, "Complete! All data loaded successfully", 100);
+		console.log("✅ Data load complete: " + holeCount + " holes, " + kadCount + " KADs, " + surfaceCount + " surfaces, " + imageCount + " images");
+
+		// Step 7) Close dialog after brief delay
+		setTimeout(function () {
+			if (loadingDialog) {
+				loadingDialog.close();
+			}
+		}, 800);
+
+	} catch (error) {
+		console.error("❌ Error loading data:", error);
+		if (loadingDialog) {
+			updateLoadingProgress(loadingDialog, "Error: " + error.message, 100, true);
+			setTimeout(function () {
+				if (loadingDialog) {
+					loadingDialog.close();
+				}
+			}, 3000);
+		}
+	}
+}
+
+// Step 1) Show loading progress dialog for IndexedDB data reload
+function showLoadingProgressDialog() {
+	var darkModeEnabled = window.darkModeEnabled || false;
+	var textColor = darkModeEnabled ? "#ffffff" : "#cccccc";
+	var bgColor = darkModeEnabled ? "#2a2a2a" : "#f5f5f5";
+
+	var content = '<div style="text-align: center; padding: 20px;">' + '<div style="color: #2196f3; font-size: 32px; margin-bottom: 20px;">⏳</div>' + '<div id="loadingProgressText" style="color: ' + textColor + '; font-size: 16px; margin-bottom: 15px;">Loading saved data from IndexedDB...</div>' + '<div style="background-color: ' + bgColor + '; border-radius: 4px; height: 8px; margin: 20px 0; overflow: hidden;">' + '<div id="loadingProgressBar" style="background-color: #2196f3; height: 100%; width: 0%; transition: width 0.3s ease;"></div>' + "</div>" + '<div style="color: ' + textColor + '; font-size: 14px; margin-top: 20px; opacity: 0.8;">Please wait...</div>' + "</div>";
+
+	var dialog = new FloatingDialog({
+		title: "Reloading Data",
+		content: content,
+		width: 500,
+		height: 300,
+		showConfirm: false,
+		showCancel: false,
+		showDeny: false,
+		showOption1: true,
+		showOption2: false,
+		option1Text: "Start Fresh",
+		draggable: false,
+		resizable: false,
+		closeOnOutsideClick: false,
+		layoutType: "default",
+		onOption1: function () {
+			// Step 2) Handle "Start Fresh" button
+			console.log("🔄 User requested 'Start Fresh' - clearing all data");
+			dialog.close();
+
+			// Step 3) Confirm before clearing
+			showConfirmationDialog(
+				"Clear All Data?",
+				"This will delete all saved data from IndexedDB and start fresh.\n\nThis action cannot be undone.",
+				"Clear Everything",
+				"Cancel",
+				function () {
+					// Step 4) Clear all data
+					resetAppToDefaults();
+					console.log("✅ App reset to defaults");
+				},
+				null
+			);
+		},
+	});
+
+	dialog.show();
+	return dialog;
+}
+
+// Step 5) Update loading progress dialog
+function updateLoadingProgress(dialog, message, percent, isError) {
+	if (!dialog || !dialog.element) return;
+
+	var progressText = dialog.element.querySelector("#loadingProgressText");
+	var progressBar = dialog.element.querySelector("#loadingProgressBar");
+
+	if (progressText) {
+		if (isError) {
+			progressText.innerHTML = '<span style="color: #f44336;">❌ ' + message + "</span>";
+		} else {
+			progressText.textContent = message;
+		}
+	}
+
+	if (progressBar) {
+		progressBar.style.width = percent + "%";
+		if (isError) {
+			progressBar.style.backgroundColor = "#f44336";
+		}
+	}
+}
+
 async function loadAllSurfacesIntoMemory() {
 	try {
 		if (!db) return;
@@ -23982,7 +24451,7 @@ async function loadAllSurfacesIntoMemory() {
 				var surfaces = request.result || [];
 				var texturedSurfaceIds = [];
 
-				surfaces.forEach(function (surfaceData) {
+				surfaces.forEach(function (surfaceData, index) {
 					// Step 1) Create base surface entry
 					var surfaceEntry = {
 						id: surfaceData.id,
@@ -23990,9 +24459,18 @@ async function loadAllSurfacesIntoMemory() {
 						points: surfaceData.points,
 						triangles: surfaceData.triangles,
 						visible: surfaceData.visible !== false,
-						gradient: surfaceData.gradient || "default",
+						// Step 1a) CRITICAL: For textured meshes, ALWAYS use "texture" gradient (ignore saved gradient)
+						// Textured meshes MUST show JPG textures, not color gradients like "cividis"
+						gradient: surfaceData.isTexturedMesh ? "texture" : (surfaceData.gradient || "default"),
 						transparency: surfaceData.transparency || 1.0,
 					};
+					// #region agent log
+					if (surfaceData.isTexturedMesh) {
+						var logDataF1 = { location: 'kirra.js:24395', message: 'Loaded textured surface gradient', data: { surfaceId: surfaceData.id, savedGradient: surfaceData.gradient, finalGradient: surfaceEntry.gradient }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'F' };
+						console.log('[DEBUG F1] Gradient for textured mesh', logDataF1);
+						fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataF1) }).catch(() => { });
+					}
+					// #endregion
 
 					// Step 2) Check if this is a textured mesh
 					if (surfaceData.isTexturedMesh) {
@@ -24000,8 +24478,37 @@ async function loadAllSurfacesIntoMemory() {
 						surfaceEntry.objContent = surfaceData.objContent || null;
 						surfaceEntry.mtlContent = surfaceData.mtlContent || null;
 						surfaceEntry.textureBlobs = surfaceData.textureBlobs || null;
+						// #region agent log
+						var blobKeys = surfaceData.textureBlobs ? Object.keys(surfaceData.textureBlobs) : [];
+						var logDataH3 = { location: 'kirra.js:24404', message: 'Loading texture blobs from IndexedDB', data: { surfaceId: surfaceData.id, blobCount: blobKeys.length, blobNames: blobKeys, hasBlobs: !!surfaceData.textureBlobs, gradient: surfaceEntry.gradient }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'H' };
+						console.log('[DEBUG H3] Loading texture blobs', logDataH3);
+						if (!surfaceData.textureBlobs || blobKeys.length === 0) {
+							console.error('[DEBUG H3] ⚠️ NO TEXTURE BLOBS IN INDEXEDDB!', logDataH3);
+						} else {
+							console.log('[DEBUG H3] ✅ Texture blobs found: ' + blobKeys.join(', '));
+						}
+						console.log('[DEBUG H3] Gradient set to: ' + surfaceEntry.gradient + ' (should be "texture" for textured mesh)');
+						fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataH3) }).catch(() => { });
+						// #endregion
 						surfaceEntry.meshBounds = surfaceData.meshBounds || null;
 						surfaceEntry.threeJSMesh = null; // Will be rebuilt
+
+						// Step 2a) Load flattened image from saved data if available
+						if (surfaceData.flattenedImageDataURL) {
+							// #region agent log
+							fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:24308', message: 'Found saved flattened image in IndexedDB', data: { surfaceId: surfaceData.id, dataURLLength: surfaceData.flattenedImageDataURL.length, hasBounds: !!surfaceData.flattenedImageBounds, hasDimensions: !!surfaceData.flattenedImageDimensions }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' }) }).catch(() => { });
+							// #endregion
+							surfaceEntry.flattenedImageDataURL = surfaceData.flattenedImageDataURL;
+							surfaceEntry.flattenedImageBounds = surfaceData.flattenedImageBounds;
+							surfaceEntry.flattenedImageDimensions = surfaceData.flattenedImageDimensions;
+							console.log("✅ Loaded flattened image data from DB for: " + surfaceData.id);
+						} else {
+							// #region agent log
+							var logDataB2 = { location: 'kirra.js:24311', message: 'NO saved flattened image in IndexedDB - will need to flatten', data: { surfaceId: surfaceData.id }, timestamp: Date.now(), sessionId: 'debug-session', runId: 'run1', hypothesisId: 'B' };
+							console.log('[DEBUG B2] ⚠️ NO SAVED IMAGE - FLATTENING WILL HAPPEN ON RELOAD', logDataB2);
+							fetch('http://127.0.0.1:7242/ingest/4eaf6a46-560e-4d2e-bb05-444c57d3f630', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(logDataB2) }).catch(() => { });
+							// #endregion
+						}
 
 						// Track for later rebuilding
 						texturedSurfaceIds.push(surfaceData.id);
@@ -24012,17 +24519,21 @@ async function loadAllSurfacesIntoMemory() {
 
 				console.log("📊 Loaded " + loadedSurfaces.size + " surfaces into memory");
 
-				// Step 3) Rebuild Three.js meshes for textured surfaces
+				// Step 3) Rebuild Three.js meshes for textured surfaces (staggered to avoid blocking)
 				if (texturedSurfaceIds.length > 0) {
 					console.log("🎨 Rebuilding " + texturedSurfaceIds.length + " textured meshes...");
-					texturedSurfaceIds.forEach(function (surfaceId) {
-						rebuildTexturedMesh(surfaceId);
+
+					texturedSurfaceIds.forEach(function (surfaceId, index) {
+						setTimeout(function () {
+							rebuildTexturedMesh(surfaceId);
+						}, index * 50); // Stagger by 50ms to avoid blocking UI
 					});
 				}
 
 				resolve();
 			};
 			request.onerror = function () {
+				console.error("❌ Failed to load surfaces from IndexedDB");
 				resolve();
 			};
 		});
@@ -24813,13 +25324,10 @@ async function showPopup(isDBReady) {
 				// Step 5) User chose to continue previous work
 				console.log("User chose to continue previous work");
 
-				// Step 5a) Load holes from IndexedDB
+				// Step 5a) Load all data with progress dialog
 				if (isDBReady) {
 					try {
-						await loadHolesFromDB();
-						await loadKADFromDB();
-						await loadAllSurfacesIntoMemory();
-						await loadAllImagesIntoMemory();
+						await loadAllDataWithProgress();
 					} catch (err) {
 						console.error("Failed to load data from DB.", err);
 					}
@@ -26411,27 +26919,27 @@ selectPointerTool.addEventListener("change", function () {
 // MOVED TO ContextMenuManager.js - This function is now loaded from external module
 /*
 function kadContextMenu(e) {
-    e.preventDefault(); // Prevent context menu
+	e.preventDefault(); // Prevent context menu
 
-    // Check if any KAD drawing tool is active
-    const anyKADToolActive = addPointDraw.checked || addLineDraw.checked || addCircleDraw.checked || addPolyDraw.checked || addTextDraw.checked;
+	// Check if any KAD drawing tool is active
+	const anyKADToolActive = addPointDraw.checked || addLineDraw.checked || addCircleDraw.checked || addPolyDraw.checked || addTextDraw.checked;
 
-    if (anyKADToolActive) {
-        // Start a new object within the same tool
-        createNewEntity = true; // This will create a new entity name on next click
-        lastKADDrawPoint = null; // Reset preview line
+	if (anyKADToolActive) {
+		// Start a new object within the same tool
+		createNewEntity = true; // This will create a new entity name on next click
+		lastKADDrawPoint = null; // Reset preview line
 
-        // Show status message
-        updateStatusMessage("Starting new object - continue drawing");
+		// Show status message
+		updateStatusMessage("Starting new object - continue drawing");
 
-        // Brief visual feedback
-        setTimeout(() => {
-            updateStatusMessage("");
-        }, 1500);
+		// Brief visual feedback
+		setTimeout(() => {
+			updateStatusMessage("");
+		}, 1500);
 
-        // Redraw to clear any preview lines
-        drawData(allBlastHoles, selectedHole);
-    }
+		// Redraw to clear any preview lines
+		drawData(allBlastHoles, selectedHole);
+	}
 }
 */
 // END OF MOVED FUNCTION - kadContextMenu now loaded from ContextMenuManager.js
@@ -26441,22 +26949,22 @@ function kadContextMenu(e) {
 // MOVED TO ContextMenuManager.js - This function is now loaded from external module
 /*
 function closeAllContextMenus() {
-    // Find all elements that could be context menus
-    const existingMenus = document.querySelectorAll('.context-menu, [style*="position: absolute"][style*="background"], div[onclick]');
+	// Find all elements that could be context menus
+	const existingMenus = document.querySelectorAll('.context-menu, [style*="position: absolute"][style*="background"], div[onclick]');
 
-    existingMenus.forEach((menu) => {
-        // Check if it looks like a context menu (has background and position styling)
-        const style = menu.style;
-        if (style.position === "absolute" && (style.background || style.backgroundColor) && document.body.contains(menu)) {
-            try {
-                document.body.removeChild(menu);
-                console.log("🗑️ Removed existing context menu");
-                debouncedUpdateTreeView(); // Use debounced version
-            } catch (error) {
-                // Menu already removed
-            }
-        }
-    });
+	existingMenus.forEach((menu) => {
+		// Check if it looks like a context menu (has background and position styling)
+		const style = menu.style;
+		if (style.position === "absolute" && (style.background || style.backgroundColor) && document.body.contains(menu)) {
+			try {
+				document.body.removeChild(menu);
+				console.log("🗑️ Removed existing context menu");
+				debouncedUpdateTreeView(); // Use debounced version
+			} catch (error) {
+				// Menu already removed
+			}
+		}
+	});
 }
 */
 // END OF MOVED FUNCTION - closeAllContextMenus now loaded from ContextMenuManager.js
@@ -26832,428 +27340,428 @@ function isKADObjectSelected(clickedObject) {
 // showKADPropertyEditorPopup, showMultipleKADPropertyEditor, convertLinePolyType, updateKADObjectProperties
 /*
 function showKADPropertyEditorPopup(kadObject) {
-    const isMultiElement = kadObject.entityType === "line" || kadObject.entityType === "poly" || kadObject.entityType === "point" || kadObject.entityType === "circle" || kadObject.entityType === "text";
+	const isMultiElement = kadObject.entityType === "line" || kadObject.entityType === "poly" || kadObject.entityType === "point" || kadObject.entityType === "circle" || kadObject.entityType === "text";
 
-    const entity = getEntityFromKADObject(kadObject);
-    const hasMultipleElements = entity && entity.data.length > 1;
+	const entity = getEntityFromKADObject(kadObject);
+	const hasMultipleElements = entity && entity.data.length > 1;
 
-    // Determine if this is a line/poly (they share the same dialog)
-    const isLineOrPoly = kadObject.entityType === "line" || kadObject.entityType === "poly";
+	// Determine if this is a line/poly (they share the same dialog)
+	const isLineOrPoly = kadObject.entityType === "line" || kadObject.entityType === "poly";
 
-    const title = hasMultipleElements ? `Edit ${kadObject.entityType.toUpperCase()} - ${kadObject.entityName} - Element ${kadObject.elementIndex + 1}` : `Edit ${kadObject.entityType.toUpperCase()} - ${kadObject.entityName}`;
+	const title = hasMultipleElements ? `Edit ${kadObject.entityType.toUpperCase()} - ${kadObject.entityName} - Element ${kadObject.elementIndex + 1}` : `Edit ${kadObject.entityType.toUpperCase()} - ${kadObject.entityName}`;
 
-    const currentColor = kadObject.color || "#FF0000";
+	const currentColor = kadObject.color || "#FF0000";
 
-    // Define form fields using the same pattern as showHolePropertyEditor
-    const fields = [
-        {
-            label: "Color",
-            name: "editKADColor",
-            type: "color",
-            value: currentColor,
-        },
-        {
-            label: "X Location",
-            name: "editXLocation",
-            type: "number",
-            value: kadObject.pointXLocation || 0,
-            step: "0.001",
-        },
-        {
-            label: "Y Location",
-            name: "editYLocation",
-            type: "number",
-            value: kadObject.pointYLocation || 0,
-            step: "0.001",
-        },
-        {
-            label: "Z Location",
-            name: "editZLocation",
-            type: "number",
-            value: kadObject.pointZLocation || 0,
-            step: "0.001",
-        },
-        {
-            label: "Only Z (set all Z values to this value)",
-            name: "onlyZCheckbox",
-            type: "checkbox",
-            checked: kadObject.onlyZ || false,
-        },
-    ];
+	// Define form fields using the same pattern as showHolePropertyEditor
+	const fields = [
+		{
+			label: "Color",
+			name: "editKADColor",
+			type: "color",
+			value: currentColor,
+		},
+		{
+			label: "X Location",
+			name: "editXLocation",
+			type: "number",
+			value: kadObject.pointXLocation || 0,
+			step: "0.001",
+		},
+		{
+			label: "Y Location",
+			name: "editYLocation",
+			type: "number",
+			value: kadObject.pointYLocation || 0,
+			step: "0.001",
+		},
+		{
+			label: "Z Location",
+			name: "editZLocation",
+			type: "number",
+			value: kadObject.pointZLocation || 0,
+			step: "0.001",
+		},
+		{
+			label: "Only Z (set all Z values to this value)",
+			name: "onlyZCheckbox",
+			type: "checkbox",
+			checked: kadObject.onlyZ || false,
+		},
+	];
 
-    // Add specific fields based on entity type
-    if (isLineOrPoly) {
-        fields.push({
-            label: "Line Width",
-            name: "editLineWidth",
-            type: "number",
-            value: kadObject.lineWidth || 1,
-            min: "0.1",
-            max: "10",
-            step: "0.1",
-        });
+	// Add specific fields based on entity type
+	if (isLineOrPoly) {
+		fields.push({
+			label: "Line Width",
+			name: "editLineWidth",
+			type: "number",
+			value: kadObject.lineWidth || 1,
+			min: "0.1",
+			max: "10",
+			step: "0.1",
+		});
 
-        fields.push({
-            label: "Type",
-            name: "editType",
-            type: "select",
-            value: kadObject.entityType,
-            options: [
-                {
-                    value: "line",
-                    text: "Open (Line)",
-                },
-                {
-                    value: "poly",
-                    text: "Closed (Polygon)",
-                },
-            ],
-        });
-    } else if (kadObject.entityType === "circle") {
-        fields.push({
-            label: "Radius",
-            name: "editRadius",
-            type: "number",
-            value: kadObject.radius || 1,
-            min: "0.1",
-            max: "100",
-            step: "0.1",
-        });
-    } else if (kadObject.entityType === "text") {
-        fields.push({
-            label: "Text",
-            name: "editText",
-            type: "text",
-            value: kadObject.text || "",
-        });
-    } else if (kadObject.entityType === "point") {
-        fields.push({
-            label: "Point Diameter/Line Width",
-            name: "editLineWidth",
-            type: "number",
-            value: kadObject.lineWidth || 1,
-            min: "0.1",
-            max: "10",
-            step: "0.1",
-        });
-    }
+		fields.push({
+			label: "Type",
+			name: "editType",
+			type: "select",
+			value: kadObject.entityType,
+			options: [
+				{
+					value: "line",
+					text: "Open (Line)",
+				},
+				{
+					value: "poly",
+					text: "Closed (Polygon)",
+				},
+			],
+		});
+	} else if (kadObject.entityType === "circle") {
+		fields.push({
+			label: "Radius",
+			name: "editRadius",
+			type: "number",
+			value: kadObject.radius || 1,
+			min: "0.1",
+			max: "100",
+			step: "0.1",
+		});
+	} else if (kadObject.entityType === "text") {
+		fields.push({
+			label: "Text",
+			name: "editText",
+			type: "text",
+			value: kadObject.text || "",
+		});
+	} else if (kadObject.entityType === "point") {
+		fields.push({
+			label: "Point Diameter/Line Width",
+			name: "editLineWidth",
+			type: "number",
+			value: kadObject.lineWidth || 1,
+			min: "0.1",
+			max: "10",
+			step: "0.1",
+		});
+	}
 
-    // Create enhanced form content using the existing helper function
-    const formContent = createEnhancedFormContent(fields, hasMultipleElements, false);
+	// Create enhanced form content using the existing helper function
+	const formContent = createEnhancedFormContent(fields, hasMultipleElements, false);
 
-    // Add info note
-    const noteDiv = document.createElement("div");
-    noteDiv.style.fontSize = "12px";
-    noteDiv.style.color = "#aaa";
-    noteDiv.style.gridColumn = "1 / -1";
-    noteDiv.style.marginTop = "10px";
-    noteDiv.innerHTML = `
-        <b>All:</b> Move all points by the same offset as this point (unless Only Z is checked).<br>
-        <b>This:</b> Move only this point (unless Only Z is checked).
-    `;
-    formContent.appendChild(noteDiv);
+	// Add info note
+	const noteDiv = document.createElement("div");
+	noteDiv.style.fontSize = "12px";
+	noteDiv.style.color = "#aaa";
+	noteDiv.style.gridColumn = "1 / -1";
+	noteDiv.style.marginTop = "10px";
+	noteDiv.innerHTML = `
+		<b>All:</b> Move all points by the same offset as this point (unless Only Z is checked).<br>
+		<b>This:</b> Move only this point (unless Only Z is checked).
+	`;
+	formContent.appendChild(noteDiv);
 
-    // Create the dialog with 4 buttons
-    const dialog = new FloatingDialog({
-        title: title,
-        content: formContent,
-        layoutType: "compact",
-        showConfirm: hasMultipleElements, // Show "All" button only for multi-element objects
-        showDeny: true, // "This" button
-        showCancel: true, // "Cancel" button
-        showOption1: true, // "Hide" button
-        confirmText: "All",
-        denyText: "This",
-        cancelText: "Cancel",
-        option1Text: "Hide",
-        width: 350,
-        height: isLineOrPoly ? 400 : 350,
-        onConfirm: () => {
-            // Get form values and apply to all elements
-            const formData = getFormData(formContent);
+	// Create the dialog with 4 buttons
+	const dialog = new FloatingDialog({
+		title: title,
+		content: formContent,
+		layoutType: "compact",
+		showConfirm: hasMultipleElements, // Show "All" button only for multi-element objects
+		showDeny: true, // "This" button
+		showCancel: true, // "Cancel" button
+		showOption1: true, // "Hide" button
+		confirmText: "All",
+		denyText: "This",
+		cancelText: "Cancel",
+		option1Text: "Hide",
+		width: 350,
+		height: isLineOrPoly ? 400 : 350,
+		onConfirm: () => {
+			// Get form values and apply to all elements
+			const formData = getFormData(formContent);
 
-            // Handle line/poly conversion first
-            const isLineOrPoly = kadObject.entityType === "line" || kadObject.entityType === "poly";
-            if (isLineOrPoly && formData.editType && formData.editType !== kadObject.entityType) {
-                convertLinePolyType(kadObject, formData.editType);
-            }
+			// Handle line/poly conversion first
+			const isLineOrPoly = kadObject.entityType === "line" || kadObject.entityType === "poly";
+			if (isLineOrPoly && formData.editType && formData.editType !== kadObject.entityType) {
+				convertLinePolyType(kadObject, formData.editType);
+			}
 
-            // Build properties object
-            const newProperties = {
-                color: formData.editKADColor,
-                pointXLocation: parseFloat(formData.editXLocation),
-                pointYLocation: parseFloat(formData.editYLocation),
-                pointZLocation: parseFloat(formData.editZLocation),
-                lineWidth: formData.editLineWidth,
-                radius: formData.editRadius,
-                text: formData.editText,
-                onlyZ: formData.onlyZCheckbox,
-            };
+			// Build properties object
+			const newProperties = {
+				color: formData.editKADColor,
+				pointXLocation: parseFloat(formData.editXLocation),
+				pointYLocation: parseFloat(formData.editYLocation),
+				pointZLocation: parseFloat(formData.editZLocation),
+				lineWidth: formData.editLineWidth,
+				radius: formData.editRadius,
+				text: formData.editText,
+				onlyZ: formData.onlyZCheckbox,
+			};
 
-            // Use existing function
-            updateKADObjectProperties(kadObject, newProperties, "all");
-            debouncedSaveKAD();
-            clearAllSelectionState();
-            drawData(allBlastHoles, selectedHole);
-        },
-        onDeny: () => {
-            // Get form values and apply to this element only
-            const formData = getFormData(formContent);
+			// Use existing function
+			updateKADObjectProperties(kadObject, newProperties, "all");
+			debouncedSaveKAD();
+			clearAllSelectionState();
+			drawData(allBlastHoles, selectedHole);
+		},
+		onDeny: () => {
+			// Get form values and apply to this element only
+			const formData = getFormData(formContent);
 
-            // Handle line/poly conversion first
-            const isLineOrPoly = kadObject.entityType === "line" || kadObject.entityType === "poly";
-            if (isLineOrPoly && formData.editType && formData.editType !== kadObject.entityType) {
-                convertLinePolyType(kadObject, formData.editType);
-            }
+			// Handle line/poly conversion first
+			const isLineOrPoly = kadObject.entityType === "line" || kadObject.entityType === "poly";
+			if (isLineOrPoly && formData.editType && formData.editType !== kadObject.entityType) {
+				convertLinePolyType(kadObject, formData.editType);
+			}
 
-            // Build properties object
-            const newProperties = {
-                color: formData.editKADColor,
-                pointXLocation: parseFloat(formData.editXLocation),
-                pointYLocation: parseFloat(formData.editYLocation),
-                pointZLocation: parseFloat(formData.editZLocation),
-                lineWidth: formData.editLineWidth,
-                radius: formData.editRadius,
-                text: formData.editText,
-                onlyZ: formData.onlyZCheckbox,
-            };
+			// Build properties object
+			const newProperties = {
+				color: formData.editKADColor,
+				pointXLocation: parseFloat(formData.editXLocation),
+				pointYLocation: parseFloat(formData.editYLocation),
+				pointZLocation: parseFloat(formData.editZLocation),
+				lineWidth: formData.editLineWidth,
+				radius: formData.editRadius,
+				text: formData.editText,
+				onlyZ: formData.onlyZCheckbox,
+			};
 
-            // Use existing function
-            updateKADObjectProperties(kadObject, newProperties, "element");
-            debouncedSaveKAD();
-            clearAllSelectionState();
-            drawData(allBlastHoles, selectedHole);
-        },
-        onCancel: () => {
-            // Just close, no changes
-            clearAllSelectionState();
-            drawData(allBlastHoles, selectedHole);
-        },
-        onOption1: () => {
-            // Hide entire entity using the proper visibility function
-            setKADEntityVisibility(kadObject.entityName, false);
-            clearAllSelectionState();
-            //debouncedSaveKAD(); don't save visbility it is only for the view.
-            drawData(allBlastHoles, selectedHole);
-            dialog.close();
-        },
-    });
+			// Use existing function
+			updateKADObjectProperties(kadObject, newProperties, "element");
+			debouncedSaveKAD();
+			clearAllSelectionState();
+			drawData(allBlastHoles, selectedHole);
+		},
+		onCancel: () => {
+			// Just close, no changes
+			clearAllSelectionState();
+			drawData(allBlastHoles, selectedHole);
+		},
+		onOption1: () => {
+			// Hide entire entity using the proper visibility function
+			setKADEntityVisibility(kadObject.entityName, false);
+			clearAllSelectionState();
+			//debouncedSaveKAD(); don't save visbility it is only for the view.
+			drawData(allBlastHoles, selectedHole);
+			dialog.close();
+		},
+	});
 
-    dialog.show();
+	dialog.show();
 }
 
 // New function to show property editor for multiple KAD objects
 function showMultipleKADPropertyEditor(kadObjects) {
-    if (!kadObjects || kadObjects.length === 0) return;
+	if (!kadObjects || kadObjects.length === 0) return;
 
-    // Create form content
-    const formContent = document.createElement("div");
+	// Create form content
+	const formContent = document.createElement("div");
 
-    // Common properties that can be edited for all polygons
-    const fields = [
-        {
-            label: "Color",
-            name: "editKADColor",
-            type: "color",
-            value: kadObjects[0].data?.[0]?.color || "#FF0000",
-        },
-        {
-            label: "Line Width",
-            name: "editLineWidth",
-            type: "number",
-            value: kadObjects[0].data?.[0]?.lineWidth || "2",
-            step: "0.5",
-            min: "0.5",
-            max: "10",
-        },
-        {
-            label: "Z Elevation",
-            name: "editZLocation",
-            type: "number",
-            value: "0",
-            step: "0.1",
-        },
-    ];
+	// Common properties that can be edited for all polygons
+	const fields = [
+		{
+			label: "Color",
+			name: "editKADColor",
+			type: "color",
+			value: kadObjects[0].data?.[0]?.color || "#FF0000",
+		},
+		{
+			label: "Line Width",
+			name: "editLineWidth",
+			type: "number",
+			value: kadObjects[0].data?.[0]?.lineWidth || "2",
+			step: "0.5",
+			min: "0.5",
+			max: "10",
+		},
+		{
+			label: "Z Elevation",
+			name: "editZLocation",
+			type: "number",
+			value: "0",
+			step: "0.1",
+		},
+	];
 
-    // Create form fields
-    fields.forEach((field) => {
-        const fieldDiv = document.createElement("div");
-        fieldDiv.className = "form-field";
-        fieldDiv.style.marginBottom = "10px";
+	// Create form fields
+	fields.forEach((field) => {
+		const fieldDiv = document.createElement("div");
+		fieldDiv.className = "form-field";
+		fieldDiv.style.marginBottom = "10px";
 
-        const label = document.createElement("label");
-        label.textContent = field.label + ":";
-        label.style.display = "inline-block";
-        label.style.width = "100px";
-        fieldDiv.appendChild(label);
+		const label = document.createElement("label");
+		label.textContent = field.label + ":";
+		label.style.display = "inline-block";
+		label.style.width = "100px";
+		fieldDiv.appendChild(label);
 
-        const input = document.createElement("input");
-        input.type = field.type;
-        input.name = field.name;
-        input.value = field.value;
+		const input = document.createElement("input");
+		input.type = field.type;
+		input.name = field.name;
+		input.value = field.value;
 
-        if (field.type === "number") {
-            input.step = field.step || "1";
-            if (field.min) input.min = field.min;
-            if (field.max) input.max = field.max;
-        }
+		if (field.type === "number") {
+			input.step = field.step || "1";
+			if (field.min) input.min = field.min;
+			if (field.max) input.max = field.max;
+		}
 
-        if (field.type === "color") {
-            input.className = "jscolor";
-            input.setAttribute("data-jscolor", "{}");
-        }
+		if (field.type === "color") {
+			input.className = "jscolor";
+			input.setAttribute("data-jscolor", "{}");
+		}
 
-        fieldDiv.appendChild(input);
-        formContent.appendChild(fieldDiv);
-    });
+		fieldDiv.appendChild(input);
+		formContent.appendChild(fieldDiv);
+	});
 
-    // Add note about multiple selection
-    const noteDiv = document.createElement("div");
-    noteDiv.style.marginTop = "15px";
-    noteDiv.style.fontSize = "12px";
-    noteDiv.style.color = "#666";
-    noteDiv.innerHTML = "Editing " + kadObjects.length + " polygon(s)";
-    formContent.appendChild(noteDiv);
+	// Add note about multiple selection
+	const noteDiv = document.createElement("div");
+	noteDiv.style.marginTop = "15px";
+	noteDiv.style.fontSize = "12px";
+	noteDiv.style.color = "#666";
+	noteDiv.innerHTML = "Editing " + kadObjects.length + " polygon(s)";
+	formContent.appendChild(noteDiv);
 
-    // Create dialog
-    const dialog = new FloatingDialog({
-        title: "Edit Multiple Polygons",
-        content: formContent,
-        layoutType: "default",
-        width: 350,
-        height: 250,
-        showConfirm: true,
-        showCancel: true,
-        confirmText: "Apply",
-        cancelText: "Cancel",
-        onConfirm: () => {
-            // Get form values
-            const formData = getFormData(formContent);
+	// Create dialog
+	const dialog = new FloatingDialog({
+		title: "Edit Multiple Polygons",
+		content: formContent,
+		layoutType: "default",
+		width: 350,
+		height: 250,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Apply",
+		cancelText: "Cancel",
+		onConfirm: () => {
+			// Get form values
+			const formData = getFormData(formContent);
 
-            // Apply changes to all selected polygons
-            kadObjects.forEach((kadObj) => {
-                const entity = allKADDrawingsMap.get(kadObj.entityName);
-                if (entity) {
-                    // Update all points in the polygon
-                    entity.data.forEach((point) => {
-                        if (formData.editKADColor) {
-                            point.color = formData.editKADColor;
-                        }
-                        if (formData.editLineWidth) {
-                            point.lineWidth = parseFloat(formData.editLineWidth);
-                        }
-                        if (formData.editZLocation) {
-                            point.pointZLocation = parseFloat(formData.editZLocation);
-                        }
-                    });
-                }
-            });
+			// Apply changes to all selected polygons
+			kadObjects.forEach((kadObj) => {
+				const entity = allKADDrawingsMap.get(kadObj.entityName);
+				if (entity) {
+					// Update all points in the polygon
+					entity.data.forEach((point) => {
+						if (formData.editKADColor) {
+							point.color = formData.editKADColor;
+						}
+						if (formData.editLineWidth) {
+							point.lineWidth = parseFloat(formData.editLineWidth);
+						}
+						if (formData.editZLocation) {
+							point.pointZLocation = parseFloat(formData.editZLocation);
+						}
+					});
+				}
+			});
 
-            // Save and redraw
-            debouncedSaveKAD();
-            clearAllSelectionState();
-            drawData(allBlastHoles, selectedHole);
-            updateStatusMessage("Updated " + kadObjects.length + " polygon(s)");
-            setTimeout(() => updateStatusMessage(""), 2000);
-        },
-        onCancel: () => {
-            // Just close
-            clearAllSelectionState();
-            drawData(allBlastHoles, selectedHole);
-        },
-    });
+			// Save and redraw
+			debouncedSaveKAD();
+			clearAllSelectionState();
+			drawData(allBlastHoles, selectedHole);
+			updateStatusMessage("Updated " + kadObjects.length + " polygon(s)");
+			setTimeout(() => updateStatusMessage(""), 2000);
+		},
+		onCancel: () => {
+			// Just close
+			clearAllSelectionState();
+			drawData(allBlastHoles, selectedHole);
+		},
+	});
 
-    dialog.show();
+	dialog.show();
 
-    // Initialize color picker if present
-    if (typeof jscolor !== "undefined") {
-        jscolor.install();
-    }
+	// Initialize color picker if present
+	if (typeof jscolor !== "undefined") {
+		jscolor.install();
+	}
 }
 
 // NEW: Function to convert between line and poly
 function convertLinePolyType(kadObject, newType) {
-    const entity = getEntityFromKADObject(kadObject);
-    if (!entity) return;
+	const entity = getEntityFromKADObject(kadObject);
+	if (!entity) return;
 
-    // Update entity type
-    entity.entityType = newType;
+	// Update entity type
+	entity.entityType = newType;
 
-    // Update all data points to reflect the new type
-    entity.data.forEach((point) => {
-        point.entityType = newType;
-        if (newType === "poly") {
-            point.closed = true;
-        } else {
-            point.closed = false;
-        }
-    });
+	// Update all data points to reflect the new type
+	entity.data.forEach((point) => {
+		point.entityType = newType;
+		if (newType === "poly") {
+			point.closed = true;
+		} else {
+			point.closed = false;
+		}
+	});
 
-    updateStatusMessage(`Converted ${kadObject.entityName} to ${newType}`);
-    debouncedUpdateTreeView(); // ✅ ADDED: Update tree view swatches
-    setTimeout(() => updateStatusMessage(""), 2000);
+	updateStatusMessage(`Converted ${kadObject.entityName} to ${newType}`);
+	debouncedUpdateTreeView(); // ✅ ADDED: Update tree view swatches
+	setTimeout(() => updateStatusMessage(""), 2000);
 }
 
 function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
-    const map = allKADDrawingsMap;
-    const entity = map.get(kadObject.entityName);
+	const map = allKADDrawingsMap;
+	const entity = map.get(kadObject.entityName);
 
-    if (entity) {
-        const onlyZ = newProperties.onlyZ;
-        if (scope === "element") {
-            // Only this point
-            const elementIndex = kadObject.elementIndex;
-            if (elementIndex !== undefined && elementIndex < entity.data.length) {
-                const item = entity.data[elementIndex];
-                if (newProperties.color) item.color = newProperties.color;
-                if (newProperties.lineWidth) item.lineWidth = parseFloat(newProperties.lineWidth);
-                if (newProperties.radius) item.radius = parseFloat(newProperties.radius);
-                if (newProperties.text) item.text = newProperties.text;
+	if (entity) {
+		const onlyZ = newProperties.onlyZ;
+		if (scope === "element") {
+			// Only this point
+			const elementIndex = kadObject.elementIndex;
+			if (elementIndex !== undefined && elementIndex < entity.data.length) {
+				const item = entity.data[elementIndex];
+				if (newProperties.color) item.color = newProperties.color;
+				if (newProperties.lineWidth) item.lineWidth = parseFloat(newProperties.lineWidth);
+				if (newProperties.radius) item.radius = parseFloat(newProperties.radius);
+				if (newProperties.text) item.text = newProperties.text;
 
-                if (onlyZ) {
-                    if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
-                } else {
-                    if (newProperties.pointXLocation !== undefined) item.pointXLocation = parseFloat(newProperties.pointXLocation);
-                    if (newProperties.pointYLocation !== undefined) item.pointYLocation = parseFloat(newProperties.pointYLocation);
-                    if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
-                }
-                updateStatusMessage("Updated element " + (elementIndex + 1) + " of " + kadObject.entityType + " " + kadObject.entityName);
-            }
-        } else {
-            // All points
-            const elementIndex = kadObject.elementIndex;
-            const item = entity.data[elementIndex];
-            let dx = 0,
-                dy = 0,
-                dz = 0;
-            if (!onlyZ && item) {
-                if (newProperties.pointXLocation !== undefined) dx = parseFloat(newProperties.pointXLocation) - item.pointXLocation;
-                if (newProperties.pointYLocation !== undefined) dy = parseFloat(newProperties.pointYLocation) - item.pointYLocation;
-                if (newProperties.pointZLocation !== undefined) dz = parseFloat(newProperties.pointZLocation) - item.pointZLocation;
-            }
-            entity.data.forEach((pt) => {
-                if (newProperties.color) pt.color = newProperties.color;
-                if (newProperties.lineWidth) pt.lineWidth = parseFloat(newProperties.lineWidth);
-                if (newProperties.radius) pt.radius = parseFloat(newProperties.radius);
-                if (newProperties.text) pt.text = newProperties.text;
-                if (newProperties.pointDiameter) pt.pointDiameter = parseFloat(newProperties.pointDiameter);
+				if (onlyZ) {
+					if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
+				} else {
+					if (newProperties.pointXLocation !== undefined) item.pointXLocation = parseFloat(newProperties.pointXLocation);
+					if (newProperties.pointYLocation !== undefined) item.pointYLocation = parseFloat(newProperties.pointYLocation);
+					if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
+				}
+				updateStatusMessage("Updated element " + (elementIndex + 1) + " of " + kadObject.entityType + " " + kadObject.entityName);
+			}
+		} else {
+			// All points
+			const elementIndex = kadObject.elementIndex;
+			const item = entity.data[elementIndex];
+			let dx = 0,
+				dy = 0,
+				dz = 0;
+			if (!onlyZ && item) {
+				if (newProperties.pointXLocation !== undefined) dx = parseFloat(newProperties.pointXLocation) - item.pointXLocation;
+				if (newProperties.pointYLocation !== undefined) dy = parseFloat(newProperties.pointYLocation) - item.pointYLocation;
+				if (newProperties.pointZLocation !== undefined) dz = parseFloat(newProperties.pointZLocation) - item.pointZLocation;
+			}
+			entity.data.forEach((pt) => {
+				if (newProperties.color) pt.color = newProperties.color;
+				if (newProperties.lineWidth) pt.lineWidth = parseFloat(newProperties.lineWidth);
+				if (newProperties.radius) pt.radius = parseFloat(newProperties.radius);
+				if (newProperties.text) pt.text = newProperties.text;
+				if (newProperties.pointDiameter) pt.pointDiameter = parseFloat(newProperties.pointDiameter);
 
-                if (onlyZ) {
-                    if (newProperties.pointZLocation !== undefined) pt.pointZLocation = parseFloat(newProperties.pointZLocation);
-                } else {
-                    if (newProperties.pointXLocation !== undefined) pt.pointXLocation += dx;
-                    if (newProperties.pointYLocation !== undefined) pt.pointYLocation += dy;
-                    if (newProperties.pointZLocation !== undefined) pt.pointZLocation += dz;
-                }
-            });
-            updateStatusMessage("Updated all elements in " + kadObject.entityType + " " + kadObject.entityName);
-        }
-        drawData(allBlastHoles, selectedHole);
-        debouncedUpdateTreeView();
-        setTimeout(() => updateStatusMessage(""), 2000);
-    } else {
-        console.error("Entity not found:", kadObject.entityName, "in unified map");
-    }
+				if (onlyZ) {
+					if (newProperties.pointZLocation !== undefined) pt.pointZLocation = parseFloat(newProperties.pointZLocation);
+				} else {
+					if (newProperties.pointXLocation !== undefined) pt.pointXLocation += dx;
+					if (newProperties.pointYLocation !== undefined) pt.pointYLocation += dy;
+					if (newProperties.pointZLocation !== undefined) pt.pointZLocation += dz;
+				}
+			});
+			updateStatusMessage("Updated all elements in " + kadObject.entityType + " " + kadObject.entityName);
+		}
+		drawData(allBlastHoles, selectedHole);
+		debouncedUpdateTreeView();
+		setTimeout(() => updateStatusMessage(""), 2000);
+	} else {
+		console.error("Entity not found:", kadObject.entityName, "in unified map");
+	}
 }
 */
 // END OF MOVED FUNCTIONS - KAD functions now loaded from KADContextMenu.js
@@ -27277,278 +27785,278 @@ function updateKADObjectInMap(kadObject) {
 /*
 // Step 1) Surface Context Menu using FloatingDialog for consistent styling
 function showSurfaceContextMenu(x, y, surfaceId = null) {
-    // Step 2) Get the specific surface if ID provided, otherwise first visible surface
-    var surface = surfaceId
-        ? loadedSurfaces.get(surfaceId)
-        : Array.from(loadedSurfaces.values()).find(function (s) {
-                return s.visible;
-          });
-    if (!surface) return;
+	// Step 2) Get the specific surface if ID provided, otherwise first visible surface
+	var surface = surfaceId
+		? loadedSurfaces.get(surfaceId)
+		: Array.from(loadedSurfaces.values()).find(function (s) {
+				return s.visible;
+		  });
+	if (!surface) return;
 
-    // Step 3) Store reference for dialog callbacks
-    var currentSurface = surface;
-    var dialogInstance = null;
+	// Step 3) Store reference for dialog callbacks
+	var currentSurface = surface;
+	var dialogInstance = null;
 
-    // Step 4) Define gradient options - include texture option for textured meshes
-    var gradientOptions = [
-        { value: "default", text: "Default" },
-        { value: "hillshade", text: "Hillshade" },
-        { value: "viridis", text: "Viridis" },
-        { value: "turbo", text: "Turbo" },
-        { value: "parula", text: "Parula" },
-        { value: "cividis", text: "Cividis" },
-        { value: "terrain", text: "Terrain" },
-    ];
+	// Step 4) Define gradient options - include texture option for textured meshes
+	var gradientOptions = [
+		{ value: "default", text: "Default" },
+		{ value: "hillshade", text: "Hillshade" },
+		{ value: "viridis", text: "Viridis" },
+		{ value: "turbo", text: "Turbo" },
+		{ value: "parula", text: "Parula" },
+		{ value: "cividis", text: "Cividis" },
+		{ value: "terrain", text: "Terrain" },
+	];
 
-    // Step 4a) Add texture option if this is a textured mesh
-    if (currentSurface.isTexturedMesh) {
-        gradientOptions.unshift({ value: "texture", text: "Texture (Original)" });
-    }
+	// Step 4a) Add texture option if this is a textured mesh
+	if (currentSurface.isTexturedMesh) {
+		gradientOptions.unshift({ value: "texture", text: "Texture (Original)" });
+	}
 
-    // Step 5) Create content builder function
-    var contentBuilder = function (dialog) {
-        var container = document.createElement("div");
-        container.style.display = "flex";
-        container.style.flexDirection = "column";
-        container.style.gap = "12px";
-        container.style.padding = "12px";
+	// Step 5) Create content builder function
+	var contentBuilder = function (dialog) {
+		var container = document.createElement("div");
+		container.style.display = "flex";
+		container.style.flexDirection = "column";
+		container.style.gap = "12px";
+		container.style.padding = "12px";
 
-        // Step 6) Create action buttons section with full-width buttons
-        var buttonsSection = document.createElement("div");
-        buttonsSection.style.display = "flex";
-        buttonsSection.style.flexDirection = "column";
-        buttonsSection.style.gap = "8px";
-        buttonsSection.style.marginBottom = "16px";
+		// Step 6) Create action buttons section with full-width buttons
+		var buttonsSection = document.createElement("div");
+		buttonsSection.style.display = "flex";
+		buttonsSection.style.flexDirection = "column";
+		buttonsSection.style.gap = "8px";
+		buttonsSection.style.marginBottom = "16px";
 
-        // Step 6a) Helper function to create styled full-width button
-        var createActionButton = function (text, onClick) {
-            var btn = document.createElement("button");
-            btn.className = "floating-dialog-btn";
-            btn.textContent = text;
-            btn.style.width = "100%";
-            btn.style.padding = "10px 16px";
-            btn.style.fontSize = "13px";
-            btn.style.cursor = "pointer";
-            btn.style.borderRadius = "4px";
-            btn.style.border = "1px solid #ccc";
-            btn.style.backgroundColor = "#f5f5f5";
-            btn.style.color = "#333";
-            btn.style.transition = "background-color 0.2s";
-            btn.onmouseover = function () {
-                btn.style.backgroundColor = "#e0e0e0";
-            };
-            btn.onmouseout = function () {
-                btn.style.backgroundColor = "#f5f5f5";
-            };
-            btn.onclick = onClick;
-            return btn;
-        };
+		// Step 6a) Helper function to create styled full-width button
+		var createActionButton = function (text, onClick) {
+			var btn = document.createElement("button");
+			btn.className = "floating-dialog-btn";
+			btn.textContent = text;
+			btn.style.width = "100%";
+			btn.style.padding = "10px 16px";
+			btn.style.fontSize = "13px";
+			btn.style.cursor = "pointer";
+			btn.style.borderRadius = "4px";
+			btn.style.border = "1px solid #ccc";
+			btn.style.backgroundColor = "#f5f5f5";
+			btn.style.color = "#333";
+			btn.style.transition = "background-color 0.2s";
+			btn.onmouseover = function () {
+				btn.style.backgroundColor = "#e0e0e0";
+			};
+			btn.onmouseout = function () {
+				btn.style.backgroundColor = "#f5f5f5";
+			};
+			btn.onclick = onClick;
+			return btn;
+		};
 
-        // Step 7) Toggle visibility button
-        buttonsSection.appendChild(
-            createActionButton(currentSurface.visible ? "Hide Surface" : "Show Surface", function () {
-                setSurfaceVisibility(currentSurface.id, !currentSurface.visible);
-                drawData(allBlastHoles, selectedHole);
-                if (dialogInstance) dialogInstance.close();
-            })
-        );
+		// Step 7) Toggle visibility button
+		buttonsSection.appendChild(
+			createActionButton(currentSurface.visible ? "Hide Surface" : "Show Surface", function () {
+				setSurfaceVisibility(currentSurface.id, !currentSurface.visible);
+				drawData(allBlastHoles, selectedHole);
+				if (dialogInstance) dialogInstance.close();
+			})
+		);
 
-        // Step 8) Remove surface button
-        buttonsSection.appendChild(
-            createActionButton("Remove Surface", function () {
-                deleteSurfaceFromDB(currentSurface.id)
-                    .then(function () {
-                        loadedSurfaces.delete(currentSurface.id);
-                        drawData(allBlastHoles, selectedHole);
-                        debouncedUpdateTreeView();
-                        console.log("Surface removed from both memory and database");
-                    })
-                    .catch(function (error) {
-                        console.error("Error removing surface:", error);
-                        loadedSurfaces.delete(currentSurface.id);
-                        drawData(allBlastHoles, selectedHole);
-                    });
-                if (dialogInstance) dialogInstance.close();
-            })
-        );
+		// Step 8) Remove surface button
+		buttonsSection.appendChild(
+			createActionButton("Remove Surface", function () {
+				deleteSurfaceFromDB(currentSurface.id)
+					.then(function () {
+						loadedSurfaces.delete(currentSurface.id);
+						drawData(allBlastHoles, selectedHole);
+						debouncedUpdateTreeView();
+						console.log("Surface removed from both memory and database");
+					})
+					.catch(function (error) {
+						console.error("Error removing surface:", error);
+						loadedSurfaces.delete(currentSurface.id);
+						drawData(allBlastHoles, selectedHole);
+					});
+				if (dialogInstance) dialogInstance.close();
+			})
+		);
 
-        // Step 9) Delete all surfaces button
-        buttonsSection.appendChild(
-            createActionButton("Delete All Surfaces", function () {
-                deleteAllSurfacesFromDB()
-                    .then(function () {
-                        loadedSurfaces.clear();
-                        drawData(allBlastHoles, selectedHole);
-                        console.log("All surfaces deleted from database and memory");
-                    })
-                    .catch(function (error) {
-                        console.error("Error deleting all surfaces:", error);
-                    });
-                if (dialogInstance) dialogInstance.close();
-            })
-        );
+		// Step 9) Delete all surfaces button
+		buttonsSection.appendChild(
+			createActionButton("Delete All Surfaces", function () {
+				deleteAllSurfacesFromDB()
+					.then(function () {
+						loadedSurfaces.clear();
+						drawData(allBlastHoles, selectedHole);
+						console.log("All surfaces deleted from database and memory");
+					})
+					.catch(function (error) {
+						console.error("Error deleting all surfaces:", error);
+					});
+				if (dialogInstance) dialogInstance.close();
+			})
+		);
 
-        container.appendChild(buttonsSection);
+		container.appendChild(buttonsSection);
 
-        // Step 10) Create transparency slider section with proper styling
-        var sliderSection = document.createElement("div");
-        sliderSection.style.marginBottom = "12px";
+		// Step 10) Create transparency slider section with proper styling
+		var sliderSection = document.createElement("div");
+		sliderSection.style.marginBottom = "12px";
 
-        var sliderLabel = document.createElement("div");
-        sliderLabel.textContent = "Transparency:";
-        sliderLabel.style.fontSize = "13px";
-        sliderLabel.style.marginBottom = "8px";
-        sliderLabel.style.color = "#333";
-        sliderSection.appendChild(sliderLabel);
+		var sliderLabel = document.createElement("div");
+		sliderLabel.textContent = "Transparency:";
+		sliderLabel.style.fontSize = "13px";
+		sliderLabel.style.marginBottom = "8px";
+		sliderLabel.style.color = "#333";
+		sliderSection.appendChild(sliderLabel);
 
-        // Step 10a) Create styled range slider matching app theme
-        var sliderContainer = document.createElement("div");
-        sliderContainer.style.display = "flex";
-        sliderContainer.style.alignItems = "center";
-        sliderContainer.style.gap = "12px";
+		// Step 10a) Create styled range slider matching app theme
+		var sliderContainer = document.createElement("div");
+		sliderContainer.style.display = "flex";
+		sliderContainer.style.alignItems = "center";
+		sliderContainer.style.gap = "12px";
 
-        var slider = document.createElement("input");
-        slider.type = "range";
-        slider.min = "0";
-        slider.max = "100";
-        slider.value = Math.round((currentSurface.transparency || 1.0) * 100);
-        slider.style.flex = "1";
-        slider.style.height = "6px";
-        slider.style.cursor = "pointer";
-        slider.style.appearance = "none";
-        slider.style.webkitAppearance = "none";
-        slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + slider.value + "%, #ddd " + slider.value + "%, #ddd 100%)";
-        slider.style.borderRadius = "3px";
-        slider.style.outline = "none";
+		var slider = document.createElement("input");
+		slider.type = "range";
+		slider.min = "0";
+		slider.max = "100";
+		slider.value = Math.round((currentSurface.transparency || 1.0) * 100);
+		slider.style.flex = "1";
+		slider.style.height = "6px";
+		slider.style.cursor = "pointer";
+		slider.style.appearance = "none";
+		slider.style.webkitAppearance = "none";
+		slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + slider.value + "%, #ddd " + slider.value + "%, #ddd 100%)";
+		slider.style.borderRadius = "3px";
+		slider.style.outline = "none";
 
-        var sliderValue = document.createElement("span");
-        sliderValue.textContent = slider.value + "%";
-        sliderValue.style.minWidth = "45px";
-        sliderValue.style.fontSize = "12px";
-        sliderValue.style.color = "#666";
-        sliderValue.style.textAlign = "right";
+		var sliderValue = document.createElement("span");
+		sliderValue.textContent = slider.value + "%";
+		sliderValue.style.minWidth = "45px";
+		sliderValue.style.fontSize = "12px";
+		sliderValue.style.color = "#666";
+		sliderValue.style.textAlign = "right";
 
-        // Step 10b) Update slider appearance and value on input
-        slider.oninput = function () {
-            var val = parseInt(slider.value);
-            sliderValue.textContent = val + "%";
-            slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
-            var newTransparency = val / 100;
-            currentSurface.transparency = newTransparency;
-            saveSurfaceToDB(currentSurface.id).catch(function (err) {
-                console.error("Failed to save surface transparency:", err);
-            });
-            drawData(allBlastHoles, selectedHole);
-        };
+		// Step 10b) Update slider appearance and value on input
+		slider.oninput = function () {
+			var val = parseInt(slider.value);
+			sliderValue.textContent = val + "%";
+			slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
+			var newTransparency = val / 100;
+			currentSurface.transparency = newTransparency;
+			saveSurfaceToDB(currentSurface.id).catch(function (err) {
+				console.error("Failed to save surface transparency:", err);
+			});
+			drawData(allBlastHoles, selectedHole);
+		};
 
-        sliderContainer.appendChild(slider);
-        sliderContainer.appendChild(sliderValue);
-        sliderSection.appendChild(sliderContainer);
-        container.appendChild(sliderSection);
+		sliderContainer.appendChild(slider);
+		sliderContainer.appendChild(sliderValue);
+		sliderSection.appendChild(sliderContainer);
+		container.appendChild(sliderSection);
 
-        // Step 11) Create gradient select section
-        var gradientSection = document.createElement("div");
-        gradientSection.style.marginBottom = "12px";
+		// Step 11) Create gradient select section
+		var gradientSection = document.createElement("div");
+		gradientSection.style.marginBottom = "12px";
 
-        var gradientLabel = document.createElement("div");
-        gradientLabel.textContent = "Color Gradient:";
-        gradientLabel.style.fontSize = "13px";
-        gradientLabel.style.marginBottom = "8px";
-        gradientLabel.style.color = "#333";
-        gradientSection.appendChild(gradientLabel);
+		var gradientLabel = document.createElement("div");
+		gradientLabel.textContent = "Color Gradient:";
+		gradientLabel.style.fontSize = "13px";
+		gradientLabel.style.marginBottom = "8px";
+		gradientLabel.style.color = "#333";
+		gradientSection.appendChild(gradientLabel);
 
-        var gradientSelect = document.createElement("select");
-        gradientSelect.style.width = "100%";
-        gradientSelect.style.padding = "8px 12px";
-        gradientSelect.style.fontSize = "13px";
-        gradientSelect.style.borderRadius = "4px";
-        gradientSelect.style.border = "1px solid #ccc";
-        gradientSelect.style.backgroundColor = "#fff";
-        gradientSelect.style.cursor = "pointer";
+		var gradientSelect = document.createElement("select");
+		gradientSelect.style.width = "100%";
+		gradientSelect.style.padding = "8px 12px";
+		gradientSelect.style.fontSize = "13px";
+		gradientSelect.style.borderRadius = "4px";
+		gradientSelect.style.border = "1px solid #ccc";
+		gradientSelect.style.backgroundColor = "#fff";
+		gradientSelect.style.cursor = "pointer";
 
-        gradientOptions.forEach(function (opt) {
-            var option = document.createElement("option");
-            option.value = opt.value;
-            option.textContent = opt.text;
-            if (opt.value === (currentSurface.gradient || "default")) {
-                option.selected = true;
-            }
-            gradientSelect.appendChild(option);
-        });
+		gradientOptions.forEach(function (opt) {
+			var option = document.createElement("option");
+			option.value = opt.value;
+			option.textContent = opt.text;
+			if (opt.value === (currentSurface.gradient || "default")) {
+				option.selected = true;
+			}
+			gradientSelect.appendChild(option);
+		});
 
-        gradientSelect.onchange = function () {
-            currentSurface.gradient = gradientSelect.value;
-            saveSurfaceToDB(currentSurface.id).catch(function (err) {
-                console.error("Failed to save surface gradient:", err);
-            });
-            console.log("Updated gradient for surface '" + (currentSurface.name || currentSurface.id) + "' to: " + gradientSelect.value);
-            drawData(allBlastHoles, selectedHole);
-        };
+		gradientSelect.onchange = function () {
+			currentSurface.gradient = gradientSelect.value;
+			saveSurfaceToDB(currentSurface.id).catch(function (err) {
+				console.error("Failed to save surface gradient:", err);
+			});
+			console.log("Updated gradient for surface '" + (currentSurface.name || currentSurface.id) + "' to: " + gradientSelect.value);
+			drawData(allBlastHoles, selectedHole);
+		};
 
-        gradientSection.appendChild(gradientSelect);
-        container.appendChild(gradientSection);
+		gradientSection.appendChild(gradientSelect);
+		container.appendChild(gradientSection);
 
-        // Step 12) Create legend checkbox section
-        var legendSection = document.createElement("div");
-        legendSection.style.display = "flex";
-        legendSection.style.alignItems = "center";
-        legendSection.style.gap = "8px";
+		// Step 12) Create legend checkbox section
+		var legendSection = document.createElement("div");
+		legendSection.style.display = "flex";
+		legendSection.style.alignItems = "center";
+		legendSection.style.gap = "8px";
 
-        var legendCheckbox = document.createElement("input");
-        legendCheckbox.type = "checkbox";
-        legendCheckbox.checked = showSurfaceLegend;
-        legendCheckbox.style.width = "16px";
-        legendCheckbox.style.height = "16px";
-        legendCheckbox.style.cursor = "pointer";
+		var legendCheckbox = document.createElement("input");
+		legendCheckbox.type = "checkbox";
+		legendCheckbox.checked = showSurfaceLegend;
+		legendCheckbox.style.width = "16px";
+		legendCheckbox.style.height = "16px";
+		legendCheckbox.style.cursor = "pointer";
 
-        var legendLabel = document.createElement("label");
-        legendLabel.textContent = "Show Legend";
-        legendLabel.style.fontSize = "13px";
-        legendLabel.style.color = "#333";
-        legendLabel.style.cursor = "pointer";
-        legendLabel.onclick = function () {
-            legendCheckbox.click();
-        };
+		var legendLabel = document.createElement("label");
+		legendLabel.textContent = "Show Legend";
+		legendLabel.style.fontSize = "13px";
+		legendLabel.style.color = "#333";
+		legendLabel.style.cursor = "pointer";
+		legendLabel.onclick = function () {
+			legendCheckbox.click();
+		};
 
-        legendCheckbox.onchange = function () {
-            showSurfaceLegend = legendCheckbox.checked;
-            drawData(allBlastHoles, selectedHole);
-        };
+		legendCheckbox.onchange = function () {
+			showSurfaceLegend = legendCheckbox.checked;
+			drawData(allBlastHoles, selectedHole);
+		};
 
-        legendSection.appendChild(legendCheckbox);
-        legendSection.appendChild(legendLabel);
-        container.appendChild(legendSection);
+		legendSection.appendChild(legendCheckbox);
+		legendSection.appendChild(legendLabel);
+		container.appendChild(legendSection);
 
-        return container;
-    };
+		return container;
+	};
 
-    // Step 13) Create and show the FloatingDialog
-    dialogInstance = new FloatingDialog({
-        title: currentSurface.name || "Surface Properties",
-        content: contentBuilder,
-        width: 340,
-        height: 420,
-        showConfirm: false,
-        showCancel: false,
-        draggable: true,
-        resizable: false,
-        closeOnOutsideClick: true,
-        layoutType: "compact",
-    });
+	// Step 13) Create and show the FloatingDialog
+	dialogInstance = new FloatingDialog({
+		title: currentSurface.name || "Surface Properties",
+		content: contentBuilder,
+		width: 340,
+		height: 420,
+		showConfirm: false,
+		showCancel: false,
+		draggable: true,
+		resizable: false,
+		closeOnOutsideClick: true,
+		layoutType: "compact",
+	});
 
-    dialogInstance.show();
+	dialogInstance.show();
 
-    // Step 14) Position dialog near click location (adjusted for viewport bounds)
-    if (dialogInstance.element) {
-        var dialogWidth = 340;
-        var dialogHeight = 420;
-        var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
-        var posY = Math.min(y, window.innerHeight - dialogHeight - 20);
-        posX = Math.max(10, posX);
-        posY = Math.max(10, posY);
-        dialogInstance.element.style.left = posX + "px";
-        dialogInstance.element.style.top = posY + "px";
-    }
+	// Step 14) Position dialog near click location (adjusted for viewport bounds)
+	if (dialogInstance.element) {
+		var dialogWidth = 340;
+		var dialogHeight = 420;
+		var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
+		var posY = Math.min(y, window.innerHeight - dialogHeight - 20);
+		posX = Math.max(10, posX);
+		posY = Math.max(10, posY);
+		dialogInstance.element.style.left = posX + "px";
+		dialogInstance.element.style.top = posY + "px";
+	}
 }
 */
 // END OF MOVED FUNCTION - showSurfaceContextMenu now loaded from SurfacesContextMenu.js
@@ -28255,7 +28763,7 @@ function calculateMissingGeometry(hole) {
 		// Step 4) Calculate end coordinates from angle/bearing/length
 		if (hole.holeLengthCalculated === 0) {
 			const benchHeight = hole.benchHeight || 10;
-			const subdrillAmount = hole.subdrillAmount || 0; // Changed from 1 to 0
+			const subdrillAmount = hole.subdrillAmount || 0;
 			hole.holeLengthCalculated = benchHeight + subdrillAmount;
 		}
 
@@ -28263,7 +28771,7 @@ function calculateMissingGeometry(hole) {
 	} else if (!hasEndCoords && !hasAngleBearingLength) {
 		// Step 5) Set defaults and calculate everything
 		const benchHeight = hole.benchHeight || 10;
-		const subdrillAmount = hole.subdrillAmount || 0; // Changed from 1 to 0
+		const subdrillAmount = hole.subdrillAmount || 0;
 		hole.holeLengthCalculated = benchHeight + subdrillAmount;
 		hole.holeAngle = hole.holeAngle || 0;
 		hole.holeBearing = hole.holeBearing || 0;
@@ -28271,6 +28779,18 @@ function calculateMissingGeometry(hole) {
 		calculateHoleEndCoordinates(hole);
 	}
 	// If both hasEndCoords and hasAngleBearingLength are true, do nothing (data is complete)
+
+	// Step 6) After all calculations, ensure subdrill is properly set
+	// If subdrill was provided in CSV, preserve it. Otherwise calculate from geometry.
+	if (hole.subdrillAmount === undefined || hole.subdrillAmount === null) {
+		// Step 6a) Calculate subdrill from geometry: holeLengthCalculated - benchHeight
+		const calculatedBenchHeight = hole.startZLocation - hole.endZLocation;
+		hole.subdrillAmount = hole.holeLengthCalculated - calculatedBenchHeight;
+		// Step 6b) Ensure subdrill is non-negative
+		if (hole.subdrillAmount < 0) {
+			hole.subdrillAmount = 0;
+		}
+	}
 }
 function calculateHoleEndCoordinates(hole) {
 	const angleRad = hole.holeAngle * (Math.PI / 180);
@@ -28902,6 +29422,11 @@ function showCsvImportModal(csvData, fileName) {
 					showCancel: false,
 				});
 				errorDialog.show();
+			}
+
+			// Step 4) Save imported holes to IndexedDB
+			if (typeof debouncedSaveHoles === "function") {
+				debouncedSaveHoles();
 			}
 
 			// Reset file input
@@ -31717,10 +32242,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
 	return closestPoint
 		? {
-				point: closestPoint,
-				type: snapType,
-				distance: minDistance,
-		  }
+			point: closestPoint,
+			type: snapType,
+			distance: minDistance,
+		}
 		: null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
@@ -37113,242 +37638,242 @@ function drawBackgroundImage() {
 // MOVED TO ImagesContextMenu.js - This function is now loaded from external module
 /*
 function showImageContextMenu(x, y, imageId = null) {
-    // Step 2) Get the specific image if ID provided, otherwise first visible image
-    var image = imageId
-        ? loadedImages.get(imageId)
-        : Array.from(loadedImages.values()).find(function (img) {
-                return img.visible;
-          });
-    if (!image) return;
+	// Step 2) Get the specific image if ID provided, otherwise first visible image
+	var image = imageId
+		? loadedImages.get(imageId)
+		: Array.from(loadedImages.values()).find(function (img) {
+				return img.visible;
+		  });
+	if (!image) return;
 
-    // Step 3) Store reference for dialog callbacks
-    var currentImage = image;
-    var currentImageId = imageId;
-    var dialogInstance = null;
+	// Step 3) Store reference for dialog callbacks
+	var currentImage = image;
+	var currentImageId = imageId;
+	var dialogInstance = null;
 
-    // Step 4) Create content builder function
-    var contentBuilder = function (dialog) {
-        var container = document.createElement("div");
-        container.style.display = "flex";
-        container.style.flexDirection = "column";
-        container.style.gap = "12px";
-        container.style.padding = "12px";
+	// Step 4) Create content builder function
+	var contentBuilder = function (dialog) {
+		var container = document.createElement("div");
+		container.style.display = "flex";
+		container.style.flexDirection = "column";
+		container.style.gap = "12px";
+		container.style.padding = "12px";
 
-        // Step 5) Create action buttons section with full-width buttons
-        var buttonsSection = document.createElement("div");
-        buttonsSection.style.display = "flex";
-        buttonsSection.style.flexDirection = "column";
-        buttonsSection.style.gap = "8px";
-        buttonsSection.style.marginBottom = "16px";
+		// Step 5) Create action buttons section with full-width buttons
+		var buttonsSection = document.createElement("div");
+		buttonsSection.style.display = "flex";
+		buttonsSection.style.flexDirection = "column";
+		buttonsSection.style.gap = "8px";
+		buttonsSection.style.marginBottom = "16px";
 
-        // Step 5a) Helper function to create styled full-width button
-        var createActionButton = function (text, onClick) {
-            var btn = document.createElement("button");
-            btn.className = "floating-dialog-btn";
-            btn.textContent = text;
-            btn.style.width = "100%";
-            btn.style.padding = "10px 16px";
-            btn.style.fontSize = "13px";
-            btn.style.cursor = "pointer";
-            btn.style.borderRadius = "4px";
-            btn.style.border = "1px solid #ccc";
-            btn.style.backgroundColor = "#f5f5f5";
-            btn.style.color = "#333";
-            btn.style.transition = "background-color 0.2s";
-            btn.onmouseover = function () {
-                btn.style.backgroundColor = "#e0e0e0";
-            };
-            btn.onmouseout = function () {
-                btn.style.backgroundColor = "#f5f5f5";
-            };
-            btn.onclick = onClick;
-            return btn;
-        };
+		// Step 5a) Helper function to create styled full-width button
+		var createActionButton = function (text, onClick) {
+			var btn = document.createElement("button");
+			btn.className = "floating-dialog-btn";
+			btn.textContent = text;
+			btn.style.width = "100%";
+			btn.style.padding = "10px 16px";
+			btn.style.fontSize = "13px";
+			btn.style.cursor = "pointer";
+			btn.style.borderRadius = "4px";
+			btn.style.border = "1px solid #ccc";
+			btn.style.backgroundColor = "#f5f5f5";
+			btn.style.color = "#333";
+			btn.style.transition = "background-color 0.2s";
+			btn.onmouseover = function () {
+				btn.style.backgroundColor = "#e0e0e0";
+			};
+			btn.onmouseout = function () {
+				btn.style.backgroundColor = "#f5f5f5";
+			};
+			btn.onclick = onClick;
+			return btn;
+		};
 
-        // Step 6) Toggle visibility button
-        buttonsSection.appendChild(
-            createActionButton(currentImage.visible ? "Hide Image" : "Show Image", function () {
-                if (currentImageId && loadedImages.has(currentImageId)) {
-                    var targetImage = loadedImages.get(currentImageId);
-                    if (targetImage) {
-                        targetImage.visible = !targetImage.visible;
-                    }
-                } else {
-                    currentImage.visible = !currentImage.visible;
-                }
-                drawData(allBlastHoles, selectedHole);
-                if (dialogInstance) dialogInstance.close();
-            })
-        );
+		// Step 6) Toggle visibility button
+		buttonsSection.appendChild(
+			createActionButton(currentImage.visible ? "Hide Image" : "Show Image", function () {
+				if (currentImageId && loadedImages.has(currentImageId)) {
+					var targetImage = loadedImages.get(currentImageId);
+					if (targetImage) {
+						targetImage.visible = !targetImage.visible;
+					}
+				} else {
+					currentImage.visible = !currentImage.visible;
+				}
+				drawData(allBlastHoles, selectedHole);
+				if (dialogInstance) dialogInstance.close();
+			})
+		);
 
-        // Step 7) Remove image button
-        buttonsSection.appendChild(
-            createActionButton("Remove Image", function () {
-                if (currentImageId && loadedImages.has(currentImageId)) {
-                    deleteImageFromDB(currentImageId)
-                        .then(function () {
-                            loadedImages.delete(currentImageId);
-                            drawData(allBlastHoles, selectedHole);
-                            debouncedUpdateTreeView();
-                        })
-                        .catch(function (error) {
-                            console.error("Error removing image:", error);
-                            loadedImages.delete(currentImageId);
-                            drawData(allBlastHoles, selectedHole);
-                        });
-                }
-                if (dialogInstance) dialogInstance.close();
-            })
-        );
+		// Step 7) Remove image button
+		buttonsSection.appendChild(
+			createActionButton("Remove Image", function () {
+				if (currentImageId && loadedImages.has(currentImageId)) {
+					deleteImageFromDB(currentImageId)
+						.then(function () {
+							loadedImages.delete(currentImageId);
+							drawData(allBlastHoles, selectedHole);
+							debouncedUpdateTreeView();
+						})
+						.catch(function (error) {
+							console.error("Error removing image:", error);
+							loadedImages.delete(currentImageId);
+							drawData(allBlastHoles, selectedHole);
+						});
+				}
+				if (dialogInstance) dialogInstance.close();
+			})
+		);
 
-        // Step 8) Delete all images button
-        buttonsSection.appendChild(
-            createActionButton("Delete All Images", function () {
-                deleteAllImagesFromDB()
-                    .then(function () {
-                        loadedImages.clear();
-                        debouncedUpdateTreeView();
-                        drawData(allBlastHoles, selectedHole);
-                    })
-                    .catch(function (error) {
-                        console.error("Error deleting all images:", error);
-                    });
-                if (dialogInstance) dialogInstance.close();
-            })
-        );
+		// Step 8) Delete all images button
+		buttonsSection.appendChild(
+			createActionButton("Delete All Images", function () {
+				deleteAllImagesFromDB()
+					.then(function () {
+						loadedImages.clear();
+						debouncedUpdateTreeView();
+						drawData(allBlastHoles, selectedHole);
+					})
+					.catch(function (error) {
+						console.error("Error deleting all images:", error);
+					});
+				if (dialogInstance) dialogInstance.close();
+			})
+		);
 
-        container.appendChild(buttonsSection);
+		container.appendChild(buttonsSection);
 
-        // Step 9) Create transparency slider section with proper styling
-        var sliderSection = document.createElement("div");
-        sliderSection.style.marginBottom = "12px";
+		// Step 9) Create transparency slider section with proper styling
+		var sliderSection = document.createElement("div");
+		sliderSection.style.marginBottom = "12px";
 
-        var sliderLabel = document.createElement("div");
-        sliderLabel.textContent = "Transparency:";
-        sliderLabel.style.fontSize = "13px";
-        sliderLabel.style.marginBottom = "8px";
-        sliderLabel.style.color = "#333";
-        sliderSection.appendChild(sliderLabel);
+		var sliderLabel = document.createElement("div");
+		sliderLabel.textContent = "Transparency:";
+		sliderLabel.style.fontSize = "13px";
+		sliderLabel.style.marginBottom = "8px";
+		sliderLabel.style.color = "#333";
+		sliderSection.appendChild(sliderLabel);
 
-        // Step 9a) Create styled range slider matching app theme
-        var sliderContainer = document.createElement("div");
-        sliderContainer.style.display = "flex";
-        sliderContainer.style.alignItems = "center";
-        sliderContainer.style.gap = "12px";
+		// Step 9a) Create styled range slider matching app theme
+		var sliderContainer = document.createElement("div");
+		sliderContainer.style.display = "flex";
+		sliderContainer.style.alignItems = "center";
+		sliderContainer.style.gap = "12px";
 
-        var initialValue = Math.round((currentImage.transparency !== undefined ? currentImage.transparency : 1.0) * 100);
-        var slider = document.createElement("input");
-        slider.type = "range";
-        slider.min = "0";
-        slider.max = "100";
-        slider.value = initialValue;
-        slider.style.flex = "1";
-        slider.style.height = "6px";
-        slider.style.cursor = "pointer";
-        slider.style.appearance = "none";
-        slider.style.webkitAppearance = "none";
-        slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + initialValue + "%, #ddd " + initialValue + "%, #ddd 100%)";
-        slider.style.borderRadius = "3px";
-        slider.style.outline = "none";
+		var initialValue = Math.round((currentImage.transparency !== undefined ? currentImage.transparency : 1.0) * 100);
+		var slider = document.createElement("input");
+		slider.type = "range";
+		slider.min = "0";
+		slider.max = "100";
+		slider.value = initialValue;
+		slider.style.flex = "1";
+		slider.style.height = "6px";
+		slider.style.cursor = "pointer";
+		slider.style.appearance = "none";
+		slider.style.webkitAppearance = "none";
+		slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + initialValue + "%, #ddd " + initialValue + "%, #ddd 100%)";
+		slider.style.borderRadius = "3px";
+		slider.style.outline = "none";
 
-        var sliderValue = document.createElement("span");
-        sliderValue.textContent = initialValue + "%";
-        sliderValue.style.minWidth = "45px";
-        sliderValue.style.fontSize = "12px";
-        sliderValue.style.color = "#666";
-        sliderValue.style.textAlign = "right";
+		var sliderValue = document.createElement("span");
+		sliderValue.textContent = initialValue + "%";
+		sliderValue.style.minWidth = "45px";
+		sliderValue.style.fontSize = "12px";
+		sliderValue.style.color = "#666";
+		sliderValue.style.textAlign = "right";
 
-        // Step 9b) Update slider appearance and value on input
-        slider.oninput = function () {
-            var val = parseInt(slider.value);
-            sliderValue.textContent = val + "%";
-            slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
-            var newTransparency = val / 100;
+		// Step 9b) Update slider appearance and value on input
+		slider.oninput = function () {
+			var val = parseInt(slider.value);
+			sliderValue.textContent = val + "%";
+			slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
+			var newTransparency = val / 100;
 
-            if (currentImageId && loadedImages.has(currentImageId)) {
-                var targetImage = loadedImages.get(currentImageId);
-                if (targetImage) {
-                    targetImage.transparency = newTransparency;
-                }
-            } else {
-                currentImage.transparency = newTransparency;
-            }
-            drawData(allBlastHoles, selectedHole);
-        };
+			if (currentImageId && loadedImages.has(currentImageId)) {
+				var targetImage = loadedImages.get(currentImageId);
+				if (targetImage) {
+					targetImage.transparency = newTransparency;
+				}
+			} else {
+				currentImage.transparency = newTransparency;
+			}
+			drawData(allBlastHoles, selectedHole);
+		};
 
-        sliderContainer.appendChild(slider);
-        sliderContainer.appendChild(sliderValue);
-        sliderSection.appendChild(sliderContainer);
-        container.appendChild(sliderSection);
+		sliderContainer.appendChild(slider);
+		sliderContainer.appendChild(sliderValue);
+		sliderSection.appendChild(sliderContainer);
+		container.appendChild(sliderSection);
 
-        // Step 10) Create Z elevation section for 3D positioning
-        var zSection = document.createElement("div");
-        zSection.style.marginBottom = "12px";
+		// Step 10) Create Z elevation section for 3D positioning
+		var zSection = document.createElement("div");
+		zSection.style.marginBottom = "12px";
 
-        var zLabel = document.createElement("div");
-        zLabel.textContent = "Z Elevation:";
-        zLabel.style.fontSize = "13px";
-        zLabel.style.marginBottom = "8px";
-        zLabel.style.color = "#333";
-        zSection.appendChild(zLabel);
+		var zLabel = document.createElement("div");
+		zLabel.textContent = "Z Elevation:";
+		zLabel.style.fontSize = "13px";
+		zLabel.style.marginBottom = "8px";
+		zLabel.style.color = "#333";
+		zSection.appendChild(zLabel);
 
-        var zInput = document.createElement("input");
-        zInput.type = "number";
-        zInput.value = currentImage.zElevation !== undefined ? currentImage.zElevation : window.drawingZLevel || 0;
-        zInput.style.width = "100%";
-        zInput.style.padding = "8px 12px";
-        zInput.style.fontSize = "13px";
-        zInput.style.borderRadius = "4px";
-        zInput.style.border = "1px solid #ccc";
-        zInput.style.backgroundColor = "#fff";
-        zInput.style.boxSizing = "border-box";
+		var zInput = document.createElement("input");
+		zInput.type = "number";
+		zInput.value = currentImage.zElevation !== undefined ? currentImage.zElevation : window.drawingZLevel || 0;
+		zInput.style.width = "100%";
+		zInput.style.padding = "8px 12px";
+		zInput.style.fontSize = "13px";
+		zInput.style.borderRadius = "4px";
+		zInput.style.border = "1px solid #ccc";
+		zInput.style.backgroundColor = "#fff";
+		zInput.style.boxSizing = "border-box";
 
-        zInput.onchange = function () {
-            var newZ = parseFloat(zInput.value) || 0;
-            if (currentImageId && loadedImages.has(currentImageId)) {
-                var targetImage = loadedImages.get(currentImageId);
-                if (targetImage) {
-                    targetImage.zElevation = newZ;
-                }
-            } else {
-                currentImage.zElevation = newZ;
-            }
-            drawData(allBlastHoles, selectedHole);
-        };
+		zInput.onchange = function () {
+			var newZ = parseFloat(zInput.value) || 0;
+			if (currentImageId && loadedImages.has(currentImageId)) {
+				var targetImage = loadedImages.get(currentImageId);
+				if (targetImage) {
+					targetImage.zElevation = newZ;
+				}
+			} else {
+				currentImage.zElevation = newZ;
+			}
+			drawData(allBlastHoles, selectedHole);
+		};
 
-        zSection.appendChild(zInput);
-        container.appendChild(zSection);
+		zSection.appendChild(zInput);
+		container.appendChild(zSection);
 
-        return container;
-    };
+		return container;
+	};
 
-    // Step 11) Create and show the FloatingDialog
-    dialogInstance = new FloatingDialog({
-        title: currentImage.name || "Image Properties",
-        content: contentBuilder,
-        width: 320,
-        height: 380,
-        showConfirm: false,
-        showCancel: false,
-        draggable: true,
-        resizable: false,
-        closeOnOutsideClick: true,
-        layoutType: "compact",
-    });
+	// Step 11) Create and show the FloatingDialog
+	dialogInstance = new FloatingDialog({
+		title: currentImage.name || "Image Properties",
+		content: contentBuilder,
+		width: 320,
+		height: 380,
+		showConfirm: false,
+		showCancel: false,
+		draggable: true,
+		resizable: false,
+		closeOnOutsideClick: true,
+		layoutType: "compact",
+	});
 
-    dialogInstance.show();
+	dialogInstance.show();
 
-    // Step 12) Position dialog near click location (adjusted for viewport bounds)
-    if (dialogInstance.element) {
-        var dialogWidth = 320;
-        var dialogHeight = 380;
-        var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
-        var posY = Math.min(y, window.innerHeight - dialogHeight - 20);
-        posX = Math.max(10, posX);
-        posY = Math.max(10, posY);
-        dialogInstance.element.style.left = posX + "px";
-        dialogInstance.element.style.top = posY + "px";
-    }
+	// Step 12) Position dialog near click location (adjusted for viewport bounds)
+	if (dialogInstance.element) {
+		var dialogWidth = 320;
+		var dialogHeight = 380;
+		var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
+		var posY = Math.min(y, window.innerHeight - dialogHeight - 20);
+		posX = Math.max(10, posX);
+		posY = Math.max(10, posY);
+		dialogInstance.element.style.left = posX + "px";
+		dialogInstance.element.style.top = posY + "px";
+	}
 }
 */
 // END OF MOVED FUNCTION - showImageContextMenu now loaded from ImagesContextMenu.js
@@ -40831,549 +41356,549 @@ function showModalMessage(title, message, type = "info", callback = null) {
 // showHolePropertyEditor, processHolePropertyUpdates
 /*
 function showHolePropertyEditor(hole) {
-    // ✅ CHECK VISIBILITY FIRST - Filter out hidden holes
-    const visibleHoles = allBlastHoles.filter((hole) => isHoleVisible(hole));
+	// ✅ CHECK VISIBILITY FIRST - Filter out hidden holes
+	const visibleHoles = allBlastHoles.filter((hole) => isHoleVisible(hole));
 
-    if (visibleHoles.length === 0) {
-        console.log("❌ No visible holes to edit");
-        return;
-    }
+	if (visibleHoles.length === 0) {
+		console.log("❌ No visible holes to edit");
+		return;
+	}
 
-    if (visibleHoles.length !== allBlastHoles.length) {
-        console.log("⚠️ Some holes are hidden and will not be edited");
-    }
+	if (visibleHoles.length !== allBlastHoles.length) {
+		console.log("⚠️ Some holes are hidden and will not be edited");
+	}
 
-    // Determine if we're dealing with single hole or multiple holes
-    let candidateHoles;
-    if (Array.isArray(hole)) {
-        candidateHoles = hole;
-    } else if (selectedMultipleHoles && selectedMultipleHoles.length > 1) {
-        candidateHoles = selectedMultipleHoles;
-    } else {
-        candidateHoles = [hole];
-    }
-    // ✅ Filter candidate holes to only include visible ones
-    const holes = candidateHoles.filter((h) => isHoleVisible(h));
+	// Determine if we're dealing with single hole or multiple holes
+	let candidateHoles;
+	if (Array.isArray(hole)) {
+		candidateHoles = hole;
+	} else if (selectedMultipleHoles && selectedMultipleHoles.length > 1) {
+		candidateHoles = selectedMultipleHoles;
+	} else {
+		candidateHoles = [hole];
+	}
+	// ✅ Filter candidate holes to only include visible ones
+	const holes = candidateHoles.filter((h) => isHoleVisible(h));
 
-    const isMultiple = holes.length > 1;
-    const isArrayInput = Array.isArray(hole);
+	const isMultiple = holes.length > 1;
+	const isArrayInput = Array.isArray(hole);
 
-    if (holes.length === 0) return;
+	if (holes.length === 0) return;
 
-    // Calculate current values and averages with proper fallbacks
-    let delaySum = 0,
-        diameterSum = 0,
-        bearingSum = 0,
-        angleSum = 0,
-        subdrillSum = 0;
-    let collarZSum = 0,
-        gradeZSum = 0;
-    let uniqueDelays = new Set(),
-        uniqueDelayColors = new Set(),
-        uniqueHoleTypes = new Set();
-    let uniqueRowIDs = new Set(),
-        uniquePosIDs = new Set();
-    let typeCounts = {};
-    let connectorCurveSum = 0;
-    let burdenSum = 0;
-    let spacingSum = 0;
+	// Calculate current values and averages with proper fallbacks
+	let delaySum = 0,
+		diameterSum = 0,
+		bearingSum = 0,
+		angleSum = 0,
+		subdrillSum = 0;
+	let collarZSum = 0,
+		gradeZSum = 0;
+	let uniqueDelays = new Set(),
+		uniqueDelayColors = new Set(),
+		uniqueHoleTypes = new Set();
+	let uniqueRowIDs = new Set(),
+		uniquePosIDs = new Set();
+	let typeCounts = {};
+	let connectorCurveSum = 0;
+	let burdenSum = 0;
+	let spacingSum = 0;
 
-    holes.forEach((h) => {
-        // Basic properties
-        const currentDelay = h.holeDelay !== undefined ? h.holeDelay : h.timingDelayMilliseconds || 0;
-        const currentColor = h.holeDelayColor || h.colorHexDecimal || "#FF0000";
-        const currentType = h.holeType || "Production";
+	holes.forEach((h) => {
+		// Basic properties
+		const currentDelay = h.holeDelay !== undefined ? h.holeDelay : h.timingDelayMilliseconds || 0;
+		const currentColor = h.holeDelayColor || h.colorHexDecimal || "#FF0000";
+		const currentType = h.holeType || "Production";
 
-        // Geometry properties
-        const diameter = h.holeDiameter || 0;
-        const bearing = h.holeBearing || 0;
-        const angle = h.holeAngle || 0;
-        const subdrill = h.subdrillAmount || 0;
-        const collarZ = h.startZLocation || 0;
-        const gradeZ = h.gradeZLocation || h.endZLocation || 0;
-        const rowID = h.rowID || "";
-        const posID = h.posID || "";
+		// Geometry properties
+		const diameter = h.holeDiameter || 0;
+		const bearing = h.holeBearing || 0;
+		const angle = h.holeAngle || 0;
+		const subdrill = h.subdrillAmount || 0;
+		const collarZ = h.startZLocation || 0;
+		const gradeZ = h.gradeZLocation || h.endZLocation || 0;
+		const rowID = h.rowID || "";
+		const posID = h.posID || "";
 
-        // Step 1) Add connectorCurve calculation
-        const connectorCurve = h.connectorCurve || 0;
-        const burden = h.burden || 0;
-        const spacing = h.spacing || 0;
+		// Step 1) Add connectorCurve calculation
+		const connectorCurve = h.connectorCurve || 0;
+		const burden = h.burden || 0;
+		const spacing = h.spacing || 0;
 
-        // Sum for averages
-        delaySum += parseFloat(currentDelay);
-        diameterSum += parseFloat(diameter);
-        bearingSum += parseFloat(bearing);
-        angleSum += parseFloat(angle);
-        subdrillSum += parseFloat(subdrill);
-        collarZSum += parseFloat(collarZ);
-        gradeZSum += parseFloat(gradeZ);
+		// Sum for averages
+		delaySum += parseFloat(currentDelay);
+		diameterSum += parseFloat(diameter);
+		bearingSum += parseFloat(bearing);
+		angleSum += parseFloat(angle);
+		subdrillSum += parseFloat(subdrill);
+		collarZSum += parseFloat(collarZ);
+		gradeZSum += parseFloat(gradeZ);
 
-        // Step 2) Add new sums
+		// Step 2) Add new sums
 
-        connectorCurveSum += parseFloat(connectorCurve);
-        burdenSum += parseFloat(burden);
-        spacingSum += parseFloat(spacing);
+		connectorCurveSum += parseFloat(connectorCurve);
+		burdenSum += parseFloat(burden);
+		spacingSum += parseFloat(spacing);
 
-        // Track unique values
-        uniqueDelays.add(currentDelay);
-        uniqueDelayColors.add(currentColor);
-        uniqueHoleTypes.add(currentType);
-        uniqueRowIDs.add(rowID);
-        uniquePosIDs.add(posID);
+		// Track unique values
+		uniqueDelays.add(currentDelay);
+		uniqueDelayColors.add(currentColor);
+		uniqueHoleTypes.add(currentType);
+		uniqueRowIDs.add(rowID);
+		uniquePosIDs.add(posID);
 
-        // Count hole types for most common
-        typeCounts[currentType] = (typeCounts[currentType] || 0) + 1;
-    });
+		// Count hole types for most common
+		typeCounts[currentType] = (typeCounts[currentType] || 0) + 1;
+	});
 
-    // Calculate averages
-    const count = holes.length;
-    const avgDelay = delaySum / count;
-    const avgDiameter = diameterSum / count;
-    const avgBearing = bearingSum / count;
-    const avgAngle = angleSum / count;
-    const avgSubdrill = subdrillSum / count;
-    const avgCollarZ = collarZSum / count;
-    const avgGradeZ = gradeZSum / count;
+	// Calculate averages
+	const count = holes.length;
+	const avgDelay = delaySum / count;
+	const avgDiameter = diameterSum / count;
+	const avgBearing = bearingSum / count;
+	const avgAngle = angleSum / count;
+	const avgSubdrill = subdrillSum / count;
+	const avgCollarZ = collarZSum / count;
+	const avgGradeZ = gradeZSum / count;
 
-    // Find most common values
-    const firstDelayColor = Array.from(uniqueDelayColors)[0];
-    const firstRowID = Array.from(uniqueRowIDs)[0];
-    const firstPosID = Array.from(uniquePosIDs)[0];
+	// Find most common values
+	const firstDelayColor = Array.from(uniqueDelayColors)[0];
+	const firstRowID = Array.from(uniqueRowIDs)[0];
+	const firstPosID = Array.from(uniquePosIDs)[0];
 
-    // Find most common hole type
-    let mostCommonType = "Production";
-    let maxCount = 0;
-    for (const [type, typeCount] of Object.entries(typeCounts)) {
-        if (typeCount > maxCount) {
-            maxCount = typeCount;
-            mostCommonType = type;
-        }
-    }
+	// Find most common hole type
+	let mostCommonType = "Production";
+	let maxCount = 0;
+	for (const [type, typeCount] of Object.entries(typeCounts)) {
+		if (typeCount > maxCount) {
+			maxCount = typeCount;
+			mostCommonType = type;
+		}
+	}
 
-    // Create combined hole types list (standard + any custom types from selection)
-    const standardHoleTypes = ["Angled", "Batter", "Buffer", "Infill", "Production", "Stab", "Toe", "Trim"];
-    const customTypesFromSelection = Array.from(uniqueHoleTypes).filter((type) => !standardHoleTypes.includes(type));
-    const allHoleTypes = [...standardHoleTypes, ...customTypesFromSelection].sort();
-    // Calculate averages (add after existing averages around line 37240)
-    const avgConnectorCurve = connectorCurveSum / count;
-    const avgBurden = burdenSum / count;
-    const avgSpacing = spacingSum / count;
+	// Create combined hole types list (standard + any custom types from selection)
+	const standardHoleTypes = ["Angled", "Batter", "Buffer", "Infill", "Production", "Stab", "Toe", "Trim"];
+	const customTypesFromSelection = Array.from(uniqueHoleTypes).filter((type) => !standardHoleTypes.includes(type));
+	const allHoleTypes = [...standardHoleTypes, ...customTypesFromSelection].sort();
+	// Calculate averages (add after existing averages around line 37240)
+	const avgConnectorCurve = connectorCurveSum / count;
+	const avgBurden = burdenSum / count;
+	const avgSpacing = spacingSum / count;
 
-    // Add to originalValues object around line 37275
-    const originalValues = {
-        delay: avgDelay.toFixed(1),
-        diameter: avgDiameter.toFixed(0),
-        bearing: avgBearing.toFixed(1),
-        angle: avgAngle.toFixed(0),
-        subdrill: avgSubdrill.toFixed(1),
-        collarZ: avgCollarZ.toFixed(2),
-        gradeZ: avgGradeZ.toFixed(2),
-        holeType: mostCommonType,
-        delayColor: firstDelayColor,
-        rowID: firstRowID,
-        posID: firstPosID,
-        // Step 3) Add new original values
-        connectorCurve: avgConnectorCurve.toFixed(0),
-        burden: avgBurden.toFixed(2),
-        spacing: avgSpacing.toFixed(2),
-    };
+	// Add to originalValues object around line 37275
+	const originalValues = {
+		delay: avgDelay.toFixed(1),
+		diameter: avgDiameter.toFixed(0),
+		bearing: avgBearing.toFixed(1),
+		angle: avgAngle.toFixed(0),
+		subdrill: avgSubdrill.toFixed(1),
+		collarZ: avgCollarZ.toFixed(2),
+		gradeZ: avgGradeZ.toFixed(2),
+		holeType: mostCommonType,
+		delayColor: firstDelayColor,
+		rowID: firstRowID,
+		posID: firstPosID,
+		// Step 3) Add new original values
+		connectorCurve: avgConnectorCurve.toFixed(0),
+		burden: avgBurden.toFixed(2),
+		spacing: avgSpacing.toFixed(2),
+	};
 
-    // Add display values around line 37285
-    const displayConnectorCurve = isMultiple && new Set(holes.map((h) => h.connectorCurve || 0)).size > 1 ? "varies (avg: " + avgConnectorCurve.toFixed(0) + "°)" : avgConnectorCurve.toFixed(0) + "°";
-    const displayBurden = isMultiple && new Set(holes.map((h) => h.burden || 0)).size > 1 ? "varies (avg: " + avgBurden.toFixed(2) + ")" : avgBurden.toFixed(2);
-    const displaySpacing = isMultiple && new Set(holes.map((h) => h.spacing || 0)).size > 1 ? "varies (avg: " + avgSpacing.toFixed(2) + ")" : avgSpacing.toFixed(2);
+	// Add display values around line 37285
+	const displayConnectorCurve = isMultiple && new Set(holes.map((h) => h.connectorCurve || 0)).size > 1 ? "varies (avg: " + avgConnectorCurve.toFixed(0) + "°)" : avgConnectorCurve.toFixed(0) + "°";
+	const displayBurden = isMultiple && new Set(holes.map((h) => h.burden || 0)).size > 1 ? "varies (avg: " + avgBurden.toFixed(2) + ")" : avgBurden.toFixed(2);
+	const displaySpacing = isMultiple && new Set(holes.map((h) => h.spacing || 0)).size > 1 ? "varies (avg: " + avgSpacing.toFixed(2) + ")" : avgSpacing.toFixed(2);
 
-    // Create display values with indicators for varying values
-    const displayDelay = isMultiple && uniqueDelays.size > 1 ? "varies (avg: " + avgDelay.toFixed(1) + ")" : avgDelay.toFixed(1);
-    const displayDiameter = isMultiple && new Set(holes.map((h) => h.holeDiameter)).size > 1 ? "varies (avg: " + avgDiameter.toFixed(0) + ")" : avgDiameter.toFixed(0);
-    const displayBearing = isMultiple && new Set(holes.map((h) => h.holeBearing)).size > 1 ? "varies (avg: " + avgBearing.toFixed(1) + ")" : avgBearing.toFixed(1);
-    const displayAngle = isMultiple && new Set(holes.map((h) => h.holeAngle)).size > 1 ? "varies (avg: " + avgAngle.toFixed(0) + ")" : avgAngle.toFixed(0);
-    const displaySubdrill = isMultiple && new Set(holes.map((h) => h.subdrillAmount)).size > 1 ? "varies (avg: " + avgSubdrill.toFixed(1) + ")" : avgSubdrill.toFixed(1);
-    const displayCollarZ = isMultiple && new Set(holes.map((h) => h.startZLocation)).size > 1 ? "varies (avg: " + avgCollarZ.toFixed(2) + ")" : avgCollarZ.toFixed(2);
-    const displayGradeZ = isMultiple && new Set(holes.map((h) => h.gradeZLocation || h.endZLocation)).size > 1 ? "varies (avg: " + avgGradeZ.toFixed(2) + ")" : avgGradeZ.toFixed(2);
+	// Create display values with indicators for varying values
+	const displayDelay = isMultiple && uniqueDelays.size > 1 ? "varies (avg: " + avgDelay.toFixed(1) + ")" : avgDelay.toFixed(1);
+	const displayDiameter = isMultiple && new Set(holes.map((h) => h.holeDiameter)).size > 1 ? "varies (avg: " + avgDiameter.toFixed(0) + ")" : avgDiameter.toFixed(0);
+	const displayBearing = isMultiple && new Set(holes.map((h) => h.holeBearing)).size > 1 ? "varies (avg: " + avgBearing.toFixed(1) + ")" : avgBearing.toFixed(1);
+	const displayAngle = isMultiple && new Set(holes.map((h) => h.holeAngle)).size > 1 ? "varies (avg: " + avgAngle.toFixed(0) + ")" : avgAngle.toFixed(0);
+	const displaySubdrill = isMultiple && new Set(holes.map((h) => h.subdrillAmount)).size > 1 ? "varies (avg: " + avgSubdrill.toFixed(1) + ")" : avgSubdrill.toFixed(1);
+	const displayCollarZ = isMultiple && new Set(holes.map((h) => h.startZLocation)).size > 1 ? "varies (avg: " + avgCollarZ.toFixed(2) + ")" : avgCollarZ.toFixed(2);
+	const displayGradeZ = isMultiple && new Set(holes.map((h) => h.gradeZLocation || h.endZLocation)).size > 1 ? "varies (avg: " + avgGradeZ.toFixed(2) + ")" : avgGradeZ.toFixed(2);
 
-    // Create notes for multiple values
-    const delayNote = isMultiple && uniqueDelays.size > 1 ? " (varying)" : "";
-    const colorNote = isMultiple && uniqueDelayColors.size > 1 ? " (multiple)" : "";
-    const typeNote = isMultiple && uniqueHoleTypes.size > 1 ? " (most common: " + mostCommonType + ")" : "";
+	// Create notes for multiple values
+	const delayNote = isMultiple && uniqueDelays.size > 1 ? " (varying)" : "";
+	const colorNote = isMultiple && uniqueDelayColors.size > 1 ? " (multiple)" : "";
+	const typeNote = isMultiple && uniqueHoleTypes.size > 1 ? " (most common: " + mostCommonType + ")" : "";
 
-    const title = isMultiple ? "Edit Multiple Holes (" + holes.length + " selected)" : "Edit Hole " + holes[0].holeID;
+	const title = isMultiple ? "Edit Multiple Holes (" + holes.length + " selected)" : "Edit Hole " + holes[0].holeID;
 
-    // Define form fields
-    const fields = [
-        {
-            label: "Delay" + delayNote,
-            name: "delay",
-            type: "text",
-            value: originalValues.delay,
-            placeholder: displayDelay,
-        },
-        {
-            label: "Delay Color" + colorNote,
-            name: "delayColor",
-            type: "color",
-            value: firstDelayColor,
-        },
-        {
-            label: "Connector Curve (°)",
-            name: "connectorCurve",
-            type: "number",
-            value: originalValues.connectorCurve,
-            placeholder: displayConnectorCurve,
-        },
-        {
-            label: "Hole Type",
-            name: "holeType",
-            type: "select",
-            value: mostCommonType,
-            options: [
-                {
-                    value: "",
-                    text: "-- No Change --",
-                },
-                ...allHoleTypes.map((type) => ({
-                    value: type,
-                    text: type,
-                })),
-                {
-                    value: "__CUSTOM__",
-                    text: "Other (custom)...",
-                },
-            ],
-        },
-        {
-            label: "Custom Type",
-            name: "customType",
-            type: "text",
-            placeholder: "Enter custom hole type",
-            disabled: true,
-        },
-        {
-            label: "Diameter (mm)",
-            name: "diameter",
-            type: "text",
-            value: originalValues.diameter,
-            placeholder: displayDiameter,
-        },
-        {
-            label: "Bearing (°)",
-            name: "bearing",
-            type: "text",
-            value: originalValues.bearing,
-            placeholder: displayBearing,
-        },
-        {
-            label: "Dip/Angle (°)",
-            name: "angle",
-            type: "text",
-            value: originalValues.angle,
-            placeholder: displayAngle,
-        },
-        {
-            label: "Subdrill (m)",
-            name: "subdrill",
-            type: "text",
-            value: originalValues.subdrill,
-            placeholder: displaySubdrill,
-        },
-        {
-            label: "Collar Z RL (m)",
-            name: "collarZ",
-            type: "text",
-            value: originalValues.collarZ,
-            placeholder: displayCollarZ,
-        },
-        {
-            label: "Grade Z RL (m)",
-            name: "gradeZ",
-            type: "text",
-            value: originalValues.gradeZ,
-            placeholder: displayGradeZ,
-        },
-        {
-            label: "Burden (m)",
-            name: "burden",
-            type: "text",
-            value: originalValues.burden,
-            placeholder: displayBurden,
-        },
-        {
-            label: "Spacing (m)",
-            name: "spacing",
-            type: "text",
-            value: originalValues.spacing,
-            placeholder: displaySpacing,
-        },
-    ];
+	// Define form fields
+	const fields = [
+		{
+			label: "Delay" + delayNote,
+			name: "delay",
+			type: "text",
+			value: originalValues.delay,
+			placeholder: displayDelay,
+		},
+		{
+			label: "Delay Color" + colorNote,
+			name: "delayColor",
+			type: "color",
+			value: firstDelayColor,
+		},
+		{
+			label: "Connector Curve (°)",
+			name: "connectorCurve",
+			type: "number",
+			value: originalValues.connectorCurve,
+			placeholder: displayConnectorCurve,
+		},
+		{
+			label: "Hole Type",
+			name: "holeType",
+			type: "select",
+			value: mostCommonType,
+			options: [
+				{
+					value: "",
+					text: "-- No Change --",
+				},
+				...allHoleTypes.map((type) => ({
+					value: type,
+					text: type,
+				})),
+				{
+					value: "__CUSTOM__",
+					text: "Other (custom)...",
+				},
+			],
+		},
+		{
+			label: "Custom Type",
+			name: "customType",
+			type: "text",
+			placeholder: "Enter custom hole type",
+			disabled: true,
+		},
+		{
+			label: "Diameter (mm)",
+			name: "diameter",
+			type: "text",
+			value: originalValues.diameter,
+			placeholder: displayDiameter,
+		},
+		{
+			label: "Bearing (°)",
+			name: "bearing",
+			type: "text",
+			value: originalValues.bearing,
+			placeholder: displayBearing,
+		},
+		{
+			label: "Dip/Angle (°)",
+			name: "angle",
+			type: "text",
+			value: originalValues.angle,
+			placeholder: displayAngle,
+		},
+		{
+			label: "Subdrill (m)",
+			name: "subdrill",
+			type: "text",
+			value: originalValues.subdrill,
+			placeholder: displaySubdrill,
+		},
+		{
+			label: "Collar Z RL (m)",
+			name: "collarZ",
+			type: "text",
+			value: originalValues.collarZ,
+			placeholder: displayCollarZ,
+		},
+		{
+			label: "Grade Z RL (m)",
+			name: "gradeZ",
+			type: "text",
+			value: originalValues.gradeZ,
+			placeholder: displayGradeZ,
+		},
+		{
+			label: "Burden (m)",
+			name: "burden",
+			type: "text",
+			value: originalValues.burden,
+			placeholder: displayBurden,
+		},
+		{
+			label: "Spacing (m)",
+			name: "spacing",
+			type: "text",
+			value: originalValues.spacing,
+			placeholder: displaySpacing,
+		},
+	];
 
-    // Add Row ID and Pos ID fields only for single hole edits
-    if (!isMultiple) {
-        fields.push(
-            {
-                label: "Row ID",
-                name: "rowID",
-                type: "text",
-                value: firstRowID,
-                placeholder: "Row identifier",
-            },
-            {
-                label: "Pos ID",
-                name: "posID",
-                type: "text",
-                value: firstPosID,
-                placeholder: "Position identifier",
-            }
-        );
-    }
+	// Add Row ID and Pos ID fields only for single hole edits
+	if (!isMultiple) {
+		fields.push(
+			{
+				label: "Row ID",
+				name: "rowID",
+				type: "text",
+				value: firstRowID,
+				placeholder: "Row identifier",
+			},
+			{
+				label: "Pos ID",
+				name: "posID",
+				type: "text",
+				value: firstPosID,
+				placeholder: "Position identifier",
+			}
+		);
+	}
 
-    // Create enhanced form content with special handling
-    const formContent = createEnhancedFormContent(fields, isMultiple);
+	// Create enhanced form content with special handling
+	const formContent = createEnhancedFormContent(fields, isMultiple);
 
-    // Add note at the bottom
-    const noteDiv = document.createElement("div");
-    noteDiv.style.gridColumn = "1 / -1";
-    noteDiv.style.marginTop = "10px";
-    noteDiv.style.fontSize = "10px";
-    noteDiv.style.color = "#888";
-    noteDiv.textContent = isMultiple ? "Note: Use +/- for relative changes (e.g., +0.3, -0.2). Only changed values will be applied." : "Note: Use +/- for relative changes (e.g., +0.3, -0.2). Select hole type from dropdown or choose 'Other' for custom. Curved connectors are made by seting connector curve to (45° to 120°, -45° to -120°) Straight connctors are 0°";
-    formContent.appendChild(noteDiv);
+	// Add note at the bottom
+	const noteDiv = document.createElement("div");
+	noteDiv.style.gridColumn = "1 / -1";
+	noteDiv.style.marginTop = "10px";
+	noteDiv.style.fontSize = "10px";
+	noteDiv.style.color = "#888";
+	noteDiv.textContent = isMultiple ? "Note: Use +/- for relative changes (e.g., +0.3, -0.2). Only changed values will be applied." : "Note: Use +/- for relative changes (e.g., +0.3, -0.2). Select hole type from dropdown or choose 'Other' for custom. Curved connectors are made by seting connector curve to (45° to 120°, -45° to -120°) Straight connctors are 0°";
+	formContent.appendChild(noteDiv);
 
-    const dialog = new FloatingDialog({
-        title: title,
-        content: formContent,
-        layoutType: "compact",
-        showConfirm: true,
-        showCancel: true,
-        showOption1: true, // Add hide button
-        confirmText: "Apply",
-        cancelText: "Cancel",
-        option1Text: "Hide",
-        width: 350,
-        height: 600,
-        onConfirm: () => {
-            // Get form values
-            const formData = getFormData(formContent);
+	const dialog = new FloatingDialog({
+		title: title,
+		content: formContent,
+		layoutType: "compact",
+		showConfirm: true,
+		showCancel: true,
+		showOption1: true, // Add hide button
+		confirmText: "Apply",
+		cancelText: "Cancel",
+		option1Text: "Hide",
+		width: 350,
+		height: 600,
+		onConfirm: () => {
+			// Get form values
+			const formData = getFormData(formContent);
 
-            // Process the form data and update holes
-            processHolePropertyUpdates(holes, formData, originalValues, isMultiple);
+			// Process the form data and update holes
+			processHolePropertyUpdates(holes, formData, originalValues, isMultiple);
 
-            // Clear any dragging states when dialog closes
-            isDragging = false;
-            clearTimeout(longPressTimeout);
-        },
-        onCancel: () => {
-            // Clear any dragging states when dialog closes
-            isDragging = false;
-            clearTimeout(longPressTimeout);
-        },
-        onOption1: () => {
-            // Hide holes - just set visible flag
-            holes.forEach((hole) => {
-                hole.visible = false;
-            });
-            drawData(allBlastHoles, selectedHole);
-        },
-    });
+			// Clear any dragging states when dialog closes
+			isDragging = false;
+			clearTimeout(longPressTimeout);
+		},
+		onCancel: () => {
+			// Clear any dragging states when dialog closes
+			isDragging = false;
+			clearTimeout(longPressTimeout);
+		},
+		onOption1: () => {
+			// Hide holes - just set visible flag
+			holes.forEach((hole) => {
+				hole.visible = false;
+			});
+			drawData(allBlastHoles, selectedHole);
+		},
+	});
 
-    dialog.show();
+	dialog.show();
 }
 
 // Process hole property updates (extracted from original logic)
 function processHolePropertyUpdates(holes, formData, originalValues, isMultiple) {
-    // Helper function to handle relative/absolute value changes
-    function processNumericValue(inputValue, originalValue, currentHoleValue) {
-        if (inputValue === "" || inputValue === originalValue) {
-            return null; // No change
-        }
+	// Helper function to handle relative/absolute value changes
+	function processNumericValue(inputValue, originalValue, currentHoleValue) {
+		if (inputValue === "" || inputValue === originalValue) {
+			return null; // No change
+		}
 
-        if (inputValue.startsWith("+") || inputValue.startsWith("-")) {
-            // Relative adjustment
-            const delta = parseFloat(inputValue);
-            if (!isNaN(delta)) {
-                return currentHoleValue + delta;
-            }
-        } else {
-            // Absolute value
-            const absoluteValue = parseFloat(inputValue);
-            if (!isNaN(absoluteValue)) {
-                return absoluteValue;
-            }
-        }
-        return null; // Invalid input
-    }
+		if (inputValue.startsWith("+") || inputValue.startsWith("-")) {
+			// Relative adjustment
+			const delta = parseFloat(inputValue);
+			if (!isNaN(delta)) {
+				return currentHoleValue + delta;
+			}
+		} else {
+			// Absolute value
+			const absoluteValue = parseFloat(inputValue);
+			if (!isNaN(absoluteValue)) {
+				return absoluteValue;
+			}
+		}
+		return null; // Invalid input
+	}
 
-    // ✅ NEW: Track which fields were actually modified by the user
-    const modifiedFields = new Set();
+	// ✅ NEW: Track which fields were actually modified by the user
+	const modifiedFields = new Set();
 
-    // Check each field to see if it was actually changed from the original average
-    if (formData.delay !== originalValues.delay) modifiedFields.add("delay");
-    if (formData.delayColor !== originalValues.delayColor) modifiedFields.add("delayColor");
-    if (formData.holeType !== originalValues.holeType) modifiedFields.add("holeType");
-    if (formData.diameter !== originalValues.diameter) modifiedFields.add("diameter");
-    if (formData.bearing !== originalValues.bearing) modifiedFields.add("bearing");
-    if (formData.angle !== originalValues.angle) modifiedFields.add("angle");
-    if (formData.subdrill !== originalValues.subdrill) modifiedFields.add("subdrill");
-    if (formData.collarZ !== originalValues.collarZ) modifiedFields.add("collarZ");
-    if (formData.gradeZ !== originalValues.gradeZ) modifiedFields.add("gradeZ");
-    if (formData.connectorCurve !== originalValues.connectorCurve) modifiedFields.add("connectorCurve");
-    if (formData.burden !== originalValues.burden) modifiedFields.add("burden");
-    if (formData.spacing !== originalValues.spacing) modifiedFields.add("spacing");
+	// Check each field to see if it was actually changed from the original average
+	if (formData.delay !== originalValues.delay) modifiedFields.add("delay");
+	if (formData.delayColor !== originalValues.delayColor) modifiedFields.add("delayColor");
+	if (formData.holeType !== originalValues.holeType) modifiedFields.add("holeType");
+	if (formData.diameter !== originalValues.diameter) modifiedFields.add("diameter");
+	if (formData.bearing !== originalValues.bearing) modifiedFields.add("bearing");
+	if (formData.angle !== originalValues.angle) modifiedFields.add("angle");
+	if (formData.subdrill !== originalValues.subdrill) modifiedFields.add("subdrill");
+	if (formData.collarZ !== originalValues.collarZ) modifiedFields.add("collarZ");
+	if (formData.gradeZ !== originalValues.gradeZ) modifiedFields.add("gradeZ");
+	if (formData.connectorCurve !== originalValues.connectorCurve) modifiedFields.add("connectorCurve");
+	if (formData.burden !== originalValues.burden) modifiedFields.add("burden");
+	if (formData.spacing !== originalValues.spacing) modifiedFields.add("spacing");
 
-    // For single hole edits, also check Row ID and Pos ID
-    if (!isMultiple) {
-        if (formData.rowID !== originalValues.rowID) modifiedFields.add("rowID");
-        if (formData.posID !== originalValues.posID) modifiedFields.add("posID");
-    }
+	// For single hole edits, also check Row ID and Pos ID
+	if (!isMultiple) {
+		if (formData.rowID !== originalValues.rowID) modifiedFields.add("rowID");
+		if (formData.posID !== originalValues.posID) modifiedFields.add("posID");
+	}
 
-    // Handle hole type: check if custom or standard
-    let newHoleType = formData.holeType;
-    if (newHoleType === "__CUSTOM__") {
-        newHoleType = formData.customType.trim();
-        if (newHoleType !== originalValues.holeType) modifiedFields.add("holeType");
-    }
+	// Handle hole type: check if custom or standard
+	let newHoleType = formData.holeType;
+	if (newHoleType === "__CUSTOM__") {
+		newHoleType = formData.customType.trim();
+		if (newHoleType !== originalValues.holeType) modifiedFields.add("holeType");
+	}
 
-    // Track if any timing-related properties were changed
-    let timingChanged = false;
-    let geometryChanged = false;
+	// Track if any timing-related properties were changed
+	let timingChanged = false;
+	let geometryChanged = false;
 
-    holes.forEach((h) => {
-        // ✅ ONLY process fields that were actually modified
-        if (modifiedFields.has("delay")) {
-            const processedDelay = processNumericValue(formData.delay, originalValues.delay, h.holeDelay !== undefined ? h.holeDelay : h.timingDelayMilliseconds || 0);
-            if (processedDelay !== null) {
-                h.holeDelay = processedDelay;
-                if (h.timingDelayMilliseconds !== undefined) {
-                    h.timingDelayMilliseconds = processedDelay;
-                }
-                timingChanged = true;
-            }
-        }
+	holes.forEach((h) => {
+		// ✅ ONLY process fields that were actually modified
+		if (modifiedFields.has("delay")) {
+			const processedDelay = processNumericValue(formData.delay, originalValues.delay, h.holeDelay !== undefined ? h.holeDelay : h.timingDelayMilliseconds || 0);
+			if (processedDelay !== null) {
+				h.holeDelay = processedDelay;
+				if (h.timingDelayMilliseconds !== undefined) {
+					h.timingDelayMilliseconds = processedDelay;
+				}
+				timingChanged = true;
+			}
+		}
 
-        if (modifiedFields.has("delayColor")) {
-            h.holeDelayColor = formData.delayColor;
-            if (h.colorHexDecimal !== undefined) {
-                h.colorHexDecimal = formData.delayColor;
-            }
-            timingChanged = true;
-        }
+		if (modifiedFields.has("delayColor")) {
+			h.holeDelayColor = formData.delayColor;
+			if (h.colorHexDecimal !== undefined) {
+				h.colorHexDecimal = formData.delayColor;
+			}
+			timingChanged = true;
+		}
 
-        if (modifiedFields.has("holeType")) {
-            h.holeType = newHoleType;
-        }
+		if (modifiedFields.has("holeType")) {
+			h.holeType = newHoleType;
+		}
 
-        // Update geometry properties only if modified
-        if (modifiedFields.has("diameter")) {
-            const processedDiameter = processNumericValue(formData.diameter, originalValues.diameter, h.holeDiameter || 0);
-            if (processedDiameter !== null) {
-                calculateHoleGeometry(h, processedDiameter, 7);
-                geometryChanged = true;
-            }
-        }
+		// Update geometry properties only if modified
+		if (modifiedFields.has("diameter")) {
+			const processedDiameter = processNumericValue(formData.diameter, originalValues.diameter, h.holeDiameter || 0);
+			if (processedDiameter !== null) {
+				calculateHoleGeometry(h, processedDiameter, 7);
+				geometryChanged = true;
+			}
+		}
 
-        if (modifiedFields.has("bearing")) {
-            const processedBearing = processNumericValue(formData.bearing, originalValues.bearing, h.holeBearing || 0);
-            if (processedBearing !== null) {
-                calculateHoleGeometry(h, processedBearing, 3);
-                geometryChanged = true;
-            }
-        }
+		if (modifiedFields.has("bearing")) {
+			const processedBearing = processNumericValue(formData.bearing, originalValues.bearing, h.holeBearing || 0);
+			if (processedBearing !== null) {
+				calculateHoleGeometry(h, processedBearing, 3);
+				geometryChanged = true;
+			}
+		}
 
-        if (modifiedFields.has("angle")) {
-            const processedAngle = processNumericValue(formData.angle, originalValues.angle, h.holeAngle || 0);
-            if (processedAngle !== null) {
-                calculateHoleGeometry(h, processedAngle, 2);
-                geometryChanged = true;
-            }
-        }
+		if (modifiedFields.has("angle")) {
+			const processedAngle = processNumericValue(formData.angle, originalValues.angle, h.holeAngle || 0);
+			if (processedAngle !== null) {
+				calculateHoleGeometry(h, processedAngle, 2);
+				geometryChanged = true;
+			}
+		}
 
-        if (modifiedFields.has("subdrill")) {
-            const processedSubdrill = processNumericValue(formData.subdrill, originalValues.subdrill, h.subdrillAmount || 0);
-            if (processedSubdrill !== null) {
-                calculateHoleGeometry(h, processedSubdrill, 8);
-                geometryChanged = true;
-            }
-        }
+		if (modifiedFields.has("subdrill")) {
+			const processedSubdrill = processNumericValue(formData.subdrill, originalValues.subdrill, h.subdrillAmount || 0);
+			if (processedSubdrill !== null) {
+				calculateHoleGeometry(h, processedSubdrill, 8);
+				geometryChanged = true;
+			}
+		}
 
-        if (modifiedFields.has("collarZ")) {
-            const processedCollarZ = processNumericValue(formData.collarZ, originalValues.collarZ, h.startZLocation || 0);
-            if (processedCollarZ !== null) {
-                h.startZLocation = processedCollarZ;
-                geometryChanged = true;
-            }
-        }
+		if (modifiedFields.has("collarZ")) {
+			const processedCollarZ = processNumericValue(formData.collarZ, originalValues.collarZ, h.startZLocation || 0);
+			if (processedCollarZ !== null) {
+				h.startZLocation = processedCollarZ;
+				geometryChanged = true;
+			}
+		}
 
-        if (modifiedFields.has("gradeZ")) {
-            const processedGradeZ = processNumericValue(formData.gradeZ, originalValues.gradeZ, h.gradeZLocation || h.endZLocation || 0);
-            if (processedGradeZ !== null) {
-                h.gradeZLocation = processedGradeZ;
-                h.endZLocation = processedGradeZ;
-                geometryChanged = true;
-            }
-        }
+		if (modifiedFields.has("gradeZ")) {
+			const processedGradeZ = processNumericValue(formData.gradeZ, originalValues.gradeZ, h.gradeZLocation || h.endZLocation || 0);
+			if (processedGradeZ !== null) {
+				h.gradeZLocation = processedGradeZ;
+				h.endZLocation = processedGradeZ;
+				geometryChanged = true;
+			}
+		}
 
-        if (modifiedFields.has("connectorCurve")) {
-            // Step 1) Treat connectorCurve as absolute value only (no relative adjustments)
-            const curveValue = parseFloat(formData.connectorCurve);
-            if (!isNaN(curveValue)) {
-                h.connectorCurve = curveValue;
-                timingChanged = true; // Since this affects visual display
-            }
-        }
+		if (modifiedFields.has("connectorCurve")) {
+			// Step 1) Treat connectorCurve as absolute value only (no relative adjustments)
+			const curveValue = parseFloat(formData.connectorCurve);
+			if (!isNaN(curveValue)) {
+				h.connectorCurve = curveValue;
+				timingChanged = true; // Since this affects visual display
+			}
+		}
 
-        if (modifiedFields.has("burden")) {
-            const processedBurden = processNumericValue(formData.burden, originalValues.burden, h.burden || 0);
-            if (processedBurden !== null) {
-                h.burden = processedBurden;
-            }
-        }
+		if (modifiedFields.has("burden")) {
+			const processedBurden = processNumericValue(formData.burden, originalValues.burden, h.burden || 0);
+			if (processedBurden !== null) {
+				h.burden = processedBurden;
+			}
+		}
 
-        if (modifiedFields.has("spacing")) {
-            const processedSpacing = processNumericValue(formData.spacing, originalValues.spacing, h.spacing || 0);
-            if (processedSpacing !== null) {
-                h.spacing = processedSpacing;
-            }
-        }
+		if (modifiedFields.has("spacing")) {
+			const processedSpacing = processNumericValue(formData.spacing, originalValues.spacing, h.spacing || 0);
+			if (processedSpacing !== null) {
+				h.spacing = processedSpacing;
+			}
+		}
 
-        // Only update Row ID and Pos ID for single hole edits and if modified
-        if (!isMultiple) {
-            if (modifiedFields.has("rowID")) {
-                h.rowID = formData.rowID;
-            }
+		// Only update Row ID and Pos ID for single hole edits and if modified
+		if (!isMultiple) {
+			if (modifiedFields.has("rowID")) {
+				h.rowID = formData.rowID;
+			}
 
-            if (modifiedFields.has("posID")) {
-                h.posID = formData.posID;
-            }
-        }
-    });
+			if (modifiedFields.has("posID")) {
+				h.posID = formData.posID;
+			}
+		}
+	});
 
-    // ** RECALCULATE TIMING AND CONTOURS **
-    if (timingChanged || geometryChanged) {
-        // Always recalculate timing calculations after changes
-        holeTimes = calculateTimes(allBlastHoles);
+	// ** RECALCULATE TIMING AND CONTOURS **
+	if (timingChanged || geometryChanged) {
+		// Always recalculate timing calculations after changes
+		holeTimes = calculateTimes(allBlastHoles);
 
-        // Update timing chart display
-        timeChart();
+		// Update timing chart display
+		timeChart();
 
-        // Recalculate contours if they're being displayed
-        const result = recalculateContours(allBlastHoles, 0, 0);
-        if (result) {
-            contourLinesArray = result.contourLinesArray;
-            directionArrows = result.directionArrows;
-        }
-    }
+		// Recalculate contours if they're being displayed
+		const result = recalculateContours(allBlastHoles, 0, 0);
+		if (result) {
+			contourLinesArray = result.contourLinesArray;
+			directionArrows = result.directionArrows;
+		}
+	}
 
-    // Update selection averages and sliders
-    if (isMultiple) {
-        updateSelectionAveragesAndSliders(holes);
-    } else if (selectedHole === holes[0]) {
-        updateSelectionAveragesAndSliders([holes[0]]);
-    }
+	// Update selection averages and sliders
+	if (isMultiple) {
+		updateSelectionAveragesAndSliders(holes);
+	} else if (selectedHole === holes[0]) {
+		updateSelectionAveragesAndSliders([holes[0]]);
+	}
 
-    drawData(allBlastHoles, selectedHole); // Redraw
+	drawData(allBlastHoles, selectedHole); // Redraw
 
-    const statusMessage = isMultiple ? "Updated " + holes.length + " holes" + (timingChanged ? " - Timings recalculated" : "") : "Hole " + holes[0].holeID + " updated" + (timingChanged ? " - Timings recalculated" : "");
-    updateStatusMessage(statusMessage);
-    setTimeout(() => updateStatusMessage(""), 3000);
+	const statusMessage = isMultiple ? "Updated " + holes.length + " holes" + (timingChanged ? " - Timings recalculated" : "") : "Hole " + holes[0].holeID + " updated" + (timingChanged ? " - Timings recalculated" : "");
+	updateStatusMessage(statusMessage);
+	setTimeout(() => updateStatusMessage(""), 3000);
 }
 */
 // END OF MOVED FUNCTIONS - Holes functions now loaded from HolesContextMenu.js

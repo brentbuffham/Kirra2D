@@ -12,10 +12,10 @@ export class ThreeRenderer {
 		this.width = width;
 		this.height = height;
 
-	// Step 1a) Orbit center coordinates (for 3D orbit around data centroid)
-	this.orbitCenterX = 0;
-	this.orbitCenterY = 0;
-	this.orbitCenterZ = 0;
+		// Step 1a) Orbit center coordinates (for 3D orbit around data centroid)
+		this.orbitCenterX = 0;
+		this.orbitCenterY = 0;
+		this.orbitCenterZ = 0;
 
 		// Step 2) Create scene with white background (will update based on dark mode)
 		this.scene = new THREE.Scene();
@@ -113,24 +113,24 @@ export class ThreeRenderer {
 		this.scene.add(this.axisHelper);
 		this.axisHelperBaseSize = 50; // Store base size for screen-space scaling
 
-	// Step 13) Create grid helper (default 10m divisions, 50 divisions = 500m total)
-	// Step 13a) Grid is created but hidden by default - visibility controlled by settings
-	const defaultGridSize = 10; // meters per division
-	const gridDivisions = 50;
-	const totalGridSize = defaultGridSize * gridDivisions;
-	const gridColor = 0x888888; // Grey
-	this.gridHelper = new THREE.GridHelper(totalGridSize, gridDivisions, gridColor, gridColor);
-	this.gridHelper.rotation.x = Math.PI / 2; // Rotate to XY plane (Z-up)
-	this.gridHelper.position.z = 0;
-	this.gridHelper.material.opacity = 0.3;
-	this.gridHelper.material.transparent = true;
-	this.gridHelper.visible = false; // Step 13b) Hidden by default - controlled by settings
-	this.scene.add(this.gridHelper);
-	
-	// Store grid settings
-	this.gridOpacity = 0.3;
-	this.gridSize = defaultGridSize;
-	this.gridPlane = "XY"; // Default plane
+		// Step 13) Create grid helper (default 10m divisions, 50 divisions = 500m total)
+		// Step 13a) Grid is created but hidden by default - visibility controlled by settings
+		const defaultGridSize = 10; // meters per division
+		const gridDivisions = 50;
+		const totalGridSize = defaultGridSize * gridDivisions;
+		const gridColor = 0x888888; // Grey
+		this.gridHelper = new THREE.GridHelper(totalGridSize, gridDivisions, gridColor, gridColor);
+		this.gridHelper.rotation.x = Math.PI / 2; // Rotate to XY plane (Z-up)
+		this.gridHelper.position.z = 0;
+		this.gridHelper.material.opacity = 0.3;
+		this.gridHelper.material.transparent = true;
+		this.gridHelper.visible = false; // Step 13b) Hidden by default - controlled by settings
+		this.scene.add(this.gridHelper);
+
+		// Store grid settings
+		this.gridOpacity = 0.3;
+		this.gridSize = defaultGridSize;
+		this.gridPlane = "XY"; // Default plane
 	}
 
 	// Step 11b) Create XYZ axis helper widget (fixed 50px screen size)
@@ -308,6 +308,20 @@ export class ThreeRenderer {
 		if (!skipRender) {
 			this.needsRender = true;
 		}
+		// Step 15c) Track if camera rotation changed (for billboard updates)
+		const rotationChanged = (
+			this.lastRotation !== rotation ||
+			this.lastOrbitX !== orbitX ||
+			this.lastOrbitY !== orbitY
+		);
+
+		if (rotationChanged) {
+			this.cameraRotationChanged = true;
+			this.lastRotation = rotation;
+			this.lastOrbitX = orbitX;
+			this.lastOrbitY = orbitY;
+		}
+
 	}
 
 	// Step 16) Set orbit center Z coordinate (backward compatibility - use setOrbitCenter for full 3D)
@@ -371,14 +385,14 @@ export class ThreeRenderer {
 
 		// Step 16b2) Update projection matrix
 		this.camera.updateProjectionMatrix();
-		
+
 		// Step 16b3) Update clipping plane helpers if they exist
 		if (this.clippingPlaneNearHelper) {
 			const clippingPlaneNear = new THREE.Plane(new THREE.Vector3(0, 0, -1), -near);
 			this.clippingPlaneNearHelper.plane.copy(clippingPlaneNear);
 			console.log("✂️ Near clipping plane helper updated to:", near);
 		}
-		
+
 		if (this.clippingPlaneFarHelper) {
 			const clippingPlaneFar = new THREE.Plane(new THREE.Vector3(0, 0, 1), -far);
 			this.clippingPlaneFarHelper.plane.copy(clippingPlaneFar);
@@ -410,14 +424,14 @@ export class ThreeRenderer {
 	updateShadowIntensity(intensity) {
 		// Store the shadow intensity setting
 		this.shadowIntensity = intensity;
-		
+
 		// Update all shadow-casting lights
 		if (this.directionalLight && this.directionalLight.shadow) {
 			// Adjust shadow darkness (0 = no shadow, 1 = max shadow)
 			this.directionalLight.shadow.darkness = intensity;
 			this.requestRender();
 		}
-		
+
 		// Note: For more advanced shadow control, this could also affect:
 		// - Shadow bias
 		// - Shadow map resolution
@@ -428,7 +442,7 @@ export class ThreeRenderer {
 	// Step 16f) Set clipping plane visualization
 	setClippingPlaneVisualization(visible) {
 		console.log("✂️ setClippingPlaneVisualization called with visible =", visible, "type:", typeof visible);
-		
+
 		if (visible) {
 			// Step 16f.1) Create near clipping plane helper if it doesn't exist
 			if (!this.clippingPlaneNearHelper) {
@@ -442,7 +456,7 @@ export class ThreeRenderer {
 				this.clippingPlaneNearHelper.material.side = THREE.DoubleSide;
 				this.scene.add(this.clippingPlaneNearHelper);
 			}
-			
+
 			// Step 16f.2) Create far clipping plane helper if it doesn't exist
 			if (!this.clippingPlaneFarHelper) {
 				console.log("✂️ Creating new far clipping plane helper");
@@ -455,7 +469,7 @@ export class ThreeRenderer {
 				this.clippingPlaneFarHelper.material.side = THREE.DoubleSide;
 				this.scene.add(this.clippingPlaneFarHelper);
 			}
-			
+
 			this.clippingPlaneNearHelper.visible = true;
 			this.clippingPlaneFarHelper.visible = true;
 			console.log("✂️ Clipping plane helpers are now visible");
@@ -468,7 +482,7 @@ export class ThreeRenderer {
 				this.clippingPlaneNearHelper = null;
 				console.log("✂️ Near clipping plane helper disposed");
 			}
-			
+
 			if (this.clippingPlaneFarHelper) {
 				this.scene.remove(this.clippingPlaneFarHelper);
 				if (this.clippingPlaneFarHelper.geometry) this.clippingPlaneFarHelper.geometry.dispose();
@@ -477,7 +491,7 @@ export class ThreeRenderer {
 				console.log("✂️ Far clipping plane helper disposed");
 			}
 		}
-		
+
 		this.requestRender();
 		console.log("✂️ Clipping plane visualization final state:", visible ? "ON" : "OFF");
 	}
@@ -485,7 +499,7 @@ export class ThreeRenderer {
 	// Step 16g) Set grid visibility
 	setGridVisible(visible) {
 		console.log("📐 setGridVisible called with visible =", visible, "type:", typeof visible);
-		
+
 		if (visible) {
 			// Step 16g.1) Show grid if exists, or create it
 			if (this.gridHelper) {
@@ -499,29 +513,29 @@ export class ThreeRenderer {
 				const divisions = 50;
 				const totalSize = size * divisions;
 				const gridColor = window.darkModeEnabled ? 0x444444 : 0xcccccc;
-				
+
 				this.gridHelper = new THREE.GridHelper(totalSize, divisions, gridColor, gridColor);
-				
+
 				// Step 16g.2a) Ensure grid is visible
 				this.gridHelper.visible = true;
-				
+
 				// Apply grid plane orientation
 				const gridPlane = this.gridPlane || "XY";
 				this.applyGridPlaneOrientation(gridPlane);
-				
+
 				// Position grid at data centroid
 				this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
-				
+
 				// Step 16g.2b) Apply current opacity (use default 0.3 if not set)
 				const opacity = this.gridOpacity !== undefined ? this.gridOpacity : 0.3;
 				this.gridHelper.material.opacity = opacity;
 				this.gridHelper.material.transparent = true;
-				
+
 				// Step 16g.2c) Store opacity if it wasn't set
 				if (this.gridOpacity === undefined) {
 					this.gridOpacity = opacity;
 				}
-				
+
 				this.scene.add(this.gridHelper);
 				console.log("📐 Grid created and added to scene with opacity:", opacity);
 			}
@@ -534,7 +548,7 @@ export class ThreeRenderer {
 				if (this.gridHelper.material) {
 					// Step 16g.3a) Handle both single material and material array
 					if (Array.isArray(this.gridHelper.material)) {
-						this.gridHelper.material.forEach(function(mat) {
+						this.gridHelper.material.forEach(function (mat) {
 							if (mat) mat.dispose();
 						});
 					} else {
@@ -547,7 +561,7 @@ export class ThreeRenderer {
 				console.log("📐 Grid helper doesn't exist - nothing to dispose");
 			}
 		}
-		
+
 		this.requestRender();
 	}
 
@@ -555,40 +569,40 @@ export class ThreeRenderer {
 	updateGridSize(size) {
 		// Step 16h.1) Store grid size
 		this.gridSize = size;
-		
+
 		// Step 16h.2) Only update if grid exists
 		if (!this.gridHelper) {
 			console.log("📐 Grid size stored:", size, "(grid not created yet)");
 			return;
 		}
-		
+
 		// Step 16h.3) Remove old grid
 		this.scene.remove(this.gridHelper);
 		this.gridHelper.geometry.dispose();
 		this.gridHelper.material.dispose();
-		
+
 		// Step 16h.4) Create new grid with updated size
 		const divisions = 50; // Number of grid divisions
 		const gridSize = size * divisions; // Total grid size
 		const gridColor = window.darkModeEnabled ? 0x444444 : 0xcccccc;
-		
+
 		this.gridHelper = new THREE.GridHelper(gridSize, divisions, gridColor, gridColor);
-		
+
 		// Step 16h.5) Apply grid plane orientation
 		const gridPlane = this.gridPlane || "XY";
 		this.applyGridPlaneOrientation(gridPlane);
-		
+
 		// Step 16h.6) Position grid at data centroid
 		this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
-		
+
 		// Step 16h.7) Apply current opacity (use default 0.3 if not set)
 		const opacity = this.gridOpacity !== undefined ? this.gridOpacity : 0.3;
 		this.gridHelper.material.opacity = opacity;
 		this.gridHelper.material.transparent = true;
-		
+
 		// Step 16h.8) Ensure grid is visible
 		this.gridHelper.visible = true;
-		
+
 		this.scene.add(this.gridHelper);
 		this.requestRender();
 		console.log("📐 Grid size updated to:", size, "m per division at centroid (" + (this.orbitCenterX || 0).toFixed(2) + ", " + (this.orbitCenterY || 0).toFixed(2) + ", " + (this.orbitCenterZ || 0).toFixed(2) + ")");
@@ -599,29 +613,29 @@ export class ThreeRenderer {
 		// Step 16i.1) Validate and store opacity (ensure it's a number between 0 and 1)
 		const validOpacity = Math.max(0, Math.min(1, parseFloat(opacity) || 0.3));
 		this.gridOpacity = validOpacity;
-		
+
 		// Step 16i.2) Only update if grid exists
 		if (this.gridHelper && this.gridHelper.material) {
 			// Step 16i.2a) Ensure grid remains visible even if opacity is 0
 			this.gridHelper.visible = true;
-			
+
 			// Step 16i.2b) Update material opacity
 			this.gridHelper.material.opacity = validOpacity;
 			this.gridHelper.material.transparent = true;
-			
+
 			this.requestRender();
 			console.log("📐 Grid opacity updated to:", validOpacity, "(grid visible:", this.gridHelper.visible + ")");
 		} else {
 			console.log("📐 Grid opacity stored:", validOpacity, "(grid not created yet)");
 		}
 	}
-	
+
 	// Step 16j) Update grid plane orientation
 	updateGridPlane(plane) {
 		// Step 16j.1) Store plane setting
 		this.gridPlane = plane;
 		console.log("📐 updateGridPlane called with plane:", plane);
-		
+
 		// Step 16j.2) Only update if grid exists
 		if (this.gridHelper) {
 			this.applyGridPlaneOrientation(plane);
@@ -633,14 +647,14 @@ export class ThreeRenderer {
 			console.log("📐 Grid plane stored:", plane, "(grid not created yet)");
 		}
 	}
-	
+
 	// Step 16k) Apply grid plane orientation (helper method)
 	applyGridPlaneOrientation(plane) {
 		if (!this.gridHelper) return;
-		
+
 		// Step 16k.1) Reset rotation
 		this.gridHelper.rotation.set(0, 0, 0);
-		
+
 		// Step 16k.2) Apply rotation based on plane
 		switch (plane) {
 			case "XY":
@@ -666,14 +680,14 @@ export class ThreeRenderer {
 		}
 		console.log("📐 Applied grid plane orientation:", plane);
 	}
-	
+
 	// Step 16L) Set orbit center (data centroid)
 	setOrbitCenter(x, y, z) {
 		this.orbitCenterX = x || 0;
 		this.orbitCenterY = y || 0;
 		this.orbitCenterZ = z || 0;
 		console.log("🎯 Orbit center set to: (" + this.orbitCenterX.toFixed(2) + ", " + this.orbitCenterY.toFixed(2) + ", " + this.orbitCenterZ.toFixed(2) + ")");
-		
+
 		// Step 16L.1) Update grid position if it exists
 		if (this.gridHelper) {
 			this.gridHelper.position.set(this.orbitCenterX, this.orbitCenterY, this.orbitCenterZ);
@@ -871,33 +885,50 @@ export class ThreeRenderer {
 	}
 
 	// Step 23) Render the scene
-	render() {
-		// Step 23a) Update billboard text rotation before rendering
-		this.updateTextBillboards();
 
-		// Step 23a.1) Update billboarded objects (mouse torus, etc.)
-		this.updateBillboardedObjects();
+	render() {
+		// Step 23a) Update billboard text rotation ONLY if camera rotated
+		// Skip during pure zoom/pan for performance with thousands of labels
+		const keepTextFlatOnXZPlane = false;
+		if (this.cameraRotationChanged && !keepTextFlatOnXZPlane) {
+			this.updateTextBillboards();
+			this.updateBillboardedObjects();
+			this.cameraRotationChanged = false;
+		}
 
 		this.renderer.render(this.scene, this.camera);
 		this.needsRender = false;
 	}
 
+
 	// Step 23b) Update all troika text objects to face camera (billboard behavior)
 	updateTextBillboards() {
+		// Step 23b.0) Create frustum for culling
+		const frustum = new THREE.Frustum();
+		const projScreenMatrix = new THREE.Matrix4();
+		projScreenMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+		frustum.setFromProjectionMatrix(projScreenMatrix);
+
 		const updateGroup = (group) => {
 			group.traverse((object) => {
 				// Check if this is a troika text object
 				if (object.userData && object.userData.isTroikaText) {
 					// Make text face camera (billboard effect)
-					object.quaternion.copy(this.camera.quaternion);
+					if (frustum.containsPoint(object.position)) {
+						object.quaternion.copy(this.camera.quaternion);
+					}
 				}
 				// Also check for text inside groups (with backgrounds)
 				if (object.userData && object.userData.textMesh) {
-					object.userData.textMesh.quaternion.copy(this.camera.quaternion);
+					if (frustum.containsPoint(object.position)) {
+						object.userData.textMesh.quaternion.copy(this.camera.quaternion);
+					}
 					// Rotate background too if it exists
 					object.traverse((child) => {
 						if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
-							child.quaternion.copy(this.camera.quaternion);
+							if (frustum.containsPoint(child.position)) {
+								child.quaternion.copy(this.camera.quaternion);
+							}
 						}
 					});
 				}
