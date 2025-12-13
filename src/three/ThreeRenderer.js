@@ -309,11 +309,7 @@ export class ThreeRenderer {
 			this.needsRender = true;
 		}
 		// Step 15c) Track if camera rotation changed (for billboard updates)
-		const rotationChanged = (
-			this.lastRotation !== rotation ||
-			this.lastOrbitX !== orbitX ||
-			this.lastOrbitY !== orbitY
-		);
+		const rotationChanged = this.lastRotation !== rotation || this.lastOrbitX !== orbitX || this.lastOrbitY !== orbitY;
 
 		if (rotationChanged) {
 			this.cameraRotationChanged = true;
@@ -321,7 +317,6 @@ export class ThreeRenderer {
 			this.lastOrbitX = orbitX;
 			this.lastOrbitY = orbitY;
 		}
-
 	}
 
 	// Step 16) Set orbit center Z coordinate (backward compatibility - use setOrbitCenter for full 3D)
@@ -887,19 +882,22 @@ export class ThreeRenderer {
 	// Step 23) Render the scene
 
 	render() {
-		// Step 23a) Update billboard text rotation ONLY if camera rotated
-		// Skip during pure zoom/pan for performance with thousands of labels
-		const keepTextFlatOnXZPlane = false;
-		if (this.cameraRotationChanged && !keepTextFlatOnXZPlane) {
-			this.updateTextBillboards();
-			this.updateBillboardedObjects();
-			this.cameraRotationChanged = false;
-		}
+		// // Step 23a) Update billboard text rotation ONLY if camera rotated
+		// // Skip during pure zoom/pan for performance with thousands of labels
+		// const keepTextFlatOnXZPlane = false;
+		// if (this.cameraRotationChanged && !keepTextFlatOnXZPlane) {
+		// 	this.updateTextBillboards();
+		// 	this.updateBillboardedObjects();
+		// 	this.cameraRotationChanged = false;
+		// } // Didn't work well enough.
+
+		// Allways update Billboards.
+		this.updateTextBillboards();
+		this.updateBillboardedObjects();
 
 		this.renderer.render(this.scene, this.camera);
 		this.needsRender = false;
 	}
-
 
 	// Step 23b) Update all troika text objects to face camera (billboard behavior)
 	updateTextBillboards() {

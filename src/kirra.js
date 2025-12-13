@@ -32,8 +32,8 @@ import { GeometryFactory } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
 import { PolygonSelection3D } from "./three/PolygonSelection3D.js";
 // Troika text optimization - configure builder and preload font for optimal performance
-import { configureTextBuilder, preloadFont } from "troika-three-text";
-import { Text } from "troika-three-text";
+// import { configureTextBuilder, preloadFont } from "troika-three-text";
+// import { Text } from "troika-three-text";
 // OBJ/MTL Loaders for textured mesh import
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { MTLLoader } from "three/addons/loaders/MTLLoader.js";
@@ -362,7 +362,7 @@ let interactionManager = null; // 3D raycasting and interaction manager
 let threeInitialized = false;
 let threeInitializationFailed = false; // Step 0a) Prevent retry storm if initialization fails
 let onlyShowThreeJS = false; // Toggle to show only Three.js rendering
-let troikaFontBaked = false; // Step 0b) Track if Troika font SDF texture has been baked
+// let troikaFontBaked = false; // Step 0b) Track if Troika font SDF texture has been baked
 
 // Step 1) Local coordinate offset for precision with large UTM coordinates
 // Three.js uses these local coordinates (offset from origin) to avoid floating-point errors
@@ -641,60 +641,53 @@ function calculateDataZCentroid() {
 // This configures optimal SDF settings and preloads all glyphs into Troika's shared texture atlas.
 // Troika automatically uses a shared atlas per sdfGlyphSize, so all Text instances benefit.
 // Result: faster load times, lower memory usage, zero texture re-generation after startup.
-async function optimizeTroikaFont() {
-	if (troikaFontBaked) {
-		console.log("✅ Troika font already optimized, skipping...");
-		return;
-	}
+//Didn't work, so I'm using the default behavior.
+// async function optimizeTroikaFont() {
+// 	if (troikaFontBaked) {
+// 		console.log("✅ Troika font already optimized, skipping...");
+// 		return;
+// 	}
 
-	try {
-		console.log("🎨 Optimizing Troika font rendering...");
+// 	try {
+// 		console.log("🎨 Optimizing Troika font rendering...");
 
-		// Step 1) Configure text builder with optimal settings BEFORE any text is created
-		// This must be called before the first font request, or it will be ignored
-		configureTextBuilder({
-			sdfGlyphSize: 64, // Higher = sharper when zoomed, 64 is sweet spot
-			textureWidth: 2048, // Power of 2, safe maximum for most GPUs
-			sdfExponent: 9, // Default exponent for SDF encoding
-			sdfMargin: 1 / 16, // Margin outside glyph path (default)
-			useWorker: true, // Use web worker for typesetting (default)
-		});
+// 		configureTextBuilder({
+// 			sdfGlyphSize: 64,
+// 			textureWidth: 2048,
+// 			sdfExponent: 9,
+// 			sdfMargin: 1 / 16,
+// 			useWorker: true,
+// 		});
 
-		// Step 2) Define all characters that will be used in the app
-		const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-+*/=()[]{}<>|&^%$#@:;\"'\\/~`_";
+// 		const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-+*/=()[]{}<>|&^%$#@:;\"'\\/~`_";
+// 		const robotoFontUrl = new URL("./fonts/Roboto-Regular.ttf", import.meta.url).href;
 
-		// Step 3) Load font file (Roboto-Regular.ttf from src/fonts/)
-		const robotoFontUrl = new URL("./fonts/Roboto-Regular.ttf", import.meta.url).href;
+// 		// ✅ FIXED: Callback is called on success with font object
+// 		await new Promise((resolve, reject) => {
+// 			preloadFont(
+// 				{
+// 					font: robotoFontUrl,
+// 					characters: glyphs,
+// 					sdfGlyphSize: 64,
+// 				},
+// 				() => {
+// 					// Called on success - no error parameter!
+// 					resolve();
+// 				}
+// 			);
 
-		// Step 4) Preload font with all glyphs - this populates Troika's shared texture atlas
-		// Troika maintains a shared atlas per sdfGlyphSize, so all Text instances will use it
-		await new Promise((resolve, reject) => {
-			preloadFont(
-				{
-					font: robotoFontUrl,
-					characters: glyphs,
-					sdfGlyphSize: 64,
-				},
-				(error) => {
-					if (error) {
-						reject(error);
-					} else {
-						resolve();
-					}
-				}
-			);
-		});
+// 			// Optional: Add timeout in case preload hangs
+// 			setTimeout(() => reject(new Error("Font preload timeout")), 10000);
+// 		});
 
-		troikaFontBaked = true;
-		console.log("✅ Troika font optimized successfully (2048x2048 texture, 64px glyphs, all characters preloaded)");
-	} catch (error) {
-		console.warn("⚠️ Failed to optimize Troika font, falling back to default behavior:", error);
-		// Don't set troikaFontBaked = true, so it will retry next time
-		// Text instances will still work, just without the optimization
-	}
-}
-
-async function initializeThreeJS() {
+// 		troikaFontBaked = true;
+// 		console.log("✅ Troika font optimized successfully");
+// 	} catch (error) {
+// 		console.warn("⚠️ Failed to optimize Troika font:", error);
+// 		// Text will still work with default behavior
+// 	}
+// }
+function initializeThreeJS() {
 	if (threeInitialized) return;
 
 	// Step 0a) Prevent retry storm - if initialization failed once, don't retry on every mouse move
@@ -726,7 +719,7 @@ async function initializeThreeJS() {
 		// Step 2a) Optimize Troika font rendering for optimal performance (one-time, shared by all text)
 		// This configures optimal SDF settings and preloads all glyphs into Troika's shared atlas.
 		// This must happen before creating any Text instances
-		await optimizeTroikaFont();
+		//await optimizeTroikaFont();//Didn't work well enough
 
 		// Step 2b) Apply lighting settings
 		if (settings.lightBearing !== undefined && settings.lightElevation !== undefined) {
@@ -1186,10 +1179,10 @@ function handle3DClick(event) {
 		firstIntersect:
 			intersects.length > 0
 				? {
-					object: intersects[0].object.type,
-					userData: intersects[0].object.userData,
-					distance: intersects[0].distance.toFixed(2),
-				}
+						object: intersects[0].object.type,
+						userData: intersects[0].object.userData,
+						distance: intersects[0].distance.toFixed(2),
+				  }
 				: null,
 	});
 
@@ -2659,7 +2652,7 @@ let textsGroupVisible = true;
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
 // debouncedUpdateTreeView is defined later - stub it to prevent errors
-let debouncedUpdateTreeView = function () { };
+let debouncedUpdateTreeView = function () {};
 
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
@@ -3531,16 +3524,18 @@ function forceThreeJSReset() {
 		console.log("✅ Cleanup complete, attempting re-initialization...");
 
 		// Step 3) Try to initialize again
-		initializeThreeJS().then(function () {
-			console.log("✅ Three.js re-initialized successfully!");
-			// Step 4) Redraw existing data
-			if (allBlastHoles && allBlastHoles.length > 0) {
-				drawData();
-			}
-		}).catch(function (error) {
-			console.error("❌ Re-initialization failed:", error);
-			alert("WebGL initialization failed. Try:\n\n1. Refresh the page (F5)\n2. Close other browser tabs\n3. Close and reopen browser\n4. Update graphics drivers");
-		});
+		initializeThreeJS()
+			.then(function () {
+				console.log("✅ Three.js re-initialized successfully!");
+				// Step 4) Redraw existing data
+				if (allBlastHoles && allBlastHoles.length > 0) {
+					drawData();
+				}
+			})
+			.catch(function (error) {
+				console.error("❌ Re-initialization failed:", error);
+				alert("WebGL initialization failed. Try:\n\n1. Refresh the page (F5)\n2. Close other browser tabs\n3. Close and reopen browser\n4. Update graphics drivers");
+			});
 	}, 500); // Wait 500ms for browser to release contexts
 }
 
@@ -8182,7 +8177,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 	// Step 1) Create progress dialog
 	const progressContent = document.createElement("div");
 	progressContent.style.textAlign = "center";
-	progressContent.innerHTML = '<p>Loading OBJ File: ' + fileName + '</p><p>Please wait...</p><div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;"><div id="objProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div></div><p id="objProgressText">Initializing...</p>';
+	progressContent.innerHTML = "<p>Loading OBJ File: " + fileName + '</p><p>Please wait...</p><div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;"><div id="objProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div></div><p id="objProgressText">Initializing...</p>';
 
 	const progressDialog = new FloatingDialog({
 		title: "Loading OBJ",
@@ -8316,11 +8311,12 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 
 						// Step 9a.2) Store final material properties (after texture application)
 						var materialName = child.name || "default";
-						var matProps = materialProperties[materialName] || materialProperties[Object.keys(materialProperties)[0]] || {
-							Kd: [1, 1, 1],
-							Ns: 0,
-							map_Kd: appliedTextureName
-						};
+						var matProps = materialProperties[materialName] ||
+							materialProperties[Object.keys(materialProperties)[0]] || {
+								Kd: [1, 1, 1],
+								Ns: 0,
+								map_Kd: appliedTextureName,
+							};
 
 						finalMaterialProperties[materialName] = {
 							name: materialName,
@@ -8329,7 +8325,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 							Ks: matProps.Ks || [0, 0, 0],
 							Ns: matProps.Ns || 0,
 							map_Kd: appliedTextureName || matProps.map_Kd || null,
-							illum: matProps.illum || 2
+							illum: matProps.illum || 2,
 						};
 					}
 				});
@@ -8340,9 +8336,12 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				var meshBounds = null;
 				if (objData && objData.points && objData.points.length > 0) {
 					// Calculate bounds from UTM world coordinates (objData.points)
-					var minX = Infinity, maxX = -Infinity;
-					var minY = Infinity, maxY = -Infinity;
-					var minZ = Infinity, maxZ = -Infinity;
+					var minX = Infinity,
+						maxX = -Infinity;
+					var minY = Infinity,
+						maxY = -Infinity;
+					var minZ = Infinity,
+						maxZ = -Infinity;
 					for (var i = 0; i < objData.points.length; i++) {
 						var pt = objData.points[i];
 						if (pt.x < minX) minX = pt.x;
@@ -8507,7 +8506,6 @@ function rebuildTexturedMesh(surfaceId) {
 
 		// Step 4) Wait for ALL textures to pre-load before proceeding
 		Promise.all(texturePromises).then(function () {
-
 			// Step 5) Parse OBJ WITHOUT materials (we'll apply materials manually from stored properties)
 			var objLoader = new OBJLoader();
 			var object3D = objLoader.parse(surface.objContent);
@@ -8564,7 +8562,7 @@ function rebuildTexturedMesh(surfaceId) {
 						// Fallback: use default material
 						child.material = new THREE.MeshStandardMaterial({
 							color: 0xffffff,
-							side: THREE.DoubleSide
+							side: THREE.DoubleSide,
 						});
 						texturesFailed++;
 					}
@@ -8584,7 +8582,9 @@ function rebuildTexturedMesh(surfaceId) {
 						if (child.geometry) child.geometry.dispose();
 						if (child.material) {
 							if (Array.isArray(child.material)) {
-								child.material.forEach(function (mat) { mat.dispose(); });
+								child.material.forEach(function (mat) {
+									mat.dispose();
+								});
 							} else {
 								child.material.dispose();
 							}
@@ -9002,15 +9002,15 @@ function parseKADFile(fileData) {
 			showModalMessage(
 				"File Import Warning",
 				"The file was imported but there were " +
-				parseResult.errors.length +
-				" parsing warnings:<br><br>" +
-				parseResult.errors
-					.slice(0, 5)
-					.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-					.join("") +
-				additionalErrors +
-				"<br><br>" +
-				"Some data may have been skipped. Check your results carefully.",
+					parseResult.errors.length +
+					" parsing warnings:<br><br>" +
+					parseResult.errors
+						.slice(0, 5)
+						.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+						.join("") +
+					additionalErrors +
+					"<br><br>" +
+					"Some data may have been skipped. Check your results carefully.",
 				"warning"
 			);
 		}
@@ -9228,17 +9228,17 @@ function parseKADFile(fileData) {
 			const errorDetailsHtml =
 				errorCount > 0
 					? "<details>" +
-					"<summary>View Error Details (" +
-					errorCount +
-					" errors)</summary>" +
-					'<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-					errorDetails
-						.slice(0, 10)
-						.map((error) => "<li>" + error + "</li>")
-						.join("") +
-					(errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-					"</ul>" +
-					"</details>"
+					  "<summary>View Error Details (" +
+					  errorCount +
+					  " errors)</summary>" +
+					  '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+					  errorDetails
+							.slice(0, 10)
+							.map((error) => "<li>" + error + "</li>")
+							.join("") +
+					  (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+					  "</ul>" +
+					  "</details>"
 					: "";
 
 			showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -10639,9 +10639,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
 	const table = new Uint32Array(256);
-	for (let i = 256; i--;) {
+	for (let i = 256; i--; ) {
 		let tmp = i;
-		for (let k = 8; k--;) {
+		for (let k = 8; k--; ) {
 			tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
 		}
 		table[i] = tmp;
@@ -15743,29 +15743,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
 			`
             <div style="text-align: center;">
                 <p><strong>` +
-			resultMessage +
-			`</strong></p>
+				resultMessage +
+				`</strong></p>
                 <p><strong>Input:</strong> ` +
-			selectedEntities.length +
-			` entities</p>
+				selectedEntities.length +
+				` entities</p>
                 <p><strong>Output:</strong> ` +
-			polygons.length +
-			` polygon(s)</p>
+				polygons.length +
+				` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-			params.radius +
-			`m</p>
+				params.radius +
+				`m</p>
                 <p><strong>Rotation:</strong> ` +
-			params.rotationOffset +
-			`°</p>
+				params.rotationOffset +
+				`°</p>
                 <p><strong>Starburst:</strong> ` +
-			params.starburstOffset * 100 +
-			`%</p>
+				params.starburstOffset * 100 +
+				`%</p>
                 <p><strong>Line Width:</strong> ` +
-			params.lineWidth +
-			`</p>
+				params.lineWidth +
+				`</p>
                 <p><strong>Location:</strong> ` +
-			(params.useToeLocation ? "End/Toe" : "Start/Collar") +
-			`</p>
+				(params.useToeLocation ? "End/Toe" : "Start/Collar") +
+				`</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -15782,8 +15782,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-			(error.message || "Unknown error occurred") +
-			`</p>
+				(error.message || "Unknown error occurred") +
+				`</p>
             </div>
         `
 		);
@@ -21430,11 +21430,11 @@ function timeChart() {
 			// Update selected holes array for single bin
 			timingWindowHolesSelected = holeIDs[selectedIndex]
 				? holeIDs[selectedIndex]
-					.map((combinedID) => {
-						const [entityName, holeID] = combinedID.split(":");
-						return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-					})
-					.filter(Boolean)
+						.map((combinedID) => {
+							const [entityName, holeID] = combinedID.split(":");
+							return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+						})
+						.filter(Boolean)
 				: [];
 
 			// Redraw canvas WITHOUT calling timeChart
@@ -24316,7 +24316,6 @@ async function loadAllDataWithProgress() {
 				loadingDialog.close();
 			}
 		}, 800);
-
 	} catch (error) {
 		console.error("❌ Error loading data:", error);
 		if (loadingDialog) {
@@ -24336,7 +24335,21 @@ function showLoadingProgressDialog() {
 	var textColor = darkModeEnabled ? "#ffffff" : "#cccccc";
 	var bgColor = darkModeEnabled ? "#2a2a2a" : "#f5f5f5";
 
-	var content = '<div style="text-align: center; padding: 20px;">' + '<div style="color: #2196f3; font-size: 32px; margin-bottom: 20px;">⏳</div>' + '<div id="loadingProgressText" style="color: ' + textColor + '; font-size: 16px; margin-bottom: 15px;">Loading saved data from IndexedDB...</div>' + '<div style="background-color: ' + bgColor + '; border-radius: 4px; height: 8px; margin: 20px 0; overflow: hidden;">' + '<div id="loadingProgressBar" style="background-color: #2196f3; height: 100%; width: 0%; transition: width 0.3s ease;"></div>' + "</div>" + '<div style="color: ' + textColor + '; font-size: 14px; margin-top: 20px; opacity: 0.8;">Please wait...</div>' + "</div>";
+	var content =
+		'<div style="text-align: center; padding: 20px;">' +
+		'<div style="color: #2196f3; font-size: 32px; margin-bottom: 20px;">⏳</div>' +
+		'<div id="loadingProgressText" style="color: ' +
+		textColor +
+		'; font-size: 16px; margin-bottom: 15px;">Loading saved data from IndexedDB...</div>' +
+		'<div style="background-color: ' +
+		bgColor +
+		'; border-radius: 4px; height: 8px; margin: 20px 0; overflow: hidden;">' +
+		'<div id="loadingProgressBar" style="background-color: #2196f3; height: 100%; width: 0%; transition: width 0.3s ease;"></div>' +
+		"</div>" +
+		'<div style="color: ' +
+		textColor +
+		'; font-size: 14px; margin-top: 20px; opacity: 0.8;">Please wait...</div>' +
+		"</div>";
 
 	var dialog = new FloatingDialog({
 		title: "Reloading Data",
@@ -24424,7 +24437,7 @@ async function loadAllSurfacesIntoMemory() {
 						visible: surfaceData.visible !== false,
 						// Step 1a) CRITICAL: For textured meshes, ALWAYS use "texture" gradient (ignore saved gradient)
 						// Textured meshes MUST show JPG textures, not color gradients like "cividis"
-						gradient: surfaceData.isTexturedMesh ? "texture" : (surfaceData.gradient || "default"),
+						gradient: surfaceData.isTexturedMesh ? "texture" : surfaceData.gradient || "default",
 						transparency: surfaceData.transparency || 1.0,
 					};
 
@@ -32184,10 +32197,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
 	return closestPoint
 		? {
-			point: closestPoint,
-			type: snapType,
-			distance: minDistance,
-		}
+				point: closestPoint,
+				type: snapType,
+				distance: minDistance,
+		  }
 		: null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
@@ -34328,39 +34341,27 @@ function extractMaterialProperties(mtlContent) {
 			currentMaterial = parts.slice(1).join(" ").trim();
 			materialProperties[currentMaterial] = {
 				name: currentMaterial,
-				Ka: [0, 0, 0],  // Ambient color (default black)
-				Kd: [1, 1, 1],  // Diffuse color (default white)
-				Ks: [0, 0, 0],  // Specular color (default black)
-				Ns: 0,          // Shininess (default 0)
-				map_Kd: null,   // Diffuse texture filename
-				map_Ka: null,   // Ambient texture filename
-				map_Ks: null,   // Specular texture filename
-				illum: 2,       // Illumination model (default 2)
+				Ka: [0, 0, 0], // Ambient color (default black)
+				Kd: [1, 1, 1], // Diffuse color (default white)
+				Ks: [0, 0, 0], // Specular color (default black)
+				Ns: 0, // Shininess (default 0)
+				map_Kd: null, // Diffuse texture filename
+				map_Ka: null, // Ambient texture filename
+				map_Ks: null, // Specular texture filename
+				illum: 2, // Illumination model (default 2)
 			};
 		}
 		// Ambient color
 		else if (command === "Ka" && currentMaterial && parts.length >= 4) {
-			materialProperties[currentMaterial].Ka = [
-				parseFloat(parts[1]) || 0,
-				parseFloat(parts[2]) || 0,
-				parseFloat(parts[3]) || 0
-			];
+			materialProperties[currentMaterial].Ka = [parseFloat(parts[1]) || 0, parseFloat(parts[2]) || 0, parseFloat(parts[3]) || 0];
 		}
 		// Diffuse color
 		else if (command === "Kd" && currentMaterial && parts.length >= 4) {
-			materialProperties[currentMaterial].Kd = [
-				parseFloat(parts[1]) || 1,
-				parseFloat(parts[2]) || 1,
-				parseFloat(parts[3]) || 1
-			];
+			materialProperties[currentMaterial].Kd = [parseFloat(parts[1]) || 1, parseFloat(parts[2]) || 1, parseFloat(parts[3]) || 1];
 		}
 		// Specular color
 		else if (command === "Ks" && currentMaterial && parts.length >= 4) {
-			materialProperties[currentMaterial].Ks = [
-				parseFloat(parts[1]) || 0,
-				parseFloat(parts[2]) || 0,
-				parseFloat(parts[3]) || 0
-			];
+			materialProperties[currentMaterial].Ks = [parseFloat(parts[1]) || 0, parseFloat(parts[2]) || 0, parseFloat(parts[3]) || 0];
 		}
 		// Shininess
 		else if (command === "Ns" && currentMaterial && parts.length >= 2) {
@@ -34394,20 +34395,16 @@ function createMaterialFromProperties(materialProps, texture, textureName) {
 		materialProps = {
 			Kd: [1, 1, 1],
 			Ns: 0,
-			map_Kd: textureName
+			map_Kd: textureName,
 		};
 	}
 
 	var material = new THREE.MeshStandardMaterial({
-		color: new THREE.Color(
-			materialProps.Kd[0] || 1,
-			materialProps.Kd[1] || 1,
-			materialProps.Kd[2] || 1
-		),
+		color: new THREE.Color(materialProps.Kd[0] || 1, materialProps.Kd[1] || 1, materialProps.Kd[2] || 1),
 		shininess: materialProps.Ns || 0,
 		side: THREE.DoubleSide,
 		transparent: false,
-		opacity: 1.0
+		opacity: 1.0,
 	});
 
 	// Apply texture if available (texture is already a THREE.Texture object)
