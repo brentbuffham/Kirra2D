@@ -24331,59 +24331,27 @@ async function loadAllDataWithProgress() {
 
 // Step 1) Show loading progress dialog for IndexedDB data reload
 function showLoadingProgressDialog() {
-	var darkModeEnabled = window.darkModeEnabled || false;
-	var textColor = darkModeEnabled ? "#ffffff" : "#cccccc";
-	var bgColor = darkModeEnabled ? "#2a2a2a" : "#f5f5f5";
-
-	var content =
-		'<div style="text-align: center; padding: 20px;">' +
-		'<div style="color: #2196f3; font-size: 32px; margin-bottom: 20px;">⏳</div>' +
-		'<div id="loadingProgressText" style="color: ' +
-		textColor +
-		'; font-size: 16px; margin-bottom: 15px;">Loading saved data from IndexedDB...</div>' +
-		'<div style="background-color: ' +
-		bgColor +
-		'; border-radius: 4px; height: 8px; margin: 20px 0; overflow: hidden;">' +
-		'<div id="loadingProgressBar" style="background-color: #2196f3; height: 100%; width: 0%; transition: width 0.3s ease;"></div>' +
-		"</div>" +
-		'<div style="color: ' +
-		textColor +
-		'; font-size: 14px; margin-top: 20px; opacity: 0.8;">Please wait...</div>' +
-		"</div>";
+	// Step 1) Create progress dialog content
+	const progressContent = document.createElement("div");
+	progressContent.style.textAlign = "center";
+	progressContent.innerHTML = '<p>Loading saved data from IndexedDB</p><p>Please wait...</p><div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;"><div id="loadingProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div></div><p id="loadingProgressText">Initializing...</p>';
 
 	var dialog = new FloatingDialog({
 		title: "Reloading Data",
-		content: content,
-		width: 500,
-		height: 300,
+		content: progressContent,
+		layoutType: "standard",
+		width: 350,
+		height: 250,
 		showConfirm: false,
-		showCancel: false,
+		showCancel: true,
 		showDeny: false,
-		showOption1: true,
-		showOption2: false,
-		option1Text: "Start Fresh",
 		draggable: false,
 		resizable: false,
 		closeOnOutsideClick: false,
-		layoutType: "default",
-		onOption1: function () {
-			// Step 2) Handle "Start Fresh" button
-			console.log("🔄 User requested 'Start Fresh' - clearing all data");
+		onCancel: function () {
+			// Step 2) Handle Cancel button - abort loading
+			console.log("⚠️ User cancelled data loading");
 			dialog.close();
-
-			// Step 3) Confirm before clearing
-			showConfirmationDialog(
-				"Clear All Data?",
-				"This will delete all saved data from IndexedDB and start fresh.\n\nThis action cannot be undone.",
-				"Clear Everything",
-				"Cancel",
-				function () {
-					// Step 4) Clear all data
-					resetAppToDefaults();
-					console.log("✅ App reset to defaults");
-				},
-				null
-			);
 		},
 	});
 
