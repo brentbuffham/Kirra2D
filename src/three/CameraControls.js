@@ -157,8 +157,10 @@ export class CameraControls {
         const wasDragging = this.isDragging;
         const hadPendingPan = this.pendingPan;
 
-        if (wasDragging || hadPendingPan) {
-            console.log("🔄 Pan state reset (prevented stuck drag) - wasDragging:", wasDragging, "pendingPan:", hadPendingPan);
+        if (wasDragging || hadPendingPan ) {
+            if (developerModeEnabled) {
+                console.log("🔄 Pan state reset (prevented stuck drag) - wasDragging:", wasDragging, "pendingPan:", hadPendingPan);
+            }
         }
 
         this.isDragging = false;
@@ -207,7 +209,9 @@ export class CameraControls {
             this.animationFrameId = null;
         }
 
-        console.log("🎮 Unified orthographic camera controls detached");
+        if (developerModeEnabled) {
+            console.log("🎮 Unified orthographic camera controls detached");
+        }
     }
 
     // Step 10) Set gizmo display mode
@@ -215,12 +219,16 @@ export class CameraControls {
         // Step 10a) Validate mode
         const validModes = ["always", "only_when_orbit_or_rotate", "never"];
         if (!validModes.includes(mode)) {
-            console.warn("Invalid gizmo display mode:", mode, "- using 'only_when_orbit_or_rotate'");
+            if (developerModeEnabled) {
+                console.warn("Invalid gizmo display mode:", mode, "- using 'only_when_orbit_or_rotate'");
+            }
             mode = "only_when_orbit_or_rotate";
         }
 
         this.gizmoDisplayMode = mode;
-        console.log("🎯 Gizmo display mode set to:", mode);
+        if (developerModeEnabled) {
+            console.log("🎯 Gizmo display mode set to:", mode);
+        }
     }
 
     // Step 11) Set axis lock mode
@@ -228,12 +236,16 @@ export class CameraControls {
         // Step 11a) Validate mode
         const validModes = ["none", "pitch", "roll", "yaw"];
         if (!validModes.includes(mode)) {
-            console.warn("Invalid axis lock mode:", mode, "- using 'none'");
+            if (developerModeEnabled) {
+                console.warn("Invalid axis lock mode:", mode, "- using 'none'");
+            }
             mode = "none";
         }
 
         this.axisLock = mode;
-        console.log("🔒 Axis lock mode set to:", mode);
+        if (developerModeEnabled) {
+            console.log("🔒 Axis lock mode set to:", mode);
+        }
 
         // Step 11b) Immediately update camera to apply new axis lock (prevents delayed response)
         this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
@@ -395,14 +407,22 @@ export class CameraControls {
 
     // Step 21) Process mouse down (extracted for reuse)
     processMouseDown(event) {
-        // Step 21a) Check for Camera Roll mode (Shift + Alt keys) - activate immediately
+        // Step 21a) Check if Move Tool is active and blocking pan
+        if (window.isMoveToolActive && !event.altKey) {
+            // Move Tool is active - allow orbit with Alt, block pan
+            return;
+        }
+
+        // Step 21b) Check for Camera Roll mode (Shift + Alt keys) - activate immediately
         if (event.shiftKey && event.altKey) {
             event.preventDefault();
             this.isRotating = true;
             this.isOrbiting = false;
             this.isDragging = false;
             this.pendingPan = false;
-            console.log("🔄 Camera Roll mode activated (Shift+Alt held)");
+            if (developerModeEnabled) {
+                console.log("🔄 Camera Roll mode activated (Shift+Alt held)");
+            }
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
             this.dragStartX = event.clientX;
@@ -410,20 +430,22 @@ export class CameraControls {
             return;
         }
 
-        // Step 21b) Check for orbit mode (Alt key only) - activate immediately
+        // Step 21c) Check for orbit mode (Alt key only) - activate immediately
         if (event.altKey) {
             event.preventDefault();
             this.isOrbiting = true;
             this.isRotating = false;
             this.isDragging = false;
             this.pendingPan = false;
-            console.log("🌐 Tumble/Orbit mode activated (Alt held)");
+            if (developerModeEnabled) {
+                console.log("🌐 Tumble/Orbit mode activated (Alt held)");
+            }
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
             this.dragStartX = event.clientX;
             this.dragStartY = event.clientY;
 
-            // Step 21b.1) Initialize yaw-lock tracking if yaw-axis is locked
+            // Step 21c.1) Initialize yaw-lock tracking if yaw-axis is locked
             if (this.axisLock === "yaw") {
                 // Calculate initial angle from orbit center to mouse
                 const canvas = this.threeRenderer.getCanvas();
@@ -441,7 +463,9 @@ export class CameraControls {
                 // Store initial angle and current orbitY
                 this.yawLockStartAngle = Math.atan2(mouseY - centerScreenY, mouseX - centerScreenX);
                 this.yawLockStartOrbitY = this.orbitY;
-                console.log("🔒 Yaw-lock orbit started - Initial angle:", ((this.yawLockStartAngle * 180) / Math.PI).toFixed(1), "° Initial orbitY:", ((this.yawLockStartOrbitY * 180) / Math.PI).toFixed(1), "°");
+                if (developerModeEnabled) {
+                    console.log("🔒 Yaw-lock orbit started - Initial angle:", ((this.yawLockStartAngle * 180) / Math.PI).toFixed(1), "° Initial orbitY:", ((this.yawLockStartOrbitY * 180) / Math.PI).toFixed(1), "°");
+                }
             }
 
             return;
@@ -452,7 +476,9 @@ export class CameraControls {
         if (window.onlyShowThreeJS && !event.altKey && !event.metaKey && !event.ctrlKey && event.button !== 2) {
             // If event.defaultPrevented, selection handler stopped us - don't start any camera movement
             if (event.defaultPrevented) {
-                console.log("🎯 Camera controls: Selection handler prevented camera movement");
+                if (developerModeEnabled) {
+                    console.log("🎯 Camera controls: Selection handler prevented camera movement");
+                }
                 return; // Don't start camera drag/orbit/rotate
             }
         }
@@ -516,7 +542,9 @@ export class CameraControls {
             if (deltaX > dragThreshold || deltaY > dragThreshold) {
                 this.isDragging = true;
                 this.pendingPan = false;
-                console.log("👆 2D Pan mode activated (drag detected)");
+                if (developerModeEnabled) {
+                    console.log("👆 2D Pan mode activated (drag detected)");
+                }
             }
         }
 
@@ -558,11 +586,15 @@ export class CameraControls {
                     this.velocityX = moveX;
                     this.velocityY = moveY;
 
-                    console.log("🎯 Raycast pan: moveX=" + moveX.toFixed(2) + " moveY=" + moveY.toFixed(2));
+                    if (developerModeEnabled) {
+                        console.log("🎯 Raycast pan: moveX=" + moveX.toFixed(2) + " moveY=" + moveY.toFixed(2));
+                    }
                 } else {
                     // Step 23a.4) Fallback to screen-space pan if raycast fails (e.g. looking at horizon)
                     // NOTE: This fallback is less accurate when orbited but necessary for extreme angles
-                    console.warn("⚠️ Raycast pan failed, using screen-space fallback");
+                    if (developerModeEnabled) {
+                            console.warn("⚠️ Raycast pan failed, using screen-space fallback");
+                    }
                     
                     const panDeltaX = deltaX / this.scale;
                     const panDeltaY = -deltaY / this.scale; // Screen Y is inverted
@@ -721,7 +753,9 @@ export class CameraControls {
             // In Z-up: orbitX is Pitch (angle from Zenith, 0 = top-down). orbitY is Roll (compass bearing).
             const pitchDeg = ((this.orbitX * 180) / Math.PI).toFixed(1);
             const rollDeg = ((this.orbitY * 180) / Math.PI).toFixed(1);
-            console.log("📍 Camera XYZ: (" + cameraPos.x.toFixed(2) + ", " + cameraPos.y.toFixed(2) + ", " + cameraPos.z.toFixed(2) + ") | Pitch: " + pitchDeg + "° | Roll: " + rollDeg + "°");
+            if (developerModeEnabled) {
+                console.log("📍 Camera XYZ: (" + cameraPos.x.toFixed(2) + ", " + cameraPos.y.toFixed(2) + ", " + cameraPos.z.toFixed(2) + ") | Pitch: " + pitchDeg + "° | Roll: " + rollDeg + "°");
+            }
 
             this.lastMouseX = event.clientX;
             this.lastMouseY = event.clientY;
@@ -738,7 +772,9 @@ export class CameraControls {
     handleMouseUp(event) {
         // Step 22a) Log 2D pan release if it was active
         if (this.isDragging) {
-            console.log("👆 2D Pan mode released");
+            if (developerModeEnabled) {
+                console.log("👆 2D Pan mode released");
+            }
         }
 
         // Step 22b) Reset pending pan flag if mouse up without drag
@@ -886,7 +922,9 @@ export class CameraControls {
         // Step 29a) Hide axis helper when touch ends (if it was visible)
         if (this.isRotating || this.isOrbiting) {
             this.threeRenderer.showAxisHelper(false);
-            console.log("🎯 Axis helper hidden - touch ended");
+            if (developerModeEnabled) {
+                console.log("🎯 Axis helper hidden - touch ended");
+            }
         }
 
         this.isDragging = false;
@@ -955,7 +993,9 @@ export class CameraControls {
             this.damping = Math.max(0, Math.min(1, settings.dampingFactor));
         }
 
-        console.log("⚙️ Camera controls settings updated");
+        if (developerModeEnabled) {
+            console.log("⚙️ Camera controls settings updated");
+        }
     }
 
     // Step 35) Update method (call in render loop if needed)
@@ -1041,6 +1081,8 @@ export class CameraControls {
         this.velocityOrbitY = 0;
         this.velocityRotation = 0;
 
-        console.log("🧹 CameraControls disposed - all resources cleaned up");
+        if (developerModeEnabled) {
+            console.log("🧹 CameraControls disposed - all resources cleaned up");
+        }
     }
 }

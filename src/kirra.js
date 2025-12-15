@@ -1,4 +1,5 @@
 /* prettier-ignore-file */
+
 //=================================================
 // IMPORTS
 //=================================================
@@ -1053,6 +1054,12 @@ function handle3DClick(event) {
 		return;
 	}
 
+	// Step 12a.0) Skip if we just finished dragging (prevents re-selection after mouseup)
+	if (justFinishedDragging) {
+		console.log("⏭️ [3D CLICK] Just finished dragging - skipping selection to prevent re-highlight");
+		return;
+	}
+
 	// Step 12a.1) Skip if polygon selection tool is active
 	const polygonToolCheckbox = document.getElementById("selectByPolygon");
 	if (polygonToolCheckbox && polygonToolCheckbox.checked) {
@@ -1213,10 +1220,10 @@ function handle3DClick(event) {
 	const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
 	const selectingKAD = selectKADRadio && selectKADRadio.checked;
 
-	// Step 12h.5a) Only allow selection if SelectPointer tool is active OR a connector tool is active
+	// Step 12h.5a) Only allow selection if SelectPointer tool, Move tool, or connector tool is active
 	// Fixes QUIRK 2: Prevent selection when no tool is active
 	const isConnectorToolActive = isAddingConnector || isAddingMultiConnector;
-	if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled) {
+	if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled && !isMoveToolActive) {
 		console.log("⏭️ [3D CLICK] Select Pointer tool not active - skipping selection");
 		return;
 	}
@@ -2476,6 +2483,28 @@ document.addEventListener("DOMContentLoaded", function () {
 				}
 				console.log("🎨 3D-ONLY Mode: ON (2D canvas hidden)");
 
+				// Step 1cc) Update Move Tool if active - switch to 3D canvas
+				if (isMoveToolActive) {
+					const threeCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
+					if (threeCanvas) {
+						// Remove listeners from 2D canvas
+						canvas.removeEventListener("mousedown", handleMoveToolMouseDown);
+						canvas.removeEventListener("touchstart", handleMoveToolMouseDown);
+						canvas.removeEventListener("mousemove", handleMoveToolMouseMove);
+						canvas.removeEventListener("touchmove", handleMoveToolMouseMove);
+						canvas.removeEventListener("mouseup", handleMoveToolMouseUp);
+						canvas.removeEventListener("touchend", handleMoveToolMouseUp);
+
+						// Add listeners to 3D canvas
+						threeCanvas.addEventListener("mousedown", handleMoveToolMouseDown);
+						threeCanvas.addEventListener("touchstart", handleMoveToolMouseDown);
+
+						// Update mode flag
+						moveToolIn3DMode = true;
+						console.log("✅ Move Tool switched to 3D canvas");
+					}
+				}
+
 				if (threeCanvas) {
 					threeCanvas.style.zIndex = "2"; // Three.js on top
 					threeCanvas.style.opacity = "1"; // Show 3D canvas
@@ -2505,7 +2534,30 @@ document.addEventListener("DOMContentLoaded", function () {
 				}
 				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
 
-				// Step 1db) Clear all Three.js geometry when switching to 2D mode
+				// Step 1db) Update Move Tool if active - switch to 2D canvas
+				if (isMoveToolActive) {
+					const threeCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
+					if (threeCanvas) {
+						// Remove listeners from 3D canvas
+						threeCanvas.removeEventListener("mousedown", handleMoveToolMouseDown);
+						threeCanvas.removeEventListener("touchstart", handleMoveToolMouseDown);
+						threeCanvas.removeEventListener("mousemove", handleMoveToolMouseMove);
+						threeCanvas.removeEventListener("touchmove", handleMoveToolMouseMove);
+						threeCanvas.removeEventListener("mouseup", handleMoveToolMouseUp);
+						threeCanvas.removeEventListener("touchend", handleMoveToolMouseUp);
+					}
+
+					// Add listeners to 2D canvas
+					canvas.addEventListener("mousedown", handleMoveToolMouseDown);
+					canvas.addEventListener("touchstart", handleMoveToolMouseDown);
+
+					// Update mode flag
+					moveToolIn3DMode = false;
+					dragPlaneZ = 0;
+					console.log("✅ Move Tool switched to 2D canvas");
+				}
+
+				// Step 1dc) Clear all Three.js geometry when switching to 2D mode
 				if (typeof clearThreeJS === "function") {
 					clearThreeJS();
 					console.log("🧹 Cleared Three.js geometry on switch to 2D mode");
@@ -2799,6 +2851,10 @@ let isMultiHoleSelectionEnabled = false; // Selection mode is false if single ON
 let isMoveToolActive = false;
 let isMovingHole = false;
 let holeToMove = null;
+// Step 1) Move Tool 3D mode tracking variables
+let moveToolIn3DMode = false; // Track if move tool is in 3D mode
+let dragPlaneZ = 0; // Z elevation of plane for 3D raycasting
+let justFinishedDragging = false; // Flag to prevent click event after drag
 
 let maxEdgeLength = 15;
 let clickedHole; // Declare clickedHole outside the event listener
@@ -2938,6 +2994,7 @@ function setAllBoolsToFalse() {
 	isMeasureRecording = false;
 	isMultiHoleSelectionEnabled = false;
 	isMoveToolActive = false;
+	window.isMoveToolActive = false;
 	isMovingHole = false;
 
 	// CRITICAL FIX: Remove move tool event listeners when deactivating
@@ -3308,6 +3365,7 @@ function resetFloatingToolbarButtons(excluding) {
 	isHolesAlongPolyLineActive = false;
 	isHolesAlongLineActive = false;
 	isMoveToolActive = false;
+	window.isMoveToolActive = false;
 	isBearingToolActive = false;
 	isRulerActive = false;
 	isRulerProtractorActive = false;
@@ -26106,13 +26164,25 @@ function removeAllCanvasListenersKeepDefault() {
 // --- Move Tool Activation ---
 moveToTool.addEventListener("change", function () {
 	if (this.checked) {
-		// Store current selection BEFORE clearing anything
+		// Step 1) Store current selection BEFORE clearing anything
 		const preservedMultipleSelection = selectedMultipleHoles ? [...selectedMultipleHoles] : [];
 		const preservedSingleSelection = selectedHole;
 		endKadTools();
 		resetFloatingToolbarButtons("moveToTool");
 		// DON'T remove all canvas listeners - keep the main mouse tracking
 		removeAllCanvasListenersKeepDefault();
+
+		// Step 2) Detect current mode using dimension2D-3DBtn checkbox
+		const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
+		moveToolIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked;
+		const targetCanvas = moveToolIn3DMode ? (threeRenderer ? threeRenderer.getCanvas() : null) : canvas;
+
+		if (!targetCanvas) {
+			console.error("Move Tool: Target canvas not available");
+			updateStatusMessage("Error: Canvas not available");
+			this.checked = false;
+			return;
+		}
 
 		// Store current state to restore later
 		previousToolState = {
@@ -26129,70 +26199,60 @@ moveToTool.addEventListener("change", function () {
 		selectedMultipleHoles = preservedMultipleSelection;
 		selectedHole = preservedSingleSelection;
 
+		// Step 3) Activate move tool and attach listeners to appropriate canvas
 		isMoveToolActive = true;
+		window.isMoveToolActive = true; // Expose to CameraControls
 		moveToolSelectedHole = null;
 		isDraggingHole = false;
-		canvas.addEventListener("mousedown", handleMoveToolMouseDown);
-		canvas.addEventListener("touchstart", handleMoveToolMouseDown);
-		updateStatusMessage("Move Tool Activated\nSelect a hole and drag to move");
+		targetCanvas.addEventListener("mousedown", handleMoveToolMouseDown);
+		targetCanvas.addEventListener("touchstart", handleMoveToolMouseDown);
+
+		const modeText = moveToolIn3DMode ? "3D" : "2D";
+		updateStatusMessage("Move Tool Activated (" + modeText + " mode)\nSelect a hole and drag to move");
+		console.log("✅ Move Tool activated in " + modeText + " mode");
 	} else {
+		// Step 4) Deactivation - remove listeners from correct canvas based on mode
 		resetFloatingToolbarButtons("none");
 
-		// Remove move tool listeners
-		canvas.removeEventListener("mousedown", handleMoveToolMouseDown);
-		canvas.removeEventListener("touchstart", handleMoveToolMouseDown);
-		canvas.removeEventListener("mousemove", handleMoveToolMouseMove);
-		canvas.removeEventListener("touchmove", handleMoveToolMouseMove);
-		canvas.removeEventListener("mouseup", handleMoveToolMouseUp);
-		canvas.removeEventListener("touchend", handleMoveToolMouseUp);
+		// Determine which canvas was used
+		const targetCanvas = moveToolIn3DMode ? (threeRenderer ? threeRenderer.getCanvas() : null) : canvas;
 
-		// Clear move tool state
+		if (targetCanvas) {
+			// Remove move tool listeners from the target canvas
+			targetCanvas.removeEventListener("mousedown", handleMoveToolMouseDown);
+			targetCanvas.removeEventListener("touchstart", handleMoveToolMouseDown);
+			targetCanvas.removeEventListener("mousemove", handleMoveToolMouseMove);
+			targetCanvas.removeEventListener("touchmove", handleMoveToolMouseMove);
+			targetCanvas.removeEventListener("mouseup", handleMoveToolMouseUp);
+			targetCanvas.removeEventListener("touchend", handleMoveToolMouseUp);
+		}
+
+		// Step 5) Clear move tool state
 		isMoveToolActive = false;
+		window.isMoveToolActive = false; // Clear from window
 		isDraggingHole = false;
 		moveToolSelectedHole = null;
+		moveToolSelectedKAD = null;
+		moveToolIn3DMode = false;
+		dragPlaneZ = 0;
 
-		// Remove the default canvas handlers to avoid conflicts
-		canvas.removeEventListener("mousedown", handleMouseDown);
-		canvas.removeEventListener("mouseup", handleMouseUp);
-		canvas.removeEventListener("touchstart", handleTouchStart);
-		canvas.removeEventListener("touchend", handleTouchEnd);
-		// Restore default canvas handlers so the tool works properly
-		canvas.addEventListener("mousedown", handleMouseDown);
-		canvas.addEventListener("mouseup", handleMouseUp);
-		canvas.addEventListener("touchstart", handleTouchStart);
-		canvas.addEventListener("touchend", handleTouchEnd);
+		// Step 6) Restore default canvas handlers (2D only)
+		if (!onlyShowThreeJS) {
+			// Remove and re-add default handlers to avoid conflicts
+			canvas.removeEventListener("mousedown", handleMouseDown);
+			canvas.removeEventListener("mouseup", handleMouseUp);
+			canvas.removeEventListener("touchstart", handleTouchStart);
+			canvas.removeEventListener("touchend", handleTouchEnd);
 
-		// ** IMPORTANT - NEVER remove the mouseListeners} else {
-		resetFloatingToolbarButtons("none");
-
-		// Remove move tool listeners
-		canvas.removeEventListener("mousedown", handleMoveToolMouseDown);
-		canvas.removeEventListener("touchstart", handleMoveToolMouseDown);
-		canvas.removeEventListener("mousemove", handleMoveToolMouseMove);
-		canvas.removeEventListener("touchmove", handleMoveToolMouseMove);
-		canvas.removeEventListener("mouseup", handleMoveToolMouseUp);
-		canvas.removeEventListener("touchend", handleMoveToolMouseUp);
-
-		// ✅ ADD: Clear move tool state
-		isMoveToolActive = false;
-		isDraggingHole = false;
-		moveToolSelectedHole = null;
-
-		// Remove the default canvas handlers to avoid conflicts
-		canvas.removeEventListener("mousedown", handleMouseDown);
-		canvas.removeEventListener("mouseup", handleMouseUp);
-		canvas.removeEventListener("touchstart", handleTouchStart);
-		canvas.removeEventListener("touchend", handleTouchEnd);
-
-		// Restore default canvas handlers so the tool works properly
-		canvas.addEventListener("mousedown", handleMouseDown);
-		canvas.addEventListener("mouseup", handleMouseUp);
-		canvas.addEventListener("touchstart", handleTouchStart);
-		canvas.addEventListener("touchend", handleTouchEnd);
+			canvas.addEventListener("mousedown", handleMouseDown);
+			canvas.addEventListener("mouseup", handleMouseUp);
+			canvas.addEventListener("touchstart", handleTouchStart);
+			canvas.addEventListener("touchend", handleTouchEnd);
+		}
 
 		updateStatusMessage("");
 
-		// ✅ ADD: Restore selection tool listeners if they were active
+		// Step 7) Restore selection tool listeners if they were active
 		if (previousToolState && previousToolState.isSelectionPointerActive) {
 			isSelectionPointerActive = true;
 			canvas.addEventListener("click", handleSelection);
@@ -26205,7 +26265,7 @@ moveToTool.addEventListener("change", function () {
 			canvas.addEventListener("mousemove", handlePolygonMouseMove);
 		}
 
-		// Restore ruler tools if they were active
+		// Step 8) Restore ruler tools if they were active
 		if (isRulerActive) {
 			canvas.addEventListener("click", handleRulerClick);
 		}
@@ -26213,11 +26273,13 @@ moveToTool.addEventListener("change", function () {
 			canvas.addEventListener("click", handleRulerProtractorClick);
 		}
 
-		// ✅ ADD: Restore previous tool state
+		// Step 9) Restore previous tool state
 		if (previousToolState) {
 			isMultiHoleSelectionEnabled = previousToolState.selectionMode;
 		}
 		drawData(allBlastHoles, selectedHole);
+
+		console.log("✅ Move Tool deactivated");
 	}
 });
 
@@ -26227,9 +26289,209 @@ moveToTool.addEventListener("change", function () {
 // When Move tool is active, isDragging is not set and panning is disabled
 // The tool handles its own dragging behavior for moving KAD vertices/holes
 function handleMoveToolMouseDown(event) {
-	event.preventDefault();
-	event.stopPropagation();
+	// Step 1a) Allow Alt+drag to pass through for camera orbit
+	if (event.altKey) {
+		// Don't block Alt+drag - let CameraControls handle it
+		return;
+	}
 
+	// Step 2) Check if we're in 3D mode
+	if (moveToolIn3DMode && threeRenderer && interactionManager) {
+		// Step 2a) BLOCK panning - Move Tool takes precedence over camera pan
+		event.preventDefault();
+		event.stopPropagation();
+
+		// 3D Mode Logic
+		const targetCanvas = threeRenderer.getCanvas();
+		interactionManager.updateMousePosition(event, targetCanvas);
+
+		// Step 2a) Respect radio selection mode
+		const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
+		const selectingKAD = selectKADRadio && selectKADRadio.checked;
+
+		// Step 2b) Perform raycast once for both KAD and hole detection
+		const intersects = interactionManager.raycast();
+		console.log("🔧 [MOVE TOOL 3D] Raycast found " + intersects.length + " intersects, selectingKAD: " + selectingKAD + ", selectingHoles: " + selectingHoles);
+
+		if (selectingKAD) {
+			// Step 2c) Try to find a KAD vertex in raycast intersects
+			let foundKAD = null;
+
+			// Traverse intersects looking for userData.kadId
+			for (let i = 0; i < intersects.length; i++) {
+				const obj = intersects[i].object;
+				if (obj.userData && obj.userData.kadId) {
+					// Parse kadId: "entityName:::vertexIndex" or similar
+					const parts = obj.userData.kadId.split(":::");
+					if (parts.length >= 2) {
+						const entityName = parts[0];
+						const elementIndex = parseInt(parts[1], 10);
+						const entity = allKADDrawingsMap.get(entityName);
+
+						if (entity && entity.data && entity.data[elementIndex]) {
+							foundKAD = {
+								entityName: entityName,
+								elementIndex: elementIndex,
+								dataPoint: entity.data[elementIndex],
+							};
+							break;
+						}
+					}
+				}
+			}
+
+			if (foundKAD) {
+				// Step 2c) Store move target and Z plane
+				const dataPoint = foundKAD.dataPoint;
+				moveToolSelectedKAD = {
+					entityName: foundKAD.entityName,
+					elementIndex: foundKAD.elementIndex,
+					initialX: dataPoint.pointXLocation,
+					initialY: dataPoint.pointYLocation,
+					initialZ: dataPoint.pointZLocation || 0,
+				};
+				dragPlaneZ = dataPoint.pointZLocation || 0;
+
+				// Step 2d) Set selected KAD object for highlighting
+				const entity = allKADDrawingsMap.get(foundKAD.entityName);
+				selectedKADObject = {
+					entityName: foundKAD.entityName,
+					entityType: entity.entityType,
+					elementIndex: foundKAD.elementIndex,
+					selectionType: "vertex",
+					pointXLocation: dataPoint.pointXLocation,
+					pointYLocation: dataPoint.pointYLocation,
+					pointZLocation: dataPoint.pointZLocation,
+				};
+				selectedPoint = dataPoint;
+				selectedKADPolygon = null;
+				selectedMultipleKADObjects = [];
+
+				// Step 2e) Redraw to show the highlighted selection
+				if (typeof renderThreeJS === "function") {
+					renderThreeJS();
+				}
+
+				// Step 2f) Start dragging process
+				isDraggingHole = true;
+				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+				updateStatusMessage("Move KAD point (3D) - drag to reposition");
+				return;
+			}
+		}
+
+		if (selectingHoles) {
+			// Step 2g) Use existing hole selections or try to select a hole via raycasting
+			if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
+				// Use multiple selected holes
+				moveToolSelectedHole = selectedMultipleHoles;
+				isDraggingHole = true;
+				dragPlaneZ = selectedMultipleHoles[0].startZLocation || 0;
+				dragInitialPositions = selectedMultipleHoles.map(function (hole) {
+					return {
+						hole: hole,
+						x: hole.startXLocation,
+						y: hole.startYLocation,
+					};
+				});
+				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+				updateStatusMessage("Moving " + selectedMultipleHoles.length + " holes (3D)");
+				return;
+			} else if (selectedHole) {
+				// Use single selected hole
+				moveToolSelectedHole = [selectedHole];
+				isDraggingHole = true;
+				dragPlaneZ = selectedHole.startZLocation || 0;
+				dragInitialPositions = [
+					{
+						hole: selectedHole,
+						x: selectedHole.startXLocation,
+						y: selectedHole.startYLocation,
+					},
+				];
+				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+				updateStatusMessage("Moving hole " + selectedHole.holeID + " (3D)");
+				return;
+			} else {
+				// Step 2h) No existing selection - try to find a hole in raycast intersects
+				const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
+				console.log("🔧 [MOVE TOOL 3D] findClickedHole result:", clickedHole);
+				if (clickedHole) {
+					console.log("✅ [MOVE TOOL 3D] Starting drag for hole: " + clickedHole.holeID + " in " + clickedHole.entityName);
+					selectedHole = clickedHole;
+					moveToolSelectedHole = [clickedHole];
+					isDraggingHole = true;
+					dragPlaneZ = clickedHole.startZLocation || 0;
+					dragInitialPositions = [
+						{
+							hole: clickedHole,
+							x: clickedHole.startXLocation,
+							y: clickedHole.startYLocation,
+						},
+					];
+					targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+					targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+					targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+					targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+
+					// Step 2h.1) Create highlight IMMEDIATELY (don't wait for renderThreeJS)
+					if (typeof highlightSelectedHoleThreeJS === "function") {
+						highlightSelectedHoleThreeJS(clickedHole, "selected");
+					}
+					
+					// Step 2h.2) Quick render to show highlight
+					if (threeRenderer && threeRenderer.renderer) {
+						threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
+					}
+					
+					updateStatusMessage("Moving hole " + clickedHole.holeID + " (3D)");
+					return;
+			} else {
+				// Clicked empty space - clear selection AND remove highlights
+				console.log("⚠️ [MOVE TOOL 3D] No hole found in intersects - clearing selection");
+				clearAllSelectionState();
+				selectedHole = null;
+				selectedMultipleHoles = [];
+				moveToolSelectedHole = null;
+				
+				// Remove ALL highlights from scene
+				if (threeRenderer && threeRenderer.holesGroup) {
+					const highlightsToRemove = [];
+					threeRenderer.holesGroup.children.forEach(function(child) {
+						if (child.userData && child.userData.type === "selectionHighlight") {
+							highlightsToRemove.push(child);
+						}
+					});
+					highlightsToRemove.forEach(function(highlight) {
+						threeRenderer.holesGroup.remove(highlight);
+						if (highlight.geometry) highlight.geometry.dispose();
+						if (highlight.material) highlight.material.dispose();
+					});
+				}
+				
+				// Call drawData with null to prevent highlight recreation (like Escape key does)
+				if (typeof drawData === "function") {
+					drawData(allBlastHoles, null);
+				}
+				return;
+			}
+			}
+		}
+
+		// If we reach here, nothing was selected
+		return;
+	}
+
+	// Step 3) 2D Mode Logic (existing code)
 	const clientX = event.clientX || (event.touches && event.touches[0].clientX);
 	const clientY = event.clientY || (event.touches && event.touches[0].clientY);
 
@@ -26249,6 +26511,10 @@ function handleMoveToolMouseDown(event) {
 		// Prefer moving a KAD vertex
 		const clickedKAD = getClickedKADObject(clickX, clickY);
 		if (clickedKAD) {
+			// Step 3a) Prevent default and stop propagation (starting drag)
+			event.preventDefault();
+			event.stopPropagation();
+
 			const entity = allKADDrawingsMap.get(clickedKAD.entityName);
 			if (entity && entity.data && entity.data.length > 0) {
 				// Resolve target index: vertex or nearest endpoint of segment
@@ -26307,6 +26573,7 @@ function handleMoveToolMouseDown(event) {
 				selectedKADObject = null;
 				selectedKADPolygon = null;
 				selectedMultipleKADObjects = [];
+				resetAllSelectedStores();
 				drawData(allBlastHoles, selectedHole);
 				return;
 			}
@@ -26315,6 +26582,10 @@ function handleMoveToolMouseDown(event) {
 	if (selectingHoles) {
 		// First priority: Use existing selections without checking for clicked holes
 		if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
+			// Step 3b) Prevent default and stop propagation (starting drag)
+			event.preventDefault();
+			event.stopPropagation();
+
 			// Use multiple selected holes - start dragging immediately
 			moveToolSelectedHole = selectedMultipleHoles;
 			isDraggingHole = true;
@@ -26330,6 +26601,10 @@ function handleMoveToolMouseDown(event) {
 			canvas.addEventListener("mouseup", handleMoveToolMouseUp);
 			canvas.addEventListener("touchend", handleMoveToolMouseUp);
 		} else if (selectedHole) {
+			// Step 3c) Prevent default and stop propagation (starting drag)
+			event.preventDefault();
+			event.stopPropagation();
+
 			// Use single selected hole - start dragging immediately
 			moveToolSelectedHole = [selectedHole];
 			isDraggingHole = true;
@@ -26351,6 +26626,10 @@ function handleMoveToolMouseDown(event) {
 			const clickedHole = getClickedHole(clickX, clickY);
 
 			if (clickedHole) {
+				// Step 3d) Prevent default and stop propagation (starting drag)
+				event.preventDefault();
+				event.stopPropagation();
+
 				// No holes selected but clicked on a hole - select it and start dragging
 				selectedHole = clickedHole;
 				moveToolSelectedHole = [clickedHole];
@@ -26376,6 +26655,7 @@ function handleMoveToolMouseDown(event) {
 				//selectedMultiplePoints = [];
 				selectedMultipleHoles = [];
 				moveToolSelectedHole = null;
+				resetAllSelectedStores();
 				drawData(allBlastHoles, selectedHole);
 			}
 		}
@@ -26397,11 +26677,165 @@ document.addEventListener("keyup", (event) => {
 
 // Handle move tool mouse move - move holes
 function handleMoveToolMouseMove(event) {
-	if (!isDraggingHole || (!moveToolSelectedHole && !moveToolSelectedKAD)) return;
+	console.log("🖱️ [MOVE TOOL MOUSEMOVE] Called - isDraggingHole:", isDraggingHole, "moveToolSelectedHole:", moveToolSelectedHole, "moveToolSelectedKAD:", moveToolSelectedKAD, "moveToolIn3DMode:", moveToolIn3DMode);
+	if (!isDraggingHole || (!moveToolSelectedHole && !moveToolSelectedKAD)) {
+		console.log("❌ [MOVE TOOL MOUSEMOVE] Early return - not dragging or no selection");
+		return;
+	}
 
 	event.preventDefault();
 	event.stopPropagation();
 
+	// Step 4) Check if we're in 3D mode
+	if (moveToolIn3DMode && threeRenderer && interactionManager) {
+		// Step 4a) Create horizontal plane at object's Z elevation (screen-space following)
+		const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -dragPlaneZ);
+
+		// Step 4b) Update raycaster with current mouse position
+		const targetCanvas = threeRenderer.getCanvas();
+		interactionManager.updateMousePosition(event, targetCanvas);
+		const raycaster = interactionManager.raycaster;
+		
+		// Step 4b.1) CRITICAL: Update raycaster ray with new mouse position
+		const camera = threeRenderer.camera;
+		raycaster.setFromCamera(interactionManager.mouse, camera);
+		console.log("🎯 [MOVE TOOL 3D MOVE] Mouse NDC: (", interactionManager.mouse.x.toFixed(3), interactionManager.mouse.y.toFixed(3), ")");
+
+		// Step 4c) Intersect ray with plane to get screen-space position
+		const intersectionPoint = new THREE.Vector3();
+		const didIntersect = raycaster.ray.intersectPlane(plane, intersectionPoint);
+
+		if (!didIntersect) {
+			console.log("❌ [MOVE TOOL 3D MOVE] Ray didn't intersect plane at Z:", dragPlaneZ);
+			return;
+		}
+
+		// Step 4d) Convert from local Three.js coords to world coords
+		// This is the DEFAULT position - object follows mouse in screen space
+		let worldX = intersectionPoint.x + threeLocalOriginX;
+		let worldY = intersectionPoint.y + threeLocalOriginY;
+		console.log("✅ [MOVE TOOL 3D MOVE] Intersection at local:", intersectionPoint.x.toFixed(2), intersectionPoint.y.toFixed(2), "world:", worldX.toFixed(2), worldY.toFixed(2));
+
+		// Step 4e) ONLY if snapping is enabled, check for snap targets
+		let snapResult = null;
+		const snapRadiusPixels = 20; // Fixed pixel radius
+		const snapRadiusWorld = getSnapRadiusInWorldUnits3D(snapRadiusPixels);
+
+		if (snapEnabled) {
+			if (moveToolSelectedHole) {
+				// Step 4f) Moving holes: snap to KAD and surfaces, NOT other holes
+				snapResult = snapToNearestPointExcludingHolesWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusWorld);
+				// Override screen-space position ONLY if snap found
+				if (snapResult && snapResult.snapped) {
+					worldX = snapResult.worldX;
+					worldY = snapResult.worldY;
+				}
+			} else if (moveToolSelectedKAD) {
+				// Step 4g) Moving KAD: use existing 3D snap (snaps to everything including holes)
+				// But exclude the KAD point being moved
+				snapResult = snapToNearestPointWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusWorld);
+				// Override screen-space position ONLY if snap found
+				if (snapResult && snapResult.snapped) {
+					worldX = snapResult.worldX;
+					worldY = snapResult.worldY;
+				}
+			}
+		}
+		// If no snap or snap disabled, worldX/worldY remain as screen-space position
+
+		// Step 4h) Update object position (uses screen-space or snapped position)
+		if (moveToolSelectedHole && dragInitialPositions) {
+			// Update hole position(s)
+			// Calculate reference delta from first hole's initial position
+			const firstHole = dragInitialPositions[0];
+			const deltaX = worldX - firstHole.x;
+			const deltaY = worldY - firstHole.y;
+			console.log("📍 [MOVE TOOL 3D] Moving", dragInitialPositions.length, "hole(s), deltaX:", deltaX.toFixed(2), "deltaY:", deltaY.toFixed(2));
+
+			dragInitialPositions.forEach(function (item) {
+				const hole = item.hole;
+				const newX = parseFloat(item.x) + deltaX;
+				const newY = parseFloat(item.y) + deltaY;
+				console.log("  → Hole", hole.holeID, "from (", item.x.toFixed(2), item.y.toFixed(2), ") to (", newX.toFixed(2), newY.toFixed(2), ")");
+				calculateHoleGeometry(hole, newX, 4); // Parameter 4 for X position
+				calculateHoleGeometry(hole, newY, 5); // Parameter 5 for Y position
+				
+				// Step 4h.1) Update 3D hole position in real-time (without full re-render)
+				if (threeRenderer && threeRenderer.holeMeshMap) {
+					const holeGroup = threeRenderer.holeMeshMap.get(hole.holeID);
+					if (holeGroup) {
+						// CRITICAL: Calculate DELTA in local coords, not absolute position
+						// Hole geometry is already positioned at original collar location
+						// We need to OFFSET the group by the movement delta
+						const originalLocal = worldToThreeLocal(item.x, item.y);
+						const newLocal = worldToThreeLocal(newX, newY);
+						const deltaLocalX = newLocal.x - originalLocal.x;
+						const deltaLocalY = newLocal.y - originalLocal.y;
+						
+						console.log("    3D offset: delta (", deltaLocalX.toFixed(3), deltaLocalY.toFixed(3), ") - was at (", holeGroup.position.x.toFixed(3), holeGroup.position.y.toFixed(3), ")");
+						
+						// Update hole group position by DELTA (not absolute position)
+						holeGroup.position.set(deltaLocalX, deltaLocalY, 0);
+						
+						// Step 4h.1a) Also update highlight position (find and move it)
+						const holeId = hole.entityName + ":::" + hole.holeID;
+						threeRenderer.holesGroup.children.forEach(function(child) {
+							if (child.userData && child.userData.type === "selectionHighlight" && child.userData.holeId === holeId) {
+								// Move highlight by same delta
+								child.position.set(deltaLocalX, deltaLocalY, 0);
+							}
+						});
+						
+						// Mark that we need to update connectors/labels after drag completes
+						holeGroup.userData.needsUpdate = true;
+					}
+				}
+			});
+
+			// Step 4h.2) Trigger render without recreating geometry
+			if (threeRenderer && threeRenderer.renderer) {
+				threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
+			}
+		} else if (moveToolSelectedKAD) {
+			// Step 4i) Update KAD point position
+			console.log("📍 [MOVE TOOL 3D] Moving KAD", moveToolSelectedKAD.entityName, "point", moveToolSelectedKAD.elementIndex, "to worldX:", worldX.toFixed(2), "worldY:", worldY.toFixed(2));
+			const entity = allKADDrawingsMap.get(moveToolSelectedKAD.entityName);
+			if (entity && entity.data && moveToolSelectedKAD.elementIndex < entity.data.length) {
+				const oldX = entity.data[moveToolSelectedKAD.elementIndex].pointXLocation;
+				const oldY = entity.data[moveToolSelectedKAD.elementIndex].pointYLocation;
+				entity.data[moveToolSelectedKAD.elementIndex].pointXLocation = worldX;
+				entity.data[moveToolSelectedKAD.elementIndex].pointYLocation = worldY;
+				// Z stays at dragPlaneZ (no Z movement)
+				entity.data[moveToolSelectedKAD.elementIndex].pointZLocation = dragPlaneZ;
+				console.log("  → KAD point moved from (", oldX.toFixed(2), oldY.toFixed(2), ") to (", worldX.toFixed(2), worldY.toFixed(2), ")");
+
+				// Keep highlight in sync while dragging
+				if (selectedKADObject && selectedKADObject.entityName === moveToolSelectedKAD.entityName && selectedKADObject.elementIndex === moveToolSelectedKAD.elementIndex) {
+					selectedKADObject.pointXLocation = worldX;
+					selectedKADObject.pointYLocation = worldY;
+					selectedKADObject.pointZLocation = dragPlaneZ;
+				}
+
+				// Keep selectedPoint in sync while dragging
+				selectedPoint = entity.data[moveToolSelectedKAD.elementIndex];
+
+				// Step 4i.1) Trigger render without recreating geometry (KAD will be redrawn on full render)
+				// For now, just trigger a quick render - full KAD update happens on mouseup
+				if (threeRenderer && threeRenderer.renderer) {
+					// Mark that KAD needs full update
+					if (!window.kadNeedsUpdate) window.kadNeedsUpdate = new Set();
+					window.kadNeedsUpdate.add(moveToolSelectedKAD.entityName);
+					
+					// Quick render to show any changes
+					threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
+				}
+			}
+		}
+
+		return;
+	}
+
+	// Step 5) 2D Mode Logic (existing code)
 	const clientX = event.clientX || (event.touches && event.touches[0].clientX);
 	const clientY = event.clientY || (event.touches && event.touches[0].clientY);
 	// Calculate movement delta
@@ -26487,12 +26921,85 @@ function handleMoveToolMouseMove(event) {
 // Handle move tool mouse up - stop dragging
 function handleMoveToolMouseUp(event) {
 	if (isDraggingHole) {
+		// Prevent other handlers from running (like 3D click handler)
+		event.preventDefault();
+		event.stopPropagation();
+		
 		isDraggingHole = false;
-		canvas.removeEventListener("mousemove", handleMoveToolMouseMove);
-		canvas.removeEventListener("touchmove", handleMoveToolMouseMove);
-		canvas.removeEventListener("mouseup", handleMoveToolMouseUp);
-		canvas.removeEventListener("touchend", handleMoveToolMouseUp);
 
+		// Step 6) Determine which canvas to remove listeners from
+		const targetCanvas = moveToolIn3DMode ? (threeRenderer ? threeRenderer.getCanvas() : null) : canvas;
+		if (targetCanvas) {
+			targetCanvas.removeEventListener("mousemove", handleMoveToolMouseMove);
+			targetCanvas.removeEventListener("touchmove", handleMoveToolMouseMove);
+			targetCanvas.removeEventListener("mouseup", handleMoveToolMouseUp);
+			targetCanvas.removeEventListener("touchend", handleMoveToolMouseUp);
+		} else {
+			// Fallback: remove from both canvases to be safe
+			canvas.removeEventListener("mousemove", handleMoveToolMouseMove);
+			canvas.removeEventListener("touchmove", handleMoveToolMouseMove);
+			canvas.removeEventListener("mouseup", handleMoveToolMouseUp);
+			canvas.removeEventListener("touchend", handleMoveToolMouseUp);
+		}
+
+		// Step 7) Check if we're in 3D mode
+		if (moveToolIn3DMode) {
+			// Step 7a) 3D Mode: Clear drag plane Z
+			dragPlaneZ = 0;
+
+			// Step 7b) Persist KAD changes if applicable
+			if (moveToolSelectedKAD) {
+				debouncedSaveKAD();
+				debouncedUpdateTreeView();
+				moveToolSelectedKAD = null;
+			}
+
+			// Step 7c) Save hole changes
+			if (moveToolSelectedHole) {
+				debouncedSaveHoles(); // Auto-save holes to IndexedDB
+			}
+
+		// Step 7d) Clear selections AND drag state (BEFORE removing highlights!)
+		clearAllSelectionState(); 
+		selectedHole = null;
+		selectedPoint = null;
+		selectedMultipleHoles = [];
+		moveToolSelectedHole = null;
+		dragInitialPositions = null; // CRITICAL: Clear to prevent wrong hole moving next time
+		
+		// Step 7e) Remove ALL highlights from scene
+		if (threeRenderer && threeRenderer.holesGroup) {
+			const highlightsToRemove = [];
+			threeRenderer.holesGroup.children.forEach(function(child) {
+				if (child.userData && child.userData.type === "selectionHighlight") {
+					highlightsToRemove.push(child);
+				}
+			});
+			highlightsToRemove.forEach(function(highlight) {
+				threeRenderer.holesGroup.remove(highlight);
+				if (highlight.geometry) highlight.geometry.dispose();
+				if (highlight.material) highlight.material.dispose();
+			});
+			console.log("🗑️ [MOVE TOOL] Removed", highlightsToRemove.length, "highlights from scene");
+		}
+
+		// Step 7f) Call drawData with null to prevent highlight recreation (like Escape key does)
+		// This ensures no other code recreates highlights after we remove them
+		if (typeof drawData === "function") {
+			drawData(allBlastHoles, null);
+		}
+
+		// Step 7g) Set flag to prevent click event from re-selecting the hole
+		justFinishedDragging = true;
+		setTimeout(function() {
+			justFinishedDragging = false;
+		}, 100); // Clear flag after 100ms
+
+		console.log("✅ Move Tool mouseup (3D mode) - changes saved");
+		return;
+		}
+
+		// Step 8) 2D Mode Logic (existing code)
 		// Step 13) Persist KAD changes if applicable
 		if (moveToolSelectedKAD) {
 			debouncedSaveKAD();
@@ -26520,12 +27027,14 @@ function handleMoveToolMouseUp(event) {
 				}
 			}
 		}
-		// Clear single selection and multiple selection.
+		// Clear single selection and multiple selection AND drag state
+		clearAllSelectionState();
 		selectedHole = null;
 		selectedPoint = null;
 		//selectedMultiplePoints = []
 		selectedMultipleHoles = [];
 		moveToolSelectedHole = null;
+		dragInitialPositions = null; // CRITICAL: Clear to prevent wrong hole moving next time
 		drawData(allBlastHoles, selectedHole);
 	}
 }
@@ -36511,6 +37020,522 @@ const SNAP_PRIORITIES = {
 	SURFACE_POINT: 11,
 	SURFACE_FACE: 12, // Lowest priority
 };
+
+// Step 1) Snap priorities for Move Tool (holes moving - excludes hole snap targets)
+const MOVE_SNAP_PRIORITIES = {
+	KAD_POINT: 1, // Highest priority
+	KAD_LINE_VERTEX: 2,
+	KAD_POLYGON_VERTEX: 3,
+	KAD_CIRCLE_CENTER: 4,
+	KAD_TEXT_POSITION: 5,
+	KAD_LINE_SEGMENT: 6, // Segments lower priority
+	KAD_POLYGON_SEGMENT: 7,
+	SURFACE_POINT: 8,
+	SURFACE_FACE: 9, // Lowest priority (with interpolation)
+};
+
+// Step 2) Snap function for Move Tool - excludes holes (holes cannot snap to other holes)
+function snapToNearestPointExcludingHoles(rawWorldX, rawWorldY, searchRadius = getSnapToleranceInWorldUnits()) {
+	if (!snapEnabled) {
+		return {
+			worldX: rawWorldX,
+			worldY: rawWorldY,
+			worldZ: drawingZValue || (document.getElementById("drawingElevation") ? document.getElementById("drawingElevation").value : 0),
+			snapped: false,
+			snapTarget: null,
+		};
+	}
+
+	// Search all possible snap targets (excluding holes)
+	const snapCandidates = [];
+
+	// 1) Search KAD Objects (all vertices and segments)
+	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+		allKADDrawingsMap.forEach(function (entity, entityName) {
+			// Skip hidden KAD entities
+			if (!isEntityVisible(entityName)) return;
+
+			// Check vertices
+			entity.data.forEach(function (dataPoint) {
+				const dist = Math.sqrt(Math.pow(dataPoint.pointXLocation - rawWorldX, 2) + Math.pow(dataPoint.pointYLocation - rawWorldY, 2));
+				if (dist <= searchRadius) {
+					// Determine type based on entity type
+					let snapType = "KAD_POINT";
+					let priority = MOVE_SNAP_PRIORITIES.KAD_POINT;
+
+					if (entity.entityType === "point") {
+						snapType = "KAD_POINT";
+						priority = MOVE_SNAP_PRIORITIES.KAD_POINT;
+					} else if (entity.entityType === "line") {
+						snapType = "KAD_LINE_VERTEX";
+						priority = MOVE_SNAP_PRIORITIES.KAD_LINE_VERTEX;
+					} else if (entity.entityType === "poly") {
+						snapType = "KAD_POLYGON_VERTEX";
+						priority = MOVE_SNAP_PRIORITIES.KAD_POLYGON_VERTEX;
+					} else if (entity.entityType === "circle") {
+						snapType = "KAD_CIRCLE_CENTER";
+						priority = MOVE_SNAP_PRIORITIES.KAD_CIRCLE_CENTER;
+					} else if (entity.entityType === "text") {
+						snapType = "KAD_TEXT_POSITION";
+						priority = MOVE_SNAP_PRIORITIES.KAD_TEXT_POSITION;
+					}
+
+					snapCandidates.push({
+						distance: dist,
+						point: {
+							x: dataPoint.pointXLocation,
+							y: dataPoint.pointYLocation,
+							z: dataPoint.pointZLocation,
+						},
+						type: snapType,
+						priority: priority,
+						description: entity.entityType + " " + (dataPoint.pointID || "item"),
+					});
+				}
+			});
+
+			// Check segments for lines and polygons
+			if (entity.entityType === "line" || entity.entityType === "poly") {
+				const points = entity.data;
+				if (points.length >= 2) {
+					const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
+
+					for (let i = 0; i < numSegments; i++) {
+						const p1 = points[i];
+						const p2 = points[(i + 1) % points.length]; // Wrap for polygons
+
+						// Calculate distance from point to line segment
+						const segmentDistance = pointToLineSegmentDistance(rawWorldX, rawWorldY, p1.pointXLocation, p1.pointYLocation, p2.pointXLocation, p2.pointYLocation);
+
+						if (segmentDistance <= searchRadius) {
+							// Find the closest point on the segment
+							const closestPoint = getClosestPointOnLineSegment(rawWorldX, rawWorldY, p1.pointXLocation, p1.pointYLocation, p2.pointXLocation, p2.pointYLocation);
+
+							// Interpolate Z value between endpoints
+							const t = getInterpolationParameter(closestPoint.x, closestPoint.y, p1.pointXLocation, p1.pointYLocation, p2.pointXLocation, p2.pointYLocation);
+							const interpolatedZ = p1.pointZLocation + t * (p2.pointZLocation - p1.pointZLocation);
+
+							const segmentType = entity.entityType === "line" ? "KAD_LINE_SEGMENT" : "KAD_POLYGON_SEGMENT";
+							const priority = MOVE_SNAP_PRIORITIES[segmentType];
+
+							snapCandidates.push({
+								distance: segmentDistance,
+								point: {
+									x: closestPoint.x,
+									y: closestPoint.y,
+									z: interpolatedZ,
+								},
+								type: segmentType,
+								priority: priority,
+								description: entity.entityType + " segment " + (i + 1),
+							});
+						}
+					}
+				}
+			}
+		});
+	}
+
+	// 2) Search Surface Points (from all loaded surfaces)
+	if (loadedSurfaces && loadedSurfaces.size > 0) {
+		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
+			if (surface.visible && surface.points && surface.points.length > 0) {
+				surface.points.forEach(function (surfacePoint, index) {
+					const dist = Math.sqrt(Math.pow(surfacePoint.x - rawWorldX, 2) + Math.pow(surfacePoint.y - rawWorldY, 2));
+					if (dist <= searchRadius) {
+						snapCandidates.push({
+							distance: dist,
+							point: {
+								x: surfacePoint.x,
+								y: surfacePoint.y,
+								z: surfacePoint.z,
+							},
+							type: "SURFACE_POINT",
+							priority: MOVE_SNAP_PRIORITIES.SURFACE_POINT,
+							description: surface.name + " point " + index,
+						});
+					}
+				});
+			}
+
+			// 3) Search Surface Faces (triangulated mesh) with Z interpolation
+			if (surface.visible && surface.triangles && surface.triangles.length > 0) {
+				surface.triangles.forEach(function (triangle, triIndex) {
+					if (!triangle.vertices || triangle.vertices.length !== 3) return;
+
+					const v1 = triangle.vertices[0];
+					const v2 = triangle.vertices[1];
+					const v3 = triangle.vertices[2];
+
+					// Project point onto triangle plane
+					const projected = projectPointOntoTriangle(rawWorldX, rawWorldY, v1, v2, v3);
+
+					if (projected && projected.isInside && projected.distance <= searchRadius) {
+						snapCandidates.push({
+							distance: projected.distance,
+							point: {
+								x: projected.x,
+								y: projected.y,
+								z: projected.z,
+							},
+							type: "SURFACE_FACE",
+							priority: MOVE_SNAP_PRIORITIES.SURFACE_FACE,
+							description: surface.name + " face " + triIndex,
+						});
+					}
+				});
+			}
+		}
+	}
+
+	// Find the best snap candidate (highest priority, then closest 2D distance)
+	if (snapCandidates.length > 0) {
+		snapCandidates.sort(function (a, b) {
+			if (a.priority !== b.priority) {
+				return a.priority - b.priority;
+			}
+			return a.distance - b.distance;
+		});
+
+		const bestCandidate = snapCandidates[0];
+
+		return {
+			worldX: bestCandidate.point.x,
+			worldY: bestCandidate.point.y,
+			worldZ: bestCandidate.point.z || drawingZValue || 0,
+			snapped: true,
+			snapTarget: bestCandidate,
+		};
+	}
+
+	// No snap target found - use raw coordinates
+	return {
+		worldX: rawWorldX,
+		worldY: rawWorldY,
+		worldZ: drawingZValue || (document.getElementById("drawingElevation") ? document.getElementById("drawingElevation").value : 0),
+		snapped: false,
+		snapTarget: null,
+	};
+}
+
+// Helper function: Project point onto triangle and check if inside
+function projectPointOntoTriangle(px, py, v1, v2, v3) {
+	// Calculate barycentric coordinates
+	const v0x = v3.x - v1.x;
+	const v0y = v3.y - v1.y;
+	const v1x = v2.x - v1.x;
+	const v1y = v2.y - v1.y;
+	const v2x = px - v1.x;
+	const v2y = py - v1.y;
+
+	const dot00 = v0x * v0x + v0y * v0y;
+	const dot01 = v0x * v1x + v0y * v1y;
+	const dot02 = v0x * v2x + v0y * v2y;
+	const dot11 = v1x * v1x + v1y * v1y;
+	const dot12 = v1x * v2x + v1y * v2y;
+
+	const invDenom = 1 / (dot00 * dot11 - dot01 * dot01);
+	const u = (dot11 * dot02 - dot01 * dot12) * invDenom;
+	const v = (dot00 * dot12 - dot01 * dot02) * invDenom;
+
+	// Check if point is inside triangle
+	const isInside = u >= 0 && v >= 0 && u + v <= 1;
+
+	if (!isInside) {
+		return null;
+	}
+
+	// Interpolate Z using barycentric coordinates
+	const w = 1 - u - v;
+	const z = w * v1.z + u * v3.z + v * v2.z;
+
+	// Calculate distance from original point to projected point (2D distance)
+	const distance = Math.sqrt(Math.pow(px - px, 2) + Math.pow(py - py, 2)); // Always 0 since we're on the triangle
+
+	return {
+		x: px,
+		y: py,
+		z: z,
+		isInside: true,
+		distance: 0, // Point is projected onto triangle, so 2D distance is 0
+	};
+}
+
+// Step 3) 3D variant: Snap function for Move Tool with ray-based snapping (cylindrical snap)
+// Excludes holes - for moving holes in 3D mode
+function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRadius) {
+	if (!snapEnabled) {
+		return {
+			snapped: false,
+			snapTarget: null,
+		};
+	}
+
+	const snapCandidates = [];
+
+	// Step 3a) Helper functions for coordinate conversion
+	const worldToLocal = function (worldX, worldY, worldZ) {
+		if (typeof window.worldToThreeLocal === "function") {
+			const local = window.worldToThreeLocal(worldX, worldY);
+			return { x: local.x, y: local.y, z: worldZ || 0 };
+		}
+		return { x: worldX, y: worldY, z: worldZ || 0 };
+	};
+
+	// Step 3b) Search KAD Objects (vertices and segments) - convert to local coords for ray comparison
+	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+		allKADDrawingsMap.forEach(function (entity, entityName) {
+			// Skip hidden KAD entities
+			if (!isEntityVisible(entityName)) return;
+
+			// Check vertices
+			entity.data.forEach(function (dataPoint) {
+				// Convert world coords to local for ray comparison
+				const pointLocal = worldToLocal(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || 0);
+				const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
+
+				if (pointResult.distance <= snapRadius && pointResult.rayT > 0) {
+					// Determine type and priority
+					let snapType = "KAD_POINT";
+					let priority = MOVE_SNAP_PRIORITIES.KAD_POINT;
+
+					if (entity.entityType === "point") {
+						snapType = "KAD_POINT";
+						priority = MOVE_SNAP_PRIORITIES.KAD_POINT;
+					} else if (entity.entityType === "line") {
+						snapType = "KAD_LINE_VERTEX";
+						priority = MOVE_SNAP_PRIORITIES.KAD_LINE_VERTEX;
+					} else if (entity.entityType === "poly") {
+						snapType = "KAD_POLYGON_VERTEX";
+						priority = MOVE_SNAP_PRIORITIES.KAD_POLYGON_VERTEX;
+					} else if (entity.entityType === "circle") {
+						snapType = "KAD_CIRCLE_CENTER";
+						priority = MOVE_SNAP_PRIORITIES.KAD_CIRCLE_CENTER;
+					} else if (entity.entityType === "text") {
+						snapType = "KAD_TEXT_POSITION";
+						priority = MOVE_SNAP_PRIORITIES.KAD_TEXT_POSITION;
+					}
+
+					// Return actual object world coordinates
+					snapCandidates.push({
+						distance: pointResult.distance,
+						rayT: pointResult.rayT,
+						point: { x: dataPoint.pointXLocation, y: dataPoint.pointYLocation, z: dataPoint.pointZLocation || 0 },
+						type: snapType,
+						priority: priority,
+						description: entity.entityType + " " + (dataPoint.pointID || "item"),
+					});
+				}
+			});
+
+			// Check segments for lines and polygons
+			if (entity.entityType === "line" || entity.entityType === "poly") {
+				const points = entity.data;
+				if (points.length >= 2) {
+					const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
+
+					for (let i = 0; i < numSegments; i++) {
+						const p1 = points[i];
+						const p2 = points[(i + 1) % points.length];
+
+						// Sample points along the segment for 3D ray snapping
+						const samples = 10;
+						for (let s = 0; s <= samples; s++) {
+							const t = s / samples;
+							// Calculate sample point in world coordinates
+							const samplePointWorld = {
+								x: p1.pointXLocation + t * (p2.pointXLocation - p1.pointXLocation),
+								y: p1.pointYLocation + t * (p2.pointYLocation - p1.pointYLocation),
+								z: (p1.pointZLocation || 0) + t * ((p2.pointZLocation || 0) - (p1.pointZLocation || 0)),
+							};
+
+							// Convert sample point to local coords for ray comparison
+							const samplePointLocal = worldToLocal(samplePointWorld.x, samplePointWorld.y, samplePointWorld.z);
+							const segmentResult = distanceFromPointToRay(samplePointLocal, rayOrigin, rayDirection);
+
+							if (segmentResult.distance <= snapRadius && segmentResult.rayT > 0) {
+								const segmentType = entity.entityType === "line" ? "KAD_LINE_SEGMENT" : "KAD_POLYGON_SEGMENT";
+								const priority = MOVE_SNAP_PRIORITIES[segmentType];
+
+								// Return actual segment sample point in world coordinates
+								snapCandidates.push({
+									distance: segmentResult.distance,
+									rayT: segmentResult.rayT,
+									point: samplePointWorld,
+									type: segmentType,
+									priority: priority,
+									description: entity.entityType + " segment " + (i + 1),
+								});
+							}
+						}
+					}
+				}
+			}
+		});
+	}
+
+	// Step 3c) Search Surface Points (from all loaded surfaces)
+	if (loadedSurfaces && loadedSurfaces.size > 0) {
+		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
+			if (surface.visible && surface.points && surface.points.length > 0) {
+				surface.points.forEach(function (surfacePoint, index) {
+					// Convert world coords to local for ray comparison
+					const pointLocal = worldToLocal(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0);
+					const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
+
+					if (pointResult.distance <= snapRadius && pointResult.rayT > 0) {
+						// Return actual object world coordinates
+						snapCandidates.push({
+							distance: pointResult.distance,
+							rayT: pointResult.rayT,
+							point: { x: surfacePoint.x, y: surfacePoint.y, z: surfacePoint.z || 0 },
+							type: "SURFACE_POINT",
+							priority: MOVE_SNAP_PRIORITIES.SURFACE_POINT,
+							description: surface.name + " point " + index,
+						});
+					}
+				});
+			}
+
+			// Step 3d) Search Surface Faces (triangulated mesh) with ray intersection and Z interpolation
+			if (surface.visible && surface.triangles && surface.triangles.length > 0) {
+				surface.triangles.forEach(function (triangle, triIndex) {
+					if (!triangle.vertices || triangle.vertices.length !== 3) return;
+
+					const v1 = triangle.vertices[0];
+					const v2 = triangle.vertices[1];
+					const v3 = triangle.vertices[2];
+
+					// Convert triangle vertices to local coords for ray comparison
+					const v1Local = worldToLocal(v1.x, v1.y, v1.z || 0);
+					const v2Local = worldToLocal(v2.x, v2.y, v2.z || 0);
+					const v3Local = worldToLocal(v3.x, v3.y, v3.z || 0);
+
+					// Perform ray-triangle intersection
+					const intersection = rayTriangleIntersection(rayOrigin, rayDirection, v1Local, v2Local, v3Local);
+
+					if (intersection && intersection.t > 0) {
+						// Calculate perpendicular distance from ray to intersection point
+						const dist = 0; // Ray intersects triangle, so distance is 0
+
+						if (dist <= snapRadius) {
+							// Convert intersection point back to world coordinates
+							// Use barycentric coordinates to interpolate world position
+							const u = intersection.u;
+							const v = intersection.v;
+							const w = 1 - u - v;
+
+							const worldX = w * v1.x + u * v2.x + v * v3.x;
+							const worldY = w * v1.y + u * v2.y + v * v3.y;
+							const worldZ = w * v1.z + u * v2.z + v * v3.z;
+
+							snapCandidates.push({
+								distance: dist,
+								rayT: intersection.t,
+								point: { x: worldX, y: worldY, z: worldZ },
+								type: "SURFACE_FACE",
+								priority: MOVE_SNAP_PRIORITIES.SURFACE_FACE,
+								description: surface.name + " face " + triIndex,
+							});
+						}
+					}
+				});
+			}
+		}
+	}
+
+	// Step 3e) Find the best snap candidate
+	// Sort by: 1) Priority (lower number = higher priority), 2) Distance along ray (closer to camera)
+	if (snapCandidates.length > 0) {
+		snapCandidates.sort(function (a, b) {
+			if (a.priority !== b.priority) {
+				return a.priority - b.priority; // Lower priority number wins
+			}
+			return a.rayT - b.rayT; // Closer to camera wins
+		});
+
+		const bestCandidate = snapCandidates[0];
+
+		console.log("🎯 [3D MOVE SNAP] Snapped to: " + bestCandidate.type + " (" + bestCandidate.description + ") | Priority: " + bestCandidate.priority);
+
+		return {
+			worldX: bestCandidate.point.x,
+			worldY: bestCandidate.point.y,
+			worldZ: bestCandidate.point.z,
+			snapped: true,
+			snapTarget: bestCandidate,
+		};
+	}
+
+	// No snap target found
+	return {
+		snapped: false,
+		snapTarget: null,
+	};
+}
+
+// Helper function: Ray-triangle intersection using Möller-Trumbore algorithm
+function rayTriangleIntersection(rayOrigin, rayDir, v0, v1, v2) {
+	const EPSILON = 0.0000001;
+
+	// Edge vectors
+	const edge1 = {
+		x: v1.x - v0.x,
+		y: v1.y - v0.y,
+		z: v1.z - v0.z,
+	};
+	const edge2 = {
+		x: v2.x - v0.x,
+		y: v2.y - v0.y,
+		z: v2.z - v0.z,
+	};
+
+	// Begin calculating determinant - also used to calculate u parameter
+	const h = {
+		x: rayDir.y * edge2.z - rayDir.z * edge2.y,
+		y: rayDir.z * edge2.x - rayDir.x * edge2.z,
+		z: rayDir.x * edge2.y - rayDir.y * edge2.x,
+	};
+
+	// If determinant is near zero, ray lies in plane of triangle
+	const a = edge1.x * h.x + edge1.y * h.y + edge1.z * h.z;
+	if (a > -EPSILON && a < EPSILON) {
+		return null; // Ray is parallel to triangle
+	}
+
+	const f = 1.0 / a;
+	const s = {
+		x: rayOrigin.x - v0.x,
+		y: rayOrigin.y - v0.y,
+		z: rayOrigin.z - v0.z,
+	};
+
+	const u = f * (s.x * h.x + s.y * h.y + s.z * h.z);
+	if (u < 0.0 || u > 1.0) {
+		return null;
+	}
+
+	const q = {
+		x: s.y * edge1.z - s.z * edge1.y,
+		y: s.z * edge1.x - s.x * edge1.z,
+		z: s.x * edge1.y - s.y * edge1.x,
+	};
+
+	const v = f * (rayDir.x * q.x + rayDir.y * q.y + rayDir.z * q.z);
+	if (v < 0.0 || u + v > 1.0) {
+		return null;
+	}
+
+	// At this stage we can compute t to find out where the intersection point is on the line
+	const t = f * (edge2.x * q.x + edge2.y * q.y + edge2.z * q.z);
+
+	if (t > EPSILON) {
+		// Ray intersection
+		return { t: t, u: u, v: v };
+	}
+
+	return null; // Line intersection but not a ray intersection
+}
 // Add this new function before snapToNearestPoint
 // Add this new function before snapToNearestPoint
 function snapToNearestPointExcludingKAD(rawWorldX, rawWorldY, excludeEntityName, excludeElementIndex, searchRadius = getSnapToleranceInWorldUnits()) {
@@ -37037,7 +38062,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
 		const bestCandidate = snapCandidates[0];
 
 		// Debug: Log snap success
-		console.log("🎯 [3D SNAP] Snapped to:", bestCandidate.type, "(" + bestCandidate.description + ") | Priority:", bestCandidate.priority, "| Distance:", bestCandidate.distance.toFixed(2));
+		if (developerModeEnabled){console.log("🎯 [3D SNAP] Snapped to:", bestCandidate.type, "(" + bestCandidate.description + ") | Priority:", bestCandidate.priority, "| Distance:", bestCandidate.distance.toFixed(2));}
 
 		return {
 			worldX: bestCandidate.point.x,

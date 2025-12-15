@@ -18,7 +18,7 @@ export class InteractionManager {
 		// Step 2) Store currently hovered object
 		this.hoveredObject = null;
 		this.hoveredHole = null;
-		
+
 		// Step 2a) Track warning messages to prevent spam
 		this.lastWarningTime = 0;
 		this.warningThrottle = 1000; // Only show warning once per second
@@ -53,7 +53,7 @@ export class InteractionManager {
 		const snapTolerancePixels = window.snapRadiusPixels || 20;
 		const currentScale = window.currentScale || 5;
 		const thresholdWorld = (snapTolerancePixels / currentScale) * 0.5;
-		
+
 		// Step 4a.2) Configure raycaster parameters for better line/point detection
 		this.raycaster.params.Line = { threshold: thresholdWorld };
 		this.raycaster.params.Points = { threshold: thresholdWorld };
@@ -64,7 +64,7 @@ export class InteractionManager {
 
 		// Debug: Log raycast details
 		if (intersects.length > 0) {
-			//console.log("🔍 Raycast hit", intersects.length, "objects. First:", intersects[0].object.userData, "distance:", intersects[0].distance.toFixed(2));
+			//if (developerModeEnabled) {console.log("🔍 Raycast hit", intersects.length, "objects. First:", intersects[0].object.userData, "distance:", intersects[0].distance.toFixed(2));}
 		}
 
 		return intersects;
@@ -97,10 +97,14 @@ export class InteractionManager {
 				// Match against the combined identifier
 				const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === userData.holeId);
 				if (hole) {
-					console.log("🎯 Clicked hole:", hole.holeID, "in", hole.entityName, "at distance:", intersect.distance.toFixed(2));
+					if (developerModeEnabled) {
+						console.log("🎯 Clicked hole:", hole.holeID, "in", hole.entityName, "at distance:", intersect.distance.toFixed(2));
+					}
 					return hole;
 				} else {
-					console.log("⚠️ Could not find hole with holeId:", userData.holeId);
+					if (developerModeEnabled) {
+						console.log("⚠️ Could not find hole with holeId:", userData.holeId);
+					}
 				}
 			}
 
@@ -108,7 +112,9 @@ export class InteractionManager {
 			if (userData && userData.type === "holeToe" && userData.holeId) {
 				const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === userData.holeId);
 				if (hole) {
-					console.log("🎯 Clicked hole toe:", hole.holeID);
+					if (developerModeEnabled) {
+						console.log("🎯 Clicked hole toe:", hole.holeID);
+					}
 					return hole;
 				}
 			}
@@ -119,7 +125,9 @@ export class InteractionManager {
 				if (parentUserData && parentUserData.type === "hole" && parentUserData.holeId) {
 					const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === parentUserData.holeId);
 					if (hole) {
-						console.log("🎯 Clicked hole (via parent):", hole.holeID, "in", hole.entityName);
+						if (developerModeEnabled) {
+							console.log("🎯 Clicked hole (via parent):", hole.holeID, "in", hole.entityName);
+						}
 						return hole;
 					}
 				}
@@ -140,7 +148,9 @@ export class InteractionManager {
 			if (userData && userData.type && userData.type.startsWith("kad")) {
 				const kadId = userData.kadId;
 				if (kadId) {
-					console.log("🎯 Clicked KAD object:", userData.type, kadId);
+					if (developerModeEnabled) {
+						console.log("🎯 Clicked KAD object:", userData.type, kadId);
+					}
 					return { type: userData.type, id: kadId, userData: userData };
 				}
 			}
@@ -170,7 +180,9 @@ export class InteractionManager {
 
 			// Step 6.5b) Check if this object is a surface
 			if (userData && userData.type === "surface" && userData.surfaceId) {
-				console.log("🎯 Clicked surface:", userData.surfaceId, "at distance:", intersect.distance.toFixed(2));
+				if (developerModeEnabled) {
+					console.log("🎯 Clicked surface:", userData.surfaceId, "at distance:", intersect.distance.toFixed(2));
+				}
 				return userData.surfaceId;
 			}
 		}
@@ -199,7 +211,9 @@ export class InteractionManager {
 
 			// Step 6.6b) Check if this object is an image
 			if (userData && userData.type === "image" && userData.imageId) {
-				console.log("🎯 Clicked image:", userData.imageId, "at distance:", intersect.distance.toFixed(2));
+				if (developerModeEnabled) {
+					console.log("🎯 Clicked image:", userData.imageId, "at distance:", intersect.distance.toFixed(2));
+				}
 				return userData.imageId;
 			}
 		}
@@ -229,14 +243,16 @@ export class InteractionManager {
 
 		// Step 7c) Validate the result before returning
 		if (!isFinite(worldX) || !isFinite(worldY) || !isFinite(worldZ)) {
-			console.warn("getWorldPosition: Invalid world coordinates", {
-				point: point,
-				originX: originX,
-				originY: originY,
-				worldX: worldX,
-				worldY: worldY,
-				worldZ: worldZ,
-			});
+			if (developerModeEnabled) {
+				console.warn("getWorldPosition: Invalid world coordinates", {
+					point: point,
+					originX: originX,
+					originY: originY,
+					worldX: worldX,
+					worldY: worldY,
+					worldZ: worldZ,
+				});
+			}
 			return null;
 		}
 
@@ -250,7 +266,7 @@ export class InteractionManager {
 	// view direction. This is the CORRECT method for 3D cursor positioning when
 	// NOT raycasting an object.
 	//
-	// DO NOT replace calls to getMouseWorldPositionOnViewPlane() with 
+	// DO NOT replace calls to getMouseWorldPositionOnViewPlane() with
 	// getMouseWorldPositionOnPlane() for cursor/torus positioning.
 	//
 	// getMouseWorldPositionOnViewPlane() = plane perpendicular to camera (CORRECT)
@@ -259,7 +275,7 @@ export class InteractionManager {
 	// This has been incorrectly reverted multiple times. The 3D cursor should follow
 	// the camera view plane, NOT be stuck on a horizontal XY plane at Z=0.
 	//=============================================================================
-	
+
 	// Step 7.4b) Get mouse world position on camera view plane (frustum plane)
 	// This returns position on a plane perpendicular to camera view direction
 	// passing through the orbit center or specified point
@@ -295,11 +311,13 @@ export class InteractionManager {
 
 		if (!hasIntersection) {
 			// Step 7.4b.6) Fallback: project to plane center
-			console.warn("View plane intersection failed - using plane center");
+			if (developerModeEnabled) {
+				console.warn("View plane intersection failed - using plane center");
+			}
 			return {
 				x: planeCenter.x,
 				y: planeCenter.y,
-				z: planeCenter.z
+				z: planeCenter.z,
 			};
 		}
 
@@ -341,21 +359,23 @@ export class InteractionManager {
 				// Unproject at Z=0 (near plane) and Z=1 (far plane) to get ray direction
 				const near = new THREE.Vector3(this.mouse.x, this.mouse.y, 0);
 				near.unproject(currentCamera);
-				
+
 				const far = new THREE.Vector3(this.mouse.x, this.mouse.y, 1);
 				far.unproject(currentCamera);
-				
+
 				// Calculate ray direction
 				const direction = new THREE.Vector3().subVectors(far, near).normalize();
-				
+
 				// Find where ray intersects Z = planeZ
 				// ray: p = near + t * direction
 				// Solve for t where z = planeZ:  near.z + t * direction.z = planeZ
 				const t = (planeZ - near.z) / direction.z;
-				
+
 				intersectionPoint.copy(near).addScaledVector(direction, t);
-				
-				console.log("✅ Using orthographic unprojection fallback at Z=" + planeZ);
+
+				if (developerModeEnabled) {
+					console.log("✅ Using orthographic unprojection fallback at Z=" + planeZ);
+				}
 			} else {
 				// Step 7.5d.2) Debug why intersection failed for perspective camera (throttled)
 				const now = Date.now();
@@ -364,17 +384,19 @@ export class InteractionManager {
 					const rayDir = this.raycaster.ray.direction;
 					const planeNormal = plane.normal;
 					const dotProduct = rayDir.dot(planeNormal);
-					
-					console.warn("getMouseWorldPositionOnPlane: No plane intersection", {
-						planeZ: planeZ,
-						rayOrigin: this.raycaster.ray.origin.toArray(),
-						rayDirection: rayDir.toArray(),
-						planeNormal: planeNormal.toArray(),
-						planeConstant: plane.constant,
-						dotProduct: dotProduct,
-						cameraPosition: currentCamera.position.toArray(),
-						cameraRotation: currentCamera.rotation.toArray()
-					});
+
+					if (developerModeEnabled) {
+						console.warn("getMouseWorldPositionOnPlane: No plane intersection", {
+							planeZ: planeZ,
+							rayOrigin: this.raycaster.ray.origin.toArray(),
+							rayDirection: rayDir.toArray(),
+							planeNormal: planeNormal.toArray(),
+							planeConstant: plane.constant,
+							dotProduct: dotProduct,
+							cameraPosition: currentCamera.position.toArray(),
+							cameraRotation: currentCamera.rotation.toArray(),
+						});
+					}
 				}
 				return null;
 			}
@@ -390,12 +412,14 @@ export class InteractionManager {
 
 		// Step 7.5f) Validate result
 		if (!isFinite(worldX) || !isFinite(worldY) || !isFinite(worldZ)) {
-			console.warn("getMouseWorldPositionOnPlane: Invalid coordinates", {
-				intersectionPoint: intersectionPoint,
-				worldX: worldX,
-				worldY: worldY,
-				worldZ: worldZ,
-			});
+			if (developerModeEnabled) {
+				console.warn("getMouseWorldPositionOnPlane: Invalid coordinates", {
+					intersectionPoint: intersectionPoint,
+					worldX: worldX,
+					worldY: worldY,
+					worldZ: worldZ,
+				});
+			}
 			return null;
 		}
 

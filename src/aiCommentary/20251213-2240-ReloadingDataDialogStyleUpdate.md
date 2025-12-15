@@ -78,3 +78,5 @@ progressContent.innerHTML = '<p>Loading saved data from IndexedDB</p><p>Please w
 - [x] No console errors
 - [x] Matches OBJ loader appearance
 
+
+

@@ -4,7 +4,7 @@
     "description": "Kirra 2D",
     "main": "kirra.js",
     "scripts": {
-        "dev": "cross-env BROWSER=firefox vite --open /kirra.html",
+        "dev": "cross-env BROWSER=Chrome vite --open /kirra.html",
         "build": "vite build"
     },
     "keywords": [],

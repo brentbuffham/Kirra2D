@@ -335,7 +335,9 @@ export class ThreeRenderer {
 	// Step 16) Set orbit center Z coordinate (backward compatibility - use setOrbitCenter for full 3D)
 	setOrbitCenterZ(z) {
 		this.orbitCenterZ = z || 0;
-		console.log("🎯 Orbit center Z set to:", this.orbitCenterZ);
+		if (developerModeEnabled) {
+			console.log("🎯 Orbit center Z set to:", this.orbitCenterZ);
+		}
 	}
 
 	// Step 16a) Update lighting based on bearing and elevation
@@ -398,18 +400,24 @@ export class ThreeRenderer {
 		if (this.clippingPlaneNearHelper) {
 			const clippingPlaneNear = new THREE.Plane(new THREE.Vector3(0, 0, -1), -near);
 			this.clippingPlaneNearHelper.plane.copy(clippingPlaneNear);
-			console.log("✂️ Near clipping plane helper updated to:", near);
+			if (developerModeEnabled) {
+				console.log("✂️ Near clipping plane helper updated to:", near);
+			}
 		}
 
 		if (this.clippingPlaneFarHelper) {
 			const clippingPlaneFar = new THREE.Plane(new THREE.Vector3(0, 0, 1), -far);
 			this.clippingPlaneFarHelper.plane.copy(clippingPlaneFar);
-			console.log("✂️ Far clipping plane helper updated to:", far);
+			if (developerModeEnabled) {
+				console.log("✂️ Far clipping plane helper updated to:", far);
+			}
 		}
 
 		// Step 16b4) Request render
 		this.requestRender();
-		console.log("✂️ Clipping planes updated: near=" + near + ", far=" + far);
+		if (developerModeEnabled) {
+			console.log("✂️ Clipping planes updated: near=" + near + ", far=" + far);
+		}
 	}
 
 	// Step 16c) Update ambient light intensity
@@ -444,17 +452,23 @@ export class ThreeRenderer {
 		// - Shadow bias
 		// - Shadow map resolution
 		// - Shadow camera bounds
-		console.log("🌑 Shadow intensity updated to:", intensity);
+		if (developerModeEnabled) {
+			console.log("🌑 Shadow intensity updated to:", intensity);
+		}
 	}
 
 	// Step 16f) Set clipping plane visualization
 	setClippingPlaneVisualization(visible) {
-		console.log("✂️ setClippingPlaneVisualization called with visible =", visible, "type:", typeof visible);
+		if (developerModeEnabled) {
+			console.log("✂️ setClippingPlaneVisualization called with visible =", visible, "type:", typeof visible);
+		}
 
 		if (visible) {
 			// Step 16f.1) Create near clipping plane helper if it doesn't exist
 			if (!this.clippingPlaneNearHelper) {
-				console.log("✂️ Creating new near clipping plane helper");
+				if (developerModeEnabled) {
+					console.log("✂️ Creating new near clipping plane helper");
+				}
 				const nearDistance = this.camera.near || -50000;
 				const clippingPlaneNear = new THREE.Plane(new THREE.Vector3(0, 0, -1), -nearDistance);
 				this.clippingPlaneNearHelper = new THREE.PlaneHelper(clippingPlaneNear, 5000, 0xff3333);
@@ -467,7 +481,9 @@ export class ThreeRenderer {
 
 			// Step 16f.2) Create far clipping plane helper if it doesn't exist
 			if (!this.clippingPlaneFarHelper) {
-				console.log("✂️ Creating new far clipping plane helper");
+				if (developerModeEnabled) {
+					console.log("✂️ Creating new far clipping plane helper");
+				}
 				const farDistance = this.camera.far || 50000;
 				const clippingPlaneFar = new THREE.Plane(new THREE.Vector3(0, 0, 1), -farDistance);
 				this.clippingPlaneFarHelper = new THREE.PlaneHelper(clippingPlaneFar, 5000, 0x3333ff);
@@ -480,7 +496,9 @@ export class ThreeRenderer {
 
 			this.clippingPlaneNearHelper.visible = true;
 			this.clippingPlaneFarHelper.visible = true;
-			console.log("✂️ Clipping plane helpers are now visible");
+			if (developerModeEnabled) {
+				console.log("✂️ Clipping plane helpers are now visible");
+			}
 		} else {
 			// Step 16f.3) Hide and dispose clipping plane helpers
 			if (this.clippingPlaneNearHelper) {
@@ -488,7 +506,9 @@ export class ThreeRenderer {
 				if (this.clippingPlaneNearHelper.geometry) this.clippingPlaneNearHelper.geometry.dispose();
 				if (this.clippingPlaneNearHelper.material) this.clippingPlaneNearHelper.material.dispose();
 				this.clippingPlaneNearHelper = null;
-				console.log("✂️ Near clipping plane helper disposed");
+				if (developerModeEnabled) {
+					console.log("✂️ Near clipping plane helper disposed");
+				}
 			}
 
 			if (this.clippingPlaneFarHelper) {
@@ -496,27 +516,37 @@ export class ThreeRenderer {
 				if (this.clippingPlaneFarHelper.geometry) this.clippingPlaneFarHelper.geometry.dispose();
 				if (this.clippingPlaneFarHelper.material) this.clippingPlaneFarHelper.material.dispose();
 				this.clippingPlaneFarHelper = null;
-				console.log("✂️ Far clipping plane helper disposed");
+				if (developerModeEnabled) {
+					console.log("✂️ Far clipping plane helper disposed");
+				}
 			}
 		}
 
 		this.requestRender();
-		console.log("✂️ Clipping plane visualization final state:", visible ? "ON" : "OFF");
+		if (developerModeEnabled) {
+			console.log("✂️ Clipping plane visualization final state:", visible ? "ON" : "OFF");
+		}
 	}
 
 	// Step 16g) Set grid visibility
 	setGridVisible(visible) {
-		console.log("📐 setGridVisible called with visible =", visible, "type:", typeof visible);
+		if (developerModeEnabled) {
+			console.log("📐 setGridVisible called with visible =", visible, "type:", typeof visible);
+		}
 
 		if (visible) {
 			// Step 16g.1) Show grid if exists, or create it
 			if (this.gridHelper) {
 				// Step 16g.1a) Ensure grid is visible
 				this.gridHelper.visible = true;
-				console.log("📐 Grid visibility set to ON");
+				if (developerModeEnabled) {
+						console.log("📐 Grid visibility set to ON");
+				}
 			} else {
 				// Step 16g.2) Grid doesn't exist - recreate it with current settings
-				console.log("📐 Grid helper doesn't exist - creating new grid");
+				if (developerModeEnabled) {
+					console.log("📐 Grid helper doesn't exist - creating new grid");
+				}
 				const size = this.gridSize || 10;
 				const divisions = 50;
 				const totalSize = size * divisions;
@@ -545,12 +575,16 @@ export class ThreeRenderer {
 				}
 
 				this.scene.add(this.gridHelper);
-				console.log("📐 Grid created and added to scene with opacity:", opacity);
+				if (developerModeEnabled) {
+					console.log("📐 Grid created and added to scene with opacity:", opacity);
+				}
 			}
 		} else {
 			// Step 16g.3) Hide AND dispose grid to free memory
 			if (this.gridHelper) {
-				console.log("📐 Disposing grid helper");
+				if (developerModeEnabled) {
+					console.log("📐 Disposing grid helper");
+				}
 				this.scene.remove(this.gridHelper);
 				if (this.gridHelper.geometry) this.gridHelper.geometry.dispose();
 				if (this.gridHelper.material) {
@@ -564,9 +598,13 @@ export class ThreeRenderer {
 					}
 				}
 				this.gridHelper = null;
-				console.log("📐 Grid disposed and removed");
+				if (developerModeEnabled) {
+					console.log("📐 Grid disposed and removed");
+				}
 			} else {
-				console.log("📐 Grid helper doesn't exist - nothing to dispose");
+				if (developerModeEnabled) {
+					console.log("📐 Grid helper doesn't exist - nothing to dispose");
+				}
 			}
 		}
 
@@ -580,7 +618,9 @@ export class ThreeRenderer {
 
 		// Step 16h.2) Only update if grid exists
 		if (!this.gridHelper) {
-			console.log("📐 Grid size stored:", size, "(grid not created yet)");
+			if (developerModeEnabled) {
+					console.log("📐 Grid size stored:", size, "(grid not created yet)");
+			}
 			return;
 		}
 
@@ -613,7 +653,9 @@ export class ThreeRenderer {
 
 		this.scene.add(this.gridHelper);
 		this.requestRender();
-		console.log("📐 Grid size updated to:", size, "m per division at centroid (" + (this.orbitCenterX || 0).toFixed(2) + ", " + (this.orbitCenterY || 0).toFixed(2) + ", " + (this.orbitCenterZ || 0).toFixed(2) + ")");
+		if (developerModeEnabled) {
+			console.log("📐 Grid size updated to:", size, "m per division at centroid (" + (this.orbitCenterX || 0).toFixed(2) + ", " + (this.orbitCenterY || 0).toFixed(2) + ", " + (this.orbitCenterZ || 0).toFixed(2) + ")");
+		}
 	}
 
 	// Step 16i) Update grid opacity
@@ -632,9 +674,13 @@ export class ThreeRenderer {
 			this.gridHelper.material.transparent = true;
 
 			this.requestRender();
-			console.log("📐 Grid opacity updated to:", validOpacity, "(grid visible:", this.gridHelper.visible + ")");
+			if (developerModeEnabled) {
+				console.log("📐 Grid opacity updated to:", validOpacity, "(grid visible:", this.gridHelper.visible + ")");
+			}
 		} else {
-			console.log("📐 Grid opacity stored:", validOpacity, "(grid not created yet)");
+			if (developerModeEnabled) {
+				console.log("📐 Grid opacity stored:", validOpacity, "(grid not created yet)");
+			}
 		}
 	}
 
@@ -642,7 +688,9 @@ export class ThreeRenderer {
 	updateGridPlane(plane) {
 		// Step 16j.1) Store plane setting
 		this.gridPlane = plane;
-		console.log("📐 updateGridPlane called with plane:", plane);
+		if (developerModeEnabled) {
+			console.log("📐 updateGridPlane called with plane:", plane);
+		}
 
 		// Step 16j.2) Only update if grid exists
 		if (this.gridHelper) {
@@ -650,9 +698,13 @@ export class ThreeRenderer {
 			// Reposition grid at data centroid
 			this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
 			this.requestRender();
-			console.log("📐 Grid plane updated to:", plane);
+			if (developerModeEnabled) {
+				console.log("📐 Grid plane updated to:", plane);
+			}
 		} else {
-			console.log("📐 Grid plane stored:", plane, "(grid not created yet)");
+			if (developerModeEnabled) {
+				console.log("📐 Grid plane stored:", plane, "(grid not created yet)");
+			}
 		}
 	}
 
@@ -686,7 +738,9 @@ export class ThreeRenderer {
 				this.gridHelper.rotation.x = Math.PI / 2;
 				break;
 		}
-		console.log("📐 Applied grid plane orientation:", plane);
+		if (developerModeEnabled) {
+			console.log("📐 Applied grid plane orientation:", plane);
+		}
 	}
 
 	// Step 16L) Set orbit center (data centroid)
@@ -694,13 +748,17 @@ export class ThreeRenderer {
 		this.orbitCenterX = x || 0;
 		this.orbitCenterY = y || 0;
 		this.orbitCenterZ = z || 0;
-		console.log("🎯 Orbit center set to: (" + this.orbitCenterX.toFixed(2) + ", " + this.orbitCenterY.toFixed(2) + ", " + this.orbitCenterZ.toFixed(2) + ")");
+		if (developerModeEnabled) {
+			console.log("🎯 Orbit center set to: (" + this.orbitCenterX.toFixed(2) + ", " + this.orbitCenterY.toFixed(2) + ", " + this.orbitCenterZ.toFixed(2) + ")");
+		}
 
 		// Step 16L.1) Update grid position if it exists
 		if (this.gridHelper) {
 			this.gridHelper.position.set(this.orbitCenterX, this.orbitCenterY, this.orbitCenterZ);
 			this.requestRender();
-			console.log("📐 Grid repositioned to centroid");
+			if (developerModeEnabled) {
+				console.log("📐 Grid repositioned to centroid");
+			}
 		}
 	}
 
@@ -1030,7 +1088,9 @@ export class ThreeRenderer {
 				const scaleFactor = worldUnitsForFixedScreenSize / this.axisHelperBaseSize;
 				this.axisHelper.scale.set(scaleFactor, scaleFactor, scaleFactor);
 
-				console.log("🎯 Axis helper at orbit point:", positionX.toFixed(2), positionY.toFixed(2), "scale:", scaleFactor.toFixed(3));
+				if (developerModeEnabled) {
+					console.log("🎯 Axis helper at orbit point:", positionX.toFixed(2), positionY.toFixed(2), "scale:", scaleFactor.toFixed(3));
+				}
 			}
 			this.needsRender = true;
 		}
