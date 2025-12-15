@@ -36754,15 +36754,17 @@ function getSnapRadiusInWorldUnits3D(pixelRadius) {
 
 	if (camera.isOrthographicCamera) {
 		// Orthographic: World units per pixel is constant across the view
-		// frustumWidth / screenWidth = world units per pixel
+		// CRITICAL: With camera.zoom, effective frustum = base frustum / zoom
+		// frustumWidth / screenWidth / zoom = world units per pixel
 		const frustumWidth = camera.right - camera.left;
 		const frustumHeight = camera.top - camera.bottom;
 		const canvasWidth = canvas.width;
 		const canvasHeight = canvas.height;
+		const zoom = camera.zoom || 1.0;
 
 		// Use the smaller dimension to ensure radius works in both X and Y
-		const worldUnitsPerPixelX = frustumWidth / canvasWidth;
-		const worldUnitsPerPixelY = frustumHeight / canvasHeight;
+		const worldUnitsPerPixelX = frustumWidth / canvasWidth / zoom;
+		const worldUnitsPerPixelY = frustumHeight / canvasHeight / zoom;
 		const worldUnitsPerPixel = Math.min(worldUnitsPerPixelX, worldUnitsPerPixelY);
 
 		return pixelRadius * worldUnitsPerPixel;

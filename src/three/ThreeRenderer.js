@@ -282,16 +282,29 @@ export class ThreeRenderer {
 			this.camera.rotation.z = rotation;
 		}
 
-		// Step 15) Update orthographic bounds to match 2D canvas coordinate system
-		const viewportWidthInWorldUnits = this.width / scale;
-		const viewportHeightInWorldUnits = this.height / scale;
+	// Step 15) Update orthographic camera using SAME approach as 2D canvas
+	// CRITICAL: Match 2D transformation exactly: worldToCanvas(x,y) = [(x - centroidX) * scale + canvas.width/2, ...]
+	// 2D: (1) Translate by centroid, (2) Scale, (3) Add canvas offset
+	// 3D: (1) Geometry already translated via worldToThreeLocal() [DONE], (2) Apply zoom via camera.zoom property [DO THIS], (3) Camera positioned at centroid [DONE]
+	
+	// Step 15a) Use FIXED frustum size matching canvas dimensions (no scale factor!)
+	// This creates 1:1 mapping where 1 world unit = 1 pixel at zoom=1
+	const frustumWidth = this.width;
+	const frustumHeight = this.height;
 
-		this.camera.left = -viewportWidthInWorldUnits / 2;
-		this.camera.right = viewportWidthInWorldUnits / 2;
-		this.camera.top = viewportHeightInWorldUnits / 2;
-		this.camera.bottom = -viewportHeightInWorldUnits / 2;
+	this.camera.left = -frustumWidth / 2;
+	this.camera.right = frustumWidth / 2;
+	this.camera.top = frustumHeight / 2;
+	this.camera.bottom = -frustumHeight / 2;
 
-		this.camera.updateProjectionMatrix();
+	// Step 15b) Apply zoom using camera.zoom property (matches 2D scale behavior)
+	// zoom=1: 1 world unit = 1 pixel (baseline)
+	// zoom=2: 1 world unit = 2 pixels (zoomed in 2x)
+	// zoom=0.5: 1 world unit = 0.5 pixels (zoomed out 2x)
+	// This is equivalent to scaling the projection matrix without touching geometry
+	this.camera.zoom = scale;
+
+	this.camera.updateProjectionMatrix();
 
 		// Step 15a) Update directional light to be above camera (on camera side)
 		if (this.directionalLight) {
@@ -697,15 +710,17 @@ export class ThreeRenderer {
 		this.height = height;
 		this.renderer.setSize(width, height);
 
-		// Recalculate orthographic bounds based on new canvas size
-		const scale = this.cameraState.scale;
-		const viewportWidthInWorldUnits = width / scale;
-		const viewportHeightInWorldUnits = height / scale;
+		// Step 17a) Use FIXED frustum size matching canvas dimensions (no scale factor!)
+		// This matches the updateCamera() approach - fixed frustum + camera.zoom
+		const frustumWidth = width;
+		const frustumHeight = height;
 
-		this.camera.left = -viewportWidthInWorldUnits / 2;
-		this.camera.right = viewportWidthInWorldUnits / 2;
-		this.camera.top = viewportHeightInWorldUnits / 2;
-		this.camera.bottom = -viewportHeightInWorldUnits / 2;
+		this.camera.left = -frustumWidth / 2;
+		this.camera.right = frustumWidth / 2;
+		this.camera.top = frustumHeight / 2;
+		this.camera.bottom = -frustumHeight / 2;
+		
+		// Step 17b) camera.zoom already set in updateCamera(), just update projection matrix
 		this.camera.updateProjectionMatrix();
 
 		this.needsRender = true;
