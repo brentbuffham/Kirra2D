@@ -407,9 +407,9 @@ export class CameraControls {
 
     // Step 21) Process mouse down (extracted for reuse)
     processMouseDown(event) {
-        // Step 21a) Check if Move Tool is active and blocking pan
-        if (window.isMoveToolActive && !event.altKey) {
-            // Move Tool is active - allow orbit with Alt, block pan
+        // Step 21a) Check if dragging is in progress and blocking pan
+        if (window.isDraggingHole && !event.altKey) {
+            // Drag in progress - allow orbit with Alt, block pan
             return;
         }
 

@@ -26228,6 +26228,7 @@ moveToTool.addEventListener("change", function () {
 		window.isMoveToolActive = true; // Expose to CameraControls
 		moveToolSelectedHole = null;
 		isDraggingHole = false;
+		window.isDraggingHole = false; // Expose to CameraControls for pan blocking
 		targetCanvas.addEventListener("mousedown", handleMoveToolMouseDown);
 		targetCanvas.addEventListener("touchstart", handleMoveToolMouseDown);
 
@@ -26255,6 +26256,7 @@ moveToTool.addEventListener("change", function () {
 		isMoveToolActive = false;
 		window.isMoveToolActive = false; // Clear from window
 		isDraggingHole = false;
+		window.isDraggingHole = false; // Clear from window
 		moveToolSelectedHole = null;
 		moveToolSelectedKAD = null;
 		moveToolIn3DMode = false;
@@ -26321,10 +26323,6 @@ function handleMoveToolMouseDown(event) {
 
 	// Step 2) Check if we're in 3D mode
 	if (moveToolIn3DMode && threeRenderer && interactionManager) {
-		// Step 2a) BLOCK panning - Move Tool takes precedence over camera pan
-		event.preventDefault();
-		event.stopPropagation();
-
 		// 3D Mode Logic
 		const targetCanvas = threeRenderer.getCanvas();
 		interactionManager.updateMousePosition(event, targetCanvas);
@@ -26350,14 +26348,27 @@ function handleMoveToolMouseDown(event) {
 						z: obj.pointZLocation
 					};
 				});
-				dragPlaneZ = selectedMultipleKADObjects[0].pointZLocation || 0;
-				isDraggingHole = true;
-				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
-				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
-				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
-				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-				updateStatusMessage("Moving " + selectedMultipleKADObjects.length + " KAD points (3D)");
-				return;
+			
+			// Prevent camera pan during drag
+			event.preventDefault();
+			event.stopPropagation();
+			
+			dragPlaneZ = selectedMultipleKADObjects[0].pointZLocation || 0;
+			isDraggingHole = true;
+			window.isDraggingHole = true; // Expose to CameraControls
+			
+			// ✅ Suspend camera pan during drag
+			if (cameraControls) {
+				console.log("🚫 Suspending camera pan during KAD drag");
+				cameraControls.detachEvents();
+			}
+			
+			targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+			targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+			targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+			targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+			updateStatusMessage("Moving " + selectedMultipleKADObjects.length + " KAD points (3D)");
+			return;
 			}
 
 			// Step 2c) Try to find a KAD vertex in raycast intersects
@@ -26455,89 +26466,138 @@ function handleMoveToolMouseDown(event) {
 				threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
 			}
 
-			// Step 2f) Start dragging process
-			isDraggingHole = true;
-				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
-				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
-				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
-				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-				updateStatusMessage("Move KAD point (3D) - drag to reposition");
-				return;
+		// Step 2f) Start dragging process
+		// Prevent camera pan during drag
+		event.preventDefault();
+		event.stopPropagation();
+		
+		isDraggingHole = true;
+		window.isDraggingHole = true; // Expose to CameraControls
+		
+		// ✅ Suspend camera pan during drag
+		if (cameraControls) {
+			console.log("🚫 Suspending camera pan during KAD drag");
+			cameraControls.detachEvents();
+		}
+		
+			targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+			targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+			targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+			targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+			updateStatusMessage("Move KAD point (3D) - drag to reposition");
+			return;
 			}
 		}
 
 		if (selectingHoles) {
 			// Step 2g) Use existing hole selections or try to select a hole via raycasting
 			if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
-				// Use multiple selected holes
-				moveToolSelectedHole = selectedMultipleHoles;
+			// Use multiple selected holes
+			// Prevent camera pan during drag
+			event.preventDefault();
+			event.stopPropagation();
+			
+			moveToolSelectedHole = selectedMultipleHoles;
+			isDraggingHole = true;
+			window.isDraggingHole = true; // Expose to CameraControls
+			
+			// ✅ Suspend camera pan during drag
+			if (cameraControls) {
+				console.log("🚫 Suspending camera pan during hole drag");
+				cameraControls.detachEvents();
+			}
+			
+			dragPlaneZ = selectedMultipleHoles[0].startZLocation || 0;
+			dragInitialPositions = selectedMultipleHoles.map(function (hole) {
+				return {
+					hole: hole,
+					x: hole.startXLocation,
+					y: hole.startYLocation,
+				};
+			});
+			targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+			targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+			targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+			targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+			updateStatusMessage("Moving " + selectedMultipleHoles.length + " holes (3D)");
+			return;
+		} else if (selectedHole) {
+			// Use single selected hole
+			// Prevent camera pan during drag
+			event.preventDefault();
+			event.stopPropagation();
+			
+			moveToolSelectedHole = [selectedHole];
+			isDraggingHole = true;
+			window.isDraggingHole = true; // Expose to CameraControls
+			
+			// ✅ Suspend camera pan during drag
+			if (cameraControls) {
+				console.log("🚫 Suspending camera pan during hole drag");
+				cameraControls.detachEvents();
+			}
+			
+			dragPlaneZ = selectedHole.startZLocation || 0;
+			dragInitialPositions = [
+				{
+					hole: selectedHole,
+					x: selectedHole.startXLocation,
+					y: selectedHole.startYLocation,
+				},
+			];
+			targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+			targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+			targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+			targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+			updateStatusMessage("Moving hole " + selectedHole.holeID + " (3D)");
+			return;
+			} else {
+				// Step 2h) No existing selection - try to find a hole in raycast intersects
+				const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
+				console.log("🔧 [MOVE TOOL 3D] findClickedHole result:", clickedHole);
+			if (clickedHole) {
+				console.log("✅ [MOVE TOOL 3D] Starting drag for hole: " + clickedHole.holeID + " in " + clickedHole.entityName);
+				
+				// Prevent camera pan during drag
+				event.preventDefault();
+				event.stopPropagation();
+				
+				selectedHole = clickedHole;
+				moveToolSelectedHole = [clickedHole];
 				isDraggingHole = true;
-				dragPlaneZ = selectedMultipleHoles[0].startZLocation || 0;
-				dragInitialPositions = selectedMultipleHoles.map(function (hole) {
-					return {
-						hole: hole,
-						x: hole.startXLocation,
-						y: hole.startYLocation,
-					};
-				});
-				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
-				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
-				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
-				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-				updateStatusMessage("Moving " + selectedMultipleHoles.length + " holes (3D)");
-				return;
-			} else if (selectedHole) {
-				// Use single selected hole
-				moveToolSelectedHole = [selectedHole];
-				isDraggingHole = true;
-				dragPlaneZ = selectedHole.startZLocation || 0;
+				window.isDraggingHole = true; // Expose to CameraControls
+				
+				// ✅ Suspend camera pan during drag
+				if (cameraControls) {
+					console.log("🚫 Suspending camera pan during hole drag");
+					cameraControls.detachEvents();
+				}
+				
+				dragPlaneZ = clickedHole.startZLocation || 0;
 				dragInitialPositions = [
 					{
-						hole: selectedHole,
-						x: selectedHole.startXLocation,
-						y: selectedHole.startYLocation,
+						hole: clickedHole,
+						x: clickedHole.startXLocation,
+						y: clickedHole.startYLocation,
 					},
 				];
 				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
 				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
 				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
 				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-				updateStatusMessage("Moving hole " + selectedHole.holeID + " (3D)");
-				return;
-			} else {
-				// Step 2h) No existing selection - try to find a hole in raycast intersects
-				const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
-				console.log("🔧 [MOVE TOOL 3D] findClickedHole result:", clickedHole);
-				if (clickedHole) {
-					console.log("✅ [MOVE TOOL 3D] Starting drag for hole: " + clickedHole.holeID + " in " + clickedHole.entityName);
-					selectedHole = clickedHole;
-					moveToolSelectedHole = [clickedHole];
-					isDraggingHole = true;
-					dragPlaneZ = clickedHole.startZLocation || 0;
-					dragInitialPositions = [
-						{
-							hole: clickedHole,
-							x: clickedHole.startXLocation,
-							y: clickedHole.startYLocation,
-						},
-					];
-					targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
-					targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
-					targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
-					targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
 
-					// Step 2h.1) Create highlight IMMEDIATELY (don't wait for renderThreeJS)
-					if (typeof highlightSelectedHoleThreeJS === "function") {
-						highlightSelectedHoleThreeJS(clickedHole, "selected");
-					}
-					
-					// Step 2h.2) Quick render to show highlight
-					if (threeRenderer && threeRenderer.renderer) {
-						threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
-					}
-					
-					updateStatusMessage("Moving hole " + clickedHole.holeID + " (3D)");
-					return;
+				// Step 2h.1) Create highlight IMMEDIATELY (don't wait for renderThreeJS)
+				if (typeof highlightSelectedHoleThreeJS === "function") {
+					highlightSelectedHoleThreeJS(clickedHole, "selected");
+				}
+				
+				// Step 2h.2) Quick render to show highlight
+				if (threeRenderer && threeRenderer.renderer) {
+					threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
+				}
+				
+				updateStatusMessage("Moving hole " + clickedHole.holeID + " (3D)");
+				return;
 			} else {
 				// Clicked empty space - clear selection AND remove highlights
 				console.log("⚠️ [MOVE TOOL 3D] No hole found in intersects - clearing selection");
@@ -27126,6 +27186,7 @@ function handleMoveToolMouseUp(event) {
 		event.stopPropagation();
 		
 		isDraggingHole = false;
+		window.isDraggingHole = false; // Clear from window
 
 		// Step 6) Determine which canvas to remove listeners from
 		const targetCanvas = moveToolIn3DMode ? (threeRenderer ? threeRenderer.getCanvas() : null) : canvas;
@@ -27142,10 +27203,17 @@ function handleMoveToolMouseUp(event) {
 			canvas.removeEventListener("touchend", handleMoveToolMouseUp);
 		}
 
-		// Step 7) Check if we're in 3D mode
-		if (moveToolIn3DMode) {
-			// Step 7a) 3D Mode: Clear drag plane Z
-			dragPlaneZ = 0;
+	// Step 7) Check if we're in 3D mode
+	if (moveToolIn3DMode) {
+		// ✅ Re-enable camera pan after drag completes
+		if (cameraControls) {
+			console.log("✅ Restoring camera pan after drag complete");
+			cameraControls.resetPanState(); // Clear any stuck states
+			cameraControls.attachEvents(); // Re-enable pan/orbit
+		}
+		
+		// Step 7a) 3D Mode: Clear drag plane Z
+		dragPlaneZ = 0;
 
 		// Step 7b) Persist KAD changes if applicable
 		if (moveToolSelectedKAD || dragInitialKADPositions) {
