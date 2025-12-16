@@ -847,6 +847,46 @@ export function highlightSelectedHoleThreeJS(hole, highlightType) {
 	window.threeRenderer.holesGroup.add(highlightGroup);
 }
 
+// Step 18.5) Highlight selected KAD point in Three.js (matching 2D style)
+export function highlightSelectedKADPointThreeJS(kadObject, highlightType) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (!kadObject) return;
+
+	// Step 18.5a) Convert world coordinates to local Three.js coordinates
+	const local = window.worldToThreeLocal(kadObject.pointXLocation, kadObject.pointYLocation);
+	const z = kadObject.pointZLocation || 0;
+
+	// Step 18.5b) Determine colors based on highlight type
+	let color, baseRadius;
+	
+	switch (highlightType) {
+		case "selected":
+		case "multi":
+			// Regular selection: pink/magenta (matching holes and canvas3DDrawSelection.js)
+			color = "rgba(255, 0, 150, .8)";
+			baseRadius = 1.0; // Base radius in world units
+			break;
+		default:
+			color = "rgba(255, 0, 150, .8)";
+			baseRadius = 1.0;
+	}
+
+	// Step 18.5c) Create highlight using GeometryFactory.createKADPointHighlight
+	// This matches the style in canvas3DDrawSelection.js:193 - uses Points geometry with circular texture
+	// Points always face camera and maintain consistent screen-space size
+	const highlightMesh = GeometryFactory.createKADPointHighlight(local.x, local.y, z, baseRadius, color);
+
+	// Step 18.5d) Add metadata
+	const kadId = kadObject.entityName + ":::" + kadObject.elementIndex;
+	highlightMesh.userData = {
+		type: "kadHighlight",
+		kadId: kadId,
+		highlightType: highlightType,
+	};
+
+	window.threeRenderer.kadGroup.add(highlightMesh);
+}
+
 // Step 19) Draw connection stadium zone (multi-connector indicator) in Three.js
 export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmount) {
 	if (!window.threeInitialized || !window.threeRenderer) return;

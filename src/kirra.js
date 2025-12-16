@@ -59,6 +59,7 @@ import {
 	drawBackgroundImageThreeJS,
 	drawConnectorThreeJS,
 	highlightSelectedHoleThreeJS,
+	highlightSelectedKADPointThreeJS,
 	drawToolPromptThreeJS,
 	drawConnectStadiumZoneThreeJS,
 	drawMousePositionIndicatorThreeJS,
@@ -2855,6 +2856,7 @@ let holeToMove = null;
 let moveToolIn3DMode = false; // Track if move tool is in 3D mode
 let dragPlaneZ = 0; // Z elevation of plane for 3D raycasting
 let justFinishedDragging = false; // Flag to prevent click event after drag
+let dragInitialKADPositions = null; // Initial positions for multiple KAD points
 
 let maxEdgeLength = 15;
 let clickedHole; // Declare clickedHole outside the event listener
@@ -23120,14 +23122,16 @@ function drawData(allBlastHoles, selectedHole) {
 
 				if (!subGroupVisible) continue;
 
-				// Step 5) Render each KAD entity type (with local coordinate conversion)
-				if (entity.entityType === "point") {
-					for (const pointData of entity.data) {
-						if (pointData.visible === false) continue;
-						const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
-						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
-						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", name); // Pass 'name' (entityName) as kadId
-					}
+			// Step 5) Render each KAD entity type (with local coordinate conversion)
+			if (entity.entityType === "point") {
+				for (const pointData of entity.data) {
+					if (pointData.visible === false) continue;
+					const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
+					const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
+					const vertexIndex = entity.data.indexOf(pointData);
+					const kadId = name + ":::" + vertexIndex;
+					drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", kadId); // kadId format: "entityName:::vertexIndex"
+				}
 				} else if (entity.entityType === "line" || entity.entityType === "poly") {
 					// Step 6) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
 					// Each segment gets its own lineWidth and color from point data
@@ -23155,39 +23159,59 @@ function drawData(allBlastHoles, selectedHole) {
 							}
 						}
 
-						// Step 6b) For polygons, close the loop with final segment
-						// NOTE: Closing segment goes TO firstPoint, so use firstPoint's color
-						if (entity.entityType === "poly" && visiblePoints.length > 2) {
-							var firstPoint = visiblePoints[0];
-							var lastPoint = visiblePoints[visiblePoints.length - 1];
+					// Step 6b) For polygons, close the loop with final segment
+					// NOTE: Closing segment goes TO firstPoint, so use firstPoint's color
+					if (entity.entityType === "poly" && visiblePoints.length > 2) {
+						var firstPoint = visiblePoints[0];
+						var lastPoint = visiblePoints[visiblePoints.length - 1];
 
-							var firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
-							var lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
+						var firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
+						var lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
 
-							// Use firstPoint's color - the closing segment goes TO the first point
-							var lineWidth = firstPoint.lineWidth || 1;
-							var color = firstPoint.color || "#FF0000";
+						// Use firstPoint's color - the closing segment goes TO the first point
+						var lineWidth = firstPoint.lineWidth || 1;
+						var color = firstPoint.color || "#FF0000";
 
-							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name);
-						}
+						drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name);
 					}
-				} else if (entity.entityType === "circle") {
-					for (const circleData of entity.data) {
-						if (circleData.visible === false) continue;
-						const centerX = circleData.centerX || circleData.pointXLocation;
-						const centerY = circleData.centerY || circleData.pointYLocation;
-						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
-						const radius = circleData.radius || 10; // Radius in world units
-						const local = worldToThreeLocal(centerX, centerY);
-						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", name); // Pass 'name' (entityName) as kadId
-					}
-				} else if (entity.entityType === "text") {
-					for (const textData of entity.data) {
-						if (textData.visible === false) continue;
-						const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, name); // Pass 'name' (entityName) as kadId
-					}
+
+				// Step 6c) Draw invisible vertex markers for selection (raycasting only - no visual)
+				// Vertices are hidden but still selectable - pink highlight appears on selection via move tool
+				for (var i = 0; i < visiblePoints.length; i++) {
+					var point = visiblePoints[i];
+					var local = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
+					var vertexIndex = entity.data.indexOf(point);
+					var kadId = name + ":::" + vertexIndex;
+					var vertexSize = 0.3; // Small marker for vertex selection (invisible)
+					
+					// Create invisible point for raycasting only
+					const pointMesh = GeometryFactory.createKADPoint(local.x, local.y, point.pointZLocation || 0, vertexSize, point.color || "#FF0000");
+					pointMesh.userData = { type: "kadPoint", kadId: kadId };
+					pointMesh.visible = false; // Make invisible but keep in scene for raycasting
+					window.threeRenderer.kadGroup.add(pointMesh);
 				}
+				}
+			} else if (entity.entityType === "circle") {
+				for (const circleData of entity.data) {
+					if (circleData.visible === false) continue;
+					const centerX = circleData.centerX || circleData.pointXLocation;
+					const centerY = circleData.centerY || circleData.pointYLocation;
+					const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
+					const radius = circleData.radius || 10; // Radius in world units
+					const local = worldToThreeLocal(centerX, centerY);
+					const vertexIndex = entity.data.indexOf(circleData);
+					const kadId = name + ":::" + vertexIndex;
+					drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", kadId); // kadId format: "entityName:::vertexIndex"
+				}
+			} else if (entity.entityType === "text") {
+				for (const textData of entity.data) {
+					if (textData.visible === false) continue;
+					const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
+					const vertexIndex = entity.data.indexOf(textData);
+					const kadId = name + ":::" + vertexIndex;
+					drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, kadId); // kadId format: "entityName:::vertexIndex"
+				}
+			}
 			}
 		}
 
@@ -26314,6 +26338,28 @@ function handleMoveToolMouseDown(event) {
 		console.log("🔧 [MOVE TOOL 3D] Raycast found " + intersects.length + " intersects, selectingKAD: " + selectingKAD + ", selectingHoles: " + selectingHoles);
 
 		if (selectingKAD) {
+			// Step 2b.1) Check if we have existing multiple selections
+			if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0 && !event.shiftKey) {
+				// Use existing multiple selections for dragging
+				dragInitialKADPositions = selectedMultipleKADObjects.map(function(obj) {
+					return {
+						entityName: obj.entityName,
+						elementIndex: obj.elementIndex,
+						x: obj.pointXLocation,
+						y: obj.pointYLocation,
+						z: obj.pointZLocation
+					};
+				});
+				dragPlaneZ = selectedMultipleKADObjects[0].pointZLocation || 0;
+				isDraggingHole = true;
+				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+				updateStatusMessage("Moving " + selectedMultipleKADObjects.length + " KAD points (3D)");
+				return;
+			}
+
 			// Step 2c) Try to find a KAD vertex in raycast intersects
 			let foundKAD = null;
 
@@ -26340,9 +26386,41 @@ function handleMoveToolMouseDown(event) {
 				}
 			}
 
-			if (foundKAD) {
-				// Step 2c) Store move target and Z plane
-				const dataPoint = foundKAD.dataPoint;
+		if (foundKAD) {
+			// Step 2c) Check if Shift key held for multiple selection
+			const dataPoint = foundKAD.dataPoint;
+			const entity = allKADDrawingsMap.get(foundKAD.entityName);
+			
+			if (event.shiftKey && selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
+				// Step 2c.1) Shift+click: Add to existing selection
+				const alreadySelected = selectedMultipleKADObjects.find(function(obj) {
+					return obj.entityName === foundKAD.entityName && obj.elementIndex === foundKAD.elementIndex;
+				});
+
+				if (!alreadySelected) {
+					// Add to selection
+					const newKADObject = {
+						entityName: foundKAD.entityName,
+						entityType: entity.entityType,
+						elementIndex: foundKAD.elementIndex,
+						selectionType: "vertex",
+						pointXLocation: dataPoint.pointXLocation,
+						pointYLocation: dataPoint.pointYLocation,
+						pointZLocation: dataPoint.pointZLocation,
+					};
+					selectedMultipleKADObjects.push(newKADObject);
+					
+					// Create highlight for newly added point
+					if (typeof highlightSelectedKADPointThreeJS === "function") {
+						highlightSelectedKADPointThreeJS(newKADObject, "multi");
+					}
+				}
+				
+				// Clear single selection
+				selectedKADObject = null;
+				selectedPoint = null;
+			} else {
+				// Step 2c.2) Single selection - clear others
 				moveToolSelectedKAD = {
 					entityName: foundKAD.entityName,
 					elementIndex: foundKAD.elementIndex,
@@ -26352,8 +26430,7 @@ function handleMoveToolMouseDown(event) {
 				};
 				dragPlaneZ = dataPoint.pointZLocation || 0;
 
-				// Step 2d) Set selected KAD object for highlighting
-				const entity = allKADDrawingsMap.get(foundKAD.entityName);
+				// Set selected KAD object for highlighting
 				selectedKADObject = {
 					entityName: foundKAD.entityName,
 					entityType: entity.entityType,
@@ -26367,13 +26444,19 @@ function handleMoveToolMouseDown(event) {
 				selectedKADPolygon = null;
 				selectedMultipleKADObjects = [];
 
-				// Step 2e) Redraw to show the highlighted selection
-				if (typeof renderThreeJS === "function") {
-					renderThreeJS();
+				// Step 2e) Create highlight IMMEDIATELY (don't call renderThreeJS - slow!)
+				if (typeof highlightSelectedKADPointThreeJS === "function") {
+					highlightSelectedKADPointThreeJS(selectedKADObject, "selected");
 				}
+			}
 
-				// Step 2f) Start dragging process
-				isDraggingHole = true;
+			// Step 2e.1) Quick render to show highlight(s)
+			if (threeRenderer && threeRenderer.renderer) {
+				threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
+			}
+
+			// Step 2f) Start dragging process
+			isDraggingHole = true;
 				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
 				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
 				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
@@ -26688,9 +26771,6 @@ function handleMoveToolMouseMove(event) {
 
 	// Step 4) Check if we're in 3D mode
 	if (moveToolIn3DMode && threeRenderer && interactionManager) {
-		// Step 4a) Create horizontal plane at object's Z elevation (screen-space following)
-		const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -dragPlaneZ);
-
 		// Step 4b) Update raycaster with current mouse position
 		const targetCanvas = threeRenderer.getCanvas();
 		interactionManager.updateMousePosition(event, targetCanvas);
@@ -26701,47 +26781,78 @@ function handleMoveToolMouseMove(event) {
 		raycaster.setFromCamera(interactionManager.mouse, camera);
 		console.log("🎯 [MOVE TOOL 3D MOVE] Mouse NDC: (", interactionManager.mouse.x.toFixed(3), interactionManager.mouse.y.toFixed(3), ")");
 
-		// Step 4c) Intersect ray with plane to get screen-space position
-		const intersectionPoint = new THREE.Vector3();
-		const didIntersect = raycaster.ray.intersectPlane(plane, intersectionPoint);
-
-		if (!didIntersect) {
-			console.log("❌ [MOVE TOOL 3D MOVE] Ray didn't intersect plane at Z:", dragPlaneZ);
-			return;
-		}
-
-		// Step 4d) Convert from local Three.js coords to world coords
-		// This is the DEFAULT position - object follows mouse in screen space
-		let worldX = intersectionPoint.x + threeLocalOriginX;
-		let worldY = intersectionPoint.y + threeLocalOriginY;
-		console.log("✅ [MOVE TOOL 3D MOVE] Intersection at local:", intersectionPoint.x.toFixed(2), intersectionPoint.y.toFixed(2), "world:", worldX.toFixed(2), worldY.toFixed(2));
-
-		// Step 4e) ONLY if snapping is enabled, check for snap targets
+		// Step 4c) Declare position variables
+		let worldX, worldY, worldZ;
 		let snapResult = null;
 		const snapRadiusPixels = 20; // Fixed pixel radius
 		const snapRadiusWorld = getSnapRadiusInWorldUnits3D(snapRadiusPixels);
 
-		if (snapEnabled) {
-			if (moveToolSelectedHole) {
-				// Step 4f) Moving holes: snap to KAD and surfaces, NOT other holes
+		// Step 4d) For HOLES: Use fixed Z plane (2D movement only)
+		if (moveToolSelectedHole && dragInitialPositions) {
+			// Step 4d.1) Create horizontal plane at object's Z elevation (screen-space following)
+			const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -dragPlaneZ);
+			
+			// Step 4d.2) Intersect ray with plane to get screen-space position
+			const intersectionPoint = new THREE.Vector3();
+			const didIntersect = raycaster.ray.intersectPlane(plane, intersectionPoint);
+
+			if (!didIntersect) {
+				console.log("❌ [MOVE TOOL 3D MOVE] Ray didn't intersect plane at Z:", dragPlaneZ);
+				return;
+			}
+
+			// Step 4d.3) Convert from local Three.js coords to world coords
+			worldX = intersectionPoint.x + threeLocalOriginX;
+			worldY = intersectionPoint.y + threeLocalOriginY;
+			worldZ = dragPlaneZ; // Fixed Z for holes
+			console.log("✅ [MOVE TOOL 3D MOVE HOLE] Position at:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
+
+			// Step 4d.4) ONLY if snapping is enabled, override with snap position
+			if (snapEnabled) {
+				// Moving holes: snap to KAD and surfaces, NOT other holes
 				snapResult = snapToNearestPointExcludingHolesWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusWorld);
 				// Override screen-space position ONLY if snap found
 				if (snapResult && snapResult.snapped) {
 					worldX = snapResult.worldX;
 					worldY = snapResult.worldY;
-				}
-			} else if (moveToolSelectedKAD) {
-				// Step 4g) Moving KAD: use existing 3D snap (snaps to everything including holes)
-				// But exclude the KAD point being moved
-				snapResult = snapToNearestPointWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusWorld);
-				// Override screen-space position ONLY if snap found
-				if (snapResult && snapResult.snapped) {
-					worldX = snapResult.worldX;
-					worldY = snapResult.worldY;
+					// Keep Z fixed for holes (don't use snapResult.worldZ)
 				}
 			}
 		}
-		// If no snap or snap disabled, worldX/worldY remain as screen-space position
+		// Step 4e) For KAD: Use full 3D raycast (XYZ movement)
+		else if (moveToolSelectedKAD || (dragInitialKADPositions && dragInitialKADPositions.length > 0)) {
+			// Step 4e.1) Use 3D snap raycast to get full XYZ position (same as KAD drawing tools)
+			// This allows movement in all 3 dimensions based on what the ray intersects
+			snapResult = snapToNearestPointWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusWorld);
+			
+			if (snapResult && snapResult.snapped) {
+				// Step 4e.2) Use snapped 3D position
+				worldX = snapResult.worldX;
+				worldY = snapResult.worldY;
+				worldZ = snapResult.worldZ || dragPlaneZ; // Use snap Z if available, fallback to initial Z
+				console.log("✅ [MOVE TOOL 3D MOVE KAD] Snapped to:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2), "from", snapResult.snapTarget.description);
+			} else {
+				// Step 4e.3) No snap found - use plane at initial Z as fallback (screen-space XY movement)
+				const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -dragPlaneZ);
+				const intersectionPoint = new THREE.Vector3();
+				const didIntersect = raycaster.ray.intersectPlane(plane, intersectionPoint);
+
+				if (!didIntersect) {
+					console.log("❌ [MOVE TOOL 3D MOVE KAD] Ray didn't intersect fallback plane at Z:", dragPlaneZ);
+					return;
+				}
+
+				worldX = intersectionPoint.x + threeLocalOriginX;
+				worldY = intersectionPoint.y + threeLocalOriginY;
+				worldZ = dragPlaneZ; // Keep initial Z if no snap
+				console.log("✅ [MOVE TOOL 3D MOVE KAD] No snap - using plane intersection:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
+			}
+		} else {
+			// Step 4e.4) No object selected - should not reach here
+			console.log("❌ [MOVE TOOL 3D MOVE] No object selected");
+			return;
+		}
+		// At this point, worldX, worldY, worldZ are set for either holes or KAD
 
 		// Step 4h) Update object position (uses screen-space or snapped position)
 		if (moveToolSelectedHole && dragInitialPositions) {
@@ -26796,37 +26907,126 @@ function handleMoveToolMouseMove(event) {
 			if (threeRenderer && threeRenderer.renderer) {
 				threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
 			}
+		} else if (dragInitialKADPositions && dragInitialKADPositions.length > 0) {
+			// Step 4i) Move multiple KAD points together (full 3D movement)
+			const firstKAD = dragInitialKADPositions[0];
+			const deltaX = worldX - firstKAD.x;
+			const deltaY = worldY - firstKAD.y;
+			const deltaZ = worldZ - (firstKAD.z || 0); // Full 3D delta
+			console.log("📍 [MOVE TOOL 3D] Moving " + dragInitialKADPositions.length + " KAD points, delta: (" + deltaX.toFixed(2) + ", " + deltaY.toFixed(2) + ", " + deltaZ.toFixed(2) + ")");
+
+			dragInitialKADPositions.forEach(function(item) {
+				const entity = allKADDrawingsMap.get(item.entityName);
+				if (entity && entity.data && item.elementIndex < entity.data.length) {
+					const newX = item.x + deltaX;
+					const newY = item.y + deltaY;
+					const newZ = (item.z || 0) + deltaZ; // Calculate new Z
+					
+					entity.data[item.elementIndex].pointXLocation = newX;
+					entity.data[item.elementIndex].pointYLocation = newY;
+					entity.data[item.elementIndex].pointZLocation = newZ; // Full 3D update
+
+					// Update visual for this KAD point (3D delta)
+					const kadId = item.entityName + ":::" + item.elementIndex;
+					const originalLocal = worldToThreeLocal(item.x, item.y);
+					const newLocal = worldToThreeLocal(newX, newY);
+					const deltaLocalX = newLocal.x - originalLocal.x;
+					const deltaLocalY = newLocal.y - originalLocal.y;
+
+					// Move the KAD point mesh with full 3D delta
+					threeRenderer.kadGroup.children.forEach(function(child) {
+						if (child.userData && child.userData.kadId === kadId) {
+							child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+						}
+					});
+
+					// Move the highlight with full 3D delta
+					threeRenderer.kadGroup.children.forEach(function(child) {
+						if (child.userData && child.userData.type === "kadHighlight" && child.userData.kadId === kadId) {
+							child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+						}
+					});
+				}
+			});
+
+			// Quick render
+			if (threeRenderer && threeRenderer.renderer) {
+				threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
+			}
 		} else if (moveToolSelectedKAD) {
-			// Step 4i) Update KAD point position
-			console.log("📍 [MOVE TOOL 3D] Moving KAD", moveToolSelectedKAD.entityName, "point", moveToolSelectedKAD.elementIndex, "to worldX:", worldX.toFixed(2), "worldY:", worldY.toFixed(2));
+			// Step 4i) Update single KAD point position (full 3D movement)
+			console.log("📍 [MOVE TOOL 3D] Moving KAD " + moveToolSelectedKAD.entityName + " point " + moveToolSelectedKAD.elementIndex + " to XYZ: (" + worldX.toFixed(2) + ", " + worldY.toFixed(2) + ", " + worldZ.toFixed(2) + ")");
 			const entity = allKADDrawingsMap.get(moveToolSelectedKAD.entityName);
 			if (entity && entity.data && moveToolSelectedKAD.elementIndex < entity.data.length) {
 				const oldX = entity.data[moveToolSelectedKAD.elementIndex].pointXLocation;
 				const oldY = entity.data[moveToolSelectedKAD.elementIndex].pointYLocation;
+				const oldZ = entity.data[moveToolSelectedKAD.elementIndex].pointZLocation || 0;
+				
+				// Update to new 3D position
 				entity.data[moveToolSelectedKAD.elementIndex].pointXLocation = worldX;
 				entity.data[moveToolSelectedKAD.elementIndex].pointYLocation = worldY;
-				// Z stays at dragPlaneZ (no Z movement)
-				entity.data[moveToolSelectedKAD.elementIndex].pointZLocation = dragPlaneZ;
-				console.log("  → KAD point moved from (", oldX.toFixed(2), oldY.toFixed(2), ") to (", worldX.toFixed(2), worldY.toFixed(2), ")");
+				entity.data[moveToolSelectedKAD.elementIndex].pointZLocation = worldZ; // Full 3D movement
+				console.log("  → KAD point moved from (" + oldX.toFixed(2) + ", " + oldY.toFixed(2) + ", " + oldZ.toFixed(2) + ") to (" + worldX.toFixed(2) + ", " + worldY.toFixed(2) + ", " + worldZ.toFixed(2) + ")");
 
 				// Keep highlight in sync while dragging
 				if (selectedKADObject && selectedKADObject.entityName === moveToolSelectedKAD.entityName && selectedKADObject.elementIndex === moveToolSelectedKAD.elementIndex) {
 					selectedKADObject.pointXLocation = worldX;
 					selectedKADObject.pointYLocation = worldY;
-					selectedKADObject.pointZLocation = dragPlaneZ;
+					selectedKADObject.pointZLocation = worldZ; // Update Z in selection object
 				}
 
 				// Keep selectedPoint in sync while dragging
 				selectedPoint = entity.data[moveToolSelectedKAD.elementIndex];
 
-				// Step 4i.1) Trigger render without recreating geometry (KAD will be redrawn on full render)
-				// For now, just trigger a quick render - full KAD update happens on mouseup
-				if (threeRenderer && threeRenderer.renderer) {
-					// Mark that KAD needs full update
-					if (!window.kadNeedsUpdate) window.kadNeedsUpdate = new Set();
-					window.kadNeedsUpdate.add(moveToolSelectedKAD.entityName);
+			// Step 4i.1) Update KAD visual in real-time (full 3D delta calculation)
+			const kadId = moveToolSelectedKAD.entityName + ":::" + moveToolSelectedKAD.elementIndex;
+
+			// Calculate delta from initial position (including Z)
+			const originalLocal = worldToThreeLocal(moveToolSelectedKAD.initialX, moveToolSelectedKAD.initialY);
+			const newLocal = worldToThreeLocal(worldX, worldY);
+			const deltaLocalX = newLocal.x - originalLocal.x;
+			const deltaLocalY = newLocal.y - originalLocal.y;
+			const deltaZ = worldZ - (moveToolSelectedKAD.initialZ || 0); // Z delta in world space
+
+			// Find and move the KAD point mesh in kadGroup (3D movement)
+			threeRenderer.kadGroup.children.forEach(function(child) {
+				if (child.userData && child.userData.kadId === kadId) {
+					// Move the mesh by full 3D delta
+					child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+				}
+			});
+
+			// Step 4i.1a) Check if highlight exists - recreate if missing (prevents disappearing during drag)
+			let highlightFound = false;
+			threeRenderer.kadGroup.children.forEach(function(child) {
+				if (child.userData && child.userData.type === "kadHighlight" && child.userData.kadId === kadId) {
+					highlightFound = true;
+					// Move existing highlight by full 3D delta
+					child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+				}
+			});
+
+			// Step 4i.1b) If highlight was removed (e.g. by drawData), recreate it
+			if (!highlightFound) {
+				console.log("⚠️ [MOVE TOOL 3D] Highlight missing - recreating for kadId:", kadId);
+				if (typeof highlightSelectedKADPointThreeJS === "function" && selectedKADObject) {
+					// Update selectedKADObject position to current location before recreating highlight
+					selectedKADObject.pointXLocation = worldX;
+					selectedKADObject.pointYLocation = worldY;
+					selectedKADObject.pointZLocation = worldZ; // Use full 3D position
+					highlightSelectedKADPointThreeJS(selectedKADObject, "selected");
 					
-					// Quick render to show any changes
+					// Move the newly created highlight to the correct position
+					threeRenderer.kadGroup.children.forEach(function(child) {
+						if (child.userData && child.userData.type === "kadHighlight" && child.userData.kadId === kadId) {
+							child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+						}
+					});
+				}
+			}
+
+				// Step 4i.2) Quick render to show visual update
+				if (threeRenderer && threeRenderer.renderer) {
 					threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
 				}
 			}
@@ -26947,12 +27147,13 @@ function handleMoveToolMouseUp(event) {
 			// Step 7a) 3D Mode: Clear drag plane Z
 			dragPlaneZ = 0;
 
-			// Step 7b) Persist KAD changes if applicable
-			if (moveToolSelectedKAD) {
-				debouncedSaveKAD();
-				debouncedUpdateTreeView();
-				moveToolSelectedKAD = null;
-			}
+		// Step 7b) Persist KAD changes if applicable
+		if (moveToolSelectedKAD || dragInitialKADPositions) {
+			debouncedSaveKAD();
+			debouncedUpdateTreeView();
+			moveToolSelectedKAD = null;
+			dragInitialKADPositions = null;
+		}
 
 			// Step 7c) Save hole changes
 			if (moveToolSelectedHole) {
@@ -26967,7 +27168,7 @@ function handleMoveToolMouseUp(event) {
 		moveToolSelectedHole = null;
 		dragInitialPositions = null; // CRITICAL: Clear to prevent wrong hole moving next time
 		
-		// Step 7e) Remove ALL highlights from scene
+		// Step 7e) Remove ALL hole highlights from scene
 		if (threeRenderer && threeRenderer.holesGroup) {
 			const highlightsToRemove = [];
 			threeRenderer.holesGroup.children.forEach(function(child) {
@@ -26980,7 +27181,23 @@ function handleMoveToolMouseUp(event) {
 				if (highlight.geometry) highlight.geometry.dispose();
 				if (highlight.material) highlight.material.dispose();
 			});
-			console.log("🗑️ [MOVE TOOL] Removed", highlightsToRemove.length, "highlights from scene");
+			console.log("🗑️ [MOVE TOOL] Removed " + highlightsToRemove.length + " hole highlights from scene");
+		}
+
+		// Step 7e.1) Remove ALL KAD highlights from scene
+		if (threeRenderer && threeRenderer.kadGroup) {
+			const kadHighlightsToRemove = [];
+			threeRenderer.kadGroup.children.forEach(function(child) {
+				if (child.userData && child.userData.type === "kadHighlight") {
+					kadHighlightsToRemove.push(child);
+				}
+			});
+			kadHighlightsToRemove.forEach(function(highlight) {
+				threeRenderer.kadGroup.remove(highlight);
+				if (highlight.geometry) highlight.geometry.dispose();
+				if (highlight.material) highlight.material.dispose();
+			});
+			console.log("🗑️ [MOVE TOOL] Removed " + kadHighlightsToRemove.length + " KAD highlights from scene");
 		}
 
 		// Step 7f) Call drawData with null to prevent highlight recreation (like Escape key does)
