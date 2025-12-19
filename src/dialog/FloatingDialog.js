@@ -1014,7 +1014,8 @@ function showModalMessage(title, message, type = "info", callback = null) {
 //===========================================
 // FLOATING DIALOG END
 //===========================================
-// If you want to make these available globally in the browser:
+
+// Also make available globally in the browser for backwards compatibility:
 window.FloatingDialog = FloatingDialog;
 window.createFormContent = createFormContent;
 window.createEnhancedFormContent = createEnhancedFormContent;
@@ -1022,3 +1023,7 @@ window.getFormData = getFormData;
 window.showConfirmationDialog = showConfirmationDialog;
 window.showConfirmationThreeDialog = showConfirmationThreeDialog;
 window.showModalMessage = showModalMessage;
+
+// Export for ES6 modules
+export { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage };
+

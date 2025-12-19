@@ -67,6 +67,7 @@ export function drawKADHighlightSelectionVisuals() {
 
     // Step 2c) Define colors
     const selectedSegmentColor = "rgba(255, 68, 255, 0.8)";
+    const selectedVertexColor = "rgba(255, 68, 255, 0.8)";
     const nonSelectedSegmentColor = "#00FF00"; // Green for non-selected segments
     const nonSelectedPointColor = "rgba(0, 255, 0, 0.5)"; // Green for non-selected points
     const verticesColor = "rgba(255,0,0,0.5)";
@@ -501,6 +502,62 @@ export function drawKADHighlightSelectionVisuals() {
 
             // Step 4p) Restore original
             window.selectedKADObject = temp;
+        });
+    }
+
+    // Step 5) Draw individual vertex highlight if selectedPoint is set
+    const selectedPoint = window.selectedPoint;
+
+    // DEBUG: Log what we're checking
+    console.log("🔍 [2D Draw] Checking for pink vertex highlight:");
+    console.log("  selectedPoint:", selectedPoint ? selectedPoint.pointID : "null");
+    console.log("  selectedKADObject:", selectedKADObject ? selectedKADObject.entityName : "null");
+
+    if (selectedPoint && selectedKADObject) {
+        console.log("✅ [2D Draw] BOTH conditions met - drawing pink circle");
+        const entity = getEntityFromKADObject(selectedKADObject);
+        const allKADDrawingsMap = window.allKADDrawingsMap;
+        if (!entity && allKADDrawingsMap) {
+            // Try to get entity by name
+            entity = allKADDrawingsMap.get(selectedKADObject.entityName);
+        }
+
+        if (entity && entity.data) {
+            // Find the selected point
+            const point = entity.data.find(function (p) { return p.pointID === selectedPoint.pointID; });
+            if (point) {
+                const canvasPos = worldToCanvas(point.pointXLocation, point.pointYLocation);
+
+                // Draw pink circle for selected vertex
+                ctx.beginPath();
+                ctx.arc(canvasPos.x, canvasPos.y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(255, 68, 255, 0.4)"; // Pink with transparency
+                ctx.fill();
+                ctx.strokeStyle = "rgba(255, 68, 255, 1.0)"; // Solid pink
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+        }
+    }
+
+    // Step 6) Draw multiple selected vertices (from TreeView multi-select)
+    const selectedMultiplePoints = window.selectedMultiplePoints;
+    if (selectedMultiplePoints && selectedMultiplePoints.length > 0) {
+        selectedMultiplePoints.forEach(function (point) {
+            if (point && point.pointXLocation !== undefined && point.pointYLocation !== undefined) {
+                const canvasPos = worldToCanvas(point.pointXLocation, point.pointYLocation);
+
+                // Draw pink circle for each selected vertex
+                ctx.beginPath();
+                ctx.arc(canvasPos.x, canvasPos.y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = "rgba(255, 68, 255, 0.4)"; // Pink with transparency
+                ctx.fill();
+                ctx.strokeStyle = "rgba(255, 68, 255, 1.0)"; // Solid pink
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                console.log("🩷 [2D] Drew pink circle for vertex:", point.pointID);
+            }
         });
     }
 }

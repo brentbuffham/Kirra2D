@@ -39,9 +39,11 @@ export function highlightSelectedKADThreeJS() {
     }
 
     // Step 1d) Define colors (match 2D)
-    const selectedSegmentColor = "rgba(255, 68, 255, 0.8)"; // Magenta
-    const nonSelectedSegmentColor = "#00FF00"; // Green
-    const verticesColor = "rgba(255,0,0,0.5)"; // Red
+    const selectedSegmentColor = "rgba(255, 68, 255, 0.8)";
+    const selectedVertexColor = "rgba(255, 68, 255, 0.8)";
+    const nonSelectedSegmentColor = "#00FF00"; // Green for non-selected segments
+    const nonSelectedPointColor = "rgba(0, 255, 0, 0.5)"; // Green for non-selected points
+    const verticesColor = "rgba(255,0,0,0.5)";
 
     // Step 2) Handle single selection
     if (selectedKADObject && isSelectionPointerActive) {
@@ -79,6 +81,68 @@ export function highlightSelectedKADThreeJS() {
         });
 
         console.log("✅ Finished drawing all KAD highlights");
+    }
+
+    // Step 4) Draw individual vertex highlight if selectedPoint is set
+    const selectedPoint = window.selectedPoint;
+
+    // DEBUG: Log what we're checking
+    console.log("🔍 [3D Draw] Checking for pink vertex highlight:");
+    console.log("  selectedPoint:", selectedPoint ? selectedPoint.pointID : "null");
+    console.log("  selectedKADObject:", selectedKADObject ? selectedKADObject.entityName : "null");
+
+    if (selectedPoint && selectedKADObject) {
+        console.log("✅ [3D Draw] BOTH conditions met - drawing pink sphere");
+        const entity = getEntityFromKADObject(selectedKADObject);
+        const allKADDrawingsMap = window.allKADDrawingsMap;
+        let entityToUse = entity;
+        if (!entityToUse && allKADDrawingsMap) {
+            entityToUse = allKADDrawingsMap.get(selectedKADObject.entityName);
+        }
+
+        if (entityToUse && entityToUse.data) {
+            // Find the selected point
+            const point = entityToUse.data.find(function (p) { return p.pointID === selectedPoint.pointID; });
+            if (point) {
+                const localPos = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
+                const worldZ = (point.pointZLocation || 0) - dataCentroidZ;
+
+                // Use factory method for consistency (matches line 260 - selected segment vertex)
+                const sphere = GeometryFactory.createKADPointHighlight(
+                    localPos.x,
+                    localPos.y,
+                    worldZ,
+                    1.0, // radius - matches selected segment vertex
+                    selectedVertexColor // Pink
+                );
+                sphere.userData.type = "vertexSelectionHighlight";
+                window.threeRenderer.kadGroup.add(sphere);
+            }
+        }
+    }
+
+    // Step 5) Draw multiple selected vertices (from TreeView multi-select)
+    const selectedMultiplePoints = window.selectedMultiplePoints;
+    if (selectedMultiplePoints && selectedMultiplePoints.length > 0) {
+        selectedMultiplePoints.forEach(function (point) {
+            if (point && point.pointXLocation !== undefined && point.pointYLocation !== undefined) {
+                const localPos = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
+                const worldZ = (point.pointZLocation || 0) - dataCentroidZ;
+
+                // Use factory method for consistency
+                const sphere = GeometryFactory.createKADPointHighlight(
+                    localPos.x,
+                    localPos.y,
+                    worldZ,
+                    1.0, // radius - matches selected segment vertex
+                    selectedVertexColor // Pink
+                );
+                sphere.userData.type = "vertexSelectionHighlight";
+                window.threeRenderer.kadGroup.add(sphere);
+
+                console.log("🩷 [3D] Drew pink sphere for vertex:", point.pointID);
+            }
+        });
     }
 }
 

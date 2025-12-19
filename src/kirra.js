@@ -73,7 +73,10 @@ import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTra
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
 import { highlightSelectedKADThreeJS } from "./draw/canvas3DDrawSelection.js";
 //=================================================
-// import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
+// BUG FIX 6: Uncommented FloatingDialog module import (duplicate code removed)
+import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
+// TreeView Module
+import { TreeView, initializeTreeView } from "./dialog/tree/TreeView.js";
 //=================================================
 import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
 //=================================================
@@ -459,6 +462,8 @@ function exposeGlobalsToWindow() {
 	window.selectedMultipleKADObjects = selectedMultipleKADObjects;
 	window.selectedHole = selectedHole;
 	window.selectedMultipleHoles = selectedMultipleHoles;
+	window.selectedPoint = selectedPoint; // CRITICAL: Expose selectedPoint for vertex highlighting
+	window.selectedMultiplePoints = selectedMultiplePoints; // CRITICAL: Expose for multi-vertex highlighting
 	window.isSelectionPointerActive = isSelectionPointerActive;
 	window.allKADDrawingsMap = allKADDrawingsMap;
 	window.getEntityFromKADObject = getEntityFromKADObject;
@@ -514,6 +519,7 @@ function exposeGlobalsToWindow() {
 	window.debouncedSaveHoles = debouncedSaveHoles;
 	window.debouncedSaveKAD = debouncedSaveKAD;
 	window.clearAllSelectionState = clearAllSelectionState;
+	window.setSelectionFromTreeView = setSelectionFromTreeView; // CRITICAL: For TreeView to update selection
 	window.setKADEntityVisibility = setKADEntityVisibility;
 	window.setSurfaceVisibility = setSurfaceVisibility;
 	window.showSurfaceLegend = showSurfaceLegend;
@@ -1187,10 +1193,10 @@ function handle3DClick(event) {
 		firstIntersect:
 			intersects.length > 0
 				? {
-						object: intersects[0].object.type,
-						userData: intersects[0].object.userData,
-						distance: intersects[0].distance.toFixed(2),
-				  }
+					object: intersects[0].object.type,
+					userData: intersects[0].object.userData,
+					distance: intersects[0].distance.toFixed(2),
+				}
 				: null,
 	});
 
@@ -1388,6 +1394,7 @@ function handle3DClick(event) {
 		if (!isAddingConnector && !isAddingMultiConnector) {
 			console.log("🔄 [3D CLICK] Calling drawData with selectedHole:", selectedHole ? selectedHole.holeID : null);
 			drawData(allBlastHoles, selectedHole);
+			syncCanvasToTreeView(); // Sync selection to TreeView
 		}
 	} else {
 		// Step 12j) No hole clicked - check for KAD objects in 3D
@@ -1686,10 +1693,36 @@ function handle3DClick(event) {
 					if (closestEntity && closestDistance <= snapTolerancePixels) {
 						console.log("✅ [3D CLICK] Found entity by screen distance:", closestEntityName, "type:", closestEntity.entityType, "distance:", closestDistance.toFixed(1) + "px");
 
+						// Step 12j.6.5h.1) For lines/polys, check if we're closer to a vertex than the segment
+						let closestVertexDistance = Infinity;
+						let closestVertexIndex = -1;
+						if (closestEntity.entityType === "line" || closestEntity.entityType === "poly") {
+							// Check each vertex to see if mouse is closer to it than to the segment
+							closestEntity.data.forEach(function (point, index) {
+								const screenPos = worldToScreen(point.pointXLocation, point.pointYLocation, point.pointZLocation || dataCentroidZ || 0);
+								const dx = screenPos.x - mouseScreenX;
+								const dy = screenPos.y - mouseScreenY;
+								const distance = Math.sqrt(dx * dx + dy * dy);
+
+								if (distance < closestVertexDistance) {
+									closestVertexDistance = distance;
+									closestVertexIndex = index;
+								}
+							});
+						}
+
 						// Step 12j.6.5i) Determine selection type (match 2D behavior)
 						let selectionType = "entity";
 						if (closestEntity.entityType === "line" || closestEntity.entityType === "poly") {
-							selectionType = "segment"; // Lines/polys use segment selection
+							// Step 12j.6.5i.1) If vertex is significantly closer than segment, use vertex selection
+							if (closestVertexDistance < closestDistance && closestVertexDistance <= snapTolerancePixels) {
+								selectionType = "vertex";
+								closestElementIndex = closestVertexIndex; // Update to use vertex index
+								console.log("🎯 [3D CLICK] Vertex selection - closest vertex at distance:", closestVertexDistance.toFixed(1) + "px");
+							} else {
+								selectionType = "segment"; // Lines/polys use segment selection
+								console.log("📏 [3D CLICK] Segment selection - distance:", closestDistance.toFixed(1) + "px");
+							}
 						} else if (closestEntity.entityType === "point") {
 							selectionType = "point";
 						}
@@ -1756,12 +1789,25 @@ function handle3DClick(event) {
 					// Clear single selection
 					selectedKADObject = null;
 					selectedKADPolygon = null;
+					selectedPoint = null; // Clear selectedPoint in multi-selection mode
 				} else {
 					// Step 12j.10) Single selection mode
 					console.log("🎯 [3D CLICK] Single KAD selection mode");
 					selectedKADObject = clickedKADObject;
 					selectedKADPolygon = clickedKADObject; // Backward compatibility
 					selectedMultipleKADObjects = [];
+
+					// Step 12j.10a) Set selectedPoint if vertex was selected
+					if (clickedKADObject.selectionType === "vertex") {
+						const entity = allKADDrawingsMap.get(clickedKADObject.entityName);
+						if (entity && entity.data && entity.data[clickedKADObject.elementIndex]) {
+							selectedPoint = entity.data[clickedKADObject.elementIndex];
+							console.log("✅ [3D CLICK] Set selectedPoint:", selectedPoint.pointID);
+						}
+					} else {
+						selectedPoint = null;
+						console.log("🔄 [3D CLICK] Cleared selectedPoint (segment/entity selection)");
+					}
 				}
 
 				// Step 12j.11) Clear hole selections
@@ -1771,6 +1817,7 @@ function handle3DClick(event) {
 				// Step 12j.12) Expose globals and redraw
 				exposeGlobalsToWindow();
 				drawData(allBlastHoles || [], selectedHole);
+				syncCanvasToTreeView(); // Sync KAD selection to TreeView
 
 				// Prevent camera controls from handling this event
 				event.stopPropagation();
@@ -1804,6 +1851,7 @@ function handle3DClick(event) {
 
 					exposeGlobalsToWindow();
 					drawData(allBlastHoles || [], selectedHole);
+					syncCanvasToTreeView(); // Sync cleared selection to TreeView
 				}
 			}
 		} else if (isSelectionPointerActive && selectingHoles && !clickedHole) {
@@ -2705,7 +2753,7 @@ let textsGroupVisible = true;
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
 // debouncedUpdateTreeView is defined later - stub it to prevent errors
-let debouncedUpdateTreeView = function () {};
+let debouncedUpdateTreeView = function () { };
 
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
@@ -3357,6 +3405,35 @@ function clearAllSelectionState() {
 	}
 
 	console.log("🧹 All selection state cleared");
+}
+
+// Step 7a) Function for TreeView to set selection state (bypasses window.* overwrite issue)
+function setSelectionFromTreeView(selectionState) {
+	// TreeView calls this instead of setting window.* directly
+	// This ensures the local module variables are updated before exposeGlobalsToWindow() runs
+	if (selectionState.selectedHole !== undefined) {
+		selectedHole = selectionState.selectedHole;
+	}
+	if (selectionState.selectedMultipleHoles !== undefined) {
+		selectedMultipleHoles = selectionState.selectedMultipleHoles;
+	}
+	if (selectionState.selectedKADObject !== undefined) {
+		selectedKADObject = selectionState.selectedKADObject;
+	}
+	if (selectionState.selectedMultipleKADObjects !== undefined) {
+		selectedMultipleKADObjects = selectionState.selectedMultipleKADObjects;
+	}
+	if (selectionState.selectedPoint !== undefined) {
+		selectedPoint = selectionState.selectedPoint;
+	}
+	if (selectionState.selectedMultiplePoints !== undefined) {
+		selectedMultiplePoints = selectionState.selectedMultiplePoints;
+	}
+
+	console.log("🔄 [TreeView] Selection state updated:", {
+		selectedKADObject: selectedKADObject ? selectedKADObject.entityName : null,
+		selectedPoint: selectedPoint ? selectedPoint.pointID : null
+	});
 }
 
 // Update resetFloatingToolbarButtons to only clear floating toolbar related booleans
@@ -8373,10 +8450,10 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 						var materialName = child.name || "default";
 						var matProps = materialProperties[materialName] ||
 							materialProperties[Object.keys(materialProperties)[0]] || {
-								Kd: [1, 1, 1],
-								Ns: 0,
-								map_Kd: appliedTextureName,
-							};
+							Kd: [1, 1, 1],
+							Ns: 0,
+							map_Kd: appliedTextureName,
+						};
 
 						finalMaterialProperties[materialName] = {
 							name: materialName,
@@ -9062,15 +9139,15 @@ function parseKADFile(fileData) {
 			showModalMessage(
 				"File Import Warning",
 				"The file was imported but there were " +
-					parseResult.errors.length +
-					" parsing warnings:<br><br>" +
-					parseResult.errors
-						.slice(0, 5)
-						.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
-						.join("") +
-					additionalErrors +
-					"<br><br>" +
-					"Some data may have been skipped. Check your results carefully.",
+				parseResult.errors.length +
+				" parsing warnings:<br><br>" +
+				parseResult.errors
+					.slice(0, 5)
+					.map((error) => "<li>Row " + error.row + ": " + error.message + "</li>")
+					.join("") +
+				additionalErrors +
+				"<br><br>" +
+				"Some data may have been skipped. Check your results carefully.",
 				"warning"
 			);
 		}
@@ -9288,17 +9365,17 @@ function parseKADFile(fileData) {
 			const errorDetailsHtml =
 				errorCount > 0
 					? "<details>" +
-					  "<summary>View Error Details (" +
-					  errorCount +
-					  " errors)</summary>" +
-					  '<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
-					  errorDetails
-							.slice(0, 10)
-							.map((error) => "<li>" + error + "</li>")
-							.join("") +
-					  (errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
-					  "</ul>" +
-					  "</details>"
+					"<summary>View Error Details (" +
+					errorCount +
+					" errors)</summary>" +
+					'<ul style="max-height: 200px; overflow-y: auto; text-align: left;">' +
+					errorDetails
+						.slice(0, 10)
+						.map((error) => "<li>" + error + "</li>")
+						.join("") +
+					(errorDetails.length > 10 ? "<li>... and " + (errorDetails.length - 10) + " more errors</li>" : "") +
+					"</ul>" +
+					"</details>"
 					: "";
 
 			showModalMessage(errorCount > 0 ? "Import Completed with Errors" : "Import Successful", message + errorDetailsHtml, errorCount > 0 ? "warning" : "success");
@@ -10699,9 +10776,9 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  */
 function crc32(str, chksumType) {
 	const table = new Uint32Array(256);
-	for (let i = 256; i--; ) {
+	for (let i = 256; i--;) {
 		let tmp = i;
-		for (let k = 8; k--; ) {
+		for (let k = 8; k--;) {
 			tmp = tmp & 1 ? 3988292384 ^ (tmp >>> 1) : tmp >>> 1;
 		}
 		table[i] = tmp;
@@ -15803,29 +15880,29 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
 			`
             <div style="text-align: center;">
                 <p><strong>` +
-				resultMessage +
-				`</strong></p>
+			resultMessage +
+			`</strong></p>
                 <p><strong>Input:</strong> ` +
-				selectedEntities.length +
-				` entities</p>
+			selectedEntities.length +
+			` entities</p>
                 <p><strong>Output:</strong> ` +
-				polygons.length +
-				` polygon(s)</p>
+			polygons.length +
+			` polygon(s)</p>
                 <p><strong>Radius:</strong> ` +
-				params.radius +
-				`m</p>
+			params.radius +
+			`m</p>
                 <p><strong>Rotation:</strong> ` +
-				params.rotationOffset +
-				`°</p>
+			params.rotationOffset +
+			`°</p>
                 <p><strong>Starburst:</strong> ` +
-				params.starburstOffset * 100 +
-				`%</p>
+			params.starburstOffset * 100 +
+			`%</p>
                 <p><strong>Line Width:</strong> ` +
-				params.lineWidth +
-				`</p>
+			params.lineWidth +
+			`</p>
                 <p><strong>Location:</strong> ` +
-				(params.useToeLocation ? "End/Toe" : "Start/Collar") +
-				`</p>
+			(params.useToeLocation ? "End/Toe" : "Start/Collar") +
+			`</p>
                 <p><strong>Zoom or scroll to see the results.</strong></p>
             </div>
         `
@@ -15842,8 +15919,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
                 <p><strong>Failed to create radii polygons.</strong></p>
                 <hr style="border-color: #555; margin: 15px 0;">
                 <p><strong>Error:</strong><br>` +
-				(error.message || "Unknown error occurred") +
-				`</p>
+			(error.message || "Unknown error occurred") +
+			`</p>
             </div>
         `
 		);
@@ -20675,16 +20752,9 @@ function handleSelection(event) {
 		}
 		updateStatusMessage(statusMsg);
 
-		// Highlight corresponding tree nodes
-		if (treeView) {
-			const nodeIds = [];
-			(selectedMultipleHoles.length > 0 ? selectedMultipleHoles : selectedHole ? [selectedHole] : []).forEach((hole) => {
-				nodeIds.push("hole⣿" + hole.holeID);
-			});
-			(selectedMultipleKADObjects.length > 0 ? selectedMultipleKADObjects : selectedKADObject ? [selectedKADObject] : []).forEach((kad) => {
-				nodeIds.push(kad.entityType + "⣿" + kad.entityName);
-			});
-			treeView.highlightNodes(nodeIds);
+		// Step 10) Sync selections to TreeView
+		if (typeof syncCanvasToTreeView === "function") {
+			syncCanvasToTreeView();
 		}
 
 		drawData(allBlastHoles, selectedHole);
@@ -21490,11 +21560,11 @@ function timeChart() {
 			// Update selected holes array for single bin
 			timingWindowHolesSelected = holeIDs[selectedIndex]
 				? holeIDs[selectedIndex]
-						.map((combinedID) => {
-							const [entityName, holeID] = combinedID.split(":");
-							return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
-						})
-						.filter(Boolean)
+					.map((combinedID) => {
+						const [entityName, holeID] = combinedID.split(":");
+						return allBlastHoles.find((h) => h.entityName === entityName && h.holeID === holeID);
+					})
+					.filter(Boolean)
 				: [];
 
 			// Redraw canvas WITHOUT calling timeChart
@@ -23122,16 +23192,16 @@ function drawData(allBlastHoles, selectedHole) {
 
 				if (!subGroupVisible) continue;
 
-			// Step 5) Render each KAD entity type (with local coordinate conversion)
-			if (entity.entityType === "point") {
-				for (const pointData of entity.data) {
-					if (pointData.visible === false) continue;
-					const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
-					const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
-					const vertexIndex = entity.data.indexOf(pointData);
-					const kadId = name + ":::" + vertexIndex;
-					drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", kadId); // kadId format: "entityName:::vertexIndex"
-				}
+				// Step 5) Render each KAD entity type (with local coordinate conversion)
+				if (entity.entityType === "point") {
+					for (const pointData of entity.data) {
+						if (pointData.visible === false) continue;
+						const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
+						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
+						const vertexIndex = entity.data.indexOf(pointData);
+						const kadId = name + ":::" + vertexIndex;
+						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", kadId); // kadId format: "entityName:::vertexIndex"
+					}
 				} else if (entity.entityType === "line" || entity.entityType === "poly") {
 					// Step 6) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
 					// Each segment gets its own lineWidth and color from point data
@@ -23159,59 +23229,59 @@ function drawData(allBlastHoles, selectedHole) {
 							}
 						}
 
-					// Step 6b) For polygons, close the loop with final segment
-					// NOTE: Closing segment goes TO firstPoint, so use firstPoint's color
-					if (entity.entityType === "poly" && visiblePoints.length > 2) {
-						var firstPoint = visiblePoints[0];
-						var lastPoint = visiblePoints[visiblePoints.length - 1];
+						// Step 6b) For polygons, close the loop with final segment
+						// NOTE: Closing segment goes TO firstPoint, so use firstPoint's color
+						if (entity.entityType === "poly" && visiblePoints.length > 2) {
+							var firstPoint = visiblePoints[0];
+							var lastPoint = visiblePoints[visiblePoints.length - 1];
 
-						var firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
-						var lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
+							var firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
+							var lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
 
-						// Use firstPoint's color - the closing segment goes TO the first point
-						var lineWidth = firstPoint.lineWidth || 1;
-						var color = firstPoint.color || "#FF0000";
+							// Use firstPoint's color - the closing segment goes TO the first point
+							var lineWidth = firstPoint.lineWidth || 1;
+							var color = firstPoint.color || "#FF0000";
 
-						drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name);
+							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name);
+						}
+
+						// Step 6c) Draw invisible vertex markers for selection (raycasting only - no visual)
+						// Vertices are hidden but still selectable - pink highlight appears on selection via move tool
+						for (var i = 0; i < visiblePoints.length; i++) {
+							var point = visiblePoints[i];
+							var local = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
+							var vertexIndex = entity.data.indexOf(point);
+							var kadId = name + ":::" + vertexIndex;
+							var vertexSize = 0.3; // Small marker for vertex selection (invisible)
+
+							// Create invisible point for raycasting only
+							const pointMesh = GeometryFactory.createKADPoint(local.x, local.y, point.pointZLocation || 0, vertexSize, point.color || "#FF0000");
+							pointMesh.userData = { type: "kadPoint", kadId: kadId };
+							pointMesh.visible = false; // Make invisible but keep in scene for raycasting
+							window.threeRenderer.kadGroup.add(pointMesh);
+						}
 					}
-
-				// Step 6c) Draw invisible vertex markers for selection (raycasting only - no visual)
-				// Vertices are hidden but still selectable - pink highlight appears on selection via move tool
-				for (var i = 0; i < visiblePoints.length; i++) {
-					var point = visiblePoints[i];
-					var local = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
-					var vertexIndex = entity.data.indexOf(point);
-					var kadId = name + ":::" + vertexIndex;
-					var vertexSize = 0.3; // Small marker for vertex selection (invisible)
-					
-					// Create invisible point for raycasting only
-					const pointMesh = GeometryFactory.createKADPoint(local.x, local.y, point.pointZLocation || 0, vertexSize, point.color || "#FF0000");
-					pointMesh.userData = { type: "kadPoint", kadId: kadId };
-					pointMesh.visible = false; // Make invisible but keep in scene for raycasting
-					window.threeRenderer.kadGroup.add(pointMesh);
+				} else if (entity.entityType === "circle") {
+					for (const circleData of entity.data) {
+						if (circleData.visible === false) continue;
+						const centerX = circleData.centerX || circleData.pointXLocation;
+						const centerY = circleData.centerY || circleData.pointYLocation;
+						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
+						const radius = circleData.radius || 10; // Radius in world units
+						const local = worldToThreeLocal(centerX, centerY);
+						const vertexIndex = entity.data.indexOf(circleData);
+						const kadId = name + ":::" + vertexIndex;
+						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", kadId); // kadId format: "entityName:::vertexIndex"
+					}
+				} else if (entity.entityType === "text") {
+					for (const textData of entity.data) {
+						if (textData.visible === false) continue;
+						const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
+						const vertexIndex = entity.data.indexOf(textData);
+						const kadId = name + ":::" + vertexIndex;
+						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, kadId); // kadId format: "entityName:::vertexIndex"
+					}
 				}
-				}
-			} else if (entity.entityType === "circle") {
-				for (const circleData of entity.data) {
-					if (circleData.visible === false) continue;
-					const centerX = circleData.centerX || circleData.pointXLocation;
-					const centerY = circleData.centerY || circleData.pointYLocation;
-					const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
-					const radius = circleData.radius || 10; // Radius in world units
-					const local = worldToThreeLocal(centerX, centerY);
-					const vertexIndex = entity.data.indexOf(circleData);
-					const kadId = name + ":::" + vertexIndex;
-					drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", kadId); // kadId format: "entityName:::vertexIndex"
-				}
-			} else if (entity.entityType === "text") {
-				for (const textData of entity.data) {
-					if (textData.visible === false) continue;
-					const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-					const vertexIndex = entity.data.indexOf(textData);
-					const kadId = name + ":::" + vertexIndex;
-					drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, kadId); // kadId format: "entityName:::vertexIndex"
-				}
-			}
 			}
 		}
 
@@ -25778,6 +25848,144 @@ window.onload = function () {
 			selectedMultiplePoints = [];
 			selectedMultipleHoles = [];
 			drawData(allBlastHoles, selectedHole);
+			syncCanvasToTreeView(); // Sync cleared selection to TreeView
+		}
+
+		// Delete Key for selected KAD objects/vertices
+		if ((event.key === "Delete" || event.key === "Backspace") && !event.target.matches('input, textarea, [contenteditable="true"]')) {
+			// Step 1) Check if we have KAD selections (not during drawing)
+			const hasKADSelection = selectedKADObject || (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0);
+
+			if (hasKADSelection && !isDrawingPoint && !isDrawingLine && !isDrawingPoly && !isDrawingCircle && !isDrawingText) {
+				event.preventDefault();
+				console.log("🗑️ [DELETE KEY] Deleting selected KAD objects");
+
+				// Step 2) Handle vertex deletion with confirmation
+				if (selectedPoint && selectedKADObject) {
+					const entity = allKADDrawingsMap.get(selectedKADObject.entityName);
+					if (entity && entity.data) {
+						const elementIndex = entity.data.findIndex(function (el) { return el.pointID === selectedPoint.pointID; });
+						if (elementIndex !== -1) {
+							// Show confirmation dialog asking vertex or entity
+							const vertexText = selectedKADObject.entityType + " vertex " + selectedPoint.pointID;
+							const entityText = selectedKADObject.entityType + " '" + selectedKADObject.entityName + "'";
+
+							showConfirmationThreeDialog(
+								"Delete Confirmation",
+								"What would you like to delete?",
+								"Vertex Only",
+								"Entire Entity",
+								"Cancel"
+							).then(function (result) {
+								if (result === 1) {
+									// Delete vertex only
+									entity.data.splice(elementIndex, 1);
+									console.log("✅ [DELETE KEY] Deleted vertex:", selectedPoint.pointID);
+
+									// Delete entity if empty
+									if (entity.data.length === 0) {
+										allKADDrawingsMap.delete(selectedKADObject.entityName);
+										console.log("🗑️ [DELETE KEY] Entity empty - deleted:", selectedKADObject.entityName);
+									} else if (typeof renumberEntityPoints === "function") {
+										renumberEntityPoints(entity);
+									}
+
+									// Clear selection
+									selectedPoint = null;
+									selectedKADObject = null;
+									selectedMultipleKADObjects = [];
+
+									if (typeof debouncedSaveKAD === "function") {
+										debouncedSaveKAD();
+									}
+									drawData(allBlastHoles, selectedHole);
+									syncCanvasToTreeView();
+									updateTreeView();
+									updateStatusMessage("Deleted vertex " + selectedPoint.pointID);
+									setTimeout(function () { updateStatusMessage(""); }, 2000);
+								} else if (result === 2) {
+									// Delete entire entity
+									allKADDrawingsMap.delete(selectedKADObject.entityName);
+									console.log("✅ [DELETE KEY] Deleted entity:", selectedKADObject.entityName);
+
+									selectedPoint = null;
+									selectedKADObject = null;
+									selectedMultipleKADObjects = [];
+
+									if (typeof debouncedSaveKAD === "function") {
+										debouncedSaveKAD();
+									}
+									drawData(allBlastHoles, selectedHole);
+									syncCanvasToTreeView();
+									updateTreeView();
+									updateStatusMessage("Deleted entity '" + selectedKADObject.entityName + "'");
+									setTimeout(function () { updateStatusMessage(""); }, 2000);
+								}
+								// If result === 3 (Cancel), do nothing
+							});
+						}
+					}
+				}
+				// Step 3) Handle entity deletion with confirmation
+				else if (selectedKADObject) {
+					if (allKADDrawingsMap.has(selectedKADObject.entityName)) {
+						showConfirmationDialog(
+							"Delete Confirmation",
+							"Are you sure you want to delete " + selectedKADObject.entityType + " '" + selectedKADObject.entityName + "'?",
+							"Delete",
+							"Cancel"
+						).then(function (confirmed) {
+							if (confirmed) {
+								allKADDrawingsMap.delete(selectedKADObject.entityName);
+								console.log("✅ [DELETE KEY] Deleted entity:", selectedKADObject.entityName);
+
+								selectedKADObject = null;
+								selectedMultipleKADObjects = [];
+
+								if (typeof debouncedSaveKAD === "function") {
+									debouncedSaveKAD();
+								}
+								drawData(allBlastHoles, selectedHole);
+								syncCanvasToTreeView();
+								updateTreeView();
+								updateStatusMessage("Deleted KAD entity");
+								setTimeout(function () { updateStatusMessage(""); }, 2000);
+							}
+						});
+					}
+				}
+				// Step 4) Handle multiple entity deletion with confirmation
+				else if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
+					const count = selectedMultipleKADObjects.length;
+					showConfirmationDialog(
+						"Delete Confirmation",
+						"Are you sure you want to delete " + count + " KAD entities?",
+						"Delete All",
+						"Cancel"
+					).then(function (confirmed) {
+						if (confirmed) {
+							selectedMultipleKADObjects.forEach(function (kadObj) {
+								if (allKADDrawingsMap.has(kadObj.entityName)) {
+									allKADDrawingsMap.delete(kadObj.entityName);
+								}
+							});
+							console.log("✅ [DELETE KEY] Deleted", count, "entities");
+
+							selectedMultipleKADObjects = [];
+							selectedKADObject = null;
+
+							if (typeof debouncedSaveKAD === "function") {
+								debouncedSaveKAD();
+							}
+							drawData(allBlastHoles, selectedHole);
+							syncCanvasToTreeView();
+							updateTreeView();
+							updateStatusMessage("Deleted " + count + " KAD entities");
+							setTimeout(function () { updateStatusMessage(""); }, 2000);
+						}
+					});
+				}
+			}
 		}
 		// Shift Key for multi-select
 		if (event.key === "Shift") {
@@ -26339,7 +26547,7 @@ function handleMoveToolMouseDown(event) {
 			// Step 2b.1) Check if we have existing multiple selections
 			if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0 && !event.shiftKey) {
 				// Use existing multiple selections for dragging
-				dragInitialKADPositions = selectedMultipleKADObjects.map(function(obj) {
+				dragInitialKADPositions = selectedMultipleKADObjects.map(function (obj) {
 					return {
 						entityName: obj.entityName,
 						elementIndex: obj.elementIndex,
@@ -26348,27 +26556,27 @@ function handleMoveToolMouseDown(event) {
 						z: obj.pointZLocation
 					};
 				});
-			
-			// Prevent camera pan during drag
-			event.preventDefault();
-			event.stopPropagation();
-			
-			dragPlaneZ = selectedMultipleKADObjects[0].pointZLocation || 0;
-			isDraggingHole = true;
-			window.isDraggingHole = true; // Expose to CameraControls
-			
-			// ✅ Suspend camera pan during drag
-			if (cameraControls) {
-				console.log("🚫 Suspending camera pan during KAD drag");
-				cameraControls.detachEvents();
-			}
-			
-			targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
-			targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
-			targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
-			targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-			updateStatusMessage("Moving " + selectedMultipleKADObjects.length + " KAD points (3D)");
-			return;
+
+				// Prevent camera pan during drag
+				event.preventDefault();
+				event.stopPropagation();
+
+				dragPlaneZ = selectedMultipleKADObjects[0].pointZLocation || 0;
+				isDraggingHole = true;
+				window.isDraggingHole = true; // Expose to CameraControls
+
+				// ✅ Suspend camera pan during drag
+				if (cameraControls) {
+					console.log("🚫 Suspending camera pan during KAD drag");
+					cameraControls.detachEvents();
+				}
+
+				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+				updateStatusMessage("Moving " + selectedMultipleKADObjects.length + " KAD points (3D)");
+				return;
 			}
 
 			// Step 2c) Try to find a KAD vertex in raycast intersects
@@ -26397,20 +26605,52 @@ function handleMoveToolMouseDown(event) {
 				}
 			}
 
-		if (foundKAD) {
-			// Step 2c) Check if Shift key held for multiple selection
-			const dataPoint = foundKAD.dataPoint;
-			const entity = allKADDrawingsMap.get(foundKAD.entityName);
-			
-			if (event.shiftKey && selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
-				// Step 2c.1) Shift+click: Add to existing selection
-				const alreadySelected = selectedMultipleKADObjects.find(function(obj) {
-					return obj.entityName === foundKAD.entityName && obj.elementIndex === foundKAD.elementIndex;
-				});
+			if (foundKAD) {
+				// Step 2c) Check if Shift key held for multiple selection
+				const dataPoint = foundKAD.dataPoint;
+				const entity = allKADDrawingsMap.get(foundKAD.entityName);
 
-				if (!alreadySelected) {
-					// Add to selection
-					const newKADObject = {
+				if (event.shiftKey && selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
+					// Step 2c.1) Shift+click: Add to existing selection
+					const alreadySelected = selectedMultipleKADObjects.find(function (obj) {
+						return obj.entityName === foundKAD.entityName && obj.elementIndex === foundKAD.elementIndex;
+					});
+
+					if (!alreadySelected) {
+						// Add to selection
+						const newKADObject = {
+							entityName: foundKAD.entityName,
+							entityType: entity.entityType,
+							elementIndex: foundKAD.elementIndex,
+							selectionType: "vertex",
+							pointXLocation: dataPoint.pointXLocation,
+							pointYLocation: dataPoint.pointYLocation,
+							pointZLocation: dataPoint.pointZLocation,
+						};
+						selectedMultipleKADObjects.push(newKADObject);
+
+						// Create highlight for newly added point
+						if (typeof highlightSelectedKADPointThreeJS === "function") {
+							highlightSelectedKADPointThreeJS(newKADObject, "multi");
+						}
+					}
+
+					// Clear single selection
+					selectedKADObject = null;
+					selectedPoint = null;
+				} else {
+					// Step 2c.2) Single selection - clear others
+					moveToolSelectedKAD = {
+						entityName: foundKAD.entityName,
+						elementIndex: foundKAD.elementIndex,
+						initialX: dataPoint.pointXLocation,
+						initialY: dataPoint.pointYLocation,
+						initialZ: dataPoint.pointZLocation || 0,
+					};
+					dragPlaneZ = dataPoint.pointZLocation || 0;
+
+					// Set selected KAD object for highlighting
+					selectedKADObject = {
 						entityName: foundKAD.entityName,
 						entityType: entity.entityType,
 						elementIndex: foundKAD.elementIndex,
@@ -26419,214 +26659,182 @@ function handleMoveToolMouseDown(event) {
 						pointYLocation: dataPoint.pointYLocation,
 						pointZLocation: dataPoint.pointZLocation,
 					};
-					selectedMultipleKADObjects.push(newKADObject);
-					
-					// Create highlight for newly added point
+					selectedPoint = dataPoint;
+					selectedKADPolygon = null;
+					selectedMultipleKADObjects = [];
+
+					// Step 2e) Create highlight IMMEDIATELY (don't call renderThreeJS - slow!)
 					if (typeof highlightSelectedKADPointThreeJS === "function") {
-						highlightSelectedKADPointThreeJS(newKADObject, "multi");
+						highlightSelectedKADPointThreeJS(selectedKADObject, "selected");
 					}
 				}
-				
-				// Clear single selection
-				selectedKADObject = null;
-				selectedPoint = null;
-			} else {
-				// Step 2c.2) Single selection - clear others
-				moveToolSelectedKAD = {
-					entityName: foundKAD.entityName,
-					elementIndex: foundKAD.elementIndex,
-					initialX: dataPoint.pointXLocation,
-					initialY: dataPoint.pointYLocation,
-					initialZ: dataPoint.pointZLocation || 0,
-				};
-				dragPlaneZ = dataPoint.pointZLocation || 0;
 
-				// Set selected KAD object for highlighting
-				selectedKADObject = {
-					entityName: foundKAD.entityName,
-					entityType: entity.entityType,
-					elementIndex: foundKAD.elementIndex,
-					selectionType: "vertex",
-					pointXLocation: dataPoint.pointXLocation,
-					pointYLocation: dataPoint.pointYLocation,
-					pointZLocation: dataPoint.pointZLocation,
-				};
-				selectedPoint = dataPoint;
-				selectedKADPolygon = null;
-				selectedMultipleKADObjects = [];
-
-				// Step 2e) Create highlight IMMEDIATELY (don't call renderThreeJS - slow!)
-				if (typeof highlightSelectedKADPointThreeJS === "function") {
-					highlightSelectedKADPointThreeJS(selectedKADObject, "selected");
+				// Step 2e.1) Quick render to show highlight(s)
+				if (threeRenderer && threeRenderer.renderer) {
+					threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
 				}
-			}
 
-			// Step 2e.1) Quick render to show highlight(s)
-			if (threeRenderer && threeRenderer.renderer) {
-				threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
-			}
+				// Step 2f) Start dragging process
+				// Prevent camera pan during drag
+				event.preventDefault();
+				event.stopPropagation();
 
-		// Step 2f) Start dragging process
-		// Prevent camera pan during drag
-		event.preventDefault();
-		event.stopPropagation();
-		
-		isDraggingHole = true;
-		window.isDraggingHole = true; // Expose to CameraControls
-		
-		// ✅ Suspend camera pan during drag
-		if (cameraControls) {
-			console.log("🚫 Suspending camera pan during KAD drag");
-			cameraControls.detachEvents();
-		}
-		
-			targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
-			targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
-			targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
-			targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-			updateStatusMessage("Move KAD point (3D) - drag to reposition");
-			return;
+				isDraggingHole = true;
+				window.isDraggingHole = true; // Expose to CameraControls
+
+				// ✅ Suspend camera pan during drag
+				if (cameraControls) {
+					console.log("🚫 Suspending camera pan during KAD drag");
+					cameraControls.detachEvents();
+				}
+
+				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+				updateStatusMessage("Move KAD point (3D) - drag to reposition");
+				return;
 			}
 		}
 
 		if (selectingHoles) {
 			// Step 2g) Use existing hole selections or try to select a hole via raycasting
 			if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
-			// Use multiple selected holes
-			// Prevent camera pan during drag
-			event.preventDefault();
-			event.stopPropagation();
-			
-			moveToolSelectedHole = selectedMultipleHoles;
-			isDraggingHole = true;
-			window.isDraggingHole = true; // Expose to CameraControls
-			
-			// ✅ Suspend camera pan during drag
-			if (cameraControls) {
-				console.log("🚫 Suspending camera pan during hole drag");
-				cameraControls.detachEvents();
-			}
-			
-			dragPlaneZ = selectedMultipleHoles[0].startZLocation || 0;
-			dragInitialPositions = selectedMultipleHoles.map(function (hole) {
-				return {
-					hole: hole,
-					x: hole.startXLocation,
-					y: hole.startYLocation,
-				};
-			});
-			targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
-			targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
-			targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
-			targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-			updateStatusMessage("Moving " + selectedMultipleHoles.length + " holes (3D)");
-			return;
-		} else if (selectedHole) {
-			// Use single selected hole
-			// Prevent camera pan during drag
-			event.preventDefault();
-			event.stopPropagation();
-			
-			moveToolSelectedHole = [selectedHole];
-			isDraggingHole = true;
-			window.isDraggingHole = true; // Expose to CameraControls
-			
-			// ✅ Suspend camera pan during drag
-			if (cameraControls) {
-				console.log("🚫 Suspending camera pan during hole drag");
-				cameraControls.detachEvents();
-			}
-			
-			dragPlaneZ = selectedHole.startZLocation || 0;
-			dragInitialPositions = [
-				{
-					hole: selectedHole,
-					x: selectedHole.startXLocation,
-					y: selectedHole.startYLocation,
-				},
-			];
-			targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
-			targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
-			targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
-			targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-			updateStatusMessage("Moving hole " + selectedHole.holeID + " (3D)");
-			return;
-			} else {
-				// Step 2h) No existing selection - try to find a hole in raycast intersects
-				const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
-				console.log("🔧 [MOVE TOOL 3D] findClickedHole result:", clickedHole);
-			if (clickedHole) {
-				console.log("✅ [MOVE TOOL 3D] Starting drag for hole: " + clickedHole.holeID + " in " + clickedHole.entityName);
-				
+				// Use multiple selected holes
 				// Prevent camera pan during drag
 				event.preventDefault();
 				event.stopPropagation();
-				
-				selectedHole = clickedHole;
-				moveToolSelectedHole = [clickedHole];
+
+				moveToolSelectedHole = selectedMultipleHoles;
 				isDraggingHole = true;
 				window.isDraggingHole = true; // Expose to CameraControls
-				
+
 				// ✅ Suspend camera pan during drag
 				if (cameraControls) {
 					console.log("🚫 Suspending camera pan during hole drag");
 					cameraControls.detachEvents();
 				}
-				
-				dragPlaneZ = clickedHole.startZLocation || 0;
+
+				dragPlaneZ = selectedMultipleHoles[0].startZLocation || 0;
+				dragInitialPositions = selectedMultipleHoles.map(function (hole) {
+					return {
+						hole: hole,
+						x: hole.startXLocation,
+						y: hole.startYLocation,
+					};
+				});
+				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+				updateStatusMessage("Moving " + selectedMultipleHoles.length + " holes (3D)");
+				return;
+			} else if (selectedHole) {
+				// Use single selected hole
+				// Prevent camera pan during drag
+				event.preventDefault();
+				event.stopPropagation();
+
+				moveToolSelectedHole = [selectedHole];
+				isDraggingHole = true;
+				window.isDraggingHole = true; // Expose to CameraControls
+
+				// ✅ Suspend camera pan during drag
+				if (cameraControls) {
+					console.log("🚫 Suspending camera pan during hole drag");
+					cameraControls.detachEvents();
+				}
+
+				dragPlaneZ = selectedHole.startZLocation || 0;
 				dragInitialPositions = [
 					{
-						hole: clickedHole,
-						x: clickedHole.startXLocation,
-						y: clickedHole.startYLocation,
+						hole: selectedHole,
+						x: selectedHole.startXLocation,
+						y: selectedHole.startYLocation,
 					},
 				];
 				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
 				targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
 				targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
 				targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
-
-				// Step 2h.1) Create highlight IMMEDIATELY (don't wait for renderThreeJS)
-				if (typeof highlightSelectedHoleThreeJS === "function") {
-					highlightSelectedHoleThreeJS(clickedHole, "selected");
-				}
-				
-				// Step 2h.2) Quick render to show highlight
-				if (threeRenderer && threeRenderer.renderer) {
-					threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
-				}
-				
-				updateStatusMessage("Moving hole " + clickedHole.holeID + " (3D)");
+				updateStatusMessage("Moving hole " + selectedHole.holeID + " (3D)");
 				return;
 			} else {
-				// Clicked empty space - clear selection AND remove highlights
-				console.log("⚠️ [MOVE TOOL 3D] No hole found in intersects - clearing selection");
-				clearAllSelectionState();
-				selectedHole = null;
-				selectedMultipleHoles = [];
-				moveToolSelectedHole = null;
-				
-				// Remove ALL highlights from scene
-				if (threeRenderer && threeRenderer.holesGroup) {
-					const highlightsToRemove = [];
-					threeRenderer.holesGroup.children.forEach(function(child) {
-						if (child.userData && child.userData.type === "selectionHighlight") {
-							highlightsToRemove.push(child);
-						}
-					});
-					highlightsToRemove.forEach(function(highlight) {
-						threeRenderer.holesGroup.remove(highlight);
-						if (highlight.geometry) highlight.geometry.dispose();
-						if (highlight.material) highlight.material.dispose();
-					});
+				// Step 2h) No existing selection - try to find a hole in raycast intersects
+				const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
+				console.log("🔧 [MOVE TOOL 3D] findClickedHole result:", clickedHole);
+				if (clickedHole) {
+					console.log("✅ [MOVE TOOL 3D] Starting drag for hole: " + clickedHole.holeID + " in " + clickedHole.entityName);
+
+					// Prevent camera pan during drag
+					event.preventDefault();
+					event.stopPropagation();
+
+					selectedHole = clickedHole;
+					moveToolSelectedHole = [clickedHole];
+					isDraggingHole = true;
+					window.isDraggingHole = true; // Expose to CameraControls
+
+					// ✅ Suspend camera pan during drag
+					if (cameraControls) {
+						console.log("🚫 Suspending camera pan during hole drag");
+						cameraControls.detachEvents();
+					}
+
+					dragPlaneZ = clickedHole.startZLocation || 0;
+					dragInitialPositions = [
+						{
+							hole: clickedHole,
+							x: clickedHole.startXLocation,
+							y: clickedHole.startYLocation,
+						},
+					];
+					targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
+					targetCanvas.addEventListener("touchmove", handleMoveToolMouseMove);
+					targetCanvas.addEventListener("mouseup", handleMoveToolMouseUp);
+					targetCanvas.addEventListener("touchend", handleMoveToolMouseUp);
+
+					// Step 2h.1) Create highlight IMMEDIATELY (don't wait for renderThreeJS)
+					if (typeof highlightSelectedHoleThreeJS === "function") {
+						highlightSelectedHoleThreeJS(clickedHole, "selected");
+					}
+
+					// Step 2h.2) Quick render to show highlight
+					if (threeRenderer && threeRenderer.renderer) {
+						threeRenderer.renderer.render(threeRenderer.scene, threeRenderer.camera);
+					}
+
+					updateStatusMessage("Moving hole " + clickedHole.holeID + " (3D)");
+					return;
+				} else {
+					// Clicked empty space - clear selection AND remove highlights
+					console.log("⚠️ [MOVE TOOL 3D] No hole found in intersects - clearing selection");
+					clearAllSelectionState();
+					selectedHole = null;
+					selectedMultipleHoles = [];
+					moveToolSelectedHole = null;
+
+					// Remove ALL highlights from scene
+					if (threeRenderer && threeRenderer.holesGroup) {
+						const highlightsToRemove = [];
+						threeRenderer.holesGroup.children.forEach(function (child) {
+							if (child.userData && child.userData.type === "selectionHighlight") {
+								highlightsToRemove.push(child);
+							}
+						});
+						highlightsToRemove.forEach(function (highlight) {
+							threeRenderer.holesGroup.remove(highlight);
+							if (highlight.geometry) highlight.geometry.dispose();
+							if (highlight.material) highlight.material.dispose();
+						});
+					}
+
+					// Call drawData with null to prevent highlight recreation (like Escape key does)
+					if (typeof drawData === "function") {
+						drawData(allBlastHoles, null);
+					}
+					return;
 				}
-				
-				// Call drawData with null to prevent highlight recreation (like Escape key does)
-				if (typeof drawData === "function") {
-					drawData(allBlastHoles, null);
-				}
-				return;
-			}
 			}
 		}
 
@@ -26835,7 +27043,7 @@ function handleMoveToolMouseMove(event) {
 		const targetCanvas = threeRenderer.getCanvas();
 		interactionManager.updateMousePosition(event, targetCanvas);
 		const raycaster = interactionManager.raycaster;
-		
+
 		// Step 4b.1) CRITICAL: Update raycaster ray with new mouse position
 		const camera = threeRenderer.camera;
 		raycaster.setFromCamera(interactionManager.mouse, camera);
@@ -26851,7 +27059,7 @@ function handleMoveToolMouseMove(event) {
 		if (moveToolSelectedHole && dragInitialPositions) {
 			// Step 4d.1) Create horizontal plane at object's Z elevation (screen-space following)
 			const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -dragPlaneZ);
-			
+
 			// Step 4d.2) Intersect ray with plane to get screen-space position
 			const intersectionPoint = new THREE.Vector3();
 			const didIntersect = raycaster.ray.intersectPlane(plane, intersectionPoint);
@@ -26884,7 +27092,7 @@ function handleMoveToolMouseMove(event) {
 			// Step 4e.1) Use 3D snap raycast to get full XYZ position (same as KAD drawing tools)
 			// This allows movement in all 3 dimensions based on what the ray intersects
 			snapResult = snapToNearestPointWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusWorld);
-			
+
 			if (snapResult && snapResult.snapped) {
 				// Step 4e.2) Use snapped 3D position
 				worldX = snapResult.worldX;
@@ -26930,7 +27138,7 @@ function handleMoveToolMouseMove(event) {
 				console.log("  → Hole", hole.holeID, "from (", item.x.toFixed(2), item.y.toFixed(2), ") to (", newX.toFixed(2), newY.toFixed(2), ")");
 				calculateHoleGeometry(hole, newX, 4); // Parameter 4 for X position
 				calculateHoleGeometry(hole, newY, 5); // Parameter 5 for Y position
-				
+
 				// Step 4h.1) Update 3D hole position in real-time (without full re-render)
 				if (threeRenderer && threeRenderer.holeMeshMap) {
 					const holeGroup = threeRenderer.holeMeshMap.get(hole.holeID);
@@ -26942,21 +27150,21 @@ function handleMoveToolMouseMove(event) {
 						const newLocal = worldToThreeLocal(newX, newY);
 						const deltaLocalX = newLocal.x - originalLocal.x;
 						const deltaLocalY = newLocal.y - originalLocal.y;
-						
+
 						console.log("    3D offset: delta (", deltaLocalX.toFixed(3), deltaLocalY.toFixed(3), ") - was at (", holeGroup.position.x.toFixed(3), holeGroup.position.y.toFixed(3), ")");
-						
+
 						// Update hole group position by DELTA (not absolute position)
 						holeGroup.position.set(deltaLocalX, deltaLocalY, 0);
-						
+
 						// Step 4h.1a) Also update highlight position (find and move it)
 						const holeId = hole.entityName + ":::" + hole.holeID;
-						threeRenderer.holesGroup.children.forEach(function(child) {
+						threeRenderer.holesGroup.children.forEach(function (child) {
 							if (child.userData && child.userData.type === "selectionHighlight" && child.userData.holeId === holeId) {
 								// Move highlight by same delta
 								child.position.set(deltaLocalX, deltaLocalY, 0);
 							}
 						});
-						
+
 						// Mark that we need to update connectors/labels after drag completes
 						holeGroup.userData.needsUpdate = true;
 					}
@@ -26975,13 +27183,13 @@ function handleMoveToolMouseMove(event) {
 			const deltaZ = worldZ - (firstKAD.z || 0); // Full 3D delta
 			console.log("📍 [MOVE TOOL 3D] Moving " + dragInitialKADPositions.length + " KAD points, delta: (" + deltaX.toFixed(2) + ", " + deltaY.toFixed(2) + ", " + deltaZ.toFixed(2) + ")");
 
-			dragInitialKADPositions.forEach(function(item) {
+			dragInitialKADPositions.forEach(function (item) {
 				const entity = allKADDrawingsMap.get(item.entityName);
 				if (entity && entity.data && item.elementIndex < entity.data.length) {
 					const newX = item.x + deltaX;
 					const newY = item.y + deltaY;
 					const newZ = (item.z || 0) + deltaZ; // Calculate new Z
-					
+
 					entity.data[item.elementIndex].pointXLocation = newX;
 					entity.data[item.elementIndex].pointYLocation = newY;
 					entity.data[item.elementIndex].pointZLocation = newZ; // Full 3D update
@@ -26994,14 +27202,14 @@ function handleMoveToolMouseMove(event) {
 					const deltaLocalY = newLocal.y - originalLocal.y;
 
 					// Move the KAD point mesh with full 3D delta
-					threeRenderer.kadGroup.children.forEach(function(child) {
+					threeRenderer.kadGroup.children.forEach(function (child) {
 						if (child.userData && child.userData.kadId === kadId) {
 							child.position.set(deltaLocalX, deltaLocalY, deltaZ);
 						}
 					});
 
 					// Move the highlight with full 3D delta
-					threeRenderer.kadGroup.children.forEach(function(child) {
+					threeRenderer.kadGroup.children.forEach(function (child) {
 						if (child.userData && child.userData.type === "kadHighlight" && child.userData.kadId === kadId) {
 							child.position.set(deltaLocalX, deltaLocalY, deltaZ);
 						}
@@ -27021,7 +27229,7 @@ function handleMoveToolMouseMove(event) {
 				const oldX = entity.data[moveToolSelectedKAD.elementIndex].pointXLocation;
 				const oldY = entity.data[moveToolSelectedKAD.elementIndex].pointYLocation;
 				const oldZ = entity.data[moveToolSelectedKAD.elementIndex].pointZLocation || 0;
-				
+
 				// Update to new 3D position
 				entity.data[moveToolSelectedKAD.elementIndex].pointXLocation = worldX;
 				entity.data[moveToolSelectedKAD.elementIndex].pointYLocation = worldY;
@@ -27038,52 +27246,52 @@ function handleMoveToolMouseMove(event) {
 				// Keep selectedPoint in sync while dragging
 				selectedPoint = entity.data[moveToolSelectedKAD.elementIndex];
 
-			// Step 4i.1) Update KAD visual in real-time (full 3D delta calculation)
-			const kadId = moveToolSelectedKAD.entityName + ":::" + moveToolSelectedKAD.elementIndex;
+				// Step 4i.1) Update KAD visual in real-time (full 3D delta calculation)
+				const kadId = moveToolSelectedKAD.entityName + ":::" + moveToolSelectedKAD.elementIndex;
 
-			// Calculate delta from initial position (including Z)
-			const originalLocal = worldToThreeLocal(moveToolSelectedKAD.initialX, moveToolSelectedKAD.initialY);
-			const newLocal = worldToThreeLocal(worldX, worldY);
-			const deltaLocalX = newLocal.x - originalLocal.x;
-			const deltaLocalY = newLocal.y - originalLocal.y;
-			const deltaZ = worldZ - (moveToolSelectedKAD.initialZ || 0); // Z delta in world space
+				// Calculate delta from initial position (including Z)
+				const originalLocal = worldToThreeLocal(moveToolSelectedKAD.initialX, moveToolSelectedKAD.initialY);
+				const newLocal = worldToThreeLocal(worldX, worldY);
+				const deltaLocalX = newLocal.x - originalLocal.x;
+				const deltaLocalY = newLocal.y - originalLocal.y;
+				const deltaZ = worldZ - (moveToolSelectedKAD.initialZ || 0); // Z delta in world space
 
-			// Find and move the KAD point mesh in kadGroup (3D movement)
-			threeRenderer.kadGroup.children.forEach(function(child) {
-				if (child.userData && child.userData.kadId === kadId) {
-					// Move the mesh by full 3D delta
-					child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+				// Find and move the KAD point mesh in kadGroup (3D movement)
+				threeRenderer.kadGroup.children.forEach(function (child) {
+					if (child.userData && child.userData.kadId === kadId) {
+						// Move the mesh by full 3D delta
+						child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+					}
+				});
+
+				// Step 4i.1a) Check if highlight exists - recreate if missing (prevents disappearing during drag)
+				let highlightFound = false;
+				threeRenderer.kadGroup.children.forEach(function (child) {
+					if (child.userData && child.userData.type === "kadHighlight" && child.userData.kadId === kadId) {
+						highlightFound = true;
+						// Move existing highlight by full 3D delta
+						child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+					}
+				});
+
+				// Step 4i.1b) If highlight was removed (e.g. by drawData), recreate it
+				if (!highlightFound) {
+					console.log("⚠️ [MOVE TOOL 3D] Highlight missing - recreating for kadId:", kadId);
+					if (typeof highlightSelectedKADPointThreeJS === "function" && selectedKADObject) {
+						// Update selectedKADObject position to current location before recreating highlight
+						selectedKADObject.pointXLocation = worldX;
+						selectedKADObject.pointYLocation = worldY;
+						selectedKADObject.pointZLocation = worldZ; // Use full 3D position
+						highlightSelectedKADPointThreeJS(selectedKADObject, "selected");
+
+						// Move the newly created highlight to the correct position
+						threeRenderer.kadGroup.children.forEach(function (child) {
+							if (child.userData && child.userData.type === "kadHighlight" && child.userData.kadId === kadId) {
+								child.position.set(deltaLocalX, deltaLocalY, deltaZ);
+							}
+						});
+					}
 				}
-			});
-
-			// Step 4i.1a) Check if highlight exists - recreate if missing (prevents disappearing during drag)
-			let highlightFound = false;
-			threeRenderer.kadGroup.children.forEach(function(child) {
-				if (child.userData && child.userData.type === "kadHighlight" && child.userData.kadId === kadId) {
-					highlightFound = true;
-					// Move existing highlight by full 3D delta
-					child.position.set(deltaLocalX, deltaLocalY, deltaZ);
-				}
-			});
-
-			// Step 4i.1b) If highlight was removed (e.g. by drawData), recreate it
-			if (!highlightFound) {
-				console.log("⚠️ [MOVE TOOL 3D] Highlight missing - recreating for kadId:", kadId);
-				if (typeof highlightSelectedKADPointThreeJS === "function" && selectedKADObject) {
-					// Update selectedKADObject position to current location before recreating highlight
-					selectedKADObject.pointXLocation = worldX;
-					selectedKADObject.pointYLocation = worldY;
-					selectedKADObject.pointZLocation = worldZ; // Use full 3D position
-					highlightSelectedKADPointThreeJS(selectedKADObject, "selected");
-					
-					// Move the newly created highlight to the correct position
-					threeRenderer.kadGroup.children.forEach(function(child) {
-						if (child.userData && child.userData.type === "kadHighlight" && child.userData.kadId === kadId) {
-							child.position.set(deltaLocalX, deltaLocalY, deltaZ);
-						}
-					});
-				}
-			}
 
 				// Step 4i.2) Quick render to show visual update
 				if (threeRenderer && threeRenderer.renderer) {
@@ -27184,7 +27392,7 @@ function handleMoveToolMouseUp(event) {
 		// Prevent other handlers from running (like 3D click handler)
 		event.preventDefault();
 		event.stopPropagation();
-		
+
 		isDraggingHole = false;
 		window.isDraggingHole = false; // Clear from window
 
@@ -27203,85 +27411,85 @@ function handleMoveToolMouseUp(event) {
 			canvas.removeEventListener("touchend", handleMoveToolMouseUp);
 		}
 
-	// Step 7) Check if we're in 3D mode
-	if (moveToolIn3DMode) {
-		// ✅ Re-enable camera pan after drag completes
-		if (cameraControls) {
-			console.log("✅ Restoring camera pan after drag complete");
-			cameraControls.resetPanState(); // Clear any stuck states
-			cameraControls.attachEvents(); // Re-enable pan/orbit
-		}
-		
-		// Step 7a) 3D Mode: Clear drag plane Z
-		dragPlaneZ = 0;
+		// Step 7) Check if we're in 3D mode
+		if (moveToolIn3DMode) {
+			// ✅ Re-enable camera pan after drag completes
+			if (cameraControls) {
+				console.log("✅ Restoring camera pan after drag complete");
+				cameraControls.resetPanState(); // Clear any stuck states
+				cameraControls.attachEvents(); // Re-enable pan/orbit
+			}
 
-		// Step 7b) Persist KAD changes if applicable
-		if (moveToolSelectedKAD || dragInitialKADPositions) {
-			debouncedSaveKAD();
-			debouncedUpdateTreeView();
-			moveToolSelectedKAD = null;
-			dragInitialKADPositions = null;
-		}
+			// Step 7a) 3D Mode: Clear drag plane Z
+			dragPlaneZ = 0;
+
+			// Step 7b) Persist KAD changes if applicable
+			if (moveToolSelectedKAD || dragInitialKADPositions) {
+				debouncedSaveKAD();
+				debouncedUpdateTreeView();
+				moveToolSelectedKAD = null;
+				dragInitialKADPositions = null;
+			}
 
 			// Step 7c) Save hole changes
 			if (moveToolSelectedHole) {
 				debouncedSaveHoles(); // Auto-save holes to IndexedDB
 			}
 
-		// Step 7d) Clear selections AND drag state (BEFORE removing highlights!)
-		clearAllSelectionState(); 
-		selectedHole = null;
-		selectedPoint = null;
-		selectedMultipleHoles = [];
-		moveToolSelectedHole = null;
-		dragInitialPositions = null; // CRITICAL: Clear to prevent wrong hole moving next time
-		
-		// Step 7e) Remove ALL hole highlights from scene
-		if (threeRenderer && threeRenderer.holesGroup) {
-			const highlightsToRemove = [];
-			threeRenderer.holesGroup.children.forEach(function(child) {
-				if (child.userData && child.userData.type === "selectionHighlight") {
-					highlightsToRemove.push(child);
-				}
-			});
-			highlightsToRemove.forEach(function(highlight) {
-				threeRenderer.holesGroup.remove(highlight);
-				if (highlight.geometry) highlight.geometry.dispose();
-				if (highlight.material) highlight.material.dispose();
-			});
-			console.log("🗑️ [MOVE TOOL] Removed " + highlightsToRemove.length + " hole highlights from scene");
-		}
+			// Step 7d) Clear selections AND drag state (BEFORE removing highlights!)
+			clearAllSelectionState();
+			selectedHole = null;
+			selectedPoint = null;
+			selectedMultipleHoles = [];
+			moveToolSelectedHole = null;
+			dragInitialPositions = null; // CRITICAL: Clear to prevent wrong hole moving next time
 
-		// Step 7e.1) Remove ALL KAD highlights from scene
-		if (threeRenderer && threeRenderer.kadGroup) {
-			const kadHighlightsToRemove = [];
-			threeRenderer.kadGroup.children.forEach(function(child) {
-				if (child.userData && child.userData.type === "kadHighlight") {
-					kadHighlightsToRemove.push(child);
-				}
-			});
-			kadHighlightsToRemove.forEach(function(highlight) {
-				threeRenderer.kadGroup.remove(highlight);
-				if (highlight.geometry) highlight.geometry.dispose();
-				if (highlight.material) highlight.material.dispose();
-			});
-			console.log("🗑️ [MOVE TOOL] Removed " + kadHighlightsToRemove.length + " KAD highlights from scene");
-		}
+			// Step 7e) Remove ALL hole highlights from scene
+			if (threeRenderer && threeRenderer.holesGroup) {
+				const highlightsToRemove = [];
+				threeRenderer.holesGroup.children.forEach(function (child) {
+					if (child.userData && child.userData.type === "selectionHighlight") {
+						highlightsToRemove.push(child);
+					}
+				});
+				highlightsToRemove.forEach(function (highlight) {
+					threeRenderer.holesGroup.remove(highlight);
+					if (highlight.geometry) highlight.geometry.dispose();
+					if (highlight.material) highlight.material.dispose();
+				});
+				console.log("🗑️ [MOVE TOOL] Removed " + highlightsToRemove.length + " hole highlights from scene");
+			}
 
-		// Step 7f) Call drawData with null to prevent highlight recreation (like Escape key does)
-		// This ensures no other code recreates highlights after we remove them
-		if (typeof drawData === "function") {
-			drawData(allBlastHoles, null);
-		}
+			// Step 7e.1) Remove ALL KAD highlights from scene
+			if (threeRenderer && threeRenderer.kadGroup) {
+				const kadHighlightsToRemove = [];
+				threeRenderer.kadGroup.children.forEach(function (child) {
+					if (child.userData && child.userData.type === "kadHighlight") {
+						kadHighlightsToRemove.push(child);
+					}
+				});
+				kadHighlightsToRemove.forEach(function (highlight) {
+					threeRenderer.kadGroup.remove(highlight);
+					if (highlight.geometry) highlight.geometry.dispose();
+					if (highlight.material) highlight.material.dispose();
+				});
+				console.log("🗑️ [MOVE TOOL] Removed " + kadHighlightsToRemove.length + " KAD highlights from scene");
+			}
 
-		// Step 7g) Set flag to prevent click event from re-selecting the hole
-		justFinishedDragging = true;
-		setTimeout(function() {
-			justFinishedDragging = false;
-		}, 100); // Clear flag after 100ms
+			// Step 7f) Call drawData with null to prevent highlight recreation (like Escape key does)
+			// This ensures no other code recreates highlights after we remove them
+			if (typeof drawData === "function") {
+				drawData(allBlastHoles, null);
+			}
 
-		console.log("✅ Move Tool mouseup (3D mode) - changes saved");
-		return;
+			// Step 7g) Set flag to prevent click event from re-selecting the hole
+			justFinishedDragging = true;
+			setTimeout(function () {
+				justFinishedDragging = false;
+			}, 100); // Clear flag after 100ms
+
+			console.log("✅ Move Tool mouseup (3D mode) - changes saved");
+			return;
 		}
 
 		// Step 8) 2D Mode Logic (existing code)
@@ -32959,10 +33167,10 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
 	return closestPoint
 		? {
-				point: closestPoint,
-				type: snapType,
-				distance: minDistance,
-		  }
+			point: closestPoint,
+			type: snapType,
+			distance: minDistance,
+		}
 		: null;
 }
 // Helper function to find the closest vertex to a click point (keep original for compatibility)
@@ -38347,7 +38555,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
 		const bestCandidate = snapCandidates[0];
 
 		// Debug: Log snap success
-		if (developerModeEnabled){console.log("🎯 [3D SNAP] Snapped to:", bestCandidate.type, "(" + bestCandidate.description + ") | Priority:", bestCandidate.priority, "| Distance:", bestCandidate.distance.toFixed(2));}
+		if (developerModeEnabled) { console.log("🎯 [3D SNAP] Snapped to:", bestCandidate.type, "(" + bestCandidate.description + ") | Priority:", bestCandidate.priority, "| Distance:", bestCandidate.distance.toFixed(2)); }
 
 		return {
 			worldX: bestCandidate.point.x,
@@ -39843,1598 +40051,13 @@ async function promptForProjection(bbox) {
 // End of the STATS SECTION
 //===========================
 
-//----------------- Floating Tree View for File interactions ------------------///
-// DATA EXPLORER - Data Explorer - dataExplorer
-// Tree View System
-class TreeView {
-	constructor(containerId) {
-		this.container = document.getElementById(containerId);
-		this.selectedNodes = new Set();
-		this.expandedNodes = new Set();
-		this.dragData = {
-			isDragging: false,
-			startX: 0,
-			startY: 0,
-		};
-		this.isCollapsed = false;
-		this.isSyncing = false; // Flag to prevent infinite loops
-
-		this.init();
-	}
-
-	init() {
-		this.setupEventListeners();
-		//this.makeResizable();
-		this.updateTreeData();
-	}
-
-	setupEventListeners() {
-		// Panel dragging
-		const header = document.getElementById("treePanelHeader");
-		header.addEventListener("mousedown", this.startDrag.bind(this));
-
-		// Panel controls
-		document.getElementById("treeCollapseBtn").addEventListener("click", this.toggleCollapse.bind(this));
-		document.getElementById("treeCloseBtn").addEventListener("click", this.hide.bind(this));
-
-		// Tree interactions
-		const treeView = document.getElementById("treeView");
-		treeView.addEventListener("click", this.handleTreeClick.bind(this));
-		treeView.addEventListener("contextmenu", this.handleContextMenu.bind(this));
-
-		// Context menu
-		// Hide context menu on startup
-		document.getElementById("treeContextMenu").style.display = "none";
-		const contextMenu = document.getElementById("treeContextMenu");
-		contextMenu.addEventListener("click", this.handleContextAction.bind(this));
-
-		// Hide context menu on outside click
-		document.addEventListener("click", this.hideContextMenu.bind(this));
-
-		// Keyboard shortcuts
-		document.addEventListener("keydown", this.handleKeyboard.bind(this));
-
-		// Replace the color swatch event delegation around line 25989
-		this.container.addEventListener("click", (e) => {
-			if (e.target.classList.contains("color-swatch")) {
-				e.stopPropagation(); // Prevent tree node selection
-
-				// ADD DEBUGGING
-				console.log("🎨 Color swatch clicked!");
-				console.log("Element:", e.target);
-				console.log("Entity name:", e.target.dataset.entityName);
-				console.log("Point ID:", e.target.dataset.pointId);
-				console.log("All datasets:", e.target.dataset);
-
-				const entityName = e.target.dataset.entityName;
-				const pointID = parseInt(e.target.dataset.pointId);
-
-				// ADD MORE DEBUGGING
-				console.log("Parsed entity name:", entityName);
-				console.log("Parsed point ID:", pointID);
-				console.log("Is NaN?", isNaN(pointID));
-
-				// Call the color picker function
-				if (entityName && !isNaN(pointID)) {
-					console.log("✅ Calling openColorPickerForElement");
-					openColorPickerForElement(e.target, entityName, pointID);
-				} else {
-					console.log("❌ NOT calling openColorPickerForElement - missing data");
-				}
-			}
-		});
-	}
-
-	selectRange(startNodeId, endNodeId) {
-		// Get all visible tree items in DOM order
-		const allTreeItems = Array.from(this.container.querySelectorAll(".tree-item"));
-		const allNodeIds = allTreeItems.map((item) => item.dataset.nodeId);
-
-		// Find the indices of start and end nodes
-		const startIndex = allNodeIds.indexOf(startNodeId);
-		const endIndex = allNodeIds.indexOf(endNodeId);
-
-		if (startIndex === -1 || endIndex === -1) return;
-
-		// Determine the range (handle both directions)
-		const minIndex = Math.min(startIndex, endIndex);
-		const maxIndex = Math.max(startIndex, endIndex);
-
-		// Clear current selection
-		this.clearSelection();
-
-		// Select all nodes in the range
-		for (let i = minIndex; i <= maxIndex; i++) {
-			const nodeId = allNodeIds[i];
-			const treeItem = allTreeItems[i];
-
-			this.selectedNodes.add(nodeId);
-			treeItem.classList.add("multi-selected");
-		}
-	}
-
-	clearSelection() {
-		this.selectedNodes.clear();
-		this.container.querySelectorAll(".tree-item").forEach((item) => {
-			item.classList.remove("selected", "multi-selected");
-		});
-	}
-
-	startDrag(e) {
-		this.dragData.isDragging = true;
-		this.dragData.startX = e.clientX - this.container.offsetLeft;
-		this.dragData.startY = e.clientY - this.container.offsetTop;
-
-		document.addEventListener("mousemove", this.drag.bind(this));
-		document.addEventListener("mouseup", this.stopDrag.bind(this));
-		e.preventDefault();
-	}
-
-	drag(e) {
-		if (!this.dragData.isDragging) return;
-
-		const x = e.clientX - this.dragData.startX;
-		const y = e.clientY - this.dragData.startY;
-
-		this.container.style.left = x + "px";
-		this.container.style.top = y + "px";
-	}
-
-	stopDrag() {
-		this.dragData.isDragging = false;
-		document.removeEventListener("mousemove", this.drag);
-		document.removeEventListener("mouseup", this.stopDrag);
-	}
-
-	toggleCollapse() {
-		this.isCollapsed = !this.isCollapsed;
-		this.container.classList.toggle("collapsed", this.isCollapsed);
-
-		const btn = document.getElementById("treeCollapseBtn");
-		btn.textContent = this.isCollapsed ? "+" : "−";
-	}
-
-	hide() {
-		this.container.style.display = "none";
-	}
-
-	show() {
-		this.container.style.display = "flex";
-	}
-
-	// New method to highlight nodes from canvas selection
-	highlightNodes(nodeIds) {
-		this.isSyncing = true;
-		this.clearSelection();
-
-		nodeIds.forEach((nodeId) => {
-			const element = this.container.querySelector(`[data-node-id="${nodeId}"]`);
-			if (element) {
-				this.selectedNodes.add(nodeId);
-				element.classList.add("selected");
-			}
-		});
-
-		this.isSyncing = false;
-	}
-
-	handleTreeClick(e) {
-		const treeItem = e.target.closest(".tree-item");
-		if (!treeItem) return;
-
-		const expandBtn = e.target.closest(".tree-expand");
-		if (expandBtn && !expandBtn.classList.contains("leaf")) {
-			this.toggleNode(treeItem);
-			return;
-		}
-
-		// Handle selection
-		const nodeId = treeItem.dataset.nodeId;
-
-		if (e.shiftKey && this.lastClickedNode) {
-			// Shift-click: Select range from last clicked to current
-			this.selectRange(this.lastClickedNode, nodeId);
-		} else if (e.ctrlKey || e.metaKey) {
-			// Ctrl/Cmd-click: Multi-select
-			if (this.selectedNodes.has(nodeId)) {
-				this.selectedNodes.delete(nodeId);
-				treeItem.classList.remove("selected", "multi-selected");
-			} else {
-				this.selectedNodes.add(nodeId);
-				treeItem.classList.add("multi-selected");
-			}
-			this.lastClickedNode = nodeId;
-		} else {
-			// Single select
-			this.clearSelection();
-			this.selectedNodes.add(nodeId);
-			treeItem.classList.add("selected");
-			this.lastClickedNode = nodeId;
-		}
-
-		this.onSelectionChange();
-	}
-
-	toggleNode(treeItem) {
-		const nodeId = treeItem.dataset.nodeId;
-		const children = treeItem.parentNode.querySelector(".tree-children");
-		const expandBtn = treeItem.querySelector(".tree-expand");
-
-		if (!children) return;
-
-		if (this.expandedNodes.has(nodeId)) {
-			this.expandedNodes.delete(nodeId);
-			children.classList.remove("expanded");
-			expandBtn.classList.remove("expanded");
-		} else {
-			this.expandedNodes.add(nodeId);
-			children.classList.add("expanded");
-			expandBtn.classList.add("expanded");
-		}
-	}
-
-	clearSelection() {
-		this.selectedNodes.clear();
-		this.container.querySelectorAll(".tree-item").forEach((item) => {
-			item.classList.remove("selected", "multi-selected");
-		});
-	}
-
-	handleContextMenu(e) {
-		const treeItem = e.target.closest(".tree-item");
-		if (!treeItem) return;
-
-		e.preventDefault();
-
-		// If right-clicked item is not selected, select it
-		const nodeId = treeItem.dataset.nodeId;
-		if (!this.selectedNodes.has(nodeId)) {
-			this.clearSelection();
-			this.selectedNodes.add(nodeId);
-			treeItem.classList.add("selected");
-		}
-
-		this.showContextMenu(e.clientX, e.clientY);
-	}
-
-	showContextMenu(x, y) {
-		const menu = document.getElementById("treeContextMenu");
-
-		// Get the selected node to determine what options to show
-		const selectedNodeIds = Array.from(this.selectedNodes);
-		const isTopLevelParent = selectedNodeIds.some((nodeId) => nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images");
-		// Determine what type of nodes are selected
-		const hasHoles = selectedNodeIds.some((nodeId) => nodeId.startsWith("hole⣿"));
-
-		const isSubGroup = selectedNodeIds.some((nodeId) => nodeId.startsWith("drawings⣿") && nodeId.split("⣿").length === 2);
-
-		// Show/hide menu items based on selection
-		const renameItem = menu.querySelector('[data-action="rename"]');
-		const resetConnectionsItem = menu.querySelector('[data-action="reset-connections"]');
-		const propertiesItem = menu.querySelector('[data-action="properties"]');
-		const deleteItem = menu.querySelector('[data-action="delete"]');
-
-		// Reset Connections only for hole nodes
-		if (resetConnectionsItem) {
-			resetConnectionsItem.style.display = hasHoles ? "flex" : "none";
-		}
-
-		if (deleteItem) {
-			deleteItem.style.display = isTopLevelParent || isSubGroup ? "none" : "flex";
-		}
-
-		if (propertiesItem) {
-			propertiesItem.style.display = isTopLevelParent || isSubGroup ? "none" : "flex";
-		}
-		// Only show "Rename" for entity/group nodes (not for elements or folders)
-		let showRename = false;
-		if (selectedNodeIds.length === 1) {
-			const nodeId = selectedNodeIds[0];
-			const parts = nodeId.split("⣿");
-			// Only allow rename for group/entity nodes (not element nodes or folders)
-			if ((parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
-				showRename = true;
-			}
-			// ADD THIS: allow rename for blast entity nodes
-			if (parts[0] === "entity" && parts.length === 2) {
-				showRename = true;
-			}
-		}
-
-		if (renameItem) {
-			renameItem.style.display = showRename ? "flex" : "none";
-		}
-
-		menu.style.left = x + "px";
-		menu.style.top = y + "px";
-		menu.style.display = "block";
-	}
-
-	hideContextMenu() {
-		document.getElementById("treeContextMenu").style.display = "none";
-	}
-
-	handleContextAction(e) {
-		const action = e.target.closest(".tree-context-item")?.dataset.action;
-		if (!action) return;
-
-		this.hideContextMenu();
-
-		switch (action) {
-			case "rename":
-				this.renameEntity();
-				break;
-			case "delete":
-				this.deleteSelected();
-				break;
-			case "hide":
-				this.hideSelected();
-				break;
-			case "show":
-				this.showSelected(); // Make sure the "show" action is handled
-				break;
-			case "reset-connections":
-				this.resetConnections();
-				break;
-			case "properties":
-				this.showProperties();
-				break;
-		}
-		// Hide context menu
-		document.getElementById("treeContextMenu").style.display = "none";
-	}
-	// TODO future Development
-	renumberSelected() {
-		if (this.selectedNodes.size === 0) return;
-
-		const nodeIds = Array.from(this.selectedNodes);
-		const entities = new Set();
-
-		// Collect all affected entities
-		nodeIds.forEach((nodeId) => {
-			const parts = nodeId.split("⣿");
-			if (parts[0] === "hole") {
-				const holeId = parts.slice(1).join("⣿");
-				const hole = allBlastHoles.find((h) => h.holeID === holeId);
-				if (hole) entities.add(hole.entityName);
-			} else if (parts[0] === "entity") {
-				const entityName = parts.slice(1).join("⣿");
-				entities.add(entityName);
-			}
-		});
-
-		if (entities.size === 0) return;
-		//!REDO in the FloatingDialog
-		Swal.fire({
-			title: "Renumber Holes",
-			html: `
-    		<div style="text-align: left; margin-bottom: 15px;">
-    			<p>Renumber holes in ${entities.size} blast(s)?</p>
-    			<label for="renumberStart" style="display: block; margin-bottom: 5px; font-weight: bold;">Starting Number:</label>
-    			<input type="text" id="renumberStart" value="${deleteRenumberStart}"
-    				   style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px;"
-    				   placeholder="e.g. 1, A1, B5, 100">
-    			<small style="color: #666; display: block; margin-top: 5px;">
-    				Enter a number (e.g. 1, 100) for numerical naming<br>
-    				or letter+number (e.g. A1, B5) for row-based naming
-    			</small>
-    		</div>
-    	`,
-			icon: "question",
-			showCancelButton: true,
-			confirmButtonText: "Renumber",
-			cancelButtonText: "Cancel",
-			focusConfirm: false,
-			customClass: {
-				container: "custom-popup-container",
-				title: "swal2-title",
-				confirmButton: "confirm",
-				cancelButton: "cancel",
-			},
-			preConfirm: () => {
-				const startValue = document.getElementById("renumberStart").value;
-				if (!startValue || startValue.trim() === "") {
-					Swal.showValidationMessage("Please enter a starting number");
-					return false;
-				}
-				return startValue.trim();
-			},
-		}).then((result) => {
-			if (result.isConfirmed) {
-				const newStartValue = result.value;
-
-				// Update the global deleteRenumberStart value
-				deleteRenumberStart = newStartValue;
-
-				// Also update the original input field if it exists
-				const renumberStartInput = document.querySelector('#renumberStartListener, input[name="renumberStart"]');
-				if (renumberStartInput) {
-					renumberStartInput.value = newStartValue;
-				}
-
-				entities.forEach((entityName) => {
-					renumberHolesFunction(newStartValue, entityName);
-				});
-
-				this.updateTreeData();
-				drawData(allBlastHoles, selectedHole);
-
-				Swal.fire({
-					title: "Complete",
-					text: "Renumbered holes in " + entities.size + " blast(s) starting from " + newStartValue,
-					icon: "success",
-					timer: 3000,
-					showConfirmButton: false,
-				});
-			}
-		});
-	}
-
-	resetConnections() {
-		if (this.selectedNodes.size === 0) return;
-
-		const nodeIds = Array.from(this.selectedNodes);
-		const holeNodeIds = nodeIds.filter((nodeId) => nodeId.startsWith("hole⣿"));
-
-		if (holeNodeIds.length === 0) return;
-
-		// Find the holes to reset
-		const holesToReset = [];
-		holeNodeIds.forEach((nodeId) => {
-			const holeId = nodeId.substring(5); // Remove "hole⣿" prefix
-			const hole = allBlastHoles.find((h) => h.holeID === holeId);
-			if (hole) {
-				holesToReset.push(hole);
-			}
-		});
-
-		if (holesToReset.length === 0) return;
-
-		// Show confirmation dialog
-		Swal.fire({
-			title: "Reset Connections",
-			text: "This will reset the selected holes to connect to themselves. Continue?",
-			icon: "question",
-			showCancelButton: true,
-			confirmButtonText: "Reset",
-			cancelButtonText: "Cancel",
-			customClass: {
-				container: "custom-popup-container",
-				popup: "custom-popup-container",
-				title: "swal2-title",
-				content: "swal2-content",
-				confirmButton: "confirm",
-				cancelButton: "cancel",
-			},
-		}).then((result) => {
-			if (result.isConfirmed) {
-				// Reset connections for each hole
-				holesToReset.forEach((hole) => {
-					hole.fromHoleID = hole.entityName + ":::" + hole.holeID;
-				});
-
-				// Recalculate timing and redraw
-				holeTimes = calculateTimes(allBlastHoles);
-				const result = recalculateContours(allBlastHoles, 0, 0);
-				if (result) {
-					contourLinesArray = result.contourLinesArray;
-					directionArrows = result.directionArrows;
-				}
-
-				drawData(allBlastHoles, selectedHole);
-
-				// Show success message
-				Swal.fire({
-					title: "Connections Reset",
-					text: "Successfully reset " + holesToReset.length + " hole connections.",
-					icon: "success",
-					timer: 2000,
-					showConfirmButton: false,
-					customClass: {
-						container: "custom-popup-container",
-						popup: "custom-popup-container",
-						title: "swal2-title",
-						content: "swal2-content",
-					},
-				});
-			}
-		});
-	}
-
-	deleteSelected() {
-		if (this.selectedNodes.size === 0) return;
-
-		const nodeIds = Array.from(this.selectedNodes);
-
-		// Determine what types we're deleting
-		const hasHoles = nodeIds.some((nodeId) => nodeId.split("⣿")[0] === "hole");
-		const hasEntities = nodeIds.some((nodeId) => nodeId.split("⣿")[0] === "entity");
-		const hasDrawingElements = nodeIds.some((nodeId) => nodeId.includes("⣿element"));
-
-		if (hasDrawingElements) {
-			// Deleting individual drawing elements (allBlastHoles, lines, circles, text)
-			Swal.fire({
-				title: "Delete Elements",
-				html: nodeIds.length === 1 ? "Delete this element?" : `Delete ${nodeIds.length} elements?`,
-				icon: "warning",
-				showCancelButton: true,
-				confirmButtonText: "Delete",
-				cancelButtonText: "Cancel",
-				confirmButtonColor: "#d33",
-				customClass: {
-					container: "custom-popup-container",
-					title: "swal2-title",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-			}).then((result) => {
-				if (result.isConfirmed) {
-					const entitiesToRenumber = new Set(); // Track entities that need renumbering
-
-					nodeIds.forEach((nodeId) => {
-						const parts = nodeId.split("⣿");
-						// Robust parsing for element nodes
-						if (parts.length >= 4 && parts[2] === "element") {
-							const entityType = parts[0];
-							const entityName = parts[1];
-							const elementId = parts[3];
-
-							const entity = allKADDrawingsMap.get(entityName);
-							if (entity && entity.data) {
-								// Find and remove the specific element
-								const elementIndex = entity.data.findIndex((el) => el.pointID == elementId);
-								if (elementIndex !== -1) {
-									entity.data.splice(elementIndex, 1);
-
-									// ✅ ADD: Track this entity for renumbering
-									entitiesToRenumber.add(entityName);
-
-									// If no elements left, delete the entire entity
-									if (entity.data.length === 0) {
-										allKADDrawingsMap.delete(entityName);
-										entitiesToRenumber.delete(entityName); // No need to renumber if deleted
-									}
-								}
-							}
-						}
-					});
-
-					// ✅ ADD: Renumber all affected entities
-					entitiesToRenumber.forEach((entityName) => {
-						const entity = allKADDrawingsMap.get(entityName);
-						if (entity) {
-							renumberEntityPoints(entity);
-						}
-					});
-
-					if (typeof debouncedSaveKAD === "function") {
-						debouncedSaveKAD();
-					}
-
-					this.updateTreeData();
-					drawData(allBlastHoles, selectedHole);
-				}
-			});
-		} else if (hasEntities) {
-			// Deleting blast entities (which deletes all holes in that blast)
-			Swal.fire({
-				title: "Delete Blast",
-				html: nodeIds.length === 1 ? "Delete this entire blast and all its holes?" : `Delete ${nodeIds.length} blasts and all their holes?`,
-				icon: "warning",
-				showCancelButton: true,
-				confirmButtonText: "Delete",
-				cancelButtonText: "Cancel",
-				confirmButtonColor: "#d33",
-				customClass: {
-					container: "custom-popup-container",
-					title: "swal2-title",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-			}).then((result) => {
-				if (result.isConfirmed) {
-					nodeIds.forEach((nodeId) => {
-						const type = nodeId.split("⣿")[0];
-						const itemId = nodeId.split("⣿").slice(1).join("⣿");
-
-						if (type === "entity") {
-							// Delete all holes with this entity name
-							const entityName = itemId;
-							allBlastHoles = allBlastHoles.filter((hole) => hole.entityName !== entityName);
-							console.log(`Deleted all holes in blast: ${entityName}`);
-						} else if (type === "surface") {
-							deleteSurfaceFromDB(itemId).then(() => {
-								loadedSurfaces.delete(surfaceId);
-							});
-						} else if (type === "image") {
-							deleteImageFromDB(itemId).then(() => {
-								loadedImages.delete(imageId);
-							});
-						} else {
-							this.deleteNode(nodeId);
-						}
-					});
-					this.updateTreeData();
-					drawData(allBlastHoles, selectedHole);
-				}
-			});
-		} else if (hasHoles) {
-			// Deleting individual holes with renumber option
-			Swal.fire({
-				title: "Delete Holes",
-				html: `
-			<p>${nodeIds.length === 1 ? "Delete this hole?" : "Delete " + nodeIds.length + " holes?"}</p>
-			<div id="renumberSection" style="margin-top: 15px; display: none;">
-				<label class="labelWhite18" for="deleteRenumberStart">Starting Number:</label>
-				<input type="text3" id="deleteRenumberStart" value="${deleteRenumberStart}" placeholder="e.g. 1, A1, B5, 100">
-				<div class="labelWhite12">Enter number (1, 100) for numerical or letter+number (A1, B5) for row-based naming</div>
-			</div>
-		`,
-				icon: "warning",
-				showCancelButton: true,
-				showDenyButton: true,
-				confirmButtonText: "Delete",
-				denyButtonText: "Renumber",
-				cancelButtonText: "Cancel",
-				confirmButtonColor: "#d33",
-				denyButtonColor: "#ff6b35",
-				focusConfirm: false,
-				customClass: {
-					container: "custom-popup-container",
-					title: "swal2-title",
-					confirmButton: "confirm",
-					denyButton: "deny",
-					cancelButton: "cancel",
-				},
-				didOpen: () => {
-					// Show/hide renumber section based on button clicks
-					const renumberSection = document.getElementById("renumberSection");
-					const denyButton = document.querySelector(".swal2-deny");
-					const confirmButton = document.querySelector(".swal2-confirm");
-
-					if (denyButton) {
-						denyButton.addEventListener("mouseenter", () => {
-							renumberSection.style.display = "block";
-						});
-						denyButton.addEventListener("click", () => {
-							renumberSection.style.display = "block";
-						});
-					}
-
-					if (confirmButton) {
-						confirmButton.addEventListener("mouseenter", () => {
-							renumberSection.style.display = "none";
-						});
-					}
-				},
-				preConfirm: () => {
-					// No validation needed for delete only
-					return true;
-				},
-				preDeny: () => {
-					// Validate renumber input
-					const startValue = document.getElementById("deleteRenumberStart").value;
-					if (!startValue || startValue.trim() === "") {
-						Swal.showValidationMessage("Please enter a starting number for renumbering");
-						return false;
-					}
-					return startValue.trim();
-				},
-			}).then((result) => {
-				if (result.isConfirmed || result.isDenied) {
-					const shouldRenumber = result.isDenied;
-					const newStartValue = result.isDenied ? result.value : null;
-					const affectedEntities = new Set();
-
-					// Update global deleteRenumberStart if renumbering
-					if (shouldRenumber && newStartValue) {
-						deleteRenumberStart = newStartValue;
-
-						// Also update the original input field if it exists
-						const renumberStartInput = document.querySelector('#renumberStartListener, input[name="renumberStart"]');
-						if (renumberStartInput) {
-							renumberStartInput.value = newStartValue;
-						}
-					}
-
-					nodeIds.forEach((nodeId) => {
-						const type = nodeId.split("⣿")[0];
-						const parts = nodeId.split("⣿");
-
-						if (type === "hole") {
-							// Format: "hole⣿entityName⣿holeID"
-							const entityName = parts[1];
-							const holeID = parts[2];
-
-							const holeIndex = allBlastHoles.findIndex((hole) => hole.entityName === entityName && hole.holeID === holeID);
-							if (holeIndex !== -1) {
-								const holeToDelete = allBlastHoles[holeIndex];
-								affectedEntities.add(entityName);
-
-								// Use smart deletion for alphanumeric holes
-								if (shouldRenumber) {
-									deleteHoleAndRenumber(holeToDelete);
-								} else {
-									const deletedCombinedID = entityName + ":::" + holeID;
-									allBlastHoles.splice(holeIndex, 1);
-
-									// Clean up fromHoleID references - orphaned holes should reference themselves
-									allBlastHoles.forEach((hole) => {
-										if (hole.fromHoleID === deletedCombinedID) {
-											const selfReference = hole.entityName + ":::" + hole.holeID;
-											console.log("🔗 Orphaned hole " + selfReference + " now references itself");
-											hole.fromHoleID = selfReference;
-										}
-									});
-
-									// Save to IndexedDB after deletion
-									debouncedSaveHoles();
-								}
-							}
-						}
-					});
-
-					// Do full renumber for numerical holes or when explicitly requested
-					if (shouldRenumber && newStartValue) {
-						affectedEntities.forEach((entityName) => {
-							// Check if any remaining holes in this entity are numerical
-							const entityHoles = allBlastHoles.filter((hole) => hole.entityName === entityName);
-							const hasNumericalHoles = entityHoles.some((hole) => /^\d+$/.test(hole.holeID));
-
-							if (hasNumericalHoles) {
-								renumberHolesFunction(newStartValue, entityName);
-							}
-						});
-					}
-
-					this.updateTreeData();
-					drawData(allBlastHoles, selectedHole);
-
-					// Save to IndexedDB after deletion
-					debouncedSaveHoles();
-
-					// Show success message
-					if (shouldRenumber && newStartValue) {
-						Swal.fire({
-							title: "Complete",
-							text: "Deleted holes and renumbered starting from " + newStartValue,
-							icon: "success",
-							timer: 3000,
-							showConfirmButton: false,
-						});
-					}
-				}
-			});
-		} else {
-			// Standard confirmation for other items (surfaces, images, drawings, etc.)
-			Swal.fire({
-				title: "Delete Items",
-				html: nodeIds.length === 1 ? "Delete this item?" : "Delete " + nodeIds.length + " items?",
-				icon: "warning",
-				showCancelButton: true,
-				confirmButtonText: "Delete",
-				cancelButtonText: "Cancel",
-				confirmButtonColor: "#d33",
-				customClass: {
-					container: "custom-popup-container",
-					title: "swal2-title",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-			}).then((result) => {
-				if (result.isConfirmed) {
-					nodeIds.forEach((nodeId) => {
-						const type = nodeId.split("⣿")[0];
-						const itemId = nodeId.split("⣿").slice(1).join("⣿");
-						if (type === "surface") {
-							deleteSurfaceFromDB(itemId).then(() => {
-								loadedSurfaces.delete(itemId);
-								drawData(allBlastHoles, selectedHole);
-							});
-						} else if (type === "image") {
-							deleteImageFromDB(itemId).then(() => {
-								loadedImages.delete(itemId);
-								drawData(allBlastHoles, selectedHole);
-							});
-						} else if (type === "points" || type === "line" || type === "poly" || type === "circle" || type === "text") {
-							// Delete drawing objects from allKADDrawingsMap
-							const entityName = itemId;
-							if (allKADDrawingsMap && allKADDrawingsMap.has(entityName)) {
-								allKADDrawingsMap.delete(entityName);
-								console.log(`Deleted drawing object: ${entityName}`);
-
-								if (typeof debouncedSaveKAD === "function") {
-									debouncedSaveKAD();
-								}
-
-								drawData(allBlastHoles, selectedHole);
-							}
-						} else {
-							this.deleteNode(nodeId);
-						}
-					});
-					this.updateTreeData();
-				}
-			});
-		}
-	}
-
-	hideSelected() {
-		this.selectedNodes.forEach((nodeId) => {
-			const element = this.container.querySelector('[data-node-id="' + nodeId + '"]');
-			if (element) {
-				element.style.opacity = "0.5";
-				element.classList.add("hidden-node");
-
-				const type = nodeId.split("⣿")[0];
-				const itemId = nodeId.split("⣿").slice(1).join("⣿");
-
-				// ✅ ADD: Handle main group nodes
-				if (nodeId === "blast") {
-					setBlastGroupVisibility(false);
-				} else if (nodeId === "drawings") {
-					setDrawingsGroupVisibility(false);
-				} else if (nodeId === "surfaces") {
-					setSurfacesGroupVisibility(false);
-				} else if (nodeId === "images") {
-					setImagesGroupVisibility(false);
-				}
-				// ✅ ADD: Handle drawing sub-group nodes
-				else if (nodeId === "drawings⣿points") {
-					setPointsGroupVisibility(false);
-				} else if (nodeId === "drawings⣿lines") {
-					setLinesGroupVisibility(false);
-				} else if (nodeId === "drawings⣿polygons") {
-					setPolygonsGroupVisibility(false);
-				} else if (nodeId === "drawings⣿circles") {
-					setCirclesGroupVisibility(false);
-				} else if (nodeId === "drawings⣿texts") {
-					setTextsGroupVisibility(false);
-				}
-				// Existing individual item handling
-				else if (type === "surface") {
-					setSurfaceVisibility(itemId, false);
-				} else if (type === "image") {
-					setImageVisibility(itemId, false);
-				} else if (type === "hole") {
-					setHoleVisibility(itemId, false);
-				} else if (type === "entity") {
-					setEntityVisibility(itemId, false);
-				} else if (type === "points" || type === "line" || type === "poly" || type === "circle" || type === "text") {
-					setKADEntityVisibility(itemId, false);
-				} else if (nodeId.includes("⣿element⣿")) {
-					const parts = nodeId.split("⣿");
-					if (parts.length >= 4 && parts[2] === "element") {
-						const entityName = parts[1];
-						const elementId = parts[3];
-						setKADElementVisibility(entityName, elementId, false);
-					}
-				}
-			}
-		});
-
-		this.clearSelection();
-		// ✅ ADD: Update all tree visual states to cascade visibility indicators
-		updateTreeViewVisibilityStates();
-	}
-
-	showSelected() {
-		this.selectedNodes.forEach((nodeId) => {
-			const element = this.container.querySelector('[data-node-id="' + nodeId + '"]');
-			if (element) {
-				element.style.opacity = "1";
-				element.classList.remove("hidden-node");
-
-				const type = nodeId.split("⣿")[0];
-				const itemId = nodeId.split("⣿").slice(1).join("⣿");
-
-				// ✅ ADD: Handle main group nodes
-				if (nodeId === "blast") {
-					setBlastGroupVisibility(true);
-				} else if (nodeId === "drawings") {
-					setDrawingsGroupVisibility(true);
-				} else if (nodeId === "surfaces") {
-					setSurfacesGroupVisibility(true);
-				} else if (nodeId === "images") {
-					setImagesGroupVisibility(true);
-				}
-				// ✅ ADD: Handle drawing sub-group nodes
-				else if (nodeId === "drawings⣿points") {
-					setPointsGroupVisibility(true);
-				} else if (nodeId === "drawings⣿lines") {
-					setLinesGroupVisibility(true);
-				} else if (nodeId === "drawings⣿polygons") {
-					setPolygonsGroupVisibility(true);
-				} else if (nodeId === "drawings⣿circles") {
-					setCirclesGroupVisibility(true);
-				} else if (nodeId === "drawings⣿texts") {
-					setTextsGroupVisibility(true);
-				}
-				// Existing individual item handling
-				else if (type === "surface") {
-					setSurfaceVisibility(itemId, true);
-				} else if (type === "image") {
-					setImageVisibility(itemId, true);
-				} else if (type === "hole") {
-					setHoleVisibility(itemId, true);
-				} else if (type === "entity") {
-					setEntityVisibility(itemId, true);
-				} else if (type === "points" || type === "line" || type === "poly" || type === "circle" || type === "text") {
-					setKADEntityVisibility(itemId, true);
-				} else if (nodeId.includes("⣿element⣿")) {
-					const parts = nodeId.split("⣿");
-					if (parts.length >= 4 && parts[2] === "element") {
-						const entityName = parts[1];
-						const elementId = parts[3];
-						setKADElementVisibility(entityName, elementId, true);
-					}
-				}
-			}
-		});
-
-		this.clearSelection();
-		// ✅ ADD: Update all tree visual states to cascade visibility indicators
-		updateTreeViewVisibilityStates();
-	}
-
-	showProperties() {
-		if (this.selectedNodes.size === 1) {
-			const nodeId = Array.from(this.selectedNodes)[0];
-			const type = nodeId.split("⣿")[0];
-
-			try {
-				if (type === "surface") {
-					// Check if the function exists in global scope
-					if (typeof showSurfaceContextMenu === "function") {
-						const canvas = document.getElementById("canvas") || document.querySelector("canvas");
-						if (canvas) {
-							const rect = canvas.getBoundingClientRect();
-							const centerX = rect.left + rect.width / 2;
-							const centerY = rect.top + rect.height / 2;
-
-							// Call the function in the global scope
-							window.showSurfaceContextMenu(centerX, centerY);
-						} else {
-							console.warn("Canvas not found for surface context menu");
-							// Fallback position
-							window.showSurfaceContextMenu(window.innerWidth / 2, window.innerHeight / 2);
-						}
-					} else {
-						console.error("showSurfaceContextMenu function not found");
-					}
-				} else if (type === "image") {
-					// Check if the function exists in global scope
-					if (typeof showImageContextMenu === "function") {
-						const canvas = document.getElementById("canvas") || document.querySelector("canvas");
-						if (canvas) {
-							const rect = canvas.getBoundingClientRect();
-							const centerX = rect.left + rect.width / 2;
-							const centerY = rect.top + rect.height / 2;
-
-							// Call the function in the global scope
-							window.showImageContextMenu(centerX, centerY);
-						} else {
-							console.warn("Canvas not found for image context menu");
-							// Fallback position
-							window.showImageContextMenu(window.innerWidth / 2, window.innerHeight / 2);
-						}
-					} else {
-						console.error("showImageContextMenu function not found");
-					}
-				} else {
-					// For other node types
-					this.showNodeProperties(nodeId);
-				}
-			} catch (error) {
-				console.error("Error showing properties:", error);
-			}
-		}
-	}
-
-	handleKeyboard(e) {
-		if (!this.container.style.display === "none") return;
-
-		switch (e.key) {
-			case "Delete":
-				this.deleteSelected();
-				break;
-			case "Escape":
-				this.clearSelection();
-				break;
-		}
-	}
-
-	// Data management
-	updateTreeData() {
-		const treeData = this.buildTreeData();
-		const html = this.renderTree(treeData);
-		document.getElementById("treeView").innerHTML = html;
-	}
-
-	buildTreeData() {
-		// Build tree structure from your data
-		const tree = [
-			{
-				id: "blast",
-				type: "blast",
-				label: "Blast",
-				expanded: true,
-				children: this.buildBlastData(),
-			},
-			{
-				id: "drawings",
-				type: "drawing",
-				label: "Drawings",
-				expanded: true,
-				children: this.buildDrawingData(),
-			},
-			{
-				id: "surfaces",
-				type: "surface",
-				label: "Surfaces",
-				expanded: true,
-				children: this.buildSurfaceData(),
-			},
-			{
-				id: "images",
-				type: "image",
-				label: "Images",
-				expanded: true,
-				children: this.buildImageData(),
-			},
-		];
-
-		return tree;
-	}
-
-	buildBlastData() {
-		if (!allBlastHoles || allBlastHoles.length === 0) return [];
-
-		// Group holes by entity name
-		const entities = {};
-		allBlastHoles.forEach((hole) => {
-			const entityName = hole.entityName || "Unknown";
-			if (!entities[entityName]) {
-				entities[entityName] = [];
-			}
-			entities[entityName].push(hole);
-		});
-
-		return Object.keys(entities).map((entityName) => {
-			const holes = entities[entityName];
-
-			// Replace the sorting in buildBlastData
-			holes.sort((a, b) => {
-				// Convert null/undefined to large numbers so they sort last
-				const aRow = a.rowID && a.rowID > 0 ? a.rowID : 999999;
-				const bRow = b.rowID && b.rowID > 0 ? b.rowID : 999999;
-
-				if (aRow !== bRow) {
-					return aRow - bRow; // Sort by row first
-				}
-
-				// Within same row, sort by position
-				const aPos = a.posID && a.posID > 0 ? a.posID : 999999;
-				const bPos = b.posID && b.posID > 0 ? b.posID : 999999;
-
-				return aPos - bPos;
-			});
-
-			const totalLength = holes.reduce((sum, hole) => sum + (hole.holeLengthCalculated || 0), 0);
-			const metrics = getVoronoiMetrics(holes);
-			// ✅ FIX: Calculate total volume from metrics array
-			const volume = metrics && metrics.length > 0 ? metrics.reduce((sum, cell) => sum + (cell.volume || 0), 0) : 0;
-
-			return {
-				id: "entity⣿" + entityName,
-				type: "entity",
-				label: entityName,
-				meta: "(" + holes.length + ", " + parseFloat(totalLength).toFixed(1) + "m, " + parseFloat(volume).toFixed(1) + "m³)",
-				children: holes.map((hole, index) => ({
-					id: "hole⣿" + entityName + "⣿" + (hole.holeID || index),
-					type: "hole",
-					label: hole.holeID || "Hole " + (index + 1),
-					meta: "L:" + (hole.holeLengthCalculated || 0).toFixed(2) + "m, S:" + (hole.subdrillAmount || 0).toFixed(2) + "m, R:" + (hole.rowID || "?") + ", P:" + (hole.posID || "?"),
-					children: [
-						{
-							id: (hole.holeID || index) + "⣿startx",
-							type: "property",
-							label: "Start X",
-							meta: (hole.startXLocation || 0).toFixed(3),
-						},
-						{
-							id: (hole.holeID || index) + "⣿starty",
-							type: "property",
-							label: "Start Y",
-							meta: (hole.startYLocation || 0).toFixed(3),
-						},
-						{
-							id: (hole.holeID || index) + "⣿startz",
-							type: "property",
-							label: "Start Z",
-							meta: (hole.startZLocation || 0).toFixed(3),
-						},
-						{
-							id: (hole.holeID || index) + "⣿gradez",
-							type: "property",
-							label: "Grade Z",
-							meta: (hole.gradeZLocation || 0).toFixed(3),
-						},
-						{
-							id: (hole.holeID || index) + "⣿diameter",
-							type: "property",
-							label: "Diameter",
-							meta: (hole.holeDiameter || 115) + "mm",
-						},
-						{
-							id: (hole.holeID || index) + "⣿angle",
-							type: "property",
-							label: "Angle",
-							meta: (hole.holeAngle || 0).toFixed(0) + "°",
-						},
-						{
-							id: (hole.holeID || index) + "⣿bearing",
-							type: "property",
-							label: "Bearing",
-							meta: (hole.holeBearing || 0).toFixed(2) + "°",
-						},
-						{
-							id: (hole.holeID || index) + "⣿length",
-							type: "property",
-							label: "Length",
-							meta: (hole.holeLengthCalculated || 0).toFixed(2) + "m",
-						},
-						{
-							id: (hole.holeID || index) + "⣿subdrill",
-							type: "property",
-							label: "Subdrill",
-							meta: (hole.subdrillAmount || 0).toFixed(2) + "m",
-						},
-						{
-							id: (hole.holeID || index) + "⣿type",
-							type: "property",
-							label: "Hole Type",
-							meta: hole.holeType || "Undefined",
-						},
-						{
-							id: (hole.holeID || index) + "⣿rowid",
-							type: "property",
-							label: "Row ID",
-							meta: hole.rowID || "?",
-						},
-						{
-							id: (hole.holeID || index) + "⣿posid",
-							type: "property",
-							label: "Position ID",
-							meta: hole.posID || "?",
-						},
-					],
-				})),
-			};
-		});
-	}
-
-	// Enhanced buildDrawingData() - with Z values and color swatches
-	buildDrawingData() {
-		const drawingChildren = [];
-		const pointsChildren = [];
-		const linesChildren = [];
-		const polysChildren = [];
-		const circlesChildren = [];
-		const textsChildren = [];
-
-		if (typeof allKADDrawingsMap !== "undefined" && allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-			for (const [entityName, entity] of allKADDrawingsMap.entries()) {
-				// Create individual element children for each entity
-				//  update the elementChildren mapping:
-				const elementChildren = entity.data.map((element, index) => ({
-					id: entity.entityType + "⣿" + entityName + "⣿element⣿" + (element.pointID || index + 1),
-					type: entity.entityType + "⣿element",
-					label: entity.entityType === "text" ? element.text || "Text " + (element.pointID || index + 1) : entity.entityType === "circle" ? "Circle " + (element.pointID || index + 1) : "Point " + (element.pointID || index + 1),
-					// FIX: Add safety checks before calling toFixed()
-					meta: entity.entityType === "circle" ? "R:" + (Number(element.radius) || 0).toFixed(1) : "(" + (Number(element.pointXLocation) || 0).toFixed(1) + "," + (Number(element.pointYLocation) || 0).toFixed(1) + "," + (Number(element.pointZLocation) || 0).toFixed(1) + ")",
-					// FIX: Add entityName to the elementData object
-					elementData: {
-						...element,
-						entityName: entityName, // ✅ Add the entityName here!
-					},
-				}));
-
-				// Group by entity type with children
-				switch (entity.entityType) {
-					case "point":
-						pointsChildren.push({
-							id: "points⣿" + entityName,
-							type: "points-group",
-							label: entityName,
-							meta: "(" + entity.data?.length || 0 + " points)",
-							children: elementChildren,
-						});
-						break;
-					case "line":
-						linesChildren.push({
-							id: "line⣿" + entityName,
-							type: "line-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
-						break;
-					case "poly":
-						polysChildren.push({
-							id: "poly⣿" + entityName,
-							type: "polygon-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
-						break;
-					case "circle":
-						circlesChildren.push({
-							id: "circle⣿" + entityName,
-							type: "circle-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
-						break;
-					case "text":
-						textsChildren.push({
-							id: "text⣿" + entityName,
-							type: "text-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
-						break;
-				}
-			}
-		}
-
-		// Add categories with children to the drawing tree (same as before)
-		if (pointsChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿points",
-				type: "points-folder",
-				label: "Points",
-				children: pointsChildren,
-			});
-		}
-
-		if (linesChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿lines",
-				type: "lines-folder",
-				label: "Lines",
-				children: linesChildren,
-			});
-		}
-
-		if (polysChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿polygons",
-				type: "polygons-folder",
-				label: "Polygons",
-				children: polysChildren,
-			});
-		}
-
-		if (circlesChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿circles",
-				type: "circle-folder",
-				label: "Circles",
-				children: circlesChildren,
-			});
-		}
-
-		if (textsChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿texts",
-				type: "text-folder",
-				label: "Texts",
-				children: textsChildren,
-			});
-		}
-
-		return drawingChildren;
-	}
-
-	// Instead of using cache arrays, use the Maps:
-	buildSurfaceData() {
-		const surfaceChildren = [];
-
-		// Use Map directly instead of cache array
-		loadedSurfaces.forEach((surface, surfaceId) => {
-			surfaceChildren.push({
-				id: "surface⣿" + surfaceId,
-				type: "surface",
-				label: surface.name,
-				meta: "(" + (surface.points?.length || 0) + " points | " + (surface.triangles?.length || 0) + " triangles)",
-			});
-		});
-
-		return surfaceChildren;
-	}
-
-	buildImageData() {
-		const imageChildren = [];
-
-		// Use Map directly instead of cache array
-		loadedImages.forEach((image, imageId) => {
-			imageChildren.push({
-				id: "image⣿" + imageId,
-				type: "image",
-				label: image.name,
-				meta: image.size ? (image.size / (1024 * 1024)).toFixed(2) + " MB" : "Unknown size",
-			});
-		});
-
-		return imageChildren;
-	}
-
-	// Enhanced renderTree() ⣿ with color swatches
-	renderTree(nodes, level = 0) {
-		return nodes
-			.map((node) => {
-				const hasChildren = node.children && node.children.length > 0;
-				const isExpanded = this.expandedNodes.has(node.id) || node.expanded;
-				const isSelected = this.selectedNodes.has(node.id);
-
-				// Generate color swatch for individual elements
-				let colorSwatchHtml = "";
-				if (node.elementData && node.type.includes("⣿element")) {
-					const color = node.elementData.color || "#777777";
-					colorSwatchHtml = `<span class="color-swatch" 
-				style="background-color: ${color};" 
-				data-element-id="${node.id}"
-				data-entity-name="${node.elementData.entityName}"
-				data-point-id="${node.elementData.pointID}"></span>`;
-				}
-
-				let html = `
-            <li class="tree-node">
-                <div class="tree-item ${isSelected ? "selected" : ""}" data-node-id="${node.id}">
-                    <span class="tree-expand ${hasChildren ? (isExpanded ? "expanded" : "") : "leaf"}"></span>
-                    <span class="tree-icon ${node.type}"></span>
-                    ${colorSwatchHtml}
-                    <span class="tree-label">${node.label}</span>
-                    ${node.meta ? `<span class="tree-meta">${node.meta}</span>` : ""}
-                </div>
-        `;
-
-				if (hasChildren) {
-					html += `
-                <ul class="tree-children ${isExpanded ? "expanded" : ""}">
-                    ${this.renderTree(node.children, level + 1)}
-                </ul>
-            `;
-				}
-
-				html += "</li>";
-				return html;
-			})
-			.join("");
-	}
-
-	// Callbacks
-	// Add or modify onSelectionChange to sync to canvas
-	onSelectionChange() {
-		if (this.isSyncing) return;
-
-		// Clear canvas selections
-		selectedMultipleHoles = [];
-		selectedMultipleKADObjects = [];
-		selectedHole = null;
-		selectedKADObject = null;
-
-		this.selectedNodes.forEach((nodeId) => {
-			const parts = nodeId.split("⣿");
-			if (parts[0] === "hole") {
-				const holeId = parts.slice(1).join("⣿");
-				const hole = allBlastHoles.find((h) => h.holeID === holeId);
-				if (hole) selectedMultipleHoles.push(hole);
-			} else if (parts[0] === "entity") {
-				// Blast entities
-				const entityName = parts.slice(1).join("⣿");
-				// Select all holes in this blast entity
-				allBlastHoles.forEach((hole) => {
-					if (hole.entityName === entityName) {
-						selectedMultipleHoles.push(hole);
-					}
-				});
-			} else if (["points", "line", "poly", "circle", "text"].includes(parts[0])) {
-				// KAD entities
-				const entityType = parts[0];
-				const entityName = parts.slice(1).join("⣿");
-				const entity = allKADDrawingsMap.get(entityName);
-				if (entity) {
-					selectedMultipleKADObjects.push({
-						entityName: entityName,
-						entityType: entityType,
-						elementIndex: 0,
-						selectionType: "entity",
-					});
-				}
-			}
-			// Add handling for other types if needed (e.g., individual elements)
-		});
-
-		// If single selection, set singular variables
-		if (this.selectedNodes.size === 1) {
-			if (selectedMultipleHoles.length === 1) {
-				selectedHole = selectedMultipleHoles[0];
-			} else if (selectedMultipleKADObjects.length === 1) {
-				selectedKADObject = selectedMultipleKADObjects[0];
-			}
-		}
-
-		// Redraw canvas
-		drawData(allBlastHoles, selectedHole);
-	}
-
-	deleteNode(nodeId) {
-		// Override this method to handle node deletion
-		console.log("Delete node:", nodeId);
-	}
-
-	renameEntity() {
-		if (this.selectedNodes.size !== 1) return;
-		const nodeId = Array.from(this.selectedNodes)[0];
-		const parts = nodeId.split("⣿");
-		// 1. Handle blast entity nodes (entity⣿<blastName>)
-		if (parts[0] === "entity" && parts.length === 2) {
-			const entityName = parts[1];
-			const firstHole = allBlastHoles.find((h) => h.entityName === entityName);
-			if (firstHole && typeof editBlastNamePopup === "function") {
-				editBlastNamePopup(firstHole);
-			}
-			return;
-		}
-
-		// 2. Handle KAD group/entity nodes (points⣿..., line⣿..., etc)
-		if ((parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
-			const entityType = parts[0];
-			const oldEntityName = parts[1];
-			const entity = allKADDrawingsMap.get(oldEntityName);
-			if (!entity) return;
-
-			renameEntityDialog(entityType, oldEntityName)
-				.then((result) => {
-					if (result.isConfirmed) {
-						const newEntityName = result.value.trim();
-
-						// Step 1) Validate the new name
-						if (!newEntityName || newEntityName === oldEntityName) {
-							return; // No change needed
-						}
-
-						// Step 2) Check if name already exists
-						if (allKADDrawingsMap.has(newEntityName)) {
-							showModalMessage("Name Error", "Name already exists!", "error");
-							return;
-						}
-
-						// Step 3) Handle blast entity nodes (special case)
-						if (parts[0] === "entity" && parts.length === 2) {
-							const entityName = parts[1];
-							// Find a hole with this entityName to pass to the popup
-							const firstHole = allBlastHoles.find((h) => h.entityName === entityName);
-							if (firstHole && typeof editBlastNamePopup === "function") {
-								editBlastNamePopup(firstHole);
-							}
-							return;
-						}
-
-						// Step 4) Rename the entity in the KAD drawings map
-						allKADDrawingsMap.set(newEntityName, {
-							...entity,
-							entityName: newEntityName,
-							data: entity.data.map((el) => ({
-								...el,
-								entityName: newEntityName,
-							})),
-						});
-
-						// Step 5) Remove the old entity name from the map
-						allKADDrawingsMap.delete(oldEntityName);
-
-						// Step 6) Update all data elements' entityName property
-						allKADDrawingsMap.get(newEntityName).data.forEach((el) => {
-							el.entityName = newEntityName;
-						});
-
-						// Step 7) Save changes to database if available
-						if (typeof debouncedSaveKAD === "function") {
-							debouncedSaveKAD();
-						}
-
-						// Step 8) Update the tree view display
-						this.updateTreeData();
-
-						// Step 9) Refresh the canvas drawing
-						drawData(allBlastHoles, selectedHole);
-
-						console.log("Successfully renamed " + entityType + " from '" + oldEntityName + "' to '" + newEntityName + "'");
-					} else {
-						// User cancelled the rename
-						console.log("Rename operation cancelled by user");
-					}
-				})
-				.catch((error) => {
-					// Handle any errors that might occur
-					console.error("Error during rename operation:", error);
-					showModalMessage("Rename Error", "An error occurred while renaming: " + error.message, "error");
-				});
-		}
-	}
-
-	showNodeProperties(nodeId) {
-		// Handle showing properties for different node types
-		const parts = nodeId.split("⣿");
-		const nodeType = parts[0];
-
-		try {
-			if (parts.length >= 4 && parts[2] === "element") {
-				const entityType = parts[0];
-				const entityName = parts[1];
-				const elementId = parts[3];
-
-				const entity = allKADDrawingsMap.get(entityName);
-				if (entity && entity.data) {
-					const element = entity.data.find((el) => el.pointID == elementId);
-					if (element) {
-						const kadObject = {
-							...element,
-							entityName: entityName,
-							entityType: entity.entityType,
-							elementIndex: entity.data.indexOf(element),
-						};
-						showKADPropertyEditorPopup(kadObject);
-					}
-				}
-			} else if (nodeType === "hole") {
-				// Show properties for individual hole
-				const holeId = parts.slice(1).join("⣿");
-				const hole = allBlastHoles.find((h) => h.holeID === holeId);
-				if (hole) {
-					showHolePropertyEditor(hole);
-				}
-			} else if (nodeType === "entity") {
-				// Show properties for blast entity (first hole as representative)
-				const entityName = parts.slice(1).join("⣿");
-				const firstHole = allBlastHoles.find((h) => h.entityName === entityName);
-				if (firstHole) {
-					showHolePropertyEditor(firstHole);
-				}
-			} else if (nodeType === "surface") {
-				// Show surface properties
-				const surfaceId = parts.slice(1).join("⣿");
-				const canvas = document.getElementById("canvas") || document.querySelector("canvas");
-				if (canvas && typeof showSurfaceContextMenu === "function") {
-					const rect = canvas.getBoundingClientRect();
-					const centerX = rect.left + rect.width / 2;
-					const centerY = rect.top + rect.height / 2;
-					window.showSurfaceContextMenu(centerX, centerY);
-				}
-			} else if (nodeType === "image") {
-				// Show image properties
-				const imageId = parts.slice(1).join("⣿");
-				const canvas = document.getElementById("canvas") || document.querySelector("canvas");
-				if (canvas && typeof showImageContextMenu === "function") {
-					const rect = canvas.getBoundingClientRect();
-					const centerX = rect.left + rect.width / 2;
-					const centerY = rect.top + rect.height / 2;
-					window.showImageContextMenu(centerX, centerY);
-				}
-			} else {
-				console.warn("Unknown node type for properties:", nodeType);
-			}
-		} catch (error) {
-			console.error("Error showing node properties:", nodeId, error);
-		}
-	}
-}
+//=============================================================
+// TREE VIEW SYSTEM - NOW IMPORTED FROM MODULE
+//=============================================================
+// TreeView class has been moved to src/dialog/tree/TreeView.js
+// This includes ~1,600 lines of code extracted for better modularity
+// The TreeView is now imported at the top of this file and 
+// initialized via initializeTreeView() function
 
 // JS COLOR PICKER FOR INSTANT COLOUR CHANGES
 function openColorPickerForElement(swatchElement, entityName, pointID) {
@@ -41518,6 +40141,64 @@ function openColorPickerForElement(swatchElement, entityName, pointID) {
 let treeView;
 // Add this debounced version
 let updateTreeViewTimeout;
+
+// Step 1) Function to sync canvas selections to TreeView
+function syncCanvasToTreeView() {
+	if (!treeView) return;
+
+	const nodeIds = [];
+
+	// Step 2) Convert hole selections to node IDs
+	if (selectedHole) {
+		const nodeId = "hole⣿" + selectedHole.entityName + "⣿" + selectedHole.holeID;
+		nodeIds.push(nodeId);
+	} else if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
+		selectedMultipleHoles.forEach(function (hole) {
+			const nodeId = "hole⣿" + hole.entityName + "⣿" + hole.holeID;
+			nodeIds.push(nodeId);
+		});
+	}
+
+	// Step 3) Convert KAD selections to node IDs
+	if (selectedKADObject) {
+		// Check if vertex-level selection
+		if (selectedPoint) {
+			// Individual vertex
+			const nodeId = selectedKADObject.entityType + "⣿" + selectedKADObject.entityName + "⣿element⣿" + selectedPoint.pointID;
+			nodeIds.push(nodeId);
+		} else {
+			// Entity-level selection
+			const entityType = selectedKADObject.entityType === "point" ? "points" : selectedKADObject.entityType;
+			const nodeId = entityType + "⣿" + selectedKADObject.entityName;
+			nodeIds.push(nodeId);
+		}
+	} else if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
+		selectedMultipleKADObjects.forEach(function (kadObj) {
+			if (kadObj.selectionType === "vertex") {
+				// Vertex selection
+				const entity = allKADDrawingsMap.get(kadObj.entityName);
+				if (entity && entity.data[kadObj.elementIndex]) {
+					const pointID = entity.data[kadObj.elementIndex].pointID;
+					const nodeId = kadObj.entityType + "⣿" + kadObj.entityName + "⣿element⣿" + pointID;
+					nodeIds.push(nodeId);
+				}
+			} else {
+				// Entity selection
+				const entityType = kadObj.entityType === "point" ? "points" : kadObj.entityType;
+				const nodeId = entityType + "⣿" + kadObj.entityName;
+				nodeIds.push(nodeId);
+			}
+		});
+	}
+
+	// Step 4) Highlight nodes in TreeView
+	if (nodeIds.length > 0) {
+		treeView.highlightNodes(nodeIds);
+	} else {
+		treeView.clearSelection();
+	}
+}
+
 
 // Assign the actual implementation to the forward-declared variable
 debouncedUpdateTreeView = function (delay = 100) {
@@ -41701,741 +40382,287 @@ function updateTreeView() {
 }
 
 //=============================================================
-// FLOATING DIALOG SYSTEM MOVED TO A MODULE
+// TREE VIEW DELEGATION FUNCTIONS
 //=============================================================
+// These functions are called by the TreeView module to handle operations
+// that require access to global application state
 
-// Floating Dialog System - Alternative to Swal2 for non-blocking dialogs
-// Update the FloatingDialog class to support 4 buttons and proper theme detection
-class FloatingDialog {
-	constructor(options) {
-		this.options = {
-			title: "Dialog",
-			content: "",
-			width: 400,
-			height: 300,
-			showConfirm: true,
-			showCancel: true,
-			showDeny: false,
-			showOption1: false,
-			showOption2: false,
-			confirmText: "OK",
-			cancelText: "Cancel",
-			denyText: "Deny",
-			option1Text: "Option 1",
-			option2Text: "Option 2",
-			layoutType: "default", // default, compact, wide
-			draggable: true,
-			resizable: true,
-			closeOnOutsideClick: false,
-			onConfirm: null,
-			onCancel: null,
-			onDeny: null,
-			onOption1: null,
-			onOption2: null,
-			...options,
-		};
+// Step 1) Handle TreeView delete operations
+window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
+	console.log("🗑️ [TreeView] Delete requested for:", nodeIds.length, "items");
 
-		this.element = null;
-		this.isDragging = false;
-		this.isResizing = false;
-		this.dragOffset = {
-			x: 0,
-			y: 0,
-		};
-		this.initialSize = {
-			width: 0,
-			height: 0,
-		};
-
-		// Validate layoutType
-		const validLayouts = ["default", "compact", "wide"];
-		if (!validLayouts.includes(this.options.layoutType)) {
-			console.warn("Invalid layoutType '" + this.options.layoutType + "', using 'default'");
-			this.options.layoutType = "default";
-		}
-	}
-
-	show() {
-		this.create();
-		this.applyLayoutType();
-		document.body.appendChild(this.element);
-		this.center();
-		this.setupEventListeners();
-
-		// Focus first input if any
-		setTimeout(() => {
-			const firstInput = this.element.querySelector("input:not([type='button']), select, textarea");
-			if (firstInput && !firstInput.disabled) firstInput.focus();
-		}, 100);
-	}
-
-	applyLayoutType() {
-		// Remove any existing layout classes
-		this.element.classList.remove("floating-dialog-compact", "floating-dialog-wide");
-
-		// Apply the requested layout class
-		if (this.options.layoutType === "compact") {
-			this.element.classList.add("floating-dialog-compact");
-		} else if (this.options.layoutType === "wide") {
-			this.element.classList.add("floating-dialog-wide");
-		}
-		// "default" doesn't need a class - uses base styles
-	}
-
-	create() {
-		// Create main dialog container
-		this.element = document.createElement("div");
-		this.element.className = "floating-dialog";
-		this.element.style.width = this.options.width + "px";
-		this.element.style.height = this.options.height + "px";
-		this.element.style.zIndex = "10000";
-
-		// Create header
-		const header = this.createHeader();
-		this.element.appendChild(header);
-
-		// Create content
-		const content = this.createContent();
-		this.element.appendChild(content);
-
-		// Create footer with buttons
-		if (this.options.showConfirm || this.options.showCancel || this.options.showOption1 || this.options.showOption2) {
-			const footer = this.createFooter();
-			this.element.appendChild(footer);
-		}
-
-		// Add resize handle if resizable
-		// if (this.options.resizable) {
-		//     this.createResizeHandle();
-		// }
-	}
-
-	createHeader() {
-		const header = document.createElement("div");
-		header.className = "floating-dialog-header";
-
-		// Title
-		const title = document.createElement("div");
-		title.textContent = this.options.title;
-		header.appendChild(title);
-
-		// Close button
-		const closeBtn = document.createElement("button");
-		closeBtn.textContent = "×";
-		closeBtn.style.background = "none";
-		closeBtn.style.border = "none";
-		closeBtn.style.fontSize = "18px";
-		closeBtn.style.cursor = "pointer";
-		closeBtn.style.padding = "0";
-		closeBtn.style.width = "20px";
-		closeBtn.style.height = "20px";
-		closeBtn.style.display = "flex";
-		closeBtn.style.alignItems = "center";
-		closeBtn.style.justifyContent = "center";
-		closeBtn.style.color = "inherit";
-
-		closeBtn.onmouseover = () => {
-			closeBtn.style.color = "#ff0000";
-		};
-		closeBtn.onmouseout = () => {
-			closeBtn.style.color = "inherit";
-		};
-		closeBtn.onclick = () => this.close();
-
-		header.appendChild(closeBtn);
-
-		return header;
-	}
-
-	createContent() {
-		const content = document.createElement("div");
-		content.className = "floating-dialog-content";
-
-		// Handle different content types
-		if (typeof this.options.content === "string") {
-			content.innerHTML = this.options.content;
-		} else if (this.options.content instanceof HTMLElement) {
-			content.appendChild(this.options.content);
-		} else if (typeof this.options.content === "function") {
-			const contentElement = this.options.content(this);
-			if (contentElement) {
-				content.appendChild(contentElement);
-			}
-		}
-
-		return content;
-	}
-
-	createFooter() {
-		const footer = document.createElement("div");
-		footer.className = "floating-dialog-footer";
-
-		// Option2 button (fourth button)
-		if (this.options.showOption2) {
-			const option2Btn = this.createButton(this.options.option2Text, "option2", () => {
-				if (this.options.onOption2) this.options.onOption2();
-				this.close();
-			});
-			footer.appendChild(option2Btn);
-		}
-
-		// Option1 button (third button)
-		if (this.options.showOption1) {
-			const option1Btn = this.createButton(this.options.option1Text, "option1", () => {
-				if (this.options.onOption1) this.options.onOption1();
-				this.close();
-			});
-			footer.appendChild(option1Btn);
-		}
-		// Deny button (before cancel)
-		if (this.options.showDeny) {
-			const denyBtn = this.createButton(this.options.denyText, "deny", () => {
-				if (this.options.onDeny) this.options.onDeny();
-				this.close();
-			});
-			footer.appendChild(denyBtn);
-		}
-		// Cancel button
-		if (this.options.showCancel) {
-			const cancelBtn = this.createButton(this.options.cancelText, "cancel", () => {
-				if (this.options.onCancel) this.options.onCancel();
-				this.close();
-			});
-			footer.appendChild(cancelBtn);
-		}
-
-		// Confirm button
-		if (this.options.showConfirm) {
-			const confirmBtn = this.createButton(this.options.confirmText, "confirm", () => {
-				if (this.options.onConfirm) this.options.onConfirm();
-				this.close();
-			});
-			footer.appendChild(confirmBtn);
-		}
-
-		return footer;
-	}
-
-	createButton(text, className, onClick) {
-		const button = document.createElement("button");
-		button.textContent = text;
-		button.className = "floating-dialog-btn " + className;
-		button.addEventListener("click", onClick);
-		return button;
-	}
-
-	setupEventListeners() {
-		// Dragging functionality
-		if (this.options.draggable) {
-			const header = this.element.querySelector(".floating-dialog-header");
-			header.addEventListener("mousedown", this.startDrag.bind(this));
-		}
-
-		// Close on outside click - store bound function for proper cleanup
-		if (this.options.closeOnOutsideClick) {
-			this.handleOutsideClickBound = this.handleOutsideClick.bind(this);
-			setTimeout(() => {
-				document.addEventListener("click", this.handleOutsideClickBound);
-			}, 0);
-		}
-
-		// Keyboard shortcuts
-		this.handleKeydownBound = this.handleKeydown.bind(this);
-		document.addEventListener("keydown", this.handleKeydownBound);
-	}
-
-	startDrag(e) {
-		if (e.target.tagName === "BUTTON") return;
-
-		this.isDragging = true;
-		const rect = this.element.getBoundingClientRect();
-		this.dragOffset.x = e.clientX - rect.left;
-		this.dragOffset.y = e.clientY - rect.top;
-
-		this.dragBound = this.drag.bind(this);
-		this.stopDragBound = this.stopDrag.bind(this);
-
-		document.addEventListener("mousemove", this.dragBound);
-		document.addEventListener("mouseup", this.stopDragBound);
-
-		e.preventDefault();
-	}
-
-	drag(e) {
-		if (!this.isDragging) return;
-
-		const x = e.clientX - this.dragOffset.x;
-		const y = e.clientY - this.dragOffset.y;
-
-		// Keep dialog within viewport bounds
-		const maxX = window.innerWidth - this.element.offsetWidth;
-		const maxY = window.innerHeight - this.element.offsetHeight;
-
-		this.element.style.left = Math.max(0, Math.min(x, maxX)) + "px";
-		this.element.style.top = Math.max(0, Math.min(y, maxY)) + "px";
-	}
-
-	stopDrag() {
-		this.isDragging = false;
-		document.removeEventListener("mousemove", this.dragBound);
-		document.removeEventListener("mouseup", this.stopDragBound);
-	}
-
-	center() {
-		const rect = this.element.getBoundingClientRect();
-		const x = (window.innerWidth - rect.width) / 2;
-		const y = (window.innerHeight - rect.height) / 2;
-		this.element.style.left = Math.max(0, x) + "px";
-		this.element.style.top = Math.max(0, y) + "px";
-	}
-
-	handleOutsideClick(e) {
-		// Step 1) Guard against null element (dialog may already be closed)
-		if (!this.element) return;
-		if (!this.element.contains(e.target)) {
-			this.close();
-		}
-	}
-
-	handleKeydown(e) {
-		if (e.key === "Escape" && this.element) {
-			this.close();
-		}
-	}
-
-	close() {
-		if (this.element && this.element.parentNode) {
-			this.element.parentNode.removeChild(this.element);
-		}
-
-		// Clean up event listeners
-		if (this.handleOutsideClickBound) {
-			document.removeEventListener("click", this.handleOutsideClickBound);
-		}
-		if (this.handleKeydownBound) {
-			document.removeEventListener("keydown", this.handleKeydownBound);
-		}
-
-		this.element = null;
-	}
-
-	// Static method to create and show a dialog (similar to Swal.fire)
-	static fire(options) {
-		const dialog = new FloatingDialog(options);
-		dialog.show();
-		return dialog;
-	}
-}
-
-//! FORM CONTENT HELPERS GO HERE
-// Updated helper function with proper checkbox handling and layout
-function createFormContent(fields, centerCheckboxes = false) {
-	const container = document.createElement("div");
-	container.style.display = "flex";
-	container.style.flexDirection = "column";
-	container.style.gap = "6px";
-	container.style.width = "100%";
-	container.style.marginTop = "4px";
-
-	fields.forEach((field) => {
-		// Create row container
-		const row = document.createElement("div");
-
-		if (field.type === "checkbox") {
-			// Step 1) Special handling for checkboxes - use 2-column layout
-			row.className = "checkbox-row";
-			row.style.display = "grid";
-
-			// Step 2) Conditionally apply centered layout for checkboxes
-			if (centerCheckboxes) {
-				// Use same layout as regular inputs for centered alignment
-				row.style.gridTemplateColumns = "60% 40%";
-				row.style.columnGap = "8px";
-				row.style.alignItems = "center";
-				row.style.width = "100%";
-			} else {
-				// Original checkbox layout (60% label, 40% checkbox)
-				row.style.gridTemplateColumns = "60% 40%";
-				row.style.columnGap = "8px";
-				row.style.alignItems = "center";
-				row.style.width = "100%";
-			}
-		} else {
-			// Regular input fields
-			row.className = "button-container-2col";
-			row.style.display = "grid";
-			row.style.gridTemplateColumns = "140px 1fr";
-			row.style.columnGap = "8px";
-			row.style.alignItems = "center";
-			row.style.width = "100%";
-		}
-
-		// Label
-		const label = document.createElement("label");
-		label.textContent = field.label;
-
-		// Apply different label classes based on type
-		if (field.type === "checkbox") {
-			label.className = "labelWhite12";
-			label.style.fontSize = "11px";
-			label.style.textAlign = "left"; // Left align for checkbox labels
-			label.style.paddingRight = "0"; // No padding for checkbox labels
-		} else if (field.label.length > 20) {
-			label.className = "labelWhite12";
-			label.style.fontSize = "11px";
-			label.style.textAlign = "right";
-			label.style.paddingRight = "4px";
-		} else {
-			label.className = "labelWhite15";
-			label.style.fontSize = "12px";
-			label.style.textAlign = "right";
-			label.style.paddingRight = "4px";
-		}
-
-		label.style.fontFamily = "sans-serif";
-		label.style.color = "var(--light-mode-text)";
-		label.style.lineHeight = "1.2";
-		label.style.margin = "0";
-		label.style.whiteSpace = "nowrap";
-		label.style.overflow = "hidden";
-		label.style.textOverflow = "ellipsis";
-
-		// Input
-		const input = document.createElement("input");
-		input.type = field.type || "text";
-		input.id = field.id || field.name;
-		input.name = field.name;
-		input.placeholder = field.placeholder || "";
-		input.value = field.value || "";
-
-		if (field.type === "number") {
-			input.step = field.step || "1";
-			input.min = field.min || "";
-			input.max = field.max || "";
-			input.inputMode = "decimal";
-			input.pattern = "[0-9]*";
-		}
-
-		if (field.type === "checkbox") {
-			input.checked = field.checked || false;
-			input.style.width = "14px";
-			input.style.height = "14px";
-			input.style.margin = "0";
-			input.style.padding = "0";
-			input.style.border = "1px solid #999";
-			input.style.borderRadius = "2px";
-			input.style.backgroundColor = "#fff";
-			input.style.appearance = "none";
-			input.style.webkitAppearance = "none";
-			input.style.mozAppearance = "none";
-			input.style.position = "relative";
-			input.style.cursor = "pointer";
-			input.style.justifySelf = "center"; // Center in right column
-
-			// Force the checkbox color update
-			const updateCheckboxColor = () => {
-				if (input.checked) {
-					input.style.backgroundColor = "var(--selected-color)";
-					input.style.borderColor = "var(--selected-color)";
-				} else {
-					input.style.backgroundColor = "#fff";
-					input.style.borderColor = "#999";
-				}
-			};
-
-			// Initial color
-			updateCheckboxColor();
-
-			// Update color on change
-			input.addEventListener("change", updateCheckboxColor);
-		} else {
-			// Regular input styling with proper expansion
-			input.style.fontSize = "11px";
-			input.style.height = "20px";
-			input.style.padding = "2px 4px";
-			input.style.width = "100%"; // Fill available space
-			input.style.minWidth = "80px"; // Minimum width
-			input.style.borderRadius = "3px";
-			input.style.backgroundColor = "#fff";
-			input.style.color = "#000";
-			input.style.border = "1px solid #999";
-			input.style.appearance = "none";
-			input.style.boxSizing = "border-box";
-		}
-
-		// Add to row
-		row.appendChild(label);
-		row.appendChild(input);
-		container.appendChild(row);
+	// Determine what's being deleted
+	const hasHoles = nodeIds.some(function (id) { return id.startsWith("hole⣿"); });
+	const hasEntities = nodeIds.some(function (id) { return id.startsWith("entity⣿"); });
+	const hasKADElements = nodeIds.some(function (id) { return id.includes("⣿element⣿"); });
+	const hasKADEntities = nodeIds.some(function (id) {
+		const parts = id.split("⣿");
+		return (parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
 	});
 
-	return container;
-}
-// Enhanced form content creator for complex forms with special field types
-function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false) {
-	const container = document.createElement("div");
-	container.style.display = "flex";
-	container.style.flexDirection = "column";
-	container.style.gap = "6px";
-	container.style.width = "100%";
-	container.style.marginTop = "4px";
+	// Delegate to existing deletion logic
+	if (hasKADElements) {
+		// Delete KAD elements (vertices/points)
+		const entitiesToRenumber = new Set();
 
-	fields.forEach((field) => {
-		const row = document.createElement("div");
+		nodeIds.forEach(function (nodeId) {
+			const parts = nodeId.split("⣿");
+			if (parts.length >= 4 && parts[2] === "element") {
+				const entityName = parts[1];
+				const elementId = parts[3];
 
-		if (field.type === "checkbox") {
-			// Special handling for checkboxes - use 2-column layout
-			row.className = "checkbox-row";
-			row.style.display = "grid";
-			row.style.gridTemplateColumns = "60% 40%"; // More space for long labels
-			row.style.columnGap = "8px";
-			row.style.alignItems = "center";
-			row.style.width = "100%";
-		} else {
-			// Regular input fields
-			row.className = "button-container-2col";
-			row.style.display = "grid";
-			row.style.gridTemplateColumns = "60% 40%";
-			row.style.columnGap = "8px";
-			row.style.rowGap = "4px";
-			row.style.alignItems = "center";
-			row.style.width = "100%";
-		}
+				const entity = allKADDrawingsMap.get(entityName);
+				if (entity && entity.data) {
+					const elementIndex = entity.data.findIndex(function (el) { return el.pointID == elementId; });
+					if (elementIndex !== -1) {
+						entity.data.splice(elementIndex, 1);
+						entitiesToRenumber.add(entityName);
 
-		// Label
-		const label = document.createElement("label");
-		label.textContent = field.label;
-
-		// Apply different label classes based on type
-		if (field.type === "checkbox") {
-			label.className = "labelWhite12";
-			label.style.fontSize = "11px";
-			label.style.textAlign = "left"; // Left align for checkbox labels
-			label.style.paddingRight = "0"; // No padding for checkbox labels
-		} else {
-			label.className = "labelWhite12";
-			label.style.fontSize = "11px";
-			label.style.fontFamily = "sans-serif";
-			label.style.color = "var(--light-mode-text)";
-			label.style.lineHeight = "1.2";
-			label.style.margin = "0";
-			label.style.whiteSpace = "nowrap";
-			label.style.textAlign = "left";
-			label.style.overflow = "hidden";
-			label.style.textOverflow = "ellipsis";
-			label.style.paddingRight = "4px";
-		}
-
-		// Input element based on type
-		let input;
-
-		if (field.type === "checkbox") {
-			input = document.createElement("input");
-			input.type = "checkbox";
-			input.checked = field.checked || false;
-			input.style.width = "14px";
-			input.style.height = "14px";
-			input.style.margin = "0";
-			input.style.padding = "0";
-			input.style.border = "1px solid #999";
-			input.style.borderRadius = "2px";
-			input.style.backgroundColor = "#fff";
-			input.style.appearance = "none";
-			input.style.webkitAppearance = "none";
-			input.style.mozAppearance = "none";
-			input.style.position = "relative";
-			input.style.cursor = "pointer";
-			// Step 3) Conditionally center the checkbox
-			if (centerCheckboxes) {
-				input.style.justifySelf = "start"; // Align to start of right column (like other inputs)
-			} else {
-				input.style.justifySelf = "center"; // Center in right column (original behavior)
-			}
-
-			// Force the checkbox color update
-			const updateCheckboxColor = () => {
-				if (input.checked) {
-					input.style.backgroundColor = "var(--selected-color)";
-					input.style.borderColor = "var(--selected-color)";
-				} else {
-					input.style.backgroundColor = "#fff";
-					input.style.borderColor = "#999";
+						if (entity.data.length === 0) {
+							allKADDrawingsMap.delete(entityName);
+							entitiesToRenumber.delete(entityName);
+						}
+					}
 				}
-			};
-
-			// Initial color
-			updateCheckboxColor();
-
-			// Update color on change
-			input.addEventListener("change", updateCheckboxColor);
-		} else if (field.type === "select") {
-			input = document.createElement("select");
-			input.className = "floating-dialog-select";
-			field.options.forEach((option) => {
-				const optionElement = document.createElement("option");
-				optionElement.value = option.value;
-				optionElement.textContent = option.text;
-				if (option.value === field.value) {
-					optionElement.selected = true;
-				}
-				input.appendChild(optionElement);
-			});
-
-			// Special handling for hole type dropdown
-			if (field.name === "holeType") {
-				input.addEventListener("change", function () {
-					const customTypeRow = container.querySelector('[data-field="customType"]');
-					const customTypeInput = customTypeRow.querySelector("input");
-					const customTypeLabel = customTypeRow.querySelector("label");
-
-					if (this.value === "__CUSTOM__") {
-						customTypeInput.style.opacity = "1";
-						customTypeInput.disabled = false;
-						customTypeLabel.style.opacity = "1";
-						customTypeInput.focus();
-					} else {
-						customTypeInput.style.opacity = "0.3";
-						customTypeInput.disabled = true;
-						customTypeLabel.style.opacity = "0.3";
-						customTypeInput.value = "";
-					}
-				});
 			}
-		} else if (field.type === "color") {
-			input = document.createElement("input");
-			input.type = "button";
-			input.setAttribute("data-jscolor", "{value:'" + field.value + "'}");
-			input.title = "Delay Color";
-			input.className = "swal2-input";
-		} else {
-			input = document.createElement("input");
-			input.type = field.type || "text";
-		}
-
-		input.id = field.name;
-		input.name = field.name;
-		input.placeholder = field.placeholder || "";
-
-		if (field.type !== "select" && field.type !== "color" && field.type !== "checkbox") {
-			input.value = field.value !== undefined && field.value !== null ? field.value : "";
-		}
-		// Set number input attributes
-		if (field.type === "number") {
-			if (field.min !== undefined) input.min = field.min;
-			if (field.max !== undefined) input.max = field.max;
-			if (field.step !== undefined) input.step = field.step;
-		}
-
-		if (field.disabled) {
-			input.disabled = true;
-			input.style.opacity = "0.3";
-			label.style.opacity = "0.3";
-		}
-
-		// Standard input styling (for non-checkbox inputs)
-		if (field.type !== "color" && field.type !== "checkbox") {
-			input.style.fontSize = "11px";
-			input.style.height = "20px";
-			input.style.padding = "2px 4px";
-			input.style.width = "100%";
-			input.style.minWidth = "80px";
-			input.style.borderRadius = "3px";
-			input.style.backgroundColor = "#fff";
-			input.style.color = "#000";
-			input.style.border = "1px solid #999";
-			input.style.appearance = "none";
-			input.style.boxSizing = "border-box";
-		}
-
-		// Mark the row with field name for easy reference
-		row.setAttribute("data-field", field.name);
-
-		row.appendChild(label);
-		row.appendChild(input);
-		container.appendChild(row);
-	});
-
-	// Initialize JSColor after adding color inputs with proper z-index
-	setTimeout(() => {
-		jscolor.install();
-
-		// Force z-index on any JSColor elements
-		const colorInputs = container.querySelectorAll("[data-jscolor]");
-		colorInputs.forEach((input) => {
-			if (input.jscolor) {
-				// Set z-index on the JSColor instance
-				input.jscolor.option("zIndex", 20000);
-			}
-
-			// Also set it when the color picker is shown
-			input.addEventListener("click", () => {
-				setTimeout(() => {
-					const picker = document.querySelector(".jscolor-picker-wrap");
-					if (picker) {
-						picker.style.zIndex = "20000";
-						picker.style.position = "fixed";
-					}
-					const pickerInner = document.querySelector(".jscolor-picker");
-					if (pickerInner) {
-						pickerInner.style.zIndex = "20000";
-					}
-				}, 10);
-			});
 		});
-	}, 100);
 
-	return container;
-}
-//* FORM CONTENT HELPERS END HERE
-
-//! CONFIRMATION DIALOG
-// Step 1) Create utility function for confirmation dialogs - FIXED VERSION
-function showConfirmationDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", onConfirm = null, onCancel = null) {
-	console.log("showConfirmationDialog: " + title);
-
-	// Step 2) Create content with warning icon and message using inline styles for dark mode
-	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-	const content = '<div style="color: #ff9800; font-size: 24px; margin-bottom: 15px; text-align: center;">⚠️</div>' + '<div style="color: ' + textColor + '; font-size: 16px; line-height: 1.4;">' + message + "</div>";
-
-	// Step 3) Create FloatingDialog with confirm/cancel buttons
-	const dialog = new FloatingDialog({
-		title: title,
-		content: content,
-		width: 500,
-		height: 350,
-		showConfirm: true,
-		showCancel: true,
-		showDeny: false,
-		showOption1: false,
-		showOption2: false,
-		confirmText: confirmText,
-		cancelText: cancelText,
-		draggable: true,
-		resizable: false,
-		closeOnOutsideClick: false, // Modal behavior
-		layoutType: "default",
-		onConfirm: () => {
-			// Step 4) Handle confirm button click
-			console.log("Confirmation dialog confirmed: " + title);
-			dialog.close();
-			if (onConfirm && typeof onConfirm === "function") {
-				onConfirm();
+		// Renumber affected entities
+		entitiesToRenumber.forEach(function (entityName) {
+			const entity = allKADDrawingsMap.get(entityName);
+			if (entity && typeof renumberEntityPoints === "function") {
+				renumberEntityPoints(entity);
 			}
-		},
-		onCancel: () => {
-			// Step 5) Handle cancel button click
-			console.log("Confirmation dialog cancelled: " + title);
-			dialog.close();
-			if (onCancel && typeof onCancel === "function") {
-				onCancel();
+		});
+
+		if (typeof debouncedSaveKAD === "function") {
+			debouncedSaveKAD();
+		}
+
+		treeViewInstance.updateTreeData();
+		drawData(allBlastHoles, selectedHole);
+	} else if (hasKADEntities) {
+		// Delete entire KAD entities
+		nodeIds.forEach(function (nodeId) {
+			const parts = nodeId.split("⣿");
+			if (parts.length === 2) {
+				const entityName = parts[1];
+				if (allKADDrawingsMap.has(entityName)) {
+					allKADDrawingsMap.delete(entityName);
+				}
 			}
-		},
+		});
+
+		if (typeof debouncedSaveKAD === "function") {
+			debouncedSaveKAD();
+		}
+
+		treeViewInstance.updateTreeData();
+		drawData(allBlastHoles, selectedHole);
+	} else if (hasHoles || hasEntities) {
+		// Delegate to TreeView's own delete logic for holes/entities
+		treeViewInstance.deleteSelected();
+	}
+};
+
+// Step 2) Handle TreeView visibility toggle
+window.handleTreeViewVisibility = function (nodeId, type, itemId, isVisible) {
+	console.log("👁️ [TreeView] Visibility toggle:", nodeId, "→", isVisible);
+
+	// Main group visibility
+	if (nodeId === "blast") {
+		setBlastGroupVisibility(isVisible);
+	} else if (nodeId === "drawings") {
+		setDrawingsGroupVisibility(isVisible);
+	} else if (nodeId === "surfaces") {
+		setSurfacesGroupVisibility(isVisible);
+	} else if (nodeId === "images") {
+		setImagesGroupVisibility(isVisible);
+	}
+	// Drawing subgroup visibility
+	else if (nodeId === "drawings⣿points") {
+		setPointsGroupVisibility(isVisible);
+	} else if (nodeId === "drawings⣿lines") {
+		setLinesGroupVisibility(isVisible);
+	} else if (nodeId === "drawings⣿polygons") {
+		setPolygonsGroupVisibility(isVisible);
+	} else if (nodeId === "drawings⣿circles") {
+		setCirclesGroupVisibility(isVisible);
+	} else if (nodeId === "drawings⣿texts") {
+		setTextsGroupVisibility(isVisible);
+	}
+	// Individual item visibility
+	else if (type === "surface") {
+		setSurfaceVisibility(itemId, isVisible);
+	} else if (type === "image") {
+		setImageVisibility(itemId, isVisible);
+	} else if (type === "hole") {
+		setHoleVisibility(itemId, isVisible);
+	} else if (type === "entity") {
+		setEntityVisibility(itemId, isVisible);
+	} else if (type === "points" || type === "line" || type === "poly" || type === "circle" || type === "text") {
+		setKADEntityVisibility(itemId, isVisible);
+	} else if (nodeId.includes("⣿element⣿")) {
+		const parts = nodeId.split("⣿");
+		if (parts.length >= 4 && parts[2] === "element") {
+			const entityName = parts[1];
+			const elementId = parts[3];
+			setKADElementVisibility(entityName, elementId, isVisible);
+		}
+	}
+
+	// Note: Individual visibility setters already call drawData() and updateTreeViewVisibilityStates()
+};
+
+// Step 3) Handle TreeView rename operations
+window.handleTreeViewRename = function (nodeId, treeViewInstance) {
+	console.log("✏️ [TreeView] Rename requested for:", nodeId);
+
+	const parts = nodeId.split("⣿");
+
+	// Blast entity rename
+	if (parts[0] === "entity" && parts.length === 2) {
+		const entityName = parts[1];
+		const firstHole = allBlastHoles.find(function (h) { return h.entityName === entityName; });
+		if (firstHole && typeof editBlastNamePopup === "function") {
+			editBlastNamePopup(firstHole);
+		}
+		return;
+	}
+
+	// KAD entity rename
+	if ((parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
+		const oldEntityName = parts[1];
+		const entity = allKADDrawingsMap.get(oldEntityName);
+		if (!entity) return;
+
+		if (typeof renameEntityDialog === "function") {
+			renameEntityDialog(parts[0], oldEntityName).then(function (result) {
+				if (result.isConfirmed) {
+					const newEntityName = result.value.trim();
+					if (!newEntityName || newEntityName === oldEntityName) return;
+
+					if (allKADDrawingsMap.has(newEntityName)) {
+						showModalMessage("Name Error", "Name already exists!", "error");
+						return;
+					}
+
+					// Rename entity
+					allKADDrawingsMap.set(newEntityName, {
+						...entity,
+						entityName: newEntityName,
+						data: entity.data.map(function (el) {
+							return { ...el, entityName: newEntityName };
+						})
+					});
+					allKADDrawingsMap.delete(oldEntityName);
+
+					if (typeof debouncedSaveKAD === "function") {
+						debouncedSaveKAD();
+					}
+
+					treeViewInstance.updateTreeData();
+					drawData(allBlastHoles, selectedHole);
+				}
+			});
+		}
+	}
+};
+
+// Step 4) Handle TreeView show properties
+window.handleTreeViewShowProperties = function (nodeId, type) {
+	console.log("📋 [TreeView] Show properties for:", nodeId);
+
+	const parts = nodeId.split("⣿");
+
+	// KAD element properties
+	if (parts.length >= 4 && parts[2] === "element") {
+		const entityName = parts[1];
+		const elementId = parts[3];
+
+		const entity = allKADDrawingsMap.get(entityName);
+		if (entity && entity.data) {
+			const element = entity.data.find(function (el) { return el.pointID == elementId; });
+			if (element) {
+				const kadObject = {
+					...element,
+					entityName: entityName,
+					entityType: entity.entityType,
+					elementIndex: entity.data.indexOf(element)
+				};
+				if (typeof showKADPropertyEditorPopup === "function") {
+					showKADPropertyEditorPopup(kadObject);
+				}
+			}
+		}
+	}
+	// Hole properties
+	else if (parts[0] === "hole") {
+		const entityName = parts[1];
+		const holeID = parts[2];
+		const hole = allBlastHoles.find(function (h) { return h.entityName === entityName && h.holeID === holeID; });
+		if (hole && typeof showHolePropertyEditor === "function") {
+			showHolePropertyEditor(hole);
+		}
+	}
+	// Entity properties
+	else if (parts[0] === "entity") {
+		const entityName = parts.slice(1).join("⣿");
+		const firstHole = allBlastHoles.find(function (h) { return h.entityName === entityName; });
+		if (firstHole && typeof showHolePropertyEditor === "function") {
+			showHolePropertyEditor(firstHole);
+		}
+	}
+};
+
+// Step 5) Handle TreeView reset connections
+window.handleTreeViewResetConnections = function (holeNodeIds) {
+	console.log("🔗 [TreeView] Reset connections for:", holeNodeIds.length, "holes");
+
+	const holesToReset = [];
+	holeNodeIds.forEach(function (nodeId) {
+		const parts = nodeId.split("⣿");
+		if (parts[0] === "hole" && parts.length === 3) {
+			const entityName = parts[1];
+			const holeID = parts[2];
+			const hole = allBlastHoles.find(function (h) { return h.entityName === entityName && h.holeID === holeID; });
+			if (hole) {
+				holesToReset.push(hole);
+			}
+		}
 	});
 
-	// Step 6) Show the dialog
-	dialog.show();
-	return dialog;
-}
+	if (holesToReset.length === 0) return;
+
+	// Reset connections
+	holesToReset.forEach(function (hole) {
+		hole.fromHoleID = hole.entityName + ":::" + hole.holeID;
+	});
+
+	// Recalculate timing
+	if (typeof calculateTimes === "function") {
+		holeTimes = calculateTimes(allBlastHoles);
+	}
+	if (typeof recalculateContours === "function") {
+		const result = recalculateContours(allBlastHoles, 0, 0);
+		if (result) {
+			contourLinesArray = result.contourLinesArray;
+			directionArrows = result.directionArrows;
+		}
+	}
+
+	drawData(allBlastHoles, selectedHole);
+};
+
+//=============================================================
+// FLOATING DIALOG SYSTEM - NOW IMPORTED FROM MODULE
+//=============================================================
+// BUG FIX 6: Removed duplicate FloatingDialog code (736 lines)
+// The FloatingDialog class is now imported from src/dialog/FloatingDialog.js
+// This removes code duplication and ensures a single source of truth
+
+// NOTE: FloatingDialog, createFormContent, createEnhancedFormContent,
+// and showConfirmationDialog are all imported from the module
 // Step 1) Create utility function for confirmation dialogs with 3 buttons
 // Step 14) Load 3D settings from localStorage
 function load3DSettings() {
@@ -42575,113 +40802,7 @@ function updateGizmoDisplay() {
 	}
 }
 
-function showConfirmationThreeDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", optionText = "Option", onConfirm = null, onCancel = null, onOption = null) {
-	console.log("showConfirmationThreeDialog: " + title);
-
-	// Step 2) Create content with warning icon and message using inline styles for dark mode
-	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-	const content = '<div style="color: #ff9800; font-size: 24px; margin-bottom: 15px; text-align: center;">⚠️</div>' + '<div style="color: ' + textColor + '; font-size: 16px; line-height: 1.4;">' + message + "</div>";
-
-	// Step 3) Create FloatingDialog with confirm/cancel/option buttons
-	const dialog = new FloatingDialog({
-		title: title,
-		content: content,
-		width: 500,
-		height: 350,
-		showConfirm: true,
-		showCancel: true,
-		showDeny: false,
-		showOption1: true, // Enable the third button
-		showOption2: false,
-		confirmText: confirmText,
-		cancelText: cancelText,
-		option1Text: optionText, // Use option1Text for the third button
-		draggable: true,
-		resizable: false,
-		closeOnOutsideClick: false, // Modal behavior
-		layoutType: "default",
-		onConfirm: () => {
-			// Step 4) Handle confirm button click
-			console.log("Three-button confirmation dialog confirmed: " + title);
-			dialog.close();
-			if (onConfirm && typeof onConfirm === "function") {
-				onConfirm();
-			}
-		},
-		onCancel: () => {
-			// Step 5) Handle cancel button click
-			console.log("Three-button confirmation dialog cancelled: " + title);
-			dialog.close();
-			if (onCancel && typeof onCancel === "function") {
-				onCancel();
-			}
-		},
-		onOption1: () => {
-			// Step 6) Handle option button click
-			console.log("Three-button confirmation dialog option selected: " + title);
-			dialog.close();
-			if (onOption && typeof onOption === "function") {
-				onOption();
-			}
-		},
-	});
-
-	// Step 7) Show the dialog
-	dialog.show();
-	return dialog;
-}
-//! WRANING - SUCCESS - ERROR - INFO - QUESTION - ACTION Dialog
-// Step 1) Create utility function for modal warning/error/success popups - FIXED VERSION
-function showModalMessage(title, message, type = "info", callback = null) {
-	console.log("showModalMessage: " + title + " - " + message + " (" + type + ")");
-
-	// Step 2) Determine icon and styling based on type
-	let iconHtml = "";
-	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-
-	if (type === "warning") {
-		iconHtml = '<div style="color: #ff9800; font-size: 24px; margin-bottom: 10px; text-align: center;">⚠️</div>';
-	} else if (type === "error") {
-		iconHtml = '<div style="color: #f44336; font-size: 24px; margin-bottom: 10px; text-align: center;">❌</div>';
-	} else if (type === "success") {
-		iconHtml = '<div style="color: #4caf50; font-size: 24px; margin-bottom: 10px; text-align: center;">✅</div>';
-	} else {
-		iconHtml = '<div style="color: #2196f3; font-size: 24px; margin-bottom: 10px; text-align: center;">ℹ️</div>';
-	}
-
-	// Step 3) Create content with icon and message using inline styles
-	const content = iconHtml + '<div style="color: ' + textColor + '; font-size: 16px; line-height: 1.4; text-align: center;">' + message + "</div>";
-
-	// Step 4) Create modal FloatingDialog
-	const dialog = new FloatingDialog({
-		title: title,
-		content: content,
-		width: 400,
-		height: 200,
-		showConfirm: true,
-		showCancel: false,
-		showDeny: false,
-		showOption1: false,
-		showOption2: false,
-		confirmText: "OK",
-		draggable: true,
-		resizable: false,
-		closeOnOutsideClick: false, // Modal behavior - must click OK
-		layoutType: "compact",
-		onConfirm: () => {
-			// Step 5) Handle OK button click
-			console.log("Modal message acknowledged: " + title);
-			dialog.close();
-			if (callback && typeof callback === "function") {
-				callback();
-			}
-		},
-	});
-
-	// Step 6) Show the dialog
-	dialog.show();
-	return dialog;
-}
+// NOTE: showConfirmationThreeDialog and showModalMessage are imported from FloatingDialog.js module
 
 //CONTEXT DIALOG FOR HOLE MODIFICATION
 // MOVED TO HolesContextMenu.js - These functions are now loaded from external module
