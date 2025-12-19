@@ -520,6 +520,7 @@ function exposeGlobalsToWindow() {
 	window.debouncedSaveKAD = debouncedSaveKAD;
 	window.clearAllSelectionState = clearAllSelectionState;
 	window.setSelectionFromTreeView = setSelectionFromTreeView; // CRITICAL: For TreeView to update selection
+	window.openColorPickerForElement = openColorPickerForElement; // CRITICAL: For TreeView color swatch clicks
 	window.setKADEntityVisibility = setKADEntityVisibility;
 	window.setSurfaceVisibility = setSurfaceVisibility;
 	window.showSurfaceLegend = showSurfaceLegend;
