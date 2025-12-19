@@ -40125,11 +40125,27 @@ function openColorPickerForElement(swatchElement, entityName, pointID) {
 			// ✅ FIX: Use toHEXString() instead of toString() to avoid double hash
 			const newColor = this.toHEXString(); // This already includes the #
 			element.color = newColor;
+
+			// Update the original swatch element (might be orphaned after tree rebuild)
 			swatchElement.style.backgroundColor = newColor;
 
 			// Redraw the canvas
 			drawData(allBlastHoles, selectedHole);
+
+			// Update tree (rebuilds HTML with new color)
 			debouncedUpdateTreeView();
+
+			// CRITICAL: After tree updates, find and update the NEW swatch element in the DOM
+			// The tree rebuild creates new elements, so we need to update the new swatch too
+			setTimeout(function () {
+				const newSwatchElement = document.querySelector(
+					'.color-swatch[data-entity-name="' + entityName + '"][data-point-id="' + pointID + '"]'
+				);
+				if (newSwatchElement) {
+					newSwatchElement.style.backgroundColor = newColor;
+					console.log("✅ Updated NEW swatch element after tree rebuild");
+				}
+			}, 150); // Wait for debounced tree update (100ms) + render time
 
 			console.log("✅ Updated " + entityName + " point " + pointID + " color to:", newColor);
 		},
