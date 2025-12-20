@@ -388,9 +388,9 @@ function showHolePropertyEditor(hole) {
 						(startNumber) => {
 							// Step 10c.2) Delete holes manually and renumber with starting value
 							const entitiesToRenumber = new Set();
-							
+
 							holes.forEach((hole) => {
-								const index = window.allBlastHoles.findIndex(h => 
+								const index = window.allBlastHoles.findIndex(h =>
 									h.holeID === hole.holeID && h.entityName === hole.entityName
 								);
 								if (index !== -1) {
@@ -398,12 +398,12 @@ function showHolePropertyEditor(hole) {
 									entitiesToRenumber.add(hole.entityName);
 								}
 							});
-							
+
 							// Renumber each affected entity with user-specified starting number (USE FACTORY CODE)
 							entitiesToRenumber.forEach(entityName => {
 								window.renumberHolesFunction(startNumber, entityName);
 							});
-							
+
 							// Debounced save and updates (USE FACTORY CODE)
 							window.debouncedSaveHoles();
 							window.debouncedUpdateTreeView();

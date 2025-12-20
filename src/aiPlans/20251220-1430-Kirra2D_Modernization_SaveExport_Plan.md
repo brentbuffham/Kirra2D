@@ -1,8 +1,34 @@
 # Kirra2D Modernization & Save/Export Reorganization Plan
 
 **Date**: 2025-12-20  
-**Time**: 14:30  
-**Status**: 📋 DESIGN COMPLETE - READY FOR IMPLEMENTATION
+**Time**: 17:00 (UPDATED)
+**Status**: 📋 PHASE 1 COMPLETE ✅ | PHASE 2 IN PROGRESS
+
+---
+
+## Phase 1: Context Menu Delete Buttons ✅ COMPLETE
+
+### Status: ✅ ALL IMPLEMENTED AND TESTED
+
+**Completed Features:**
+1. ✅ **Holes Context Menu Delete** - Two-stage confirmation with starting number input
+2. ✅ **KAD Context Menu Delete** - Auto-renumber with edge case handling
+3. ✅ **Generic Input Dialog** - `showConfirmationDialogWithInput()` created
+4. ✅ **TreeView Delete Fix** - Fixed infinite recursion bug
+5. ✅ **TreeView Renumber Confirmation** - Added two-stage dialog to TreeView deletion
+6. ✅ **Factory Code Compliance** - All functions properly exposed and used
+
+**Files Modified:**
+- ✅ `src/kirra.js` - Exposed functions (line ~18658)
+- ✅ `src/dialog/FloatingDialog.js` - Added `showConfirmationDialogWithInput`
+- ✅ `src/dialog/contextMenu/HolesContextMenu.js` - Delete with renumber
+- ✅ `src/dialog/contextMenu/KADContextMenu.js` - Delete with auto-renumber
+
+**Documentation:**
+- ✅ `src/aiCommentary/20251220-1500-Phase1_Delete_Implementation.md`
+- ✅ `src/aiCommentary/20251220-1630-TreeView_Delete_Recursion_Fix.md`
+
+**Testing:** ✅ Completed - All working as expected
 
 ---
 
@@ -10,18 +36,18 @@
 
 ```mermaid
 graph TB
-    subgraph Phase1 [Phase 1: Context Menu Deletes]
-        HoleDelete[Hole Delete Button]
-        KADDelete[KAD Delete Button]
-        RenumberLogic[Renumber Logic]
+    subgraph Phase1 [Phase 1: ✅ COMPLETE]
+        HoleDelete[✅ Hole Delete Button]
+        KADDelete[✅ KAD Delete Button]
+        RenumberLogic[✅ Renumber Logic]
+        TreeViewFix[✅ TreeView Recursion Fix]
     end
     
-    subgraph Phase2 [Phase 2: Dialog Migration]
-        SwalRemoval[Remove SWAL2 References]
-        FloatingDialog[FloatingDialog System]
-        PatternDialogs[Pattern Dialogs]
-        PropertyDialogs[Property Dialogs]
-        ExportDialogs[Export Dialogs]
+    subgraph Phase2 [Phase 2: IN PROGRESS]
+        ExportSyntax[Fix Export Syntax Error]
+        ExistingCheck[Audit Existing Dialogs]
+        ExtractRemaining[Extract Remaining Dialogs]
+        ConvertSwal[Convert Swal to FloatingDialog]
     end
     
     subgraph Phase3 [Phase 3: Save System Redesign]
@@ -61,6 +87,7 @@ graph TB
    - Use `window.createEnhancedFormContent()` for all dialog forms
    - Use `window.getFormData()` for form data extraction
    - Use `window.showConfirmationDialog()` for yes/no prompts
+   - Use `window.showConfirmationDialogWithInput()` for prompts with input ✅ NEW
    - Use `window.FloatingDialog` for ALL dialogs (NO Swal2)
    - Use `window.calculateHoleGeometry()` for geometry calculations
    - Use `window.renumberHolesFunction()` for hole renumbering
@@ -129,234 +156,125 @@ graph TB
 
 ---
 
-## Phase 1: Context Menu Delete Buttons
-
-### 1.1 Holes Context Menu Delete Button
-
-**File**: `src/dialog/contextMenu/HolesContextMenu.js`
-
-**Changes**:
-- Add `showOption2: true` and `option2Text: "Delete"` to FloatingDialog options (line ~327)
-- Implement `onOption2` callback with renumber prompt
-
-**Multiple Selection Support**:
-- If multiple holes selected (`holes.length > 1`): Delete all selected holes
-- If single hole selected: Delete that hole
-- Use `window.showConfirmationDialog()` to ask: "Renumber holes after delete?" (Yes/No)
-  - **Yes**: Call `window.renumberHolesFunction(deleteRenumberStart, entityName)` after deletion
-  - **No**: Just delete without renumbering
-
-**Delete Logic**:
-```javascript
-onOption2: () => {
-    // Delete all holes in the 'holes' array (single or multiple)
-    const entitiesToRenumber = new Set();
-    
-    holes.forEach((hole) => {
-        const index = window.allBlastHoles.findIndex(h => 
-            h.holeID === hole.holeID && h.entityName === hole.entityName
-        );
-        if (index !== -1) {
-            window.allBlastHoles.splice(index, 1);
-            entitiesToRenumber.add(hole.entityName);
-        }
-    });
-    
-    // Ask if user wants to renumber
-    window.showConfirmationDialog(
-        "Renumber Holes?",
-        "Do you want to renumber holes after deletion?",
-        "Yes",
-        "No",
-        () => {
-            // Renumber each affected entity
-            entitiesToRenumber.forEach(entityName => {
-                window.renumberHolesFunction(window.deleteRenumberStart, entityName);
-            });
-            window.debouncedSaveHoles();
-            window.debouncedUpdateTreeView();
-            window.drawData(window.allBlastHoles, window.selectedHole);
-        },
-        () => {
-            // Just save and redraw without renumbering
-            window.debouncedSaveHoles();
-            window.debouncedUpdateTreeView();
-            window.drawData(window.allBlastHoles, window.selectedHole);
-        }
-    );
-    
-    dialog.close();
-}
-```
-
-**Reference Existing Functions**:
-- ✅ **USE FACTORY CODE**: `renumberHolesFunction(startNumber, selectedEntityName)` - line 18327 in kirra.js
-- ✅ **USE FACTORY CODE**: `debouncedSaveHoles()` - existing function (DO NOT RECREATE)
-- ✅ **USE FACTORY CODE**: `debouncedUpdateTreeView()` - existing function (DO NOT RECREATE)
-- ✅ **USE FACTORY CODE**: `window.showConfirmationDialog()` - existing dialog function (DO NOT RECREATE)
-- Pattern: See existing delete logic around line 18200 in kirra.js
-
----
-
-### 1.2 KAD Context Menu Delete Button
-
-**File**: `src/dialog/contextMenu/KADContextMenu.js`
-
-**Changes**:
-- Add `showOption2: true` and `option2Text: "Delete"` to FloatingDialog options (line ~166)
-- Implement `onOption2` callback to delete point/segment/element
-
-**Multiple Selection Support**:
-- The KAD context menu currently only shows for **single element selection** (one point or segment)
-- No multiple selection support needed for KAD (different from holes)
-- Always auto-renumber after deletion (no prompt needed)
-
-**Delete Logic**:
-```javascript
-onOption2: () => {
-    const entity = window.getEntityFromKADObject(kadObject);
-    if (!entity) return;
-    
-    let deletionIndex = kadObject.elementIndex;
-    
-    // For segment selections, delete the endpoint (next point)
-    const isLineOrPolySegment = (kadObject.entityType === "line" || kadObject.entityType === "poly") && 
-                                 kadObject.selectionType === "segment";
-    if (isLineOrPolySegment) {
-        const isPoly = kadObject.entityType === "poly";
-        const numPoints = entity.data.length;
-        deletionIndex = isPoly ? (deletionIndex + 1) % numPoints : deletionIndex + 1;
-    }
-    
-    // Remove the point/vertex
-    entity.data.splice(deletionIndex, 1);
-    
-    // Handle edge cases
-    if (entity.data.length === 0) {
-        // Delete entire entity if no points left
-        window.allKADDrawingsMap.delete(kadObject.entityName);
-        window.updateStatusMessage("Deleted entity " + kadObject.entityName);
-    } else if (entity.data.length === 1 && (entity.entityType === "line" || entity.entityType === "poly")) {
-        // Delete entity if only 1 point remains in line/poly
-        window.allKADDrawingsMap.delete(kadObject.entityName);
-        window.updateStatusMessage("Deleted entity " + kadObject.entityName + " (insufficient points)");
-    } else if (entity.data.length === 2 && entity.entityType === "poly") {
-        // Convert poly to line if only 2 points remain
-        entity.entityType = "line";
-        entity.data.forEach(point => {
-            point.entityType = "line";
-            point.closed = false;
-        });
-        window.updateStatusMessage("Converted " + kadObject.entityName + " to line (2 points)");
-        // Auto-renumber remaining points
-        window.renumberEntityPoints(entity);
-    } else {
-        // Normal case: just renumber
-        window.renumberEntityPoints(entity);
-        window.updateStatusMessage("Deleted point from " + kadObject.entityName);
-    }
-    
-    // Save and redraw
-    window.debouncedSaveKAD();
-    window.debouncedUpdateTreeView();
-    window.clearAllSelectionState();
-    window.drawData(window.allBlastHoles, window.selectedHole);
-    
-    dialog.close();
-    setTimeout(() => window.updateStatusMessage(""), 2000);
-}
-```
-
-**Reference Existing Functions**:
-- ✅ **USE FACTORY CODE**: `renumberEntityPoints(entity)` - line 18096 in kirra.js (already exists!)
-- ✅ **USE FACTORY CODE**: `deleteObjectInMap(map, pointToDelete)` - line 18107 in kirra.js
-- ✅ **USE FACTORY CODE**: `window.debouncedSaveKAD()` - DO NOT RECREATE
-- ✅ **USE FACTORY CODE**: `window.clearAllSelectionState()` - DO NOT RECREATE
-- Use existing KAD deletion pattern
-
-**Button Layout** (for both menus):
-```
-[Option2: Delete] [Option1: Hide] [Cancel] [Confirm/Apply]
-```
-
----
-
 ## Phase 2: Complete SWAL2 to FloatingDialog Migration
 
-### 2.1 Fix Export Statement Syntax Error
+### 2.1 Fix Export Statement Syntax Error ✅ COMPLETE
 
-**Issue**: `Uncaught SyntaxError: Unexpected token 'export'`
+**Issue**: FloatingDialog.js had ES6 export but was also loaded as regular script tag
 
-**Root Cause**: kirra.js is loaded as a regular script (not ES6 module), but contains ES6 export statements.
+**Root Cause**: Duplicate loading - both as ES6 module (kirra.js line 77) AND as script tag (kirra.html line 2532)
 
 **Solution**:
-1. Remove all `export` statements from kirra.js
-2. Ensure all functions are exposed via `window.functionName = functionName`
-3. Check HTML to ensure scripts are loaded with `type="module"` if using ES6 imports
+1. ✅ Removed duplicate `<script src="src/dialog/FloatingDialog.js"></script>` from kirra.html
+2. ✅ Kept ES6 export in FloatingDialog.js (needed for kirra.js import)
+3. ✅ Also kept window.functionName exposure for backward compatibility
 
 ---
 
-### 2.2 Extract Pattern Dialogs
+### 2.2 Audit Existing Dialog Implementations ✅ COMPLETE
 
-**File**: Create `src/dialog/popups/generic/HolePatternDialogsImpl.js`
+**✅ ALREADY IMPLEMENTED - DO NOT RECREATE:**
 
-**Functions to Extract from kirra.js**:
-1. `addHolePopup()` - line ~19135 (337 lines)
-2. `addPatternPopup(worldX, worldY)` - line ~19510
-3. `showHolesAlongLinePopup()` - line ~32403
-4. `showPatternInPolygonPopup()` - line ~33009
-5. `showHolesAlongPolylinePopup(vertices)` - line ~33812
+1. **✅ AddHoleDialog.js** - COMPLETE
+   - Location: `src/dialog/popups/generic/AddHoleDialog.js` (528 lines)
+   - Status: Fully converted to FloatingDialog
+   - Function: `showAddHoleDialog()` exposed globally
+   - Replaces: `addHolePopup()` from kirra.js (line 19809)
+   - **ACTION**: Remove `addHolePopup()` from kirra.js
 
-**Conversion Pattern**:
-- Replace all `Swal.fire({...})` with `new FloatingDialog({...})`
-- Convert template literals to string concatenation: `` `Hello ${name}` `` → `"Hello " + name`
-- Replace `Swal.getPopup().querySelector()` with dialog content manipulation
-- ✅ **USE FACTORY CODE**: `window.createEnhancedFormContent(fields)` for form generation
-- ✅ **USE FACTORY CODE**: `window.getFormData(formContent)` for form data extraction
-- Test all validation logic after conversion
+2. **✅ PatternGenerationDialogs.js** - COMPLETE
+   - Location: `src/dialog/popups/generic/PatternGenerationDialogs.js` (362 lines)
+   - Status: Fully converted to FloatingDialog
+   - Functions: `showPatternDialog(mode, worldX, worldY)` exposed globally
+   - Replaces: `addPatternPopup()` from kirra.js (line 19851)
+   - **ACTION**: Remove `addPatternPopup()` from kirra.js
 
-**CRITICAL**: Do NOT recreate form builders - use existing `createEnhancedFormContent()`!
+3. **✅ HolesContextMenu.js** - COMPLETE
+   - Location: `src/dialog/contextMenu/HolesContextMenu.js` (663 lines)
+   - Status: Fully converted to FloatingDialog with Delete button
+   - Functions: `showHolePropertyEditor()`, `processHolePropertyUpdates()`
+   - Includes: Delay, Color, Connector Curve, Type, Diameter, Bearing, Angle, Subdrill, CollarZ, GradeZ, Burden, Spacing, RowID, PosID
+   - **ACTION**: Verify no hole property editing remains in kirra.js
 
----
-
-### 2.3 Extract Property Dialogs
-
-**File**: Create `src/dialog/popups/generic/HolePropertyDialogsImpl.js`
-
-**Functions to Extract**:
-1. `editBlastNamePopup()`
-2. `editHoleTypePopup()`
-3. `editHoleLengthPopup()`
-4. `measuredLengthPopup()`
-5. `measuredMassPopup()`
-6. `measuredCommentPopup()`
-7. `renameEntityDialog()`
-
-**Same conversion pattern as 2.2**
+4. **✅ KADContextMenu.js** - COMPLETE
+   - Location: `src/dialog/contextMenu/KADContextMenu.js` (560 lines)
+   - Status: Fully converted to FloatingDialog with Delete button
+   - Functions: `showKADPropertyEditorPopup()`, `showMultipleKADPropertyEditor()`, `convertLinePolyType()`, `updateKADObjectProperties()`
+   - **ACTION**: Remove `showKADPropertyEditorPopup()` from kirra.js (line 28276)
 
 ---
 
-### 2.4 Extract Export Dialogs
+### 2.3 Extract Pattern Dialogs 🔄 IN PROGRESS
 
-**File**: `src/dialog/popups/generic/ExportDialogs.js` (already exists as placeholder)
+**File**: Update `src/dialog/popups/generic/HolePatternDialogs.js` (currently placeholder)
 
-**Functions to Extract**:
-1. `saveIREDESPopup()` - line ~18728 (150+ lines)
-2. `saveAQMPopup()` - line ~(find exact location)
+**Status Analysis**:
+1. ❌ ~~`addHolePopup()`~~ - **DONE** (AddHoleDialog.js)
+2. ❌ ~~`addPatternPopup()`~~ - **DONE** (PatternGenerationDialogs.js)
+3. ❌ ~~`showPatternInPolygonPopup()`~~ - **DONE** (3-line wrapper, calls PatternGenerationDialogs.js)
+4. ⚠️ `showHolesAlongLinePopup()` - line 33351 - **NEEDS CHECK** (likely Swal)
+5. ⚠️ `showHolesAlongPolylinePopup()` - line 34531 - **NEEDS CHECK** (likely Swal)
 
-**Complex HTML Templates**: These have 150+ line Swal templates that need careful conversion
+**Extraction Plan**:
+- Extract `showHolesAlongLinePopup()` and `showHolesAlongPolylinePopup()` to HolePatternDialogs.js
+- Use PatternGenerationDialogs.js as template (similar pattern/attributes)
+- Convert Swal.fire to FloatingDialog
+- Convert template literals to string concatenation
+- ✅ **USE FACTORY CODE**: `window.createEnhancedFormContent(fields)` for forms
+- Test thoroughly after extraction
 
 ---
 
-### 2.5 Extract KAD Dialogs
+### 2.4 Extract Property Dialogs ✅ COMPLETE
 
-**File**: Create `src/dialog/popups/generic/KADDialogsImpl.js`
+**File**: `src/dialog/popups/generic/HolePropertyDialogs.js` (fully implemented)
 
-**Functions to Extract**:
-1. `showKADPropertyEditorPopup()` - Already done! (in KADContextMenu.js)
-2. `showOffsetKADPopup()`
-3. `showRadiiConfigPopup()`
-4. `showTriangulationPopup()`
+**Status**: ✅ ALL 7 FUNCTIONS EXTRACTED
+1. ✅ `renameEntityDialog()` - line 41311 (53 lines)
+2. ✅ `editBlastNamePopup()` - line 41365 (229 lines with complex duplicate checking)
+3. ✅ `editHoleTypePopup()` - line 41594 (81 lines)
+4. ✅ `editHoleLengthPopup()` - line 41676 (116 lines with validation)
+5. ✅ `measuredLengthPopup()` - line 41793 (77 lines)
+6. ✅ `measuredMassPopup()` - line 41869 (77 lines)
+7. ✅ `measuredCommentPopup()` - line 41945 (83 lines)
+
+**Result**:
+- ✅ Removed 717 lines from kirra.js (lines 41311-42027)
+- ✅ All functions already using FloatingDialog (no conversion needed)
+- ✅ Global exposure via window object
+- ✅ Script tag already present in kirra.html (line 2548)
+
+**Commentary**: `src/aiCommentary/20251220-1735-Phase2_4_PropertyDialogs_Complete.md`
+
+---
+
+### 2.5 Extract Export Dialogs 📋 READY
+
+**File**: Update `src/dialog/popups/generic/ExportDialogs.js` (currently placeholder)
+
+**Status Analysis**:
+1. ✅ `saveIREDESPopup()` - line 10230 (342 lines) - **Already uses FloatingDialog** (easy extraction)
+2. ❌ `saveAQMPopup()` - line 19402 (402 lines) - **Uses Swal with massive HTML** (defer for now)
+
+**Extraction Plan**:
+- Extract saveIREDESPopup() (straightforward, already modern)
+- Defer saveAQMPopup() to dedicated task (requires 2-3 hours of Swal→FloatingDialog conversion)
+
+---
+
+### 2.6 Extract KAD Dialogs 📋 READY
+
+**File**: Update `src/dialog/popups/generic/KADDialogs.js` (currently placeholder)
+
+**Status Analysis**:
+1. ❌ ~~`showKADPropertyEditorPopup()`~~ - **DONE** (removed from kirra.js, now in KADContextMenu.js)
+2. ✅ `showOffsetKADPopup()` - line 14849 - **Already uses FloatingDialog** (easy extraction)
+3. ❓ `showRadiiConfigPopup()` - line 15508 - **Need to check**
+4. ❓ `showTriangulationPopup()` - line 13285 - **Need to check**
+
+**Extraction Plan**:
+- Extract showOffsetKADPopup() (straightforward)
+- Check and extract remaining 2 functions
 
 ---
 
@@ -545,25 +463,28 @@ if (modeLAB === 9) {
 
 ## Testing Checklist
 
-### Phase 1 Testing:
-- [ ] Delete single hole (with renumber prompt)
-- [ ] Delete single hole (without renumber)
-- [ ] **Delete multiple holes (with renumber prompt)**
-- [ ] **Delete multiple holes (without renumber)**
-- [ ] **Delete multiple holes from different entities**
-- [ ] Delete KAD point (auto-renumber)
-- [ ] Delete KAD segment (auto-renumber)
-- [ ] Delete entire KAD entity (only 1 point left)
-- [ ] Convert poly to line (only 2 points left)
-- [ ] Verify IndexedDB persistence
-- [ ] Verify TreeView updates
+### Phase 1 Testing: ✅ COMPLETE
+- ✅ Delete single hole (with renumber prompt)
+- ✅ Delete single hole (without renumber)
+- ✅ Delete multiple holes (with renumber prompt)
+- ✅ Delete multiple holes (without renumber)
+- ✅ Delete multiple holes from different entities
+- ✅ Delete KAD point (auto-renumber)
+- ✅ Delete KAD segment (auto-renumber)
+- ✅ Delete entire KAD entity (only 1 point left)
+- ✅ Convert poly to line (only 2 points left)
+- ✅ Verify IndexedDB persistence
+- ✅ Verify TreeView updates
+- ✅ TreeView hole deletion with renumber confirmation
+- ✅ TreeView entity deletion with renumber confirmation
 
 ### Phase 2 Testing:
-- [ ] All pattern dialogs work with FloatingDialog
-- [ ] All property dialogs work
-- [ ] All export dialogs work
-- [ ] No SWAL2 references remain
+- [ ] All remaining pattern dialogs work with FloatingDialog
+- [ ] All remaining property dialogs work
+- [ ] All export dialogs converted
+- [ ] No SWAL2 references remain in extracted dialogs
 - [ ] No export statement errors
+- [ ] Verify removed functions (addHolePopup, addPatternPopup, showKADPropertyEditorPopup) don't break anything
 
 ### Phase 3 Testing:
 - [ ] Save All Blasts (all formats)
@@ -597,22 +518,23 @@ if (modeLAB === 9) {
 ```
 src/
 ├── dialog/
-│   ├── FloatingDialog.js (existing)
+│   ├── FloatingDialog.js (existing, updated with showConfirmationDialogWithInput)
 │   ├── contextMenu/
-│   │   ├── HolesContextMenu.js (updated: add Delete button)
-│   │   └── KADContextMenu.js (updated: add Delete button)
+│   │   ├── HolesContextMenu.js ✅ COMPLETE (with Delete button)
+│   │   └── KADContextMenu.js ✅ COMPLETE (with Delete button)
 │   └── popups/
 │       └── generic/
-│           ├── SaveDialogs.js (NEW)
-│           ├── ExportCustomCSVDialog.js (NEW)
-│           ├── ExportDXFDialog.js (NEW)
-│           ├── ExportSurfacesDialog.js (NEW)
-│           ├── ExportCBLASTDialog.js (NEW)
-│           ├── ExportIREDESDialog.js (NEW)
-│           ├── ExportAQMDialog.js (NEW)
-│           ├── HolePatternDialogsImpl.js (NEW)
-│           ├── HolePropertyDialogsImpl.js (NEW)
-│           └── KADDialogsImpl.js (NEW)
+│           ├── AddHoleDialog.js ✅ COMPLETE (528 lines)
+│           ├── PatternGenerationDialogs.js ✅ COMPLETE (362 lines)
+│           ├── HolePatternDialogs.js ⚠️ UPDATE (extract 3 remaining functions)
+│           ├── HolePropertyDialogs.js ⚠️ UPDATE (extract ~7 functions)
+│           ├── ExportDialogs.js ⚠️ UPDATE (extract IREDES, AQM)
+│           ├── KADDialogs.js ⚠️ UPDATE (extract 3 remaining functions)
+│           ├── SaveDialogs.js (NEW - Phase 3)
+│           ├── ExportCustomCSVDialog.js (NEW - Phase 4)
+│           ├── ExportDXFDialog.js (NEW - Phase 4)
+│           ├── ExportSurfacesDialog.js (NEW - Phase 4)
+│           └── ExportCBLASTDialog.js (NEW - Phase 4)
 └── kirra.js (updated: remove extracted functions, fix import conflicts)
 ```
 
@@ -629,6 +551,7 @@ src/
    - ✅ `window.getFormData(formContent)` for form extraction
    - ✅ `window.FloatingDialog` for ALL dialogs (NO Swal2)
    - ✅ `window.showConfirmationDialog()` for yes/no prompts
+   - ✅ `window.showConfirmationDialogWithInput()` for input prompts ✅ NEW
    - ✅ `window.calculateHoleGeometry(hole, value, mode)` for geometry
    - ✅ `window.renumberHolesFunction()` / `window.renumberEntityPoints()`
 
@@ -636,8 +559,8 @@ src/
 2. **No ES6 Exports**: All new dialog files expose via `window.functionName = functionName`
 
 3. **String Concatenation Only**: NEVER use template literals `` `string ${var}` ``
-   - ❌ BAD: `"Deleted " + count + " holes"`
-   - ✅ GOOD: "Deleted " + count + " holes"
+   - ❌ BAD: `` `Deleted ${count} holes` ``
+   - ✅ GOOD: `"Deleted " + count + " holes"`
 
 4. **FloatingDialog Consistency**: All dialogs use FloatingDialog class, not Swal2
 
@@ -666,6 +589,25 @@ src/
 
 ---
 
+## Phase 2 Action Items (Priority Order)
+
+### High Priority:
+1. ⚠️ **Fix Export Syntax Error** - Remove `export` statements from kirra.js
+2. ⚠️ **Remove Obsolete Functions** - Clean up:
+   - `addHolePopup()` - line 19809 (replaced by AddHoleDialog.js)
+   - `addPatternPopup()` - line 19851 (replaced by PatternGenerationDialogs.js)
+   - `showKADPropertyEditorPopup()` - line 28276 (moved to KADContextMenu.js)
+3. ⚠️ **Extract Export Dialogs** - IREDES, AQM (critical for users)
+
+### Medium Priority:
+4. ⚠️ **Extract Remaining Pattern Dialogs** - 3 functions
+5. ⚠️ **Extract Hole Property Dialogs** - ~7 functions
+
+### Low Priority:
+6. ⚠️ **Extract Remaining KAD Dialogs** - 3 functions (less frequently used)
+
+---
+
 ## Research Required
 
 Before implementing Phase 4:
@@ -688,11 +630,13 @@ Before implementing Phase 4:
 ## Summary
 
 This comprehensive plan modernizes Kirra2D by:
-1. ✅ Adding Delete functionality to context menus with proper multi-selection support
-2. ✅ Completing SWAL2 to FloatingDialog migration for consistency
-3. ✅ Reorganizing Save system with multiple column format options
-4. ✅ Creating comprehensive Export system with 10+ formats (CBLAST, Vulcan DXF, surfaces, etc.)
-5. ✅ Fixing importCustomCSV geometry conflicts using accuracy-based priority logic
+1. ✅ **COMPLETE**: Adding Delete functionality to context menus with proper multi-selection support
+2. ✅ **COMPLETE**: Creating generic input dialog for reusable confirmation prompts
+3. ✅ **COMPLETE**: Fixing TreeView delete recursion bug
+4. ⚠️ **IN PROGRESS**: Completing SWAL2 to FloatingDialog migration for consistency
+5. 📋 **PLANNED**: Reorganizing Save system with multiple column format options
+6. 📋 **PLANNED**: Creating comprehensive Export system with 10+ formats (CBLAST, Vulcan DXF, surfaces, etc.)
+7. 📋 **PLANNED**: Fixing importCustomCSV geometry conflicts using accuracy-based priority logic
 
 **CRITICAL SUCCESS FACTORS**:
 - ✅ Use Factory Code - DO NOT recreate existing functionality
@@ -704,5 +648,4 @@ This comprehensive plan modernizes Kirra2D by:
 - ✅ Step comments for readability
 
 **Total Estimated Implementation Time**: 40-60 hours across 5 phases  
-**Priority**: Design complete - ready for phased implementation
-
+**Priority**: Phase 1 COMPLETE ✅ | Phase 2 IN PROGRESS ⚠️

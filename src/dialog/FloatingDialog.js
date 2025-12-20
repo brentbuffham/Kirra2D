@@ -1144,6 +1144,7 @@ window.showConfirmationDialogWithInput = showConfirmationDialogWithInput;
 window.showConfirmationThreeDialog = showConfirmationThreeDialog;
 window.showModalMessage = showModalMessage;
 
-// Export for ES6 modules
+// Step 1) Export for ES6 modules (kirra.js uses ES6 imports at line 77)
+// Step 2) Also expose via window.functionName for backward compatibility
 export { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationDialogWithInput, showConfirmationThreeDialog, showModalMessage };
 
