@@ -490,12 +490,18 @@ export function drawKADHighlightSelectionVisuals() {
                         break;
                 }
             } else {
-                console.log("ERROR: No entity found for:", kadObj.entityName);
-                console.log("Available entities in allKADDrawingsMap:");
+                if (developerModeEnabled) {
+                    console.log("ERROR: No entity found for:", kadObj.entityName);
+                }
+                if (developerModeEnabled) {
+                    console.log("Available entities in allKADDrawingsMap:");
+                }
                 const allKADDrawingsMap = window.allKADDrawingsMap;
                 if (allKADDrawingsMap) {
                     for (const [name, ent] of allKADDrawingsMap.entries()) {
-                        console.log("  -", name, "type:", ent.entityType);
+                        if (developerModeEnabled) {
+                            console.log("  -", name, "type:", ent.entityType);
+                        }
                     }
                 }
             }
@@ -508,13 +514,17 @@ export function drawKADHighlightSelectionVisuals() {
     // Step 5) Draw individual vertex highlight if selectedPoint is set
     const selectedPoint = window.selectedPoint;
 
-    // DEBUG: Log what we're checking
-    console.log("🔍 [2D Draw] Checking for pink vertex highlight:");
-    console.log("  selectedPoint:", selectedPoint ? selectedPoint.pointID : "null");
-    console.log("  selectedKADObject:", selectedKADObject ? selectedKADObject.entityName : "null");
+    if (developerModeEnabled) {
+        // DEBUG: Log what we're checking
+        console.log("🔍 [2D Draw] Checking for pink vertex highlight:");
+        console.log("  selectedPoint:", selectedPoint ? selectedPoint.pointID : "null");
+        console.log("  selectedKADObject:", selectedKADObject ? selectedKADObject.entityName : "null");
+    }
 
     if (selectedPoint && selectedKADObject) {
-        console.log("✅ [2D Draw] BOTH conditions met - drawing pink circle");
+        if (developerModeEnabled) {
+            console.log("✅ [2D Draw] BOTH conditions met - drawing pink circle");
+        }
         const entity = getEntityFromKADObject(selectedKADObject);
         const allKADDrawingsMap = window.allKADDrawingsMap;
         if (!entity && allKADDrawingsMap) {
@@ -556,7 +566,9 @@ export function drawKADHighlightSelectionVisuals() {
                 ctx.lineWidth = 2;
                 ctx.stroke();
 
-                console.log("🩷 [2D] Drew pink circle for vertex:", point.pointID);
+                if (developerModeEnabled) {
+                    console.log("🩷 [2D] Drew pink circle for vertex:", point.pointID);
+                }
             }
         });
     }

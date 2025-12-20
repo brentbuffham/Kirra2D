@@ -1000,13 +1000,17 @@ function syncCameraToThreeJS() {
 // Step 11) Setup 3D mouse event handlers for independent 3D selection
 function setup3DMouseEvents() {
 	if (!threeRenderer) {
-		console.warn("?? [3D EVENTS] threeRenderer not ready");
+		if (developerModeEnabled) {
+			console.warn("?? [3D EVENTS] threeRenderer not ready");
+		}
 		return;
 	}
 
 	const threeCanvas = threeRenderer.getCanvas();
 	if (!threeCanvas) {
-		console.warn("?? [3D EVENTS] No 3D canvas found");
+		if (developerModeEnabled) {
+			console.warn("?? [3D EVENTS] No 3D canvas found");
+		}
 		return;
 	}
 
@@ -1017,7 +1021,9 @@ function setup3DMouseEvents() {
 		return;
 	}
 
-	console.log("?? [3D EVENTS] Setting up event listeners on container:", container);
+	if (developerModeEnabled) {
+		console.log("?? [3D EVENTS] Setting up event listeners on container:", container);
+	}
 
 	// Step 11b) Attach event handlers
 	// IMPORTANT: Use capture phase for click to run before camera controls
@@ -1029,35 +1035,41 @@ function setup3DMouseEvents() {
 	container.addEventListener("touchend", handle3DTouchEnd, { passive: false, capture: true });
 	container.addEventListener("touchmove", handle3DTouchMove, { passive: false, capture: true });
 
-	console.log("? [3D EVENTS] 3D mouse event handlers attached", {
-		container: container.tagName,
-		containerId: container.id,
-		containerClass: container.className,
-		mouseMoveTarget: "document (for full tracking)",
-	});
+	if (developerModeEnabled) {
+		console.log("? [3D EVENTS] 3D mouse event handlers attached", {
+			container: container.tagName,
+			containerId: container.id,
+			containerClass: container.className,
+			mouseMoveTarget: "document (for full tracking)",
+		});
+	}
 }
 
 // Step 12) Handle 3D click - independent 3D selection using raycasting
 // Using click instead of mousedown ensures it only fires after a full click (not during drag)
 // Simplified pattern matching Three.js examples - works at any camera orientation
 function handle3DClick(event) {
-	console.log("?? [3D CLICK] Event fired", {
-		onlyShowThreeJS,
-		threeInitialized: !!threeInitialized,
-		threeRenderer: !!threeRenderer,
-		allBlastHoles: !!allBlastHoles,
-		allBlastHolesLength: allBlastHoles ? allBlastHoles.length : 0,
-		clientX: event.clientX,
-		clientY: event.clientY,
-		button: event.button,
-		altKey: event.altKey,
-		ctrlKey: event.ctrlKey,
-		metaKey: event.metaKey,
-	});
+	if (developerModeEnabled) {
+		console.log("?? [3D CLICK] Event fired", {
+			onlyShowThreeJS,
+			threeInitialized: !!threeInitialized,
+			threeRenderer: !!threeRenderer,
+			allBlastHoles: !!allBlastHoles,
+			allBlastHolesLength: allBlastHoles ? allBlastHoles.length : 0,
+			clientX: event.clientX,
+			clientY: event.clientY,
+			button: event.button,
+			altKey: event.altKey,
+			ctrlKey: event.ctrlKey,
+			metaKey: event.metaKey,
+		});
+	}
 
 	// Step 12a) Only handle if in 3D mode (onlyShowThreeJS flag determines mode)
 	if (!onlyShowThreeJS) {
-		console.log("? [3D CLICK] Not in 3D mode - onlyShowThreeJS =", onlyShowThreeJS);
+		if (developerModeEnabled) {
+			console.log("? [3D CLICK] Not in 3D mode - onlyShowThreeJS =", onlyShowThreeJS);
+		}
 		// 2D mode is active, don't handle 3D selection
 		return;
 	}
@@ -1135,27 +1147,37 @@ function handle3DClick(event) {
 
 		// Step 12c.1c) Call appropriate KAD drawing function based on active tool
 		if (isDrawingPoint) {
-			console.log("?? [3D CLICK] Adding KAD Point at:", worldX, worldY, worldZ);
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Adding KAD Point at:", worldX, worldY, worldZ);
+			}
 			addKADPoint();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingLine) {
-			console.log("?? [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
+			}
 			addKADLine();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingPoly) {
-			console.log("?? [3D CLICK] Adding KAD Polygon point at:", worldX, worldY, worldZ);
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Adding KAD Polygon point at:", worldX, worldY, worldZ);
+			}
 			addKADPoly();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingCircle) {
-			console.log("?? [3D CLICK] Adding KAD Circle at:", worldX, worldY, worldZ);
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Adding KAD Circle at:", worldX, worldY, worldZ);
+			}
 			addKADCircle();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingText) {
-			console.log("?? [3D CLICK] Adding KAD Text at:", worldX, worldY, worldZ);
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Adding KAD Text at:", worldX, worldY, worldZ);
+			}
 			addKADText();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
@@ -1173,14 +1195,18 @@ function handle3DClick(event) {
 	// Step 12d) Get 3D canvas for coordinate conversion
 	const threeCanvas = threeRenderer.getCanvas();
 	if (!threeCanvas) {
-		console.log("? [3D CLICK] No 3D canvas found");
+		if (developerModeEnabled) {
+			console.log("? [3D CLICK] No 3D canvas found");
+		}
 		return;
 	}
 
 	// Step 12e) Update mouse position in interaction manager and perform raycast
 	// Use interactionManager which has the proper logic for finding holes
 	if (!interactionManager) {
-		console.log("? [3D CLICK] interactionManager not available");
+		if (developerModeEnabled) {
+			console.log("? [3D CLICK] interactionManager not available");
+		}
 		return;
 	}
 
@@ -1189,22 +1215,26 @@ function handle3DClick(event) {
 	// Step 12f) Perform raycast
 	const intersects = interactionManager.raycast();
 
-	console.log("?? [3D CLICK] Raycast results:", {
-		intersectsCount: intersects.length,
-		firstIntersect:
-			intersects.length > 0
-				? {
-					object: intersects[0].object.type,
-					userData: intersects[0].object.userData,
-					distance: intersects[0].distance.toFixed(2),
-				}
-				: null,
-	});
+	if (developerModeEnabled) {
+		console.log("?? [3D CLICK] Raycast results:", {
+			intersectsCount: intersects.length,
+			firstIntersect:
+				intersects.length > 0
+					? {
+						object: intersects[0].object.type,
+						userData: intersects[0].object.userData,
+						distance: intersects[0].distance.toFixed(2),
+					}
+					: null,
+		});
+	}
 
 	// Step 12g) Find clicked hole from intersects using interactionManager's method
 	// This has proper logic for traversing parent chains and finding the correct hole
 	// But let's also log what we're checking to debug why it always finds hole 1
-	console.log("?? [3D CLICK] Checking", intersects.length, "intersections for holes...");
+	if (developerModeEnabled) {
+		console.log("?? [3D CLICK] Checking", intersects.length, "intersections for holes...");
+	}
 	for (let i = 0; i < Math.min(intersects.length, 5); i++) {
 		const intersect = intersects[i];
 		let object = intersect.object;
@@ -1232,21 +1262,29 @@ function handle3DClick(event) {
 	// Fixes QUIRK 2: Prevent selection when no tool is active
 	const isConnectorToolActive = isAddingConnector || isAddingMultiConnector;
 	if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled && !isMoveToolActive) {
-		console.log("?? [3D CLICK] Select Pointer tool not active - skipping selection");
+		if (developerModeEnabled) {
+			console.log("?? [3D CLICK] Select Pointer tool not active - skipping selection");
+		}
 		return;
 	}
 
 	const clickedHole = selectingHoles ? interactionManager.findClickedHole(intersects, allBlastHoles || []) : null;
 
 	if (clickedHole) {
-		console.log("? [3D CLICK] Found hole:", clickedHole.holeID, "in", clickedHole.entityName);
+		if (developerModeEnabled) {
+			console.log("? [3D CLICK] Found hole:", clickedHole.holeID, "in", clickedHole.entityName);
+		}
 	} else if (selectingHoles) {
-		console.log("?? [3D CLICK] No hole found in intersections");
+		if (developerModeEnabled) {
+			console.log("?? [3D CLICK] No hole found in intersections");
+		}
 	}
 
 	// Step 12i) Handle selection based on current tool mode
 	if (clickedHole && selectingHoles) {
-		console.log("?? [3D CLICK] Processing selection for hole:", clickedHole.holeID);
+		if (developerModeEnabled) {
+			console.log("?? [3D CLICK] Processing selection for hole:", clickedHole.holeID);
+		}
 		console.log("?? [3D CLICK] Current tool state:", {
 			isAddingConnector,
 			isAddingMultiConnector,
@@ -1261,13 +1299,17 @@ function handle3DClick(event) {
 
 		if (isAddingConnector) {
 			// Step 12i.1) Single connector tool logic in 3D (matching 2D handleConnectorClick)
-			console.log("?? [3D CLICK] Single connector tool mode");
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Single connector tool mode");
+			}
 			if (!fromHoleStore) {
 				// Step 12i.1a) First hole selection
 				fromHoleStore = clickedHole;
 				firstSelectedHole = clickedHole;
 				selectedHole = clickedHole;
-				console.log("? [3D CLICK] Set first connector hole:", clickedHole.holeID);
+				if (developerModeEnabled) {
+					console.log("? [3D CLICK] Set first connector hole:", clickedHole.holeID);
+				}
 				// Step 12i.1a.1) Immediately render to show green highlight
 				drawData(allBlastHoles, selectedHole);
 				//renderThreeJS();
@@ -1275,7 +1317,9 @@ function handle3DClick(event) {
 				// Step 12i.1b) Second hole selection - create connector
 				selectedHole = clickedHole; // Set selected hole to second hole for yellow highlight
 				secondSelectedHole = clickedHole; // IMPORTANT: Set this for highlighting
-				console.log("? [3D CLICK] Set second connector hole:", clickedHole.holeID);
+				if (developerModeEnabled) {
+					console.log("? [3D CLICK] Set second connector hole:", clickedHole.holeID);
+				}
 
 				// Step 12i.1c) Get delay and color values
 				const delay = getDelayValue();
@@ -1289,7 +1333,9 @@ function handle3DClick(event) {
 					allBlastHoles[clickedHoleIndex].fromHoleID = fromHoleStore.entityName + ":::" + fromHoleStore.holeID;
 					allBlastHoles[clickedHoleIndex].timingDelayMilliseconds = delay;
 					allBlastHoles[clickedHoleIndex].colorHexDecimal = color;
-					console.log("?? [3D CLICK] Created connector:", fromHoleStore.holeID, "?", clickedHole.holeID, "delay:", delay, "color:", color);
+					if (developerModeEnabled) {
+						console.log("?? [3D CLICK] Created connector:", fromHoleStore.holeID, "?", clickedHole.holeID, "delay:", delay, "color:", color);
+					}
 				}
 
 				// Step 12i.1f) Reset connector state - green disappears, only yellow persists from selectedHole
@@ -1314,14 +1360,18 @@ function handle3DClick(event) {
 			}
 		} else if (isAddingMultiConnector) {
 			// Step 12i.2) Multi-connector tool logic in 3D (matching 2D handleConnectorClick)
-			console.log("?? [3D CLICK] Multi-connector tool mode");
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Multi-connector tool mode");
+			}
 			if (!fromHoleStore) {
 				// Step 12i.2a) First hole selection - clear previous yellow highlight
 				secondSelectedHole = null; // Clear old yellow
 				fromHoleStore = clickedHole;
 				firstSelectedHole = clickedHole;
 				selectedHole = clickedHole;
-				console.log("? [3D CLICK] Set first multi-connector hole:", clickedHole.holeID);
+				if (developerModeEnabled) {
+					console.log("? [3D CLICK] Set first multi-connector hole:", clickedHole.holeID);
+				}
 
 				// Step 12i.2a.1) Ensure globals are exposed and trigger redraw
 				exposeGlobalsToWindow();
@@ -1330,7 +1380,9 @@ function handle3DClick(event) {
 				// Step 12i.2b) Second hole selection - create connectors
 				selectedHole = clickedHole; // Set selected hole to second hole for yellow highlight
 				secondSelectedHole = clickedHole; // IMPORTANT: Set this for highlighting
-				console.log("? [3D CLICK] Set second multi-connector hole:", clickedHole.holeID);
+				if (developerModeEnabled) {
+					console.log("? [3D CLICK] Set second multi-connector hole:", clickedHole.holeID);
+				}
 
 				// Step 12i.2c) Get all holes in stadium zone (line with tolerance)
 				const pointsInLine = getPointsInLine(fromHoleStore, clickedHole);
@@ -1338,7 +1390,9 @@ function handle3DClick(event) {
 				if (pointsInLine.length > 0) {
 					// Step 12i.2d) Connect all holes in sequence
 					connectHolesInLine(pointsInLine);
-					console.log("?? [3D CLICK] Connected " + pointsInLine.length + " holes in line");
+					if (developerModeEnabled) {
+						console.log("?? [3D CLICK] Connected " + pointsInLine.length + " holes in line");
+					}
 				}
 
 				// Step 12i.2e) Reset connector state - green disappears, only yellow persists from selectedHole
@@ -1364,24 +1418,32 @@ function handle3DClick(event) {
 			}
 		} else if (isMultiHoleSelectionEnabled) {
 			// Multi-selection mode
-			console.log("?? [3D CLICK] Multi-selection mode");
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Multi-selection mode");
+			}
 			const index = selectedMultipleHoles.findIndex((h) => h.entityName === clickedHole.entityName && h.holeID === clickedHole.holeID);
 			if (index >= 0) {
 				selectedMultipleHoles.splice(index, 1);
-				console.log("? [3D CLICK] Removed from multi-selection. New count:", selectedMultipleHoles.length);
+				if (developerModeEnabled) {
+					console.log("? [3D CLICK] Removed from multi-selection. New count:", selectedMultipleHoles.length);
+				}
 			} else {
 				selectedMultipleHoles.push(clickedHole);
-				console.log(
-					"? [3D CLICK] Added to multi-selection. New count:",
-					selectedMultipleHoles.length,
-					"Holes:",
-					selectedMultipleHoles.map((h) => h.holeID)
-				);
+				if (developerModeEnabled) {
+					console.log(
+						"? [3D CLICK] Added to multi-selection. New count:",
+						selectedMultipleHoles.length,
+						"Holes:",
+						selectedMultipleHoles.map((h) => h.holeID)
+					);
+				}
 			}
 			selectedHole = null; // Clear single selection
 		} else {
 			// Single selection mode (SelectionPointer tool)
-			console.log("?? [3D CLICK] Single selection mode (SelectionPointer)");
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Single selection mode (SelectionPointer)");
+			}
 			const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
 			selectedHole = clickedHole;
 			selectedMultipleHoles = [];
@@ -1389,12 +1451,14 @@ function handle3DClick(event) {
 			selectedKADObject = null;
 			selectedKADPolygon = null;
 			selectedMultipleKADObjects = [];
-			console.log("? [3D CLICK] SELECTED HOLE:", {
-				previous: previousSelectedHole,
-				current: selectedHole.holeID,
-				entityName: selectedHole.entityName,
-				selectedHoleObject: selectedHole,
-			});
+			if (developerModeEnabled) {
+				console.log("? [3D CLICK] SELECTED HOLE:", {
+					previous: previousSelectedHole,
+					current: selectedHole.holeID,
+					entityName: selectedHole.entityName,
+					selectedHoleObject: selectedHole,
+				});
+			}
 		}
 
 		// Redraw to show selection (ONLY for non-connector modes)
@@ -1405,17 +1469,21 @@ function handle3DClick(event) {
 			syncCanvasToTreeView(); // Sync selection to TreeView
 		}
 	} else {
-		// Step 12j) No hole clicked - check for KAD objects in 3D
-		console.log("?? [3D CLICK] No hole found, checking for KAD objects...");
-		console.log("?? [3D CLICK] Total intersects:", intersects.length);
-		console.log("?? [3D CLICK] Selection pointer active?", isSelectionPointerActive);
-		console.log("?? [3D CLICK] KAD entities in map:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
+		if (developerModeEnabled) {
+			// Step 12j) No hole clicked - check for KAD objects in 3D
+			console.log("?? [3D CLICK] No hole found, checking for KAD objects...");
+			console.log("?? [3D CLICK] Total intersects:", intersects.length);
+			console.log("?? [3D CLICK] Selection pointer active?", isSelectionPointerActive);
+			console.log("?? [3D CLICK] KAD entities in map:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
+		}
 		if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 			const entityTypes = [];
 			allKADDrawingsMap.forEach((entity, name) => {
 				entityTypes.push(name + " (" + entity.entityType + ")");
 			});
-			console.log("?? [3D CLICK] Entity list:", entityTypes.join(", "));
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Entity list:", entityTypes.join(", "));
+			}
 		}
 
 		// Step 12j.0) Debug: Log all intersect types
@@ -1430,7 +1498,9 @@ function handle3DClick(event) {
 				obj = obj.parent;
 				depth++;
 			}
-			console.log("  Intersect " + index + ":", intersect.object.type, "types in chain:", types.join(" -> "));
+			if (developerModeEnabled) {
+				console.log("  Intersect " + index + ":", intersect.object.type, "types in chain:", types.join(" -> "));
+			}
 		});
 
 		// Step 12j.1) Check if selection pointer is active and KAD radio is selected
@@ -1450,7 +1520,9 @@ function handle3DClick(event) {
 				while (checkObj && depth < 10) {
 					if (checkObj.userData && checkObj.userData.type === "kadSelectionHighlight") {
 						isHighlight = true;
-						console.log("?? [3D CLICK] Skipping selection highlight at depth", depth);
+						if (developerModeEnabled) {
+							console.log("?? [3D CLICK] Skipping selection highlight at depth", depth);
+						}
 						break;
 					}
 					checkObj = checkObj.parent;
@@ -1467,7 +1539,9 @@ function handle3DClick(event) {
 				while (object && depth < 10) {
 					// Step 12j.5a) Check for actual KAD objects (kadPoint, kadLine, kadPolygon, kadCircle, kadText)
 					if (object.userData && object.userData.kadId && object.userData.type && (object.userData.type === "kadPoint" || object.userData.type === "kadLine" || object.userData.type === "kadPolygon" || object.userData.type === "kadCircle" || object.userData.type === "kadText")) {
-						console.log("? [3D CLICK] Found KAD object:", object.userData.kadId, "type:", object.userData.type);
+						if (developerModeEnabled) {
+							console.log("? [3D CLICK] Found KAD object:", object.userData.kadId, "type:", object.userData.type);
+						}
 
 						// Step 12j.4) Get the KAD entity from the map
 						const entity = allKADDrawingsMap.get(object.userData.kadId);
@@ -1496,7 +1570,9 @@ function handle3DClick(event) {
 									}
 								});
 
-								console.log("?? [3D CLICK] Found closest element:", closestElementIndex, "at distance:", minDistance.toFixed(2) + "m");
+								if (developerModeEnabled) {
+									console.log("?? [3D CLICK] Found closest element:", closestElementIndex, "at distance:", minDistance.toFixed(2) + "m");
+								}
 							}
 
 							// Step 12j.6) Create KAD object descriptor (similar to 2D getClickedKADObject)
@@ -1535,13 +1611,17 @@ function handle3DClick(event) {
 
 			// Step 12j.6.5) If no raycast hit, try screen-space distance-based selection (fallback)
 			if (!clickedKADObject && allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-				console.log("?? [3D CLICK] No raycast hit, trying screen-space distance selection...");
+				if (developerModeEnabled) {
+					console.log("?? [3D CLICK] No raycast hit, trying screen-space distance selection...");
+				}
 
 				// Step 12j.6.5a) Get camera and canvas for screen-space projection
 				const camera = threeRenderer.camera;
 				const canvas = threeRenderer.getCanvas();
 				if (!camera || !canvas) {
-					console.log("?? [3D CLICK] Missing camera or canvas for screen-space selection");
+					if (developerModeEnabled) {
+						console.log("?? [3D CLICK] Missing camera or canvas for screen-space selection");
+					}
 				} else {
 					// Step 12j.6.5b) Get mouse position in screen pixels
 					const rect = canvas.getBoundingClientRect();
@@ -1552,8 +1632,9 @@ function handle3DClick(event) {
 
 					// Step 12j.6.5c) Snap tolerance in pixels (use snapRadiusPixels directly)
 					const snapTolerancePixels = snapRadiusPixels || 20;
-					console.log("?? [3D CLICK] Mouse at (" + mouseScreenX.toFixed(0) + "px, " + mouseScreenY.toFixed(0) + "px), tolerance: " + snapTolerancePixels + "px");
-
+					if (developerModeEnabled) {
+						console.log("?? [3D CLICK] Mouse at (" + mouseScreenX.toFixed(0) + "px, " + mouseScreenY.toFixed(0) + "px), tolerance: " + snapTolerancePixels + "px");
+					}
 					// Step 12j.6.5d) Helper function to project 3D world position to 2D screen pixels
 					const worldToScreen = function (worldX, worldY, worldZ) {
 						// Step 12j.6.5d.1) Convert world to Three.js local coordinates
@@ -1624,7 +1705,9 @@ function handle3DClick(event) {
 							const points = entity.data;
 							if (points.length >= 2) {
 								const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
-								console.log("?? [3D LINE SELECT] Checking " + entity.entityType + " '" + entity.entityName + "' with " + numSegments + " segments");
+								if (developerModeEnabled) {
+									console.log("?? [3D LINE SELECT] Checking " + entity.entityType + " '" + entity.entityName + "' with " + numSegments + " segments");
+								}
 
 								// Step 12j.6.5g.2a) Store segment info for proper highlighting
 								let closestSegmentIndex = 0;
@@ -1641,7 +1724,9 @@ function handle3DClick(event) {
 									// Calculate screen-space distance to segment
 									const segmentDist = screenPointToSegmentDistance(mouseScreenX, mouseScreenY, screen1.x, screen1.y, screen2.x, screen2.y);
 
-									console.log("  Segment " + i + ": p1=(" + screen1.x.toFixed(0) + "," + screen1.y.toFixed(0) + ") p2=(" + screen2.x.toFixed(0) + "," + screen2.y.toFixed(0) + ") dist=" + segmentDist.toFixed(1) + "px");
+									if (developerModeEnabled) {
+										console.log("  Segment " + i + ": p1=(" + screen1.x.toFixed(0) + "," + screen1.y.toFixed(0) + ") p2=(" + screen2.x.toFixed(0) + "," + screen2.y.toFixed(0) + ") dist=" + segmentDist.toFixed(1) + "px");
+									}
 
 									if (segmentDist < closestSegmentDistance) {
 										closestSegmentDistance = segmentDist;
@@ -1655,6 +1740,9 @@ function handle3DClick(event) {
 									closestEntity = entity;
 									closestEntityName = entityName;
 									closestElementIndex = closestSegmentIndex; // Which segment was clicked
+									if (developerModeEnabled) {
+										console.log("?? [3D LINE SELECT] Closest segment:", closestSegmentIndex, "at distance:", closestSegmentDistance.toFixed(2) + "px");
+									}
 								}
 							}
 						} else if (entity.entityType === "circle") {
@@ -1677,6 +1765,9 @@ function handle3DClick(event) {
 									closestEntity = entity;
 									closestEntityName = entityName;
 									closestElementIndex = index;
+									if (developerModeEnabled) {
+										console.log("?? [3D CIRCLE SELECT] Closest circle:", closestElementIndex, "at distance:", closestDistance.toFixed(2) + "px");
+									}
 								}
 							});
 						} else if (entity.entityType === "text") {
@@ -1692,6 +1783,9 @@ function handle3DClick(event) {
 									closestEntity = entity;
 									closestEntityName = entityName;
 									closestElementIndex = index;
+									if (developerModeEnabled) {
+										console.log("?? [3D TEXT SELECT] Closest text:", closestElementIndex, "at distance:", closestDistance.toFixed(2) + "px");
+									}
 								}
 							});
 						}
@@ -1699,7 +1793,9 @@ function handle3DClick(event) {
 
 					// Step 12j.6.5h) Check if closest entity is within tolerance
 					if (closestEntity && closestDistance <= snapTolerancePixels) {
-						console.log("? [3D CLICK] Found entity by screen distance:", closestEntityName, "type:", closestEntity.entityType, "distance:", closestDistance.toFixed(1) + "px");
+						if (developerModeEnabled) {
+							console.log("? [3D CLICK] Found entity by screen distance:", closestEntityName, "type:", closestEntity.entityType, "distance:", closestDistance.toFixed(1) + "px");
+						}
 
 						// Step 12j.6.5h.1) For lines/polys, check if we're closer to a vertex than the segment
 						let closestVertexDistance = Infinity;
@@ -1726,13 +1822,20 @@ function handle3DClick(event) {
 							if (closestVertexDistance < closestDistance && closestVertexDistance <= snapTolerancePixels) {
 								selectionType = "vertex";
 								closestElementIndex = closestVertexIndex; // Update to use vertex index
-								console.log("?? [3D CLICK] Vertex selection - closest vertex at distance:", closestVertexDistance.toFixed(1) + "px");
+								if (developerModeEnabled) {
+									console.log("?? [3D CLICK] Vertex selection - closest vertex at distance:", closestVertexDistance.toFixed(1) + "px");
+								}
 							} else {
 								selectionType = "segment"; // Lines/polys use segment selection
-								console.log("?? [3D CLICK] Segment selection - distance:", closestDistance.toFixed(1) + "px");
+								if (developerModeEnabled) {
+									console.log("?? [3D CLICK] Segment selection - distance:", closestDistance.toFixed(1) + "px");
+								}
 							}
 						} else if (closestEntity.entityType === "point") {
 							selectionType = "point";
+							if (developerModeEnabled) {
+								console.log("?? [3D CLICK] Point selection - distance:", closestDistance.toFixed(1) + "px");
+							}
 						}
 
 						// Step 12j.6.5j) Create KAD object descriptor (match 2D structure)
@@ -1765,21 +1868,27 @@ function handle3DClick(event) {
 							}
 						}
 					} else {
-						console.log("?? [3D CLICK] Closest entity at " + closestDistance.toFixed(1) + "px (outside tolerance " + snapTolerancePixels + "px)");
+						if (developerModeEnabled) {
+							console.log("?? [3D CLICK] Closest entity at " + closestDistance.toFixed(1) + "px (outside tolerance " + snapTolerancePixels + "px)");
+						}
 					}
 				}
 			}
 
 			// Step 12j.7) Handle KAD object selection (matching 2D handleSelection logic)
 			if (clickedKADObject) {
-				console.log("?? [3D CLICK] Processing KAD selection:", clickedKADObject.entityName);
+				if (developerModeEnabled) {
+					console.log("?? [3D CLICK] Processing KAD selection:", clickedKADObject.entityName);
+				}
 
 				// Step 12j.8) Check for Shift key (multiple selection)
 				const isShiftPressed = event.shiftKey;
 
 				if (isShiftPressed) {
 					// Step 12j.9) Multiple selection mode
-					console.log("?? [3D CLICK] Multiple KAD selection mode (Shift pressed)");
+					if (developerModeEnabled) {
+						console.log("?? [3D CLICK] Multiple KAD selection mode (Shift pressed)");
+					}
 					const existingIndex = selectedMultipleKADObjects.findIndex((obj) => {
 						return obj.entityName === clickedKADObject.entityName && obj.entityType === clickedKADObject.entityType;
 					});
@@ -1787,11 +1896,15 @@ function handle3DClick(event) {
 					if (existingIndex === -1) {
 						// Add to multiple selection
 						selectedMultipleKADObjects.push(clickedKADObject);
-						console.log("? [3D CLICK] Added to selection, total:", selectedMultipleKADObjects.length);
+						if (developerModeEnabled) {
+							console.log("? [3D CLICK] Added to selection, total:", selectedMultipleKADObjects.length);
+						}
 					} else {
 						// Remove from multiple selection
 						selectedMultipleKADObjects.splice(existingIndex, 1);
-						console.log("? [3D CLICK] Removed from selection, total:", selectedMultipleKADObjects.length);
+						if (developerModeEnabled) {
+							console.log("? [3D CLICK] Removed from selection, total:", selectedMultipleKADObjects.length);
+						}
 					}
 
 					// Clear single selection
@@ -1800,7 +1913,9 @@ function handle3DClick(event) {
 					selectedPoint = null; // Clear selectedPoint in multi-selection mode
 				} else {
 					// Step 12j.10) Single selection mode
-					console.log("?? [3D CLICK] Single KAD selection mode");
+					if (developerModeEnabled) {
+						console.log("?? [3D CLICK] Single KAD selection mode");
+					}
 					selectedKADObject = clickedKADObject;
 					selectedKADPolygon = clickedKADObject; // Backward compatibility
 					selectedMultipleKADObjects = [];
@@ -1810,11 +1925,15 @@ function handle3DClick(event) {
 						const entity = allKADDrawingsMap.get(clickedKADObject.entityName);
 						if (entity && entity.data && entity.data[clickedKADObject.elementIndex]) {
 							selectedPoint = entity.data[clickedKADObject.elementIndex];
-							console.log("? [3D CLICK] Set selectedPoint:", selectedPoint.pointID);
+							if (developerModeEnabled) {
+								console.log("? [3D CLICK] Set selectedPoint:", selectedPoint.pointID);
+							}
 						}
 					} else {
 						selectedPoint = null;
-						console.log("?? [3D CLICK] Cleared selectedPoint (segment/entity selection)");
+						if (developerModeEnabled) {
+							console.log("?? [3D CLICK] Cleared selectedPoint (segment/entity selection)");
+						}
 					}
 				}
 
@@ -1832,7 +1951,9 @@ function handle3DClick(event) {
 				event.preventDefault();
 			} else {
 				// Step 12j.13) No KAD object clicked - clear KAD selections only if KAD radio is selected
-				console.log("?? [3D CLICK] Clicked on empty space - clearing selections");
+				if (developerModeEnabled) {
+					console.log("?? [3D CLICK] Clicked on empty space - clearing selections");
+				}
 				if (!isAddingConnector && !isAddingMultiConnector) {
 					const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
 					const previousMultiCount = selectedMultipleHoles.length;
@@ -1848,14 +1969,15 @@ function handle3DClick(event) {
 						selectedHole = null;
 						selectedMultipleHoles = [];
 					}
-
-					console.log("??? [3D CLICK] Cleared selections:", {
-						selectingHoles,
-						selectingKAD,
-						previousSelectedHole,
-						previousMultiCount,
-						previousKADCount,
-					});
+					if (developerModeEnabled) {
+						console.log("??? [3D CLICK] Cleared selections:", {
+							selectingHoles,
+							selectingKAD,
+							previousSelectedHole,
+							previousMultiCount,
+							previousKADCount,
+						});
+					}
 
 					exposeGlobalsToWindow();
 					drawData(allBlastHoles || [], selectedHole);
@@ -1864,7 +1986,9 @@ function handle3DClick(event) {
 			}
 		} else if (isSelectionPointerActive && selectingHoles && !clickedHole) {
 			// Step 12j.14) Selection pointer active with Holes radio, but no hole clicked - clear hole selections
-			console.log("?? [3D CLICK] Selection pointer active (Holes mode), no hole clicked");
+			if (developerModeEnabled) {
+				console.log("?? [3D CLICK] Selection pointer active (Holes mode), no hole clicked");
+			}
 			if (!isAddingConnector && !isAddingMultiConnector) {
 				if (!isMultiHoleSelectionEnabled) {
 					selectedHole = null;
@@ -1877,161 +2001,7 @@ function handle3DClick(event) {
 	}
 }
 
-// Step 13) Handle 3D context menu (right-click) - matches 2D behavior
-// MOVED TO ContextMenuManager.js - This function is now loaded from external module
-/*
-function handle3DContextMenu(event) {
-	// Step 13a) Only handle if in 3D mode
-	if (!onlyShowThreeJS) {
-		return;
-	}
-
-	// Step 13a1) Cancel right-click drag delay if context menu is shown
-	if (cameraControls && typeof cameraControls.cancelRightClickDrag === "function") {
-		cameraControls.cancelRightClickDrag();
-	}
-
-	// Step 13b) Prevent default context menu
-	event.preventDefault();
-	closeAllContextMenus();
-
-	// Step 13c) Early return if dependencies not ready
-	if (!threeInitialized || !threeRenderer || !interactionManager) {
-		updateStatusMessage("Right clicks need to be performed on an Object.");
-		setTimeout(() => {
-			updateStatusMessage("");
-		}, 2000);
-		return;
-	}
-
-	// Step 13d) Get 3D canvas and update mouse position
-	const threeCanvas = threeRenderer.getCanvas();
-	if (!threeCanvas) {
-		return;
-	}
-
-	interactionManager.updateMousePosition(event, threeCanvas);
-
-	// Step 13e) Perform raycast to find clicked objects
-	const intersects = interactionManager.raycast();
-
-	// Step 13f) Get click position for context menu placement
-	const rect = threeCanvas.getBoundingClientRect();
-	const clickX = event.clientX - rect.left;
-	const clickY = event.clientY - rect.top;
-
-	// Step 13g) Find clicked hole
-	const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles);
-
-	// Step 13h) Check for multiple hole selection
-	if (selectedMultipleHoles && selectedMultipleHoles.length > 1) {
-		// Check if we clicked on one of the selected holes
-		let clickedOnSelected = false;
-		if (clickedHole) {
-			for (const hole of selectedMultipleHoles) {
-				if (hole.entityName === clickedHole.entityName && hole.holeID === clickedHole.holeID) {
-					clickedOnSelected = true;
-					break;
-				}
-			}
-		}
-
-		if (clickedOnSelected) {
-			showHolePropertyEditor(selectedMultipleHoles);
-			debouncedUpdateTreeView();
-			return;
-		}
-	}
-
-	// Step 13i) Handle single hole click
-	if (clickedHole) {
-		showHolePropertyEditor(clickedHole);
-		debouncedUpdateTreeView();
-		return;
-	}
-
-	// Step 13j) Get clicked KAD object using 3D raycast (mimics 2D getClickedKADObject)
-	const clickedKADObject = getClickedKADObject3D(intersects, clickX, clickY);
-
-	// Step 13k) Check for multiple KAD selection
-	if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 1) {
-		// Check if we clicked on one of the selected KAD objects
-		let clickedOnSelected = false;
-		if (clickedKADObject) {
-			for (const kadObj of selectedMultipleKADObjects) {
-				if (kadObj.entityName === clickedKADObject.entityName && kadObj.elementIndex === clickedKADObject.elementIndex) {
-					clickedOnSelected = true;
-					break;
-				}
-			}
-		}
-
-		if (clickedOnSelected) {
-			showMultipleKADPropertyEditor(selectedMultipleKADObjects);
-			debouncedUpdateTreeView();
-			return;
-		}
-	}
-
-	// Step 13l) Handle single KAD object click (mimics 2D behavior exactly)
-	if (isSelectionPointerActive || isPolygonSelectionActive) {
-		if (clickedKADObject) {
-			// Step 13l.1) Check if within snap radius (same as 2D)
-			let withinSnapRadius = false;
-			const entity = allKADDrawingsMap ? allKADDrawingsMap.get(clickedKADObject.entityName) : null;
-
-			if (entity) {
-				if (clickedKADObject.selectionType === "vertex") {
-					// Step 13l.1a) For vertex selection, check distance to the specific vertex
-					const point = entity.data[clickedKADObject.elementIndex];
-					if (point) {
-						// Get world position from raycast
-						const worldPos = interactionManager.getMouseWorldPositionOnPlane();
-						if (worldPos) {
-							const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
-							const snapRadius = getSnapToleranceInWorldUnits();
-							withinSnapRadius = distance <= snapRadius;
-						}
-					}
-				} else if (clickedKADObject.selectionType === "segment") {
-					// Step 13l.1b) For segment selection, already validated by getClickedKADObject3D
-					withinSnapRadius = true;
-				}
-			}
-
-			// Step 13l.2) Check if object is selected (same as 2D)
-			if (withinSnapRadius && isKADObjectSelected(clickedKADObject)) {
-				showKADPropertyEditorPopup(clickedKADObject);
-				debouncedUpdateTreeView();
-				return;
-			}
-		}
-	}
-
-	// Step 13m) Find clicked surface
-	const clickedSurfaceId = interactionManager.findClickedSurface(intersects);
-	if (clickedSurfaceId) {
-		showSurfaceContextMenu(event.clientX, event.clientY, clickedSurfaceId);
-		debouncedUpdateTreeView();
-		return;
-	}
-
-	// Step 13n) Find clicked image
-	const clickedImageId = interactionManager.findClickedImage(intersects);
-	if (clickedImageId) {
-		showImageContextMenu(event.clientX, event.clientY, clickedImageId);
-		debouncedUpdateTreeView();
-		return;
-	}
-
-	// Step 13o) Default context menu - show status message if no object clicked
-	updateStatusMessage("Right clicks need to be performed on an Object.");
-	setTimeout(() => {
-		updateStatusMessage("");
-	}, 2000);
-}
-*/
-// END OF MOVED FUNCTION - handle3DContextMenu now loaded from ContextMenuManager.js
+// handle3DContextMenu now loaded from ContextMenuManager.js
 
 // Step 13) Handle 3D mouse move - hover effects and stadium zone tracking
 function handle3DMouseMove(event) {
@@ -26307,7 +26277,9 @@ selectPointerTool.addEventListener("change", function () {
 		if (onlyShowThreeJS && window.polygonSelection3D) {
 			window.polygonSelection3D.disable();
 			selectByPolygonTool.checked = false;
-			console.log("? Disabled 3D polygon selection (SelectPointer activated)");
+			if (developerModeEnabled) {
+				console.log("? Disabled 3D polygon selection (SelectPointer activated)");
+			}
 		}
 
 		// Uncheck the other buttons
@@ -26492,11 +26464,15 @@ function getClickedKADObject(clickX, clickY) {
 	const worldX = (clickX - canvas.width / 2) / currentScale + centroidX;
 	const worldY = -(clickY - canvas.height / 2) / currentScale + centroidY;
 
-	console.log("?? [getClickedKADObject] Click at canvas:", clickX, clickY, "| world:", worldX, worldY);
+	if (developerModeEnabled) {
+		console.log("?? [getClickedKADObject] Click at canvas:", clickX, clickY, "| world:", worldX, worldY);
+	}
 
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 		const tolerance = getSnapToleranceInWorldUnits();
-		console.log("?? Snap tolerance:", tolerance, "| Total entities:", allKADDrawingsMap.size);
+		if (developerModeEnabled) {
+			console.log("?? Snap tolerance:", tolerance, "| Total entities:", allKADDrawingsMap.size);
+		}
 		let closestMatch = null;
 		let minDistance = tolerance;
 
@@ -26504,20 +26480,28 @@ function getClickedKADObject(clickX, clickY) {
 		for (const [entityName, entity] of allKADDrawingsMap.entries()) {
 			// ? CHECK VISIBILITY FIRST - Skip hidden entities
 			if (!isEntityVisible(entityName)) {
-				console.log("  ??  Skipping hidden entity:", entityName);
+				if (developerModeEnabled) {
+					console.log("  ??  Skipping hidden entity:", entityName);
+				}
 				continue;
 			}
-			console.log("  ?? Checking entity:", entityName, "| Type:", entity.entityType, "| Elements:", entity.data.length);
+			if (developerModeEnabled) {
+				console.log("  ?? Checking entity:", entityName, "| Type:", entity.entityType, "| Elements:", entity.data.length);
+			}
 
 			// For single-point entities (points, circles, text)
 			if (entity.entityType === "point" || entity.entityType === "circle" || entity.entityType === "text") {
 				for (let i = 0; i < entity.data.length; i++) {
 					const point = entity.data[i];
 					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldX, 2) + Math.pow(point.pointYLocation - worldY, 2));
-					console.log("    ?? Element", i, "distance:", distance.toFixed(2), "| tolerance:", tolerance.toFixed(2));
+					if (developerModeEnabled) {
+						console.log("    ?? Element", i, "distance:", distance.toFixed(2), "| tolerance:", tolerance.toFixed(2));
+					}
 
 					if (distance <= tolerance && distance < minDistance) {
-						console.log("    ? MATCH FOUND! Entity:", entityName, "Type:", entity.entityType, "Element:", i);
+						if (developerModeEnabled) {
+							console.log("    ? MATCH FOUND! Entity:", entityName, "Type:", entity.entityType, "Element:", i);
+						}
 						closestMatch = {
 							...point,
 							mapType: "allKADDrawingsMap",
@@ -26588,33 +26572,47 @@ function getClickedKADObject(clickX, clickY) {
 			}
 		}
 
-		console.log("?? [getClickedKADObject] Final result:", closestMatch ? closestMatch.entityType + " - " + closestMatch.entityName : "null");
+		if (developerModeEnabled) {
+			console.log("?? [getClickedKADObject] Final result:", closestMatch ? closestMatch.entityType + " - " + closestMatch.entityName : "null");
+		}
 		return closestMatch;
 	}
 
-	console.log("?? [getClickedKADObject] No entities available or empty map");
+	if (developerModeEnabled) {
+		console.log("?? [getClickedKADObject] No entities available or empty map");
+	}
 	return null;
 }
 
 // Step 13j.1) Get clicked KAD object in 3D mode (mimics 2D getClickedKADObject)
 function getClickedKADObject3D(intersects, clickX, clickY) {
-	console.log("??3D [getClickedKADObject3D] Starting - Intersects:", intersects ? intersects.length : 0, "| Click:", clickX, clickY);
+	if (developerModeEnabled) {
+		console.log("??3D [getClickedKADObject3D] Starting - Intersects:", intersects ? intersects.length : 0, "| Click:", clickX, clickY);
+	}
 
 	if (!intersects || intersects.length === 0) {
-		console.log("??3D [getClickedKADObject3D] No intersects - raycast missed everything");
+		if (developerModeEnabled) {
+			console.log("??3D [getClickedKADObject3D] No intersects - raycast missed everything");
+		}
 		return null;
 	}
 
 	if (!allKADDrawingsMap || allKADDrawingsMap.size === 0) {
-		console.log("??3D [getClickedKADObject3D] No KAD entities in map");
+		if (developerModeEnabled) {
+			console.log("??3D [getClickedKADObject3D] No KAD entities in map");
+		}
 		return null;
 	}
 
 	// Step 13j.1a) Find the first KAD object from raycast intersects
-	console.log("??3D Inspecting " + intersects.length + " intersects:");
+	if (developerModeEnabled) {
+		console.log("??3D Inspecting " + intersects.length + " intersects:");
+	}
 	for (let i = 0; i < Math.min(5, intersects.length); i++) {
 		const userData = intersects[i].object.userData;
-		console.log("  [" + i + "] distance:", intersects[i].distance.toFixed(2), "| userData:", userData);
+		if (developerModeEnabled) {
+			console.log("  [" + i + "] distance:", intersects[i].distance.toFixed(2), "| userData:", userData);
+		}
 	}
 
 	let clickedKADMesh = null;
@@ -26622,13 +26620,17 @@ function getClickedKADObject3D(intersects, clickX, clickY) {
 		const userData = intersect.object.userData;
 		if (userData && userData.type && userData.type.startsWith("kad") && userData.kadId) {
 			clickedKADMesh = intersect.object;
-			console.log("??3D ? Found KAD mesh! Type:", userData.type, "| kadId:", userData.kadId);
+			if (developerModeEnabled) {
+				console.log("??3D ? Found KAD mesh! Type:", userData.type, "| kadId:", userData.kadId);
+			}
 			break;
 		}
 	}
 
 	if (!clickedKADMesh) {
-		console.log("??3D ? No KAD mesh in raycast results");
+		if (developerModeEnabled) {
+			console.log("??3D ? No KAD mesh in raycast results");
+		}
 		return null;
 	}
 

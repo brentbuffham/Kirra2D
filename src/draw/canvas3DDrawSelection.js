@@ -86,13 +86,16 @@ export function highlightSelectedKADThreeJS() {
     // Step 4) Draw individual vertex highlight if selectedPoint is set
     const selectedPoint = window.selectedPoint;
 
-    // DEBUG: Log what we're checking
-    console.log("🔍 [3D Draw] Checking for pink vertex highlight:");
-    console.log("  selectedPoint:", selectedPoint ? selectedPoint.pointID : "null");
-    console.log("  selectedKADObject:", selectedKADObject ? selectedKADObject.entityName : "null");
+    if (developerModeEnabled) {// DEBUG: Log what we're checking
+        console.log("🔍 [3D Draw] Checking for pink vertex highlight:");
+        console.log("  selectedPoint:", selectedPoint ? selectedPoint.pointID : "null");
+        console.log("  selectedKADObject:", selectedKADObject ? selectedKADObject.entityName : "null");
+    }
 
     if (selectedPoint && selectedKADObject) {
-        console.log("✅ [3D Draw] BOTH conditions met - drawing pink sphere");
+        if (developerModeEnabled) {
+            console.log("✅ [3D Draw] BOTH conditions met - drawing pink sphere");
+        }
         const entity = getEntityFromKADObject(selectedKADObject);
         const allKADDrawingsMap = window.allKADDrawingsMap;
         let entityToUse = entity;
@@ -140,7 +143,9 @@ export function highlightSelectedKADThreeJS() {
                 sphere.userData.type = "vertexSelectionHighlight";
                 window.threeRenderer.kadGroup.add(sphere);
 
-                console.log("🩷 [3D] Drew pink sphere for vertex:", point.pointID);
+                if (developerModeEnabled) {
+                    console.log("🩷 [3D] Drew pink sphere for vertex:", point.pointID);
+                }
             }
         });
     }
@@ -162,7 +167,9 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
 
     // Debug: Check entityType
     const entityType = kadObject.entityType || entity.entityType;
-    console.log("🔍 drawKADEntityHighlight - entityName:", kadObject.entityName, "entityType:", entityType);
+    if (developerModeEnabled) {
+        console.log("🔍 drawKADEntityHighlight - entityName:", kadObject.entityName, "entityType:", entityType);
+    }
 
     switch (entityType) {
         case "point":
@@ -194,7 +201,9 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
             const isClosedShape = entityType === "poly";
             const numSegments = isClosedShape ? points.length : points.length - 1;
 
-            console.log("🎨 [3D HIGHLIGHT] Drawing " + entityType + " with " + numSegments + " segments, isClosedShape:", isClosedShape);
+            if (developerModeEnabled) {
+                console.log("🎨 [3D HIGHLIGHT] Drawing " + entityType + " with " + numSegments + " segments, isClosedShape:", isClosedShape);
+            }
 
             // Step 4c.1) Base radius for tube highlights (in world units)
             // Non-selected segments use smaller radius, selected uses larger
@@ -327,7 +336,11 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
 
     // Step 5) Add highlight group to scene
     const childCount = highlightGroup.children.length;
-    console.log("✅ Adding highlight group to scene - Children count:", childCount, "for entity:", kadObject.entityName);
+    if (developerModeEnabled) {
+        console.log("✅ Adding highlight group to scene - Children count:", childCount, "for entity:", kadObject.entityName);
+    }
     window.threeRenderer.kadGroup.add(highlightGroup);
-    console.log("✓ Highlight group added to kadGroup");
+    if (developerModeEnabled) {
+        console.log("✓ Highlight group added to kadGroup");
+    }
 }
