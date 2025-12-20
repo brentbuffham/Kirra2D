@@ -25496,13 +25496,13 @@ function handleMoveToolMouseDown(event) {
 
 // Add these listeners in your init function (e.g., DOMContentLoaded or initialize function)
 document.addEventListener("keydown", (event) => {
-	if (event.key.toLowerCase() === "s" || event.key.toUpperCase() === "S") {
+	if (event.key && (event.key.toLowerCase() === "s" || event.key.toUpperCase() === "S")) {
 		isSelfSnapEnabled = true;
 	}
 });
 
 document.addEventListener("keyup", (event) => {
-	if (event.key.toLowerCase() === "s" || event.key.toUpperCase() === "S") {
+	if (event.key && (event.key.toLowerCase() === "s" || event.key.toUpperCase() === "S")) {
 		isSelfSnapEnabled = false;
 	}
 });
@@ -38726,7 +38726,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 	// Determine what's being deleted
 	const hasHoles = nodeIds.some(function (id) { return id.startsWith("hole?"); });
 	const hasEntities = nodeIds.some(function (id) { return id.startsWith("entity?"); });
-	const hasKADElements = nodeIds.some(function (id) { return id.includes("?element?"); });
+	const hasKADElements = nodeIds.some(function (id) { return id.includes("⣿element⣿"); });
 	const hasKADEntities = nodeIds.some(function (id) {
 		const parts = id.split("?");
 		return (parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
@@ -38738,7 +38738,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 		const entitiesToRenumber = new Set();
 
 		nodeIds.forEach(function (nodeId) {
-			const parts = nodeId.split("?");
+			const parts = nodeId.split("⣿");
 			if (parts.length >= 4 && parts[2] === "element") {
 				const entityName = parts[1];
 				const elementId = parts[3];
@@ -38776,7 +38776,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 	} else if (hasKADEntities) {
 		// Delete entire KAD entities
 		nodeIds.forEach(function (nodeId) {
-			const parts = nodeId.split("?");
+			const parts = nodeId.split("⣿");
 			if (parts.length === 2) {
 				const entityName = parts[1];
 				if (allKADDrawingsMap.has(entityName)) {
@@ -38817,7 +38817,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 						if (hasEntities) {
 							// Delete entire blast entities (all holes in that entity)
 							nodeIds.forEach(function (nodeId) {
-								const parts = nodeId.split("?");
+								const parts = nodeId.split("⣿");
 								if (parts[0] === "entity" && parts.length === 2) {
 									const entityName = parts[1];
 
@@ -38833,7 +38833,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 						if (hasHoles) {
 							// Delete individual holes
 							nodeIds.forEach(function (nodeId) {
-								const parts = nodeId.split("?");
+								const parts = nodeId.split("⣿");
 								if (parts[0] === "hole" && parts.length === 3) {
 									const entityName = parts[1];
 									const holeID = parts[2];
@@ -38878,7 +38878,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 				if (hasEntities) {
 					// Delete entire blast entities (all holes in that entity)
 					nodeIds.forEach(function (nodeId) {
-						const parts = nodeId.split("?");
+						const parts = nodeId.split("⣿");
 						if (parts[0] === "entity" && parts.length === 2) {
 							const entityName = parts[1];
 
@@ -38894,7 +38894,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 				if (hasHoles) {
 					// Delete individual holes
 					nodeIds.forEach(function (nodeId) {
-						const parts = nodeId.split("?");
+						const parts = nodeId.split("⣿");
 						if (parts[0] === "hole" && parts.length === 3) {
 							const entityName = parts[1];
 							const holeID = parts[2];
@@ -38961,7 +38961,7 @@ window.handleTreeViewVisibility = function (nodeId, type, itemId, isVisible) {
 	} else if (type === "points" || type === "line" || type === "poly" || type === "circle" || type === "text") {
 		setKADEntityVisibility(itemId, isVisible);
 	} else if (nodeId.includes("?element?")) {
-		const parts = nodeId.split("?");
+		const parts = nodeId.split("⣿");
 		if (parts.length >= 4 && parts[2] === "element") {
 			const entityName = parts[1];
 			const elementId = parts[3];
@@ -38976,14 +38976,22 @@ window.handleTreeViewVisibility = function (nodeId, type, itemId, isVisible) {
 window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 	console.log("?? [TreeView] Rename requested for:", nodeId);
 
-	const parts = nodeId.split("?");
+	const parts = nodeId.split("⣿");
 
 	// Blast entity rename
 	if (parts[0] === "entity" && parts.length === 2) {
 		const entityName = parts[1];
 		const firstHole = allBlastHoles.find(function (h) { return h.entityName === entityName; });
-		if (firstHole && typeof editBlastNamePopup === "function") {
-			editBlastNamePopup(firstHole);
+		if (firstHole && typeof window.editBlastNamePopup === "function") {
+			// editBlastNamePopup now returns a promise
+			window.editBlastNamePopup(firstHole).then(function (result) {
+				if (result && result.isConfirmed) {
+					// Update TreeView after successful rename
+					if (treeViewInstance && typeof treeViewInstance.updateTreeData === "function") {
+						treeViewInstance.updateTreeData();
+					}
+				}
+			});
 		}
 		return;
 	}
@@ -38992,10 +39000,13 @@ window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 	if ((parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
 		const oldEntityName = parts[1];
 		const entity = allKADDrawingsMap.get(oldEntityName);
-		if (!entity) return;
+		if (!entity) {
+			console.log("[BAD] [TreeView] Entity not found:", oldEntityName);
+			return;
+		}
 
-		if (typeof renameEntityDialog === "function") {
-			renameEntityDialog(parts[0], oldEntityName).then(function (result) {
+		if (typeof window.renameEntityDialog === "function") {
+			window.renameEntityDialog(parts[0], oldEntityName).then(function (result) {
 				if (result.isConfirmed) {
 					const newEntityName = result.value.trim();
 					if (!newEntityName || newEntityName === oldEntityName) return;
@@ -39023,6 +39034,8 @@ window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 					drawData(allBlastHoles, selectedHole);
 				}
 			});
+		} else {
+			console.error("[BAD] [TreeView] window.renameEntityDialog is not a function! Type:", typeof window.renameEntityDialog);
 		}
 	}
 };
@@ -39031,7 +39044,7 @@ window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 window.handleTreeViewShowProperties = function (nodeId, type) {
 	console.log("?? [TreeView] Show properties for:", nodeId);
 
-	const parts = nodeId.split("?");
+	const parts = nodeId.split("⣿");
 
 	// KAD element properties
 	if (parts.length >= 4 && parts[2] === "element") {
@@ -39048,8 +39061,8 @@ window.handleTreeViewShowProperties = function (nodeId, type) {
 					entityType: entity.entityType,
 					elementIndex: entity.data.indexOf(element)
 				};
-				if (typeof showKADPropertyEditorPopup === "function") {
-					showKADPropertyEditorPopup(kadObject);
+				if (typeof window.showKADPropertyEditorPopup === "function") {
+					window.showKADPropertyEditorPopup(kadObject);
 				}
 			}
 		}
@@ -39079,7 +39092,7 @@ window.handleTreeViewResetConnections = function (holeNodeIds) {
 
 	const holesToReset = [];
 	holeNodeIds.forEach(function (nodeId) {
-		const parts = nodeId.split("?");
+		const parts = nodeId.split("⣿");
 		if (parts[0] === "hole" && parts.length === 3) {
 			const entityName = parts[1];
 			const holeID = parts[2];

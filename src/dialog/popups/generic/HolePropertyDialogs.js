@@ -77,8 +77,8 @@ function renameEntityDialog(entityType, oldEntityName) {
 function editBlastNamePopup(selectedHole) {
 	// Step 20) CHECK VISIBILITY FIRST - Don't edit hidden holes
 	if (!selectedHole || !window.isHoleVisible(selectedHole)) {
-		console.log("❌ Cannot edit hidden hole: " + (selectedHole ? selectedHole.holeID : "none"));
-		return;
+		console.log("[BAD] Cannot edit hidden hole: " + (selectedHole ? selectedHole.holeID : "none"));
+		return Promise.resolve({ isConfirmed: false });
 	}
 
 	// Step 21) Get the current hole's blast name
@@ -110,21 +110,24 @@ function editBlastNamePopup(selectedHole) {
 
 	const formContent = window.createFormContent(fields, true);
 
-	const dialog = new window.FloatingDialog({
-		title: "Edit Blast Name",
-		content: formContent,
-		layoutType: "default",
-		width: 350,
-		height: 160,
-		showConfirm: true,
-		showCancel: true,
-		confirmText: "Confirm",
-		cancelText: "Cancel",
-		onConfirm: async () => {
+	// Step 22a) Return a Promise to allow TreeView to wait for completion
+	return new Promise((resolve) => {
+		const dialog = new window.FloatingDialog({
+			title: "Edit Blast Name",
+			content: formContent,
+			layoutType: "default",
+			width: 350,
+			height: 160,
+			showConfirm: true,
+			showCancel: true,
+			confirmText: "Confirm",
+			cancelText: "Cancel",
+			onConfirm: async () => {
 			// Step 23) Get form data - ADD THIS AT THE VERY TOP
 			const formData = window.getFormData(formContent);
 			const newBlastName = formData.blastName ? formData.blastName.trim() : "";
-			const allHoleBlastNamesFromForm = formData.allHoleBlastNames || false;
+			// Step 23a) IMPORTANT: getFormData returns checkbox as STRING "true" or "false", not boolean
+			const allHoleBlastNamesFromForm = formData.allHoleBlastNames === "true";
 
 			// Step 24) Validate the new blast name
 			if (!newBlastName || newBlastName === "") {
@@ -169,6 +172,7 @@ function editBlastNamePopup(selectedHole) {
 					// Step 32) If user cancelled, abort the entire operation
 					if (duplicateResult && duplicateResult.cancelled) {
 						console.log("Rename operation cancelled by user");
+						resolve({ isConfirmed: false, cancelled: true });
 						return; // Exit without making any changes
 					}
 
@@ -180,19 +184,20 @@ function editBlastNamePopup(selectedHole) {
 						window.allBlastHoles.length = 0; // Clear original array
 						window.allBlastHoles.push(...testBlastHoles); // Copy resolved data back
 
-						console.log("✅ Applied " + testBlastHoles.length + " resolved holes to original data");
+					console.log("[GOOD] Applied " + testBlastHoles.length + " resolved holes to original data");
 
-						// Step 35) Since we already applied all changes (including rename), skip the manual rename section
-						// Step 36) Update tree view and save
-						if (typeof window.updateTreeView === "function") {
-							window.debouncedUpdateTreeView();
-						}
-						if (typeof window.debouncedSaveHoles === "function") {
-							window.debouncedSaveHoles();
-						}
+					// Step 35) Since we already applied all changes (including rename), skip the manual rename section
+					// Step 36) Update tree view and save
+					if (typeof window.updateTreeView === "function") {
+						window.debouncedUpdateTreeView();
+					}
+					if (typeof window.debouncedSaveHoles === "function") {
+						window.debouncedSaveHoles();
+					}
 
-						window.drawData(window.allBlastHoles, selectedHole);
-						return; // Exit here since all changes are applied
+					window.drawData(window.allBlastHoles, selectedHole);
+					resolve({ isConfirmed: true });
+					return; // Exit here since all changes are applied
 					}
 				}
 
@@ -279,25 +284,28 @@ function editBlastNamePopup(selectedHole) {
 					window.debouncedUpdateTreeView();
 				}
 
-				// Step 48) Save changes to DB if available
-				if (typeof window.debouncedSaveHoles === "function") {
-					window.debouncedSaveHoles();
-				}
+			// Step 48) Save changes to DB if available
+			if (typeof window.debouncedSaveHoles === "function") {
+				window.debouncedSaveHoles();
 			}
-			window.drawData(window.allBlastHoles, selectedHole);
-		},
-		onCancel: () => {
-			// Step 49) Clear the selection
-			window.selectedHole = null;
-			window.selectedPoint = null;
-			window.selectedMultipleHoles = [];
-			window.selectedKADObject = null;
-			window.selectedMultipleKADObjects = [];
-			window.drawData(window.allBlastHoles, window.selectedHole);
-			window.debouncedUpdateTreeView();
-		},
+		}
+		window.drawData(window.allBlastHoles, selectedHole);
+		resolve({ isConfirmed: true });
+	},
+	onCancel: () => {
+		// Step 49) Clear the selection
+		window.selectedHole = null;
+		window.selectedPoint = null;
+		window.selectedMultipleHoles = [];
+		window.selectedKADObject = null;
+		window.selectedMultipleKADObjects = [];
+		window.drawData(window.allBlastHoles, window.selectedHole);
+		window.debouncedUpdateTreeView();
+		resolve({ isConfirmed: false });
+	},
+		});
+		dialog.show();
 	});
-	dialog.show();
 }
 
 // =====================================
