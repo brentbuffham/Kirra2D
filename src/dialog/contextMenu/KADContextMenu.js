@@ -15,17 +15,17 @@ function showKADPropertyEditorPopup(kadObject) {
     // The 2D getClickedKADObject spreads point1 properties, so we must override them here
     if (entity && entity.data && kadObject.elementIndex !== undefined) {
         let dataIndex = kadObject.elementIndex;
-        
+
         // For segment selections in lines/polygons, use the endpoint (next point)
-        const isLineOrPolySegment = (kadObject.entityType === "line" || kadObject.entityType === "poly") && 
-                                     kadObject.selectionType === "segment";
+        const isLineOrPolySegment = (kadObject.entityType === "line" || kadObject.entityType === "poly") &&
+            kadObject.selectionType === "segment";
         if (isLineOrPolySegment) {
             const isPoly = kadObject.entityType === "poly";
             const numPoints = entity.data.length;
             dataIndex = isPoly ? (dataIndex + 1) % numPoints : dataIndex + 1;
             console.log("🎨 [KAD DIALOG] Segment selected - loading properties from endpoint index " + dataIndex + " instead of " + kadObject.elementIndex);
         }
-        
+
         const element = entity.data[dataIndex];
         if (element) {
             // ALWAYS populate from the correct element (override any spread properties from getClickedKADObject)
@@ -45,13 +45,13 @@ function showKADPropertyEditorPopup(kadObject) {
     // Step 1c) Create title showing correct element/segment number
     let displayIndex = kadObject.elementIndex + 1;
     let elementTypeLabel = "Element";
-    
+
     // For segments, show "Segment X" instead of "Element X"
     if (kadObject.selectionType === "segment") {
         elementTypeLabel = "Segment";
         displayIndex = kadObject.elementIndex + 1; // Segments are numbered starting from 1
     }
-    
+
     const title = hasMultipleElements ? "Edit " + kadObject.entityType.toUpperCase() + " - " + kadObject.entityName + " - " + elementTypeLabel + " " + displayIndex : "Edit " + kadObject.entityType.toUpperCase() + " - " + kadObject.entityName;
 
     const currentColor = kadObject.color || "#FF0000";
@@ -162,7 +162,7 @@ function showKADPropertyEditorPopup(kadObject) {
     noteDiv.innerHTML = "<b>All:</b> Move all points by the same offset as this point (unless Only Z is checked).<br>" + "<b>This:</b> Move only this point (unless Only Z is checked).";
     formContent.appendChild(noteDiv);
 
-    // Step 5) Create the dialog with 4 buttons
+    // Step 5) Create the dialog with 5 buttons (added Delete)
     const dialog = new window.FloatingDialog({
         title: title,
         content: formContent,
@@ -171,11 +171,13 @@ function showKADPropertyEditorPopup(kadObject) {
         showDeny: true, // "This" button
         showCancel: true, // "Cancel" button
         showOption1: true, // "Hide" button
+        showOption2: true, // "Delete" button
         confirmText: "All",
         denyText: "This",
         cancelText: "Cancel",
         option1Text: "Hide",
-        width: 350,
+        option2Text: "Delete",
+        width: 400,
         height: isLineOrPoly ? 400 : 350,
         onConfirm: () => {
             // Step 5a) Get form values and apply to all elements
@@ -234,7 +236,7 @@ function showKADPropertyEditorPopup(kadObject) {
             window.drawData(window.allBlastHoles, window.selectedHole);
         },
         onCancel: () => {
-            // Step 5c) Just close, no changes
+            // Step 5c) Clear selection and redraw when dialog closes
             window.clearAllSelectionState();
             window.drawData(window.allBlastHoles, window.selectedHole);
         },
@@ -245,6 +247,61 @@ function showKADPropertyEditorPopup(kadObject) {
             //window.debouncedSaveKAD(); don't save visbility it is only for the view.
             window.drawData(window.allBlastHoles, window.selectedHole);
             dialog.close();
+        },
+        onOption2: () => {
+            // Step 5e) Delete point/segment/element with auto-renumber
+            // Close the property dialog first
+            dialog.close();
+
+            const entity = window.getEntityFromKADObject(kadObject);
+            if (!entity) return;
+
+            let deletionIndex = kadObject.elementIndex;
+
+            // For segment selections, delete the endpoint (next point)
+            const isLineOrPolySegment = (kadObject.entityType === "line" || kadObject.entityType === "poly") &&
+                kadObject.selectionType === "segment";
+            if (isLineOrPolySegment) {
+                const isPoly = kadObject.entityType === "poly";
+                const numPoints = entity.data.length;
+                deletionIndex = isPoly ? (deletionIndex + 1) % numPoints : deletionIndex + 1;
+            }
+
+            // Remove the point/vertex
+            entity.data.splice(deletionIndex, 1);
+
+            // Handle edge cases
+            if (entity.data.length === 0) {
+                // Delete entire entity if no points left
+                window.allKADDrawingsMap.delete(kadObject.entityName);
+                window.updateStatusMessage("Deleted entity " + kadObject.entityName);
+            } else if (entity.data.length === 1 && (entity.entityType === "line" || entity.entityType === "poly")) {
+                // Delete entity if only 1 point remains in line/poly
+                window.allKADDrawingsMap.delete(kadObject.entityName);
+                window.updateStatusMessage("Deleted entity " + kadObject.entityName + " (insufficient points)");
+            } else if (entity.data.length === 2 && entity.entityType === "poly") {
+                // Convert poly to line if only 2 points remain
+                entity.entityType = "line";
+                entity.data.forEach(point => {
+                    point.entityType = "line";
+                    point.closed = false;
+                });
+                window.updateStatusMessage("Converted " + kadObject.entityName + " to line (2 points)");
+                // Auto-renumber remaining points (USE FACTORY CODE)
+                window.renumberEntityPoints(entity);
+            } else {
+                // Normal case: just renumber (USE FACTORY CODE)
+                window.renumberEntityPoints(entity);
+                window.updateStatusMessage("Deleted point from " + kadObject.entityName);
+            }
+
+            // Save and redraw (USE FACTORY CODE)
+            window.debouncedSaveKAD();
+            window.debouncedUpdateTreeView();
+            window.clearAllSelectionState();
+            window.drawData(window.allBlastHoles, window.selectedHole);
+
+            setTimeout(() => window.updateStatusMessage(""), 2000);
         }
     });
 
@@ -428,7 +485,7 @@ function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
         if (scope === "element") {
             // Step 8a) Only this point/segment
             let elementIndex = kadObject.elementIndex;
-            
+
             // Step 8a.1) CRITICAL FIX: For segments in lines/polygons, modify the endpoint (next point)
             // A segment from point[i] to point[i+1] uses point[i+1]'s color/properties
             const isLineOrPoly = entity.entityType === "line" || entity.entityType === "poly";
@@ -439,7 +496,7 @@ function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
                 elementIndex = isPoly ? (elementIndex + 1) % numPoints : elementIndex + 1;
                 console.log("🔧 [KAD MODIFY] Segment selected - modifying endpoint at index " + elementIndex + " instead of " + kadObject.elementIndex);
             }
-            
+
             if (elementIndex !== undefined && elementIndex < entity.data.length) {
                 const item = entity.data[elementIndex];
                 if (newProperties.color) item.color = newProperties.color;
@@ -454,7 +511,7 @@ function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
                     if (newProperties.pointYLocation !== undefined) item.pointYLocation = parseFloat(newProperties.pointYLocation);
                     if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
                 }
-                
+
                 const displayIndex = kadObject.selectionType === "segment" ? (kadObject.elementIndex + 1) : (elementIndex + 1);
                 updateStatusMessage("Updated element " + displayIndex + " of " + kadObject.entityType + " " + kadObject.entityName);
             }

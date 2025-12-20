@@ -857,14 +857,15 @@ function showConfirmationDialog(title, message, confirmText = "Confirm", cancelT
 	// Step 48) Create content with warning icon and message using inline styles for dark mode
 	const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
 	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-	const content = '<div style="color: #ff9800; font-size: 24px; margin-bottom: 15px; text-align: center;">⚠️</div>' + '<div style="color: ' + textColor + '; font-size: 16px; line-height: 1.4;">' + message + "</div>";
+	const content = '<div style="color: #ff9800; font-size: 18px; margin-bottom: 15px; text-align: center;">⚠️</div>' +
+		'<div style="color: ' + textColor + '; font-size: 12px; line-height: 1.1; text-align: center;">' + message + "</div>";
 
 	// Step 49) Create FloatingDialog with confirm/cancel buttons
 	const dialog = new FloatingDialog({
 		title: title,
 		content: content,
-		width: 500,
-		height: 350,
+		width: 350,
+		height: 200,
 		showConfirm: true,
 		showCancel: true,
 		showDeny: false,
@@ -897,6 +898,124 @@ function showConfirmationDialog(title, message, confirmText = "Confirm", cancelT
 	// Step 52) Show the dialog
 	dialog.show();
 	return dialog;
+}
+
+// Step 53) Create utility function for confirmation dialogs with input field
+function showConfirmationDialogWithInput(title, message, inputLabel, inputType = "text", defaultValue = "", confirmText = "Confirm", cancelText = "Cancel", onConfirm = null, onCancel = null) {
+	console.log("showConfirmationDialogWithInput: " + title);
+
+	// Step 54) Create content container
+	const container = document.createElement("div");
+	container.style.padding = "10px";
+	container.style.display = "flex";
+	container.style.flexDirection = "column";
+	container.style.gap = "15px";
+
+	// Step 55) Add warning icon and message
+	const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
+	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
+
+	const iconDiv = document.createElement("div");
+	iconDiv.style.color = "#ff9800";
+	iconDiv.style.fontSize = "18px";
+	iconDiv.style.textAlign = "center";
+	iconDiv.textContent = "⚠️";
+	container.appendChild(iconDiv);
+
+	const messageDiv = document.createElement("div");
+	messageDiv.style.color = textColor;
+	messageDiv.style.fontSize = "12px";
+	messageDiv.style.lineHeight = "1.1";
+	messageDiv.style.textAlign = "center";
+	messageDiv.textContent = message;
+	container.appendChild(messageDiv);
+
+	// Step 56) Add input field using createEnhancedFormContent for consistency
+	const field = [{
+		label: inputLabel,
+		name: "inputValue",
+		type: inputType,
+		value: defaultValue,
+		placeholder: defaultValue
+	}];
+
+	const formContent = window.createEnhancedFormContent ? window.createEnhancedFormContent(field, false) : createBasicInput(field[0]);
+	container.appendChild(formContent);
+
+	// Step 57) Create FloatingDialog with confirm/cancel buttons
+	const dialog = new FloatingDialog({
+		title: title,
+		content: container,
+		width: 350,
+		height: 250,
+		showConfirm: true,
+		showCancel: true,
+		showDeny: false,
+		showOption1: false,
+		showOption2: false,
+		confirmText: confirmText,
+		cancelText: cancelText,
+		draggable: true,
+		resizable: false,
+		closeOnOutsideClick: false, // Modal behavior
+		layoutType: "default",
+		onConfirm: () => {
+			// Step 58) Handle confirm button click and get input value
+			console.log("Confirmation dialog with input confirmed: " + title);
+
+			// Get the input value using getFormData if available
+			let inputValue = defaultValue;
+			if (window.getFormData) {
+				const formData = window.getFormData(formContent);
+				inputValue = formData.inputValue || defaultValue;
+			} else {
+				const input = formContent.querySelector("input");
+				if (input) {
+					inputValue = input.value || defaultValue;
+				}
+			}
+
+			dialog.close();
+			if (onConfirm && typeof onConfirm === "function") {
+				onConfirm(inputValue);
+			}
+		},
+		onCancel: () => {
+			// Step 59) Handle cancel button click
+			console.log("Confirmation dialog with input cancelled: " + title);
+			dialog.close();
+			if (onCancel && typeof onCancel === "function") {
+				onCancel();
+			}
+		},
+	});
+
+	// Step 60) Show the dialog
+	dialog.show();
+	return dialog;
+}
+
+// Step 61) Fallback function to create basic input if createEnhancedFormContent is not available
+function createBasicInput(field) {
+	const container = document.createElement("div");
+	container.style.marginTop = "10px";
+
+	const label = document.createElement("label");
+	label.textContent = field.label;
+	label.style.display = "block";
+	label.style.marginBottom = "5px";
+	container.appendChild(label);
+
+	const input = document.createElement("input");
+	input.type = field.type;
+	input.name = field.name;
+	input.value = field.value;
+	input.placeholder = field.placeholder || "";
+	input.style.width = "100%";
+	input.style.padding = "5px";
+	container.appendChild(input);
+
+	return container;
 }
 
 // Step 53) Create utility function for confirmation dialogs with 3 buttons
@@ -1021,9 +1140,10 @@ window.createFormContent = createFormContent;
 window.createEnhancedFormContent = createEnhancedFormContent;
 window.getFormData = getFormData;
 window.showConfirmationDialog = showConfirmationDialog;
+window.showConfirmationDialogWithInput = showConfirmationDialogWithInput;
 window.showConfirmationThreeDialog = showConfirmationThreeDialog;
 window.showModalMessage = showModalMessage;
 
 // Export for ES6 modules
-export { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage };
+export { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationDialogWithInput, showConfirmationThreeDialog, showModalMessage };
 

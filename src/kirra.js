@@ -18656,6 +18656,14 @@ function deleteHoleAndRenumber(holeToDelete) {
 	// (user can manually renumber if needed)
 }
 
+// Expose hole deletion and renumbering functions globally for HolesContextMenu.js
+window.deleteHoleAndRenumber = deleteHoleAndRenumber;
+window.renumberHolesFunction = renumberHolesFunction;
+window.renumberPatternAfterClipping = renumberPatternAfterClipping;
+
+// Expose KAD renumbering function globally for KADContextMenu.js
+window.renumberEntityPoints = renumberEntityPoints;
+
 function handleHoleAddingClick(event) {
 	if (isAddingHole) {
 		console.log("🔹 handleHoleAddingClick fired");
@@ -40477,8 +40485,134 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 		treeViewInstance.updateTreeData();
 		drawData(allBlastHoles, selectedHole);
 	} else if (hasHoles || hasEntities) {
-		// Delegate to TreeView's own delete logic for holes/entities
-		treeViewInstance.deleteSelected();
+		// Step 2a) Delete holes and/or entire blast entities with renumber confirmation (USE FACTORY CODE)
+
+		// Step 2a.1) Ask if user wants to renumber after deletion (USE FACTORY CODE)
+		window.showConfirmationDialog(
+			"Renumber Holes?",
+			"Do you want to renumber holes after deletion?",
+			"Yes",
+			"No",
+			function () {
+				// Step 2a.2) Yes - Ask for starting number (USE FACTORY CODE)
+				window.showConfirmationDialogWithInput(
+					"Renumber Starting Value",
+					"Enter the starting number for renumbering:",
+					"Start From",
+					"text",
+					"1",
+					"OK",
+					"Cancel",
+					function (startNumber) {
+						// Step 2a.3) Delete and renumber with starting value
+						const entitiesToRenumber = new Set();
+
+						if (hasEntities) {
+							// Delete entire blast entities (all holes in that entity)
+							nodeIds.forEach(function (nodeId) {
+								const parts = nodeId.split("⣿");
+								if (parts[0] === "entity" && parts.length === 2) {
+									const entityName = parts[1];
+
+									// Remove all holes with this entityName
+									const holesRemoved = allBlastHoles.filter(function (hole) { return hole.entityName === entityName; }).length;
+									allBlastHoles = allBlastHoles.filter(function (hole) { return hole.entityName !== entityName; });
+
+									console.log("🗑️ Deleted entity: " + entityName + " (" + holesRemoved + " holes)");
+								}
+							});
+						}
+
+						if (hasHoles) {
+							// Delete individual holes
+							nodeIds.forEach(function (nodeId) {
+								const parts = nodeId.split("⣿");
+								if (parts[0] === "hole" && parts.length === 3) {
+									const entityName = parts[1];
+									const holeID = parts[2];
+
+									// Find and remove the specific hole
+									const index = allBlastHoles.findIndex(function (h) { return h.entityName === entityName && h.holeID === holeID; });
+									if (index !== -1) {
+										allBlastHoles.splice(index, 1);
+										entitiesToRenumber.add(entityName);
+										console.log("🗑️ Deleted hole: " + entityName + ":" + holeID);
+									}
+								}
+							});
+						}
+
+						// Renumber affected entities with starting number (USE FACTORY CODE)
+						entitiesToRenumber.forEach(function (entityName) {
+							if (typeof renumberHolesFunction === "function") {
+								renumberHolesFunction(startNumber, entityName);
+							}
+						});
+
+						// Save and update (USE FACTORY CODE)
+						if (typeof debouncedSaveHoles === "function") {
+							debouncedSaveHoles();
+						}
+
+						treeViewInstance.updateTreeData();
+						drawData(allBlastHoles, selectedHole);
+						updateStatusMessage("Deleted holes and renumbered from " + startNumber);
+						setTimeout(function () { updateStatusMessage(""); }, 2000);
+					},
+					function () {
+						// Step 2a.4) User cancelled starting number input
+						updateStatusMessage("Delete cancelled");
+						setTimeout(function () { updateStatusMessage(""); }, 2000);
+					}
+				);
+			},
+			function () {
+				// Step 2a.5) No - Delete without renumbering
+				if (hasEntities) {
+					// Delete entire blast entities (all holes in that entity)
+					nodeIds.forEach(function (nodeId) {
+						const parts = nodeId.split("⣿");
+						if (parts[0] === "entity" && parts.length === 2) {
+							const entityName = parts[1];
+
+							// Remove all holes with this entityName
+							const holesRemoved = allBlastHoles.filter(function (hole) { return hole.entityName === entityName; }).length;
+							allBlastHoles = allBlastHoles.filter(function (hole) { return hole.entityName !== entityName; });
+
+							console.log("🗑️ Deleted entity: " + entityName + " (" + holesRemoved + " holes)");
+						}
+					});
+				}
+
+				if (hasHoles) {
+					// Delete individual holes
+					nodeIds.forEach(function (nodeId) {
+						const parts = nodeId.split("⣿");
+						if (parts[0] === "hole" && parts.length === 3) {
+							const entityName = parts[1];
+							const holeID = parts[2];
+
+							// Find and remove the specific hole
+							const index = allBlastHoles.findIndex(function (h) { return h.entityName === entityName && h.holeID === holeID; });
+							if (index !== -1) {
+								allBlastHoles.splice(index, 1);
+								console.log("🗑️ Deleted hole: " + entityName + ":" + holeID);
+							}
+						}
+					});
+				}
+
+				// Save and update (USE FACTORY CODE)
+				if (typeof debouncedSaveHoles === "function") {
+					debouncedSaveHoles();
+				}
+
+				treeViewInstance.updateTreeData();
+				drawData(allBlastHoles, selectedHole);
+				updateStatusMessage("Deleted holes without renumbering");
+				setTimeout(function () { updateStatusMessage(""); }, 2000);
+			}
+		);
 	}
 };
 

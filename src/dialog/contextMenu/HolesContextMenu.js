@@ -330,14 +330,16 @@ function showHolePropertyEditor(hole) {
 		layoutType: "compact",
 		showConfirm: true,
 		showCancel: true,
-		showOption1: true, // Add hide button
+		showOption1: true, // Hide button
+		showOption2: true, // Delete button
 		confirmText: "Apply",
 		cancelText: "Cancel",
 		option1Text: "Hide",
+		option2Text: "Delete",
 		width: 350,
 		height: 600,
 		onConfirm: () => {
-			// Get form values
+			// Step 10a) Get form values and process updates
 			const formData = window.getFormData(formContent);
 
 			// Process the form data and update holes
@@ -348,16 +350,93 @@ function showHolePropertyEditor(hole) {
 			if (typeof window.longPressTimeout !== "undefined") clearTimeout(window.longPressTimeout);
 		},
 		onCancel: () => {
-			// Clear any dragging states when dialog closes
+			// Step 10d) Clear any dragging states and redraw when dialog closes
 			if (typeof window.isDragging !== "undefined") window.isDragging = false;
 			if (typeof window.longPressTimeout !== "undefined") clearTimeout(window.longPressTimeout);
+
+			// Redraw canvas when dialog closes
+			window.drawData(window.allBlastHoles, window.selectedHole);
 		},
 		onOption1: () => {
-			// Hide holes - just set visible flag
+			// Step 10b) Hide holes - just set visible flag
 			holes.forEach((hole) => {
 				hole.visible = false;
 			});
 			window.drawData(window.allBlastHoles, window.selectedHole);
+		},
+		onOption2: () => {
+			// Step 10c) Delete holes using Factory Code with renumber prompt
+			// Close the property dialog first
+			dialog.close();
+
+			// Ask if user wants to renumber (USE FACTORY CODE)
+			window.showConfirmationDialog(
+				"Renumber Holes?",
+				"Do you want to renumber holes after deletion?",
+				"Yes",
+				"No",
+				() => {
+					// Step 10c.1) Yes - Ask for starting number using input dialog (USE FACTORY CODE)
+					window.showConfirmationDialogWithInput(
+						"Renumber Starting Value",
+						"Enter the starting number for renumbering:",
+						"Start From",
+						"text",
+						"1",
+						"OK",
+						"Cancel",
+						(startNumber) => {
+							// Step 10c.2) Delete holes manually and renumber with starting value
+							const entitiesToRenumber = new Set();
+							
+							holes.forEach((hole) => {
+								const index = window.allBlastHoles.findIndex(h => 
+									h.holeID === hole.holeID && h.entityName === hole.entityName
+								);
+								if (index !== -1) {
+									window.allBlastHoles.splice(index, 1);
+									entitiesToRenumber.add(hole.entityName);
+								}
+							});
+							
+							// Renumber each affected entity with user-specified starting number (USE FACTORY CODE)
+							entitiesToRenumber.forEach(entityName => {
+								window.renumberHolesFunction(startNumber, entityName);
+							});
+							
+							// Debounced save and updates (USE FACTORY CODE)
+							window.debouncedSaveHoles();
+							window.debouncedUpdateTreeView();
+							window.drawData(window.allBlastHoles, window.selectedHole);
+							window.updateStatusMessage("Deleted " + holes.length + " hole(s) and renumbered from " + startNumber);
+							setTimeout(() => window.updateStatusMessage(""), 2000);
+						},
+						() => {
+							// Step 10c.3) User cancelled the starting number input
+							window.updateStatusMessage("Renumber cancelled");
+							setTimeout(() => window.updateStatusMessage(""), 2000);
+						}
+					);
+				},
+				() => {
+					// Step 10c.4) No - Delete without renumbering
+					holes.forEach((hole) => {
+						const index = window.allBlastHoles.findIndex(h =>
+							h.holeID === hole.holeID && h.entityName === hole.entityName
+						);
+						if (index !== -1) {
+							window.allBlastHoles.splice(index, 1);
+						}
+					});
+
+					// Debounced save and updates (USE FACTORY CODE)
+					window.debouncedSaveHoles();
+					window.debouncedUpdateTreeView();
+					window.drawData(window.allBlastHoles, window.selectedHole);
+					window.updateStatusMessage("Deleted " + holes.length + " hole(s)");
+					setTimeout(() => window.updateStatusMessage(""), 2000);
+				}
+			);
 		},
 	});
 
