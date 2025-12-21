@@ -548,14 +548,14 @@ function updateThreeLocalOrigin() {
 			if (surface.points && surface.points.length > 0) {
 				threeLocalOriginX = surface.points[0].x;
 				threeLocalOriginY = surface.points[0].y;
-				console.log("?? Three.js local origin set from surface points:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
+				console.log("📍 Three.js local origin set from surface points:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
 				return;
 			}
 			// Check for textured mesh bounds (OBJ files)
 			if (surface.isTexturedMesh && surface.meshBounds) {
 				threeLocalOriginX = (surface.meshBounds.minX + surface.meshBounds.maxX) / 2;
 				threeLocalOriginY = (surface.meshBounds.minY + surface.meshBounds.maxY) / 2;
-				console.log("?? Three.js local origin set from textured mesh center:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
+				console.log("📍 Three.js local origin set from textured mesh center:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
 				return;
 			}
 		}
@@ -838,7 +838,7 @@ function initializeThreeJS() {
 		// Fixes QUIRK 1: Jerkiness on startup until user drags 2D then returns to 3D
 		if (cameraControls.animationFrameId === null) {
 			cameraControls.animationFrameId = requestAnimationFrame(cameraControls.animate);
-			console.log("? Started CameraControls animation loop for smooth 3D rendering");
+			console.log("📷 Started CameraControls animation loop for smooth 3D rendering");
 		}
 
 		// Step 6b) Set gizmo display mode
@@ -901,7 +901,7 @@ function initializeThreeJS() {
 		if (window.baseCanvas && window.baseCtx) {
 			window.baseCtx.fillStyle = darkModeEnabled ? "#000000" : "#FFFFFF";
 			window.baseCtx.fillRect(0, 0, window.baseCanvas.width, window.baseCanvas.height);
-			console.log("?? Base canvas background set to", darkModeEnabled ? "black" : "white");
+			console.log("🎨 Base canvas background set to", darkModeEnabled ? "black" : "white");
 		}
 
 		// Step 10b) Set threeInitialized to true BEFORE setting up event handlers
@@ -914,11 +914,11 @@ function initializeThreeJS() {
 
 		// Step 10c) If data was already loaded, redraw it now that 3D is ready
 		if (allBlastHoles && allBlastHoles.length > 0) {
-			console.log("?? Redrawing existing data in 3D...");
+			console.log("🎨 Redrawing existing data in 3D...");
 			drawData(allBlastHoles, selectedHole);
 		}
 	} catch (error) {
-		console.error("? Failed to initialize Three.js:", error);
+		console.error("❌ Failed to initialize Three.js:", error);
 		threeInitialized = false;
 		threeInitializationFailed = true; // Step 0b) Mark failure to prevent retry storm
 
@@ -1090,7 +1090,7 @@ function handle3DClick(event) {
 	// Step 12b) Skip if modifier keys are held (let camera controls handle orbit/rotate)
 	// Alt = orbit, Ctrl/Cmd = rotate, Right-click = rotate
 	if (event.altKey || event.metaKey || event.ctrlKey || event.button === 2) {
-		console.log("?? [3D CLICK] Modifier keys held - skipping selection");
+		console.log("🡺 [3D CLICK] Modifier keys held - skipping selection (3D arrow icon)");
 		// Let camera controls handle these
 		return;
 	}
@@ -1098,7 +1098,7 @@ function handle3DClick(event) {
 	// Step 12c) Early return if dependencies not ready
 	// Note: allBlastHoles is NOT required - KAD objects can be selected without holes
 	if (!threeInitialized || !threeRenderer) {
-		console.log("? [3D CLICK] Dependencies not ready", {
+		console.log("🚨 [3D CLICK] Dependencies not ready", {
 			threeInitialized: !!threeInitialized,
 			threeRenderer: !!threeRenderer,
 		});
@@ -1109,7 +1109,7 @@ function handle3DClick(event) {
 	// Check if any drawing tool is active and forward to appropriate handler
 	const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
 	if (isAnyDrawingToolActive) {
-		console.log("?? [3D CLICK] KAD drawing tool active, forwarding to drawing handler");
+		console.log("⬇️ [3D CLICK] KAD drawing tool active, forwarding to drawing handler");
 
 		// Step 12c.1a) Get world coordinates using 3D cylindrical snap
 		let snapResult;
@@ -1148,35 +1148,35 @@ function handle3DClick(event) {
 		// Step 12c.1c) Call appropriate KAD drawing function based on active tool
 		if (isDrawingPoint) {
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Adding KAD Point at:", worldX, worldY, worldZ);
+				console.log("⬇️ [3D CLICK] Adding KAD Point at:", worldX, worldY, worldZ);
 			}
 			addKADPoint();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingLine) {
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
+				console.log("⬇️ [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
 			}
 			addKADLine();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingPoly) {
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Adding KAD Polygon point at:", worldX, worldY, worldZ);
+				console.log("⬇️ [3D CLICK] Adding KAD Polygon point at:", worldX, worldY, worldZ);
 			}
 			addKADPoly();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingCircle) {
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Adding KAD Circle at:", worldX, worldY, worldZ);
+				console.log("⬇️ [3D CLICK] Adding KAD Circle at:", worldX, worldY, worldZ);
 			}
 			addKADCircle();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingText) {
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Adding KAD Text at:", worldX, worldY, worldZ);
+				console.log("⬇️ [3D CLICK] Adding KAD Text at:", worldX, worldY, worldZ);
 			}
 			addKADText();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
@@ -1196,7 +1196,7 @@ function handle3DClick(event) {
 	const threeCanvas = threeRenderer.getCanvas();
 	if (!threeCanvas) {
 		if (developerModeEnabled) {
-			console.log("? [3D CLICK] No 3D canvas found");
+			console.log("🚨 [3D CLICK] No 3D canvas found");
 		}
 		return;
 	}
@@ -1205,7 +1205,7 @@ function handle3DClick(event) {
 	// Use interactionManager which has the proper logic for finding holes
 	if (!interactionManager) {
 		if (developerModeEnabled) {
-			console.log("? [3D CLICK] interactionManager not available");
+			console.log("🚨 [3D CLICK] interactionManager not available");
 		}
 		return;
 	}
@@ -1216,7 +1216,7 @@ function handle3DClick(event) {
 	const intersects = interactionManager.raycast();
 
 	if (developerModeEnabled) {
-		console.log("?? [3D CLICK] Raycast results:", {
+		console.log("🔍 [3D CLICK] Raycast results:", {
 			intersectsCount: intersects.length,
 			firstIntersect:
 				intersects.length > 0
@@ -1233,7 +1233,7 @@ function handle3DClick(event) {
 	// This has proper logic for traversing parent chains and finding the correct hole
 	// But let's also log what we're checking to debug why it always finds hole 1
 	if (developerModeEnabled) {
-		console.log("?? [3D CLICK] Checking", intersects.length, "intersections for holes...");
+		console.log("🔍 [3D CLICK] Checking", intersects.length, "intersections for holes...");
 	}
 	for (let i = 0; i < Math.min(intersects.length, 5); i++) {
 		const intersect = intersects[i];
@@ -1263,7 +1263,7 @@ function handle3DClick(event) {
 	const isConnectorToolActive = isAddingConnector || isAddingMultiConnector;
 	if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled && !isMoveToolActive) {
 		if (developerModeEnabled) {
-			console.log("?? [3D CLICK] Select Pointer tool not active - skipping selection");
+			console.log("🚫 [3D CLICK] Select Pointer tool not active - skipping selection");
 		}
 		return;
 	}
@@ -1272,20 +1272,20 @@ function handle3DClick(event) {
 
 	if (clickedHole) {
 		if (developerModeEnabled) {
-			console.log("? [3D CLICK] Found hole:", clickedHole.holeID, "in", clickedHole.entityName);
+			console.log("🔍 [3D CLICK] Found hole:", clickedHole.holeID, "in", clickedHole.entityName);
 		}
 	} else if (selectingHoles) {
 		if (developerModeEnabled) {
-			console.log("?? [3D CLICK] No hole found in intersections");
+			console.log("🚨 [3D CLICK] No hole found in intersections");
 		}
 	}
 
 	// Step 12i) Handle selection based on current tool mode
 	if (clickedHole && selectingHoles) {
 		if (developerModeEnabled) {
-			console.log("?? [3D CLICK] Processing selection for hole:", clickedHole.holeID);
+			console.log("⬇️ [3D CLICK] Processing selection for hole:", clickedHole.holeID);
 		}
-		console.log("?? [3D CLICK] Current tool state:", {
+		console.log("🔍 [3D CLICK] Current tool state:", {
 			isAddingConnector,
 			isAddingMultiConnector,
 			isMultiHoleSelectionEnabled,
@@ -1300,7 +1300,7 @@ function handle3DClick(event) {
 		if (isAddingConnector) {
 			// Step 12i.1) Single connector tool logic in 3D (matching 2D handleConnectorClick)
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Single connector tool mode");
+				console.log("⬇️ [3D CLICK] Single connector tool mode");
 			}
 			if (!fromHoleStore) {
 				// Step 12i.1a) First hole selection
@@ -1308,7 +1308,7 @@ function handle3DClick(event) {
 				firstSelectedHole = clickedHole;
 				selectedHole = clickedHole;
 				if (developerModeEnabled) {
-					console.log("? [3D CLICK] Set first connector hole:", clickedHole.holeID);
+					console.log("⬇️ [3D CLICK] Set first connector hole:", clickedHole.holeID);
 				}
 				// Step 12i.1a.1) Immediately render to show green highlight
 				drawData(allBlastHoles, selectedHole);
@@ -1318,7 +1318,7 @@ function handle3DClick(event) {
 				selectedHole = clickedHole; // Set selected hole to second hole for yellow highlight
 				secondSelectedHole = clickedHole; // IMPORTANT: Set this for highlighting
 				if (developerModeEnabled) {
-					console.log("? [3D CLICK] Set second connector hole:", clickedHole.holeID);
+					console.log("⬇️ [3D CLICK] Set second connector hole:", clickedHole.holeID);
 				}
 
 				// Step 12i.1c) Get delay and color values
@@ -1334,7 +1334,7 @@ function handle3DClick(event) {
 					allBlastHoles[clickedHoleIndex].timingDelayMilliseconds = delay;
 					allBlastHoles[clickedHoleIndex].colorHexDecimal = color;
 					if (developerModeEnabled) {
-						console.log("?? [3D CLICK] Created connector:", fromHoleStore.holeID, "?", clickedHole.holeID, "delay:", delay, "color:", color);
+						console.log("⬇️ [3D CLICK] Created connector:", fromHoleStore.holeID, "?", clickedHole.holeID, "delay:", delay, "color:", color);
 					}
 				}
 
@@ -1361,7 +1361,7 @@ function handle3DClick(event) {
 		} else if (isAddingMultiConnector) {
 			// Step 12i.2) Multi-connector tool logic in 3D (matching 2D handleConnectorClick)
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Multi-connector tool mode");
+				console.log("⬇️ [3D CLICK] Multi-connector tool mode");
 			}
 			if (!fromHoleStore) {
 				// Step 12i.2a) First hole selection - clear previous yellow highlight
@@ -1370,7 +1370,7 @@ function handle3DClick(event) {
 				firstSelectedHole = clickedHole;
 				selectedHole = clickedHole;
 				if (developerModeEnabled) {
-					console.log("? [3D CLICK] Set first multi-connector hole:", clickedHole.holeID);
+					console.log("⬇️ [3D CLICK] Set first multi-connector hole:", clickedHole.holeID);
 				}
 
 				// Step 12i.2a.1) Ensure globals are exposed and trigger redraw
@@ -1381,7 +1381,7 @@ function handle3DClick(event) {
 				selectedHole = clickedHole; // Set selected hole to second hole for yellow highlight
 				secondSelectedHole = clickedHole; // IMPORTANT: Set this for highlighting
 				if (developerModeEnabled) {
-					console.log("? [3D CLICK] Set second multi-connector hole:", clickedHole.holeID);
+					console.log("⬇️ [3D CLICK] Set second multi-connector hole:", clickedHole.holeID);
 				}
 
 				// Step 12i.2c) Get all holes in stadium zone (line with tolerance)
@@ -1391,7 +1391,7 @@ function handle3DClick(event) {
 					// Step 12i.2d) Connect all holes in sequence
 					connectHolesInLine(pointsInLine);
 					if (developerModeEnabled) {
-						console.log("?? [3D CLICK] Connected " + pointsInLine.length + " holes in line");
+						console.log("⬇️ [3D CLICK] Connected " + pointsInLine.length + " holes in line");
 					}
 				}
 
@@ -1419,19 +1419,19 @@ function handle3DClick(event) {
 		} else if (isMultiHoleSelectionEnabled) {
 			// Multi-selection mode
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Multi-selection mode");
+				console.log("⬇️ [3D CLICK] Multi-selection mode");
 			}
 			const index = selectedMultipleHoles.findIndex((h) => h.entityName === clickedHole.entityName && h.holeID === clickedHole.holeID);
 			if (index >= 0) {
 				selectedMultipleHoles.splice(index, 1);
 				if (developerModeEnabled) {
-					console.log("? [3D CLICK] Removed from multi-selection. New count:", selectedMultipleHoles.length);
+					console.log("⬇️ [3D CLICK] Removed from multi-selection. New count:", selectedMultipleHoles.length);
 				}
 			} else {
 				selectedMultipleHoles.push(clickedHole);
 				if (developerModeEnabled) {
 					console.log(
-						"? [3D CLICK] Added to multi-selection. New count:",
+						"⬇️ [3D CLICK] Added to multi-selection. New count:",
 						selectedMultipleHoles.length,
 						"Holes:",
 						selectedMultipleHoles.map((h) => h.holeID)
@@ -1442,7 +1442,7 @@ function handle3DClick(event) {
 		} else {
 			// Single selection mode (SelectionPointer tool)
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Single selection mode (SelectionPointer)");
+				console.log("⬇️ [3D CLICK] Single selection mode (SelectionPointer)");
 			}
 			const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
 			selectedHole = clickedHole;
@@ -1452,7 +1452,7 @@ function handle3DClick(event) {
 			selectedKADPolygon = null;
 			selectedMultipleKADObjects = [];
 			if (developerModeEnabled) {
-				console.log("? [3D CLICK] SELECTED HOLE:", {
+				console.log("⬇️ [3D CLICK] SELECTED HOLE:", {
 					previous: previousSelectedHole,
 					current: selectedHole.holeID,
 					entityName: selectedHole.entityName,
@@ -1464,17 +1464,17 @@ function handle3DClick(event) {
 		// Redraw to show selection (ONLY for non-connector modes)
 		// Connector modes handle their own drawData calls with proper timing
 		if (!isAddingConnector && !isAddingMultiConnector) {
-			console.log("?? [3D CLICK] Calling drawData with selectedHole:", selectedHole ? selectedHole.holeID : null);
+			console.log("⬇️ [3D CLICK] Calling drawData with selectedHole:", selectedHole ? selectedHole.holeID : null);
 			drawData(allBlastHoles, selectedHole);
 			syncCanvasToTreeView(); // Sync selection to TreeView
 		}
 	} else {
 		if (developerModeEnabled) {
 			// Step 12j) No hole clicked - check for KAD objects in 3D
-			console.log("?? [3D CLICK] No hole found, checking for KAD objects...");
-			console.log("?? [3D CLICK] Total intersects:", intersects.length);
-			console.log("?? [3D CLICK] Selection pointer active?", isSelectionPointerActive);
-			console.log("?? [3D CLICK] KAD entities in map:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
+			console.log("⬇️ [3D CLICK] No hole found, checking for KAD objects...");
+			console.log("⬇️ [3D CLICK] Total intersects:", intersects.length);
+			console.log("⬇️ [3D CLICK] Selection pointer active?", isSelectionPointerActive);
+			console.log("⬇️ [3D CLICK] KAD entities in map:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
 		}
 		if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 			const entityTypes = [];
@@ -1482,7 +1482,7 @@ function handle3DClick(event) {
 				entityTypes.push(name + " (" + entity.entityType + ")");
 			});
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Entity list:", entityTypes.join(", "));
+				console.log("⬇️ [3D CLICK] Entity list:", entityTypes.join(", "));
 			}
 		}
 
@@ -1521,7 +1521,7 @@ function handle3DClick(event) {
 					if (checkObj.userData && checkObj.userData.type === "kadSelectionHighlight") {
 						isHighlight = true;
 						if (developerModeEnabled) {
-							console.log("?? [3D CLICK] Skipping selection highlight at depth", depth);
+							console.log("⬇️ [3D CLICK] Skipping selection highlight at depth", depth);
 						}
 						break;
 					}
@@ -1540,7 +1540,7 @@ function handle3DClick(event) {
 					// Step 12j.5a) Check for actual KAD objects (kadPoint, kadLine, kadPolygon, kadCircle, kadText)
 					if (object.userData && object.userData.kadId && object.userData.type && (object.userData.type === "kadPoint" || object.userData.type === "kadLine" || object.userData.type === "kadPolygon" || object.userData.type === "kadCircle" || object.userData.type === "kadText")) {
 						if (developerModeEnabled) {
-							console.log("? [3D CLICK] Found KAD object:", object.userData.kadId, "type:", object.userData.type);
+							console.log("⬇️ [3D CLICK] Found KAD object:", object.userData.kadId, "type:", object.userData.type);
 						}
 
 						// Step 12j.4) Get the KAD entity from the map
@@ -1571,7 +1571,7 @@ function handle3DClick(event) {
 								});
 
 								if (developerModeEnabled) {
-									console.log("?? [3D CLICK] Found closest element:", closestElementIndex, "at distance:", minDistance.toFixed(2) + "m");
+									console.log("⬇️ [3D CLICK] Found closest element:", closestElementIndex, "at distance:", minDistance.toFixed(2) + "m");
 								}
 							}
 
@@ -1612,7 +1612,7 @@ function handle3DClick(event) {
 			// Step 12j.6.5) If no raycast hit, try screen-space distance-based selection (fallback)
 			if (!clickedKADObject && allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 				if (developerModeEnabled) {
-					console.log("?? [3D CLICK] No raycast hit, trying screen-space distance selection...");
+					console.log("⬇️ [3D CLICK] No raycast hit, trying screen-space distance selection...");
 				}
 
 				// Step 12j.6.5a) Get camera and canvas for screen-space projection
@@ -1620,7 +1620,7 @@ function handle3DClick(event) {
 				const canvas = threeRenderer.getCanvas();
 				if (!camera || !canvas) {
 					if (developerModeEnabled) {
-						console.log("?? [3D CLICK] Missing camera or canvas for screen-space selection");
+						console.log("📷 [3D CLICK] Missing camera or canvas for screen-space selection");
 					}
 				} else {
 					// Step 12j.6.5b) Get mouse position in screen pixels
@@ -1633,7 +1633,7 @@ function handle3DClick(event) {
 					// Step 12j.6.5c) Snap tolerance in pixels (use snapRadiusPixels directly)
 					const snapTolerancePixels = snapRadiusPixels || 20;
 					if (developerModeEnabled) {
-						console.log("?? [3D CLICK] Mouse at (" + mouseScreenX.toFixed(0) + "px, " + mouseScreenY.toFixed(0) + "px), tolerance: " + snapTolerancePixels + "px");
+						console.log("⬇️ [3D CLICK] Mouse at (" + mouseScreenX.toFixed(0) + "px, " + mouseScreenY.toFixed(0) + "px), tolerance: " + snapTolerancePixels + "px");
 					}
 					// Step 12j.6.5d) Helper function to project 3D world position to 2D screen pixels
 					const worldToScreen = function (worldX, worldY, worldZ) {
@@ -1706,7 +1706,7 @@ function handle3DClick(event) {
 							if (points.length >= 2) {
 								const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
 								if (developerModeEnabled) {
-									console.log("?? [3D LINE SELECT] Checking " + entity.entityType + " '" + entity.entityName + "' with " + numSegments + " segments");
+									console.log("⬇️ [3D LINE SELECT] Checking " + entity.entityType + " '" + entity.entityName + "' with " + numSegments + " segments");
 								}
 
 								// Step 12j.6.5g.2a) Store segment info for proper highlighting
@@ -1741,7 +1741,7 @@ function handle3DClick(event) {
 									closestEntityName = entityName;
 									closestElementIndex = closestSegmentIndex; // Which segment was clicked
 									if (developerModeEnabled) {
-										console.log("?? [3D LINE SELECT] Closest segment:", closestSegmentIndex, "at distance:", closestSegmentDistance.toFixed(2) + "px");
+										console.log("⬇️ [3D LINE SELECT] Closest segment:", closestSegmentIndex, "at distance:", closestSegmentDistance.toFixed(2) + "px");
 									}
 								}
 							}
@@ -1766,7 +1766,7 @@ function handle3DClick(event) {
 									closestEntityName = entityName;
 									closestElementIndex = index;
 									if (developerModeEnabled) {
-										console.log("?? [3D CIRCLE SELECT] Closest circle:", closestElementIndex, "at distance:", closestDistance.toFixed(2) + "px");
+										console.log("⬇️ [3D CIRCLE SELECT] Closest circle:", closestElementIndex, "at distance:", closestDistance.toFixed(2) + "px");
 									}
 								}
 							});
@@ -1784,7 +1784,7 @@ function handle3DClick(event) {
 									closestEntityName = entityName;
 									closestElementIndex = index;
 									if (developerModeEnabled) {
-										console.log("?? [3D TEXT SELECT] Closest text:", closestElementIndex, "at distance:", closestDistance.toFixed(2) + "px");
+										console.log("⬇️ [3D TEXT SELECT] Closest text:", closestElementIndex, "at distance:", closestDistance.toFixed(2) + "px");
 									}
 								}
 							});
@@ -1794,7 +1794,7 @@ function handle3DClick(event) {
 					// Step 12j.6.5h) Check if closest entity is within tolerance
 					if (closestEntity && closestDistance <= snapTolerancePixels) {
 						if (developerModeEnabled) {
-							console.log("? [3D CLICK] Found entity by screen distance:", closestEntityName, "type:", closestEntity.entityType, "distance:", closestDistance.toFixed(1) + "px");
+							console.log("⬇️ [3D CLICK] Found entity by screen distance:", closestEntityName, "type:", closestEntity.entityType, "distance:", closestDistance.toFixed(1) + "px");
 						}
 
 						// Step 12j.6.5h.1) For lines/polys, check if we're closer to a vertex than the segment
@@ -1823,18 +1823,18 @@ function handle3DClick(event) {
 								selectionType = "vertex";
 								closestElementIndex = closestVertexIndex; // Update to use vertex index
 								if (developerModeEnabled) {
-									console.log("?? [3D CLICK] Vertex selection - closest vertex at distance:", closestVertexDistance.toFixed(1) + "px");
+									console.log("⬇️ [3D CLICK] Vertex selection - closest vertex at distance:", closestVertexDistance.toFixed(1) + "px");
 								}
 							} else {
 								selectionType = "segment"; // Lines/polys use segment selection
 								if (developerModeEnabled) {
-									console.log("?? [3D CLICK] Segment selection - distance:", closestDistance.toFixed(1) + "px");
+									console.log("⬇️ [3D CLICK] Segment selection - distance:", closestDistance.toFixed(1) + "px");
 								}
 							}
 						} else if (closestEntity.entityType === "point") {
 							selectionType = "point";
 							if (developerModeEnabled) {
-								console.log("?? [3D CLICK] Point selection - distance:", closestDistance.toFixed(1) + "px");
+								console.log("⬇️ [3D CLICK] Point selection - distance:", closestDistance.toFixed(1) + "px");
 							}
 						}
 
@@ -1869,7 +1869,7 @@ function handle3DClick(event) {
 						}
 					} else {
 						if (developerModeEnabled) {
-							console.log("?? [3D CLICK] Closest entity at " + closestDistance.toFixed(1) + "px (outside tolerance " + snapTolerancePixels + "px)");
+							console.log("⬇️ [3D CLICK] Closest entity at " + closestDistance.toFixed(1) + "px (outside tolerance " + snapTolerancePixels + "px)");
 						}
 					}
 				}
@@ -1878,7 +1878,7 @@ function handle3DClick(event) {
 			// Step 12j.7) Handle KAD object selection (matching 2D handleSelection logic)
 			if (clickedKADObject) {
 				if (developerModeEnabled) {
-					console.log("?? [3D CLICK] Processing KAD selection:", clickedKADObject.entityName);
+					console.log("⬇️ [3D CLICK] Processing KAD selection:", clickedKADObject.entityName);
 				}
 
 				// Step 12j.8) Check for Shift key (multiple selection)
@@ -1887,7 +1887,7 @@ function handle3DClick(event) {
 				if (isShiftPressed) {
 					// Step 12j.9) Multiple selection mode
 					if (developerModeEnabled) {
-						console.log("?? [3D CLICK] Multiple KAD selection mode (Shift pressed)");
+						console.log("⬇️ [3D CLICK] Multiple KAD selection mode (Shift pressed)");
 					}
 					const existingIndex = selectedMultipleKADObjects.findIndex((obj) => {
 						return obj.entityName === clickedKADObject.entityName && obj.entityType === clickedKADObject.entityType;
@@ -1897,13 +1897,13 @@ function handle3DClick(event) {
 						// Add to multiple selection
 						selectedMultipleKADObjects.push(clickedKADObject);
 						if (developerModeEnabled) {
-							console.log("? [3D CLICK] Added to selection, total:", selectedMultipleKADObjects.length);
+							console.log("⬇️ [3D CLICK] Added to selection, total:", selectedMultipleKADObjects.length);
 						}
 					} else {
 						// Remove from multiple selection
 						selectedMultipleKADObjects.splice(existingIndex, 1);
 						if (developerModeEnabled) {
-							console.log("? [3D CLICK] Removed from selection, total:", selectedMultipleKADObjects.length);
+							console.log("⬇️ [3D CLICK] Removed from selection, total:", selectedMultipleKADObjects.length);
 						}
 					}
 
@@ -1914,7 +1914,7 @@ function handle3DClick(event) {
 				} else {
 					// Step 12j.10) Single selection mode
 					if (developerModeEnabled) {
-						console.log("?? [3D CLICK] Single KAD selection mode");
+						console.log("⬇️ [3D CLICK] Single KAD selection mode");
 					}
 					selectedKADObject = clickedKADObject;
 					selectedKADPolygon = clickedKADObject; // Backward compatibility
@@ -1926,13 +1926,13 @@ function handle3DClick(event) {
 						if (entity && entity.data && entity.data[clickedKADObject.elementIndex]) {
 							selectedPoint = entity.data[clickedKADObject.elementIndex];
 							if (developerModeEnabled) {
-								console.log("? [3D CLICK] Set selectedPoint:", selectedPoint.pointID);
+								console.log("⬇️ [3D CLICK] Set selectedPoint:", selectedPoint.pointID);
 							}
 						}
 					} else {
 						selectedPoint = null;
 						if (developerModeEnabled) {
-							console.log("?? [3D CLICK] Cleared selectedPoint (segment/entity selection)");
+							console.log("⬇️ [3D CLICK] Cleared selectedPoint (segment/entity selection)");
 						}
 					}
 				}
@@ -1952,7 +1952,7 @@ function handle3DClick(event) {
 			} else {
 				// Step 12j.13) No KAD object clicked - clear KAD selections only if KAD radio is selected
 				if (developerModeEnabled) {
-					console.log("?? [3D CLICK] Clicked on empty space - clearing selections");
+					console.log("⬇️ [3D CLICK] Clicked on empty space - clearing selections");
 				}
 				if (!isAddingConnector && !isAddingMultiConnector) {
 					const previousSelectedHole = selectedHole ? selectedHole.holeID : null;
@@ -1970,7 +1970,7 @@ function handle3DClick(event) {
 						selectedMultipleHoles = [];
 					}
 					if (developerModeEnabled) {
-						console.log("??? [3D CLICK] Cleared selections:", {
+						console.log("🧹 [3D CLICK] Cleared selections:", {
 							selectingHoles,
 							selectingKAD,
 							previousSelectedHole,
@@ -1987,7 +1987,7 @@ function handle3DClick(event) {
 		} else if (isSelectionPointerActive && selectingHoles && !clickedHole) {
 			// Step 12j.14) Selection pointer active with Holes radio, but no hole clicked - clear hole selections
 			if (developerModeEnabled) {
-				console.log("?? [3D CLICK] Selection pointer active (Holes mode), no hole clicked");
+				console.log("⬇️ [3D CLICK] Selection pointer active (Holes mode), no hole clicked");
 			}
 			if (!isAddingConnector && !isAddingMultiConnector) {
 				if (!isMultiHoleSelectionEnabled) {
@@ -2508,7 +2508,7 @@ document.addEventListener("DOMContentLoaded", function () {
 				if (cameraControls && cameraControls.resetPanState) {
 					cameraControls.resetPanState();
 				}
-				console.log("?? 3D-ONLY Mode: ON (2D canvas hidden)");
+				console.log("🧊 3D-ONLY Mode: ON (cube icon active, 2D canvas hidden)");
 
 				// Step 1cc) Update Move Tool if active - switch to 3D canvas
 				if (isMoveToolActive) {
@@ -2559,7 +2559,7 @@ document.addEventListener("DOMContentLoaded", function () {
 				if (cameraControls && cameraControls.resetPanState) {
 					cameraControls.resetPanState();
 				}
-				console.log("?? 2D-ONLY Mode: ON (3D canvas hidden)");
+				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
 
 				// Step 1db) Update Move Tool if active - switch to 2D canvas
 				if (isMoveToolActive) {
@@ -2581,13 +2581,13 @@ document.addEventListener("DOMContentLoaded", function () {
 					// Update mode flag
 					moveToolIn3DMode = false;
 					dragPlaneZ = 0;
-					console.log("? Move Tool switched to 2D canvas");
+					console.log("🔄 Move Tool switched to 2D canvas");
 				}
 
 				// Step 1dc) Clear all Three.js geometry when switching to 2D mode
 				if (typeof clearThreeJS === "function") {
 					clearThreeJS();
-					console.log("?? Cleared Three.js geometry on switch to 2D mode");
+					console.log("🎨 Cleared Three.js geometry on switch to 2D mode");
 				}
 
 				if (threeCanvas) {
@@ -2605,7 +2605,7 @@ document.addEventListener("DOMContentLoaded", function () {
 				// This fixes the quirk where surfaces render above KAD and Holes after 3D rotation
 				if (ctx) {
 					ctx.setTransform(1, 0, 0, 1, 0, 0); // Identity matrix
-					console.log("?? Reset 2D canvas transform state on switch to 2D mode");
+					console.log("🔄 Reset 2D canvas transform state on switch to 2D mode");
 				}
 
 				// Step 1dd) Show contour overlay canvas in 2D mode
@@ -2638,7 +2638,7 @@ document.addEventListener("DOMContentLoaded", function () {
 				if (window.show3DSettingsDialog) {
 					window.show3DSettingsDialog();
 				} else {
-					console.warn("?? 3D Settings Dialog not loaded");
+					console.warn("🚨 3D Settings Dialog not loaded");
 				}
 				// Step 13b) Uncheck button after dialog is shown (dialog handles its own state)
 				setTimeout(() => {
@@ -2907,7 +2907,7 @@ let playSpeed = 1; // Default play speed
 let noneColor = "rgba(0, 0, 0, 0)";
 // Step 1) Initialize darkModeEnabled from localStorage BEFORE setting colors
 let darkModeEnabled = localStorage.getItem("darkMode") === "true" || document.body.classList.contains("dark-mode");
-console.log("?? Dark mode detected on init:", darkModeEnabled, "from localStorage:", localStorage.getItem("darkMode"));
+console.log("🌙 Dark mode detected on init:", darkModeEnabled, "from localStorage:", localStorage.getItem("darkMode"));
 // Step 2) Set colors correctly based on dark mode
 let transparentFillColor = darkModeEnabled ? "rgba(0, 128, 255, 0.3)" : "rgba(128, 255, 0, 0.3)";
 let fillColor = darkModeEnabled ? "darkgrey" : "lightgrey"; // FIXED: was backwards
@@ -3408,7 +3408,7 @@ function setSelectionFromTreeView(selectionState) {
 		selectedMultiplePoints = selectionState.selectedMultiplePoints;
 	}
 
-	console.log("?? [TreeView] Selection state updated:", {
+	console.log("📊 [TreeView] Selection state updated:", {
 		selectedKADObject: selectedKADObject ? selectedKADObject.entityName : null,
 		selectedPoint: selectedPoint ? selectedPoint.pointID : null
 	});
@@ -3616,7 +3616,7 @@ function cleanupAllResources() {
 				interactionManager.dispose();
 			}
 		} catch (disposeError) {
-			console.warn("?? Failed to dispose interactionManager:", disposeError);
+			console.warn("❌ Failed to dispose interactionManager:", disposeError);
 		}
 		interactionManager = null;
 	}
@@ -3625,30 +3625,30 @@ function cleanupAllResources() {
 	threeInitialized = false;
 	threeInitializationFailed = false;
 
-	console.log("? Resource cleanup completed");
+	console.log("🧹 Resource cleanup completed");
 }
 // Step 3h) Force Three.js re-initialization (call after cleanupAllResources)
 function forceThreeJSReset() {
-	console.log("?? Forcing Three.js reset and re-initialization...");
+	console.log("🔄 Forcing Three.js reset and re-initialization...");
 
 	// Step 1) Clean up all resources first
 	cleanupAllResources();
 
 	// Step 2) Wait for cleanup to complete (browser needs time to release contexts)
 	setTimeout(function () {
-		console.log("? Cleanup complete, attempting re-initialization...");
+		console.log("🧹 Cleanup complete, attempting re-initialization...");
 
 		// Step 3) Try to initialize again
 		initializeThreeJS()
 			.then(function () {
-				console.log("? Three.js re-initialized successfully!");
+				console.log("🔄 Three.js re-initialized successfully!");
 				// Step 4) Redraw existing data
 				if (allBlastHoles && allBlastHoles.length > 0) {
 					drawData();
 				}
 			})
 			.catch(function (error) {
-				console.error("? Re-initialization failed:", error);
+				console.error("❌ Re-initialization failed:", error);
 				alert("WebGL initialization failed. Try:\n\n1. Refresh the page (F5)\n2. Close other browser tabs\n3. Close and reopen browser\n4. Update graphics drivers");
 			});
 	}, 500); // Wait 500ms for browser to release contexts
@@ -4408,7 +4408,7 @@ function getDarkModeSettings() {
 
 	// Check if all required elements exist
 	if (!darkModeToggle || !body || !sidenavLeft || !canvas) {
-		console.warn("?? Dark mode elements not ready yet, skipping...");
+		console.warn("🚨 Dark mode elements not ready yet, skipping...");
 		return;
 	}
 
@@ -6499,7 +6499,7 @@ let newWidthLeft = 350;
 
 function handleMouseDown(event) {
 	// Debug log for 2D pan troubleshooting
-	console.log("?? [2D] handleMouseDown fired", {
+	console.log("⬇️ [2D] handleMouseDown fired", {
 		button: event.button,
 		ctrlKey: event.ctrlKey,
 		shiftKey: event.shiftKey,
@@ -6658,7 +6658,7 @@ function handleMouseMove(event) {
 function handleMouseUp(event) {
 	// Debug log for 2D pan troubleshooting
 	if (isDragging) {
-		console.log("?? [2D] handleMouseUp fired - Releasing Pan");
+		console.log("🖐️ [2D] handleMouseUp fired - Releasing Pan");
 	}
 
 	if (onlyShowThreeJS) {
@@ -21330,9 +21330,9 @@ function drawData(allBlastHoles, selectedHole) {
 	if (onlyShowThreeJS && threeInitialized) {
 		// Step 1d) Draw background images in Three.js
 		if (imagesGroupVisible) {
-			console.log("??? [3D IMAGE] Processing images for 3D display. Total images:", loadedImages.size);
+			console.log("🖼️ [3D IMAGE] Processing images for 3D display. Total images:", loadedImages.size);
 			loadedImages.forEach((image, imageKey) => {
-				console.log("??? [3D IMAGE] Checking image:", imageKey, {
+				console.log("🖼️ [3D IMAGE] Checking image:", imageKey, {
 					visible: image.visible,
 					hasCanvas: !!image.canvas,
 					hasBbox: !!image.bbox,
@@ -21344,12 +21344,12 @@ function drawData(allBlastHoles, selectedHole) {
 					const imageId = image.id || image.name || "image_" + Date.now();
 					const imageTransparency = image.transparency !== undefined && image.transparency !== null ? image.transparency : 1.0;
 					const imageZElevation = image.zElevation !== undefined ? image.zElevation : null;
-					console.log("??? [3D IMAGE] Drawing image in 3D:", imageId, "transparency:", imageTransparency, "zElevation:", imageZElevation);
+					console.log("🖼️[3D IMAGE] Drawing image in 3D:", imageId, "transparency:", imageTransparency, "zElevation:", imageZElevation);
 					drawBackgroundImageThreeJS(imageId, image.canvas, image.bbox, imageTransparency, imageZElevation);
 				}
 			});
 		} else {
-			console.log("??? [3D IMAGE] Images group NOT visible");
+			console.log("🖼️ [3D IMAGE] Images group NOT visible");
 		}
 
 		// Draw surfaces (includes Three.js rendering)
@@ -22669,7 +22669,7 @@ function saveHolesToDB(holesArray) {
 	};
 
 	request.onsuccess = () => {
-		console.log("? Blast holes saved to IndexedDB (" + holesArray.length + " holes)");
+		console.log("💾 Blast holes saved to IndexedDB (" + holesArray.length + " holes)");
 	};
 }
 
@@ -22689,7 +22689,7 @@ function loadHolesFromDB() {
 			const dbResult = event.target.result;
 			if (dbResult && dbResult.data && Array.isArray(dbResult.data) && dbResult.data.length > 0) {
 				allBlastHoles = dbResult.data; // Populate array from stored data
-				console.log("? Loaded " + allBlastHoles.length + " blast holes from IndexedDB");
+				console.log("📊 Loaded " + allBlastHoles.length + " blast holes from IndexedDB");
 
 				// Step 2a) Perform same initialization as loadHolesFromLocalStorage()
 				updateCentroids();
@@ -22747,27 +22747,27 @@ async function saveSurfaceToDB(surfaceId) {
 		try {
 			// ? FIX: Better validation and error handling
 			if (!db) {
-				console.error("? Database not initialized");
+				console.error("❌ Database not initialized");
 				reject(new Error("Database not initialized"));
 				return;
 			}
 
 			const surface = loadedSurfaces.get(surfaceId);
 			if (!surface) {
-				console.error("? Surface not found in loadedSurfaces:", surfaceId);
+				console.error("❌ Surface not found in loadedSurfaces:", surfaceId);
 				reject(new Error(`Surface ${surfaceId} not found`));
 				return;
 			}
 
 			// ? FIX: Validate surface structure
 			if (!surface.points || !Array.isArray(surface.points)) {
-				console.error("? Surface missing points array:", surface);
+				console.error("❌ Surface missing points array:", surface);
 				reject(new Error("Surface missing valid points array"));
 				return;
 			}
 
 			if (!surface.triangles || !Array.isArray(surface.triangles)) {
-				console.error("? Surface missing triangles array:", surface);
+				console.error("❌ Surface missing triangles array:", surface);
 				reject(new Error("Surface missing valid triangles array"));
 				return;
 			}
@@ -22778,7 +22778,7 @@ async function saveSurfaceToDB(surfaceId) {
 			});
 
 			if (!isValidTriangleFormat) {
-				console.error("? Invalid triangle format detected:", surface.triangles.slice(0, 3));
+				console.error("❌ Invalid triangle format detected:", surface.triangles.slice(0, 3));
 				reject(new Error("Invalid triangle format - vertices must be objects with x,y,z properties"));
 				return;
 			}
@@ -22822,9 +22822,9 @@ async function saveSurfaceToDB(surfaceId) {
 				// Step 2a) Store material properties (serializable, no WebGL resources)
 				if (surface.materialProperties) {
 					surfaceRecord.materialProperties = surface.materialProperties;
-					console.log("?? Saving material properties for surface: " + surfaceId);
+					console.log("💾 Saving material properties for surface: " + surfaceId);
 				} else {
-					console.warn("?? No material properties to save for textured mesh: " + surfaceId);
+					console.warn("🚨 No material properties to save for textured mesh: " + surfaceId);
 				}
 
 				// Step 2b) Store flattened image data if present (saves recreation on reload)
@@ -22832,10 +22832,10 @@ async function saveSurfaceToDB(surfaceId) {
 					surfaceRecord.flattenedImageDataURL = surface.flattenedImageDataURL;
 					surfaceRecord.flattenedImageBounds = surface.flattenedImageBounds;
 					surfaceRecord.flattenedImageDimensions = surface.flattenedImageDimensions;
-					console.log("?? Saving flattened image data for surface: " + surfaceId);
+					console.log("💾 Saving flattened image data for surface: " + surfaceId);
 				}
 
-				console.log("?? Saving textured mesh data for surface: " + surfaceId);
+				console.log("💾 Saving textured mesh data for surface: " + surfaceId);
 			}
 
 			// ? FIX: Add proper transaction handlers
@@ -22845,12 +22845,12 @@ async function saveSurfaceToDB(surfaceId) {
 			};
 
 			transaction.onerror = (event) => {
-				console.error("? Transaction failed:", event.target.error);
+				console.error("❌ Transaction failed:", event.target.error);
 				reject(new Error(`Transaction failed: ${event.target.error}`));
 			};
 
 			transaction.onabort = (event) => {
-				console.error("? Transaction aborted:", event.target.error);
+				console.error("❌ Transaction aborted:", event.target.error);
 				reject(new Error(`Transaction aborted: ${event.target.error}`));
 			};
 
@@ -22863,11 +22863,11 @@ async function saveSurfaceToDB(surfaceId) {
 			};
 
 			request.onerror = (event) => {
-				console.error("? Failed to store surface record:", event.target.error);
+				console.error("❌ Failed to store surface record:", event.target.error);
 				reject(new Error(`Failed to store surface: ${event.target.error}`));
 			};
 		} catch (error) {
-			console.error("? Unexpected error in saveSurfaceToDB:", error);
+			console.error("❌ Unexpected error in saveSurfaceToDB:", error);
 			reject(error);
 		}
 	});
@@ -22941,7 +22941,7 @@ async function loadAllDataWithProgress() {
 
 		// Step 6) Complete
 		updateLoadingProgress(loadingDialog, "Complete! All data loaded successfully", 100);
-		console.log("? Data load complete: " + holeCount + " holes, " + kadCount + " KADs, " + surfaceCount + " surfaces, " + imageCount + " images");
+		console.log("📊 Data load complete: " + holeCount + " holes, " + kadCount + " KADs, " + surfaceCount + " surfaces, " + imageCount + " images");
 
 		// Step 7) Close dialog after brief delay
 		setTimeout(function () {
@@ -22950,7 +22950,7 @@ async function loadAllDataWithProgress() {
 			}
 		}, 800);
 	} catch (error) {
-		console.error("? Error loading data:", error);
+		console.error("❌ Error loading data:", error);
 		if (loadingDialog) {
 			updateLoadingProgress(loadingDialog, "Error: " + error.message, 100, true);
 			setTimeout(function () {
@@ -23364,7 +23364,7 @@ function setEntityVisibility(entityName, visible) {
 	entityHoles.forEach((hole) => {
 		hole.visible = visible;
 	});
-	console.log("??? Entity " + entityName + " visibility: " + visible + " (affecting " + entityHoles.length + " holes)");
+	console.log("👁️ Entity " + entityName + " visibility: " + visible + " (affecting " + entityHoles.length + " holes)");
 
 	// ? Clear hidden entities from selections
 	clearHiddenFromSelections();
@@ -23382,7 +23382,7 @@ function toggleHoleVisibility(holeID) {
 // ? ADD: Update all group visibility functions to call updateTreeViewVisibilityStates()
 function setBlastGroupVisibility(visible) {
 	blastGroupVisible = visible;
-	console.log("??? Blast Group visibility: " + visible);
+	console.log("👁️ Blast Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23390,7 +23390,7 @@ function setBlastGroupVisibility(visible) {
 
 function setDrawingsGroupVisibility(visible) {
 	drawingsGroupVisible = visible;
-	console.log("??? Drawings Group visibility: " + visible);
+	console.log("👁️ Drawings Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23398,7 +23398,7 @@ function setDrawingsGroupVisibility(visible) {
 
 function setSurfacesGroupVisibility(visible) {
 	surfacesGroupVisible = visible;
-	console.log("??? Surfaces Group visibility: " + visible);
+	console.log("👁️ Surfaces Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23406,7 +23406,7 @@ function setSurfacesGroupVisibility(visible) {
 
 function setImagesGroupVisibility(visible) {
 	imagesGroupVisible = visible;
-	console.log("??? Images Group visibility: " + visible);
+	console.log("👁️ Images Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23414,7 +23414,7 @@ function setImagesGroupVisibility(visible) {
 
 function setPointsGroupVisibility(visible) {
 	pointsGroupVisible = visible;
-	console.log("??? Points Group visibility: " + visible);
+	console.log("👁️ Points Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23422,7 +23422,7 @@ function setPointsGroupVisibility(visible) {
 
 function setLinesGroupVisibility(visible) {
 	linesGroupVisible = visible;
-	console.log("??? Lines Group visibility: " + visible);
+	console.log("👁️ Lines Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23430,7 +23430,7 @@ function setLinesGroupVisibility(visible) {
 
 function setPolygonsGroupVisibility(visible) {
 	polygonsGroupVisible = visible;
-	console.log("??? Polygons Group visibility: " + visible);
+	console.log("👁️ Polygons Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23438,7 +23438,7 @@ function setPolygonsGroupVisibility(visible) {
 
 function setCirclesGroupVisibility(visible) {
 	circlesGroupVisible = visible;
-	console.log("??? Circles Group visibility: " + visible);
+	console.log("👁️ Circles Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23446,7 +23446,7 @@ function setCirclesGroupVisibility(visible) {
 
 function setTextsGroupVisibility(visible) {
 	textsGroupVisible = visible;
-	console.log("??? Texts Group visibility: " + visible);
+	console.log("👁️ Texts Group visibility: " + visible);
 	clearHiddenFromSelections();
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
@@ -23456,7 +23456,7 @@ function setTextsGroupVisibility(visible) {
 async function deleteSurfaceFromDB(surfaceId) {
 	try {
 		if (!db) {
-			console.log("? Cannot delete surface - database not available");
+			console.log("❌ Cannot delete surface - database not available");
 			return;
 		}
 
@@ -23466,7 +23466,7 @@ async function deleteSurfaceFromDB(surfaceId) {
 			const request = store.delete(surfaceId);
 
 			request.onsuccess = () => {
-				console.log("? Surface " + surfaceId + " deleted from IndexedDB");
+				console.log("✅ Surface " + surfaceId + " deleted from IndexedDB");
 				debouncedUpdateTreeView();
 				resolve();
 			};
@@ -23491,7 +23491,7 @@ async function deleteSurfaceFromDB(surfaceId) {
 async function deleteAllSurfacesFromDB() {
 	try {
 		if (!db) {
-			console.log("? Cannot delete surfaces - database not available");
+			console.log("❌ Cannot delete surfaces - database not available");
 			return;
 		}
 
@@ -23501,7 +23501,7 @@ async function deleteAllSurfacesFromDB() {
 			const request = store.clear();
 
 			request.onsuccess = () => {
-				console.log("? All surfaces deleted from IndexedDB");
+				console.log("✅ All surfaces deleted from IndexedDB");
 				debouncedUpdateTreeView();
 				resolve();
 			};
@@ -23599,7 +23599,7 @@ async function loadImageIntoMemory(imageId) {
 							zElevation: imageData.zElevation !== undefined ? imageData.zElevation : window.drawingZLevel || 0,
 						});
 
-						console.log("? Image " + imageData.name + " loaded into memory");
+						console.log("✅ Image " + imageData.name + " loaded into memory");
 						resolve(imageData);
 					};
 
@@ -23659,7 +23659,7 @@ async function loadAllImagesIntoMemory() {
 					});
 				}
 
-				console.log("??? Loaded " + loadedImages.size + " images into memory");
+				console.log("🖼️ Loaded " + loadedImages.size + " images into memory");
 				resolve();
 			};
 			request.onerror = () => {
@@ -23677,7 +23677,7 @@ function setImageVisibility(imageId, visible) {
 	if (image) {
 		image.visible = visible;
 		if (developerModeEnabled) {
-			console.log("??? Image " + image.name + " visibility: " + visible);
+			console.log("👁️ Image " + image.name + " visibility: " + visible);
 		}
 		drawData(allBlastHoles, selectedHole);
 	}
@@ -23695,7 +23695,7 @@ function toggleImageVisibility(imageId) {
 async function deleteImageFromDB(imageId) {
 	try {
 		if (!db) {
-			console.log("? Cannot delete image - database not available");
+			console.log("❌ Cannot delete image - database not available");
 			return;
 		}
 
@@ -23706,7 +23706,7 @@ async function deleteImageFromDB(imageId) {
 
 			request.onsuccess = () => {
 				debouncedUpdateTreeView();
-				console.log(`? Image "${imageId}" deleted from IndexedDB`);
+				console.log(`✅ Image "${imageId}" deleted from IndexedDB`);
 				resolve();
 			};
 
@@ -23737,7 +23737,7 @@ async function deleteAllImagesFromDB() {
 
 			request.onsuccess = () => {
 				debouncedUpdateTreeView();
-				console.log("? All images deleted from IndexedDB");
+				console.log("✅ All images deleted from IndexedDB");
 				resolve();
 			};
 
@@ -23768,7 +23768,7 @@ async function debugDatabaseContents() {
 		const surfaceRequest = surfaceStore.getAll();
 
 		surfaceRequest.onsuccess = () => {
-			console.log("?? Surfaces in database:", surfaceRequest.result.length);
+			console.log("🔍 Surfaces in database:", surfaceRequest.result.length);
 			surfaceRequest.result.forEach((surface) => {
 				console.log("  - Surface:", surface.name, "Points:", surface.points?.length, "Triangles:", surface.triangles?.length);
 			});
@@ -23780,7 +23780,7 @@ async function debugDatabaseContents() {
 		const imageRequest = imageStore.getAll();
 
 		imageRequest.onsuccess = () => {
-			console.log("?? Images in database:", imageRequest.result.length);
+			console.log("🔍 Images in database:", imageRequest.result.length);
 			imageRequest.result.forEach((image) => {
 				console.log("  - Image:", image.name, "Type:", image.type, "Bbox:", image.bbox);
 			});
@@ -24493,7 +24493,7 @@ window.onload = function () {
 	initDB()
 		.then((database) => {
 			db = database; // ? Set the global db variable
-			console.log("? Database initialized successfully");
+			console.log("✅ Database initialized successfully");
 			updatePopup();
 		})
 		.catch((err) => {
@@ -24516,7 +24516,7 @@ function updateColorsForDarkMode() {
 	depthColor = darkModeEnabled ? "blue" : "cyan";
 	angleDipColor = darkModeEnabled ? "darkcyan" : "orange";
 
-	console.log("?? Colors updated for dark mode:", darkModeEnabled);
+	console.log("🎨 Colors updated for dark mode:", darkModeEnabled);
 }
 
 // Step 4) Add cleanup on page unload to prevent memory leaks
@@ -24588,7 +24588,7 @@ async function clearLoadedData() {
 				request.onerror = () => reject(request.error);
 			});
 
-			console.log("? All database data cleared");
+			console.log("✅ All database data cleared");
 		} catch (error) {
 			console.error("? Error clearing database:", error);
 		}
@@ -26366,7 +26366,7 @@ function closeAllContextMenus() {
 		if (style.position === "absolute" && (style.background || style.backgroundColor) && document.body.contains(menu)) {
 			try {
 				document.body.removeChild(menu);
-				console.log("??? Removed existing context menu");
+				console.log("🗑️ Removed existing context menu");
 				debouncedUpdateTreeView(); // Use debounced version
 			} catch (error) {
 				// Menu already removed
@@ -29228,7 +29228,7 @@ function handleAlphaNumericHoles(holesData, entityName) {
 				item.hole.posID = index + 1; // Position within row (1, 2, 3...)
 			});
 
-			console.log("Row " + rowLetter + " ? rowID " + rowID + " with " + row.length + " holes");
+			console.log("Row " + rowLetter + " → rowID " + rowID + " with " + row.length + " holes");
 		});
 
 		return true; // Successfully used letter-based row detection
@@ -29562,7 +29562,7 @@ function simplifiedHDBSCANWithDistanceMatrix(distanceMatrix, minClusterSize) {
 		return [];
 	}
 
-	console.log("Running HDBSCAN with pre-calculated " + n + "?" + n + " distance matrix");
+	console.log("Running HDBSCAN with pre-calculated " + n + "×" + n + " distance matrix");
 
 	// Step 4) Build minimum spanning tree using the provided distance matrix
 	const mst = buildMinimumSpanningTreeFromMatrix(distanceMatrix, minClusterSize);
@@ -31624,7 +31624,7 @@ function generatePatternInPolygon(patternSettings) {
 	// Calculate orientation (bearing from first to second point)
 	let orientation = ((Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
 
-	console.log("Line bearing (Start to End):", orientation.toFixed(2) + "?");
+	console.log("Line bearing (Start to End):", orientation.toFixed(2) + "°");
 
 	// Get polygon vertices
 	const polygonVertices = selectedPolygon.data.map((point) => ({
@@ -31664,8 +31664,8 @@ function generatePatternInPolygon(patternSettings) {
 	const rowBearing = orientation;
 	const columnBearing = (orientation + 90) % 360;
 
-	console.log("Row bearing:", rowBearing.toFixed(2) + "?");
-	console.log("Column bearing:", columnBearing.toFixed(2) + "?");
+	console.log("Row bearing:", rowBearing.toFixed(2) + "°");
+	console.log("Column bearing:", columnBearing.toFixed(2) + "°");
 
 	const rowRadians = toRadians(rowBearing);
 	const columnRadians = toRadians(columnBearing);
@@ -32114,7 +32114,7 @@ function generateHolesAlongLine(params) {
 
 	// Calculate line bearing in world coordinates
 	const lineBearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
-	console.log("Line bearing:", lineBearing.toFixed(2) + "?");
+	console.log("Line bearing:", lineBearing.toFixed(2) + "°");
 
 	// Generate holes along the line
 	const numHoles = Math.floor(lineLength / params.spacing) + 1;
@@ -32123,7 +32123,7 @@ function generateHolesAlongLine(params) {
 
 	// Calculate hole bearing based on user preference
 	const holeBearing = params.useLineBearing ? (lineBearing + 90) % 360 : params.bearing;
-	console.log("Using hole bearing:", holeBearing.toFixed(2) + "?");
+	console.log("Using hole bearing:", holeBearing.toFixed(2) + "°");
 
 	// Get the next row ID for this pattern
 	const rowID = getNextRowID(entityName);
@@ -33729,7 +33729,7 @@ function createSurfaceFromOBJData(objData, fileName) {
 	// Step 4) Save to database
 	saveSurfaceToDB(surfaceId)
 		.then(function () {
-			console.log("?? OBJ surface saved to database: " + surfaceId);
+			console.log("✅ OBJ surface saved to database: " + surfaceId);
 		})
 		.catch(function (err) {
 			console.error("? Failed to save OBJ surface:", err);
@@ -34326,7 +34326,7 @@ function drawSurface() {
 			}
 
 			if (developerModeEnabled) {
-				console.log("?? drawSurface textured mesh: " + surfaceId + ", gradient: " + gradient + ", hasTexture: " + hasTexture + ", should3DRender: " + should3DRender + ", onlyShowThreeJS: " + onlyShowThreeJS);
+				console.log("🎨 drawSurface textured mesh: " + surfaceId + ", gradient: " + gradient + ", hasTexture: " + hasTexture + ", should3DRender: " + should3DRender + ", onlyShowThreeJS: " + onlyShowThreeJS);
 			}
 
 			// If gradient is "texture" AND mesh has textures, use textured mesh rendering (original JPG texture)
@@ -35169,8 +35169,8 @@ function createSurfaceWithGradientOptions(surfaceName, gradientType = "hillshade
 	console.log("Created surface with gradient options:");
 	console.log("- Gradient Type: " + gradientType);
 	console.log("- Gradient Method: " + gradientMethod);
-	console.log("- Light Bearing: " + lightBearing + "?");
-	console.log("- Light Elevation: " + lightElevation + "?");
+	console.log("- Light Bearing: " + lightBearing + "°");
+	console.log("- Light Elevation: " + lightElevation + "°");
 
 	return surface;
 }
@@ -37767,7 +37767,7 @@ async function loadEPSGCode(epsgCode) {
 		const proj4def = await response.text();
 		proj4.defs(`EPSG:${epsgCode}`, proj4def.trim());
 
-		console.log(`Loaded EPSG:${epsgCode} ?`, proj4def.trim());
+		console.log(`Loaded EPSG:${epsgCode} →`, proj4def.trim());
 	} catch (err) {
 		console.error("Error loading EPSG:", err);
 	}
@@ -38385,10 +38385,10 @@ function openColorPickerForElement(swatchElement, entityName, pointID) {
 
 	// Get the entity data
 	const entity = allKADDrawingsMap.get(entityName);
-	console.log("?? Entity found:", entity);
+	console.log("📊 Entity found:", entity);
 
 	if (!entity) {
-		console.log("? Entity not found:", entityName);
+		console.log("❌ Entity not found:", entityName);
 		return;
 	}
 
@@ -38462,7 +38462,7 @@ function openColorPickerForElement(swatchElement, entityName, pointID) {
 				}
 			}, 150); // Wait for debounced tree update (100ms) + render time
 
-			console.log("? Updated " + entityName + " point " + pointID + " color to:", newColor);
+			console.log("✅ Updated " + entityName + " point " + pointID + " color to:", newColor);
 		},
 	});
 
@@ -39284,12 +39284,12 @@ function showHolePropertyEditor(hole) {
 	const visibleHoles = allBlastHoles.filter((hole) => isHoleVisible(hole));
 
 	if (visibleHoles.length === 0) {
-		console.log("? No visible holes to edit");
+		console.log("❌ No visible holes to edit");
 		return;
 	}
 
 	if (visibleHoles.length !== allBlastHoles.length) {
-		console.log("?? Some holes are hidden and will not be edited");
+		console.log("⚠️ Some holes are hidden and will not be edited");
 	}
 
 	// Determine if we're dealing with single hole or multiple holes
@@ -40095,7 +40095,7 @@ function hookOverlayIntoThemeSystem() {
 			updateOverlayColorsForTheme(); // Update overlay when theme changes
 			return result;
 		};
-		console.log("?? Overlay hooked into theme system");
+		console.log("🎨 Overlay hooked into theme system");
 	}
 
 	// Step 7b: Hook into dark mode toggle
@@ -40514,14 +40514,14 @@ function delaunayContours(contourData, contourLevel, maxEdgeLength) {
 	return calculateContoursSync(processedData, contourLevels, maxEdgeLength, displayOptions);
 }
 
-console.log("? Contour calculations now run in main thread (synchronous)");
+console.log("✅ Contour calculations now run in main thread (synchronous)");
 
 //===========================================
 // END OF Inline Contour Calculation
 //===========================================
 
 document.addEventListener("DOMContentLoaded", function () {
-	console.log("?? Starting application initialization...");
+	console.log("🚀 Starting application initialization...");
 
 	// Add click handlers for all file import icon buttons
 	const fileImportButtons = document.querySelectorAll(".file-import-btn");
@@ -40546,7 +40546,7 @@ document.addEventListener("DOMContentLoaded", function () {
 	document.getElementById("showTreeBtn").addEventListener("click", function () {
 		// Create TreeView on first use
 		if (!treeView) {
-			console.log("?? Creating TreeView for first time...");
+			console.log("🌳 Creating TreeView for first time...");
 			treeView = new TreeView("treePanel");
 			updateTreeView();
 		}
@@ -40596,7 +40596,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			initializePreferences();
 		}, 200);
 
-		console.log("? Application initialization complete");
+		console.log("✅ Application initialization complete");
 		debugPreferences();
 	}, 50);
 });
