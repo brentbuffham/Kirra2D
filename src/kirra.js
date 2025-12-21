@@ -304,7 +304,7 @@ function initializePreferences() {
 		loadViewControlsSliderValues();
 		fontSlider.value = 14; // force the font size.
 		setupAutoSavePreferences();
-		console.log("? Preferences loaded successfully");
+		console.log("✅ Preferences loaded successfully");
 		debugPreferences();
 	} catch (error) {
 		console.error("? Error loading preferences:", error);
@@ -537,7 +537,7 @@ function updateThreeLocalOrigin() {
 	if (allBlastHoles && allBlastHoles.length > 0) {
 		threeLocalOriginX = allBlastHoles[0].startXLocation;
 		threeLocalOriginY = allBlastHoles[0].startYLocation;
-		console.log("?? Three.js local origin set from first hole:", threeLocalOriginX, threeLocalOriginY);
+		console.log("📍 Three.js local origin set from first hole:", threeLocalOriginX, threeLocalOriginY);
 		return;
 	}
 
@@ -565,7 +565,7 @@ function updateThreeLocalOrigin() {
 	if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined") {
 		threeLocalOriginX = centroidX;
 		threeLocalOriginY = centroidY;
-		console.log("?? Three.js local origin set to centroid:", threeLocalOriginX, threeLocalOriginY);
+		console.log("📍 Three.js local origin set to centroid:", threeLocalOriginX, threeLocalOriginY);
 	}
 }
 
@@ -711,7 +711,7 @@ function initializeThreeJS() {
 	}
 
 	try {
-		console.log("?? Initializing Three.js rendering system...");
+		console.log("🎬 Initializing Three.js rendering system...");
 
 		// Step 1a) Load 3D settings (guard against function not being defined yet)
 		const settings = typeof load3DSettings === "function" ? load3DSettings() : {};
@@ -819,7 +819,7 @@ function initializeThreeJS() {
 		const toggleButtonsContainer = document.querySelector(".toggle-buttons-container");
 		if (toggleButtonsContainer) {
 			toggleButtonsContainer.style.zIndex = "10"; // Above both canvases
-			console.log("?? Set toggle buttons z-index to 10");
+			console.log("📍 Set toggle buttons z-index to 10");
 		}
 
 		// Step 6) Create unified camera controls
@@ -887,7 +887,7 @@ function initializeThreeJS() {
 			const localCentroid = worldToThreeLocal(centroidX, centroidY);
 			// Initialize with default top-down view (rotation=0, orbitX=0, orbitY=0)
 			cameraControls.setCameraState(localCentroid.x, localCentroid.y, currentScale, 0, 0, 0);
-			console.log("?? Camera initialized - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
+			console.log("📷 Camera initialized - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
 		}
 
 		// Step 9) Start render loop
@@ -895,7 +895,7 @@ function initializeThreeJS() {
 
 		// Step 10) Set initial background color based on current dark mode
 		threeRenderer.setBackgroundColor(darkModeEnabled);
-		console.log("?? Three.js background set to", darkModeEnabled ? "black" : "white");
+		console.log("🎨 Three.js background set to", darkModeEnabled ? "black" : "white");
 
 		// Step 10a) Also update base canvas background on initialization
 		if (window.baseCanvas && window.baseCtx) {
@@ -910,7 +910,7 @@ function initializeThreeJS() {
 		// Step 10b) Setup 3D mouse event handlers for independent 3D selection
 		setup3DMouseEvents();
 
-		console.log("? Three.js rendering system initialized");
+		console.log("✅ Three.js rendering system initialized");
 
 		// Step 10c) If data was already loaded, redraw it now that 3D is ready
 		if (allBlastHoles && allBlastHoles.length > 0) {
@@ -962,7 +962,7 @@ function syncCameraToThreeJS() {
 	if (threeInitialized && cameraControls) {
 		const localCentroid = worldToThreeLocal(centroidX, centroidY);
 		cameraControls.setCameraState(localCentroid.x, localCentroid.y, currentScale, currentRotation || 0, cameraControls.orbitX || 0, cameraControls.orbitY || 0);
-		console.log("?? Synced camera TO Three.js - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
+		console.log("📷 Synced camera TO Three.js - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
 
 		// After camera sync, redraw mouse indicator at current position (or camera center)
 		// This ensures the grey torus stays visible after camera changes
@@ -2423,7 +2423,7 @@ document.addEventListener("DOMContentLoaded", function () {
 	if (onlyThreeJSCheckbox) {
 		onlyThreeJSCheckbox.addEventListener("change", function () {
 			onlyShowThreeJS = this.checked;
-			console.log(onlyShowThreeJS ? "?? Showing only Three.js rendering" : "?? Showing only 2D canvas");
+			console.log(onlyShowThreeJS ? "🎨 Showing only Three.js rendering" : "🎨 Showing both 2D canvas and Three.js");
 
 			const threeCanvas = document.getElementById("threeCanvas");
 
@@ -3130,7 +3130,7 @@ function resetAllSelectedStores() {
 	blastNameValue = "";
 	currentEntityName = "";
 
-	console.log("?? All selected stores and pattern states reset");
+	console.log("🧹 All selected stores and pattern states reset");
 }
 
 /**
@@ -3382,7 +3382,7 @@ function clearAllSelectionState() {
 		timingWindowHolesSelected = [];
 	}
 
-	console.log("?? All selection state cleared");
+	console.log("🧹 All selection state cleared");
 }
 
 // Step 7a) Function for TreeView to set selection state (bypasses window.* overwrite issue)
@@ -5710,7 +5710,7 @@ function handleThreeJSResize() {
 		const width = canvas.clientWidth;
 		const height = canvas.clientHeight;
 		threeRenderer.resize(width, height);
-		console.log("?? Three.js canvas resized:", width, height);
+		console.log("🔄 Three.js canvas resized:", width, height);
 	}
 }
 
@@ -6974,7 +6974,7 @@ async function checkAndResolveDuplicateHoleIDs(allBlastHoles, actionType = "impo
 				return duplicateReport;
 			case "abort":
 				// Return special value indicating user cancelled
-				console.log("? User cancelled duplicate resolution");
+				console.log("✅ User cancelled duplicate resolution");
 				return { cancelled: true };
 		}
 	}
@@ -7193,7 +7193,7 @@ function resolveDuplicatesAutoRenumber(allBlastHoles, duplicateReport) {
 			action: "renumbered",
 		});
 
-		console.log("?? Renumbered duplicate hole:", duplicate.entityName + ":" + oldID, "?", newID);
+		console.log("🔧 Renumbered duplicate hole:", duplicate.entityName + ":" + oldID, "→", newID);
 	});
 }
 
@@ -7210,7 +7210,7 @@ function resolveDuplicatesKeepFirst(allBlastHoles, duplicateReport) {
 			action: "removed-duplicate",
 		});
 
-		console.log("??? Removed duplicate hole:", duplicate.entityName + ":" + duplicate.holeID);
+		console.log("🗑️ Removed duplicate hole:", duplicate.entityName + ":" + duplicate.holeID);
 	});
 
 	// Remove holes in reverse order to maintain indices
@@ -7234,7 +7234,7 @@ function resolveDuplicatesKeepLast(allBlastHoles, duplicateReport) {
 			action: "removed-original",
 		});
 
-		console.log("??? Removed original hole:", duplicate.entityName + ":" + duplicate.holeID);
+		console.log("🗑️ Removed original hole:", duplicate.entityName + ":" + duplicate.holeID);
 	});
 
 	// Remove holes in reverse order to maintain indices
@@ -7679,7 +7679,7 @@ function getUniqueEntityName(baseName, entityType) {
 		uniqueName = baseName + "_" + counter;
 	}
 
-	console.log("?? Entity name collision avoided: '" + baseName + "' ? '" + uniqueName + "'");
+	console.log("⚠️ Entity name collision avoided: '" + baseName + "' → '" + uniqueName + "'");
 	return uniqueName;
 }
 
@@ -8083,7 +8083,7 @@ async function parseDXFtoKadMaps(dxf) {
 		setTimeout(async () => {
 			try {
 				await saveSurfaceToDB(surfaceId);
-				console.log("? DXF surface saved to database: " + surfaceId);
+				console.log("✅ DXF surface saved to database: " + surfaceId);
 				debouncedUpdateTreeView();
 			} catch (saveError) {
 				console.error("? Failed to save DXF surface:", saveError);
@@ -10775,9 +10775,9 @@ triangulateTool.addEventListener("change", function () {
 if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 	allKADDrawingsMap.forEach((entity, entityName) => {
 		const isVisible = isEntityVisible(entityName);
-		console.log(`?? Entity "${entityName}": type=${entity.entityType}, points=${entity.data ? entity.data.length : 0}, visible=${isVisible}`);
+		console.log(`📋 Entity "${entityName}": type=${entity.entityType}, points=${entity.data ? entity.data.length : 0}, visible=${isVisible}`);
 		if (!isVisible) {
-			console.log(`? Why not visible: drawingsGroupVisible=${drawingsGroupVisible}, entity.visible=${entity.visible}, typeGroupVisible=${getTypeGroupVisible(entity.entityType)}`);
+			console.log(`❌ Why not visible: drawingsGroupVisible=${drawingsGroupVisible}, entity.visible=${entity.visible}, typeGroupVisible=${getTypeGroupVisible(entity.entityType)}`);
 		}
 	});
 }
@@ -10796,16 +10796,16 @@ function getTypeGroupVisible(entityType) {
 	}
 }
 function handleTriangulationAction() {
-	console.log("?? Delaunay triangulation action triggered");
+	console.log("🔺 Delaunay triangulation action triggered");
 
 	// Step 1) Debug visibility flags
-	console.log("?? Debugging triangulation visibility:");
-	console.log("?? allKADDrawingsMap size:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
-	console.log("?? drawingsGroupVisible:", drawingsGroupVisible);
+	console.log("🔍 Debugging triangulation visibility:");
+	console.log("📊 allKADDrawingsMap size:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
+	console.log("🌍 drawingsGroupVisible:", drawingsGroupVisible);
 	console.log("?? pointsGroupVisible:", pointsGroupVisible);
-	console.log("?? linesGroupVisible:", linesGroupVisible);
-	console.log("?? polygonsGroupVisible:", polygonsGroupVisible);
-	console.log("?? blastGroupVisible:", blastGroupVisible);
+	console.log("📏 linesGroupVisible:", linesGroupVisible);
+	console.log("🔸 polygonsGroupVisible:", polygonsGroupVisible);
+	console.log("💥 blastGroupVisible:", blastGroupVisible);
 
 	// Check for any visible data
 	let hasVisibleData = false;
@@ -10813,7 +10813,7 @@ function handleTriangulationAction() {
 
 	// Step 2) Check KAD drawings with detailed logging
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-		console.log("?? Checking KAD drawings for visibility:");
+		console.log("🔍 Checking KAD drawings for visibility:");
 		allKADDrawingsMap.forEach((entity) => {
 			const isVisible = isEntityVisible(entity.entityName);
 			console.log("  - " + entity.entityName + " (" + entity.entityType + "): " + (isVisible ? "? Visible" : "? Hidden"));
@@ -10826,7 +10826,7 @@ function handleTriangulationAction() {
 
 	// Step 3) Check blast holes with detailed logging
 	if (!hasVisibleData && allBlastHoles && allBlastHoles.length > 0) {
-		console.log("?? Checking blast holes for visibility:");
+		console.log("🔍 Checking blast holes for visibility:");
 		allBlastHoles.forEach((hole) => {
 			const isVisible = isHoleVisible(hole);
 			// Step 1) Fix the logging to use the correct property name
@@ -10840,13 +10840,13 @@ function handleTriangulationAction() {
 	}
 
 	if (!hasVisibleData) {
-		console.log("? No visible data found for triangulation");
-		console.log("?? Visible entities found:", visibleEntities);
+		console.log("❌ No visible data found for triangulation");
+		console.log("📋 Visible entities found:", visibleEntities);
 		updateStatusMessage("No visible data found for triangulation");
 		return;
 	}
 
-	console.log("? Found visible data for triangulation:", visibleEntities);
+	console.log("✅ Found visible data for triangulation:", visibleEntities);
 	updateStatusMessage("Ready for triangulation ?");
 	showTriangulationPopup();
 }
@@ -10890,9 +10890,9 @@ function createDelaunayTriangulation(params) {
 		// Fix the function call by passing the required parameters
 		let visibleElements = getVisibleHolesAndKADDrawings(allBlastHoles || [], allKADDrawingsMap ? Array.from(allKADDrawingsMap.values()) : []);
 
-		console.log("?? Debug - visibleElements:", visibleElements);
-		console.log("?? Debug - allKADDrawingsMap size:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
-		console.log("?? Debug - visibleKADDrawings count:", visibleElements.visibleKADDrawings ? visibleElements.visibleKADDrawings.length : 0);
+		console.log("🔍 Debug - visibleElements:", visibleElements);
+		console.log("🔍 Debug - allKADDrawingsMap size:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
+		console.log("🔍 Debug - visibleKADDrawings count:", visibleElements.visibleKADDrawings ? visibleElements.visibleKADDrawings.length : 0);
 
 		// Extract parameters
 		const minAngleTolerance = params.minAngle || 0;
@@ -10958,7 +10958,7 @@ function createDelaunayTriangulation(params) {
 		// Remove duplicate vertices within tolerance
 		elementVertices = getUniqueElementVertices(elementVertices, tolerance);
 
-		console.log("?? Unique vertices after deduplication:", elementVertices.length);
+		console.log("🎯 Unique vertices after deduplication:", elementVertices.length);
 
 		if (elementVertices.length < 3) {
 			console.warn("? Insufficient vertices for triangulation. Found:", elementVertices.length);
@@ -10968,7 +10968,7 @@ function createDelaunayTriangulation(params) {
 			};
 		}
 
-		console.log("? Creating triangulation with", elementVertices.length, "vertices");
+		console.log("✅ Creating triangulation with", elementVertices.length, "vertices");
 
 		// Construct the Delaunay triangulation object
 		const delaunay = Delaunator.from(elementVertices, getX, getY);
@@ -11048,7 +11048,7 @@ function createDelaunayTriangulation(params) {
 			}
 		}
 
-		console.log("?? Generated", resultTriangles.length, "triangles");
+		console.log("🎉 Generated", resultTriangles.length, "triangles");
 
 		// ? FIX: Return triangles in the correct format that matches your system
 		return {
@@ -11066,7 +11066,7 @@ function createDelaunayTriangulation(params) {
 
 // ? FIX: Get the complete polygon data from allKADDrawingsMap
 function deleteTrianglesByClippingPolygon(surfaceId, option = "outside") {
-	console.log("?? Clipping triangles from surface:", surfaceId, "option:", option);
+	console.log("🔪 Clipping triangles from surface:", surfaceId, "option:", option);
 
 	// Get the surface
 	const surface = loadedSurfaces.get(surfaceId);
@@ -11079,7 +11079,7 @@ function deleteTrianglesByClippingPolygon(surfaceId, option = "outside") {
 	let selectedPolygon = null;
 	if (selectedKADObject && selectedKADObject.entityType === "poly" && selectedKADObject.entityName) {
 		selectedPolygon = allKADDrawingsMap.get(selectedKADObject.entityName);
-		console.log("?? Found polygon entity:", selectedKADObject.entityName, "with data:", selectedPolygon ? selectedPolygon.data?.length : "none");
+		console.log("🔍 Found polygon entity:", selectedKADObject.entityName, "with data:", selectedPolygon ? selectedPolygon.data?.length : "none");
 	}
 
 	if (!selectedPolygon || !selectedPolygon.data || selectedPolygon.data.length < 3) {
@@ -11087,7 +11087,7 @@ function deleteTrianglesByClippingPolygon(surfaceId, option = "outside") {
 		return false;
 	}
 
-	console.log("?? Clipping polygon:", selectedPolygon.entityName, "with", selectedPolygon.data.length, "points");
+	console.log("📐 Clipping polygon:", selectedPolygon.entityName, "with", selectedPolygon.data.length, "points");
 
 	// Filter triangles based on the option
 	const originalTriangleCount = surface.triangles.length;
@@ -11116,7 +11116,7 @@ function deleteTrianglesByClippingPolygon(surfaceId, option = "outside") {
 	surface.triangles = filteredTriangles;
 
 	const deletedCount = originalTriangleCount - filteredTriangles.length;
-	console.log("?? Clipping complete:", deletedCount, "triangles deleted,", filteredTriangles.length, "triangles remaining");
+	console.log("✂️ Clipping complete:", deletedCount, "triangles deleted,", filteredTriangles.length, "triangles remaining");
 
 	// Update the surface metadata
 	if (surface.metadata) {
@@ -11131,11 +11131,11 @@ function deleteTrianglesByClippingPolygon(surfaceId, option = "outside") {
 
 // ? NEW: Delete triangles based on edge length criteria
 function deleteTrianglesByEdgeLength(surfaceId, minEdgeLength = 0, maxEdgeLength = 0, use3DLength = false) {
-	console.log("?? Filtering triangles by edge length:", surfaceId, "min:", minEdgeLength, "max:", maxEdgeLength, "3D:", use3DLength);
+	console.log("📏 Filtering triangles by edge length:", surfaceId, "min:", minEdgeLength, "max:", maxEdgeLength, "3D:", use3DLength);
 
 	// Skip filtering if both min and max are 0
 	if (minEdgeLength <= 0 && maxEdgeLength <= 0) {
-		console.log("?? Skipping edge length filtering (both min and max = 0)");
+		console.log("⏭️ Skipping edge length filtering (both min and max = 0)");
 		return true;
 	}
 
@@ -11193,7 +11193,7 @@ function deleteTrianglesByEdgeLength(surfaceId, minEdgeLength = 0, maxEdgeLength
 	surface.triangles = filteredTriangles;
 
 	const deletedCount = originalTriangleCount - filteredTriangles.length;
-	console.log("?? Edge length filtering complete:", deletedCount, "triangles deleted,", filteredTriangles.length, "triangles remaining");
+	console.log("📏 Edge length filtering complete:", deletedCount, "triangles deleted,", filteredTriangles.length, "triangles remaining");
 
 	// Update the surface metadata
 	if (surface.metadata) {
@@ -11209,11 +11209,11 @@ function deleteTrianglesByEdgeLength(surfaceId, minEdgeLength = 0, maxEdgeLength
 
 // ? UPDATED: Delete triangles with internal angles smaller than minimum (2D or 3D)
 function deleteTrianglesByInternalAngle(surfaceId, internalAngleMin = 0, use3DAngle = false) {
-	console.log("?? Filtering triangles by internal angle:", surfaceId, "min angle:", internalAngleMin + "?", "3D:", use3DAngle);
+	console.log("📐 Filtering triangles by internal angle:", surfaceId, "min angle:", internalAngleMin + "°", "3D:", use3DAngle);
 
 	// Skip filtering if angle is 0
 	if (internalAngleMin <= 0) {
-		console.log("?? Skipping angle filtering (min angle = 0)");
+		console.log("⏭️ Skipping angle filtering (min angle = 0)");
 		return true;
 	}
 
@@ -11262,7 +11262,7 @@ function deleteTrianglesByInternalAngle(surfaceId, internalAngleMin = 0, use3DAn
 	surface.triangles = filteredTriangles;
 
 	const deletedCount = originalTriangleCount - filteredTriangles.length;
-	console.log("?? Angle filtering complete:", deletedCount, "triangles deleted,", filteredTriangles.length, "triangles remaining");
+	console.log("📐 Angle filtering complete:", deletedCount, "triangles deleted,", filteredTriangles.length, "triangles remaining");
 
 	// Update the surface metadata
 	if (surface.metadata) {
@@ -11324,7 +11324,7 @@ function getVisibleKADEntitiesForConstraints(useClippingFilter = false) {
 		});
 	});
 
-	console.log("?? Found", visibleEntities.length, "visible KAD entities for constraints");
+	console.log("📋 Found", visibleEntities.length, "visible KAD entities for constraints");
 	return visibleEntities;
 }
 
@@ -11419,13 +11419,13 @@ function lineIntersectsPolygon(x1, y1, x2, y2, polygon) {
 // =============================================================================
 
 async function createConstrainedDelaunayTriangulation(params, updateProgress = null) {
-	console.log("?? Using FIXED Constrained Delaunay Triangulation (Constrainautor)");
+	console.log("🔗 Using FIXED Constrained Delaunay Triangulation (Constrainautor)");
 
 	try {
 		// Get visible elements
 		const visibleElements = getVisibleHolesAndKADDrawings(allBlastHoles || [], allKADDrawingsMap ? Array.from(allKADDrawingsMap.values()) : []);
 
-		console.log("?? Found " + (visibleElements.visibleHoles?.length || 0) + " visible holes, " + (visibleElements.visibleKADDrawings?.length || 0) + " visible KAD drawings");
+		console.log("📊 Found " + (visibleElements.visibleHoles?.length || 0) + " visible holes, " + (visibleElements.visibleKADDrawings?.length || 0) + " visible KAD drawings");
 
 		// Collect data points with source tracking
 		let elementVertices = [];
@@ -11434,7 +11434,7 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 		// *** FIX 1: Standardized blast hole coordinate access ***
 		if (params.useCollars || params.useGrade || params.useToe || params.useMLength) {
 			const visibleHoles = visibleElements.visibleHoles || [];
-			console.log("??? Processing " + visibleHoles.length + " blast holes");
+			console.log("🕳️ Processing " + visibleHoles.length + " blast holes");
 
 			visibleHoles.forEach((hole, index) => {
 				// Collar points (surface)
@@ -11507,7 +11507,7 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 		visibleElements.visibleKADDrawings.forEach((entity, entityIndex) => {
 			if (entity.data && Array.isArray(entity.data)) {
 				const entityName = entity.entityName || "entity_" + entityIndex;
-				console.log('?? Processing entity "' + entityName + '" (' + entity.entityType + ") with " + entity.data.length + " points");
+				console.log('📐 Processing entity "' + entityName + '" (' + entity.entityType + ") with " + entity.data.length + " points");
 
 				const entityVertices = [];
 
@@ -11545,13 +11545,13 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 			}
 		});
 
-		console.log("?? Collected " + elementVertices.length + " vertices before deduplication");
+		console.log("📊 Collected " + elementVertices.length + " vertices before deduplication");
 
 		// *** FIX 3: Deduplicate vertices (this changes coordinates) ***
 		const originalVertexCount = elementVertices.length;
 		elementVertices = getUniqueElementVertices(elementVertices, params.tolerance || 0.001);
 
-		console.log("?? Deduplication: " + originalVertexCount + " ? " + elementVertices.length + " vertices");
+		console.log("🔄 Deduplication: " + originalVertexCount + " → " + elementVertices.length + " vertices");
 
 		if (elementVertices.length < 3) {
 			throw new Error(`Insufficient points for triangulation: ${elementVertices.length}`);
@@ -11562,7 +11562,7 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 		const constraintSegments = constraintData.constraints || constraintData; // Handle both old and new format
 		const entitiesWithUnmappedSegments = constraintData.entitiesWithUnmappedSegments || new Set();
 
-		console.log("?? Extracted " + constraintSegments.length + " constraints from deduplicated vertices");
+		console.log("🔗 Extracted " + constraintSegments.length + " constraints from deduplicated vertices");
 		if (entitiesWithUnmappedSegments.size > 0) {
 			console.warn("?? " + entitiesWithUnmappedSegments.size + " entities have unmapped segments: " + Array.from(entitiesWithUnmappedSegments).join(", "));
 		}
@@ -11604,7 +11604,7 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 // =============================================================================
 
 function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMap, tolerance) {
-	console.log("?? Extracting constraints from deduplicated vertices...");
+	console.log("🔗 Extracting constraints from deduplicated vertices...");
 
 	const constraints = [];
 	const entitiesWithUnmappedSegments = new Set(); // Track entities with mapping issues
@@ -11621,7 +11621,7 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
 			return;
 		}
 
-		console.log("?? Processing constraints for " + entity.entityType + ' "' + entityName + '"');
+		console.log("🔗 Processing constraints for " + entity.entityType + ' "' + entityName + '"');
 
 		const entityConstraints = [];
 		let unmappedCount = 0;
@@ -11697,10 +11697,10 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
 			console.warn("  ?? Entity " + entityName + " has " + unmappedCount + " unmapped segments - constraints from this entity may cause intersection issues");
 		}
 
-		console.log("  ? Added " + entityConstraints.length + " constraints for entity " + entityName);
+		console.log("  ✅ Added " + entityConstraints.length + " constraints for entity " + entityName);
 	});
 
-	console.log("? Total constraints extracted: " + constraints.length);
+	console.log("✅ Total constraints extracted: " + constraints.length);
 
 	// Return constraints along with tracking info for problematic entities
 	return {
@@ -11714,7 +11714,7 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
 // =============================================================================
 
 function createSpatialIndex(vertices, tolerance) {
-	console.log("??? Creating spatial index for " + vertices.length + " vertices with tolerance " + tolerance);
+	console.log("🗺️ Creating spatial index for " + vertices.length + " vertices with tolerance " + tolerance);
 
 	const index = new Map();
 
@@ -11745,7 +11745,7 @@ function createSpatialIndex(vertices, tolerance) {
 		index.get(exactKey).push({ vertex, index: vertexIndex });
 	});
 
-	console.log("??? Spatial index created with " + index.size + " grid cells");
+	console.log("🗺️ Spatial index created with " + index.size + " grid cells");
 	return index;
 }
 
@@ -11800,7 +11800,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 			// Step 1a) Update progress
 			if (updateProgress) updateProgress(35, "Initializing Constrainautor...");
 
-			console.log("?? Starting Constrainautor with " + points.length + " points, " + constraintSegments.length + " constraints");
+			console.log("🔺 Starting Constrainautor with " + points.length + " points, " + constraintSegments.length + " constraints");
 			if (entitiesWithUnmappedSegments.size > 0) {
 				console.warn("?? Will skip constraints from problematic entities in problematic range: " + Array.from(entitiesWithUnmappedSegments).join(", "));
 			}
@@ -11813,7 +11813,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 			}
 
 			const delaunay = new Delaunator(coords);
-			console.log("?? Initial Delaunay: " + delaunay.triangles.length / 3 + " triangles");
+			console.log("🔺 Initial Delaunay: " + delaunay.triangles.length / 3 + " triangles");
 
 			if (updateProgress) updateProgress(40, "Delaunay triangulation created");
 
@@ -11834,7 +11834,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 				}
 			});
 
-			console.log("?? Prepared " + constraintEdges.length + " valid constraint edges");
+			console.log("🔗 Prepared " + constraintEdges.length + " valid constraint edges");
 
 			// Step 3a) Sort constraints to process problematic ones FIRST
 			// Constraints from entities with unmapped segments should be processed early
@@ -11889,7 +11889,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 			// Step 5) Apply constraints in batches to avoid blocking UI
 			let successfulConstraints = 0;
 			if (constraintEdges.length > 0) {
-				console.log("?? Applying " + constraintEdges.length + " constraints...");
+				console.log("🔧 Applying " + constraintEdges.length + " constraints...");
 
 				// Step 5a) Track successfully constrained edges to avoid duplicates
 				// Use normalized edge key (minIdx_maxIdx) to handle both directions
@@ -12112,7 +12112,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 								}
 							}
 
-							console.log("?? Constrainautor complete: " + resultTriangles.length + " triangles");
+							console.log("🎉 Constrainautor complete: " + resultTriangles.length + " triangles");
 
 							if (updateProgress) updateProgress(100, "Complete!");
 
@@ -13312,9 +13312,9 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 		effectiveStarburstRatio = 1.0; // Force normal circle for < 8 steps
 	}
 
-	console.log("?? Creating enhanced radii polygons:");
+	console.log("🌟 Creating enhanced radii polygons:");
 	console.log("   Steps: " + steps + " (starburst " + (steps >= 8 ? "enabled" : "disabled") + ")");
-	console.log("   Rotation: " + (rotationOffset || 0) + "? (" + rotationRadians.toFixed(4) + " rad)");
+	console.log("   Rotation: " + (rotationOffset || 0) + "° (" + rotationRadians.toFixed(4) + " rad)");
 	console.log("   Starburst ratio: " + effectiveStarburstRatio + " (" + effectiveStarburstRatio * 100 + "%)");
 
 	// Step 3: Generate enhanced circle polygons with rotation and starburst
@@ -13353,7 +13353,7 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 
 			// Debug logging for first few points
 			if (pointIndex === 0 && i < 4) {
-				console.log("     Point " + i + ": angle=" + ((angle * 180) / Math.PI).toFixed(1) + "?, radius=" + currentRadius.toFixed(2) + "m, coords=(" + x.toFixed(2) + "," + y.toFixed(2) + ")");
+				console.log("     Point " + i + ": angle=" + ((angle * 180) / Math.PI).toFixed(1) + "°, radius=" + currentRadius.toFixed(2) + "m, coords=(" + x.toFixed(2) + "," + y.toFixed(2) + ")");
 			}
 		}
 
@@ -13390,14 +13390,14 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 					})),
 				});
 
-				console.log("? Created enhanced polygon: " + entityName + " with " + polygon.length + " points");
+				console.log("✅ Created enhanced polygon: " + entityName + " with " + polygon.length + " points");
 			});
 		}
 		return rawPolygons;
 	}
 
 	// Continue with union logic (same as before)...
-	console.log("?? Performing union operation on " + rawPolygons.length + " polygons...");
+	console.log("🔗 Performing union operation on " + rawPolygons.length + " polygons...");
 
 	const clipperPolys = rawPolygons.map((poly) =>
 		poly.map((pt) => ({
@@ -13420,7 +13420,7 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 		return [];
 	}
 
-	console.log("? Union successful, created " + solution.length + " combined polygon(s)");
+	console.log("✅ Union successful, created " + solution.length + " combined polygon(s)");
 
 	const unionedPolygons = solution.map((path, pathIndex) => {
 		console.log("   Processing union polygon " + (pathIndex + 1) + " with " + path.length + " points");
@@ -13482,7 +13482,7 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 				})),
 			});
 
-			console.log("? Created enhanced union polygon: " + entityName + " with " + polygon.length + " points");
+			console.log("✅ Created enhanced union polygon: " + entityName + " with " + polygon.length + " points");
 		});
 	}
 
@@ -13783,9 +13783,9 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			}
 		}
 
-		console.log("?? Offset calculation:");
+		console.log("🔧 Offset calculation:");
 		console.log("  offsetAmount:", offsetAmount, "(direction:", offsetAmount > 0 ? "right" : "left", ")");
-		console.log("  projectionAngle:", projectionAngle, "?");
+		console.log("  projectionAngle:", projectionAngle, "°");
 		console.log("  priorityMode:", priorityMode);
 		console.log("  horizontalOffset:", horizontalOffset.toFixed(3));
 		console.log("  verticalOffset:", verticalOffset.toFixed(3));
@@ -13915,7 +13915,7 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			visible: true,
 		});
 
-		console.log("? Created crossover-handled line offset:", newEntityName, "with", newEntityData.length, "points");
+		console.log("✅ Created crossover-handled line offset:", newEntityName, "with", newEntityData.length, "points");
 		return newEntityName;
 	} catch (error) {
 		console.error("Error in createLineOffsetCustom:", error);
@@ -14282,8 +14282,8 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
 			pointsForRadii.push(pointCoords);
 		});
 
-		console.log("?? Calling getRadiiPolygons with " + pointsForRadii.length + " points:");
-		console.log("   Rotation: " + params.rotationOffset + "?, Starburst: " + params.starburstOffset * 100 + "%");
+		console.log("🔥 Calling getRadiiPolygons with " + pointsForRadii.length + " points:");
+		console.log("   Rotation: " + params.rotationOffset + "°, Starburst: " + params.starburstOffset * 100 + "%");
 		pointsForRadii.forEach((point, index) => {
 			console.log("  Point " + (index + 1) + ": (" + point.startXLocation + ", " + point.startYLocation + ", " + point.startZLocation + ")");
 		});
@@ -14302,7 +14302,7 @@ function createRadiiFromSelectedEntitiesFixed(selectedEntities, params) {
 			params.starburstOffset
 		);
 
-		console.log("? getRadiiPolygonsEnhanced returned " + polygons.length + " polygon(s)");
+		console.log("✅ getRadiiPolygonsEnhanced returned " + polygons.length + " polygon(s)");
 
 		// Step 6: Update display and save
 		drawData(allBlastHoles, selectedHole);
@@ -14445,16 +14445,16 @@ function getSelectedEntitiesForRadii() {
 
 	// Add selected KAD object (singular) - with comprehensive debugging
 	if (selectedKADObject) {
-		console.log("?? Processing selectedKADObject:", selectedKADObject);
+		console.log("🔍 Processing selectedKADObject:", selectedKADObject);
 
 		// Check if data exists and is an array
 		if (selectedKADObject.data && Array.isArray(selectedKADObject.data)) {
-			console.log("?? KAD object has data array with " + selectedKADObject.data.length + " items");
+			console.log("📊 KAD object has data array with " + selectedKADObject.data.length + " items");
 
 			if (selectedKADObject.entityType === "point") {
 				// For points, use the point location
 				selectedKADObject.data.forEach((point, index) => {
-					console.log("?? Processing point " + (index + 1) + ":", point);
+					console.log("🔵 Processing point " + (index + 1) + ":", point);
 					selectedEntities.push({
 						type: "kad_point",
 						data: selectedKADObject,
@@ -14469,7 +14469,7 @@ function getSelectedEntitiesForRadii() {
 			} else if (selectedKADObject.entityType === "line" || selectedKADObject.entityType === "poly") {
 				// For lines and polygons, use each vertex
 				selectedKADObject.data.forEach((point, index) => {
-					console.log("?? Processing vertex " + (index + 1) + ":", point);
+					console.log("📍 Processing vertex " + (index + 1) + ":", point);
 					selectedEntities.push({
 						type: "kad_vertex",
 						data: selectedKADObject,
@@ -14484,7 +14484,7 @@ function getSelectedEntitiesForRadii() {
 			} else if (selectedKADObject.entityType === "text") {
 				// For text, use the text position
 				selectedKADObject.data.forEach((textPoint, index) => {
-					console.log("?? Processing text " + (index + 1) + ":", textPoint);
+					console.log("📝 Processing text " + (index + 1) + ":", textPoint);
 					selectedEntities.push({
 						type: "kad_text",
 						data: selectedKADObject,
@@ -14499,7 +14499,7 @@ function getSelectedEntitiesForRadii() {
 			} else if (selectedKADObject.entityType === "circle") {
 				// For circles, use the center point
 				selectedKADObject.data.forEach((circlePoint, index) => {
-					console.log("? Processing circle " + (index + 1) + ":", circlePoint);
+					console.log("⭕ Processing circle " + (index + 1) + ":", circlePoint);
 					selectedEntities.push({
 						type: "kad_circle",
 						data: selectedKADObject,
@@ -14521,10 +14521,10 @@ function getSelectedEntitiesForRadii() {
 			if (selectedKADObject.entityName) {
 				const entity = allKADDrawingsMap.get(selectedKADObject.entityName);
 				if (entity && entity.data && Array.isArray(entity.data)) {
-					console.log("? Found entity in allKADDrawingsMap with " + entity.data.length + " points");
+					console.log("✅ Found entity in allKADDrawingsMap with " + entity.data.length + " points");
 
 					entity.data.forEach((point, index) => {
-						console.log("?? Processing entity point " + (index + 1) + ":", point);
+						console.log("🔄 Processing entity point " + (index + 1) + ":", point);
 						selectedEntities.push({
 							type: "kad_entity_point",
 							data: entity,
@@ -14541,7 +14541,7 @@ function getSelectedEntitiesForRadii() {
 
 			// Last resort - use selectedKADObject directly if it has coordinates
 			if (selectedEntities.length === 0 && selectedKADObject.pointXLocation !== undefined && selectedKADObject.pointYLocation !== undefined) {
-				console.log("?? Using fallback direct coordinates");
+				console.log("🆘 Using fallback direct coordinates");
 				selectedEntities.push({
 					type: "kad_fallback",
 					data: selectedKADObject,
@@ -14556,7 +14556,7 @@ function getSelectedEntitiesForRadii() {
 		}
 	}
 
-	console.log("?? Final selectedEntities array has " + selectedEntities.length + " entities:");
+	console.log("🎯 Final selectedEntities array has " + selectedEntities.length + " entities:");
 	selectedEntities.forEach((entity, index) => {
 		console.log("  " + (index + 1) + ". " + entity.type + " at (" + entity.startXLocation + ", " + entity.startYLocation + ", " + entity.startZLocation + ")");
 	});
@@ -16398,7 +16398,7 @@ function deleteSelectedPoint() {
 		// Check if the entity containing this point is visible
 		const entityName = getEntityNameFromSelectedPoint(selectedPoint);
 		if (entityName && !isEntityVisible(entityName)) {
-			console.log("? Cannot delete point from hidden entity: " + entityName);
+			console.log("❌ Cannot delete point from hidden entity: " + entityName);
 			return;
 		}
 		deletePointInMap(allKADDrawingsMap, selectedPoint);
@@ -16433,7 +16433,7 @@ function deleteSelectedObject() {
 		// Check if the entity containing this point is visible
 		const entityName = getEntityNameFromSelectedPoint(selectedPoint);
 		if (entityName && !isEntityVisible(entityName)) {
-			console.log("? Cannot delete object from hidden entity: " + entityName);
+			console.log("❌ Cannot delete object from hidden entity: " + entityName);
 			return;
 		}
 		deleteObjectInMap(allKADDrawingsMap, selectedPoint);
@@ -16456,7 +16456,7 @@ function deleteSelectedAll() {
 			}
 
 			if (visibleEntitiesToDelete.length === 0) {
-				console.log("? No visible entities of type " + entityType + " to delete");
+				console.log("❌ No visible entities of type " + entityType + " to delete");
 				return;
 			}
 
@@ -16465,7 +16465,7 @@ function deleteSelectedAll() {
 				allKADDrawingsMap.delete(entityName);
 			});
 
-			console.log("??? Deleted " + visibleEntitiesToDelete.length + " visible " + entityType + " entities");
+			console.log("🗑️ Deleted " + visibleEntitiesToDelete.length + " visible " + entityType + " entities");
 			// ADD THIS: Save after delete all of type
 			debouncedSaveKAD();
 		}
@@ -16546,7 +16546,7 @@ function renumberEntityPoints(entity) {
 		entity.data[i].pointID = i + 1;
 	}
 
-	console.log("? Renumbered " + entity.data.length + " points in " + entity.entityType + " entity");
+	console.log("✅ Renumbered " + entity.data.length + " points in " + entity.entityType + " entity");
 }
 
 function deleteObjectInMap(map, pointToDelete) {
@@ -16704,7 +16704,7 @@ function deleteSelectedPattern() {
 
 //function to delete All Entities in the kadHolesMap and all the Entityies in the allBlastHoles array
 function deleteSelectedAllPatterns() {
-	console.log("?? deleteSelectedAllPatterns called!");
+	console.log("🚨 deleteSelectedAllPatterns called!");
 	console.log("isDeletingHole:", isDeletingHole);
 	console.log("selectedHole:", selectedHole);
 	console.log("selectedMultipleHoles:", selectedMultipleHoles);
@@ -16909,7 +16909,7 @@ function renumberPatternAfterClipping(entityName) {
 		}
 	}
 
-	console.log("Detected row orientation: " + rowOrientation + "? for entity: " + entityName);
+	console.log("Detected row orientation: " + rowOrientation + "° for entity: " + entityName);
 
 	// Step 2: Convert compass bearing to math radians for projections
 	const rowBearingRadians = (90 - rowOrientation) * (Math.PI / 180);
@@ -16997,7 +16997,7 @@ function renumberPatternAfterClipping(entityName) {
 		delete hole.spacingProjection;
 	});
 
-	console.log("Renumbered " + entityHoles.length + " holes in " + rows.length + " rows for entity: " + entityName + " with detected row orientation: " + rowOrientation + "?");
+	console.log("Renumbered " + entityHoles.length + " holes in " + rows.length + " rows for entity: " + entityName + " with detected row orientation: " + rowOrientation + "°");
 }
 
 // Step #1: Unified deleteHoleAndRenumber for rowID/posID and alphanumeric holeID
@@ -17257,7 +17257,7 @@ function handleDrawingKeyEvents(event) {
 				drawData(allBlastHoles, selectedHole);
 				debouncedSaveKAD();
 
-				console.log("??? Removed point from " + currentDrawingEntityName + ". Points remaining: " + remainingPoints);
+				console.log("🗑️ Removed point from " + currentDrawingEntityName + ". Points remaining: " + remainingPoints);
 			} else {
 				updateStatusMessage("No points to remove from current " + entity.entityType + ".");
 				setTimeout(() => updateStatusMessage(""), 1500);
@@ -17274,13 +17274,13 @@ function handleDrawingKeyEvents(event) {
 function setCurrentDrawingEntity(entityName) {
 	currentDrawingEntityName = entityName;
 	deleteKeyCount = 0; // Reset delete count when starting new entity
-	console.log("?? Set current drawing entity: " + entityName);
+	console.log("🎨 Set current drawing entity: " + entityName);
 }
 // Function to clear current drawing entity when switching tools
 function clearCurrentDrawingEntity() {
 	currentDrawingEntityName = null;
 	deleteKeyCount = 0;
-	console.log("?? Cleared current drawing entity");
+	console.log("🧹 Cleared current drawing entity");
 }
 
 function handleKADPointClick(event) {
@@ -22358,7 +22358,7 @@ function resetZoom() {
 		cameraControls.rotation = 0;
 		cameraControls.orbitX = 0;
 		cameraControls.orbitY = 0;
-		console.log("?? Camera reset to top-down view");
+		console.log("📷 Camera reset to top-down view");
 	}
 
 	//calculate the centroids from the data in the maps and points
@@ -22627,7 +22627,7 @@ function loadKADFromDB() {
 			const result = event.target.result;
 			if (result && result.data && result.data.length > 0) {
 				allKADDrawingsMap = new Map(result.data); // ? Access the data property
-				console.log("? //-- LOADED UNIFIED DRAWING OBJECTS FROM IndexedDB --//");
+				console.log("✅ //-- LOADED UNIFIED DRAWING OBJECTS FROM IndexedDB --//");
 				debouncedUpdateTreeView();
 				drawData(allBlastHoles, selectedHole);
 				resolve(true);
@@ -22840,7 +22840,7 @@ async function saveSurfaceToDB(surfaceId) {
 
 			// ? FIX: Add proper transaction handlers
 			transaction.oncomplete = () => {
-				console.log("? Surface saved successfully to database:", surfaceId);
+				console.log("✅ Surface saved successfully to database:", surfaceId);
 				resolve(true);
 			};
 
@@ -22858,7 +22858,7 @@ async function saveSurfaceToDB(surfaceId) {
 			const request = store.put(surfaceRecord);
 
 			request.onsuccess = (event) => {
-				console.log("? Surface record stored successfully");
+				console.log("✅ Surface record stored successfully");
 				// Transaction will complete automatically
 			};
 
@@ -22894,7 +22894,7 @@ async function loadSurfaceIntoMemory(surfaceId) {
 						gradient: surfaceData.gradient || "default",
 						transparency: surfaceData.transparency || 1.0, // Add this line
 					});
-					console.log("? Surface " + surfaceData.name + " loaded into memory");
+					console.log("✅ Surface " + surfaceData.name + " loaded into memory");
 				}
 				resolve(surfaceData);
 			};
@@ -22983,7 +22983,7 @@ function showLoadingProgressDialog() {
 		closeOnOutsideClick: false,
 		onCancel: function () {
 			// Step 2) Handle Cancel button - abort loading
-			console.log("?? User cancelled data loading");
+			console.log("✅ User cancelled data loading");
 			dialog.close();
 		},
 	});
@@ -23073,7 +23073,7 @@ async function loadAllSurfacesIntoMemory() {
 					loadedSurfaces.set(surfaceData.id, surfaceEntry);
 				});
 
-				console.log("?? Loaded " + loadedSurfaces.size + " surfaces into memory");
+				console.log("📊 Loaded " + loadedSurfaces.size + " surfaces into memory");
 
 				// Step 3) Rebuild Three.js meshes for textured surfaces (staggered to avoid blocking)
 				if (texturedSurfaceIds.length > 0) {
@@ -23204,7 +23204,7 @@ function setSurfaceVisibility(surfaceId, visible) {
 	const surface = loadedSurfaces.get(surfaceId);
 	if (surface) {
 		surface.visible = visible;
-		console.log("??? Surface " + surface.name + " visibility: " + visible);
+		console.log("👁️ Surface " + surface.name + " visibility: " + visible);
 		drawData(allBlastHoles, selectedHole);
 	}
 }
@@ -23310,7 +23310,7 @@ function setKADEntityVisibility(entityName, visible) {
 	const entity = allKADDrawingsMap.get(entityName);
 	if (entity) {
 		entity.visible = visible;
-		console.log("??? KAD Entity " + entityName + " visibility: " + visible);
+		console.log("👁️ KAD Entity " + entityName + " visibility: " + visible);
 
 		// ? Clear hidden entities from selections
 		clearHiddenFromSelections();
@@ -23328,7 +23328,7 @@ function setKADElementVisibility(entityName, pointID, visible) {
 		const element = entity.data.find((el) => el.pointID == pointID);
 		if (element) {
 			element.visible = visible;
-			console.log("??? KAD Element " + entityName + ":" + pointID + " visibility: " + visible);
+			console.log("👁️ KAD Element " + entityName + ":" + pointID + " visibility: " + visible);
 
 			// ? Clear hidden entities from selections
 			clearHiddenFromSelections();
@@ -23351,7 +23351,7 @@ function setHoleVisibility(holeID, visible) {
 	const hole = allBlastHoles.find((h) => h.holeID === holeID);
 	if (hole) {
 		hole.visible = visible;
-		console.log("??? Hole " + holeID + " visibility: " + visible);
+		console.log("👁️ Hole " + holeID + " visibility: " + visible);
 
 		// ? Clear hidden entities from selections
 		clearHiddenFromSelections();
