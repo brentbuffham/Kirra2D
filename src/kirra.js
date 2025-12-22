@@ -31143,7 +31143,7 @@ function handleHolesAlongPolyLineClick(event) {
 
 				if (pathVertices.length >= 2) {
 					// Pass the polygon type and original vertices to the popup for reverse handling
-					showHolesAlongPolylinePopup(pathVertices, selectedPolyline);
+					window.showHolesAlongPolylinePopup(pathVertices, selectedPolyline);
 				} else {
 					updateStatusMessage("Invalid path between selected points. Please try again.");
 					polylineStep = 1;
@@ -31162,6 +31162,8 @@ function handleHolesAlongPolyLineClick(event) {
 
 	drawData(allBlastHoles, selectedHole);
 }
+// Expose handleHolesAlongPolyLineClick globally for PatternGenerationDialogs.js
+window.handleHolesAlongPolyLineClick = handleHolesAlongPolyLineClick;
 //---------------HOLES ALONG LINE TOOL---------------//
 holesAlongLineTool.addEventListener("change", function () {
 	if (this.checked) {
@@ -32934,196 +32936,9 @@ function generateHolesAlongPolyline(params, vertices) {
 		showModalMessage("Polyline Pattern Generated", `Successfully generated ${holesAdded} holes along the polyline (Row ${rowID}).`, "success");
 	}
 }
-// SHOW HOLES ALONG POLYLINE POPUP
-// Add this function to show the popup for polyline hole generation
-function showHolesAlongPolylinePopup(vertices) {
-	let blastNameValue = "PolylinePattern_" + Date.now();
-	// Retrieve the last entered values from local storage
-	let savedHolesAlongPolylineSettings = JSON.parse(localStorage.getItem("savedHolesAlongPolylineSettings")) || {};
-	let lastValues = {
-		blastName: savedHolesAlongPolylineSettings.blastName || blastNameValue,
-		spacing: savedHolesAlongPolylineSettings.spacing || 3.0,
-		collarZ: savedHolesAlongPolylineSettings.collarZ || 0,
-		gradeZ: savedHolesAlongPolylineSettings.gradeZ || -10,
-		subdrill: savedHolesAlongPolylineSettings.subdrill || 1,
-		angle: savedHolesAlongPolylineSettings.angle || 0,
-		bearing: savedHolesAlongPolylineSettings.bearing || 180,
-		diameter: savedHolesAlongPolylineSettings.diameter || 115,
-		type: savedHolesAlongPolylineSettings.type || "Production",
-		startNumber: savedHolesAlongPolylineSettings.startNumber || 1,
-		nameTypeIsNumerical: savedHolesAlongPolylineSettings.nameTypeIsNumerical !== undefined ? savedHolesAlongPolylineSettings.nameTypeIsNumerical : true,
-		useGradeZ: savedHolesAlongPolylineSettings.useGradeZ !== undefined ? savedHolesAlongPolylineSettings.useGradeZ : true,
-		useLineBearing: savedHolesAlongPolylineSettings.useLineBearing !== undefined ? savedHolesAlongPolylineSettings.useLineBearing : true,
-		length: savedHolesAlongPolylineSettings.length || 10,
-		reverseDirection: savedHolesAlongPolylineSettings.reverseDirection !== undefined ? savedHolesAlongPolylineSettings.reverseDirection : false,
-	};
-
-	// Calculate default length if using grade Z
-	const defaultLength = lastValues.useGradeZ ? Math.abs((lastValues.collarZ - lastValues.gradeZ + lastValues.subdrill) / Math.cos(lastValues.angle * (Math.PI / 180))) : lastValues.length;
-
-	// Calculate default grade if using length
-	const defaultGradeZ = !lastValues.useGradeZ ? lastValues.collarZ - (lastValues.length - lastValues.subdrill) * Math.cos(lastValues.angle * (Math.PI / 180)) : lastValues.gradeZ;
-
-	// Show loading spinner while the popup is created
-	Swal.showLoading();
-
-	// Create the SweetAlert popup
-	Swal.fire({
-		title: "Generate Holes Along Polyline",
-		showCancelButton: true,
-		confirmButtonText: "OK",
-		cancelButtonText: "Cancel",
-		html: `
-        <div class="button-container-2col">
-          <label class="labelWhite18" for="blastName">Blast Name</label>
-          <input type="text3" id="blastName" placeholder="Blast Name" value="${lastValues.blastName}"/>
-          <label class="labelWhite18" for="nameTypeIsNumerical">Numerical Names</label>
-          <input type="checkbox" id="nameTypeIsNumerical" name="nameTypeIsNumerical" ${lastValues.nameTypeIsNumerical ? "checked" : ""}>
-          <label class="labelWhite18" for="startNumber">Starting Hole Number</label>
-          <input type="number3" id="startNumber" name="startNumber" placeholder="Start Number" value="${lastValues.startNumber}" step="1" min="1" max="9999" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="spacing">Spacing (m)</label>
-          <input type="number3" id="spacing" name="spacing" placeholder="Spacing" value="${lastValues.spacing}" step="0.1" min="0.1" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="collarZ">Collar Elevation (m)</label>
-          <input type="number3" id="collarZ" name="collarZ" placeholder="Collar Z" value="${lastValues.collarZ}" step="0.1" min="-1000" max="5000" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="useGradeZ">Use Grade Z</label>
-          <input type="checkbox" id="useGradeZ" name="useGradeZ" ${lastValues.useGradeZ ? "checked" : ""}>
-          <label class="labelWhite18" for="gradeZ">Grade Elevation (m)</label>
-          <input type="number3" id="gradeZ" name="gradeZ" placeholder="Grade Z" value="${defaultGradeZ}" step="0.1" min="-1000" max="5000" inputmode="decimal" pattern="[0-9]*" ${!lastValues.useGradeZ ? "disabled" : ""}>
-          <label class="labelWhite18" for="length">Length (m)</label>
-          <input type="number3" id="length" name="length" placeholder="Length" value="${defaultLength}" step="0.1" min="0.1" max="1000" inputmode="decimal" pattern="[0-9]*" ${lastValues.useGradeZ ? "disabled" : ""}>
-          <label class="labelWhite18" for="subdrill">Subdrill (m)</label>
-          <input type="number3" id="subdrill" name="subdrill" placeholder="Subdrill" value="${lastValues.subdrill}" step="0.1" min="-50" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="angle">Hole Angle (? from vertical)</label>
-          <input type="number3" id="angle" name="angle" placeholder="Angle" value="${lastValues.angle}" step="1" min="0" max="60" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="useLineBearing">Bearings are 90? to Segment</label>
-          <input type="checkbox" id="useLineBearing" name="useLineBearing" ${lastValues.useLineBearing ? "checked" : ""}>
-          <label class="labelWhite18" for="bearing">Hole Bearing (?)</label>
-          <input type="number3" id="bearing" name="bearing" placeholder="Bearing" value="${lastValues.bearing}" step="0.1" min="0" max="359.999" inputmode="decimal" pattern="[0-9]*" ${lastValues.useLineBearing ? "disabled" : ""}>
-          <div class="labelWhite12" style="text-align: center;">Selected ${vertices.length} points</div>
-          <div class="labelWhite12" style="text-align: right;">Directions: N=0?, E=90?, S=180?, W=270?</div>
-          <label class="labelWhite18" for="diameter">Diameter (mm)</label>
-          <input type="number3" id="diameter" name="diameter" placeholder="Diameter" value="${lastValues.diameter}" step="1" min="1" max="1000" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="type">Hole Type</label>
-		  <input type="text3" id="type" name="type" placeholder="Type" value="${lastValues.type}"/>
-          <label class="labelWhite18" for="reverseDirection">Reverse Direction</label>
-          <input type="checkbox" id="reverseDirection" name="reverseDirection">
-    	</div>
-      `,
-		customClass: {
-			container: "custom-popup-container",
-			popup: "custom-popup-container",
-			title: "swal2-title",
-			confirmButton: "confirm",
-			cancelButton: "cancel",
-			content: "swal2-content",
-			htmlContainer: "swal2-html-container",
-			icon: "swal2-icon",
-		},
-		didOpen: () => {
-			// Add event listeners after the popup is opened
-			const useGradeZCheckbox = document.getElementById("useGradeZ");
-			const gradeZInput = document.getElementById("gradeZ");
-			const lengthInput = document.getElementById("length");
-			const collarZInput = document.getElementById("collarZ");
-			const angleInput = document.getElementById("angle");
-			const subdrillInput = document.getElementById("subdrill");
-			const useLineBearingCheckbox = document.getElementById("useLineBearing");
-			const bearingInput = document.getElementById("bearing");
-
-			// Function to update fields based on checkbox state
-			function updateFieldsBasedOnUseGradeZ() {
-				const useGradeZ = useGradeZCheckbox.checked;
-
-				// Enable/disable fields
-				gradeZInput.disabled = !useGradeZ;
-				lengthInput.disabled = useGradeZ;
-
-				// Update calculations
-				if (useGradeZ) {
-					// Calculate length from grade
-					const collarZ = parseFloat(collarZInput.value) || 0;
-					const gradeZ = parseFloat(gradeZInput.value) || 0;
-					const subdrill = parseFloat(subdrillInput.value) || 0;
-					const angle = parseFloat(angleInput.value) || 0;
-					const angleRad = angle * (Math.PI / 180);
-
-					const calculatedLength = Math.abs((collarZ - gradeZ + subdrill) / Math.cos(angleRad));
-					lengthInput.value = calculatedLength.toFixed(2);
-				} else {
-					// Calculate grade from length
-					const collarZ = parseFloat(collarZInput.value) || 0;
-					const length = parseFloat(lengthInput.value) || 0;
-					const subdrill = parseFloat(subdrillInput.value) || 0;
-					const angle = parseFloat(angleInput.value) || 0;
-					const angleRad = angle * (Math.PI / 180);
-
-					const calculatedGradeZ = collarZ - (length - subdrill) * Math.cos(angleRad);
-					gradeZInput.value = calculatedGradeZ.toFixed(2);
-				}
-			}
-
-			// Function to handle line bearing checkbox
-			function updateBearingField() {
-				bearingInput.disabled = useLineBearingCheckbox.checked;
-			}
-
-			// Add event listeners for changes
-			useGradeZCheckbox.addEventListener("change", updateFieldsBasedOnUseGradeZ);
-			gradeZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			lengthInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			collarZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			angleInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			subdrillInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			useLineBearingCheckbox.addEventListener("change", updateBearingField);
-
-			// Initial update
-			updateFieldsBasedOnUseGradeZ();
-			updateBearingField();
-
-			// Hide the loading spinner when the popup is ready
-			Swal.hideLoading();
-		},
-	}).then((result) => {
-		if (result.isConfirmed) {
-			// Retrieve values from the input fields
-			const params = {
-				blastName: document.getElementById("blastName").value,
-				nameTypeIsNumerical: document.getElementById("nameTypeIsNumerical").checked,
-				useGradeZ: document.getElementById("useGradeZ").checked,
-				useLineBearing: document.getElementById("useLineBearing").checked,
-				startNumber: parseInt(document.getElementById("startNumber").value),
-				spacing: parseFloat(document.getElementById("spacing").value),
-				collarZ: parseFloat(document.getElementById("collarZ").value),
-				gradeZ: parseFloat(document.getElementById("gradeZ").value),
-				length: parseFloat(document.getElementById("length").value),
-				subdrill: parseFloat(document.getElementById("subdrill").value),
-				angle: parseFloat(document.getElementById("angle").value),
-				bearing: parseFloat(document.getElementById("bearing").value),
-				diameter: parseFloat(document.getElementById("diameter").value),
-				type: document.getElementById("type").value,
-				reverseDirection: document.getElementById("reverseDirection").checked,
-			};
-			// Reverse the vertices if checkbox is checked
-			let finalVertices = vertices;
-			if (params.reverseDirection) {
-				finalVertices = [...vertices].reverse(); // Create a reversed copy
-			}
-			// Save values to localStorage
-			localStorage.setItem("savedHolesAlongPolylineSettings", JSON.stringify(params));
-
-			// Generate the holes along the polyline
-			generateHolesAlongPolyline(params, finalVertices);
-		}
-
-		// Clear selection
-		selectedVertices = [];
-		debouncedUpdateTreeView(); // Use debounced version
-		drawData(allBlastHoles, selectedHole);
-		// Add tool deactivation here if it's missing:
-		holesAlongPolyLineTool.checked = false;
-		holesAlongPolyLineTool.dispatchEvent(new Event("change"));
-	});
-}
+// Expose generateHolesAlongPolyline globally for PatternGenerationDialogs.js
+window.generateHolesAlongPolyline = generateHolesAlongPolyline;
+// Moved to src/dialog/popups/generic/PatternGenerationDialogs.js
 
 ///----------------- ASSIGN HOLE START Z TO A SURFACE TOOL and ASSIGN HOLE GRADE Z to a surface -----------------///
 // WITH this multi-surface system:

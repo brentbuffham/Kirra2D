@@ -351,6 +351,310 @@ function processPatternGeneration(formData, mode, worldX, worldY) {
     }
 }
 
+// Step 8) Holes along polyline dialog function
+function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
+	// Step 8a) Generate default blast name with timestamp
+	let blastNameValue = "PolylinePattern_" + Date.now();
+	
+	// Step 8b) Retrieve the last entered values from local storage
+	let savedHolesAlongPolylineSettings = JSON.parse(localStorage.getItem("savedHolesAlongPolylineSettings")) || {};
+	
+	// Step 8c) Helper to convert string "true"/"false" to boolean
+	const toBool = (value, defaultValue = false) => {
+		if (value === undefined || value === null) return defaultValue;
+		if (typeof value === "boolean") return value;
+		if (typeof value === "string") return value === "true";
+		return defaultValue;
+	};
+	
+	let lastValues = {
+		blastName: savedHolesAlongPolylineSettings.blastName || blastNameValue,
+		spacing: savedHolesAlongPolylineSettings.spacing || 3.0,
+		collarZ: savedHolesAlongPolylineSettings.collarZ || 0,
+		gradeZ: savedHolesAlongPolylineSettings.gradeZ || -10,
+		subdrill: savedHolesAlongPolylineSettings.subdrill || 1,
+		angle: savedHolesAlongPolylineSettings.angle || 0,
+		bearing: savedHolesAlongPolylineSettings.bearing || 180,
+		diameter: savedHolesAlongPolylineSettings.diameter || 115,
+		type: savedHolesAlongPolylineSettings.type || "Production",
+		startNumber: savedHolesAlongPolylineSettings.startNumber || 1,
+		nameTypeIsNumerical: savedHolesAlongPolylineSettings.nameTypeIsNumerical !== undefined ? savedHolesAlongPolylineSettings.nameTypeIsNumerical : true,
+		useGradeZ: savedHolesAlongPolylineSettings.useGradeZ !== undefined ? savedHolesAlongPolylineSettings.useGradeZ : true,
+		useLineBearing: savedHolesAlongPolylineSettings.useLineBearing !== undefined ? savedHolesAlongPolylineSettings.useLineBearing : true,
+		length: savedHolesAlongPolylineSettings.length || 10,
+		reverseDirection: savedHolesAlongPolylineSettings.reverseDirection !== undefined ? savedHolesAlongPolylineSettings.reverseDirection : false,
+	};
+
+	// Step 8d) Calculate default length if using grade Z
+	const defaultLength = lastValues.useGradeZ ? Math.abs((lastValues.collarZ - lastValues.gradeZ + lastValues.subdrill) / Math.cos(lastValues.angle * (Math.PI / 180))) : lastValues.length;
+
+	// Step 8e) Calculate default grade if using length
+	const defaultGradeZ = !lastValues.useGradeZ ? lastValues.collarZ - (lastValues.length - lastValues.subdrill) * Math.cos(lastValues.angle * (Math.PI / 180)) : lastValues.gradeZ;
+
+	// Step 8f) Ensure values are valid numbers for toFixed
+	const gradeZValue = (typeof defaultGradeZ === "number" && !isNaN(defaultGradeZ)) ? defaultGradeZ.toFixed(2) : defaultGradeZ;
+	const lengthValue = (typeof defaultLength === "number" && !isNaN(defaultLength)) ? defaultLength.toFixed(2) : defaultLength;
+
+	// Step 8g) Build form fields array
+	const fields = [
+		{ label: "Blast Name", name: "blastName", type: "text", value: lastValues.blastName, placeholder: "Blast Name" },
+		{ label: "Numerical Names", name: "nameTypeIsNumerical", type: "checkbox", checked: lastValues.nameTypeIsNumerical },
+		{ label: "Starting Hole Number", name: "startNumber", type: "number", value: lastValues.startNumber, step: 1, min: 1, max: 9999 },
+		{ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1, min: 0.1, max: 50 },
+		{ label: "Collar Elevation (m)", name: "collarZ", type: "number", value: lastValues.collarZ, step: 0.1, min: -1000, max: 5000 },
+		{ label: "Use Grade Z", name: "useGradeZ", type: "checkbox", checked: lastValues.useGradeZ },
+		{ label: "Grade Elevation (m)", name: "gradeZ", type: "number", value: gradeZValue, step: 0.1, min: -1000, max: 5000, disabled: !lastValues.useGradeZ },
+		{ label: "Length (m)", name: "length", type: "number", value: lengthValue, step: 0.1, min: 0.1, max: 1000, disabled: lastValues.useGradeZ },
+		{ label: "Subdrill (m)", name: "subdrill", type: "number", value: lastValues.subdrill, step: 0.1, min: -50, max: 50 },
+		{ label: "Hole Angle (° from vertical)", name: "angle", type: "number", value: lastValues.angle, step: 1, min: 0, max: 60 },
+		{ label: "Bearings are 90° to Segment", name: "useLineBearing", type: "checkbox", checked: lastValues.useLineBearing },
+		{ label: "Hole Bearing (°)", name: "bearing", type: "number", value: lastValues.bearing, step: 0.1, min: 0, max: 359.999, disabled: lastValues.useLineBearing },
+		{ label: "Diameter (mm)", name: "diameter", type: "number", value: lastValues.diameter, step: 1, min: 1, max: 1000 },
+		{ label: "Hole Type", name: "type", type: "text", value: lastValues.type, placeholder: "Type" },
+		{ label: "Reverse Direction", name: "reverseDirection", type: "checkbox", checked: lastValues.reverseDirection }
+	];
+
+	// Step 8h) Create form content using createEnhancedFormContent
+	const formContent = window.createEnhancedFormContent(fields, false, false);
+
+	// Step 8i) Add info note about selected points and bearing directions
+	const infoNote = document.createElement("div");
+	infoNote.style.gridColumn = "1 / -1";
+	infoNote.style.fontSize = "10px";
+	infoNote.style.color = "#888";
+	infoNote.style.marginTop = "5px";
+	infoNote.style.textAlign = "center";
+	infoNote.textContent = "Selected " + vertices.length + " points | Directions: N=0°, E=90°, S=180°, W=270°";
+	formContent.appendChild(infoNote);
+
+	// Step 8j) CRITICAL: Remove canvas event listeners to prevent clicks while dialog is open
+	const originalClickHandler = window.handleHolesAlongPolyLineClick;
+	const originalTouchHandler = window.handleHolesAlongPolyLineClick;
+	if (window.canvas) {
+		window.canvas.removeEventListener("click", originalClickHandler);
+		window.canvas.removeEventListener("touchstart", originalTouchHandler);
+	}
+
+	// Step 8k) Create FloatingDialog
+	const dialog = new window.FloatingDialog({
+		title: "Generate Holes Along Polyline",
+		content: formContent,
+		layoutType: "default",
+		width: 350,
+		height: 520,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "OK",
+		cancelText: "Cancel",
+		draggable: true,
+		resizable: true,
+		closeOnOutsideClick: false, // Modal behavior - prevent clicks outside
+		onConfirm: () => {
+			// Step 8l) Retrieve values from the input fields
+			const formData = window.getFormData(formContent);
+			
+			// Step 8m) Convert checkbox values to boolean
+			const params = {
+				blastName: formData.blastName,
+				nameTypeIsNumerical: toBool(formData.nameTypeIsNumerical, true),
+				useGradeZ: toBool(formData.useGradeZ, true),
+				useLineBearing: toBool(formData.useLineBearing, true),
+				startNumber: parseInt(formData.startNumber) || 1,
+				spacing: parseFloat(formData.spacing) || 3.0,
+				collarZ: parseFloat(formData.collarZ) || 0,
+				gradeZ: parseFloat(formData.gradeZ) || -10,
+				length: parseFloat(formData.length) || 10,
+				subdrill: parseFloat(formData.subdrill) || 1,
+				angle: parseFloat(formData.angle) || 0,
+				bearing: parseFloat(formData.bearing) || 180,
+				diameter: parseFloat(formData.diameter) || 115,
+				type: formData.type || "Production",
+				reverseDirection: toBool(formData.reverseDirection, false),
+			};
+			
+			// Step 8n) Reverse the vertices if checkbox is checked
+			let finalVertices = vertices;
+			if (params.reverseDirection) {
+				finalVertices = [...vertices].reverse(); // Create a reversed copy
+			}
+			
+			// Step 8o) Save values to localStorage
+			localStorage.setItem("savedHolesAlongPolylineSettings", JSON.stringify(params));
+
+			// Step 8p) Generate the holes along the polyline
+			console.log("🔹 Calling generateHolesAlongPolyline with params:", params);
+			console.log("🔹 Final vertices:", finalVertices);
+			if (typeof window.generateHolesAlongPolyline === "function") {
+				try {
+					window.generateHolesAlongPolyline(params, finalVertices);
+					console.log("✅ generateHolesAlongPolyline completed");
+				} catch (error) {
+					console.error("❌ Error in generateHolesAlongPolyline:", error);
+					window.showModalMessage("Error", "Error generating holes: " + error.message, "error");
+				}
+			} else {
+				console.error("❌ generateHolesAlongPolyline function not found on window object");
+				window.showModalMessage("Error", "Could not generate holes - function not available.", "error");
+			}
+
+			// Step 8q) Restore canvas event listeners
+			if (window.canvas) {
+				window.canvas.addEventListener("click", originalClickHandler);
+				window.canvas.addEventListener("touchstart", originalTouchHandler);
+			}
+
+			// Step 8r) Clear selection and reset tool state
+			if (typeof window.selectedVertices !== "undefined") {
+				window.selectedVertices = [];
+			}
+			if (typeof window.debouncedUpdateTreeView === "function") {
+				window.debouncedUpdateTreeView();
+			}
+			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
+			
+			// Step 8s) Deactivate tool
+			if (window.holesAlongPolyLineTool) {
+				window.holesAlongPolyLineTool.checked = false;
+				window.holesAlongPolyLineTool.dispatchEvent(new Event("change"));
+			}
+			
+			dialog.close();
+		},
+		onCancel: () => {
+			// Step 8t) Handle cancel - restore event listeners and reset tool state
+			console.log("Holes along polyline dialog cancelled - resetting tool states");
+			
+			// Step 8u) Restore canvas event listeners
+			if (window.canvas) {
+				window.canvas.addEventListener("click", originalClickHandler);
+				window.canvas.addEventListener("touchstart", originalTouchHandler);
+			}
+
+			// Step 8v) Clear selection states
+			if (typeof window.selectedPolyline !== "undefined") {
+				window.selectedPolyline = null;
+			}
+			if (typeof window.polylineStartPoint !== "undefined") {
+				window.polylineStartPoint = null;
+			}
+			if (typeof window.polylineEndPoint !== "undefined") {
+				window.polylineEndPoint = null;
+			}
+			if (typeof window.polylineStep !== "undefined") {
+				window.polylineStep = 0;
+			}
+			if (typeof window.selectedVertices !== "undefined") {
+				window.selectedVertices = [];
+			}
+
+			// Step 8w) Redraw to clear any visual indicators
+			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
+
+			// Step 8x) Reset tool
+			if (window.holesAlongPolyLineTool) {
+				window.holesAlongPolyLineTool.checked = false;
+				window.holesAlongPolyLineTool.dispatchEvent(new Event("change"));
+			}
+			
+			dialog.close();
+		}
+	});
+
+	// Step 8y) Show dialog
+	dialog.show();
+
+	// Step 8z) Add event listeners for dynamic field updates (after show)
+	setupHolesAlongPolylineEventListeners(formContent);
+}
+
+// Step 9) Create event listener setup function for dynamic field updates
+function setupHolesAlongPolylineEventListeners(formContent) {
+	const useGradeZCheckbox = formContent.querySelector("#useGradeZ");
+	const gradeZInput = formContent.querySelector("#gradeZ");
+	const lengthInput = formContent.querySelector("#length");
+	const collarZInput = formContent.querySelector("#collarZ");
+	const angleInput = formContent.querySelector("#angle");
+	const subdrillInput = formContent.querySelector("#subdrill");
+	const useLineBearingCheckbox = formContent.querySelector("#useLineBearing");
+	const bearingInput = formContent.querySelector("#bearing");
+
+	if (!useGradeZCheckbox || !gradeZInput || !lengthInput || !collarZInput || !angleInput || !subdrillInput || !useLineBearingCheckbox || !bearingInput) {
+		console.error("Missing required form elements for Holes Along Polyline dialog");
+		return;
+	}
+
+	// Step 9a) Function to update fields based on checkbox state
+	function updateFieldsBasedOnUseGradeZ() {
+		const useGradeZ = useGradeZCheckbox.checked;
+		
+		// Step 9b) Enable/disable fields
+		gradeZInput.disabled = !useGradeZ;
+		lengthInput.disabled = useGradeZ;
+
+		// Step 9c) Update opacity to match disabled state
+		if (useGradeZ) {
+			gradeZInput.style.opacity = "1";
+			lengthInput.style.opacity = "0.5";
+		} else {
+			gradeZInput.style.opacity = "0.5";
+			lengthInput.style.opacity = "1";
+		}
+
+		// Step 9d) Update calculations
+		if (useGradeZ) {
+			// Calculate length from grade
+			const collarZ = parseFloat(collarZInput.value) || 0;
+			const gradeZ = parseFloat(gradeZInput.value) || 0;
+			const subdrill = parseFloat(subdrillInput.value) || 0;
+			const angle = parseFloat(angleInput.value) || 0;
+			const angleRad = angle * (Math.PI / 180);
+
+			const calculatedLength = Math.abs((collarZ - gradeZ + subdrill) / Math.cos(angleRad));
+			lengthInput.value = calculatedLength.toFixed(2);
+		} else {
+			// Calculate grade from length
+			const collarZ = parseFloat(collarZInput.value) || 0;
+			const length = parseFloat(lengthInput.value) || 0;
+			const subdrill = parseFloat(subdrillInput.value) || 0;
+			const angle = parseFloat(angleInput.value) || 0;
+			const angleRad = angle * (Math.PI / 180);
+
+			const calculatedGradeZ = collarZ - (length - subdrill) * Math.cos(angleRad);
+			gradeZInput.value = calculatedGradeZ.toFixed(2);
+		}
+	}
+
+	// Step 9e) Function to handle line bearing checkbox
+	function updateBearingField() {
+		const useLineBearing = useLineBearingCheckbox.checked;
+		bearingInput.disabled = useLineBearing;
+		
+		// Step 9f) Update opacity to match disabled state
+		if (useLineBearing) {
+			bearingInput.style.opacity = "0.5";
+		} else {
+			bearingInput.style.opacity = "1";
+		}
+	}
+
+	// Step 9g) Add event listeners for changes
+	useGradeZCheckbox.addEventListener("change", updateFieldsBasedOnUseGradeZ);
+	gradeZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	lengthInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	collarZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	angleInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	subdrillInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	useLineBearingCheckbox.addEventListener("change", updateBearingField);
+
+	// Step 9h) Initial update
+	updateFieldsBasedOnUseGradeZ();
+	updateBearingField();
+}
+
 //=============================================================
 // EXPOSE GLOBALS
 //=============================================================
@@ -358,4 +662,6 @@ function processPatternGeneration(formData, mode, worldX, worldY) {
 window.showPatternDialog = showPatternDialog;
 window.setupPatternDialogEventListeners = setupPatternDialogEventListeners;
 window.processPatternGeneration = processPatternGeneration;
+window.showHolesAlongPolylinePopup = showHolesAlongPolylinePopup;
+window.setupHolesAlongPolylineEventListeners = setupHolesAlongPolylineEventListeners;
 
