@@ -572,27 +572,8 @@ function kadContextMenu(e) {
     const anyKADToolActive = window.addPointDraw.checked || window.addLineDraw.checked || window.addCircleDraw.checked || window.addPolyDraw.checked || window.addTextDraw.checked;
 
     if (anyKADToolActive) {
-        // Step 5a) Start a new object within the same tool (mimics Escape key behavior)
-        window.createNewEntity = true; // This will create a new entity name on next click
-        window.lastKADDrawPoint = null; // Reset preview line
-        window.entityName = null; // CRITICAL: Reset entityName so next click creates NEW entity
-        
-        // Step 5b) Clear current drawing entity state
-        if (typeof window.clearCurrentDrawingEntity === "function") {
-            window.clearCurrentDrawingEntity();
-        }
-
-        // Step 5c) Show status message
-        const toolName = window.isDrawingLine ? "line" : window.isDrawingPoly ? "polygon" : window.isDrawingCircle ? "circle" : window.isDrawingPoint ? "point" : "text";
-        window.updateStatusMessage("Entity finished. Click to start new " + toolName);
-
-        // Step 5d) Brief visual feedback
-        setTimeout(() => {
-            window.updateStatusMessage("");
-        }, 2000);
-
-        // Step 5e) Redraw to clear any preview lines
-        window.drawData(window.allBlastHoles, window.selectedHole);
+        // Step 5a) Use endKadTools() to properly handle ending entities and tools (like Escape key)
+        window.endKadTools();
     }
 }
 

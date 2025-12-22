@@ -522,6 +522,7 @@ function exposeGlobalsToWindow() {
 	window.setSelectionFromTreeView = setSelectionFromTreeView; // CRITICAL: For TreeView to update selection
 	window.openColorPickerForElement = openColorPickerForElement; // CRITICAL: For TreeView color swatch clicks
 	window.setKADEntityVisibility = setKADEntityVisibility;
+	window.endKadTools = endKadTools; // CRITICAL: Expose for ContextMenuManager right-click handling
 	window.setSurfaceVisibility = setSurfaceVisibility;
 	window.showSurfaceLegend = showSurfaceLegend;
 	window.deleteSurfaceFromDB = deleteSurfaceFromDB;
