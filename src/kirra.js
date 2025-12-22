@@ -7204,7 +7204,7 @@ function validateUniqueHoleID(entityName, holeID, excludeHole = null) {
 
 	if (existing) {
 		const newID = generateUniqueHoleID(entityName, holeIDStr);
-		console.warn("?? Duplicate hole ID detected:", entityName + ":" + holeIDStr, "? Auto-assigned:", newID);
+		console.warn("⚠️ Duplicate hole ID detected:", entityName + ":" + holeIDStr, "? Auto-assigned:", newID);
 		return newID;
 	}
 
@@ -24258,8 +24258,11 @@ window.onload = function () {
 				updateStatusMessage("Pattern tool reset - select polygon to start");
 			} else if (isHolesAlongLineActive) {
 				lineStartPoint = null;
+				window.lineStartPoint = lineStartPoint; // Keep window in sync
 				lineEndPoint = null;
+				window.lineEndPoint = lineEndPoint; // Keep window in sync
 				holesLineStep = 0;
+				window.holesLineStep = holesLineStep; // Keep window in sync
 				updateStatusMessage("Holes along line tool reset\nClick to set start point");
 			} else if (isHolesAlongPolyLineActive) {
 				selectedPolyline = null;
@@ -31164,6 +31167,8 @@ function handleHolesAlongPolyLineClick(event) {
 }
 // Expose handleHolesAlongPolyLineClick globally for PatternGenerationDialogs.js
 window.handleHolesAlongPolyLineClick = handleHolesAlongPolyLineClick;
+// Expose handleHolesAlongLineClick globally for PatternGenerationDialogs.js
+window.handleHolesAlongLineClick = handleHolesAlongLineClick;
 //---------------HOLES ALONG LINE TOOL---------------//
 holesAlongLineTool.addEventListener("change", function () {
 	if (this.checked) {
@@ -31176,8 +31181,11 @@ holesAlongLineTool.addEventListener("change", function () {
 		endKadTools();
 		isHolesAlongLineActive = true;
 		holesLineStep = 0;
+		window.holesLineStep = holesLineStep; // Keep window in sync
 		lineStartPoint = null;
+		window.lineStartPoint = lineStartPoint; // Keep window in sync
 		lineEndPoint = null;
+		window.lineEndPoint = lineEndPoint; // Keep window in sync
 
 		canvas.addEventListener("click", handleHolesAlongLineClick);
 		canvas.addEventListener("touchstart", handleHolesAlongLineClick);
@@ -31187,10 +31195,13 @@ holesAlongLineTool.addEventListener("change", function () {
 		resetFloatingToolbarButtons("none");
 		isHolesAlongLineActive = false;
 		holesLineStep = 0;
+		window.holesLineStep = holesLineStep; // Keep window in sync
 
 		// Clear line points to remove visual feedback
 		lineStartPoint = null;
+		window.lineStartPoint = lineStartPoint; // Keep window in sync
 		lineEndPoint = null;
+		window.lineEndPoint = lineEndPoint; // Keep window in sync
 
 		canvas.removeEventListener("click", handleHolesAlongLineClick);
 		canvas.removeEventListener("touchstart", handleHolesAlongLineClick);
@@ -31243,7 +31254,9 @@ function handleHolesAlongLineClick(event) {
 				x: worldX,
 				y: worldY,
 			};
+			window.lineStartPoint = lineStartPoint; // Keep window in sync
 			holesLineStep = 1;
+			window.holesLineStep = holesLineStep; // Keep window in sync
 			updateStatusMessage("Step 2: Click to select line end point");
 			break;
 
@@ -31252,7 +31265,8 @@ function handleHolesAlongLineClick(event) {
 				x: worldX,
 				y: worldY,
 			};
-			showHolesAlongLinePopup();
+			window.lineEndPoint = lineEndPoint; // Keep window in sync
+			window.showHolesAlongLinePopup();
 			break;
 	}
 
@@ -31756,241 +31770,9 @@ function generatePatternInPolygon(patternSettings) {
 // Expose generatePatternInPolygon globally for PatternGenerationDialogs.js
 window.generatePatternInPolygon = generatePatternInPolygon;
 
-//! REDO with the FloatingDialog class
+// Step 1) Converted to FloatingDialog class
 // Function to show holes along line popup
-function showHolesAlongLinePopup() {
-	let blastNameValue = "LinePattern_" + Date.now();
-	// Retrieve the last entered values from local storage
-	let savedHolesAlongLineSettings = JSON.parse(localStorage.getItem("savedHolesAlongLineSettings")) || {};
-	let lastValues = {
-		blastName: savedHolesAlongLineSettings.blastName || blastNameValue,
-		spacing: savedHolesAlongLineSettings.spacing || 3.0,
-		collarZ: savedHolesAlongLineSettings.collarZ || 0,
-		gradeZ: savedHolesAlongLineSettings.gradeZ || -10,
-		subdrill: savedHolesAlongLineSettings.subdrill || 1,
-		angle: savedHolesAlongLineSettings.angle || 0,
-		bearing: savedHolesAlongLineSettings.bearing || 180,
-		diameter: savedHolesAlongLineSettings.diameter || 115,
-		type: savedHolesAlongLineSettings.type || "Production",
-		startNumber: savedHolesAlongLineSettings.startNumber || 1,
-		nameTypeIsNumerical: savedHolesAlongLineSettings.nameTypeIsNumerical !== undefined ? savedHolesAlongLineSettings.nameTypeIsNumerical : true,
-		useGradeZ: savedHolesAlongLineSettings.useGradeZ !== undefined ? savedHolesAlongLineSettings.useGradeZ : true,
-		useLineBearing: savedHolesAlongLineSettings.useLineBearing !== undefined ? savedHolesAlongLineSettings.useLineBearing : true,
-		length: savedHolesAlongLineSettings.length || 10,
-	};
-
-	// Calculate default length if using grade Z
-	const defaultLength = lastValues.useGradeZ ? Math.abs((lastValues.collarZ - lastValues.gradeZ + lastValues.subdrill) / Math.cos(lastValues.angle * (Math.PI / 180))) : lastValues.length;
-
-	// Calculate default grade if using length
-	const defaultGradeZ = !lastValues.useGradeZ ? lastValues.collarZ - (lastValues.length - lastValues.subdrill) * Math.cos(lastValues.angle * (Math.PI / 180)) : lastValues.gradeZ;
-
-	// Show loading spinner while the popup is created
-	Swal.showLoading();
-
-	// Update the bearing calculation in showHolesAlongLinePopup:
-	// Calculate line bearing for display
-	let lineBearing = 0;
-	if (lineStartPoint && lineEndPoint) {
-		const dx = lineEndPoint.x - lineStartPoint.x;
-		const dy = lineEndPoint.y - lineStartPoint.y;
-		// In world coordinates: North = 0?, East = 90?, South = 180?, West = 270?
-		// Since +Y is North in world coordinates, we need to use atan2(dx, dy) not atan2(dy, dx)
-		lineBearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
-	}
-	const perpBearing = (lineBearing + 90) % 360;
-
-	//! REDO with the FloatingDialog class
-	Swal.fire({
-		title: "Generate Holes Along Line",
-		showCancelButton: true,
-		confirmButtonText: "OK",
-		cancelButtonText: "Cancel",
-		html: `
-        <div class="button-container-2col">
-          <label class="labelWhite18" for="blastName">Blast Name</label>
-          <input type="text3" id="blastName" name="blastName" placeholder="Blast Name" value="${lastValues.blastName}"/>
-          <label class="labelWhite18" for="nameTypeIsNumerical">Numerical Names</label>
-          <input type="checkbox" id="nameTypeIsNumerical" name="nameTypeIsNumerical" ${lastValues.nameTypeIsNumerical ? "checked" : ""}>
-          <label class="labelWhite18" for="startNumber">Starting Hole Number</label>
-          <input type="number3" id="startNumber" name="startNumber" placeholder="Start Number" value="${lastValues.startNumber}" step="1" min="1" max="9999" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="spacing">Spacing (m)</label>
-          <input type="number3" id="spacing" name="spacing" placeholder="Spacing" value="${lastValues.spacing}" step="0.1" min="0.1" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="collarZ">Collar Elevation (m)</label>
-          <input type="number3" id="collarZ" name="collarZ" placeholder="Collar Z" value="${lastValues.collarZ}" step="0.1" min="-1000" max="5000" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="useGradeZ">Use Grade Z</label>
-          <input type="checkbox" id="useGradeZ" name="useGradeZ" ${lastValues.useGradeZ ? "checked" : ""}>
-          <label class="labelWhite18" for="gradeZ">Grade Elevation (m)</label>
-          <input type="number3" id="gradeZ" name="gradeZ" placeholder="Grade Z" value="${defaultGradeZ}" step="0.1" min="-1000" max="5000" inputmode="decimal" pattern="[0-9]*" ${!lastValues.useGradeZ ? "disabled" : ""}>
-          <label class="labelWhite18" for="length">Length (m)</label>
-          <input type="number3" id="length" name="length" placeholder="Length" value="${defaultLength}" step="0.1" min="0.1" max="1000" inputmode="decimal" pattern="[0-9]*" ${lastValues.useGradeZ ? "disabled" : ""}>
-          <label class="labelWhite18" for="subdrill">Subdrill (m)</label>
-          <input type="number3" id="subdrill" name="subdrill" placeholder="Subdrill" value="${lastValues.subdrill}" step="0.1" min="-50" max="50" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="angle">Hole Angle (? from vertical)</label>
-          <input type="number3" id="angle" name="angle" placeholder="Angle" value="${lastValues.angle}" step="1" min="0" max="60" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="useLineBearing">Bearings are 90? to Row</label>
-		<input type="checkbox" id="useLineBearing" name="useLineBearing" ${lastValues.useLineBearing ? "checked" : ""}>
-		<label class="labelWhite18" for="bearing">Hole Bearing (?)</label>
-		<input type="number3" id="bearing" name="bearing" placeholder="Bearing" value="${lastValues.bearing}" step="0.1" min="0" max="359.999" inputmode="decimal" pattern="[0-9]*" ${lastValues.useLineBearing ? "disabled" : ""}>
-		<div class="labelWhite12" style="text-align: center;">Row Bearing: ${lineBearing.toFixed(1)}?</div>
-		<div class="labelWhite12" style="text-align: right;">Directions: N=0?, E=90?, S=180?, W=270?</div>
-		<div class="labelWhite12" style="text-align: center;">Perpendicular Bearing: ${perpBearing.toFixed(1)}?</div>
-		<div></div>
-          <label class="labelWhite18" for="diameter">Diameter (mm)</label>
-          <input type="number3" id="diameter" name="diameter" placeholder="Diameter" value="${lastValues.diameter}" step="1" min="1" max="1000" inputmode="decimal" pattern="[0-9]*"/>
-          <label class="labelWhite18" for="type">Hole Type</label>
-          <input type="text3" id="type" name="type" placeholder="Type" value="${lastValues.type}"/>
-        </div>
-      `,
-		customClass: {
-			container: "custom-popup-container",
-			popup: "custom-popup-container",
-			title: "swal2-title",
-			content: "swal2-content",
-			confirmButton: "confirm",
-			cancelButton: "cancel",
-		},
-		didOpen: () => {
-			//! REDO with the FloatingDialog class
-			// Add event listeners after the popup is opened
-			const useGradeZCheckbox = document.getElementById("useGradeZ");
-			const gradeZInput = document.getElementById("gradeZ");
-			const lengthInput = document.getElementById("length");
-			const collarZInput = document.getElementById("collarZ");
-			const angleInput = document.getElementById("angle");
-			const subdrillInput = document.getElementById("subdrill");
-			const useLineBearingCheckbox = document.getElementById("useLineBearing");
-			const bearingInput = document.getElementById("bearing");
-
-			// Function to update fields based on checkbox state
-			function updateFieldsBasedOnUseGradeZ() {
-				const useGradeZ = useGradeZCheckbox.checked;
-
-				// Enable/disable fields
-				gradeZInput.disabled = !useGradeZ;
-				lengthInput.disabled = useGradeZ;
-
-				// Update calculations
-				if (useGradeZ) {
-					// Calculate length from grade
-					const collarZ = parseFloat(collarZInput.value) || 0;
-					const gradeZ = parseFloat(gradeZInput.value) || 0;
-					const subdrill = parseFloat(subdrillInput.value) || 0;
-					const angle = parseFloat(angleInput.value) || 0;
-					const angleRad = angle * (Math.PI / 180);
-
-					const calculatedLength = Math.abs((collarZ - gradeZ + subdrill) / Math.cos(angleRad));
-					lengthInput.value = calculatedLength.toFixed(2);
-				} else {
-					// Calculate grade from length
-					const collarZ = parseFloat(collarZInput.value) || 0;
-					const length = parseFloat(lengthInput.value) || 0;
-					const subdrill = parseFloat(subdrillInput.value) || 0;
-					const angle = parseFloat(angleInput.value) || 0;
-					const angleRad = angle * (Math.PI / 180);
-
-					const calculatedGradeZ = collarZ - (length - subdrill) * Math.cos(angleRad);
-					gradeZInput.value = calculatedGradeZ.toFixed(2);
-				}
-			}
-
-			// Function to handle line bearing checkbox
-			function updateBearingField() {
-				bearingInput.disabled = useLineBearingCheckbox.checked;
-			}
-
-			// Add event listeners for changes
-			useGradeZCheckbox.addEventListener("change", updateFieldsBasedOnUseGradeZ);
-			gradeZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			lengthInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			collarZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			angleInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			subdrillInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
-			useLineBearingCheckbox.addEventListener("change", updateBearingField);
-
-			// Initial update
-			updateFieldsBasedOnUseGradeZ();
-			updateBearingField();
-
-			// Hide the loading spinner when the popup is ready
-			Swal.hideLoading();
-		},
-	})
-		.then((result) => {
-			//! REDO with the FloatingDialog class
-			if (result.isConfirmed) {
-				// Retrieve values from the input fields
-				const blastName = document.getElementById("blastName").value;
-				const nameTypeIsNumerical = document.getElementById("nameTypeIsNumerical").checked;
-				const useGradeZ = document.getElementById("useGradeZ").checked;
-				const useLineBearing = document.getElementById("useLineBearing").checked;
-				const startNumber = parseInt(document.getElementById("startNumber").value);
-				const spacing = parseFloat(document.getElementById("spacing").value);
-				const collarZ = parseFloat(document.getElementById("collarZ").value);
-				const gradeZ = parseFloat(document.getElementById("gradeZ").value);
-				const length = parseFloat(document.getElementById("length").value);
-				const subdrill = parseFloat(document.getElementById("subdrill").value);
-				const angle = parseFloat(document.getElementById("angle").value);
-				const bearing = parseFloat(document.getElementById("bearing").value);
-				const diameter = parseFloat(document.getElementById("diameter").value);
-				const type = document.getElementById("type").value;
-
-				// Validation checks
-				if (!blastName || blastName.trim() === "") {
-					showModalMessage("Invalid Blast Name", "Please enter a Blast Name.", "warning");
-					return;
-				}
-
-				if (isNaN(spacing) || spacing <= 0) {
-					showModalMessage("Invalid Spacing", "Please enter a positive spacing value.", "warning");
-					return;
-				}
-
-				// Save values to localStorage
-				const newValues = {
-					blastName: blastName,
-					nameTypeIsNumerical: nameTypeIsNumerical,
-					startNumber: startNumber,
-					spacing: spacing,
-					collarZ: collarZ,
-					gradeZ: gradeZ,
-					length: length,
-					subdrill: subdrill,
-					angle: angle,
-					bearing: bearing,
-					diameter: diameter,
-					type: type,
-					useGradeZ: useGradeZ,
-					useLineBearing: useLineBearing,
-				};
-				localStorage.setItem("savedHolesAlongLineSettings", JSON.stringify(newValues));
-
-				// Generate the holes along the line
-				generateHolesAlongLine({
-					blastName: blastName,
-					nameTypeIsNumerical: nameTypeIsNumerical,
-					useGradeZ: useGradeZ,
-					useLineBearing: useLineBearing,
-					startNumber: startNumber,
-					spacing: spacing,
-					collarZ: collarZ,
-					gradeZ: gradeZ,
-					length: length,
-					subdrill: subdrill,
-					angle: angle,
-					bearing: bearing - 90,
-					diameter: diameter,
-					type: type,
-				});
-			}
-		})
-		.finally(() => {
-			// Reset tool
-			debouncedUpdateTreeView(); // Use debounced version
-			holesAlongLineTool.checked = false;
-			holesAlongLineTool.dispatchEvent(new Event("change"));
-		});
-}
+// Moved to src/dialog/popups/generic/PatternGenerationDialogs.js
 // Update the generateHolesAlongLine function to correctly apply the bearing:
 // Update the generateHolesAlongLine function to use rowID/posID:
 function generateHolesAlongLine(params) {
@@ -32094,6 +31876,13 @@ function generateHolesAlongLine(params) {
 		showModalMessage("Line Pattern Generated", `Successfully generated ${holesAdded} holes along the line (Row ${rowID}).`, "success");
 	}
 }
+// Expose generateHolesAlongLine globally for PatternGenerationDialogs.js
+window.generateHolesAlongLine = generateHolesAlongLine;
+// Expose global variables for PatternGenerationDialogs.js
+window.holesAlongLineTool = holesAlongLineTool;
+window.lineStartPoint = lineStartPoint;
+window.lineEndPoint = lineEndPoint;
+window.holesLineStep = holesLineStep;
 /**
  * Finds the KAD entity (line or poly) closest to a world coordinate click.
  * This function unifies the logic for selecting both open and closed polylines.

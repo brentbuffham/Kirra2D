@@ -655,6 +655,342 @@ function setupHolesAlongPolylineEventListeners(formContent) {
 	updateBearingField();
 }
 
+// Step 10) Holes along line dialog function
+function showHolesAlongLinePopup() {
+	// Step 10a) Generate default blast name with timestamp
+	let blastNameValue = "LinePattern_" + Date.now();
+	
+	// Step 10b) Retrieve the last entered values from local storage
+	let savedHolesAlongLineSettings = JSON.parse(localStorage.getItem("savedHolesAlongLineSettings")) || {};
+	
+	// Step 10c) Helper to convert string "true"/"false" to boolean
+	const toBool = (value, defaultValue = false) => {
+		if (value === undefined || value === null) return defaultValue;
+		if (typeof value === "boolean") return value;
+		if (typeof value === "string") return value === "true";
+		return defaultValue;
+	};
+	
+	let lastValues = {
+		blastName: savedHolesAlongLineSettings.blastName || blastNameValue,
+		spacing: savedHolesAlongLineSettings.spacing || 3.0,
+		collarZ: savedHolesAlongLineSettings.collarZ || 0,
+		gradeZ: savedHolesAlongLineSettings.gradeZ || -10,
+		subdrill: savedHolesAlongLineSettings.subdrill || 1,
+		angle: savedHolesAlongLineSettings.angle || 0,
+		bearing: savedHolesAlongLineSettings.bearing || 180,
+		diameter: savedHolesAlongLineSettings.diameter || 115,
+		type: savedHolesAlongLineSettings.type || "Production",
+		startNumber: savedHolesAlongLineSettings.startNumber || 1,
+		nameTypeIsNumerical: savedHolesAlongLineSettings.nameTypeIsNumerical !== undefined ? savedHolesAlongLineSettings.nameTypeIsNumerical : true,
+		useGradeZ: savedHolesAlongLineSettings.useGradeZ !== undefined ? savedHolesAlongLineSettings.useGradeZ : true,
+		useLineBearing: savedHolesAlongLineSettings.useLineBearing !== undefined ? savedHolesAlongLineSettings.useLineBearing : true,
+		length: savedHolesAlongLineSettings.length || 10,
+	};
+
+	// Step 10d) Calculate default length if using grade Z
+	const defaultLength = lastValues.useGradeZ ? Math.abs((lastValues.collarZ - lastValues.gradeZ + lastValues.subdrill) / Math.cos(lastValues.angle * (Math.PI / 180))) : lastValues.length;
+
+	// Step 10e) Calculate default grade if using length
+	const defaultGradeZ = !lastValues.useGradeZ ? lastValues.collarZ - (lastValues.length - lastValues.subdrill) * Math.cos(lastValues.angle * (Math.PI / 180)) : lastValues.gradeZ;
+
+	// Step 10f) Ensure values are valid numbers for toFixed
+	const gradeZValue = (typeof defaultGradeZ === "number" && !isNaN(defaultGradeZ)) ? defaultGradeZ.toFixed(2) : defaultGradeZ;
+	const lengthValue = (typeof defaultLength === "number" && !isNaN(defaultLength)) ? defaultLength.toFixed(2) : defaultLength;
+
+	// Step 10g) Calculate line bearing for display
+	let lineBearing = 0;
+	if (window.lineStartPoint && window.lineEndPoint) {
+		const dx = window.lineEndPoint.x - window.lineStartPoint.x;
+		const dy = window.lineEndPoint.y - window.lineStartPoint.y;
+		// In world coordinates: North = 0°, East = 90°, South = 180°, West = 270°
+		// Since +Y is North in world coordinates, we need to use atan2(dx, dy) not atan2(dy, dx)
+		lineBearing = ((Math.atan2(dx, dy) * 180) / Math.PI + 360) % 360;
+	}
+	const perpBearing = (lineBearing + 90) % 360;
+
+	// Step 10h) Build form fields array
+	const fields = [
+		{ label: "Blast Name", name: "blastName", type: "text", value: lastValues.blastName, placeholder: "Blast Name" },
+		{ label: "Numerical Names", name: "nameTypeIsNumerical", type: "checkbox", checked: lastValues.nameTypeIsNumerical },
+		{ label: "Starting Hole Number", name: "startNumber", type: "number", value: lastValues.startNumber, step: 1, min: 1, max: 9999 },
+		{ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1, min: 0.1, max: 50 },
+		{ label: "Collar Elevation (m)", name: "collarZ", type: "number", value: lastValues.collarZ, step: 0.1, min: -1000, max: 5000 },
+		{ label: "Use Grade Z", name: "useGradeZ", type: "checkbox", checked: lastValues.useGradeZ },
+		{ label: "Grade Elevation (m)", name: "gradeZ", type: "number", value: gradeZValue, step: 0.1, min: -1000, max: 5000, disabled: !lastValues.useGradeZ },
+		{ label: "Length (m)", name: "length", type: "number", value: lengthValue, step: 0.1, min: 0.1, max: 1000, disabled: lastValues.useGradeZ },
+		{ label: "Subdrill (m)", name: "subdrill", type: "number", value: lastValues.subdrill, step: 0.1, min: -50, max: 50 },
+		{ label: "Hole Angle (° from vertical)", name: "angle", type: "number", value: lastValues.angle, step: 1, min: 0, max: 60 },
+		{ label: "Bearings are 90° to Row", name: "useLineBearing", type: "checkbox", checked: lastValues.useLineBearing },
+		{ label: "Hole Bearing (°)", name: "bearing", type: "number", value: lastValues.bearing, step: 0.1, min: 0, max: 359.999, disabled: lastValues.useLineBearing },
+		{ label: "Diameter (mm)", name: "diameter", type: "number", value: lastValues.diameter, step: 1, min: 1, max: 1000 },
+		{ label: "Hole Type", name: "type", type: "text", value: lastValues.type, placeholder: "Type" }
+	];
+
+	// Step 10i) Create form content using createEnhancedFormContent
+	const formContent = window.createEnhancedFormContent(fields, false, false);
+
+	// Step 10j) Add info notes about line bearing and directions
+	const bearingInfo = document.createElement("div");
+	bearingInfo.style.gridColumn = "1 / -1";
+	bearingInfo.style.fontSize = "10px";
+	bearingInfo.style.color = "#888";
+	bearingInfo.style.marginTop = "5px";
+	bearingInfo.style.textAlign = "center";
+	bearingInfo.style.display = "flex";
+	bearingInfo.style.flexDirection = "column";
+	bearingInfo.style.gap = "2px";
+	
+	const rowBearingDiv = document.createElement("div");
+	rowBearingDiv.textContent = "Row Bearing: " + lineBearing.toFixed(1) + "°";
+	bearingInfo.appendChild(rowBearingDiv);
+	
+	const perpBearingDiv = document.createElement("div");
+	perpBearingDiv.textContent = "Perpendicular Bearing: " + perpBearing.toFixed(1) + "°";
+	bearingInfo.appendChild(perpBearingDiv);
+	
+	const directionsDiv = document.createElement("div");
+	directionsDiv.textContent = "Directions: N=0°, E=90°, S=180°, W=270°";
+	bearingInfo.appendChild(directionsDiv);
+	
+	formContent.appendChild(bearingInfo);
+
+	// Step 10k) CRITICAL: Remove canvas event listeners to prevent clicks while dialog is open
+	const originalClickHandler = window.handleHolesAlongLineClick;
+	const originalTouchHandler = window.handleHolesAlongLineClick;
+	if (window.canvas) {
+		window.canvas.removeEventListener("click", originalClickHandler);
+		window.canvas.removeEventListener("touchstart", originalTouchHandler);
+	}
+
+	// Step 10l) Create FloatingDialog
+	const dialog = new window.FloatingDialog({
+		title: "Generate Holes Along Line",
+		content: formContent,
+		layoutType: "default",
+		width: 350,
+		height: 520,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "OK",
+		cancelText: "Cancel",
+		draggable: true,
+		resizable: true,
+		closeOnOutsideClick: false, // Modal behavior - prevent clicks outside
+		onConfirm: () => {
+			// Step 10m) Retrieve values from the input fields
+			const formData = window.getFormData(formContent);
+			
+			// Step 10n) Convert checkbox values to boolean
+			const params = {
+				blastName: formData.blastName,
+				nameTypeIsNumerical: toBool(formData.nameTypeIsNumerical, true),
+				useGradeZ: toBool(formData.useGradeZ, true),
+				useLineBearing: toBool(formData.useLineBearing, true),
+				startNumber: parseInt(formData.startNumber) || 1,
+				spacing: parseFloat(formData.spacing) || 3.0,
+				collarZ: parseFloat(formData.collarZ) || 0,
+				gradeZ: parseFloat(formData.gradeZ) || -10,
+				length: parseFloat(formData.length) || 10,
+				subdrill: parseFloat(formData.subdrill) || 1,
+				angle: parseFloat(formData.angle) || 0,
+				bearing: parseFloat(formData.bearing) || 180,
+				diameter: parseFloat(formData.diameter) || 115,
+				type: formData.type || "Production",
+			};
+
+			// Step 10o) Validation checks
+			if (!params.blastName || params.blastName.trim() === "") {
+				window.showModalMessage("Invalid Blast Name", "Please enter a Blast Name.", "warning");
+				// Restore canvas event listeners before returning
+				if (window.canvas) {
+					window.canvas.addEventListener("click", originalClickHandler);
+					window.canvas.addEventListener("touchstart", originalTouchHandler);
+				}
+				return;
+			}
+
+			if (isNaN(params.spacing) || params.spacing <= 0) {
+				window.showModalMessage("Invalid Spacing", "Please enter a positive spacing value.", "warning");
+				// Restore canvas event listeners before returning
+				if (window.canvas) {
+					window.canvas.addEventListener("click", originalClickHandler);
+					window.canvas.addEventListener("touchstart", originalTouchHandler);
+				}
+				return;
+			}
+
+			// Step 10p) Save values to localStorage
+			localStorage.setItem("savedHolesAlongLineSettings", JSON.stringify(params));
+
+			// Step 10q) Generate the holes along the line
+			// Note: bearing adjustment (-90) is handled in generateHolesAlongLine
+			if (typeof window.generateHolesAlongLine === "function") {
+				window.generateHolesAlongLine({
+					blastName: params.blastName,
+					nameTypeIsNumerical: params.nameTypeIsNumerical,
+					useGradeZ: params.useGradeZ,
+					useLineBearing: params.useLineBearing,
+					startNumber: params.startNumber,
+					spacing: params.spacing,
+					collarZ: params.collarZ,
+					gradeZ: params.gradeZ,
+					length: params.length,
+					subdrill: params.subdrill,
+					angle: params.angle,
+					bearing: params.bearing - 90,
+					diameter: params.diameter,
+					type: params.type,
+				});
+			} else {
+				console.error("❌ generateHolesAlongLine function not found on window object");
+				window.showModalMessage("Error", "Could not generate holes - function not available.", "error");
+			}
+
+			// Step 10r) Restore canvas event listeners
+			if (window.canvas) {
+				window.canvas.addEventListener("click", originalClickHandler);
+				window.canvas.addEventListener("touchstart", originalTouchHandler);
+			}
+
+			// Step 10s) Reset tool state
+			if (typeof window.debouncedUpdateTreeView === "function") {
+				window.debouncedUpdateTreeView();
+			}
+			if (window.holesAlongLineTool) {
+				window.holesAlongLineTool.checked = false;
+				window.holesAlongLineTool.dispatchEvent(new Event("change"));
+			}
+			
+			dialog.close();
+		},
+		onCancel: () => {
+			// Step 10t) Handle cancel - restore event listeners and reset tool state
+			console.log("Holes along line dialog cancelled - resetting tool states");
+			
+			// Step 10u) Restore canvas event listeners
+			if (window.canvas) {
+				window.canvas.addEventListener("click", originalClickHandler);
+				window.canvas.addEventListener("touchstart", originalTouchHandler);
+			}
+
+			// Step 10v) Clear selection states
+			if (typeof window.lineStartPoint !== "undefined") {
+				window.lineStartPoint = null;
+			}
+			if (typeof window.lineEndPoint !== "undefined") {
+				window.lineEndPoint = null;
+			}
+			if (typeof window.holesLineStep !== "undefined") {
+				window.holesLineStep = 0;
+			}
+
+			// Step 10w) Redraw to clear any visual indicators
+			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
+
+			// Step 10x) Reset tool
+			if (window.holesAlongLineTool) {
+				window.holesAlongLineTool.checked = false;
+				window.holesAlongLineTool.dispatchEvent(new Event("change"));
+			}
+			
+			dialog.close();
+		}
+	});
+
+	// Step 10y) Show dialog
+	dialog.show();
+
+	// Step 10z) Add event listeners for dynamic field updates (after show)
+	setupHolesAlongLineEventListeners(formContent);
+}
+
+// Step 11) Create event listener setup function for dynamic field updates
+function setupHolesAlongLineEventListeners(formContent) {
+	const useGradeZCheckbox = formContent.querySelector("#useGradeZ");
+	const gradeZInput = formContent.querySelector("#gradeZ");
+	const lengthInput = formContent.querySelector("#length");
+	const collarZInput = formContent.querySelector("#collarZ");
+	const angleInput = formContent.querySelector("#angle");
+	const subdrillInput = formContent.querySelector("#subdrill");
+	const useLineBearingCheckbox = formContent.querySelector("#useLineBearing");
+	const bearingInput = formContent.querySelector("#bearing");
+
+	if (!useGradeZCheckbox || !gradeZInput || !lengthInput || !collarZInput || !angleInput || !subdrillInput || !useLineBearingCheckbox || !bearingInput) {
+		console.error("Missing required form elements for Holes Along Line dialog");
+		return;
+	}
+
+	// Step 11a) Function to update fields based on checkbox state
+	function updateFieldsBasedOnUseGradeZ() {
+		const useGradeZ = useGradeZCheckbox.checked;
+		
+		// Step 11b) Enable/disable fields
+		gradeZInput.disabled = !useGradeZ;
+		lengthInput.disabled = useGradeZ;
+
+		// Step 11c) Update opacity to match disabled state
+		if (useGradeZ) {
+			gradeZInput.style.opacity = "1";
+			lengthInput.style.opacity = "0.5";
+		} else {
+			gradeZInput.style.opacity = "0.5";
+			lengthInput.style.opacity = "1";
+		}
+
+		// Step 11d) Update calculations
+		if (useGradeZ) {
+			// Calculate length from grade
+			const collarZ = parseFloat(collarZInput.value) || 0;
+			const gradeZ = parseFloat(gradeZInput.value) || 0;
+			const subdrill = parseFloat(subdrillInput.value) || 0;
+			const angle = parseFloat(angleInput.value) || 0;
+			const angleRad = angle * (Math.PI / 180);
+
+			const calculatedLength = Math.abs((collarZ - gradeZ + subdrill) / Math.cos(angleRad));
+			lengthInput.value = calculatedLength.toFixed(2);
+		} else {
+			// Calculate grade from length
+			const collarZ = parseFloat(collarZInput.value) || 0;
+			const length = parseFloat(lengthInput.value) || 0;
+			const subdrill = parseFloat(subdrillInput.value) || 0;
+			const angle = parseFloat(angleInput.value) || 0;
+			const angleRad = angle * (Math.PI / 180);
+
+			const calculatedGradeZ = collarZ - (length - subdrill) * Math.cos(angleRad);
+			gradeZInput.value = calculatedGradeZ.toFixed(2);
+		}
+	}
+
+	// Step 11e) Function to handle line bearing checkbox
+	function updateBearingField() {
+		const useLineBearing = useLineBearingCheckbox.checked;
+		bearingInput.disabled = useLineBearing;
+		
+		// Step 11f) Update opacity to match disabled state
+		if (useLineBearing) {
+			bearingInput.style.opacity = "0.5";
+		} else {
+			bearingInput.style.opacity = "1";
+		}
+	}
+
+	// Step 11g) Add event listeners for changes
+	useGradeZCheckbox.addEventListener("change", updateFieldsBasedOnUseGradeZ);
+	gradeZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	lengthInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	collarZInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	angleInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	subdrillInput.addEventListener("input", updateFieldsBasedOnUseGradeZ);
+	useLineBearingCheckbox.addEventListener("change", updateBearingField);
+
+	// Step 11h) Initial update
+	updateFieldsBasedOnUseGradeZ();
+	updateBearingField();
+}
+
 //=============================================================
 // EXPOSE GLOBALS
 //=============================================================
@@ -664,4 +1000,6 @@ window.setupPatternDialogEventListeners = setupPatternDialogEventListeners;
 window.processPatternGeneration = processPatternGeneration;
 window.showHolesAlongPolylinePopup = showHolesAlongPolylinePopup;
 window.setupHolesAlongPolylineEventListeners = setupHolesAlongPolylineEventListeners;
+window.showHolesAlongLinePopup = showHolesAlongLinePopup;
+window.setupHolesAlongLineEventListeners = setupHolesAlongLineEventListeners;
 
