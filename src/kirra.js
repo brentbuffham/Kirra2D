@@ -18305,44 +18305,207 @@ function checkHoleProximity(newX, newY, newDiameter, existingHoles) {
 	return proximityHoles;
 }
 
-// Function to show proximity warning and get user decision
-//TODO use the FloatingDialog class to create this popup
+// Step 1) Function to show proximity warning and get user decision
+// Converted to FloatingDialog class - returns Promise matching Swal result format
 function showProximityWarning(proximityHoles, newHoleInfo) {
-	const holeList = proximityHoles.map((ph) => `? ${ph.hole.entityName}:${ph.hole.holeID} (${ph.distance.toFixed(3)}m apart, need ${ph.requiredDistance.toFixed(3)}m)`).join("\n");
+	// Step 1a) Build hole list for display
+	const holeList = proximityHoles.map((ph) => "• " + ph.hole.entityName + ":" + ph.hole.holeID + " (" + ph.distance.toFixed(3) + "m apart, need " + ph.requiredDistance.toFixed(3) + "m)").join("\n");
 
-	return Swal.fire({
-		title: "Hole Proximity Warning",
-		html: `
-			<div style="text-align: left; max-height: 300px; overflow-y: auto;">
-				<p><strong>New hole would be too close to existing holes:</strong></p>
-				<p>New hole: ${newHoleInfo.entityName}:${newHoleInfo.holeID} at (${newHoleInfo.x.toFixed(3)}, ${newHoleInfo.y.toFixed(3)})</p>
-				<br>
-				<p><strong>Conflicting holes:</strong></p>
-				<pre style="font-size: 12px; color: #ff6b6b;">${holeList}</pre>
-				<br>
-				<p><strong>Options:</strong></p>
-				<ul style="text-align: left;">
-					<li><strong>Continue:</strong> Add this hole and continue adding others</li>
-					<li><strong>Skip:</strong> Skip this hole and continue with pattern</li>
-					<li><strong>Cancel:</strong> Cancel the entire operation</li>
-				</ul>
-			</div>
-		`,
-		icon: "warning",
-		showCancelButton: true,
-		showDenyButton: true,
-		confirmButtonText: "Continue",
-		denyButtonText: "Skip",
-		cancelButtonText: "Cancel",
-		customClass: {
-			container: "custom-popup-container",
-			title: "swal2-title",
-			confirmButton: "confirm",
-			denyButton: "deny",
-			cancelButton: "cancel",
-			content: "swal2-content",
-			htmlContainer: "swal2-html-container",
-		},
+	// Step 1b) Create content div with proper styling
+	const contentDiv = document.createElement("div");
+	contentDiv.style.textAlign = "left";
+	contentDiv.style.maxHeight = "300px";
+	contentDiv.style.overflowY = "auto";
+	contentDiv.style.padding = "10px";
+
+	// Step 1c) Detect dark mode for text color
+	const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
+	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
+
+	// Step 1d) Create warning header
+	const warningHeader = document.createElement("p");
+	warningHeader.style.fontWeight = "bold";
+	warningHeader.style.marginBottom = "10px";
+	warningHeader.style.color = textColor;
+	warningHeader.textContent = "New hole would be too close to existing holes:";
+	contentDiv.appendChild(warningHeader);
+
+	// Step 1e) Create new hole info paragraph
+	const newHolePara = document.createElement("p");
+	newHolePara.style.marginBottom = "10px";
+	newHolePara.style.color = textColor;
+	newHolePara.textContent = "New hole: " + newHoleInfo.entityName + ":" + newHoleInfo.holeID + " at (" + newHoleInfo.x.toFixed(3) + ", " + newHoleInfo.y.toFixed(3) + ")";
+	contentDiv.appendChild(newHolePara);
+
+	// Step 1f) Create conflicting holes header
+	const conflictingHeader = document.createElement("p");
+	conflictingHeader.style.fontWeight = "bold";
+	conflictingHeader.style.marginTop = "15px";
+	conflictingHeader.style.marginBottom = "10px";
+	conflictingHeader.style.color = textColor;
+	conflictingHeader.textContent = "Conflicting holes:";
+	contentDiv.appendChild(conflictingHeader);
+
+	// Step 1g) Create pre element for hole list with red color
+	const holeListPre = document.createElement("pre");
+	holeListPre.style.fontSize = "12px";
+	holeListPre.style.color = "#ff6b6b";
+	holeListPre.style.marginBottom = "15px";
+	holeListPre.style.whiteSpace = "pre-wrap";
+	holeListPre.textContent = holeList;
+	contentDiv.appendChild(holeListPre);
+
+	// Step 1h) Create options header
+	const optionsHeader = document.createElement("p");
+	optionsHeader.style.fontWeight = "bold";
+	optionsHeader.style.marginTop = "15px";
+	optionsHeader.style.marginBottom = "10px";
+	optionsHeader.style.color = textColor;
+	optionsHeader.textContent = "Options:";
+	contentDiv.appendChild(optionsHeader);
+
+	// Step 1i) Create options list
+	const optionsList = document.createElement("ul");
+	optionsList.style.textAlign = "left";
+	optionsList.style.paddingLeft = "20px";
+	optionsList.style.marginBottom = "10px";
+	optionsList.style.color = textColor;
+
+	const skipLi = document.createElement("li");
+	skipLi.innerHTML = "<strong>Skip:</strong> Skip this hole and continue with pattern";
+	optionsList.appendChild(skipLi);
+
+	const ignoreLi = document.createElement("li");
+	ignoreLi.innerHTML = "<strong>Ignore Warning:</strong> Add this hole and continue adding others";
+	optionsList.appendChild(ignoreLi);
+
+	const cancelLi = document.createElement("li");
+	cancelLi.innerHTML = "<strong>Cancel:</strong> Cancel the entire operation";
+	optionsList.appendChild(cancelLi);
+
+	contentDiv.appendChild(optionsList);
+
+	// Step 1j) Return Promise matching Swal result format
+	// Also set up theme change listener for font responsiveness
+	return new Promise((resolve) => {
+		const dialog = new window.FloatingDialog({
+			title: "Hole Proximity Warning",
+			content: contentDiv,
+			width: 400,
+			height: 350,
+			layoutType: "default",
+			draggable: true,
+			resizable: true,
+			closeOnOutsideClick: false, // Modal behavior - prevent clicks outside
+			showConfirm: true,
+			showCancel: true,
+			showDeny: true, // Enable Ignore Warning button
+			showOption1: false,
+			showOption2: false,
+			confirmText: "Skip", // Skip is the default safe choice - primary green button
+			cancelText: "Cancel",
+			denyText: "Ignore Warning", // Ignore Warning is dangerous - orange deny button
+			onConfirm: () => {
+				// Step 1k) User chose Skip - skip this hole and continue with pattern (safe default)
+				console.log("Proximity warning: User chose Skip");
+				cleanupThemeListener();
+				dialog.close();
+				resolve({
+					isConfirmed: false,
+					isDenied: true, // Skip maps to isDenied (safe action)
+					isDismissed: false
+				});
+			},
+			onDeny: () => {
+				// Step 1l) User chose Ignore Warning - add this hole and continue (dangerous action)
+				console.log("Proximity warning: User chose Ignore Warning");
+				cleanupThemeListener();
+				dialog.close();
+				resolve({
+					isConfirmed: true, // Ignore Warning maps to isConfirmed (dangerous action)
+					isDenied: false,
+					isDismissed: false
+				});
+			},
+			onCancel: () => {
+				// Step 1m) User chose Cancel - cancel the entire operation
+				// CRITICAL: Set flag IMMEDIATELY (synchronously) before Promise resolves
+				// This ensures pattern generation loops can check it before they complete
+				console.log("Proximity warning: User chose Cancel");
+				cleanupThemeListener();
+				
+				// Set cancellation flag immediately so pattern generation loops can check it
+				window.holeGenerationCancelled = true;
+				
+				dialog.close();
+				// Resolve the promise with cancellation flag
+				resolve({
+					isConfirmed: false,
+					isDenied: false,
+					isDismissed: true,
+					cancelled: true // Special flag for cancellation
+				});
+			}
+		});
+
+		// Step 1n) Function to update text colors based on theme
+		const updateTextColors = () => {
+			const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
+			const textColor = darkModeEnabled ? "#ffffff" : "#000000";
+			
+			// Update all text elements
+			const textElements = contentDiv.querySelectorAll("p, li");
+			textElements.forEach((el) => {
+				// Don't override red color for conflicting holes list
+				if (!el.textContent.includes("m apart")) {
+					el.style.color = textColor;
+				}
+			});
+		};
+
+		// Step 1o) Set up theme change listener
+		let themeListener = null;
+		if (typeof window.addEventListener !== "undefined") {
+			// Listen for custom theme change events or check periodically
+			themeListener = () => {
+				updateTextColors();
+			};
+			
+			// Check if there's a theme change event we can listen to
+			// Otherwise, we'll check on a timer
+			const checkTheme = setInterval(() => {
+				updateTextColors();
+			}, 500);
+			
+			// Store interval ID for cleanup
+			dialog._themeCheckInterval = checkTheme;
+		}
+
+		// Step 1p) Cleanup function
+		const cleanupThemeListener = () => {
+			if (dialog._themeCheckInterval) {
+				clearInterval(dialog._themeCheckInterval);
+				dialog._themeCheckInterval = null;
+			}
+		};
+
+		// Step 1q) Set higher z-index to ensure proximity warning appears on top of success dialogs
+		// FloatingDialog defaults to 10000, we need higher priority for warnings
+		if (dialog.element) {
+			dialog.element.style.zIndex = "15000";
+		}
+
+		// Step 1r) Show the dialog
+		dialog.show();
+
+		// Step 1s) Ensure z-index is set after show() in case element wasn't created yet
+		setTimeout(() => {
+			if (dialog.element) {
+				dialog.element.style.zIndex = "15000";
+			}
+			// Initial color update
+			updateTextColors();
+		}, 0);
 	});
 }
 
@@ -18379,11 +18542,29 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 	const startingRowID = getNextRowID(entityName);
 	console.log("Starting rowID for addPattern:", startingRowID);
 
+	// Initialize cancellation flag and track starting hole count for this pattern generation
+	if (typeof window.holeGenerationCancelled === "undefined") {
+		window.holeGenerationCancelled = false;
+	}
+	window.holeGenerationCancelled = false; // Reset for new pattern
+	window.holeGenerationStartCount = allBlastHoles ? allBlastHoles.length : 0; // Track starting count
+
 	for (let i = 0; i < patternrows; i++) {
+		// Check for cancellation before each row
+		if (window.holeGenerationCancelled) {
+			console.log("Pattern generation cancelled by user");
+			break;
+		}
+
 		// Each pattern row gets its own rowID
 		const currentRowID = startingRowID + i;
 
 		for (let j = 0; j < patternholesPerRow; j++) {
+			// Check for cancellation before each hole
+			if (window.holeGenerationCancelled) {
+				console.log("Pattern generation cancelled by user");
+				break;
+			}
 			const relativeX = j * patternspacing;
 			const relativeY = i * patternburden;
 
@@ -18411,6 +18592,12 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 			// Position ID is sequential for each hole in this row (j + 1)
 			const posID = j + 1;
 
+			// Check for cancellation right before adding hole
+			if (window.holeGenerationCancelled) {
+				console.log("Pattern generation cancelled by user - stopping hole addition");
+				break;
+			}
+
 			addHole(useCustomHoleID, useGradeZ, entityName, holeID, parseFloat(finalX), parseFloat(finalY), parseFloat(startZLocation), parseFloat(gradeZLocation), parseFloat(holeDiameter), holeType, parseFloat(holeLength), parseFloat(subdrillAmount), parseFloat(holeAngle), parseFloat(holeBearing), currentRowID, posID, patternburden, patternspacing);
 		}
 
@@ -18422,6 +18609,22 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 				currentLetter = "AAA";
 			} else {
 				currentLetter = incrementLetter(currentLetter);
+			}
+		}
+	}
+
+	// Check if generation was cancelled and remove added holes
+	let holesWereRemoved = false;
+	if (window.holeGenerationCancelled && typeof window.holeGenerationStartCount !== "undefined" && allBlastHoles) {
+		const startCount = window.holeGenerationStartCount;
+		const currentCount = allBlastHoles.length;
+		if (currentCount > startCount) {
+			console.log("Removing " + (currentCount - startCount) + " holes added during cancelled pattern generation");
+			allBlastHoles.splice(startCount, currentCount - startCount);
+			holesWereRemoved = true;
+			// Save to IndexedDB to persist the removal
+			if (typeof debouncedSaveHoles === "function") {
+				debouncedSaveHoles();
 			}
 		}
 	}
@@ -18438,7 +18641,13 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 		updateTreeView();
 	}
 
-	console.log("Generated pattern with " + patternrows + " rows (rowIDs " + startingRowID + "-" + (startingRowID + patternrows - 1) + ")");
+	// Check if cancelled OR if holes were removed (cancellation happened)
+	if (window.holeGenerationCancelled || holesWereRemoved) {
+		console.log("Pattern generation was cancelled");
+		showModalMessage("Pattern Generation Cancelled", "Hole generation was stopped by user action. No holes were added.", "warning");
+	} else {
+		console.log("Generated pattern with " + patternrows + " rows (rowIDs " + startingRowID + "-" + (startingRowID + patternrows - 1) + ")");
+	}
 }
 
 // Expose addPattern globally for PatternGenerationDialogs.js
@@ -18732,7 +18941,7 @@ function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLocation,
 
 		showProximityWarning(proximityHoles, newHoleInfo).then((result) => {
 			if (result.isConfirmed) {
-				// User chose to continue - add the hole
+				// User chose Ignore Warning - add the hole
 				addHoleToAllBlastHoles(
 					entityName,
 					entityType,
@@ -18770,10 +18979,36 @@ function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLocation,
 					connectorCurve || 0
 				);
 			} else if (result.isDenied) {
-				// User chose to skip - don't add this hole but continue
+				// User chose Skip - don't add this hole but continue
 				console.log("Skipped hole due to proximity: " + newHoleID);
+			} else if (result.isDismissed || result.cancelled) {
+				// User chose Cancel - flag already set synchronously in dialog onCancel handler
+				// Just remove holes and save (flag was set immediately above)
+				console.log("Cancelled hole generation due to proximity warning - removing holes");
+				
+				// Remove all holes added during this generation session
+				if (typeof window.holeGenerationStartCount !== "undefined" && window.allBlastHoles) {
+					const startCount = window.holeGenerationStartCount;
+					const currentCount = window.allBlastHoles.length;
+					if (currentCount > startCount) {
+						console.log("Removing " + (currentCount - startCount) + " holes added during cancelled generation");
+						window.allBlastHoles.splice(startCount, currentCount - startCount);
+						// Save to IndexedDB to persist the removal
+						if (typeof window.debouncedSaveHoles === "function") {
+							window.debouncedSaveHoles();
+						}
+						// Redraw and update
+						if (typeof window.drawData === "function") {
+							window.drawData(window.allBlastHoles, window.selectedHole);
+						}
+						if (typeof window.debouncedUpdateTreeView === "function") {
+							window.debouncedUpdateTreeView();
+						}
+					}
+				}
 			}
-			// If result.isDismissed (cancel), do nothing - operation is cancelled
+		}).catch((error) => {
+			console.error("Error in proximity warning:", error);
 		});
 
 		return; // Exit early, let the promise handle the result
@@ -21281,7 +21516,7 @@ function drawData(allBlastHoles, selectedHole) {
 	if (onlyShowThreeJS && threeInitialized) {
 		// Step 1d) Draw background images in Three.js
 		if (imagesGroupVisible) {
-			console.log("🖼️ [3D IMAGE] Processing images for 3D display. Total images:", loadedImages.size);
+			//console.log("🖼️ [3D IMAGE] Processing images for 3D display. Total images:", loadedImages.size);
 			loadedImages.forEach((image, imageKey) => {
 				console.log("🖼️ [3D IMAGE] Checking image:", imageKey, {
 					visible: image.visible,
@@ -31705,8 +31940,21 @@ function generatePatternInPolygon(patternSettings) {
 
 	let holeCounter = startNumber;
 
+	// Initialize cancellation flag and track starting hole count for this pattern generation
+	if (typeof window.holeGenerationCancelled === "undefined") {
+		window.holeGenerationCancelled = false;
+	}
+	window.holeGenerationCancelled = false; // Reset for new pattern
+	window.holeGenerationStartCount = allBlastHoles ? allBlastHoles.length : 0; // Track starting count
+
 	// Process rows from first (lowest row letter) to last (highest row letter)
 	for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+		// Check for cancellation before each row
+		if (window.holeGenerationCancelled) {
+			console.log("Pattern generation cancelled by user");
+			break;
+		}
+
 		const row = rows[rowIndex];
 
 		// Each row in the pattern gets its own rowID
@@ -31723,6 +31971,12 @@ function generatePatternInPolygon(patternSettings) {
 
 		// Process holes in this row
 		for (let colIndex = 0; colIndex < row.length; colIndex++) {
+			// Check for cancellation before each hole
+			if (window.holeGenerationCancelled) {
+				console.log("Pattern generation cancelled by user");
+				break;
+			}
+
 			const hole = row[colIndex];
 
 			let holeID;
@@ -31747,24 +32001,56 @@ function generatePatternInPolygon(patternSettings) {
 			// Position ID is sequential for each hole in this row (starts at 1 for each row)
 			const posID = colIndex + 1;
 
+			// Check for cancellation right before adding hole
+			if (window.holeGenerationCancelled) {
+				console.log("Polygon pattern generation cancelled by user - stopping hole addition");
+				break;
+			}
+
 			// Add hole using existing addHole function with rowID and posID
 			addHole(true, useGradeZ, blastName, holeID, hole.x, hole.y, collarZ, gradeZ, diameter, type, length, subdrill, angle, bearing, currentRowID, posID, burden, spacing);
 		}
 	}
 
-	const holesAdded = allBlastHoles.length - originalHolesCount;
-	console.log("Generated pattern in polygon with " + holesAdded + " holes across " + rows.length + " rows (rowIDs " + startingRowID + "-" + (startingRowID + rows.length - 1) + ")");
+	// Check if generation was cancelled and remove added holes
+	let holesWereRemoved = false;
+	if (window.holeGenerationCancelled && typeof window.holeGenerationStartCount !== "undefined" && allBlastHoles) {
+		const startCount = window.holeGenerationStartCount;
+		const currentCount = allBlastHoles.length;
+		if (currentCount > startCount) {
+			console.log("Removing " + (currentCount - startCount) + " holes added during cancelled polygon pattern generation");
+			allBlastHoles.splice(startCount, currentCount - startCount);
+			holesWereRemoved = true;
+			// Save to IndexedDB to persist the removal
+			if (typeof debouncedSaveHoles === "function") {
+				debouncedSaveHoles();
+			}
+		}
+	}
 
-	//! REDO with the FloatingDialog class
-	if (holesAdded === 0) {
-		showModalMessage("No Holes Generated", "No holes were generated in the polygon. Please check your pattern settings and polygon shape.", "warning");
+	// Recalculate holesAdded AFTER potential removal
+	const holesAdded = allBlastHoles.length - originalHolesCount;
+	
+	// Check if cancelled OR if holes were removed (cancellation happened)
+	if (window.holeGenerationCancelled || holesWereRemoved) {
+		console.log("Polygon pattern generation was cancelled");
+		showModalMessage("Pattern Generation Cancelled", "Hole generation was stopped by user action. No holes were added.", "warning");
 	} else {
-		showModalMessage("Pattern Generated", "Successfully generated " + holesAdded + " holes in the polygon across " + rows.length + " rows (Rows " + startingRowID + "-" + (startingRowID + rows.length - 1) + ").", "success");
+		console.log("Generated pattern in polygon with " + holesAdded + " holes across " + rows.length + " rows (rowIDs " + startingRowID + "-" + (startingRowID + rows.length - 1) + ")");
+
+		//! REDO with the FloatingDialog class
+		if (holesAdded === 0) {
+			showModalMessage("No Holes Generated", "No holes were generated in the polygon. Please check your pattern settings and polygon shape.", "warning");
+		} else {
+			showModalMessage("Pattern Generated", "Successfully generated " + holesAdded + " holes in the polygon across " + rows.length + " rows (Rows " + startingRowID + "-" + (startingRowID + rows.length - 1) + ").", "success");
+		}
 	}
 
 	// Update display
 	drawData(allBlastHoles, selectedHole);
-	debouncedSaveHoles(); // Auto-save holes to IndexedDB
+	if (!window.holeGenerationCancelled) {
+		debouncedSaveHoles(); // Auto-save holes to IndexedDB (only if not cancelled, since we already saved above)
+	}
 }
 
 // Expose generatePatternInPolygon globally for PatternGenerationDialogs.js
@@ -31817,8 +32103,21 @@ function generateHolesAlongLine(params) {
 	const rowID = getNextRowID(entityName);
 	console.log("Assigned rowID:", rowID, "for line pattern");
 
+	// Initialize cancellation flag and track starting hole count for this pattern generation
+	if (typeof window.holeGenerationCancelled === "undefined") {
+		window.holeGenerationCancelled = false;
+	}
+	window.holeGenerationCancelled = false; // Reset for new pattern
+	window.holeGenerationStartCount = allBlastHoles ? allBlastHoles.length : 0; // Track starting count
+
 	// Generate holes starting from the first point
 	for (let i = 0; i < numHoles; i++) {
+		// Check for cancellation before each hole
+		if (window.holeGenerationCancelled) {
+			console.log("Hole generation cancelled by user");
+			break;
+		}
+
 		const distanceAlongLine = i * params.spacing;
 		const holeX = lineStartPoint.x + unitX * distanceAlongLine;
 		const holeY = lineStartPoint.y + unitY * distanceAlongLine;
@@ -31836,6 +32135,12 @@ function generateHolesAlongLine(params) {
 
 		// Position ID is sequential for each hole in this row
 		const posID = i + 1;
+
+		// Check for cancellation right before adding hole
+		if (window.holeGenerationCancelled) {
+			console.log("Line pattern generation cancelled by user - stopping hole addition");
+			break;
+		}
 
 		// Add hole to points array with rowID and posID
 		addHole(
@@ -31860,20 +32165,44 @@ function generateHolesAlongLine(params) {
 		);
 	}
 
+	// Check if generation was cancelled and remove added holes
+	let holesWereRemoved = false;
+	if (window.holeGenerationCancelled && typeof window.holeGenerationStartCount !== "undefined" && allBlastHoles) {
+		const startCount = window.holeGenerationStartCount;
+		const currentCount = allBlastHoles.length;
+		if (currentCount > startCount) {
+			console.log("Removing " + (currentCount - startCount) + " holes added during cancelled line pattern generation");
+			allBlastHoles.splice(startCount, currentCount - startCount);
+			holesWereRemoved = true;
+			// Save to IndexedDB to persist the removal
+			if (typeof debouncedSaveHoles === "function") {
+				debouncedSaveHoles();
+			}
+		}
+	}
+
 	// Redraw
 	debouncedUpdateTreeView(); // Use debounced version
 	drawData(allBlastHoles, selectedHole);
-	debouncedSaveHoles(); // Auto-save holes to IndexedDB
-
+	
+	// Recalculate holesAdded AFTER potential removal
 	const holesAdded = allBlastHoles.length - originalHolesCount;
-	console.log("Generated " + holesAdded + " holes along line with rowID " + rowID);
-
-	//! REDO with the FloatingDialog class
-	// Show success/failure message with custom styling
-	if (holesAdded === 0) {
-		showModalMessage("No Holes Generated", "No holes were generated along the line. Please check your line and spacing settings.", "warning");
+	
+	// Check if cancelled OR if holes were removed (cancellation happened)
+	if (window.holeGenerationCancelled || holesWereRemoved) {
+		console.log("Line pattern generation was cancelled");
+		showModalMessage("Pattern Generation Cancelled", "Hole generation was stopped by user action. No holes were added.", "warning");
 	} else {
-		showModalMessage("Line Pattern Generated", `Successfully generated ${holesAdded} holes along the line (Row ${rowID}).`, "success");
+		console.log("Generated " + holesAdded + " holes along line with rowID " + rowID);
+		debouncedSaveHoles(); // Auto-save holes to IndexedDB
+
+		//! REDO with the FloatingDialog class
+		// Show success/failure message with custom styling
+		if (holesAdded === 0) {
+			showModalMessage("No Holes Generated", "No holes were generated along the line. Please check your line and spacing settings.", "warning");
+		} else {
+			showModalMessage("Line Pattern Generated", `Successfully generated ${holesAdded} holes along the line (Row ${rowID}).`, "success");
+		}
 	}
 }
 // Expose generateHolesAlongLine globally for PatternGenerationDialogs.js
@@ -32620,6 +32949,12 @@ function generateHolesAlongPolyline(params, vertices) {
 	const rowID = getNextRowID(entityName);
 	console.log("Assigned rowID:", rowID, "for polyline pattern");
 
+	// Initialize cancellation flag for this pattern generation
+	if (typeof window.holeGenerationCancelled === "undefined") {
+		window.holeGenerationCancelled = false;
+	}
+	window.holeGenerationCancelled = false; // Reset for new pattern
+
 	// Calculate total length of the polyline for progress tracking
 	let totalLength = 0;
 	for (let i = 0; i < vertices.length - 1; i++) {
@@ -32634,6 +32969,11 @@ function generateHolesAlongPolyline(params, vertices) {
 	let positionCounter = 1; // Track position within the row
 
 	for (let i = 0; i < vertices.length - 1; i++) {
+		// Check for cancellation before each segment
+		if (window.holeGenerationCancelled) {
+			console.log("Hole generation cancelled by user");
+			break;
+		}
 		const startPoint = vertices[i];
 		const endPoint = vertices[i + 1];
 
@@ -32654,6 +32994,12 @@ function generateHolesAlongPolyline(params, vertices) {
 		let distanceAlongSegment = nextHoleDistance;
 
 		while (distanceAlongSegment < segmentLength) {
+			// Check for cancellation before each hole
+			if (window.holeGenerationCancelled) {
+				console.log("Hole generation cancelled by user");
+				break;
+			}
+
 			// Calculate hole position
 			const holeX = startPoint.x + unitX * distanceAlongSegment;
 			const holeY = startPoint.y + unitY * distanceAlongSegment;
@@ -32677,6 +33023,12 @@ function generateHolesAlongPolyline(params, vertices) {
 				}
 				holeID = currentLetter + number;
 				holeCounter++;
+			}
+
+			// Check for cancellation right before adding hole
+			if (window.holeGenerationCancelled) {
+				console.log("Polyline pattern generation cancelled by user - stopping hole addition");
+				break;
 			}
 
 			// Add hole with rowID and posID
@@ -32711,18 +33063,42 @@ function generateHolesAlongPolyline(params, vertices) {
 		accumulatedLength += segmentLength;
 	}
 
+	// Check if generation was cancelled and remove added holes
+	let holesWereRemoved = false;
+	if (window.holeGenerationCancelled && typeof window.holeGenerationStartCount !== "undefined" && allBlastHoles) {
+		const startCount = window.holeGenerationStartCount;
+		const currentCount = allBlastHoles.length;
+		if (currentCount > startCount) {
+			console.log("Removing " + (currentCount - startCount) + " holes added during cancelled polyline pattern generation");
+			allBlastHoles.splice(startCount, currentCount - startCount);
+			holesWereRemoved = true;
+			// Save to IndexedDB to persist the removal
+			if (typeof debouncedSaveHoles === "function") {
+				debouncedSaveHoles();
+			}
+		}
+	}
+
 	// Redraw
 	drawData(allBlastHoles, selectedHole);
-	debouncedSaveHoles(); // Auto-save holes to IndexedDB
 
+	// Recalculate holesAdded AFTER potential removal
 	const holesAdded = allBlastHoles.length - originalPointsCount;
-	console.log("Generated " + holesAdded + " holes along polyline with rowID " + rowID);
-
-	// Show success/failure message with custom styling
-	if (holesAdded === 0) {
-		showModalMessage("No Holes Generated", "No holes were generated along the polyline. Please check your settings.", "warning");
+	
+	// Check if cancelled OR if holes were removed (cancellation happened)
+	if (window.holeGenerationCancelled || holesWereRemoved) {
+		console.log("Polyline pattern generation was cancelled");
+		showModalMessage("Pattern Generation Cancelled", "Hole generation was stopped by user action. No holes were added.", "warning");
 	} else {
-		showModalMessage("Polyline Pattern Generated", `Successfully generated ${holesAdded} holes along the polyline (Row ${rowID}).`, "success");
+		console.log("Generated " + holesAdded + " holes along polyline with rowID " + rowID);
+		debouncedSaveHoles(); // Auto-save holes to IndexedDB
+
+		// Show success/failure message with custom styling
+		if (holesAdded === 0) {
+			showModalMessage("No Holes Generated", "No holes were generated along the polyline. Please check your settings.", "warning");
+		} else {
+			showModalMessage("Polyline Pattern Generated", `Successfully generated ${holesAdded} holes along the polyline (Row ${rowID}).`, "success");
+		}
 	}
 }
 // Expose generateHolesAlongPolyline globally for PatternGenerationDialogs.js
@@ -40101,3 +40477,4 @@ document.addEventListener("DOMContentLoaded", function () {
 		debugPreferences();
 	}, 50);
 });
+
