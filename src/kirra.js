@@ -233,12 +233,12 @@ function updatePopup() {
 				    <label class="labelWhite18">Update - NEW FEATURES:                           </label>
 					<hr>
 				<div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
-					<label     class="labelWhite12c">? ? November 2025 ? ?                                            </label>
-					<br><label class="labelWhite12c">? 3D View </label>
+					<label     class="labelWhite12c">⭐️ ⭐️ November 2025 ⭐️ ⭐️                                            </label>
+					<br><label class="labelWhite12c">✅ 3D View </label>
 					<hr>
 					<br><label  class="labelWhite15">New & Existing Issues & Resolved                               </label>
-					<br><label class="labelWhite12c">?? Voronoi Display Lag with large blasts      ? unresolved ?  </label>
-					<br><label class="labelWhite12c">?? Volume for blasts not working in treeView  ? unresolved ?  </label>
+					<br><label class="labelWhite12c">🐞 Voronoi Display Lag with large blasts      ❌ unresolved ❌  </label>
+					<br><label class="labelWhite12c">🐞 Volume for blasts not working in treeView  ❌ unresolved ❌  </label>
 				</div>
 				<br><br>
 				<a href="https://www.buymeacoffee.com/BrentBuffham">
@@ -646,56 +646,6 @@ function calculateDataZCentroid() {
 	return centroid.z;
 }
 
-// Step 5a) Configure Troika text builder and preload font once at app startup for optimal performance
-// This configures optimal SDF settings and preloads all glyphs into Troika's shared texture atlas.
-// Troika automatically uses a shared atlas per sdfGlyphSize, so all Text instances benefit.
-// Result: faster load times, lower memory usage, zero texture re-generation after startup.
-//Didn't work, so I'm using the default behavior.
-// async function optimizeTroikaFont() {
-// 	if (troikaFontBaked) {
-// 		console.log("? Troika font already optimized, skipping...");
-// 		return;
-// 	}
-
-// 	try {
-// 		console.log("?? Optimizing Troika font rendering...");
-
-// 		configureTextBuilder({
-// 			sdfGlyphSize: 64,
-// 			textureWidth: 2048,
-// 			sdfExponent: 9,
-// 			sdfMargin: 1 / 16,
-// 			useWorker: true,
-// 		});
-
-// 		const glyphs = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789.,!?-+*/=()[]{}<>|&^%$#@:;\"'\\/~`_";
-// 		const robotoFontUrl = new URL("./fonts/Roboto-Regular.ttf", import.meta.url).href;
-
-// 		// ? FIXED: Callback is called on success with font object
-// 		await new Promise((resolve, reject) => {
-// 			preloadFont(
-// 				{
-// 					font: robotoFontUrl,
-// 					characters: glyphs,
-// 					sdfGlyphSize: 64,
-// 				},
-// 				() => {
-// 					// Called on success - no error parameter!
-// 					resolve();
-// 				}
-// 			);
-
-// 			// Optional: Add timeout in case preload hangs
-// 			setTimeout(() => reject(new Error("Font preload timeout")), 10000);
-// 		});
-
-// 		troikaFontBaked = true;
-// 		console.log("? Troika font optimized successfully");
-// 	} catch (error) {
-// 		console.warn("?? Failed to optimize Troika font:", error);
-// 		// Text will still work with default behavior
-// 	}
-// }
 function initializeThreeJS() {
 	if (threeInitialized) return;
 
@@ -706,7 +656,7 @@ function initializeThreeJS() {
 
 	// Step 1) Check if canvas exists
 	if (!canvas) {
-		console.warn("?? Canvas not ready yet, deferring Three.js initialization");
+		console.warn("⚠️ Canvas not ready yet, deferring Three.js initialization");
 		return;
 	}
 
@@ -720,7 +670,7 @@ function initializeThreeJS() {
 		const canvasContainer = canvas.parentElement;
 
 		if (!canvasContainer) {
-			console.error("? Canvas container not found");
+			console.error("❌ Canvas container not found");
 			return;
 		}
 		threeRenderer = new ThreeRenderer(canvasContainer, canvas.clientWidth, canvas.clientHeight);
@@ -929,7 +879,7 @@ function initializeThreeJS() {
 		threeInitializationFailed = true;
 
 		// Step 0d) Show user-friendly error message
-		console.error("?? WebGL initialization failed. This may be caused by:");
+		console.error("❌ WebGL initialization failed. This may be caused by:");
 		console.error("  - Browser WebGL context limit exhausted (refresh page)");
 		console.error("  - GPU/graphics driver issues");
 		console.error("  - Too many browser tabs with WebGL content");
@@ -1001,7 +951,7 @@ function syncCameraToThreeJS() {
 function setup3DMouseEvents() {
 	if (!threeRenderer) {
 		if (developerModeEnabled) {
-			console.warn("?? [3D EVENTS] threeRenderer not ready");
+			console.warn("🚨 [3D EVENTS] threeRenderer not ready");
 		}
 		return;
 	}
@@ -1009,7 +959,7 @@ function setup3DMouseEvents() {
 	const threeCanvas = threeRenderer.getCanvas();
 	if (!threeCanvas) {
 		if (developerModeEnabled) {
-			console.warn("?? [3D EVENTS] No 3D canvas found");
+			console.warn("🚨 [3D EVENTS] No 3D canvas found");
 		}
 		return;
 	}
@@ -1017,12 +967,12 @@ function setup3DMouseEvents() {
 	// Step 11a) Get container (same as camera controls) to ensure events are received
 	const container = threeCanvas.parentElement;
 	if (!container) {
-		console.warn("?? [3D EVENTS] Could not find container for 3D mouse events");
+		console.warn("🚨 [3D EVENTS] Could not find container for 3D mouse events");
 		return;
 	}
 
 	if (developerModeEnabled) {
-		console.log("?? [3D EVENTS] Setting up event listeners on container:", container);
+		console.log("👂 [3D EVENTS] Setting up event listeners on container:", container);
 	}
 
 	// Step 11b) Attach event handlers
@@ -1036,7 +986,7 @@ function setup3DMouseEvents() {
 	container.addEventListener("touchmove", handle3DTouchMove, { passive: false, capture: true });
 
 	if (developerModeEnabled) {
-		console.log("? [3D EVENTS] 3D mouse event handlers attached", {
+		console.log("👋 [3D EVENTS] 3D mouse event handlers attached", {
 			container: container.tagName,
 			containerId: container.id,
 			containerClass: container.className,
@@ -1050,7 +1000,7 @@ function setup3DMouseEvents() {
 // Simplified pattern matching Three.js examples - works at any camera orientation
 function handle3DClick(event) {
 	if (developerModeEnabled) {
-		console.log("?? [3D CLICK] Event fired", {
+		console.log("🔫 [3D CLICK] Event fired", {
 			onlyShowThreeJS,
 			threeInitialized: !!threeInitialized,
 			threeRenderer: !!threeRenderer,
@@ -1068,7 +1018,7 @@ function handle3DClick(event) {
 	// Step 12a) Only handle if in 3D mode (onlyShowThreeJS flag determines mode)
 	if (!onlyShowThreeJS) {
 		if (developerModeEnabled) {
-			console.log("? [3D CLICK] Not in 3D mode - onlyShowThreeJS =", onlyShowThreeJS);
+			console.log("🚨 [3D CLICK] Not in 3D mode - onlyShowThreeJS =", onlyShowThreeJS);
 		}
 		// 2D mode is active, don't handle 3D selection
 		return;
@@ -1076,21 +1026,21 @@ function handle3DClick(event) {
 
 	// Step 12a.0) Skip if we just finished dragging (prevents re-selection after mouseup)
 	if (justFinishedDragging) {
-		console.log("?? [3D CLICK] Just finished dragging - skipping selection to prevent re-highlight");
+		console.log("🏁 [3D CLICK] Just finished dragging - skipping selection to prevent re-highlight");
 		return;
 	}
 
 	// Step 12a.1) Skip if polygon selection tool is active
 	const polygonToolCheckbox = document.getElementById("selectByPolygon");
 	if (polygonToolCheckbox && polygonToolCheckbox.checked) {
-		console.log("?? [3D CLICK] Polygon selection tool active - skipping raycast selection");
+		console.log("🔶 [3D CLICK] Polygon selection tool active - skipping raycast selection");
 		return;
 	}
 
 	// Step 12b) Skip if modifier keys are held (let camera controls handle orbit/rotate)
 	// Alt = orbit, Ctrl/Cmd = rotate, Right-click = rotate
 	if (event.altKey || event.metaKey || event.ctrlKey || event.button === 2) {
-		console.log("🡺 [3D CLICK] Modifier keys held - skipping selection (3D arrow icon)");
+		console.log("🤌 [3D CLICK] Modifier keys held - skipping selection (3D arrow icon)");
 		// Let camera controls handle these
 		return;
 	}
@@ -2438,7 +2388,7 @@ document.addEventListener("DOMContentLoaded", function () {
 					threeCanvas.style.opacity = "1"; // Show 3D canvas
 					threeCanvas.style.pointerEvents = "auto"; // Receive events
 				}
-				console.log("?? Layers: Three.js (z:2, visible), 2D canvas (z:0, hidden)");
+				console.log("🔍 Layers: Three.js (z:2, visible), 2D canvas (z:0, hidden)");
 			} else {
 				// Step 1b) Show only 2D canvas - hide 3D canvas completely
 				canvas.style.zIndex = "2"; // 2D canvas on top
@@ -2454,10 +2404,10 @@ document.addEventListener("DOMContentLoaded", function () {
 				// Reset pan state to prevent stuck dragging
 				if (window.cameraControls) {
 					window.cameraControls.resetPanState();
-					console.log("?? Reset camera controls pan state on switch to 2D");
+					console.log("🔄 Reset camera controls pan state on switch to 2D");
 				}
 
-				console.log("?? Layers: 2D canvas (z:2, visible), Three.js (z:0, hidden)");
+				console.log("🔍 Layers: 2D canvas (z:2, visible), Three.js (z:0, hidden)");
 			}
 
 			// Redraw to apply changes
@@ -2528,7 +2478,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 						// Update mode flag
 						moveToolIn3DMode = true;
-						console.log("? Move Tool switched to 3D canvas");
+						console.log("👋 Move Tool switched to 3D canvas");
 					}
 				}
 
@@ -3581,7 +3531,7 @@ function clearAllDataStructures() {
 // Step 3) Centralized cleanup function to prevent memory leaks
 // Call this on page unload, data clear, and error recovery
 function cleanupAllResources() {
-	console.log("?? Starting comprehensive resource cleanup...");
+	console.log("🧹 Starting comprehensive resource cleanup...");
 
 	// Step 3a) Clear all pending timers
 	clearAllPendingTimers();
@@ -3594,7 +3544,7 @@ function cleanupAllResources() {
 		try {
 			cameraControls.dispose();
 		} catch (disposeError) {
-			console.warn("?? Failed to dispose cameraControls:", disposeError);
+			console.warn("🚨 Failed to dispose cameraControls:", disposeError);
 		}
 		cameraControls = null;
 	}
@@ -3604,7 +3554,7 @@ function cleanupAllResources() {
 		try {
 			threeRenderer.dispose();
 		} catch (disposeError) {
-			console.warn("?? Failed to dispose threeRenderer:", disposeError);
+			console.warn("🚨 Failed to dispose threeRenderer:", disposeError);
 		}
 		threeRenderer = null;
 	}
@@ -6527,7 +6477,7 @@ function handleMouseDown(event) {
 			isDragging = true;
 			startPanX = event.clientX;
 			startPanY = event.clientY;
-			// console.log("?? 2D Pan started");
+			// console.log("👋 2D Pan started");
 		}
 		// Step 1b) Left mouse button - check tool state
 		else if (event.button === 0) {
@@ -6548,7 +6498,7 @@ function handleMouseDown(event) {
 				window.selectPointerPanTimeout = setTimeout(() => {
 					if (!isDraggingBearing && !isDraggingHole) {
 						isDragging = true;
-						// console.log("?? 2D Pan started (selectPointer delayed)");
+						// console.log("👋 2D Pan started (selectPointer delayed)");
 					}
 				}, 300); // 300ms delay for selectPointer panning
 			}
@@ -6557,7 +6507,7 @@ function handleMouseDown(event) {
 				isDragging = true;
 				startPanX = event.clientX;
 				startPanY = event.clientY;
-				// console.log("?? 2D Pan started");
+				// console.log("👋 2D Pan started");
 			}
 		}
 	}
@@ -8239,7 +8189,7 @@ async function loadOBJWithMTL(objFile, allFiles) {
 		var hasTextures = mtlContent && textureFiles.length > 0;
 
 		if (hasTextures) {
-			console.log("?? Loading textured OBJ mesh: " + objFile.name);
+			console.log("🎨 Loading textured OBJ mesh: " + objFile.name);
 			// Step 6) Use Three.js loaders for textured mesh
 			await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, objData);
 		} else {
@@ -8253,7 +8203,7 @@ async function loadOBJWithMTL(objFile, allFiles) {
 			}
 		}
 	} catch (error) {
-		console.error("? Error loading OBJ with MTL:", error);
+		console.error("❌ Error loading OBJ with MTL:", error);
 		// If anything fails, use normal OBJ loading
 		loadPointCloudFile(objFile);
 	}
@@ -8322,13 +8272,13 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				var url = URL.createObjectURL(textureBlobs[texName]);
 				textureURLs[texName] = url;
 				blobURLs.push(url);
-				console.log("?? Created blob URL for texture: " + texName);
+				console.log("🎨 Created blob URL for texture: " + texName);
 			});
 
 			// Step 4) Extract texture references directly from MTL content
 			// This is more reliable than depending on MTLLoader's internal structure
 			var textureRefs = extractTextureRefsFromMTL(mtlContent);
-			console.log("?? Texture references from MTL: " + textureRefs.join(", "));
+			console.log("🎨 Texture references from MTL: " + textureRefs.join(", "));
 			text.textContent = "Loading textures (" + Object.keys(textureBlobs).length + ")...";
 			bar.style.width = "20%";
 
@@ -8350,7 +8300,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 							texture.needsUpdate = true;
 							loadedTextures[texName] = texture;
 							loadedTextures[texName.toLowerCase()] = texture; // Also store lowercase for matching
-							console.log("? Texture pre-loaded: " + texName);
+							console.log("🎨 Texture pre-loaded: " + texName);
 							// Update progress
 							const loadedCount = Object.keys(loadedTextures).length / 2; // Divide by 2 (we store twice)
 							const totalCount = Object.keys(textureBlobs).length;
@@ -8361,7 +8311,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 						},
 						undefined, // onProgress
 						function (error) {
-							console.warn("?? Failed to pre-load texture: " + texName, error);
+							console.warn("🚨 Failed to pre-load texture: " + texName, error);
 							resolveTexture();
 						}
 					);
@@ -8371,7 +8321,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 
 			// Step 6) Wait for ALL textures to pre-load
 			Promise.all(texturePromises).then(function () {
-				console.log("? All " + Object.keys(loadedTextures).length + " textures pre-loaded for: " + fileName);
+				console.log("🎨 All " + Object.keys(loadedTextures).length + " textures pre-loaded for: " + fileName);
 				text.textContent = "Parsing MTL materials...";
 				bar.style.width = "55%";
 
@@ -8395,7 +8345,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 
 				// Step 9) Extract material properties from MTL for storage
 				var materialProperties = extractMaterialProperties(mtlContent);
-				console.log("?? Extracted material properties: " + Object.keys(materialProperties).length + " materials");
+				console.log("🎨 Extracted material properties: " + Object.keys(materialProperties).length + " materials");
 
 				// Step 9a) Apply textures to mesh materials by matching texture filenames
 				// Also collect final material properties (after texture application) for storage
@@ -8416,12 +8366,12 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 								child.material.needsUpdate = true;
 								appliedTexture = true;
 								appliedTextureName = texKey;
-								console.log("?? Applied texture '" + texKey + "' to mesh: " + (child.name || "unnamed"));
+								console.log("🎨 Applied texture '" + texKey + "' to mesh: " + (child.name || "unnamed"));
 							}
 						});
 
 						if (!appliedTexture) {
-							console.warn("?? No texture applied to mesh: " + (child.name || "unnamed"));
+							console.warn("🚨 No texture applied to mesh: " + (child.name || "unnamed"));
 						}
 
 						// Step 9a.2) Store final material properties (after texture application)
@@ -8467,7 +8417,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 						if (pt.z > maxZ) maxZ = pt.z;
 					}
 					meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
-					console.log("?? Calculated meshBounds from UTM points: " + minX.toFixed(2) + " " + maxX.toFixed(2) + " " + minY.toFixed(2) + " " + maxY.toFixed(2));
+					console.log("📐 Calculated meshBounds from UTM points: " + minX.toFixed(2) + " " + maxX.toFixed(2) + " " + minY.toFixed(2) + " " + maxY.toFixed(2));
 				} else {
 					// Fallback: use object3D bounds (object-local) if points not available
 					var bounds = new THREE.Box3().setFromObject(object3D);
@@ -8479,7 +8429,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 						minZ: bounds.min.z,
 						maxZ: bounds.max.z,
 					};
-					console.warn("?? Using object-local bounds (fallback) - meshBounds may be incorrect!");
+					console.warn("🚨 Using object-local bounds (fallback) - meshBounds may be incorrect!");
 				}
 
 				// Step 13) Create surface ID
@@ -8508,7 +8458,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					materialProperties: finalMaterialProperties, // Store serializable material properties
 				});
 
-				console.log("? Textured OBJ loaded: " + fileName + " (" + objData.points.length + " points, " + objData.triangles.length + " triangles)");
+				console.log("🎨 Textured OBJ loaded: " + fileName + " (" + objData.points.length + " points, " + objData.triangles.length + " triangles)");
 
 				// Step 15) Create flattened 2D image for canvas rendering
 				// This is now called AFTER textures are loaded
@@ -8517,10 +8467,10 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				// Step 16) Save to database
 				saveSurfaceToDB(surfaceId)
 					.then(function () {
-						console.log("?? Textured surface saved to database: " + surfaceId);
+						console.log("💾 Textured surface saved to database: " + surfaceId);
 					})
 					.catch(function (err) {
-						console.error("? Failed to save textured surface:", err);
+						console.error("❌ Failed to save textured surface:", err);
 					});
 
 				// Step 17) Update UI
@@ -8546,7 +8496,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				resolve(object3D);
 			});
 		} catch (error) {
-			console.error("? Error in loadOBJWithTextureThreeJS:", error);
+			console.error("❌ Error in loadOBJWithTextureThreeJS:", error);
 			// Close progress dialog on error
 			if (progressDialog) {
 				progressDialog.close();
@@ -8560,18 +8510,18 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 function rebuildTexturedMesh(surfaceId) {
 	var surface = loadedSurfaces.get(surfaceId);
 	if (!surface || !surface.isTexturedMesh) {
-		console.warn("?? Cannot rebuild mesh - not a textured surface:", surfaceId);
+		console.warn("🚨 Cannot rebuild mesh - not a textured surface:", surfaceId);
 		return;
 	}
 
 	if (!surface.objContent) {
-		console.warn("?? Cannot rebuild mesh - missing OBJ content:", surfaceId);
+		console.warn("🚨 Cannot rebuild mesh - missing OBJ content:", surfaceId);
 		return;
 	}
 
 	// Step 1a) Prevent multiple rebuilds - if mesh already exists, skip
 	if (surface.threeJSMesh) {
-		console.log("?? Mesh already rebuilt for: " + surfaceId + ", skipping rebuild");
+		console.log("🎨 Mesh already rebuilt for: " + surfaceId + ", skipping rebuild");
 		return;
 	}
 
@@ -8611,7 +8561,7 @@ function rebuildTexturedMesh(surfaceId) {
 					},
 					undefined,
 					function (error) {
-						console.warn("?? Failed to pre-load texture during rebuild: " + texName, error);
+						console.warn("🚨 Failed to pre-load texture during rebuild: " + texName, error);
 						resolveTexture();
 					}
 				);
@@ -8630,7 +8580,7 @@ function rebuildTexturedMesh(surfaceId) {
 			// This is more reliable than MTLLoader which expects file URLs
 			var materialMap = {};
 			if (surface.materialProperties && Object.keys(surface.materialProperties).length > 0) {
-				console.log("?? Creating materials from stored properties");
+				console.log("🎨 Creating materials from stored properties");
 				Object.keys(surface.materialProperties).forEach(function (matName) {
 					var matProps = surface.materialProperties[matName];
 					var textureName = matProps.map_Kd;
@@ -8645,16 +8595,16 @@ function rebuildTexturedMesh(surfaceId) {
 						var firstTexKey = Object.keys(loadedTextures)[0];
 						if (firstTexKey) {
 							texture = loadedTextures[firstTexKey];
-							console.log("?? Using first available loaded texture: " + firstTexKey);
+							console.log("🎨 Using first available loaded texture: " + firstTexKey);
 						}
 					}
 
 					materialMap[matName] = createMaterialFromProperties(matProps, texture, textureName);
-					console.log("? Created material '" + matName + "' with texture: " + (texture ? textureName : "none"));
+					console.log("🎨 Created material '" + matName + "' with texture: " + (texture ? textureName : "none"));
 				});
 			} else {
 				// Fallback: Create default material with first available loaded texture
-				console.warn("?? No material properties found, creating default material");
+				console.warn("🚨 No material properties found, creating default material");
 				var firstTexKey = Object.keys(loadedTextures)[0];
 				var firstTexture = firstTexKey ? loadedTextures[firstTexKey] : null;
 				materialMap["default"] = createMaterialFromProperties(null, firstTexture, firstTexKey);
@@ -8707,21 +8657,21 @@ function rebuildTexturedMesh(surfaceId) {
 					});
 					// Remove from map
 					window.threeRenderer.surfaceMeshMap.delete(surfaceId);
-					console.log("?? Removed old mesh from scene - will be re-added with textures on next render");
+					console.log("🧹 Removed old mesh from scene - will be re-added with textures on next render");
 				}
 			}
 
 			// Step 8a) Store rebuilt mesh
 			surface.threeJSMesh = object3D;
 
-			console.log("? Rebuilt textured mesh: " + surfaceId);
+			console.log("🎨 Rebuilt textured mesh: " + surfaceId);
 
 			// Step 8a) CRITICAL: Force gradient to "texture" for textured meshes (overrides any saved gradient)
 			// Textured meshes MUST use "texture" gradient to show JPG textures, not color gradients
 			var oldGradient = surface.gradient;
 			if (surface.gradient !== "texture") {
 				surface.gradient = "texture";
-				console.log("?? FORCED gradient to 'texture' for rebuilt textured mesh: " + surfaceId + " (was: " + (oldGradient || "default") + ")");
+				console.log("🔻 FORCED gradient to 'texture' for rebuilt textured mesh: " + surfaceId + " (was: " + (oldGradient || "default") + ")");
 			}
 
 			// Step 8b) Mesh is rebuilt - it will render automatically on next drawData call
@@ -8738,25 +8688,25 @@ function rebuildTexturedMesh(surfaceId) {
 			// This is now called AFTER textures are loaded
 			// Step 10a) Check if we have a saved flattened image first
 			if (surface.flattenedImageDataURL && surface.flattenedImageBounds && surface.flattenedImageDimensions) {
-				console.log("?? Reusing saved flattened image for: " + surfaceId);
+				console.log("🏞️ Reusing saved flattened image for: " + surfaceId);
 				loadFlattenedImageFromData(surfaceId, surface.flattenedImageDataURL, surface.flattenedImageBounds, surface.flattenedImageDimensions, surface.name);
 			} else if (surface.meshBounds && threeInitialized && !threeInitializationFailed) {
 				// Step 10b) Only flatten if ThreeJS is initialized and no saved image exists
-				console.log("?? Creating new flattened image for: " + surfaceId);
+				console.log("🏞️  Creating new flattened image for: " + surfaceId);
 				flattenTexturedMeshToImage(surfaceId, object3D, surface.meshBounds, surface.name);
 			} else if (!threeInitialized || threeInitializationFailed) {
-				console.warn("?? Skipping texture flattening - ThreeJS not available, will retry when ThreeJS initializes");
+				console.warn("🚨 Skipping texture flattening - ThreeJS not available, will retry when ThreeJS initializes");
 			}
 		});
 	} catch (error) {
-		console.error("? Error rebuilding textured mesh:", error);
+		console.error("❌ Error rebuilding textured mesh:", error);
 	}
 }
 
 // Step 0) Load flattened image from saved data URL (avoids WebGL context creation)
 function loadFlattenedImageFromData(surfaceId, imageDataURL, meshBounds, dimensions, fileName) {
 	try {
-		console.log("?? Loading flattened image from saved data for: " + surfaceId);
+		console.log("🏞️ Loading flattened image from saved data for: " + surfaceId);
 
 		var imageId = "flattened_" + surfaceId;
 		var imageCanvas = document.createElement("canvas");
@@ -8795,15 +8745,15 @@ function loadFlattenedImageFromData(surfaceId, imageDataURL, meshBounds, dimensi
 			};
 
 			loadedImages.set(imageId, imageEntry);
-			console.log("? Loaded flattened image from saved data: " + imageId);
+			console.log("🏞️ Loaded flattened image from saved data: " + imageId);
 			debouncedUpdateTreeView();
 		};
 		img.onerror = function () {
-			console.error("? Failed to load flattened image from saved data");
+			console.error("❌ Failed to load flattened image from saved data");
 		};
 		img.src = imageDataURL;
 	} catch (error) {
-		console.error("? Error loading flattened image from data:", error);
+		console.error("❌ Error loading flattened image from data:", error);
 	}
 }
 
@@ -8813,13 +8763,13 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 		// Step 1a) Check WebGL availability before attempting to create offscreen renderer
 		// This prevents context exhaustion errors on page reload when OBJ is in IndexedDB
 		if (!threeInitialized) {
-			console.warn("?? Skipping texture flattening - ThreeJS not initialized yet for: " + surfaceId);
+			console.warn("🚨 Skipping texture flattening - ThreeJS not initialized yet for: " + surfaceId);
 			return;
 		}
 
 		// Step 1b) Additional check - don't create offscreen renderer if main renderer failed
 		if (threeInitializationFailed) {
-			console.warn("?? Skipping texture flattening - ThreeJS initialization previously failed for: " + surfaceId);
+			console.warn("🚨 Skipping texture flattening - ThreeJS initialization previously failed for: " + surfaceId);
 			return;
 		}
 
@@ -8851,7 +8801,7 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 		imgWidth = Math.max(minResolution, imgWidth);
 		imgHeight = Math.max(minResolution, imgHeight);
 
-		console.log("?? Creating flattened image: " + imgWidth + "x" + imgHeight + " for mesh bounds: " + worldWidth.toFixed(2) + "x" + worldHeight.toFixed(2));
+		console.log("🏞️ Creating flattened image: " + imgWidth + "x" + imgHeight + " for mesh bounds: " + worldWidth.toFixed(2) + "x" + worldHeight.toFixed(2));
 
 		// Step 4) Create offscreen renderer
 		var offscreenRenderer = new THREE.WebGLRenderer({
@@ -8870,7 +8820,7 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 		var halfWidth = worldWidth / 2;
 		var halfHeight = worldHeight / 2;
 
-		console.log("?? Mesh center for flattening: (" + meshCenterX.toFixed(2) + ", " + meshCenterY.toFixed(2) + "), half-extents: " + halfWidth.toFixed(2) + " x " + halfHeight.toFixed(2));
+		console.log("🎯 Mesh center for flattening: (" + meshCenterX.toFixed(2) + ", " + meshCenterY.toFixed(2) + "), half-extents: " + halfWidth.toFixed(2) + " x " + halfHeight.toFixed(2));
 
 		// Step 5) Create orthographic camera looking down (top-down view)
 		// Use SYMMETRIC frustum centered at 0 - mesh will be transformed to match
@@ -8998,7 +8948,7 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 			// Step 12) Store in loadedImages
 			loadedImages.set(imageId, imageEntry);
 
-			console.log("? Created flattened image for 2D canvas: " + imageId);
+			console.log("🏞️ Created flattened image for 2D canvas: " + imageId);
 
 			// Step 12a) Save flattened image data URL back to surface for IndexedDB persistence
 			var surface = loadedSurfaces.get(surfaceId);
@@ -9009,7 +8959,7 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 
 				// Step 12b) Save to IndexedDB
 				saveSurfaceToDB(surfaceId).catch(function (err) {
-					console.warn("?? Failed to save flattened image to DB:", err);
+					console.warn("🚨 Failed to save flattened image to DB:", err);
 				});
 			}
 
@@ -9017,7 +8967,7 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 			debouncedUpdateTreeView();
 		};
 		img.onerror = function () {
-			console.error("? Failed to create canvas from flattened image");
+			console.error("❌ Failed to create canvas from flattened image");
 		};
 		img.src = imageDataURL;
 
@@ -10670,17 +10620,17 @@ function getVisibleHolesAndKADDrawings(allBlastHoles, allKADDrawings) {
 			return true;
 		});
 
-		console.log("?? getVisibleHolesAndKADDrawings - allBlastHoles:", allBlastHoles.length);
-		console.log("?? getVisibleHolesAndKADDrawings - allKADDrawings:", allKADDrawings.length);
-		console.log("?? getVisibleHolesAndKADDrawings - visibleHoles:", visibleHoles.length);
-		console.log("?? getVisibleHolesAndKADDrawings - visibleKADDrawings:", visibleKADDrawings.length);
+		console.log("👀 getVisibleHolesAndKADDrawings - allBlastHoles:", allBlastHoles.length);
+		console.log("👀 getVisibleHolesAndKADDrawings - allKADDrawings:", allKADDrawings.length);
+		console.log("👀 getVisibleHolesAndKADDrawings - visibleHoles:", visibleHoles.length);
+		console.log("👀 getVisibleHolesAndKADDrawings - visibleKADDrawings:", visibleKADDrawings.length);
 
 		return {
 			visibleHoles,
 			visibleKADDrawings,
 		};
 	} catch (err) {
-		console.log("Error in getVisibleHolesAndKADDrawings:", err);
+		console.log("❌ Error in getVisibleHolesAndKADDrawings:", err);
 		return {
 			visibleHoles: [],
 			visibleKADDrawings: [],
@@ -10691,7 +10641,7 @@ function getVisibleHolesAndKADDrawings(allBlastHoles, allKADDrawings) {
 // make a global Earcut
 const useEarcut = getEarcut();
 
-// ? ROBUST: Check how earcut is available
+// 🔍 ROBUST: Check how earcut is available
 function getEarcut() {
 	if (typeof earcut !== "undefined") {
 		// Check if it's the direct function or has .default
@@ -10802,7 +10752,7 @@ function handleTriangulationAction() {
 	console.log("🔍 Debugging triangulation visibility:");
 	console.log("📊 allKADDrawingsMap size:", allKADDrawingsMap ? allKADDrawingsMap.size : 0);
 	console.log("🌍 drawingsGroupVisible:", drawingsGroupVisible);
-	console.log("?? pointsGroupVisible:", pointsGroupVisible);
+	console.log("🔘 pointsGroupVisible:", pointsGroupVisible);
 	console.log("📏 linesGroupVisible:", linesGroupVisible);
 	console.log("🔸 polygonsGroupVisible:", polygonsGroupVisible);
 	console.log("💥 blastGroupVisible:", blastGroupVisible);
@@ -11578,11 +11528,11 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 		});
 
 		if (!result || !result.resultTriangles || result.resultTriangles.length === 0) {
-			console.warn("?? Constrainautor CDT failed, falling back to basic Delaunay");
+			console.warn("🚨 Constrainautor CDT failed, falling back to basic Delaunay");
 			return createFallbackTriangulation(elementVertices);
 		}
 
-		console.log("? CDT Success: " + result.resultTriangles.length + " triangles created with " + (result.stats?.constraints || 0) + " constraints applied");
+		console.log("✅ CDT Success: " + result.resultTriangles.length + " triangles created with " + (result.stats?.constraints || 0) + " constraints applied");
 
 		return {
 			resultTriangles: result.resultTriangles,
@@ -11591,8 +11541,8 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 			stats: result.stats,
 		};
 	} catch (error) {
-		console.error("? CDT Error:", error);
-		console.warn("?? Falling back to basic Delaunay triangulation");
+		console.error("❌ CDT Error:", error);
+		console.warn("🚨 Falling back to basic Delaunay triangulation");
 
 		// Fallback to basic triangulation
 		return createDelaunayTriangulation(params);
@@ -11654,7 +11604,7 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
 				constraints.push(constraint);
 			} else {
 				unmappedCount++;
-				console.warn("?? Could not map constraint segment " + i + " for entity " + entityName);
+				console.warn("🚨 Could not map constraint segment " + i + " for entity " + entityName);
 				console.warn("  Start: (" + startX.toFixed(3) + ", " + startY.toFixed(3) + ") ? index " + startIdx);
 				console.warn("  End: (" + endX.toFixed(3) + ", " + endY.toFixed(3) + ") ? index " + endIdx);
 			}
@@ -11694,7 +11644,7 @@ function extractConstraintsFromDeduplicatedVertices(elementVertices, kadSourceMa
 		// Track entities with unmapped segments (these can cause constraint intersection issues)
 		if (unmappedCount > 0) {
 			entitiesWithUnmappedSegments.add(entityName);
-			console.warn("  ?? Entity " + entityName + " has " + unmappedCount + " unmapped segments - constraints from this entity may cause intersection issues");
+			console.warn("  🚨 Entity " + entityName + " has " + unmappedCount + " unmapped segments - constraints from this entity may cause intersection issues");
 		}
 
 		console.log("  ✅ Added " + entityConstraints.length + " constraints for entity " + entityName);
@@ -11840,7 +11790,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 			// Constraints from entities with unmapped segments should be processed early
 			// when the triangulation is simpler and there are fewer existing constraints
 			if (entitiesWithUnmappedSegments.size > 0) {
-				console.log("?? Reordering constraints - processing " + entitiesWithUnmappedSegments.size + " problematic entities first");
+				console.log("🔃 Reordering constraints - processing " + entitiesWithUnmappedSegments.size + " problematic entities first");
 
 				// Create arrays for problematic and normal constraints
 				const problematicEdges = [];
@@ -12081,10 +12031,10 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 						if (currentIndex >= constraintEdges.length) {
 							// All constraints processed
 							const failedConstraints = constraintEdges.length - successfulConstraints;
-							console.log("? Processed " + constraintEdges.length + " constraints: " + successfulConstraints + " applied, " + failedConstraints + " skipped");
+							console.log("✅ Processed " + constraintEdges.length + " constraints: " + successfulConstraints + " applied, " + failedConstraints + " skipped");
 
 							if (failedConstraints > 0) {
-								console.warn("?? " + failedConstraints + " constraints were skipped due to conflicts or errors");
+								console.warn("🚨 " + failedConstraints + " constraints were skipped due to conflicts or errors");
 							}
 
 							if (updateProgress) updateProgress(95, "Finalizing triangulation...");
@@ -12141,7 +12091,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 							// Check time before processing - if we're close to limit, skip this one
 							const elapsedBefore = Date.now() - startTime;
 							if (elapsedBefore > MAX_CONSTRAINT_TIME - 1000) {
-								console.warn("?? Skipping constraint " + constraintIndex + " - approaching time limit");
+								console.warn("🚨 Skipping constraint " + constraintIndex + " - approaching time limit");
 								currentIndex++;
 								// Continue processing batch
 								const constraintsProcessedThisBatch = currentIndex - batchStartIndex;
@@ -12175,7 +12125,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 
 							// Step 5c.2) Pre-validate constraint indices before applying
 							if (startIdx < 0 || endIdx < 0 || startIdx >= points.length || endIdx >= points.length || startIdx === endIdx) {
-								console.warn("?? Skipping invalid constraint " + constraintIndex + ": invalid indices [" + startIdx + ", " + endIdx + "]");
+								console.warn("🚨 Skipping invalid constraint " + constraintIndex + ": invalid indices [" + startIdx + ", " + endIdx + "]");
 								currentIndex++;
 								// Continue processing batch
 								const constraintsProcessedThisBatch = currentIndex - batchStartIndex;
@@ -12198,7 +12148,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 
 								// Skip extremely short edges (< 0.0001) as they can cause numerical issues
 								if (edgeLength < 0.0001) {
-									console.warn("?? Skipping constraint " + constraintIndex + " - edge too short: " + edgeLength.toFixed(6));
+									console.warn("🚨 Skipping constraint " + constraintIndex + " - edge too short: " + edgeLength.toFixed(6));
 									currentIndex++;
 									// Continue processing batch
 									const constraintsProcessedThisBatch = currentIndex - batchStartIndex;
@@ -12264,7 +12214,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 
 								pointsOnEdge = findPointsOnEdgeLoose(startIdx, endIdx);
 								if (pointsOnEdge.length > 0) {
-									console.log("?? Loose tolerance detected " + pointsOnEdge.length + " collinear points for constraint " + constraintIndex);
+									console.log("🔘 Loose tolerance detected " + pointsOnEdge.length + " collinear points for constraint " + constraintIndex);
 								}
 							}
 
@@ -12272,7 +12222,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 								// Step 1) Split constraint into segments through collinear points
 								const splitSegments = splitConstraintThroughPoints(startIdx, endIdx);
 
-								console.log("?? Splitting constraint " + constraintIndex + " from entity " + constraint?.entityName + ": [" + startIdx + ", " + endIdx + "]");
+								console.log("✂️ Splitting constraint " + constraintIndex + " from entity " + constraint?.entityName + ": [" + startIdx + ", " + endIdx + "]");
 								console.log("   Found " + pointsOnEdge.length + " collinear points: " + pointsOnEdge.join(", "));
 								console.log("   Creating " + splitSegments.length + " sub-constraints");
 
@@ -12343,7 +12293,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 								const dy = p2.y - p1.y;
 								const edgeLength = Math.sqrt(dx * dx + dy * dy);
 
-								console.log("?? Detailed info for constraint " + constraintIndex + ":");
+								console.log("ℹ️ Detailed info for constraint " + constraintIndex + ":");
 								console.log("   Entity: " + (constraint?.entityName || "unknown"));
 								console.log("   Indices: [" + startIdx + ", " + endIdx + "]");
 								console.log("   Coordinates: [" + p1.x.toFixed(3) + ", " + p1.y.toFixed(3) + ", " + (p1.z || 0).toFixed(3) + "] -> [" + p2.x.toFixed(3) + ", " + p2.y.toFixed(3) + ", " + (p2.z || 0).toFixed(3) + "]");
@@ -12353,7 +12303,7 @@ function createConstrainautorTriangulation(points, constraintSegments, options =
 								// Check for nearby points with tighter tolerance
 								const tighterPoints = findPointsOnEdge(startIdx, endIdx);
 								if (tighterPoints.length > 0) {
-									console.log("   ?? Collinear points detected: " + tighterPoints.join(", "));
+									console.log("   🔘 Collinear points detected: " + tighterPoints.join(", "));
 								}
 
 								// Check for very close points (even tighter tolerance)
@@ -16634,7 +16584,7 @@ function deleteSelectedHoles() {
 			allBlastHoles.forEach((hole) => {
 				if (deletedCombinedIDs.has(hole.fromHoleID)) {
 					const selfReference = hole.entityName + ":::" + hole.holeID;
-					console.log("?? Orphaned hole " + selfReference + " now references itself");
+					console.log("🕳️ Orphaned hole " + selfReference + " now references itself");
 					hole.fromHoleID = selfReference;
 				}
 			});
@@ -17012,13 +16962,13 @@ function deleteHoleAndRenumber(holeToDelete) {
 	const holeIndex = allBlastHoles.findIndex((hole) => hole.entityName === entityName && hole.holeID === holeID);
 	if (holeIndex !== -1) {
 		allBlastHoles.splice(holeIndex, 1);
-		console.log("??? Deleted hole:", entityName + ":" + holeID);
+		console.log("❌🕳️ Deleted hole:", entityName + ":" + holeID);
 
 		// Step #2a: Clean up fromHoleID references - orphaned holes should reference themselves
 		allBlastHoles.forEach((hole) => {
 			if (hole.fromHoleID === deletedCombinedID) {
 				const selfReference = hole.entityName + ":::" + hole.holeID;
-				console.log("?? Orphaned hole " + selfReference + " now references itself");
+				console.log("🕳️ Orphaned hole " + selfReference + " now references itself");
 				hole.fromHoleID = selfReference;
 			}
 		});
@@ -17026,7 +16976,7 @@ function deleteHoleAndRenumber(holeToDelete) {
 		// Step #2b: Save to IndexedDB after deletion
 		debouncedSaveHoles();
 	} else {
-		console.warn("?? Hole not found for deletion:", entityName + ":" + holeID);
+		console.warn("🚨 Hole not found for deletion:", entityName + ":" + holeID);
 		return;
 	}
 
@@ -17138,7 +17088,7 @@ window.renumberEntityPoints = renumberEntityPoints;
 
 function handleHoleAddingClick(event) {
 	if (isAddingHole) {
-		console.log("?? handleHoleAddingClick fired");
+		console.log("➕🕳️ handleHoleAddingClick fired");
 		// Get the click/touch coordinates relative to the canvas
 		const rect = canvas.getBoundingClientRect();
 		let clickX = event.clientX - rect.left;
@@ -17177,13 +17127,13 @@ function handleHoleAddingClick(event) {
 			setTimeout(() => updateStatusMessage(""), 1500);
 		}
 
-		console.log("?? worldX/worldY/worldZ set:", worldX, worldY, worldZ);
-		console.log("?? window.worldX/worldY/worldZ:", window.worldX, window.worldY, window.worldZ);
+		console.log("📍 worldX/worldY/worldZ set:", worldX, worldY, worldZ);
+		console.log("📍 window.worldX/worldY/worldZ:", window.worldX, window.worldY, window.worldZ);
 
 		// Step 1) Check if we're in multiple mode (have stored form data)
 		if (window.isAddingSingleHole && window.multipleAddHoleFormData) {
 			// Multiple mode: Reuse stored form data, don't show dialog
-			console.log("?? Multiple mode: Reusing stored form data");
+			console.log("📍📍 Multiple mode: Reusing stored form data");
 			if (typeof window.addHoleMultipleMode === "function") {
 				window.addHoleMultipleMode(worldX, worldY);
 			} else {
@@ -17192,7 +17142,7 @@ function handleHoleAddingClick(event) {
 			}
 		} else {
 			// Single mode or first click: Show dialog
-			console.log("?? Single mode or first click: Showing dialog");
+			console.log("📍 Single mode or first click: Showing dialog");
 			addHolePopup();
 		}
 	} else {
@@ -19742,7 +19692,7 @@ let timeChartUpdateTimer = null;
 function timeChart() {
 	if (isUpdatingTimeChart) {
 		if (developerModeEnabled) {
-			console.log("?? Preventing recursive timechart call");
+			console.log("❌ Preventing recursive timechart call");
 		}
 		return;
 	}
@@ -21811,7 +21761,7 @@ function drawData(allBlastHoles, selectedHole) {
 
 		renderThreeJS();
 		if (developerModeEnabled) {
-			console.log("?? Three.js scene rendered - drawData()");
+			console.log("🧊 Three.js scene rendered - drawData()");
 		}
 	}
 }
@@ -22783,7 +22733,7 @@ async function saveSurfaceToDB(surfaceId) {
 				return;
 			}
 
-			console.log("? Saving surface to database:", {
+			console.log("💾 Saving surface to database:", {
 				id: surfaceId,
 				name: surface.name,
 				pointCount: surface.points.length,
@@ -23053,9 +23003,9 @@ async function loadAllSurfacesIntoMemory() {
 						surfaceEntry.threeJSMesh = null; // Will be rebuilt
 
 						if (surfaceEntry.materialProperties) {
-							console.log("?? Loaded material properties for surface: " + surfaceData.id);
+							console.log("🧊 Loaded material properties for surface: " + surfaceData.id);
 						} else {
-							console.warn("?? No material properties found for textured mesh: " + surfaceData.id);
+							console.warn("🚨 No material properties found for textured mesh: " + surfaceData.id);
 						}
 
 						// Step 2a) Load flattened image from saved data if available
@@ -23063,7 +23013,7 @@ async function loadAllSurfacesIntoMemory() {
 							surfaceEntry.flattenedImageDataURL = surfaceData.flattenedImageDataURL;
 							surfaceEntry.flattenedImageBounds = surfaceData.flattenedImageBounds;
 							surfaceEntry.flattenedImageDimensions = surfaceData.flattenedImageDimensions;
-							console.log("? Loaded flattened image data from DB for: " + surfaceData.id);
+							console.log("🧊 Loaded flattened image data from DB for: " + surfaceData.id);
 						}
 
 						// Track for later rebuilding
@@ -23077,7 +23027,7 @@ async function loadAllSurfacesIntoMemory() {
 
 				// Step 3) Rebuild Three.js meshes for textured surfaces (staggered to avoid blocking)
 				if (texturedSurfaceIds.length > 0) {
-					console.log("?? Rebuilding " + texturedSurfaceIds.length + " textured meshes...");
+					console.log("🧱 Rebuilding " + texturedSurfaceIds.length + " textured meshes...");
 
 					texturedSurfaceIds.forEach(function (surfaceId, index) {
 						setTimeout(function () {
@@ -23089,7 +23039,7 @@ async function loadAllSurfacesIntoMemory() {
 				resolve();
 			};
 			request.onerror = function () {
-				console.error("? Failed to load surfaces from IndexedDB");
+				console.error("❌ Failed to load surfaces from IndexedDB");
 				resolve();
 			};
 		});
@@ -24339,7 +24289,7 @@ window.onload = function () {
 
 			if (hasKADSelection && !isDrawingPoint && !isDrawingLine && !isDrawingPoly && !isDrawingCircle && !isDrawingText) {
 				event.preventDefault();
-				console.log("??? [DELETE KEY] Deleting selected KAD objects");
+				console.log("❌🔑 [DELETE KEY] Deleting selected KAD objects");
 
 				// Step 2) Handle vertex deletion with confirmation
 				if (selectedPoint && selectedKADObject) {
@@ -24361,12 +24311,12 @@ window.onload = function () {
 								if (result === 1) {
 									// Delete vertex only
 									entity.data.splice(elementIndex, 1);
-									console.log("? [DELETE KEY] Deleted vertex:", selectedPoint.pointID);
+									console.log("❌🔑 [DELETE KEY] Deleted vertex:", selectedPoint.pointID);
 
 									// Delete entity if empty
 									if (entity.data.length === 0) {
 										allKADDrawingsMap.delete(selectedKADObject.entityName);
-										console.log("??? [DELETE KEY] Entity empty - deleted:", selectedKADObject.entityName);
+										console.log("❌🔑 [DELETE KEY] Entity empty - deleted:", selectedKADObject.entityName);
 									} else if (typeof renumberEntityPoints === "function") {
 										renumberEntityPoints(entity);
 									}
@@ -24387,7 +24337,7 @@ window.onload = function () {
 								} else if (result === 2) {
 									// Delete entire entity
 									allKADDrawingsMap.delete(selectedKADObject.entityName);
-									console.log("? [DELETE KEY] Deleted entity:", selectedKADObject.entityName);
+									console.log("❌🔑 [DELETE KEY] Deleted entity:", selectedKADObject.entityName);
 
 									selectedPoint = null;
 									selectedKADObject = null;
@@ -24418,7 +24368,7 @@ window.onload = function () {
 						).then(function (confirmed) {
 							if (confirmed) {
 								allKADDrawingsMap.delete(selectedKADObject.entityName);
-								console.log("? [DELETE KEY] Deleted entity:", selectedKADObject.entityName);
+								console.log("❌🔑 [DELETE KEY] Deleted entity:", selectedKADObject.entityName);
 
 								selectedKADObject = null;
 								selectedMultipleKADObjects = [];
@@ -24450,7 +24400,7 @@ window.onload = function () {
 									allKADDrawingsMap.delete(kadObj.entityName);
 								}
 							});
-							console.log("? [DELETE KEY] Deleted", count, "entities");
+							console.log("❌🔑 [DELETE KEY] Deleted", count, "entities");
 
 							selectedMultipleKADObjects = [];
 							selectedKADObject = null;
@@ -24923,7 +24873,7 @@ moveToTool.addEventListener("change", function () {
 
 		const modeText = moveToolIn3DMode ? "3D" : "2D";
 		updateStatusMessage("Move Tool Activated (" + modeText + " mode)\nSelect a hole and drag to move");
-		console.log("? Move Tool activated in " + modeText + " mode");
+		console.log("👋 Move Tool activated in " + modeText + " mode");
 	} else {
 		// Step 4) Deactivation - remove listeners from correct canvas based on mode
 		resetFloatingToolbarButtons("none");
@@ -24994,7 +24944,7 @@ moveToTool.addEventListener("change", function () {
 		}
 		drawData(allBlastHoles, selectedHole);
 
-		console.log("? Move Tool deactivated");
+		console.log(" Move Tool deactivated");
 	}
 });
 
@@ -25022,7 +24972,7 @@ function handleMoveToolMouseDown(event) {
 
 		// Step 2b) Perform raycast once for both KAD and hole detection
 		const intersects = interactionManager.raycast();
-		console.log("?? [MOVE TOOL 3D] Raycast found " + intersects.length + " intersects, selectingKAD: " + selectingKAD + ", selectingHoles: " + selectingHoles);
+		console.log("🎯 [MOVE TOOL 3D] Raycast found " + intersects.length + " intersects, selectingKAD: " + selectingKAD + ", selectingHoles: " + selectingHoles);
 
 		if (selectingKAD) {
 			// Step 2b.1) Check if we have existing multiple selections
@@ -25048,7 +24998,7 @@ function handleMoveToolMouseDown(event) {
 
 				// ? Suspend camera pan during drag
 				if (cameraControls) {
-					console.log("?? Suspending camera pan during KAD drag");
+					console.log("🫷 Suspending camera pan during KAD drag");
 					cameraControls.detachEvents();
 				}
 
@@ -25165,7 +25115,7 @@ function handleMoveToolMouseDown(event) {
 
 				// ? Suspend camera pan during drag
 				if (cameraControls) {
-					console.log("?? Suspending camera pan during KAD drag");
+					console.log("🫷 Suspending camera pan during KAD drag");
 					cameraControls.detachEvents();
 				}
 
@@ -25192,7 +25142,7 @@ function handleMoveToolMouseDown(event) {
 
 				// ? Suspend camera pan during drag
 				if (cameraControls) {
-					console.log("?? Suspending camera pan during hole drag");
+					console.log("🫷 Suspending camera pan during hole drag");
 					cameraControls.detachEvents();
 				}
 
@@ -25222,7 +25172,7 @@ function handleMoveToolMouseDown(event) {
 
 				// ? Suspend camera pan during drag
 				if (cameraControls) {
-					console.log("?? Suspending camera pan during hole drag");
+					console.log("🫷 Suspending camera pan during hole drag");
 					cameraControls.detachEvents();
 				}
 
@@ -25243,9 +25193,9 @@ function handleMoveToolMouseDown(event) {
 			} else {
 				// Step 2h) No existing selection - try to find a hole in raycast intersects
 				const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
-				console.log("?? [MOVE TOOL 3D] findClickedHole result:", clickedHole);
+				console.log("👋 [MOVE TOOL 3D] findClickedHole result:", clickedHole);
 				if (clickedHole) {
-					console.log("? [MOVE TOOL 3D] Starting drag for hole: " + clickedHole.holeID + " in " + clickedHole.entityName);
+					console.log("👋 [MOVE TOOL 3D] Starting drag for hole: " + clickedHole.holeID + " in " + clickedHole.entityName);
 
 					// Prevent camera pan during drag
 					event.preventDefault();
@@ -25258,7 +25208,7 @@ function handleMoveToolMouseDown(event) {
 
 					// ? Suspend camera pan during drag
 					if (cameraControls) {
-						console.log("?? Suspending camera pan during hole drag");
+						console.log("🫷 Suspending camera pan during hole drag");
 						cameraControls.detachEvents();
 					}
 
@@ -25289,7 +25239,7 @@ function handleMoveToolMouseDown(event) {
 					return;
 				} else {
 					// Clicked empty space - clear selection AND remove highlights
-					console.log("?? [MOVE TOOL 3D] No hole found in intersects - clearing selection");
+					console.log("💩 [MOVE TOOL 3D] No hole found in intersects - clearing selection");
 					clearAllSelectionState();
 					selectedHole = null;
 					selectedMultipleHoles = [];
@@ -25509,9 +25459,9 @@ document.addEventListener("keyup", (event) => {
 
 // Handle move tool mouse move - move holes
 function handleMoveToolMouseMove(event) {
-	console.log("??? [MOVE TOOL MOUSEMOVE] Called - isDraggingHole:", isDraggingHole, "moveToolSelectedHole:", moveToolSelectedHole, "moveToolSelectedKAD:", moveToolSelectedKAD, "moveToolIn3DMode:", moveToolIn3DMode);
+	console.log("👋 [MOVE TOOL MOUSEMOVE] Called - isDraggingHole:", isDraggingHole, "moveToolSelectedHole:", moveToolSelectedHole, "moveToolSelectedKAD:", moveToolSelectedKAD, "moveToolIn3DMode:", moveToolIn3DMode);
 	if (!isDraggingHole || (!moveToolSelectedHole && !moveToolSelectedKAD)) {
-		console.log("? [MOVE TOOL MOUSEMOVE] Early return - not dragging or no selection");
+		console.log("👋 [MOVE TOOL MOUSEMOVE] Early return - not dragging or no selection");
 		return;
 	}
 
@@ -25528,7 +25478,7 @@ function handleMoveToolMouseMove(event) {
 		// Step 4b.1) CRITICAL: Update raycaster ray with new mouse position
 		const camera = threeRenderer.camera;
 		raycaster.setFromCamera(interactionManager.mouse, camera);
-		console.log("?? [MOVE TOOL 3D MOVE] Mouse NDC: (", interactionManager.mouse.x.toFixed(3), interactionManager.mouse.y.toFixed(3), ")");
+		console.log("👋 [MOVE TOOL 3D MOVE] Mouse NDC: (", interactionManager.mouse.x.toFixed(3), interactionManager.mouse.y.toFixed(3), ")");
 
 		// Step 4c) Declare position variables
 		let worldX, worldY, worldZ;
@@ -25546,7 +25496,7 @@ function handleMoveToolMouseMove(event) {
 			const didIntersect = raycaster.ray.intersectPlane(plane, intersectionPoint);
 
 			if (!didIntersect) {
-				console.log("? [MOVE TOOL 3D MOVE] Ray didn't intersect plane at Z:", dragPlaneZ);
+				console.log("👋 [MOVE TOOL 3D MOVE] Ray didn't intersect plane at Z:", dragPlaneZ);
 				return;
 			}
 
@@ -25554,7 +25504,7 @@ function handleMoveToolMouseMove(event) {
 			worldX = intersectionPoint.x + threeLocalOriginX;
 			worldY = intersectionPoint.y + threeLocalOriginY;
 			worldZ = dragPlaneZ; // Fixed Z for holes
-			console.log("? [MOVE TOOL 3D MOVE HOLE] Position at:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
+			console.log("👋 [MOVE TOOL 3D MOVE HOLE] Position at:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
 
 			// Step 4d.4) ONLY if snapping is enabled, override with snap position
 			if (snapEnabled) {
@@ -25579,7 +25529,7 @@ function handleMoveToolMouseMove(event) {
 				worldX = snapResult.worldX;
 				worldY = snapResult.worldY;
 				worldZ = snapResult.worldZ || dragPlaneZ; // Use snap Z if available, fallback to initial Z
-				console.log("? [MOVE TOOL 3D MOVE KAD] Snapped to:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2), "from", snapResult.snapTarget.description);
+				console.log("👋 [MOVE TOOL 3D MOVE KAD] Snapped to:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2), "from", snapResult.snapTarget.description);
 			} else {
 				// Step 4e.3) No snap found - use plane at initial Z as fallback (screen-space XY movement)
 				const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -dragPlaneZ);
@@ -25587,18 +25537,18 @@ function handleMoveToolMouseMove(event) {
 				const didIntersect = raycaster.ray.intersectPlane(plane, intersectionPoint);
 
 				if (!didIntersect) {
-					console.log("? [MOVE TOOL 3D MOVE KAD] Ray didn't intersect fallback plane at Z:", dragPlaneZ);
+					console.log("👋 [MOVE TOOL 3D MOVE KAD] Ray didn't intersect fallback plane at Z:", dragPlaneZ);
 					return;
 				}
 
 				worldX = intersectionPoint.x + threeLocalOriginX;
 				worldY = intersectionPoint.y + threeLocalOriginY;
 				worldZ = dragPlaneZ; // Keep initial Z if no snap
-				console.log("? [MOVE TOOL 3D MOVE KAD] No snap - using plane intersection:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
+				console.log("👋 [MOVE TOOL 3D MOVE KAD] No snap - using plane intersection:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
 			}
 		} else {
 			// Step 4e.4) No object selected - should not reach here
-			console.log("? [MOVE TOOL 3D MOVE] No object selected");
+			console.log("👋 [MOVE TOOL 3D MOVE] No object selected");
 			return;
 		}
 		// At this point, worldX, worldY, worldZ are set for either holes or KAD
@@ -25610,13 +25560,13 @@ function handleMoveToolMouseMove(event) {
 			const firstHole = dragInitialPositions[0];
 			const deltaX = worldX - firstHole.x;
 			const deltaY = worldY - firstHole.y;
-			console.log("?? [MOVE TOOL 3D] Moving", dragInitialPositions.length, "hole(s), deltaX:", deltaX.toFixed(2), "deltaY:", deltaY.toFixed(2));
+			console.log("👋 [MOVE TOOL 3D] Moving", dragInitialPositions.length, "hole(s), deltaX:", deltaX.toFixed(2), "deltaY:", deltaY.toFixed(2));
 
 			dragInitialPositions.forEach(function (item) {
 				const hole = item.hole;
 				const newX = parseFloat(item.x) + deltaX;
 				const newY = parseFloat(item.y) + deltaY;
-				console.log("  ? Hole", hole.holeID, "from (", item.x.toFixed(2), item.y.toFixed(2), ") to (", newX.toFixed(2), newY.toFixed(2), ")");
+				console.log("  👋 Hole", hole.holeID, "from (", item.x.toFixed(2), item.y.toFixed(2), ") to (", newX.toFixed(2), newY.toFixed(2), ")");
 				calculateHoleGeometry(hole, newX, 4); // Parameter 4 for X position
 				calculateHoleGeometry(hole, newY, 5); // Parameter 5 for Y position
 
@@ -25662,7 +25612,7 @@ function handleMoveToolMouseMove(event) {
 			const deltaX = worldX - firstKAD.x;
 			const deltaY = worldY - firstKAD.y;
 			const deltaZ = worldZ - (firstKAD.z || 0); // Full 3D delta
-			console.log("?? [MOVE TOOL 3D] Moving " + dragInitialKADPositions.length + " KAD points, delta: (" + deltaX.toFixed(2) + ", " + deltaY.toFixed(2) + ", " + deltaZ.toFixed(2) + ")");
+			console.log("👋 [MOVE TOOL 3D] Moving " + dragInitialKADPositions.length + " KAD points, delta: (" + deltaX.toFixed(2) + ", " + deltaY.toFixed(2) + ", " + deltaZ.toFixed(2) + ")");
 
 			dragInitialKADPositions.forEach(function (item) {
 				const entity = allKADDrawingsMap.get(item.entityName);
@@ -25704,7 +25654,7 @@ function handleMoveToolMouseMove(event) {
 			}
 		} else if (moveToolSelectedKAD) {
 			// Step 4i) Update single KAD point position (full 3D movement)
-			console.log("?? [MOVE TOOL 3D] Moving KAD " + moveToolSelectedKAD.entityName + " point " + moveToolSelectedKAD.elementIndex + " to XYZ: (" + worldX.toFixed(2) + ", " + worldY.toFixed(2) + ", " + worldZ.toFixed(2) + ")");
+			console.log("👋 [MOVE TOOL 3D] Moving KAD " + moveToolSelectedKAD.entityName + " point " + moveToolSelectedKAD.elementIndex + " to XYZ: (" + worldX.toFixed(2) + ", " + worldY.toFixed(2) + ", " + worldZ.toFixed(2) + ")");
 			const entity = allKADDrawingsMap.get(moveToolSelectedKAD.entityName);
 			if (entity && entity.data && moveToolSelectedKAD.elementIndex < entity.data.length) {
 				const oldX = entity.data[moveToolSelectedKAD.elementIndex].pointXLocation;
@@ -25715,7 +25665,7 @@ function handleMoveToolMouseMove(event) {
 				entity.data[moveToolSelectedKAD.elementIndex].pointXLocation = worldX;
 				entity.data[moveToolSelectedKAD.elementIndex].pointYLocation = worldY;
 				entity.data[moveToolSelectedKAD.elementIndex].pointZLocation = worldZ; // Full 3D movement
-				console.log("  ? KAD point moved from (" + oldX.toFixed(2) + ", " + oldY.toFixed(2) + ", " + oldZ.toFixed(2) + ") to (" + worldX.toFixed(2) + ", " + worldY.toFixed(2) + ", " + worldZ.toFixed(2) + ")");
+				console.log("  👋 KAD point moved from (" + oldX.toFixed(2) + ", " + oldY.toFixed(2) + ", " + oldZ.toFixed(2) + ") to (" + worldX.toFixed(2) + ", " + worldY.toFixed(2) + ", " + worldZ.toFixed(2) + ")");
 
 				// Keep highlight in sync while dragging
 				if (selectedKADObject && selectedKADObject.entityName === moveToolSelectedKAD.entityName && selectedKADObject.elementIndex === moveToolSelectedKAD.elementIndex) {
@@ -25757,7 +25707,7 @@ function handleMoveToolMouseMove(event) {
 
 				// Step 4i.1b) If highlight was removed (e.g. by drawData), recreate it
 				if (!highlightFound) {
-					console.log("?? [MOVE TOOL 3D] Highlight missing - recreating for kadId:", kadId);
+					console.log("👋 [MOVE TOOL 3D] Highlight missing - recreating for kadId:", kadId);
 					if (typeof highlightSelectedKADPointThreeJS === "function" && selectedKADObject) {
 						// Update selectedKADObject position to current location before recreating highlight
 						selectedKADObject.pointXLocation = worldX;
@@ -25896,7 +25846,7 @@ function handleMoveToolMouseUp(event) {
 		if (moveToolIn3DMode) {
 			// ? Re-enable camera pan after drag completes
 			if (cameraControls) {
-				console.log("? Restoring camera pan after drag complete");
+				console.log("🎥 Restoring camera pan after drag complete");
 				cameraControls.resetPanState(); // Clear any stuck states
 				cameraControls.attachEvents(); // Re-enable pan/orbit
 			}
@@ -25938,7 +25888,7 @@ function handleMoveToolMouseUp(event) {
 					if (highlight.geometry) highlight.geometry.dispose();
 					if (highlight.material) highlight.material.dispose();
 				});
-				console.log("??? [MOVE TOOL] Removed " + highlightsToRemove.length + " hole highlights from scene");
+				console.log("👋 [MOVE TOOL] Removed " + highlightsToRemove.length + " hole highlights from scene");
 			}
 
 			// Step 7e.1) Remove ALL KAD highlights from scene
@@ -25954,7 +25904,7 @@ function handleMoveToolMouseUp(event) {
 					if (highlight.geometry) highlight.geometry.dispose();
 					if (highlight.material) highlight.material.dispose();
 				});
-				console.log("??? [MOVE TOOL] Removed " + kadHighlightsToRemove.length + " KAD highlights from scene");
+				console.log("👋 [MOVE TOOL] Removed " + kadHighlightsToRemove.length + " KAD highlights from scene");
 			}
 
 			// Step 7f) Call drawData with null to prevent highlight recreation (like Escape key does)
@@ -25969,7 +25919,7 @@ function handleMoveToolMouseUp(event) {
 				justFinishedDragging = false;
 			}, 100); // Clear flag after 100ms
 
-			console.log("? Move Tool mouseup (3D mode) - changes saved");
+			console.log("👋 Move Tool mouseup (3D mode) - changes saved");
 			return;
 		}
 
@@ -26278,7 +26228,7 @@ selectPointerTool.addEventListener("change", function () {
 			window.polygonSelection3D.disable();
 			selectByPolygonTool.checked = false;
 			if (developerModeEnabled) {
-				console.log("? Disabled 3D polygon selection (SelectPointer activated)");
+				console.log("❌🔶 Disabled 3D polygon selection (SelectPointer activated)");
 			}
 		}
 
@@ -26325,58 +26275,10 @@ selectPointerTool.addEventListener("change", function () {
 
 // Update the function to properly check and handle KAD tools
 // MOVED TO ContextMenuManager.js - This function is now loaded from external module
-/*
-function kadContextMenu(e) {
-	e.preventDefault(); // Prevent context menu
-
-	// Check if any KAD drawing tool is active
-	const anyKADToolActive = addPointDraw.checked || addLineDraw.checked || addCircleDraw.checked || addPolyDraw.checked || addTextDraw.checked;
-
-	if (anyKADToolActive) {
-		// Start a new object within the same tool
-		createNewEntity = true; // This will create a new entity name on next click
-		lastKADDrawPoint = null; // Reset preview line
-
-		// Show status message
-		updateStatusMessage("Starting new object - continue drawing");
-
-		// Brief visual feedback
-		setTimeout(() => {
-			updateStatusMessage("");
-		}, 1500);
-
-		// Redraw to clear any preview lines
-		drawData(allBlastHoles, selectedHole);
-	}
-}
-*/
 // END OF MOVED FUNCTION - kadContextMenu now loaded from ContextMenuManager.js
-
 ///-----------------------------RIGHT CLICK STUFF GOES HERE-----------------------------//
-
 // MOVED TO ContextMenuManager.js - This function is now loaded from external module
-/*
-function closeAllContextMenus() {
-	// Find all elements that could be context menus
-	const existingMenus = document.querySelectorAll('.context-menu, [style*="position: absolute"][style*="background"], div[onclick]');
-
-	existingMenus.forEach((menu) => {
-		// Check if it looks like a context menu (has background and position styling)
-		const style = menu.style;
-		if (style.position === "absolute" && (style.background || style.backgroundColor) && document.body.contains(menu)) {
-			try {
-				document.body.removeChild(menu);
-				console.log("🗑️ Removed existing context menu");
-				debouncedUpdateTreeView(); // Use debounced version
-			} catch (error) {
-				// Menu already removed
-			}
-		}
-	});
-}
-*/
 // END OF MOVED FUNCTION - closeAllContextMenus now loaded from ContextMenuManager.js
-
 // Step 1) 2D context menu event listener - now using ContextMenuManager
 // Step 1) 2D context menu event listener - now using ContextMenuManager
 canvas.addEventListener("contextmenu", function (e) {
@@ -26465,13 +26367,14 @@ function getClickedKADObject(clickX, clickY) {
 	const worldY = -(clickY - canvas.height / 2) / currentScale + centroidY;
 
 	if (developerModeEnabled) {
-		console.log("?? [getClickedKADObject] Click at canvas:", clickX, clickY, "| world:", worldX, worldY);
+		console.log("⬇️ [getClickedKADObject] Click at canvas:", clickX, clickY, "| world:", worldX, worldY);
 	}
+
 
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 		const tolerance = getSnapToleranceInWorldUnits();
 		if (developerModeEnabled) {
-			console.log("?? Snap tolerance:", tolerance, "| Total entities:", allKADDrawingsMap.size);
+			console.log("🎯 Snap tolerance:", tolerance, "| Total entities:", allKADDrawingsMap.size);
 		}
 		let closestMatch = null;
 		let minDistance = tolerance;
@@ -26481,12 +26384,12 @@ function getClickedKADObject(clickX, clickY) {
 			// ? CHECK VISIBILITY FIRST - Skip hidden entities
 			if (!isEntityVisible(entityName)) {
 				if (developerModeEnabled) {
-					console.log("  ??  Skipping hidden entity:", entityName);
+					console.log("  👻  Skipping hidden entity:", entityName);
 				}
 				continue;
 			}
 			if (developerModeEnabled) {
-				console.log("  ?? Checking entity:", entityName, "| Type:", entity.entityType, "| Elements:", entity.data.length);
+				console.log("  🔍 Checking entity:", entityName, "| Type:", entity.entityType, "| Elements:", entity.data.length);
 			}
 
 			// For single-point entities (points, circles, text)
@@ -26495,12 +26398,12 @@ function getClickedKADObject(clickX, clickY) {
 					const point = entity.data[i];
 					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldX, 2) + Math.pow(point.pointYLocation - worldY, 2));
 					if (developerModeEnabled) {
-						console.log("    ?? Element", i, "distance:", distance.toFixed(2), "| tolerance:", tolerance.toFixed(2));
+						console.log("    📍 Element", i, "distance:", distance.toFixed(2), "| tolerance:", tolerance.toFixed(2));
 					}
 
 					if (distance <= tolerance && distance < minDistance) {
 						if (developerModeEnabled) {
-							console.log("    ? MATCH FOUND! Entity:", entityName, "Type:", entity.entityType, "Element:", i);
+							console.log("    ✅ MATCH FOUND! Entity:", entityName, "Type:", entity.entityType, "Element:", i);
 						}
 						closestMatch = {
 							...point,
@@ -26573,13 +26476,13 @@ function getClickedKADObject(clickX, clickY) {
 		}
 
 		if (developerModeEnabled) {
-			console.log("?? [getClickedKADObject] Final result:", closestMatch ? closestMatch.entityType + " - " + closestMatch.entityName : "null");
+			console.log("🤌 [getClickedKADObject] Final result:", closestMatch ? closestMatch.entityType + " - " + closestMatch.entityName : "null");
 		}
 		return closestMatch;
 	}
 
 	if (developerModeEnabled) {
-		console.log("?? [getClickedKADObject] No entities available or empty map");
+		console.log("🤌 [getClickedKADObject] No entities available or empty map");
 	}
 	return null;
 }
@@ -26587,26 +26490,26 @@ function getClickedKADObject(clickX, clickY) {
 // Step 13j.1) Get clicked KAD object in 3D mode (mimics 2D getClickedKADObject)
 function getClickedKADObject3D(intersects, clickX, clickY) {
 	if (developerModeEnabled) {
-		console.log("??3D [getClickedKADObject3D] Starting - Intersects:", intersects ? intersects.length : 0, "| Click:", clickX, clickY);
+		console.log("🤌 3D [getClickedKADObject3D] Starting - Intersects:", intersects ? intersects.length : 0, "| Click:", clickX, clickY);
 	}
 
 	if (!intersects || intersects.length === 0) {
 		if (developerModeEnabled) {
-			console.log("??3D [getClickedKADObject3D] No intersects - raycast missed everything");
+			console.log("🤌 3D [getClickedKADObject3D] No intersects - raycast missed everything");
 		}
 		return null;
 	}
 
 	if (!allKADDrawingsMap || allKADDrawingsMap.size === 0) {
 		if (developerModeEnabled) {
-			console.log("??3D [getClickedKADObject3D] No KAD entities in map");
+			console.log("🤌 3D [getClickedKADObject3D] No KAD entities in map");
 		}
 		return null;
 	}
 
 	// Step 13j.1a) Find the first KAD object from raycast intersects
 	if (developerModeEnabled) {
-		console.log("??3D Inspecting " + intersects.length + " intersects:");
+		console.log("🤌 3D Inspecting " + intersects.length + " intersects:");
 	}
 	for (let i = 0; i < Math.min(5, intersects.length); i++) {
 		const userData = intersects[i].object.userData;
@@ -26621,7 +26524,7 @@ function getClickedKADObject3D(intersects, clickX, clickY) {
 		if (userData && userData.type && userData.type.startsWith("kad") && userData.kadId) {
 			clickedKADMesh = intersect.object;
 			if (developerModeEnabled) {
-				console.log("??3D ? Found KAD mesh! Type:", userData.type, "| kadId:", userData.kadId);
+				console.log("👀 3D ? Found KAD mesh! Type:", userData.type, "| kadId:", userData.kadId);
 			}
 			break;
 		}
@@ -26629,7 +26532,7 @@ function getClickedKADObject3D(intersects, clickX, clickY) {
 
 	if (!clickedKADMesh) {
 		if (developerModeEnabled) {
-			console.log("??3D ? No KAD mesh in raycast results");
+			console.log("🧊 3D ❌ No KAD mesh in raycast results");
 		}
 		return null;
 	}
@@ -27316,7 +27219,7 @@ selectByPolygonTool.addEventListener("change", function () {
 	if (this.checked) {
 		// Step 1) Check if in 3D mode - use 3D polygon selection
 		if (onlyShowThreeJS) {
-			console.log("? Enabling 3D polygon selection mode");
+			console.log("🔶 Enabling 3D polygon selection mode");
 
 			// Step 1a.1) Reset other tool buttons (mutual exclusion)
 			// Fixes QUIRK 3: SelectPointer and SelectPolygon should turn each other off
@@ -33406,7 +33309,7 @@ async function loadOBJWithAutoDiscovery(objFile) {
 				textureBlobs = result.textureBlobs;
 				companionFilesFound = result.found;
 			} catch (err) {
-				console.log("?? Directory access not available, trying alternative method");
+				console.log("🧭 Directory access not available, trying alternative method");
 			}
 		}
 
@@ -33419,13 +33322,13 @@ async function loadOBJWithAutoDiscovery(objFile) {
 				textureBlobs = result.textureBlobs;
 				companionFilesFound = result.found;
 			} catch (err) {
-				console.log("?? Fetch-based discovery not available");
+				console.log("🧭 Fetch-based discovery not available");
 			}
 		}
 
 		// Step 6) If companion files found, use textured mesh loader
 		if (companionFilesFound && mtlContent && Object.keys(textureBlobs).length > 0) {
-			console.log("? Found companion files - loading as textured mesh");
+			console.log("🔎 Found companion files - loading as textured mesh");
 			updateStatusMessage("Found MTL and textures - loading textured mesh...");
 
 			// Update objData with mtlContent
@@ -33435,7 +33338,7 @@ async function loadOBJWithAutoDiscovery(objFile) {
 		}
 		// Step 7) If MTL found but no textures, still try textured loading
 		else if (companionFilesFound && mtlContent) {
-			console.log("? Found MTL file - loading with materials (no textures)");
+			console.log("🔎 Found MTL file - loading with materials (no textures)");
 			updateStatusMessage("Found MTL - loading with materials...");
 
 			objData.mtlContent = mtlContent;
@@ -33443,7 +33346,7 @@ async function loadOBJWithAutoDiscovery(objFile) {
 		}
 		// Step 8) No companion files - check if OBJ has faces, use appropriate method
 		else if (objData.hasFaces && objData.triangles.length > 0) {
-			console.log("?? OBJ has faces - loading as surface with original topology");
+			console.log("🧊 OBJ has faces - loading as surface with original topology");
 			updateStatusMessage("Loading OBJ surface: " + objFile.name);
 
 			// Use the parsed triangles directly (preserves original mesh topology)
@@ -33451,7 +33354,7 @@ async function loadOBJWithAutoDiscovery(objFile) {
 		}
 		// Step 9) Fallback - no faces, use as point cloud
 		else {
-			console.log("?? OBJ has no faces - loading as point cloud");
+			console.log("🧊 OBJ has no faces - loading as point cloud");
 			updateStatusMessage("Loading OBJ as point cloud: " + objFile.name);
 
 			if (objData.points && objData.points.length > 0) {
@@ -33465,7 +33368,7 @@ async function loadOBJWithAutoDiscovery(objFile) {
 			}
 		}
 	} catch (error) {
-		console.error("? Error in loadOBJWithAutoDiscovery:", error);
+		console.error("❌ Error in loadOBJWithAutoDiscovery:", error);
 		updateStatusMessage("Error loading OBJ: " + error.message);
 	}
 }
@@ -33490,7 +33393,7 @@ async function discoverCompanionFiles(dirHandle, baseName) {
 				var mtlFile = await entry.getFile();
 				mtlContent = await mtlFile.text();
 				found = true;
-				console.log("?? Found MTL: " + fileName);
+				console.log("🔎 Found MTL: " + fileName);
 			}
 
 			// Step 4) Check for texture files (same base name or referenced in MTL)
@@ -33503,7 +33406,7 @@ async function discoverCompanionFiles(dirHandle, baseName) {
 						return new Blob([buf], { type: texFile.type });
 					});
 					found = true;
-					console.log("??? Found texture: " + fileName);
+					console.log("🔎 Found texture: " + fileName);
 				}
 			}
 		}
@@ -33550,7 +33453,7 @@ async function discoverCompanionFilesViaFetch(objFile, baseName, materialLibrary
 			if (mtlResponse.ok) {
 				mtlContent = await mtlResponse.text();
 				found = true;
-				console.log("?? Fetched MTL: " + mtlFileName);
+				console.log("🔎 Fetched MTL: " + mtlFileName);
 
 				// Step 5) Parse MTL to find texture references
 				var textureRefs = extractTextureRefsFromMTL(mtlContent);
@@ -33563,7 +33466,7 @@ async function discoverCompanionFilesViaFetch(objFile, baseName, materialLibrary
 						if (texResponse.ok) {
 							var blob = await texResponse.blob();
 							textureBlobs[texName] = blob;
-							console.log("??? Fetched texture: " + texName);
+							console.log("🔎 Fetched texture: " + texName);
 						}
 					} catch (texErr) {
 						console.warn("Could not fetch texture: " + texName);
@@ -33724,7 +33627,7 @@ function createSurfaceFromOBJData(objData, fileName) {
 		isTexturedMesh: false,
 	});
 
-	console.log("? Surface created from OBJ: " + fileName + " (" + objData.points.length + " points, " + triangles.length + " triangles)");
+	console.log("🧊 Surface created from OBJ: " + fileName + " (" + objData.points.length + " points, " + triangles.length + " triangles)");
 
 	// Step 4) Save to database
 	saveSurfaceToDB(surfaceId)
@@ -33732,7 +33635,7 @@ function createSurfaceFromOBJData(objData, fileName) {
 			console.log("✅ OBJ surface saved to database: " + surfaceId);
 		})
 		.catch(function (err) {
-			console.error("? Failed to save OBJ surface:", err);
+			console.error("❌ Failed to save OBJ surface:", err);
 		});
 
 	// Step 5) Update UI
@@ -33755,9 +33658,9 @@ function processSurfacePoints(points, fileName) {
 			// ADD SURFACE SAVE HERE
 			try {
 				await saveSurfaceToDB(fileName || "surface_" + Date.now());
-				// console.log("? Surface saved from processSurfacePoints:", fileName);
+				// console.log("💾 Surface saved from processSurfacePoints:", fileName);
 			} catch (saveError) {
-				console.error("? Failed to save surface from processSurfacePoints:", saveError);
+				console.error("❌ Failed to save surface from processSurfacePoints:", saveError);
 			}
 
 			updateStatusMessage("Surface loaded: " + fileName + " (" + points.length.toLocaleString() + " points)");
@@ -33926,7 +33829,7 @@ function parseOBJFile(content, mtlContent) {
 	var hasTexture = uvs.length > 0 && materialLibrary !== "";
 	var hasFaces = faces.length > 0;
 
-	console.log("?? OBJ Parser: " + vertices.length + " vertices, " + faces.length + " faces, " + uvs.length + " UVs, " + normals.length + " normals, hasTexture: " + hasTexture);
+	console.log("🧊 OBJ Parser: " + vertices.length + " vertices, " + faces.length + " faces, " + uvs.length + " UVs, " + normals.length + " normals, hasTexture: " + hasTexture);
 
 	// Step 16) Return enhanced data structure
 	return {
@@ -34247,9 +34150,9 @@ function showDecimationWarning(points, fileName) {
 			// ADD SURFACE SAVE HERE
 			try {
 				await saveSurfaceToDB(fileName || "surface_full_" + Date.now());
-				// console.log("? Full surface saved from decimation dialog:", fileName);
+				// console.log("💾 Full surface saved from decimation dialog:", fileName);
 			} catch (saveError) {
-				console.error("? Failed to save full surface:", saveError);
+				console.error("❌ Failed to save full surface:", saveError);
 			}
 		} else if (result.dismiss === Swal.DismissReason.cancel) {
 			const decimatedPoints = decimatePointCloud(points, 5000);
@@ -34258,9 +34161,9 @@ function showDecimationWarning(points, fileName) {
 			// ADD DECIMATED SURFACE SAVE HERE
 			try {
 				await saveSurfaceToDB(fileName ? fileName + "_decimated" : "surface_decimated_" + Date.now());
-				// console.log("? Decimated surface saved from decimation dialog:", fileName);
+				// console.log("🧊 Decimated surface saved from decimation dialog:", fileName);
 			} catch (saveError) {
-				console.error("? Failed to save decimated surface:", saveError);
+				console.error("❌ Failed to save decimated surface:", saveError);
 			}
 		}
 	});
@@ -34286,17 +34189,13 @@ function canvasToWorld(canvasX, canvasY) {
 }
 
 function drawSurface() {
-	// console.log("?? drawSurface called");
-	// console.log("?? surfacesGroupVisible:", surfacesGroupVisible);
-	// console.log("?? loadedSurfaces.size:", loadedSurfaces.size);
+
 
 	if (!surfacesGroupVisible) return; // ? ADD: Check surfaces group visibility
 	if (loadedSurfaces.size === 0) return;
 
 	loadedSurfaces.forEach((surface, surfaceId) => {
-		// console.log("?? Processing surface:", surfaceId, surface);
-		// console.log("?? Surface visible:", surface.visible);
-		// console.log("?? Surface isTexturedMesh:", surface.isTexturedMesh);
+
 
 		if (!surface.visible) return;
 
@@ -34337,17 +34236,17 @@ function drawSurface() {
 
 				// Draw in Three.js ONLY if in 3D rendering mode
 				if (should3DRender) {
-					console.log("?? Rendering textured mesh in 3D: " + surfaceId);
+					console.log("🎥 Rendering textured mesh in 3D: " + surfaceId);
 					drawSurfaceThreeJS(surfaceId, surface.triangles || [], surfaceMinZ, surfaceMaxZ, gradient, surface.transparency || 1.0, surface);
 				} else {
-					console.log("?? Skipping 3D render (2D-only mode): " + surfaceId);
+					console.log("🧹 Skipping 3D render (2D-only mode): " + surfaceId);
 				}
 				return; // Textured mesh with texture gradient doesn't have 2D triangle rendering
 			}
 
 			// For "default" and other gradients (hillshade, viridis, terrain, etc.), OR if no texture exists,
 			// fall through to standard triangle rendering with elevation-based colors
-			console.log("?? Using color gradient for textured mesh: " + gradient + " (hasTexture: " + hasTexture + ")");
+			console.log("🔻 Using color gradient for textured mesh: " + gradient + " (hasTexture: " + hasTexture + ")");
 		}
 
 		// Step 1) Standard surface - requires triangles
@@ -34372,10 +34271,7 @@ function drawSurface() {
 		if (!onlyShowThreeJS) {
 			// CRITICAL: Pass surface-specific min/max, transparency, AND gradient
 			surface.triangles.forEach((triangle, i) => {
-				// if (i === 0) {
-				// 	console.log("?? First triangle structure:", triangle);
-				// 	console.log("?? First triangle vertices:", triangle.vertices);
-				// }
+
 				// Fix line 20344 - Surface drawing function
 				drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, ctx, surface.transparency || 1.0, surface.gradient || "default", gradientMethod, lightBearing, lightElevation);
 			});
@@ -36262,7 +36158,7 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 
 		const bestCandidate = snapCandidates[0];
 
-		console.log("?? [3D MOVE SNAP] Snapped to: " + bestCandidate.type + " (" + bestCandidate.description + ") | Priority: " + bestCandidate.priority);
+		console.log("🎯 [3D MOVE SNAP] Snapped to: " + bestCandidate.type + " (" + bestCandidate.description + ") | Priority: " + bestCandidate.priority);
 
 		return {
 			worldX: bestCandidate.point.x,
@@ -36871,7 +36767,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
 		const bestCandidate = snapCandidates[0];
 
 		// Debug: Log snap success
-		if (developerModeEnabled) { console.log("?? [3D SNAP] Snapped to:", bestCandidate.type, "(" + bestCandidate.description + ") | Priority:", bestCandidate.priority, "| Distance:", bestCandidate.distance.toFixed(2)); }
+		if (developerModeEnabled) { console.log("🧲 [3D SNAP] Snapped to:", bestCandidate.type, "(" + bestCandidate.description + ") | Priority:", bestCandidate.priority, "| Distance:", bestCandidate.distance.toFixed(2)); }
 
 		return {
 			worldX: bestCandidate.point.x,
@@ -37423,9 +37319,9 @@ async function createImageSurface(rasters, bbox, width, height, bandCount, surfa
 		// SAVE TO DATABASE - Pass the imageId instead of name
 		try {
 			await saveImageToDB(imageId);
-			// console.log("? Image saved to database:", surfaceName);
+			console.log("💾 Image saved to database:", surfaceName);
 		} catch (saveError) {
-			console.error("? Failed to save image to database:", saveError);
+			console.error("❌ Failed to save image to database:", saveError);
 		}
 
 		// Update tree view to show new image
@@ -38377,7 +38273,7 @@ async function promptForProjection(bbox) {
 
 // JS COLOR PICKER FOR INSTANT COLOUR CHANGES
 function openColorPickerForElement(swatchElement, entityName, pointID) {
-	console.log("?? openColorPickerForElement called with:", {
+	console.log("🎯 openColorPickerForElement called with:", {
 		swatchElement,
 		entityName,
 		pointID,
@@ -38394,7 +38290,7 @@ function openColorPickerForElement(swatchElement, entityName, pointID) {
 
 	// Debug: Show all pointIDs in the entity
 	console.log(
-		"?? All pointIDs in entity:",
+		"🔘 All pointIDs in entity:",
 		entity.data.map((el) => ({
 			pointID: el.pointID,
 			type: typeof el.pointID,
@@ -38403,20 +38299,20 @@ function openColorPickerForElement(swatchElement, entityName, pointID) {
 
 	// ? FIX: Use 'let' instead of 'const' so we can reassign
 	let element = entity.data.find((el) => el.pointID === pointID);
-	console.log("?? Element found:", element);
+	console.log("🔎 Element found:", element);
 
 	if (!element) {
-		console.log("? Element not found with pointID:", pointID);
+		console.log("❌ Element not found with pointID:", pointID);
 		// Try converting to string
 		element = entity.data.find((el) => el.pointID === pointID.toString());
-		console.log("?? Trying as string:", element);
+		console.log("🔻 Trying as string:", element);
 		if (!element) {
 			// Try converting pointID to string and compare
 			element = entity.data.find((el) => el.pointID.toString() === pointID.toString());
-			console.log("?? Trying both as strings:", element);
+			console.log("🔻 Trying both as strings:", element);
 		}
 		if (!element) {
-			console.log("? Element still not found after all attempts");
+			console.log("❌ Element still not found after all attempts");
 			return;
 		}
 	}
@@ -38458,7 +38354,7 @@ function openColorPickerForElement(swatchElement, entityName, pointID) {
 				);
 				if (newSwatchElement) {
 					newSwatchElement.style.backgroundColor = newColor;
-					console.log("? Updated NEW swatch element after tree rebuild");
+					console.log("🔻 Updated NEW swatch element after tree rebuild");
 				}
 			}, 150); // Wait for debounced tree update (100ms) + render time
 
@@ -38721,7 +38617,7 @@ function updateTreeView() {
 
 // Step 1) Handle TreeView delete operations
 window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
-	console.log("??? [TreeView] Delete requested for:", nodeIds.length, "items");
+	console.log("🎄 [TreeView] Delete requested for:", nodeIds.length, "items");
 
 	// Determine what's being deleted
 	const hasHoles = nodeIds.some(function (id) { return id.startsWith("hole?"); });
@@ -38825,7 +38721,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 									const holesRemoved = allBlastHoles.filter(function (hole) { return hole.entityName === entityName; }).length;
 									allBlastHoles = allBlastHoles.filter(function (hole) { return hole.entityName !== entityName; });
 
-									console.log("??? Deleted entity: " + entityName + " (" + holesRemoved + " holes)");
+									console.log("❌ Deleted entity: " + entityName + " (" + holesRemoved + " holes)");
 								}
 							});
 						}
@@ -38843,7 +38739,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 									if (index !== -1) {
 										allBlastHoles.splice(index, 1);
 										entitiesToRenumber.add(entityName);
-										console.log("??? Deleted hole: " + entityName + ":" + holeID);
+										console.log("❌ Deleted hole: " + entityName + ":" + holeID);
 									}
 								}
 							});
@@ -38886,7 +38782,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 							const holesRemoved = allBlastHoles.filter(function (hole) { return hole.entityName === entityName; }).length;
 							allBlastHoles = allBlastHoles.filter(function (hole) { return hole.entityName !== entityName; });
 
-							console.log("??? Deleted entity: " + entityName + " (" + holesRemoved + " holes)");
+							console.log("❌ Deleted entity: " + entityName + " (" + holesRemoved + " holes)");
 						}
 					});
 				}
@@ -38903,7 +38799,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 							const index = allBlastHoles.findIndex(function (h) { return h.entityName === entityName && h.holeID === holeID; });
 							if (index !== -1) {
 								allBlastHoles.splice(index, 1);
-								console.log("??? Deleted hole: " + entityName + ":" + holeID);
+								console.log("❌ Deleted hole: " + entityName + ":" + holeID);
 							}
 						}
 					});
@@ -38925,7 +38821,7 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 
 // Step 2) Handle TreeView visibility toggle
 window.handleTreeViewVisibility = function (nodeId, type, itemId, isVisible) {
-	console.log("??? [TreeView] Visibility toggle:", nodeId, "?", isVisible);
+	console.log("🎄 [TreeView] Visibility toggle:", nodeId, "?", isVisible);
 
 	// Main group visibility
 	if (nodeId === "blast") {
@@ -38974,7 +38870,7 @@ window.handleTreeViewVisibility = function (nodeId, type, itemId, isVisible) {
 
 // Step 3) Handle TreeView rename operations
 window.handleTreeViewRename = function (nodeId, treeViewInstance) {
-	console.log("?? [TreeView] Rename requested for:", nodeId);
+	console.log("🎄 [TreeView] Rename requested for:", nodeId);
 
 	const parts = nodeId.split("⣿");
 
@@ -39042,7 +38938,7 @@ window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 
 // Step 4) Handle TreeView show properties
 window.handleTreeViewShowProperties = function (nodeId, type) {
-	console.log("?? [TreeView] Show properties for:", nodeId);
+	console.log("🎄 [TreeView] Show properties for:", nodeId);
 
 	const parts = nodeId.split("⣿");
 
@@ -39088,7 +38984,7 @@ window.handleTreeViewShowProperties = function (nodeId, type) {
 
 // Step 5) Handle TreeView reset connections
 window.handleTreeViewResetConnections = function (holeNodeIds) {
-	console.log("?? [TreeView] Reset connections for:", holeNodeIds.length, "holes");
+	console.log("🎄 [TreeView] Reset connections for:", holeNodeIds.length, "holes");
 
 	const holesToReset = [];
 	holeNodeIds.forEach(function (nodeId) {
@@ -39178,9 +39074,9 @@ function load3DSettings() {
 function save3DSettings(settings) {
 	try {
 		localStorage.setItem("kirra3DSettings", JSON.stringify(settings));
-		console.log("?? 3D settings saved to localStorage");
+		console.log("💾 3D settings saved to localStorage");
 	} catch (e) {
-		console.error("Failed to save 3D settings to localStorage:", e);
+		console.error("❌ Failed to save 3D settings to localStorage:", e);
 	}
 }
 
