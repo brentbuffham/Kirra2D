@@ -283,6 +283,12 @@ export class TreeView {
 			if (parts[0] === "entity" && parts.length === 2) {
 				showRename = true;
 			}
+			if (parts[0] === "surface" && parts.length === 2) {
+				showRename = true;
+			}
+			if (parts[0] === "image" && parts.length === 2) {
+				showRename = true;
+			}
 		}
 
 		if (renameItem) {

@@ -10796,12 +10796,13 @@ function handleTriangulationAction() {
 	// Step 2) Check KAD drawings with detailed logging
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 		console.log("🔍 Checking KAD drawings for visibility:");
-		allKADDrawingsMap.forEach((entity) => {
-			const isVisible = isEntityVisible(entity.entityName);
-			console.log("  - " + entity.entityName + " (" + entity.entityType + "): " + (isVisible ? "? Visible" : "? Hidden"));
+		allKADDrawingsMap.forEach((entity, key) => {
+			// Use the map key instead of entity.entityName since some entityNames are corrupted
+			const isVisible = isEntityVisible(key);
+			console.log("  - Key: '" + key + "', entityName: '" + entity.entityName + "' (" + entity.entityType + "): " + (isVisible ? "? Visible" : "? Hidden"));
 			if (isVisible) {
 				hasVisibleData = true;
-				visibleEntities.push(entity.entityName);
+				visibleEntities.push(key);
 			}
 		});
 	}
@@ -34646,7 +34647,7 @@ function changeGradientStyle() {
 document.getElementById("lightBearingSlider").addEventListener("input", function () {
 	lightBearing = parseInt(document.getElementById("lightBearingSlider").value);
 	// change the slider labelto u
-	document.getElementById("lightBearingLabel").textContent = "Light Bearing (deg): " + lightBearing + "?";
+	document.getElementById("lightBearingLabel").textContent = "Light Bearing (deg): " + lightBearing + "°";
 	if (developerModeEnabled) {
 		console.log("Light bearing changed to: " + lightBearing);
 	}
@@ -34657,7 +34658,7 @@ document.getElementById("lightBearingSlider").addEventListener("input", function
 document.getElementById("lightElevationSlider").addEventListener("input", function () {
 	lightElevation = parseInt(document.getElementById("lightElevationSlider").value);
 	// change the slider labelto use the new value
-	document.getElementById("lightElevationLabel").textContent = "Light Elevation (deg): " + lightElevation + "?";
+	document.getElementById("lightElevationLabel").textContent = "Light Elevation (deg): " + lightElevation + "°";
 	if (developerModeEnabled) {
 		console.log("Light elevation changed to: " + lightElevation);
 	}
@@ -38405,11 +38406,11 @@ function syncCanvasToTreeView() {
 
 	// Step 2) Convert hole selections to node IDs
 	if (selectedHole) {
-		const nodeId = "hole?" + selectedHole.entityName + "?" + selectedHole.holeID;
+		const nodeId = "hole⣿" + selectedHole.entityName + "⣿" + selectedHole.holeID;
 		nodeIds.push(nodeId);
 	} else if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
 		selectedMultipleHoles.forEach(function (hole) {
-			const nodeId = "hole?" + hole.entityName + "?" + hole.holeID;
+			const nodeId = "hole⣿" + hole.entityName + "⣿" + hole.holeID;
 			nodeIds.push(nodeId);
 		});
 	}
@@ -38419,7 +38420,7 @@ function syncCanvasToTreeView() {
 		// Check if vertex-level selection
 		if (selectedPoint) {
 			// Individual vertex
-			const nodeId = selectedKADObject.entityType + "?" + selectedKADObject.entityName + "?element?" + selectedPoint.pointID;
+			const nodeId = selectedKADObject.entityType + "⣿" + selectedKADObject.entityName + "⣿element⣿" + selectedPoint.pointID;
 			nodeIds.push(nodeId);
 		} else {
 			// Entity-level selection
@@ -38434,7 +38435,7 @@ function syncCanvasToTreeView() {
 				const entity = allKADDrawingsMap.get(kadObj.entityName);
 				if (entity && entity.data[kadObj.elementIndex]) {
 					const pointID = entity.data[kadObj.elementIndex].pointID;
-					const nodeId = kadObj.entityType + "?" + kadObj.entityName + "?element?" + pointID;
+					const nodeId = kadObj.entityType + "⣿" + kadObj.entityName + "⣿element⣿" + pointID;
 					nodeIds.push(nodeId);
 				}
 			} else {
@@ -38548,7 +38549,7 @@ function updateTreeViewVisibilityStates() {
 
 			// ? ADD: Update individual element visibility states
 			entity.data.forEach((elementData, index) => {
-				const elementNodeId = entity.entityType + "?" + entityName + "?element?" + (elementData.pointID || index + 1);
+				const elementNodeId = entity.entityType + "⣿" + entityName + "⣿element⣿" + (elementData.pointID || index + 1);
 				const elementElement = treeView.container.querySelector('[data-node-id="' + elementNodeId + '"]');
 				if (elementElement) {
 					// Element inherits from entity and group visibility
@@ -38579,7 +38580,7 @@ function updateTreeViewVisibilityStates() {
 	// ? FIX: Update hole visibility states with correct node ID pattern
 	if (typeof allBlastHoles !== "undefined" && allBlastHoles) {
 		allBlastHoles.forEach((hole) => {
-			const nodeId = "hole?" + hole.holeID; // ? FIX: Correct node ID pattern
+			const nodeId = "hole⣿" + hole.holeID; // ? FIX: Correct node ID pattern
 			const element = treeView.container.querySelector('[data-node-id="' + nodeId + '"]');
 			if (element) {
 				const isVisible = hole.visible !== false && blastGroupVisible;
@@ -38606,7 +38607,7 @@ function updateTreeViewVisibilityStates() {
 		});
 
 		Object.keys(entityGroups).forEach((entityName) => {
-			const nodeId = "entity?" + entityName;
+			const nodeId = "entity⣿" + entityName;
 			const element = treeView.container.querySelector('[data-node-id="' + nodeId + '"]');
 			if (element) {
 				// Check if any holes in this entity are visible and blast group is visible
@@ -38647,11 +38648,13 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 	console.log("🎄 [TreeView] Delete requested for:", nodeIds.length, "items");
 
 	// Determine what's being deleted
-	const hasHoles = nodeIds.some(function (id) { return id.startsWith("hole?"); });
-	const hasEntities = nodeIds.some(function (id) { return id.startsWith("entity?"); });
+	const hasHoles = nodeIds.some(function (id) { return id.startsWith("hole⣿"); });
+	const hasEntities = nodeIds.some(function (id) { return id.startsWith("entity⣿"); });
+	const hasSurfaces = nodeIds.some(function (id) { return id.startsWith("surface⣿"); });
+	const hasImages = nodeIds.some(function (id) { return id.startsWith("image⣿"); });
 	const hasKADElements = nodeIds.some(function (id) { return id.includes("⣿element⣿"); });
 	const hasKADEntities = nodeIds.some(function (id) {
-		const parts = id.split("?");
+		const parts = id.split("⣿");
 		return (parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
 	});
 
@@ -38711,6 +38714,44 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 		if (typeof debouncedSaveKAD === "function") {
 			debouncedSaveKAD();
 		}
+
+		treeViewInstance.updateTreeData();
+		drawData(allBlastHoles, selectedHole);
+	} else if (hasSurfaces) {
+		// Delete surfaces
+		nodeIds.forEach(function (nodeId) {
+			const parts = nodeId.split("⣿");
+			if (parts.length === 2 && parts[0] === "surface") {
+				const surfaceId = parts[1];
+				if (window.loadedSurfaces && window.loadedSurfaces.has(surfaceId)) {
+					window.loadedSurfaces.delete(surfaceId);
+					// Delete from IndexedDB
+					if (typeof window.deleteSurfaceFromDB === "function") {
+						window.deleteSurfaceFromDB(surfaceId);
+					}
+					console.log("✅ Surface " + surfaceId + " deleted");
+				}
+			}
+		});
+
+		treeViewInstance.updateTreeData();
+		drawData(allBlastHoles, selectedHole);
+	} else if (hasImages) {
+		// Delete images
+		nodeIds.forEach(function (nodeId) {
+			const parts = nodeId.split("⣿");
+			if (parts.length === 2 && parts[0] === "image") {
+				const imageId = parts[1];
+				if (window.loadedImages && window.loadedImages.has(imageId)) {
+					window.loadedImages.delete(imageId);
+					// Delete from IndexedDB
+					if (typeof window.deleteImageFromDB === "function") {
+						window.deleteImageFromDB(imageId);
+					}
+					console.log("✅ Image " + imageId + " deleted");
+				}
+			}
+		});
 
 		treeViewInstance.updateTreeData();
 		drawData(allBlastHoles, selectedHole);
@@ -38883,7 +38924,7 @@ window.handleTreeViewVisibility = function (nodeId, type, itemId, isVisible) {
 		setEntityVisibility(itemId, isVisible);
 	} else if (type === "points" || type === "line" || type === "poly" || type === "circle" || type === "text") {
 		setKADEntityVisibility(itemId, isVisible);
-	} else if (nodeId.includes("?element?")) {
+	} else if (nodeId.includes("⣿element⣿")) {
 		const parts = nodeId.split("⣿");
 		if (parts.length >= 4 && parts[2] === "element") {
 			const entityName = parts[1];
@@ -38960,6 +39001,87 @@ window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 		} else {
 			console.error("[BAD] [TreeView] window.renameEntityDialog is not a function! Type:", typeof window.renameEntityDialog);
 		}
+		return;
+	}
+
+	// Surface rename
+	if (parts[0] === "surface" && parts.length === 2) {
+		const surfaceId = parts[1];
+		const surface = window.loadedSurfaces ? window.loadedSurfaces.get(surfaceId) : null;
+		if (surface) {
+			// Create a simple input dialog for renaming
+			window.showConfirmationDialogWithInput(
+				"Rename Surface",
+				"Enter new name for surface:",
+				"New Name",
+				"text",
+				surface.name || "Surface " + surfaceId,
+				"OK",
+				"Cancel",
+				function (newName) {
+					if (newName && newName.trim() && newName.trim() !== surface.name) {
+						const trimmedName = newName.trim();
+						surface.name = trimmedName;
+
+						// Save to IndexedDB if function exists
+						if (typeof window.saveSurfaceToDB === "function") {
+							window.saveSurfaceToDB(surfaceId, surface);
+						}
+
+						// Update TreeView
+						if (treeViewInstance && typeof treeViewInstance.updateTreeData === "function") {
+							treeViewInstance.updateTreeData();
+						}
+
+						console.log("✅ Surface renamed:", surfaceId, "->", trimmedName);
+					}
+				},
+				function () {
+					// Cancelled
+				}
+			);
+		}
+		return;
+	}
+
+	// Image rename
+	if (parts[0] === "image" && parts.length === 2) {
+		const imageId = parts[1];
+		const image = window.loadedImages ? window.loadedImages.get(imageId) : null;
+		if (image) {
+			// Create a simple input dialog for renaming
+			window.showConfirmationDialogWithInput(
+				"Rename Image",
+				"Enter new name for image:",
+				"New Name",
+				"text",
+				image.name || "Image " + imageId,
+				"OK",
+				"Cancel",
+				function (newName) {
+					if (newName && newName.trim() && newName.trim() !== image.name) {
+						const trimmedName = newName.trim();
+						image.name = trimmedName;
+
+						// Save to IndexedDB if function exists
+						if (typeof window.saveImageToDB === "function") {
+							window.saveImageToDB(imageId, image);
+						}
+
+						// Update TreeView
+						if (treeViewInstance && typeof treeViewInstance.updateTreeData === "function") {
+							treeViewInstance.updateTreeData();
+						}
+
+						console.log("✅ Image renamed:", imageId, "->", trimmedName);
+					}
+				},
+				function () {
+					// Cancelled
+				}
+			);
+		}
+		return;
 	}
 };
 
