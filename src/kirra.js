@@ -2303,7 +2303,7 @@ function handle3DMouseMove(event) {
 
 	// Step 13f.8) Draw KAD leading line preview if drawing tool is active
 	const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText || isAddingHole;
-	if (isAnyDrawingToolActive && lastKADDrawPoint) {
+	if (isAnyDrawingToolActive && lastKADDrawPoint && createNewEntity === false) {
 		// Get drawing Z value
 		const drawZ = drawingZValue || document.getElementById("drawingElevation").value || 0;
 
@@ -2494,6 +2494,31 @@ document.addEventListener("DOMContentLoaded", function () {
 					}
 				}
 
+				// Step 1cc.1) Handle KAD drawing tools when switching to 3D
+				const anyKADToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+				if (anyKADToolActive) {
+					// Remove event listeners from 2D canvas (drawing doesn't work in 3D)
+					canvas.removeEventListener("click", handleKADPointClick);
+					canvas.removeEventListener("touchstart", handleKADPointClick);
+					canvas.removeEventListener("click", handleKADLineClick);
+					canvas.removeEventListener("touchstart", handleKADLineClick);
+					canvas.removeEventListener("click", handleKADPolyClick);
+					canvas.removeEventListener("touchstart", handleKADPolyClick);
+					canvas.removeEventListener("click", handleKADCircleClick);
+					canvas.removeEventListener("touchstart", handleKADCircleClick);
+					canvas.removeEventListener("click", handleKADTextClick);
+					canvas.removeEventListener("touchstart", handleKADTextClick);
+
+					// Clear drawing state to prevent stale preview lines
+					lastKADDrawPoint = null;
+
+					// Keep the tool active but inform user about 3D limitations
+					updateStatusMessage("KAD drawing: Right-click to end entities in 3D mode");
+					setTimeout(() => updateStatusMessage(""), 3000);
+
+					console.log("🔄 KAD drawing tools switched to 3D mode (right-click only)");
+				}
+
 				if (threeCanvas) {
 					threeCanvas.style.zIndex = "2"; // Three.js on top
 					threeCanvas.style.opacity = "1"; // Show 3D canvas
@@ -2544,6 +2569,46 @@ document.addEventListener("DOMContentLoaded", function () {
 					moveToolIn3DMode = false;
 					dragPlaneZ = 0;
 					console.log("🔄 Move Tool switched to 2D canvas");
+				}
+
+				// Step 1db.1) Update KAD drawing tools if active - ensure event listeners are on 2D canvas
+				const anyKADToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+				if (anyKADToolActive) {
+					// Remove any existing listeners (just in case)
+					canvas.removeEventListener("click", handleKADPointClick);
+					canvas.removeEventListener("touchstart", handleKADPointClick);
+					canvas.removeEventListener("click", handleKADLineClick);
+					canvas.removeEventListener("touchstart", handleKADLineClick);
+					canvas.removeEventListener("click", handleKADPolyClick);
+					canvas.removeEventListener("touchstart", handleKADPolyClick);
+					canvas.removeEventListener("click", handleKADCircleClick);
+					canvas.removeEventListener("touchstart", handleKADCircleClick);
+					canvas.removeEventListener("click", handleKADTextClick);
+					canvas.removeEventListener("touchstart", handleKADTextClick);
+
+					// Add listeners to 2D canvas based on active tool
+					if (isDrawingPoint) {
+						canvas.addEventListener("click", handleKADPointClick);
+						canvas.addEventListener("touchstart", handleKADPointClick);
+					} else if (isDrawingLine) {
+						canvas.addEventListener("click", handleKADLineClick);
+						canvas.addEventListener("touchstart", handleKADLineClick);
+					} else if (isDrawingPoly) {
+						canvas.addEventListener("click", handleKADPolyClick);
+						canvas.addEventListener("touchstart", handleKADPolyClick);
+					} else if (isDrawingCircle) {
+						canvas.addEventListener("click", handleKADCircleClick);
+						canvas.addEventListener("touchstart", handleKADCircleClick);
+					} else if (isDrawingText) {
+						canvas.addEventListener("click", handleKADTextClick);
+						canvas.addEventListener("touchstart", handleKADTextClick);
+					}
+
+					// Inform user that full drawing functionality is restored
+					updateStatusMessage("KAD drawing: Full functionality restored in 2D mode");
+					setTimeout(() => updateStatusMessage(""), 2000);
+
+					console.log("🔄 KAD drawing tool event listeners switched to 2D canvas");
 				}
 
 				// Step 1dc) Clear all Three.js geometry when switching to 2D mode
@@ -14886,8 +14951,8 @@ function drawKADPreviewLine(ctx) {
 		previewStyle = [5, 5];
 		shouldDraw = true;
 	}
-	// For other tools, use lastKADDrawPoint if available
-	else if (lastKADDrawPoint) {
+	// For other tools, use lastKADDrawPoint if available and actively drawing
+	else if (lastKADDrawPoint && createNewEntity === false) {
 		previewStartX = lastKADDrawPoint.x;
 		previewStartY = lastKADDrawPoint.y;
 		shouldDraw = true;
@@ -24346,12 +24411,22 @@ function endKadTools() {
 			lastKADDrawPoint = null;
 			entityName = null; // CRITICAL: Reset entityName so next click creates NEW entity
 			clearCurrentDrawingEntity();
+
+			// Step 2a.1) Additional state cleanup for leading lines and tool consistency
+			currentDrawingEntityName = null;
+			deleteKeyCount = 0;
+
 			updateStatusMessage("Entity finished. Click to start new " + (isDrawingLine ? "line" : isDrawingPoly ? "polygon" : isDrawingCircle ? "circle" : isDrawingPoint ? "point" : "text"));
 			setTimeout(function () {
 				updateStatusMessage("");
 			}, 2000);
 			// Redraw to clear preview line
 			drawData(allBlastHoles, selectedHole);
+
+			// Step 2a.2) Force immediate redraw to clear any stale preview lines
+			setTimeout(() => {
+				drawData(allBlastHoles, selectedHole);
+			}, 10);
 		} else {
 			// Step 2b) Not actively drawing (no points added yet) - turn off tool entirely
 			addPointDraw.checked = false;
@@ -24364,6 +24439,10 @@ function endKadTools() {
 			createNewEntity = true;
 			lastKADDrawPoint = null;
 			entityName = null; // Reset entityName
+
+			// Step 2b.1) Additional state cleanup for leading lines and tool consistency
+			currentDrawingEntityName = null;
+			deleteKeyCount = 0;
 
 			// Update drawing flags
 			isDrawingPoint = false;
@@ -24379,6 +24458,11 @@ function endKadTools() {
 
 			// Redraw to clear any preview lines/indicators
 			drawData(allBlastHoles, selectedHole);
+
+			// Step 2b.2) Force immediate redraw to clear any stale preview lines
+			setTimeout(() => {
+				drawData(allBlastHoles, selectedHole);
+			}, 10);
 		}
 	}
 

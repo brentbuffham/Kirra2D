@@ -182,6 +182,14 @@ function handle3DContextMenu(event) {
     event.preventDefault();
     closeAllContextMenus();
 
+    // Step 3b.1) If a KAD tool is active, handle new object creation (same as 2D)
+    const anyKADToolActive = window.addPointDraw.checked || window.addLineDraw.checked || window.addCircleDraw.checked || window.addPolyDraw.checked || window.addTextDraw.checked;
+    if (anyKADToolActive) {
+        window.clearCurrentDrawingEntity();
+        kadContextMenu(event);
+        return;
+    }
+
     // Step 3c) Early return if dependencies not ready
     if (!window.threeInitialized || !window.threeRenderer || !window.interactionManager) {
         if (typeof window.updateStatusMessage === "function") {
