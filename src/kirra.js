@@ -1871,7 +1871,7 @@ function handle3DClick(event) {
 					selectedKADPolygon = clickedKADObject; // Backward compatibility
 					selectedMultipleKADObjects = [];
 
-					// Step 12j.10a) Set selectedPoint if vertex was selected
+					// Step 12j.10a) Set selectedPoint - for segments, highlight the endpoint that will be deleted
 					if (clickedKADObject.selectionType === "vertex") {
 						const entity = allKADDrawingsMap.get(clickedKADObject.entityName);
 						if (entity && entity.data && entity.data[clickedKADObject.elementIndex]) {
@@ -1880,10 +1880,21 @@ function handle3DClick(event) {
 								console.log("⬇️ [3D CLICK] Set selectedPoint:", selectedPoint.pointID);
 							}
 						}
+					} else if (clickedKADObject.selectionType === "segment" && (clickedKADObject.entityType === "line" || clickedKADObject.entityType === "poly")) {
+						const entity = allKADDrawingsMap.get(clickedKADObject.entityName);
+						if (entity && entity.data) {
+							const isPoly = clickedKADObject.entityType === "poly";
+							const numPoints = entity.data.length;
+							const endpointIndex = isPoly ? (clickedKADObject.elementIndex + 1) % numPoints : clickedKADObject.elementIndex + 1;
+							selectedPoint = entity.data[endpointIndex];
+							if (developerModeEnabled) {
+								console.log("⬇️ [3D CLICK] Set selectedPoint for segment endpoint:", selectedPoint.pointID);
+							}
+						}
 					} else {
 						selectedPoint = null;
 						if (developerModeEnabled) {
-							console.log("⬇️ [3D CLICK] Cleared selectedPoint (segment/entity selection)");
+							console.log("⬇️ [3D CLICK] Cleared selectedPoint (entity selection)");
 						}
 					}
 				}
@@ -18433,10 +18444,10 @@ function showProximityWarning(proximityHoles, newHoleInfo) {
 				// This ensures pattern generation loops can check it before they complete
 				console.log("Proximity warning: User chose Cancel");
 				cleanupThemeListener();
-				
+
 				// Set cancellation flag immediately so pattern generation loops can check it
 				window.holeGenerationCancelled = true;
-				
+
 				dialog.close();
 				// Resolve the promise with cancellation flag
 				resolve({
@@ -18452,7 +18463,7 @@ function showProximityWarning(proximityHoles, newHoleInfo) {
 		const updateTextColors = () => {
 			const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
 			const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-			
+
 			// Update all text elements
 			const textElements = contentDiv.querySelectorAll("p, li");
 			textElements.forEach((el) => {
@@ -18470,13 +18481,13 @@ function showProximityWarning(proximityHoles, newHoleInfo) {
 			themeListener = () => {
 				updateTextColors();
 			};
-			
+
 			// Check if there's a theme change event we can listen to
 			// Otherwise, we'll check on a timer
 			const checkTheme = setInterval(() => {
 				updateTextColors();
 			}, 500);
-			
+
 			// Store interval ID for cleanup
 			dialog._themeCheckInterval = checkTheme;
 		}
@@ -18985,7 +18996,7 @@ function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLocation,
 				// User chose Cancel - flag already set synchronously in dialog onCancel handler
 				// Just remove holes and save (flag was set immediately above)
 				console.log("Cancelled hole generation due to proximity warning - removing holes");
-				
+
 				// Remove all holes added during this generation session
 				if (typeof window.holeGenerationStartCount !== "undefined" && window.allBlastHoles) {
 					const startCount = window.holeGenerationStartCount;
@@ -19375,7 +19386,16 @@ function handleSelection(event) {
 
 					const entity = getEntityFromKADObject(selectedKADObject);
 					const hasMultipleElements = entity && entity.data.length > 1;
-					selectedPoint = entity.data[clickedKADObject.elementIndex];
+
+					// Step 9c) Set selectedPoint - for segments, highlight the endpoint that will be deleted
+					if (clickedKADObject.selectionType === "segment" && (clickedKADObject.entityType === "line" || clickedKADObject.entityType === "poly")) {
+						const isPoly = clickedKADObject.entityType === "poly";
+						const numPoints = entity.data.length;
+						const endpointIndex = isPoly ? (clickedKADObject.elementIndex + 1) % numPoints : clickedKADObject.elementIndex + 1;
+						selectedPoint = entity.data[endpointIndex];
+					} else {
+						selectedPoint = entity.data[clickedKADObject.elementIndex];
+					}
 				}
 
 				// Clear hole selections when KAD object is selected
@@ -32030,7 +32050,7 @@ function generatePatternInPolygon(patternSettings) {
 
 	// Recalculate holesAdded AFTER potential removal
 	const holesAdded = allBlastHoles.length - originalHolesCount;
-	
+
 	// Check if cancelled OR if holes were removed (cancellation happened)
 	if (window.holeGenerationCancelled || holesWereRemoved) {
 		console.log("Polygon pattern generation was cancelled");
@@ -32041,9 +32061,11 @@ function generatePatternInPolygon(patternSettings) {
 		//! REDO with the FloatingDialog class
 		if (holesAdded === 0) {
 			showModalMessage("No Holes Generated", "No holes were generated in the polygon. Please check your pattern settings and polygon shape.", "warning");
-		} else {
-			showModalMessage("Pattern Generated", "Successfully generated " + holesAdded + " holes in the polygon across " + rows.length + " rows (Rows " + startingRowID + "-" + (startingRowID + rows.length - 1) + ").", "success");
 		}
+		//commented out as it is causing confusion when the cncels generation by the proximity warning dialog
+		// else {
+		// 	showModalMessage("Pattern Generated", "Successfully generated " + holesAdded + " holes in the polygon across " + rows.length + " rows (Rows " + startingRowID + "-" + (startingRowID + rows.length - 1) + ").", "success");
+		// }
 	}
 
 	// Update display
@@ -32184,10 +32206,10 @@ function generateHolesAlongLine(params) {
 	// Redraw
 	debouncedUpdateTreeView(); // Use debounced version
 	drawData(allBlastHoles, selectedHole);
-	
+
 	// Recalculate holesAdded AFTER potential removal
 	const holesAdded = allBlastHoles.length - originalHolesCount;
-	
+
 	// Check if cancelled OR if holes were removed (cancellation happened)
 	if (window.holeGenerationCancelled || holesWereRemoved) {
 		console.log("Line pattern generation was cancelled");
@@ -32200,9 +32222,11 @@ function generateHolesAlongLine(params) {
 		// Show success/failure message with custom styling
 		if (holesAdded === 0) {
 			showModalMessage("No Holes Generated", "No holes were generated along the line. Please check your line and spacing settings.", "warning");
-		} else {
-			showModalMessage("Line Pattern Generated", `Successfully generated ${holesAdded} holes along the line (Row ${rowID}).`, "success");
 		}
+		//commented out as it is causing confusion when the cncels generation by the proximity warning dialog 
+		// else {
+		// 	showModalMessage("Line Pattern Generated", `Successfully generated ${holesAdded} holes along the line (Row ${rowID}).`, "success");
+		// }
 	}
 }
 // Expose generateHolesAlongLine globally for PatternGenerationDialogs.js
@@ -33084,7 +33108,7 @@ function generateHolesAlongPolyline(params, vertices) {
 
 	// Recalculate holesAdded AFTER potential removal
 	const holesAdded = allBlastHoles.length - originalPointsCount;
-	
+
 	// Check if cancelled OR if holes were removed (cancellation happened)
 	if (window.holeGenerationCancelled || holesWereRemoved) {
 		console.log("Polyline pattern generation was cancelled");
@@ -33096,9 +33120,11 @@ function generateHolesAlongPolyline(params, vertices) {
 		// Show success/failure message with custom styling
 		if (holesAdded === 0) {
 			showModalMessage("No Holes Generated", "No holes were generated along the polyline. Please check your settings.", "warning");
-		} else {
-			showModalMessage("Polyline Pattern Generated", `Successfully generated ${holesAdded} holes along the polyline (Row ${rowID}).`, "success");
 		}
+		//commented out as it is causing confusion when the cncels generation by the proximity warning dialog
+		// else if (holesAdded > 0) {
+		// 	showModalMessage("Polyline Pattern Generated", "Successfully generated " + holesAdded + " holes along the polyline (Row " + rowID + ").", "success");
+		// }
 	}
 }
 // Expose generateHolesAlongPolyline globally for PatternGenerationDialogs.js

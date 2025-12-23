@@ -854,50 +854,53 @@ function getFormData(formContainer) {
 function showConfirmationDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", onConfirm = null, onCancel = null) {
 	console.log("showConfirmationDialog: " + title);
 
-	// Step 48) Create content with warning icon and message using inline styles for dark mode
-	const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
-	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-	const content = '<div style="color: #ff9800; font-size: 18px; margin-bottom: 15px; text-align: center;">⚠️</div>' +
-		'<div style="color: ' + textColor + '; font-size: 12px; line-height: 1.1; text-align: center;">' + message + "</div>";
+	return new Promise((resolve) => {
+		// Step 48) Create content with warning icon and message using inline styles for dark mode
+		const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
+		const textColor = darkModeEnabled ? "#ffffff" : "#000000";
+		const content = '<div style="color: #ff9800; font-size: 18px; margin-bottom: 15px; text-align: center;">⚠️</div>' +
+			'<div style="color: ' + textColor + '; font-size: 12px; line-height: 1.1; text-align: center;">' + message + "</div>";
 
-	// Step 49) Create FloatingDialog with confirm/cancel buttons
-	const dialog = new FloatingDialog({
-		title: title,
-		content: content,
-		width: 350,
-		height: 200,
-		showConfirm: true,
-		showCancel: true,
-		showDeny: false,
-		showOption1: false,
-		showOption2: false,
-		confirmText: confirmText,
-		cancelText: cancelText,
-		draggable: true,
-		resizable: false,
-		closeOnOutsideClick: false, // Modal behavior
-		layoutType: "default",
-		onConfirm: () => {
-			// Step 50) Handle confirm button click
-			console.log("Confirmation dialog confirmed: " + title);
-			dialog.close();
-			if (onConfirm && typeof onConfirm === "function") {
-				onConfirm();
-			}
-		},
-		onCancel: () => {
-			// Step 51) Handle cancel button click
-			console.log("Confirmation dialog cancelled: " + title);
-			dialog.close();
-			if (onCancel && typeof onCancel === "function") {
-				onCancel();
-			}
-		},
+		// Step 49) Create FloatingDialog with confirm/cancel buttons
+		const dialog = new FloatingDialog({
+			title: title,
+			content: content,
+			width: 350,
+			height: 200,
+			showConfirm: true,
+			showCancel: true,
+			showDeny: false,
+			showOption1: false,
+			showOption2: false,
+			confirmText: confirmText,
+			cancelText: cancelText,
+			draggable: true,
+			resizable: false,
+			closeOnOutsideClick: false, // Modal behavior
+			layoutType: "default",
+			onConfirm: () => {
+				// Step 50) Handle confirm button click
+				console.log("Confirmation dialog confirmed: " + title);
+				dialog.close();
+				if (onConfirm && typeof onConfirm === "function") {
+					onConfirm();
+				}
+				resolve(true);
+			},
+			onCancel: () => {
+				// Step 51) Handle cancel button click
+				console.log("Confirmation dialog cancelled: " + title);
+				dialog.close();
+				if (onCancel && typeof onCancel === "function") {
+					onCancel();
+				}
+				resolve(false);
+			},
+		});
+
+		// Step 52) Show the dialog
+		dialog.show();
 	});
-
-	// Step 52) Show the dialog
-	dialog.show();
-	return dialog;
 }
 
 // Step 53) Create utility function for confirmation dialogs with input field
@@ -1087,24 +1090,24 @@ function showModalMessage(title, message, type = "info", callback = null) {
 	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
 
 	if (type === "warning") {
-		iconHtml = '<div style="color: #ff9800; font-size: 24px; margin-bottom: 10px; text-align: center;">⚠️</div>';
+		iconHtml = '<div style="color: #ff9800; font-size: 14px; margin-bottom: 10px; text-align: center;">⚠️</div>';
 	} else if (type === "error") {
-		iconHtml = '<div style="color: #f44336; font-size: 24px; margin-bottom: 10px; text-align: center;">❌</div>';
+		iconHtml = '<div style="color: #f44336; font-size: 14px; margin-bottom: 10px; text-align: center;">❌</div>';
 	} else if (type === "success") {
-		iconHtml = '<div style="color: #4caf50; font-size: 24px; margin-bottom: 10px; text-align: center;">✅</div>';
+		iconHtml = '<div style="color: #4caf50; font-size: 14px; margin-bottom: 10px; text-align: center;">✅</div>';
 	} else {
-		iconHtml = '<div style="color: #2196f3; font-size: 24px; margin-bottom: 10px; text-align: center;">ℹ️</div>';
+		iconHtml = '<div style="color: #2196f3; font-size: 14px; margin-bottom: 10px; text-align: center;">ℹ️</div>';
 	}
 
 	// Step 62) Create content with icon and message using inline styles
-	const content = iconHtml + '<div style="color: ' + textColor + '; font-size: 16px; line-height: 1.4; text-align: center;">' + message + "</div>";
+	const content = iconHtml + '<div style="color: ' + textColor + '; font-size: 12px; line-height: 1.2; text-align: center;">' + message + "</div>";
 
 	// Step 63) Create modal FloatingDialog
 	const dialog = new FloatingDialog({
 		title: title,
 		content: content,
-		width: 400,
-		height: 200,
+		width: 350,
+		height: 150,
 		showConfirm: true,
 		showCancel: false,
 		showDeny: false,
