@@ -151,45 +151,61 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 
 	const fontSize = parseInt(window.currentFontSize) || 12;
 
-	// Step 0) Convert world position to screen coordinates, apply pixel offsets, convert back
-	// This matches 2D behavior where offsets are in screen/pixel space
-	const camera = window.threeRenderer.camera;
-	const renderer = window.threeRenderer.renderer;
+	// Step 0) EXACTLY match 2D: use worldToCanvas to get canvas coords, apply pixel offsets, convert back
+	// In 2D: [x, y] = worldToCanvas(hole.startXLocation, hole.startYLocation) then apply pixel offsets
+	const [collarCanvasX, collarCanvasY] = window.worldToCanvas(hole.startXLocation, hole.startYLocation);
+	const [toeCanvasX, toeCanvasY] = window.worldToCanvas(hole.endXLocation, hole.endYLocation);
 
-	// Helper function to convert screen pixel offset to world offset
-	const pixelToWorldOffset = (pixelOffset, isVertical = true) => {
-		if (!camera || !renderer) return pixelOffset / window.currentScale; // Fallback
+	// Step 0a) Calculate text offsets EXACTLY like 2D (in pixels)
+	const textOffset = parseInt((hole.holeDiameter / 1000) * window.holeScale * window.currentScale);
 
-		// For orthographic camera, calculate world size of one pixel
-		const height = renderer.domElement.height;
-		const width = renderer.domElement.width;
+	// Step 0b) Calculate canvas positions EXACTLY like 2D (matching kirra.js lines 21424-21434)
+	const leftSideToe = parseInt(toeCanvasX) - textOffset;
+	const rightSideToe = parseInt(toeCanvasX) + textOffset;
+	const leftSideCollar = parseInt(collarCanvasX) - textOffset;
+	const rightSideCollar = parseInt(collarCanvasX) + textOffset;
+	const topSideToe = parseInt(toeCanvasY - textOffset);
+	const middleSideToe = parseInt(toeCanvasY + textOffset + parseInt(fontSize / 4));
+	const bottomSideToe = parseInt(toeCanvasY + textOffset + fontSize);
+	const topSideCollar = parseInt(collarCanvasY - textOffset);
+	const middleSideCollar = parseInt(collarCanvasY + parseInt(fontSize / 2));
+	const bottomSideCollar = parseInt(collarCanvasY + textOffset + fontSize);
 
-		if (camera.isOrthographicCamera) {
-			// Orthographic: world size = camera size / viewport size
-			const worldHeight = camera.top - camera.bottom;
-			const worldWidth = camera.right - camera.left;
-			const pixelWorldHeight = worldHeight / height;
-			const pixelWorldWidth = worldWidth / width;
+	// Step 0c) Convert canvas pixel coordinates back to world coordinates (inverse of worldToCanvas)
+	// worldToCanvas: [(x - centroidX) * currentScale + canvas.width / 2, (-y + centroidY) * currentScale + canvas.height / 2]
+	// Inverse: [(canvasX - canvas.width / 2) / currentScale + centroidX, -(canvasY - canvas.height / 2) / currentScale + centroidY]
+	// Note: centroidX/Y are local variables, so we reverse-engineer them from known world/canvas pairs
+	const canvas = window.canvas;
+	const currentScale = window.currentScale;
+	
+	if (!canvas || !currentScale) {
+		console.warn("⚠️ Canvas or currentScale not available, skipping text rendering");
+		return; // Skip text rendering if we can't convert properly
+	}
 
-			return isVertical ? pixelOffset * pixelWorldHeight : pixelOffset * pixelWorldWidth;
-		} else {
-			// Perspective: approximate using distance and FOV
-			// For now, use currentScale as fallback
-			return pixelOffset / window.currentScale;
-		}
+	// Reverse-engineer centroid from known world/canvas coordinate pair
+	// Using collar position: canvas = (world - centroid) * scale + canvas.width/2
+	// Solving for centroid: centroid = world - (canvas - canvas.width/2) / scale
+	const centroidX = hole.startXLocation - (collarCanvasX - canvas.width / 2) / currentScale;
+	const centroidY = hole.startYLocation + (collarCanvasY - canvas.height / 2) / currentScale; // Note: Y is flipped
+
+	const canvasToWorld = (canvasX, canvasY) => {
+		const worldX = (canvasX - canvas.width / 2) / currentScale + centroidX;
+		const worldY = -(canvasY - canvas.height / 2) / currentScale + centroidY;
+		return { x: worldX, y: worldY };
 	};
 
-	// Step 0a) Calculate text offset in pixels (matching 2D)
-	const multiplier = 0.5;
-	const textOffsetPixels = parseInt((hole.holeDiameter / 1000) * multiplier * window.holeScale * window.currentScale);
-	const textOffsetWorld = pixelToWorldOffset(textOffsetPixels, false); // Horizontal offset
+	// Step 0d) Convert all canvas positions to world coordinates
+	const leftSideCollarWorld = canvasToWorld(leftSideCollar, topSideCollar);
+	const rightSideCollarWorld = canvasToWorld(rightSideCollar, topSideCollar);
+	const leftSideToeWorld = canvasToWorld(leftSideToe, topSideToe);
+	const rightSideToeWorld = canvasToWorld(rightSideToe, topSideToe);
+	const middleSideCollarWorld = canvasToWorld(rightSideCollar, middleSideCollar);
+	const bottomSideCollarWorld = canvasToWorld(rightSideCollar, bottomSideCollar);
+	const middleSideToeWorld = canvasToWorld(leftSideToe, middleSideToe);
+	const bottomSideToeWorld = canvasToWorld(leftSideToe, bottomSideToe);
 
-	// Step 0b) Calculate font size offsets in pixels (matching 2D exactly)
-	const fontSizeOffsetWorld = pixelToWorldOffset(fontSize, true); // Vertical offset
-	const fontSizeHalfOffsetWorld = pixelToWorldOffset(fontSize / 2, true);
-	const fontSizeQuarterOffsetWorld = pixelToWorldOffset(fontSize / 4, true);
-
-	// Step 1) Calculate world positions for text placement
+	// Extract world coordinates
 	const collarX = hole.startXLocation;
 	const collarY = hole.startYLocation;
 	const collarZ = hole.startZLocation || 0;
@@ -197,71 +213,63 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	const toeY = hole.endYLocation;
 	const toeZ = hole.endZLocation || 0;
 
-	// Step 2) Calculate vertical positions matching 2D logic (in screen space, then convert):
-	// topSideCollar = y - textOffset (pixels)
-	// middleSideCollar = y + currentFontSize / 2 (pixels)
-	// bottomSideCollar = y + textOffset + currentFontSize (pixels)
-	const topSideCollar = collarY + textOffsetWorld;
-	const middleSideCollar = collarY ;
-	const bottomSideCollar = collarY - textOffsetWorld;
-	const topSideToe = toeY + textOffsetWorld;
-	const middleSideToe = toeY ;
-	const bottomSideToe = toeY - textOffsetWorld ;
-
-	// Step 3) Right side of collar labels (positive X offset) - LEFT-aligned
+	// Step 3) Draw text at calculated world positions (matching 2D positioning exactly)
+	// drawHoleTextThreeJS will convert world coords to local internally
 	if (displayOptions.holeID) {
-		drawHoleTextThreeJS(collarX + textOffsetWorld, topSideCollar, collarZ, hole.holeID, fontSize/1.5, window.textFillColor, "left");
+		drawHoleTextThreeJS(rightSideCollarWorld.x, rightSideCollarWorld.y, collarZ, hole.holeID, fontSize/1.5, window.textFillColor, "left");
 	}
 	if (displayOptions.holeDia) {
-		drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, parseFloat(hole.holeDiameter).toFixed(0), fontSize/1.5, "green", "left");
+		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, parseFloat(hole.holeDiameter).toFixed(0), fontSize/1.5, "green", "left");
 	}
 	if (displayOptions.holeLen) {
-		drawHoleTextThreeJS(collarX + textOffsetWorld, bottomSideCollar, collarZ, parseFloat(hole.holeLengthCalculated).toFixed(1), fontSize/1.5, window.depthColor, "left");
+		drawHoleTextThreeJS(bottomSideCollarWorld.x, bottomSideCollarWorld.y, collarZ, parseFloat(hole.holeLengthCalculated).toFixed(1), fontSize/1.5, window.depthColor, "left");
 	}
 	if (displayOptions.holeType) {
-		drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, hole.holeType, fontSize/1.5, "green", "left");
+		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, hole.holeType, fontSize/1.5, "green", "left");
 	}
 	if (displayOptions.measuredComment) {
-		drawHoleTextThreeJS(collarX + textOffsetWorld, middleSideCollar, collarZ, hole.measuredComment, fontSize/1.5, "#FF8800", "left");
+		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, hole.measuredComment, fontSize/1.5, "#FF8800", "left");
 	}
 
-	// Step 4) Left side of collar labels (negative X offset) - RIGHT-aligned
+	// Step 4) Left side labels (right-aligned)
 	if (displayOptions.holeAng) {
-		drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, parseFloat(hole.holeAngle).toFixed(0), fontSize/1.5, window.angleDipColor, "right");
+		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, parseFloat(hole.holeAngle).toFixed(0), fontSize/1.5, window.angleDipColor, "right");
 	}
-	if (displayOptions.initiationTime) {
-		drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, hole.holeTime, fontSize/1.5, "red", "right");
-	}
-	// Step 4a) XYZ coordinates with proper vertical spacing (matching 2D) - RIGHT-aligned
-	if (displayOptions.xValue) {
-		drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, parseFloat(hole.startXLocation).toFixed(2), fontSize, window.textFillColor, "right");
-	}
-	if (displayOptions.yValue) {
-		drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, parseFloat(hole.startYLocation).toFixed(2), fontSize/1.5, window.textFillColor, "right");
-	}
-	if (displayOptions.zValue) {
-		drawHoleTextThreeJS(collarX - textOffsetWorld, bottomSideCollar, collarZ, parseFloat(hole.startZLocation).toFixed(2), fontSize/1.5, window.textFillColor, "right");
-	}
-	if (displayOptions.displayRowAndPosId) {
-		drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar, collarZ, "Row:" + hole.rowID, fontSize/1.5, "#FF00FF", "right");
-		drawHoleTextThreeJS(collarX - textOffsetWorld, middleSideCollar, collarZ, "Pos:" + hole.posID, fontSize/1.5, "#FF00FF", "right");
-	}
-	if (displayOptions.measuredLength) {
-		drawHoleTextThreeJS(collarX - textOffsetWorld, bottomSideCollar + fontSizeOffsetWorld, collarZ, hole.measuredLength, fontSize/1.5, "#FF4400", "right");
-	}
-	if (displayOptions.measuredMass) {
-		drawHoleTextThreeJS(collarX - textOffsetWorld, topSideCollar - fontSizeOffsetWorld, collarZ, hole.measuredMass, fontSize/1.5, "#FF6600", "right");
-	}
-
-	// Step 5) Toe labels with proper spacing (matching 2D) - RIGHT-aligned
 	if (displayOptions.holeDip) {
-		drawHoleTextThreeJS(toeX - textOffsetWorld, topSideToe, toeZ, (90 - parseFloat(hole.holeAngle)).toFixed(0), fontSize/1.5, window.angleDipColor, "right");
+		drawHoleTextThreeJS(leftSideToeWorld.x, leftSideToeWorld.y, toeZ, 90 - parseFloat(hole.holeAngle).toFixed(0), fontSize/1.5, window.angleDipColor, "right");
 	}
 	if (displayOptions.holeBea) {
-		drawHoleTextThreeJS(toeX - textOffsetWorld, bottomSideToe, toeZ, parseFloat(hole.holeBearing).toFixed(1), fontSize/1.5, "red", "right");
+		drawHoleTextThreeJS(bottomSideToeWorld.x, bottomSideToeWorld.y, toeZ, parseFloat(hole.holeBearing).toFixed(1), fontSize/1.5, "red", "right");
 	}
 	if (displayOptions.holeSubdrill) {
-		drawHoleTextThreeJS(toeX - textOffsetWorld, bottomSideToe + fontSizeOffsetWorld, toeZ, parseFloat(hole.subdrillAmount).toFixed(1), fontSize/1.5, "blue", "right");
+		drawHoleTextThreeJS(bottomSideToeWorld.x, bottomSideToeWorld.y, toeZ, parseFloat(hole.subdrillAmount).toFixed(1), fontSize/1.5, "blue", "right");
+	}
+	if (displayOptions.initiationTime) {
+		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, hole.holeTime, fontSize/1.5, "red", "right");
+	}
+	// Step 5) Additional coordinate and measurement labels
+	if (displayOptions.xValue) {
+		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, parseFloat(hole.startXLocation).toFixed(2), fontSize, window.textFillColor, "right");
+	}
+	if (displayOptions.yValue) {
+		const yPosWorld = canvasToWorld(leftSideCollar, middleSideCollar);
+		drawHoleTextThreeJS(yPosWorld.x, yPosWorld.y, collarZ, parseFloat(hole.startYLocation).toFixed(2), fontSize/1.5, window.textFillColor, "right");
+	}
+	if (displayOptions.zValue) {
+		drawHoleTextThreeJS(bottomSideCollarWorld.x, bottomSideCollarWorld.y, collarZ, parseFloat(hole.startZLocation).toFixed(2), fontSize/1.5, window.textFillColor, "right");
+	}
+	if (displayOptions.displayRowAndPosId) {
+		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, "Row:" + hole.rowID, fontSize/1.5, "#FF00FF", "right");
+		const posPosWorld = canvasToWorld(leftSideCollar, middleSideCollar);
+		drawHoleTextThreeJS(posPosWorld.x, posPosWorld.y, collarZ, "Pos:" + hole.posID, fontSize/1.5, "#FF00FF", "right");
+	}
+	if (displayOptions.measuredLength) {
+		const lenPosWorld = canvasToWorld(leftSideCollar, bottomSideCollar + fontSize);
+		drawHoleTextThreeJS(lenPosWorld.x, lenPosWorld.y, collarZ, hole.measuredLength, fontSize/1.5, "#FF4400", "right");
+	}
+	if (displayOptions.measuredMass) {
+		const massPosWorld = canvasToWorld(leftSideCollar, topSideCollar - fontSize);
+		drawHoleTextThreeJS(massPosWorld.x, massPosWorld.y, collarZ, hole.measuredMass, fontSize/1.5, "#FF6600", "right");
 	}
 }
 
