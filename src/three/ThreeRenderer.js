@@ -974,23 +974,26 @@ export class ThreeRenderer {
 
 	// Step 23b) Update all troika text objects to face camera (billboard behavior)
 	updateTextBillboards() {
-		// Step 23b.0) Create frustum for culling
+		// Step 23b.0) Get billboard setting from 3D settings
+		const billboardSetting = window.load3DSettings ? window.load3DSettings().textBillboarding : "all";
+
+		// Step 23b.0a) Create frustum for culling
 		const frustum = new THREE.Frustum();
 		const projScreenMatrix = new THREE.Matrix4();
 		projScreenMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
 		frustum.setFromProjectionMatrix(projScreenMatrix);
 
-		const updateGroup = (group) => {
+		const updateGroup = (group, shouldBillboard) => {
 			group.traverse((object) => {
-				// Check if this is a troika text object
-				if (object.userData && object.userData.isTroikaText) {
+				// Check if this is a troika text object and billboarding is enabled for this type
+				if (object.userData && object.userData.isTroikaText && shouldBillboard) {
 					// Make text face camera (billboard effect)
 					if (frustum.containsPoint(object.position)) {
 						object.quaternion.copy(this.camera.quaternion);
 					}
 				}
 				// Also check for text inside groups (with backgrounds)
-				if (object.userData && object.userData.textMesh) {
+				if (object.userData && object.userData.textMesh && shouldBillboard) {
 					if (frustum.containsPoint(object.position)) {
 						object.userData.textMesh.quaternion.copy(this.camera.quaternion);
 					}
@@ -1006,12 +1009,47 @@ export class ThreeRenderer {
 			});
 		};
 
-		// Update text in all groups
-		updateGroup(this.kadGroup);
-		updateGroup(this.holesGroup);
-		updateGroup(this.connectorsGroup);
-		updateGroup(this.contoursGroup); // Step 23b.1) Also update contour labels
-		updateGroup(this.surfacesGroup); // Step 23b.2) Also update slope/relief labels
+		// Update text based on billboard setting - ensure text lies on XY plane when not billboarding
+		const billboardAll = billboardSetting === "all";
+		const billboardHoles = billboardSetting === "holes" || billboardAll;
+		const billboardKAD = billboardSetting === "kad" || billboardAll;
+		const billboardConnectors = billboardAll; // Connectors follow main setting
+		const billboardContours = billboardAll; // Contours follow main setting
+		const billboardSurfaces = billboardAll; // Surfaces follow main setting
+
+		// For non-billboarded text, ensure it lies flat on XY plane (not XZ)
+		const fixOrientation = (group, shouldBillboard) => {
+			if (!shouldBillboard) {
+				group.traverse((object) => {
+					if (object.userData && object.userData.isTroikaText) {
+						// Reset orientation to lie flat on XY plane (horizontal)
+						object.quaternion.set(0, 0, 0, 1);
+					}
+					if (object.userData && object.userData.textMesh) {
+						object.userData.textMesh.quaternion.set(0, 0, 0, 1);
+						// Also fix background orientation
+						object.traverse((child) => {
+							if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
+								child.quaternion.set(0, 0, 0, 1);
+							}
+						});
+					}
+				});
+			}
+		};
+
+		updateGroup(this.holesGroup, billboardHoles);
+		updateGroup(this.kadGroup, billboardKAD);
+		updateGroup(this.connectorsGroup, billboardConnectors);
+		updateGroup(this.contoursGroup, billboardContours);
+		updateGroup(this.surfacesGroup, billboardSurfaces);
+
+		// Fix orientation for non-billboarded groups to lie on XY plane
+		fixOrientation(this.holesGroup, billboardHoles);
+		fixOrientation(this.kadGroup, billboardKAD);
+		fixOrientation(this.connectorsGroup, billboardConnectors);
+		fixOrientation(this.contoursGroup, billboardContours);
+		fixOrientation(this.surfacesGroup, billboardSurfaces);
 	}
 
 	// Step 23c) Update billboarded objects (mouse torus, etc.) to face camera

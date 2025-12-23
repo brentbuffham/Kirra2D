@@ -141,7 +141,7 @@ export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, colo
 
 	// Step 5a) Only add if not already in group (cached objects might already be there)
 	if (!textSprite.parent) {
-		window.threeRenderer.kadGroup.add(textSprite);
+		window.threeRenderer.holesGroup.add(textSprite); // Hole text goes to holesGroup
 	}
 }
 

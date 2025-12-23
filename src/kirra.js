@@ -39289,6 +39289,7 @@ function load3DSettings() {
 		gridPlane: "XY",
 		gizmoDisplay: "only_when_orbit_or_rotate", // "always", "only_when_orbit_or_rotate", "never"
 		axisLock: "none", // "none", "pitch", "roll", "yaw"
+		textBillboarding: "off", // "off", "holes", "kad", "all" - which text types should billboard
 	};
 
 	const saved = localStorage.getItem("kirra3DSettings");

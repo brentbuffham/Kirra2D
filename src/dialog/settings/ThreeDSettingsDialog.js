@@ -109,6 +109,18 @@ function show3DSettingsDialog() {
                 { value: "only_when_orbit_or_rotate", text: "Only When Orbit or Rotate" },
                 { value: "never", text: "Never" }
             ]
+        },
+        {
+            type: "select",
+            name: "textBillboarding",
+            label: "Text Billboarding:",
+            value: currentSettings.textBillboarding || "off",
+            options: [
+                { value: "off", text: "Off" },
+                { value: "holes", text: "On (Holes)" },
+                { value: "kad", text: "On (KAD)" },
+                { value: "all", text: "On (All)" }
+            ]
         }
     ];
 
@@ -159,6 +171,7 @@ function show3DSettingsDialog() {
             if (isNaN(formData.shadowIntensity)) formData.shadowIntensity = 0.5;
             formData.axisLock = formData.axisLock || "none";
             formData.gizmoDisplay = formData.gizmoDisplay || "only_when_orbit_or_rotate";
+            formData.textBillboarding = formData.textBillboarding || "off";
 
             // Step 5j) Save settings
             console.log("💾 Saving 3D settings:", formData);
