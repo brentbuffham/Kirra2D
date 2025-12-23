@@ -1,8 +1,8 @@
-# Kirra2D
+# Kirra
 
 ## Overview
 
-**Kirra 2D** is a web-based blasting pattern design application developed by Brent Buffham for mining and construction industries. The application provides comprehensive tools for creating, editing, and exporting blast hole patterns with support for multiple file formats. 
+**Kirra** is a web-based blasting pattern design application developed by Brent Buffham for mining and construction industries. The application provides comprehensive tools for creating, editing, and exporting blast hole patterns with support for multiple file formats. 
 
 ### Key Features
 
@@ -49,7 +49,7 @@ Kirra2D/
 
 ### 1. Blast Hole Management
 
-Kirra 2D manages blast holes with comprehensive data structures including: 
+Kirra manages blast holes with comprehensive data structures including: 
 
 - **Hole ID**:  Unique identifier
 - **Coordinates**: Collar (X, Y, Z) and Toe (X, Y, Z) positions
@@ -122,7 +122,7 @@ Blast_001, Pattern, 1, 100.0, 200.0, 50.0, 105.0, 200.0, 40.0, 115, Production, 
 
 ### 4. Coordinate System
 
-Kirra 2D uses a 3D world coordinate system with camera conventions for proper spatial representation:
+Kirra uses a 3D world coordinate system with camera conventions for proper spatial representation:
 
 - **X-axis**: East-West direction
 - **Y-axis**: North-South direction  
@@ -190,7 +190,7 @@ All UI elements, tooltips, and messages are translatable.
 
 ## Data Persistence
 
-Kirra 2D uses browser localStorage to save: 
+Kirra uses browser localStorage to save: 
 - Last used pattern parameters
 - Display preferences
 - Theme selection
@@ -237,7 +237,7 @@ This ensures user settings persist across sessions.
 
 ### Duplicate Detection
 
-When naming a blast the same as an existing one, Kirra 2D automatically: 
+When naming a blast the same as an existing one, Kirra automatically: 
 - Checks for duplicate hole IDs
 - Detects overlapping hole positions
 - Warns users of conflicts
@@ -308,7 +308,7 @@ The dev server automatically opens `kirra.html` on port 5173.
 
 ---
 
-This documentation provides a comprehensive overview of the Kirra 2D application.  For specific technical implementation details, refer to the source code comments and the AI commentary files in the repository. 
+This documentation provides a comprehensive overview of the Kirra application.  For specific technical implementation details, refer to the source code comments and the AI commentary files in the repository. 
 3D World Coordinate and Camera Conventions.
 
 <img width="607" height="716" alt="3D and Camera" src="https://github.com/user-attachments/assets/075e39a8-828d-484e-93df-8efe60e10ee7" />

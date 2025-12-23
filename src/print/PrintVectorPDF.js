@@ -749,11 +749,11 @@ export function generateTrueVectorPDF(context) {
 			// === HEADER SECTION - RENDERED LAST (on top of everything) ===
 			// Match raster version: header starts at margin
 
-			// Title "Kirra 2D" - Reduced from 22pt to 16pt to prevent cutoff
+			// Title "Kirra" - Reduced from 22pt to 16pt to prevent cutoff
 			pdf.setFontSize(16);
 			pdf.setFont("helvetica", "bold");
 			pdf.setTextColor(0, 0, 0);
-			pdf.text("Kirra 2D", margin, margin); // Match raster: starts at margin
+			pdf.text("Kirra", margin, margin); // Match raster: starts at margin
 
 			// Add QR Code (using pre-loaded image data)
 			if (qrCodeDataURL) {

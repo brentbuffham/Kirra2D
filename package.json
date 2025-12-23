@@ -1,7 +1,7 @@
 {
-    "name": "kirra-2d-vite",
+    "name": "kirra-vite",
     "version": "0.1.0",
-    "description": "Kirra 2D",
+    "description": "Kirra",
     "main": "kirra.js",
     "scripts": {
         "dev": "cross-env BROWSER=Chrome vite --open /kirra.html",

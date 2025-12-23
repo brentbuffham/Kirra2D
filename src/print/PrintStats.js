@@ -19,7 +19,7 @@ export function printHeader(printCtx, x, y, width, height, context) {
     printCtx.textBaseline = "top";
 
     // Title
-    const title = "Kirra 2D";
+    const title = "Kirra";
     printCtx.fillText(title, x, y + 10);
 
     //QR code from icons/ folder "icons/kirra2d-qr-code.png"
@@ -216,7 +216,7 @@ export function printHeaderSVG(x, y, width, height, context) {
     let svg = "";
     
     // Title
-    svg += SVG.createSVGText(x, y + 10, "Kirra 2D", "black", "30", "Arial", "bold", "start", "top");
+    svg += SVG.createSVGText(x, y + 10, "Kirra", "black", "30", "Arial", "bold", "start", "top");
     
     // QR code is handled separately as raster image in PrintSystem.js
     // No SVG image element needed here

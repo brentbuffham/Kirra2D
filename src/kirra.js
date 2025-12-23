@@ -4462,7 +4462,7 @@ document.getElementById("buttonGoBack").addEventListener("click", function () {
 
 	// Step 2) Show confirmation dialog
 	showConfirmationDialog(
-		"Leave Kirra 2D?",
+		"Leave Kirra?",
 		message,
 		"Leave",
 		"Stay",
@@ -4472,7 +4472,7 @@ document.getElementById("buttonGoBack").addEventListener("click", function () {
 		},
 		() => {
 			// Step 4) Handle stay (cancel) - nothing needed
-			console.log("User chose to stay in Kirra 2D");
+			console.log("User chose to stay in Kirra");
 		}
 	);
 });
@@ -22775,7 +22775,7 @@ function loadHolesFromLocalStorage() {
 // --- IndexedDB & Local Storage Management ---
 
 let db;
-const DB_NAME = "Kirra2D-DATABASE";
+const DB_NAME = "Kirra-DATABASE";
 const STORE_NAME = "KADDRAWINGS";
 const SURFACE_STORE_NAME = "KADSURFACE";
 const IMAGE_STORE_NAME = "KADIMAGES";
@@ -24155,7 +24155,7 @@ async function showPopup(isDBReady) {
 	return new Promise((resolve) => {
 		// Step 4) Create the FloatingDialog instance
 		const dialog = new FloatingDialog({
-			title: "Welcome back to Kirra 2D!",
+			title: "Welcome back to Kirra!",
 			content: dialogContent,
 			width: 480,
 			height: 220,

@@ -4,8 +4,11 @@
 import { jsPDF } from "jspdf";
 import { drawDataForPrinting, printSurfaceSVG, printBoundarySVG, printDataSVG } from "./PrintRendering.js";
 import { printHeader, printFooter, printHeaderSVG, printFooterSVG } from "./PrintStats.js";
-import * as GeoPDF from "./GeoPDFMetadata.js";
+// GeoPDF removed - too complex
 import { generateTrueVectorPDF } from "./PrintVectorPDF.js";
+import { getTemplate } from "./PrintTemplates.js";
+import { PrintLayoutManager } from "./PrintLayoutManager.js";
+import { showPrintDialog } from "./PrintDialog.js";
 
 // Print template configuration
 export let printMode = false;
@@ -40,6 +43,9 @@ export const paperRatios = {
 // These are now declared with 'let' in the global scope to allow resizing.
 export let printCanvas = document.createElement("canvas");
 export let printCtx = printCanvas.getContext("2d");
+
+// 3D print boundary overlay
+let printBoundary3DOverlay = null;
 
 // Calculate print-safe boundary on canvas
 export function getPrintBoundary(canvas) {
@@ -101,12 +107,195 @@ export function drawPrintBoundary(ctx, canvas) {
 	ctx.restore();
 }
 
+// ============== 3D PRINT BOUNDARY OVERLAY SYSTEM ==============
+
+// Step 1) Toggle 3D print preview mode
+export function toggle3DPrintPreview(enabled, paperSize, orientation, threeRenderer) {
+	if (enabled) {
+		create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer);
+	} else {
+		remove3DPrintBoundaryOverlay();
+	}
+}
+
+// Step 2) Create overlay canvas showing print boundaries for 3D mode
+function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
+	// Step 2a) Remove existing overlay if any
+	remove3DPrintBoundaryOverlay();
+	
+	// Step 2b) Get Three.js canvas
+	const threeCanvas = threeRenderer.getCanvas();
+	const rect = threeCanvas.getBoundingClientRect();
+	
+	// Step 2c) Create overlay canvas
+	const overlayCanvas = document.createElement("canvas");
+	overlayCanvas.id = "print-boundary-3d";
+	overlayCanvas.width = rect.width;
+	overlayCanvas.height = rect.height;
+	overlayCanvas.style.position = "absolute";
+	overlayCanvas.style.left = threeCanvas.offsetLeft + "px";
+	overlayCanvas.style.top = threeCanvas.offsetTop + "px";
+	overlayCanvas.style.width = rect.width + "px";
+	overlayCanvas.style.height = rect.height + "px";
+	overlayCanvas.style.pointerEvents = "none";
+	overlayCanvas.style.zIndex = "4"; // Above Three.js canvas
+	
+	// Step 2d) Get template and calculate map zone dimensions
+	const template = getTemplate("3D", orientation);
+	const paper = paperRatios[paperSize];
+	const pageWidth = orientation === "landscape" ? paper.width : paper.height;
+	const pageHeight = orientation === "landscape" ? paper.height : paper.width;
+	
+	const layoutManager = new PrintLayoutManager(template, pageWidth, pageHeight);
+	const mapZone = layoutManager.getZoneRect("map");
+	
+	// Step 2e) Calculate boundary aspect ratio from template
+	const templateAspectRatio = mapZone.width / mapZone.height;
+	
+	// Step 2f) Fit boundary to canvas maintaining template aspect ratio
+	const canvasAspect = rect.width / rect.height;
+	let boundaryWidth, boundaryHeight, boundaryX, boundaryY;
+	
+	if (canvasAspect > templateAspectRatio) {
+		// Canvas wider than paper - fit to height
+		boundaryHeight = rect.height * 0.9;
+		boundaryWidth = boundaryHeight * templateAspectRatio;
+	} else {
+		// Canvas taller than paper - fit to width
+		boundaryWidth = rect.width * 0.9;
+		boundaryHeight = boundaryWidth / templateAspectRatio;
+	}
+	
+	// Center the boundary
+	boundaryX = (rect.width - boundaryWidth) / 2;
+	boundaryY = (rect.height - boundaryHeight) / 2;
+	
+	// Step 2g) Draw boundaries
+	const ctx = overlayCanvas.getContext("2d");
+	ctx.clearRect(0, 0, rect.width, rect.height);
+	
+	// Draw outer boundary (red dashed) - page edges
+	ctx.strokeStyle = "red";
+	ctx.setLineDash([10, 5]);
+	ctx.lineWidth = 2;
+	ctx.strokeRect(boundaryX, boundaryY, boundaryWidth, boundaryHeight);
+	
+	// Draw inner boundary (blue dashed) - print-safe area
+	const innerMargin = boundaryWidth * (mapZone.printSafeMargin || 0.05);
+	ctx.strokeStyle = "rgba(0, 100, 255, 0.8)";
+	ctx.setLineDash([5, 3]);
+	ctx.lineWidth = 1.5;
+	ctx.strokeRect(
+		boundaryX + innerMargin,
+		boundaryY + innerMargin,
+		boundaryWidth - 2 * innerMargin,
+		boundaryHeight - 2 * innerMargin
+	);
+	
+	// Step 2h) Add label
+	ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+	ctx.fillRect(boundaryX, boundaryY - 25, 180, 25);
+	ctx.fillStyle = "white";
+	ctx.font = "12px Arial";
+	ctx.fillText(
+		"Print Preview: " + paperSize + " " + orientation,
+		boundaryX + 5,
+		boundaryY - 8
+	);
+	
+	// Step 2i) Insert into DOM
+	threeCanvas.parentElement.appendChild(overlayCanvas);
+	printBoundary3DOverlay = overlayCanvas;
+	
+	// Step 2j) Store boundary info for capture
+	overlayCanvas.boundaryInfo = {
+		x: boundaryX,
+		y: boundaryY,
+		width: boundaryWidth,
+		height: boundaryHeight,
+		innerMargin: innerMargin,
+		paperSize: paperSize,
+		orientation: orientation
+	};
+}
+
+// Step 3) Remove 3D print boundary overlay
+function remove3DPrintBoundaryOverlay() {
+	if (printBoundary3DOverlay && printBoundary3DOverlay.parentElement) {
+		printBoundary3DOverlay.parentElement.removeChild(printBoundary3DOverlay);
+		printBoundary3DOverlay = null;
+	}
+}
+
+// Step 4) Get 3D print boundary info (for capture system)
+export function get3DPrintBoundary() {
+	if (!printBoundary3DOverlay) return null;
+	return printBoundary3DOverlay.boundaryInfo;
+}
+
+// Step 5) Set paper size and update 3D boundary if active
+export function setPrintPaperSize(size) {
+	printPaperSize = size;
+	
+	// Update 3D boundary if in preview mode
+	if (printMode && window.is3DMode && window.threeRenderer) {
+		toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
+	}
+}
+
+// Step 6) Set orientation and update 3D boundary if active
+export function setPrintOrientation(orientation) {
+	printOrientation = orientation;
+	
+	// Update 3D boundary if in preview mode
+	if (printMode && window.is3DMode && window.threeRenderer) {
+		toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
+	}
+}
+
+// ============== END 3D PRINT BOUNDARY OVERLAY SYSTEM ==============
+
 export function printToPDF(context) {
-	// Use TRUE vector PDF generation (jsPDF native drawing API)
-	generateTrueVectorPDF({
+	// Step 1) Detect current mode (2D or 3D)
+	const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
+	const isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
+	const mode = isIn3DMode ? "3D" : "2D";
+	
+	// Step 2) Enhance context with necessary print functions
+	const enhancedContext = {
 		...context,
-		printPaperSize: printPaperSize,
-		printOrientation: printOrientation,
+		getPrintBoundary: getPrintBoundary,
+		get3DPrintBoundary: get3DPrintBoundary,
+		mode: mode,
+		is3DMode: isIn3DMode
+	};
+	
+    // Step 3) Show new print dialog with user input
+    showPrintDialog(mode, enhancedContext, function(userInput) {
+        // Step 4) Paper size and orientation already set from UI, add to userInput
+        userInput.paperSize = printPaperSize;
+        userInput.orientation = printOrientation;
+        
+        // Step 5) User confirmed - start print generation
+		if (userInput.outputType === "vector") {
+			// Use TRUE vector PDF generation (jsPDF native drawing API)
+			generateTrueVectorPDF({
+				...enhancedContext,
+				printPaperSize: printPaperSize,
+				printOrientation: printOrientation,
+				userInput: userInput,
+				mode: mode
+			});
+		} else {
+			// Use raster PDF generation (high-res PNG to PDF)
+			printCanvasHiRes({
+				...enhancedContext,
+				printPaperSize: printPaperSize,
+				printOrientation: printOrientation,
+				userInput: userInput,
+				mode: mode
+			});
+		}
 	});
 }
 
@@ -309,44 +498,43 @@ export function togglePrintMode(updateStatusMessageCallback, drawDataCallback) {
 	const toggle = document.getElementById("addPrintPreviewToggle");
 	if (toggle) toggle.checked = printMode;
 
-	// Switch from 3D to 2D mode when print preview is enabled
-	if (printMode && typeof window !== "undefined") {
-		// Check if we're in 3D mode by checking the Dimension 2D-3D button in the toolbar
-		const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
-		const isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
-
-		if (isIn3DMode) {
-			// Store the previous 3D state
-			window._previous3DMode = true;
-			// Switch to 2D mode by unchecking the button
-			dimension2D3DBtn.checked = false;
-			// Trigger the change event to update the internal state (this sets onlyShowThreeJS = false)
-			dimension2D3DBtn.dispatchEvent(new Event("change"));
-			if (updateStatusMessageCallback) {
-				updateStatusMessageCallback("Switched to 2D mode for print preview");
-			}
-		}
-	} else if (!printMode && typeof window !== "undefined" && window._previous3DMode === true) {
-		// Restore previous 3D state when print preview is disabled
-		const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
-		if (dimension2D3DBtn) {
-			dimension2D3DBtn.checked = true;
-			// Trigger the change event to update the internal state (this sets onlyShowThreeJS = true)
-			dimension2D3DBtn.dispatchEvent(new Event("change"));
-		}
-		delete window._previous3DMode;
-		if (updateStatusMessageCallback) {
-			updateStatusMessageCallback("Restored previous view mode");
-		}
-	}
-
+	// Step 1) Detect current mode (2D or 3D)
+	const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
+	const isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
+	
 	if (printMode) {
-		updateStatusMessageCallback("Print Preview Mode ON - Position elements within the print boundary");
+		// Entering print preview mode
+		if (isIn3DMode) {
+			// Step 1a) 3D mode print preview
+			if (window.threeRenderer) {
+				toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
+				if (updateStatusMessageCallback) {
+					updateStatusMessageCallback("3D Print Preview Mode ON - Boundary shows what will be printed");
+				}
+			}
+		} else {
+			// Step 1b) 2D mode print preview (existing behavior)
+			if (updateStatusMessageCallback) {
+				updateStatusMessageCallback("Print Preview Mode ON - Position elements within the print boundary");
+			}
+			drawDataCallback(); // Redraw with boundary
+		}
 	} else {
-		updateStatusMessageCallback("Print Preview Mode OFF");
+		// Exiting print preview mode
+		if (isIn3DMode) {
+			// Step 1c) Remove 3D overlay
+			remove3DPrintBoundaryOverlay();
+			if (updateStatusMessageCallback) {
+				updateStatusMessageCallback("3D Print Preview Mode OFF");
+			}
+		} else {
+			// Step 1d) Remove 2D boundary
+			if (updateStatusMessageCallback) {
+				updateStatusMessageCallback("Print Preview Mode OFF");
+			}
+			drawDataCallback(); // Redraw without boundary
+		}
 	}
-
-	drawDataCallback(); // Redraw with/without print boundary
 }
 
 /**
@@ -716,11 +904,11 @@ export function printCanvasHiResVector(context) {
 							try {
 								// Set basic metadata
 								pdf.setProperties({
-									title: "Kirra 2D Blast Design",
+									title: "Kirra Blast Design",
 									subject: "Georeferenced Blast Design PDF",
 									author: "Kirra Blast Design Software",
 									keywords: "blast design, georeferenced, UTM " + utmInfo.zone + utmInfo.hemisphere,
-									creator: "Kirra 2D",
+									creator: "Kirra",
 								});
 
 								// TODO: Inject GeoPDF metadata objects into PDF structure
@@ -829,11 +1017,11 @@ export function printCanvasHiResVector(context) {
 
 							try {
 								pdf.setProperties({
-									title: "Kirra 2D Blast Design",
+									title: "Kirra Blast Design",
 									subject: "Georeferenced Blast Design PDF",
 									author: "Kirra Blast Design Software",
 									keywords: "blast design, georeferenced, UTM " + utmInfo.zone + utmInfo.hemisphere,
-									creator: "Kirra 2D",
+									creator: "Kirra",
 								});
 								console.log("GeoPDF metadata generated:", geoMetadata);
 							} catch (error) {
