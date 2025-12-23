@@ -24585,13 +24585,14 @@ window.onload = function () {
 								"Delete Confirmation",
 								"What would you like to delete?",
 								"Vertex Only",
-								"Entire Entity",
-								"Cancel"
+								"Cancel",
+								"Entire Entity"
 							).then(function (result) {
 								if (result === 1) {
-									// Delete vertex only
+									// Delete vertex only - capture values before clearing
+									const deletedPointID = selectedPoint.pointID;
 									entity.data.splice(elementIndex, 1);
-									console.log("❌🔑 [DELETE KEY] Deleted vertex:", selectedPoint.pointID);
+									console.log("❌🔑 [DELETE KEY] Deleted vertex:", deletedPointID);
 
 									// Delete entity if empty
 									if (entity.data.length === 0) {
@@ -24612,12 +24613,13 @@ window.onload = function () {
 									drawData(allBlastHoles, selectedHole);
 									syncCanvasToTreeView();
 									updateTreeView();
-									updateStatusMessage("Deleted vertex " + selectedPoint.pointID);
+									updateStatusMessage("Deleted vertex " + deletedPointID);
 									setTimeout(function () { updateStatusMessage(""); }, 2000);
 								} else if (result === 2) {
-									// Delete entire entity
-									allKADDrawingsMap.delete(selectedKADObject.entityName);
-									console.log("❌🔑 [DELETE KEY] Deleted entity:", selectedKADObject.entityName);
+									// Delete entire entity - capture values before clearing
+									const deletedEntityName = selectedKADObject.entityName;
+									allKADDrawingsMap.delete(deletedEntityName);
+									console.log("❌🔑 [DELETE KEY] Deleted entity:", deletedEntityName);
 
 									selectedPoint = null;
 									selectedKADObject = null;
@@ -24629,10 +24631,10 @@ window.onload = function () {
 									drawData(allBlastHoles, selectedHole);
 									syncCanvasToTreeView();
 									updateTreeView();
-									updateStatusMessage("Deleted entity '" + selectedKADObject.entityName + "'");
+									updateStatusMessage("Deleted entity '" + deletedEntityName + "'");
 									setTimeout(function () { updateStatusMessage(""); }, 2000);
 								}
-								// If result === 3 (Cancel), do nothing
+								// If result === 0 (Cancel), do nothing
 							});
 						}
 					}

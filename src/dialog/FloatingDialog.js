@@ -1025,58 +1025,62 @@ function createBasicInput(field) {
 function showConfirmationThreeDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", optionText = "Option", onConfirm = null, onCancel = null, onOption = null) {
 	console.log("showConfirmationThreeDialog: " + title);
 
-	// Step 54) Create content with warning icon and message using inline styles for dark mode
-	const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
-	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-	const content = '<div style="color: #ff9800; font-size: 24px; margin-bottom: 15px; text-align: center;">⚠️</div>' + '<div style="color: ' + textColor + '; font-size: 16px; line-height: 1.4;">' + message + "</div>";
+	return new Promise((resolve) => {
+		// Step 54) Create content with warning icon and message using inline styles for dark mode
+		const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
+		const textColor = darkModeEnabled ? "#ffffff" : "#000000";
+		const content = '<div style="color: #ff9800; font-size: 24px; margin-bottom: 15px; text-align: center;">⚠️</div>' + '<div style="color: ' + textColor + '; font-size: 16px; line-height: 1.4;">' + message + "</div>";
 
-	// Step 55) Create FloatingDialog with confirm/cancel/option buttons
-	const dialog = new FloatingDialog({
-		title: title,
-		content: content,
-		width: 500,
-		height: 350,
-		showConfirm: true,
-		showCancel: true,
-		showDeny: false,
-		showOption1: true, // Enable the third button
-		showOption2: false,
-		confirmText: confirmText,
-		cancelText: cancelText,
-		option1Text: optionText, // Use option1Text for the third button
-		draggable: true,
-		resizable: false,
-		closeOnOutsideClick: false, // Modal behavior
-		layoutType: "default",
-		onConfirm: () => {
-			// Step 56) Handle confirm button click
-			console.log("Three-button confirmation dialog confirmed: " + title);
-			dialog.close();
-			if (onConfirm && typeof onConfirm === "function") {
-				onConfirm();
-			}
-		},
-		onCancel: () => {
-			// Step 57) Handle cancel button click
-			console.log("Three-button confirmation dialog cancelled: " + title);
-			dialog.close();
-			if (onCancel && typeof onCancel === "function") {
-				onCancel();
-			}
-		},
-		onOption1: () => {
-			// Step 58) Handle option button click
-			console.log("Three-button confirmation dialog option selected: " + title);
-			dialog.close();
-			if (onOption && typeof onOption === "function") {
-				onOption();
-			}
-		},
+		// Step 55) Create FloatingDialog with confirm/cancel/option buttons
+		const dialog = new FloatingDialog({
+			title: title,
+			content: content,
+			width: 400,
+			height: 200,
+			showConfirm: true,
+			showCancel: true,
+			showDeny: false,
+			showOption1: true, // Enable the third button
+			showOption2: false,
+			confirmText: confirmText,
+			cancelText: cancelText,
+			option1Text: optionText, // Use option1Text for the third button
+			draggable: true,
+			resizable: false,
+			closeOnOutsideClick: false, // Modal behavior
+			layoutType: "default",
+			onConfirm: () => {
+				// Step 56) Handle confirm button click
+				console.log("Three-button confirmation dialog confirmed: " + title);
+				dialog.close();
+				if (onConfirm && typeof onConfirm === "function") {
+					onConfirm();
+				}
+				resolve(1); // Resolve with 1 for confirm button
+			},
+			onCancel: () => {
+				// Step 57) Handle cancel button click
+				console.log("Three-button confirmation dialog cancelled: " + title);
+				dialog.close();
+				if (onCancel && typeof onCancel === "function") {
+					onCancel();
+				}
+				resolve(0); // Resolve with 0 for cancel button
+			},
+			onOption1: () => {
+				// Step 58) Handle option button click
+				console.log("Three-button confirmation dialog option selected: " + title);
+				dialog.close();
+				if (onOption && typeof onOption === "function") {
+					onOption();
+				}
+				resolve(2); // Resolve with 2 for option button
+			},
+		});
+
+		// Step 59) Show the dialog
+		dialog.show();
 	});
-
-	// Step 59) Show the dialog
-	dialog.show();
-	return dialog;
 }
 
 //! WARNING - SUCCESS - ERROR - INFO - QUESTION - ACTION Dialog
