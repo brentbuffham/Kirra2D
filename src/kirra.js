@@ -6262,6 +6262,14 @@ drawingElevation.addEventListener("change", function () {
 });
 
 const lineThickness = document.getElementById("drawingLineWidth");
+lineThickness.addEventListener("input", function () {
+	lineThickness.value = parseFloat(lineThickness.value);
+	// Step #) Sync with floating toolbar
+	const toolbarLineWidth = document.getElementById("drawingKADSizeToolbar");
+	if (toolbarLineWidth) {
+		toolbarLineWidth.value = lineThickness.value;
+	}
+});
 lineThickness.addEventListener("change", function () {
 	lineThickness.value = parseFloat(lineThickness.value);
 	// Step #) Sync with floating toolbar
@@ -6280,6 +6288,18 @@ if (drawingKADSizeToolbar) {
 			sidebarLineWidth.value = drawingKADSizeToolbar.value;
 		}
 	});
+	drawingKADSizeToolbar.addEventListener("change", function () {
+		const sidebarLineWidth = document.getElementById("drawingLineWidth");
+		if (sidebarLineWidth) {
+			sidebarLineWidth.value = drawingKADSizeToolbar.value;
+		}
+	});
+
+	// Step #) Initial sync to ensure values match on load
+	const sidebarLineWidth = document.getElementById("drawingLineWidth");
+	if (sidebarLineWidth && sidebarLineWidth.value !== drawingKADSizeToolbar.value) {
+		sidebarLineWidth.value = drawingKADSizeToolbar.value;
+	}
 }
 
 const circleRadius = document.getElementById("drawingRadius");
