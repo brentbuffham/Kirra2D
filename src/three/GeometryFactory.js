@@ -455,12 +455,19 @@ export class GeometryFactory {
 		if (textCache.has(cacheKey)) {
 			const cachedText = textCache.get(cacheKey);
 
-			// Step 1a.1) Update fontSize if scale changed
-			const newFontSizeWorldUnits = fontSize / currentScale;
-			if (Math.abs(cachedText.fontSize - newFontSizeWorldUnits) > 0.001) {
-				cachedText.fontSize = newFontSizeWorldUnits;
-				cachedText.sync(); // Update geometry
-			}
+			// Step 1a.1) Ensure cached text has multi-channel SDF settings
+		if (cachedText.sdfGlyphSize !== 128) {
+			cachedText.sdfGlyphSize = 128;
+			cachedText.glyphSize = 256;
+			cachedText.glyphResolution = 1;
+		}
+
+		// Step 1a.2) Update fontSize if scale changed
+		const newFontSizeWorldUnits = fontSize / currentScale;
+		if (Math.abs(cachedText.fontSize - newFontSizeWorldUnits) > 0.001) {
+			cachedText.fontSize = newFontSizeWorldUnits;
+			cachedText.sync(); // Update geometry
+		}
 
 			// Step 1a.2) Update position (might have changed)
 			cachedText.position.set(worldX, worldY, worldZ);
@@ -470,6 +477,13 @@ export class GeometryFactory {
 
 		// Step 2) Create troika Text object (only if not cached)
 		const textMesh = new Text();
+
+		// Step 2a) Enable multi-channel SDF for superior text quality
+		textMesh.sdfGlyphSize = 128; // Multi-channel SDF (64=standard, 128=high quality, 256=ultra)
+
+		// Optional: Fine-tune SDF rendering parameters
+		textMesh.glyphSize = 256;     // Texture size for glyph rendering (default: 256)
+		textMesh.glyphResolution = 1; // Glyph detail level (1=normal, higher=more detail)
 
 		// Step 3) Convert pixel-based fontSize to world units based on camera scale
 		// fontSize is in pixels (e.g. 6px, 12px)
@@ -572,6 +586,11 @@ export class GeometryFactory {
 	static createContourLabel(worldX, worldY, worldZ, text, fontSize, color) {
 		// Step 1) Create troika Text object
 		const textMesh = new Text();
+
+		// Step 1a) Enable multi-channel SDF for superior text quality
+		textMesh.sdfGlyphSize = 128; // Multi-channel SDF (64=standard, 128=high quality, 256=ultra)
+		textMesh.glyphSize = 256;     // Texture size for glyph rendering (default: 256)
+		textMesh.glyphResolution = 1; // Glyph detail level (1=normal, higher=more detail)
 
 		// Step 2) Convert pixel-based fontSize to world units
 		const currentScale = window.currentScale || 5;

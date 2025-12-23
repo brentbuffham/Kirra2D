@@ -35219,6 +35219,7 @@ function assignHoleToSurfaceElevation(hole, targetElevation, type) {
 			// Use calculateHoleGeometry to properly recalculate all geometry
 			calculateHoleGeometry(hole, newLength, 1); // mode 1 = Length
 			console.log("hole assigned to surface", hole);
+			debouncedSaveHoles(); // Save changes to IndexedDB
 		}
 	} else if (type === "grade") {
 		// Keep collar fixed, adjust toe to target elevation
@@ -35238,6 +35239,7 @@ function assignHoleToSurfaceElevation(hole, targetElevation, type) {
 			// Use calculateHoleGeometry to properly recalculate all geometry
 			calculateHoleGeometry(hole, newLength, 1); // mode 1 = Length
 			console.log("hole assigned to grade", hole);
+			debouncedSaveHoles(); // Save changes to IndexedDB
 		}
 	}
 }
@@ -35585,6 +35587,8 @@ function assignHolesToFixedElevation(elevation, type) {
 			assignHoleToSurfaceElevation(hole, elevation, type);
 			assignedCount++;
 		});
+
+		debouncedSaveHoles(); // Save all changes to IndexedDB
 
 		// Show success message with proper styling
 		//! REDO with the FloatingDialog class
