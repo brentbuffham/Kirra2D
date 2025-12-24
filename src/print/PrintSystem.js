@@ -6,6 +6,7 @@ import { drawDataForPrinting, printSurfaceSVG, printBoundarySVG, printDataSVG } 
 import { printHeader, printFooter, printHeaderSVG, printFooterSVG } from "./PrintStats.js";
 // GeoPDF removed - too complex
 import { generateTrueVectorPDF } from "./PrintVectorPDF.js";
+import { generatePDFWithPDFMake } from "./PrintPDFMake.js";
 import { getTemplate } from "./PrintTemplates.js";
 import { PrintLayoutManager } from "./PrintLayoutManager.js";
 import { showPrintDialog } from "./PrintDialog.js";
@@ -278,14 +279,14 @@ export function printToPDF(context) {
         
         // Step 5) User confirmed - start print generation
 		if (userInput.outputType === "vector") {
-			// Use TRUE vector PDF generation (jsPDF native drawing API)
-			generateTrueVectorPDF({
+			// Use PDFMake for EXACT template matching (recommended)
+			generatePDFWithPDFMake({
 				...enhancedContext,
 				printPaperSize: printPaperSize,
 				printOrientation: printOrientation,
 				userInput: userInput,
 				mode: mode
-			});
+			}, userInput, mode);
 		} else {
 			// Use raster PDF generation (high-res PNG to PDF)
 			printCanvasHiRes({

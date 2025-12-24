@@ -4,6 +4,9 @@ import { jsPDF } from "jspdf";
 import { getPrintBoundary, printCanvas } from "./PrintSystem.js";
 import { getBlastStatisticsPerEntity } from "../helpers/BlastStatistics.js";
 import * as GeoPDF from "./GeoPDFMetadata.js";
+import { PRINT_TEMPLATES, getTemplate } from "./PrintTemplates.js";
+import { PrintLayoutManager } from "./PrintLayoutManager.js";
+import { PrintCaptureManager } from "./PrintCaptureManager.js";
 
 // Helper: Convert hex color to RGB for jsPDF
 function hexToRgb(hex) {
@@ -114,6 +117,13 @@ function drawRightAlignedTextVector(pdf, x, y, text, color, fontSize) {
 	pdf.setTextColor(rgb.r, rgb.g, rgb.b);
 	pdf.setFontSize(fontSize || 4);
 	pdf.text(String(text), x, y, { align: "right" });
+}
+
+// Helper: Draw border around a cell/rectangle
+function drawCellBorder(pdf, x, y, width, height, lineWidth) {
+	pdf.setDrawColor(0, 0, 0); // Black border
+	pdf.setLineWidth(lineWidth || 0.1);
+	pdf.rect(x, y, width, height, "S"); // "S" = stroke only
 }
 
 // Draw surface legend as vectors
@@ -311,9 +321,37 @@ function drawStatsTableVector(pdf, x, y, stats, context) {
 /**
  * Generate a true vector PDF matching the EXACT working printCanvasHiRes logic
  * but using jsPDF native drawing API instead of canvas
+ * @param {Object} context - Application context with all data and functions
+ * @param {Object} userInput - Optional user input from PrintDialog: {blastName, designer, notes, outputType}
+ * @param {string} mode - Optional mode: "2D" or "3D"
  */
-export function generateTrueVectorPDF(context) {
+export function generateTrueVectorPDF(context, userInput, mode) {
+	// Step 1a) Handle both old and new call signatures
+	// Old: generateTrueVectorPDF({...allContext, userInput, mode})
+	// New: generateTrueVectorPDF(context, userInput, mode)
+	if (!userInput && context.userInput) {
+		userInput = context.userInput;
+	}
+	if (!mode && context.mode) {
+		mode = context.mode;
+	}
+	
 	const { allBlastHoles, allKADDrawingsMap, allAvailableSurfaces, loadedSurfaces, loadedImages, showModalMessage, FloatingDialog, printPaperSize, printOrientation, getVoronoiMetrics, buildVersion, getDisplayOptions, simplifyByPxDist } = context;
+	
+	// Step 1b) Default userInput if not provided (backward compatibility)
+	if (!userInput) {
+		userInput = {
+			blastName: "Untitled Blast",
+			designer: "",
+			notes: "",
+			outputType: "vector"
+		};
+	}
+	
+	// Step 1c) Default mode if not provided
+	if (!mode) {
+		mode = context.is3DMode ? "3D" : "2D";
+	}
 
 	// Step 1) Check for data (same logic as working version)
 	if ((!allBlastHoles || allBlastHoles.length === 0) && (!allKADDrawingsMap || allKADDrawingsMap.size === 0) && (!allAvailableSurfaces || allAvailableSurfaces.length === 0)) {
@@ -390,24 +428,31 @@ export function generateTrueVectorPDF(context) {
 			const pageWidth = isLandscape ? paperSize.height : paperSize.width;
 			const pageHeight = isLandscape ? paperSize.width : paperSize.height;
 
+			// Step 2) Get template and create layout manager
+			const template = getTemplate(mode, printOrientation);
+			const layoutMgr = new PrintLayoutManager(template, pageWidth, pageHeight);
+			
+			// Step 2a) Get map zone with print-safe area
+			const mapZoneWithSafeArea = layoutMgr.getMapZoneWithSafeArea();
+			const mapZone = mapZoneWithSafeArea.inner; // Use inner safe area for data rendering
+			
 			// Create PDF
 			const orientation = isLandscape ? "l" : "p";
 			const pdf = new jsPDF(orientation, "mm", printPaperSize.toLowerCase());
 
-			const margin = pageWidth * 0.02;
-			const footerHeight = 10;
-
-			// Match raster version exactly: headerHeight = 200 pixels at 300 DPI = 200/11.8 = ~17mm
-			const headerHeight = 17; // 200px equivalent at 300 DPI
-
-			// Calculate the actual print area excluding header and footer
-			// Match raster version exactly: printArea.y = margin + headerHeight
+			// Step 2b) Calculate print area from map zone
 			const printArea = {
-				x: margin,
-				y: margin + headerHeight, // Match raster version exactly
-				width: pageWidth - 2 * margin,
-				height: pageHeight - 2 * margin - headerHeight - footerHeight,
+				x: mapZone.x,
+				y: mapZone.y,
+				width: mapZone.width,
+				height: mapZone.height
 			};
+			
+			// Step 2c) Calculate margin (2% of page width, matching template)
+			const margin = pageWidth * 0.02;
+			
+			// Step 2d) Draw border around map zone
+			drawCellBorder(pdf, mapZone.x, mapZone.y, mapZone.width, mapZone.height, 0.2);
 
 			bar.style.width = "10%";
 			text.textContent = "Calculating coordinates...";
@@ -682,9 +727,11 @@ export function generateTrueVectorPDF(context) {
 					drawHoleToeVector(pdf, lineEndX, lineEndY, context.transparentFillColor || "rgba(255,255,255,0.5)", "black", radiusInMM);
 				}
 
-				// Calculate text offsets (in mm, scaled)
-				// Reduce hole radius significantly for better appearance
-				const holeRadius = (hole.holeDiameter / 1000 / 2) * context.holeScale * printScale * 0.25; // Reduced to 25% of original
+				// Step 3) Calculate text offsets (in mm, scaled)
+				// Fix collar size - reduce by 75% (was oversized)
+				// Original was 0.25, but still 75% too large, so reduce to ~0.14 (0.25 / 1.75)
+				const printHoleScale = parseFloat(document.getElementById("holeSize")?.value || 3);
+				const holeRadius = (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14; // Fixed: reduced from 0.25 to 0.14
 				const textOffset = holeRadius * 2.2; // Increased spacing for better readability
 				const leftSideToe = lineEndX - textOffset;
 				const rightSideToe = lineEndX + textOffset;
@@ -717,75 +764,326 @@ export function generateTrueVectorPDF(context) {
 			}
 
 			bar.style.width = "90%";
-			text.textContent = "Adding footer...";
+			text.textContent = "Adding header and footer...";
 
-			// === FOOTER SECTION ===
-			// Reduced font sizes to match working version
-			pdf.setFontSize(7); // Reduced from 10pt
-			pdf.setFont("helvetica", "normal");
-			pdf.setTextColor(0, 0, 0);
-			pdf.text("Generated by KIRRA Blast Design Software", pageWidth / 2, pageHeight - margin, { align: "center" });
-
-			const now = new Date();
-			const dateStr = now.toLocaleDateString("en-AU", { year: "numeric", month: "long", day: "numeric" }) + " " + now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
-			pdf.setFontSize(7); // Reduced from default
-			pdf.text(dateStr, pageWidth - margin, pageHeight - margin, { align: "right" });
-
-			// Footer info - smaller font
-			pdf.setFontSize(6); // Reduced from 8pt
-			pdf.text("Holes: " + visibleBlastHoles.length, margin, pageHeight - margin - 4);
-			// printScale is in mm/meter, convert to scale ratio 1:X where X is mm per meter on paper
-			// If printScale = 1 mm/m, then 1mm on paper = 1m in reality = 1000mm, so scale is 1:1000
-			// Scale ratio = 1000 / printScale
-			const scaleRatio = printScale > 0 ? Math.round(1000 / printScale) : 1;
-			pdf.text("Scale: 1:" + scaleRatio, margin, pageHeight - margin);
-			if (buildVersion) {
-				pdf.text("Version: " + buildVersion, pageWidth - margin, pageHeight - margin - 4, { align: "right" });
-			}
-
-			bar.style.width = "95%";
-			text.textContent = "Drawing header (on top)...";
-
-			// === HEADER SECTION - RENDERED LAST (on top of everything) ===
-			// Match raster version: header starts at margin
-
-			// Title "Kirra" - Reduced from 22pt to 16pt to prevent cutoff
-			pdf.setFontSize(16);
-			pdf.setFont("helvetica", "bold");
-			pdf.setTextColor(0, 0, 0);
-			pdf.text("Kirra", margin, margin); // Match raster: starts at margin
-
-			// Add QR Code (using pre-loaded image data)
-			if (qrCodeDataURL) {
-				try {
-					// Canvas: 110px @ 300 DPI = 9.3mm
-					// Position: Below title at margin + 8mm
-					pdf.addImage(qrCodeDataURL, "PNG", margin, margin + 8, 9.3, 9.3);
-					console.log("QR code added to PDF");
-				} catch (qrError) {
-					console.warn("Failed to add QR code to PDF:", qrError);
-					// Draw placeholder
-					pdf.setFontSize(6);
-					pdf.text("[QR Code]", margin, margin + 8);
+			// === FOOTER SECTION - USING TEMPLATE LAYOUT ===
+			// Step 4) Render footer using template layout (footer is at bottom, full width)
+			const footer = layoutMgr.getFooterRect() || layoutMgr.getInfoPanelRect();
+			const footerZoneName = footer === layoutMgr.getZoneRect("footer") ? "footer" : "infoPanel";
+			
+			// Step 4a) Draw outer border around entire footer zone
+			drawCellBorder(pdf, footer.x, footer.y, footer.width, footer.height, 0.2);
+			
+			// Step 4b) Get all cells from footer rows
+			const row1Cells = layoutMgr.getRowCells(footerZoneName, "row1");
+			const row2Cells = layoutMgr.getRowCells(footerZoneName, "row2");
+			const row3Cells = layoutMgr.getRowCells(footerZoneName, "row3");
+			const row4Cells = layoutMgr.getRowCells(footerZoneName, "row4"); // May not exist in new structure
+			
+			// Step 4c) Draw borders around all cells and render content
+			// Helper function to draw borders for a row of cells
+			function drawRowBorders(cells) {
+				if (!cells) return;
+				for (let i = 0; i < cells.length; i++) {
+					const cell = cells[i];
+					if (cell && cell.id !== "emptyLeft" && cell.id !== "empty1" && cell.id !== "empty2") {
+						drawCellBorder(pdf, cell.x, cell.y, cell.width, cell.height, 0.1);
+					}
 				}
-			} else {
-				// Draw placeholder if QR code not loaded yet
-				pdf.setFontSize(6);
-				pdf.text("[QR Code]", margin, margin + 8);
 			}
-
-			// URL - Below QR code
-			pdf.setFontSize(6); // 18px → ~6pt
-			pdf.setFont("helvetica", "normal");
-			pdf.text("https://blastingapps.com/kirra.html", margin, margin + 18);
-
-			// Statistics table - Position to RIGHT of QR code, at the TOP
-			// QR code is 9.3mm wide at margin position, so stats start at margin + 12mm
+			
+			// Draw borders for all rows
+			drawRowBorders(row1Cells);
+			drawRowBorders(row2Cells);
+			drawRowBorders(row3Cells);
+			drawRowBorders(row4Cells);
+			
+			// Step 4d) Render Row 1: Navigation Indicator | Connector Count | Blast Stats | Logo
+			for (let i = 0; i < row1Cells.length; i++) {
+				const cell = row1Cells[i];
+				if (!cell) continue;
+				
+				if (cell.id === "navigationIndicator") {
+					// Step 4b1) Draw navigation indicator (North Arrow for 2D, XYZ Gizmo for 3D)
+					if (cell.content === "northArrow" && mode === "2D") {
+						try {
+							const northArrowDataURL = PrintCaptureManager.captureNorthArrow(context);
+							if (northArrowDataURL) {
+								const arrowSize = Math.min(cell.width, cell.height) * 0.8; // 80% of cell size
+								const arrowX = cell.x + (cell.width - arrowSize) / 2;
+								const arrowY = cell.y + (cell.height - arrowSize) / 2;
+								pdf.addImage(northArrowDataURL, "PNG", arrowX, arrowY, arrowSize, arrowSize);
+							}
+						} catch (e) {
+							console.warn("Failed to capture north arrow:", e);
+							// Draw placeholder
+							pdf.setFontSize(8);
+							pdf.setFont("helvetica", "bold");
+							pdf.setTextColor(0, 0, 0);
+							pdf.text("N", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: "center" });
+						}
+					} else if (cell.content === "xyzGizmo" && mode === "3D") {
+						try {
+							const gizmoDataURL = PrintCaptureManager.captureXYZGizmo(context);
+							if (gizmoDataURL) {
+								const gizmoSize = Math.min(cell.width, cell.height) * 0.8;
+								const gizmoX = cell.x + (cell.width - gizmoSize) / 2;
+								const gizmoY = cell.y + (cell.height - gizmoSize) / 2;
+								pdf.addImage(gizmoDataURL, "PNG", gizmoX, gizmoY, gizmoSize, gizmoSize);
+							}
+						} catch (e) {
+							console.warn("Failed to capture XYZ gizmo:", e);
+							// Draw placeholder
+							pdf.setFontSize(6);
+							pdf.setTextColor(0, 0, 0);
+							pdf.text("XYZ", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: "center" });
+						}
+					}
+				} else if (cell.id === "connectorCount") {
+					// Step 4b2) Draw connector count (placeholder for now)
+					pdf.setFontSize(7);
+					pdf.setFont("helvetica", "normal");
+					pdf.setTextColor(0, 0, 0);
+					pdf.text("CONNECTOR", cell.x + cell.width / 2, cell.y + cell.height * 0.3, { align: "center" });
+					pdf.text("COUNT", cell.x + cell.width / 2, cell.y + cell.height * 0.6, { align: "center" });
+				} else if (cell.id === "blastStatistics") {
+					// Step 4b3) Draw blast statistics header
+					pdf.setFontSize(7);
+					pdf.setFont("helvetica", "bold");
+					pdf.setTextColor(0, 0, 0);
+					pdf.text("BLAST", cell.x + cell.width / 2, cell.y + cell.height * 0.3, { align: "center" });
+					pdf.text("STATISTICS", cell.x + cell.width / 2, cell.y + cell.height * 0.6, { align: "center" });
+				} else if (cell.id === "logo") {
+					// Step 4b4) Draw QR code logo
+					if (qrCodeDataURL) {
+						try {
+							const qrSize = Math.min(cell.width, cell.height) * 0.7;
+							const qrX = cell.x + (cell.width - qrSize) / 2;
+							const qrY = cell.y + (cell.height - qrSize) / 2;
+							pdf.addImage(qrCodeDataURL, "PNG", qrX, qrY, qrSize, qrSize);
+							
+							// Add URL below QR code
+							pdf.setFontSize(5);
+							pdf.setFont("helvetica", "normal");
+							pdf.setTextColor(0, 0, 0);
+							pdf.text("blastingapps.com", cell.x + cell.width / 2, cell.y + cell.height - 2, { align: "center" });
+						} catch (qrError) {
+							console.warn("Failed to add QR code:", qrError);
+							pdf.setFontSize(6);
+							pdf.text("[QR]", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: "center" });
+						}
+					} else {
+						pdf.setFontSize(6);
+						pdf.text("[QR]", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: "center" });
+					}
+				}
+			}
+			
+			// Step 4e) Render Row 2: Logo | Connector Data | Stats Data | Date/Time (or Title/BlastName for landscape)
+			// First handle row2 cells that aren't titleBlastName
+			if (row2Cells && row2Cells.length > 0) {
+				for (let i = 0; i < row2Cells.length; i++) {
+					const cell = row2Cells[i];
+					if (!cell) continue;
+					
+					if (cell.id === "logo") {
+						// Draw QR code logo (already handled above, but need to handle if in row2)
+						if (qrCodeDataURL) {
+							try {
+								const qrSize = Math.min(cell.width, cell.height) * 0.7;
+								const qrX = cell.x + (cell.width - qrSize) / 2;
+								const qrY = cell.y + (cell.height - qrSize) / 2;
+								pdf.addImage(qrCodeDataURL, "PNG", qrX, qrY, qrSize, qrSize);
+								
+								// Add URL below QR code
+								pdf.setFontSize(5);
+								pdf.setFont("helvetica", "normal");
+								pdf.setTextColor(0, 0, 0);
+								pdf.text("blastingapps.com", cell.x + cell.width / 2, cell.y + cell.height - 2, { align: "center" });
+							} catch (qrError) {
+								console.warn("Failed to add QR code:", qrError);
+								pdf.setFontSize(6);
+								pdf.text("[QR]", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: "center" });
+							}
+						} else {
+							pdf.setFontSize(6);
+							pdf.text("[QR]", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: "center" });
+						}
+					} else if (cell.id === "dateTime") {
+						// Date/Time in row2 (portrait mode)
+						const now = new Date();
+						const dateStr = now.toLocaleDateString("en-AU", { year: "numeric", month: "long", day: "numeric" }) + " " + now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+						
+						pdf.setFontSize(7);
+						pdf.setFont("helvetica", "bold");
+						pdf.setTextColor(0, 0, 0);
+						pdf.text("DATE", cell.x + 2, cell.y + cell.height * 0.3);
+						pdf.setFontSize(6);
+						pdf.setFont("helvetica", "normal");
+						pdf.text("[" + dateStr + "]", cell.x + 2, cell.y + cell.height * 0.7);
+					}
+				}
+			}
+			
+			// Step 4e) Render Row 2 cells: Logo | Connector Data | Stats Data | Date/Time (or Title/BlastName for landscape)
+			if (row2Cells && row2Cells.length > 0) {
+				for (let i = 0; i < row2Cells.length; i++) {
+					const cell = row2Cells[i];
+					if (!cell) continue;
+					
+					if (cell.id === "logo") {
+						// Draw QR code logo in row2 (portrait mode)
+						if (qrCodeDataURL) {
+							try {
+								const qrSize = Math.min(cell.width, cell.height) * 0.7;
+								const qrX = cell.x + (cell.width - qrSize) / 2;
+								const qrY = cell.y + (cell.height - qrSize) / 2;
+								pdf.addImage(qrCodeDataURL, "PNG", qrX, qrY, qrSize, qrSize);
+								
+								// Add URL below QR code
+								pdf.setFontSize(5);
+								pdf.setFont("helvetica", "normal");
+								pdf.setTextColor(0, 0, 0);
+								pdf.text("blastingapps.com", cell.x + cell.width / 2, cell.y + cell.height - 2, { align: "center" });
+							} catch (qrError) {
+								console.warn("Failed to add QR code:", qrError);
+								pdf.setFontSize(6);
+								pdf.text("[QR]", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: "center" });
+							}
+						} else {
+							pdf.setFontSize(6);
+							pdf.text("[QR]", cell.x + cell.width / 2, cell.y + cell.height / 2, { align: "center" });
+						}
+					} else if (cell.id === "dateTime") {
+						// Date/Time in row2 (portrait mode)
+						const now = new Date();
+						const dateStr = now.toLocaleDateString("en-AU", { year: "numeric", month: "long", day: "numeric" }) + " " + now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+						
+						pdf.setFontSize(7);
+						pdf.setFont("helvetica", "bold");
+						pdf.setTextColor(0, 0, 0);
+						pdf.text("DATE", cell.x + 2, cell.y + cell.height * 0.3);
+						pdf.setFontSize(6);
+						pdf.setFont("helvetica", "normal");
+						pdf.text("[" + dateStr + "]", cell.x + 2, cell.y + cell.height * 0.7);
+					}
+				}
+			}
+			
+			// Step 4f) Render Title and Blast Name (landscape: row2, portrait: row1)
+			const titleCell = (row2Cells && row2Cells.find(function(c) { return c && c.id === "titleBlastName"; })) ||
+			                  (row1Cells && row1Cells.find(function(c) { return c && c.id === "titleBlastName"; }));
+			if (titleCell) {
+				// Get blast names from allBlastHoles
+				const blastNames = new Set();
+				if (allBlastHoles && allBlastHoles.length > 0) {
+					allBlastHoles.forEach(function(hole) {
+						if (hole.entityName) {
+							blastNames.add(hole.entityName);
+						}
+					});
+				}
+				const blastNameList = Array.from(blastNames).join(", ");
+				const displayBlastName = blastNameList || userInput.blastName || "Untitled Blast";
+				
+				const isInRow1 = row1Cells && row1Cells.find(function(c) { return c && c.id === "titleBlastName"; });
+				if (isInRow1) {
+					// Portrait mode: smaller font
+					pdf.setFontSize(8);
+					pdf.setFont("helvetica", "bold");
+					pdf.setTextColor(0, 0, 0);
+					pdf.text("TITLE", titleCell.x + 2, titleCell.y + titleCell.height * 0.3);
+					pdf.setFontSize(7);
+					pdf.setFont("helvetica", "normal");
+					pdf.text("[" + displayBlastName + "]", titleCell.x + 2, titleCell.y + titleCell.height * 0.7);
+				} else {
+					// Landscape mode: larger font
+					pdf.setFontSize(10);
+					pdf.setFont("helvetica", "bold");
+					pdf.setTextColor(0, 0, 0);
+					pdf.text("TITLE", titleCell.x + 2, titleCell.y + titleCell.height * 0.3);
+					pdf.setFontSize(9);
+					pdf.setFont("helvetica", "normal");
+					pdf.text("[" + displayBlastName + "]", titleCell.x + 2, titleCell.y + titleCell.height * 0.7);
+				}
+			}
+			
+			// Step 4d) Render Row 3: Date and Time
+			if (row3Cells && row3Cells.length > 0) {
+				const dateCell = row3Cells.find(function(c) { return c && c.id === "dateTime"; });
+				if (dateCell) {
+					const now = new Date();
+					const dateStr = now.toLocaleDateString("en-AU", { year: "numeric", month: "long", day: "numeric" }) + " " + now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+					
+					pdf.setFontSize(7);
+					pdf.setFont("helvetica", "bold");
+					pdf.setTextColor(0, 0, 0);
+					pdf.text("DATE", dateCell.x + 2, dateCell.y + dateCell.height * 0.3);
+					pdf.setFontSize(6);
+					pdf.setFont("helvetica", "normal");
+					pdf.text("[" + dateStr + "]", dateCell.x + 2, dateCell.y + dateCell.height * 0.7);
+				}
+			}
+			
+			// Step 4h) Render Scale and Designer (row3 in new structure, row4 in old structure)
+			const scaleCell = (row3Cells && row3Cells.find(function(c) { return c && c.id === "scale"; })) ||
+			                  (row4Cells && row4Cells.find(function(c) { return c && c.id === "scale"; }));
+			const designerCell = (row3Cells && row3Cells.find(function(c) { return c && c.id === "designer"; })) ||
+			                     (row4Cells && row4Cells.find(function(c) { return c && c.id === "designer"; }));
+			
+			if (scaleCell) {
+				const scaleRatio = layoutMgr.calculateScaleRatio(printScale);
+				pdf.setFontSize(7);
+				pdf.setFont("helvetica", "normal");
+				pdf.setTextColor(0, 0, 0);
+				pdf.text(scaleCell.label + " " + scaleRatio, scaleCell.x + 2, scaleCell.y + scaleCell.height / 2);
+			}
+			
+			if (designerCell) {
+				const designerName = userInput.designer || "";
+				pdf.setFontSize(7);
+				pdf.setFont("helvetica", "normal");
+				pdf.setTextColor(0, 0, 0);
+				pdf.text(designerCell.label + " [" + designerName + "]", designerCell.x + 2, designerCell.y + designerCell.height / 2);
+			}
+			
+			// Step 4i) Draw full statistics table in connectorData or blastStatsData cells
+			// For new footer structure, statistics go in the data cells (connectorData/blastStatsData)
+			// For old infoPanel structure, draw below rows
 			if (allBlastHoles && allBlastHoles.length > 0 && getVoronoiMetrics) {
 				const stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
-				// Position: x = margin + QR width + gap = margin + 12mm
-				// Position: y = margin (at the top, aligned with title)
-				drawStatsTableVector(pdf, margin + 12, margin, stats, context);
+				
+				if (footerZoneName === "footer") {
+					// New structure: Draw stats in blastStatsData cell (row2, cell index 2)
+					const statsDataCell = row2Cells && row2Cells.length > 2 ? row2Cells[2] : null;
+					if (statsDataCell && statsDataCell.id === "blastStatsData") {
+						drawStatsTableVector(pdf, statsDataCell.x, statsDataCell.y, stats, context);
+					}
+				} else {
+					// Old structure: Draw below rows
+					let statsStartY = footer.y;
+					if (row4Cells && row4Cells.length > 0) {
+						const lastRow4Cell = row4Cells[row4Cells.length - 1];
+						if (lastRow4Cell) {
+							statsStartY = lastRow4Cell.y + lastRow4Cell.height + 2;
+						}
+					} else if (row3Cells && row3Cells.length > 0) {
+						const lastRow3Cell = row3Cells[row3Cells.length - 1];
+						if (lastRow3Cell) {
+							statsStartY = lastRow3Cell.y + lastRow3Cell.height + 2;
+						}
+					}
+					drawStatsTableVector(pdf, footer.x, statsStartY, stats, context);
+				}
+			}
+			
+			// Step 4g) Footer: Generated by text and version
+			pdf.setFontSize(6);
+			pdf.setFont("helvetica", "normal");
+			pdf.setTextColor(0, 0, 0);
+			pdf.text("Generated by KIRRA Blast Design Software", pageWidth / 2, pageHeight - 5, { align: "center" });
+			if (buildVersion) {
+				pdf.text("Version: " + buildVersion, pageWidth - 5, pageHeight - 5, { align: "right" });
 			}
 
 			bar.style.width = "100%";

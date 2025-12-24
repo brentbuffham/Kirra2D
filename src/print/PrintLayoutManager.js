@@ -190,9 +190,17 @@ export class PrintLayoutManager {
         };
     }
 
-    // Step 9) Helper to get info panel dimensions
+    // Step 9) Helper to get info panel dimensions (backward compatibility)
     getInfoPanelRect() {
+        // Try footer first (new structure), then infoPanel (old structure)
+        const footer = this.getZoneRect("footer");
+        if (footer) return footer;
         return this.getZoneRect("infoPanel");
+    }
+    
+    // Step 9a) Helper to get footer dimensions
+    getFooterRect() {
+        return this.getZoneRect("footer");
     }
 
     // Step 10) Get template info

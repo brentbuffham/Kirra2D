@@ -16,6 +16,8 @@
     },
     "dependencies": {
         "@kninnug/constrainautor": "^4.0.1",
+        "@pdfme/common": "^5.5.8",
+        "@pdfme/generator": "^5.5.8",
         "@turf/turf": "^7.2.0",
         "clipper-lib": "^6.4.2",
         "crypto-js": "^4.2.0",
