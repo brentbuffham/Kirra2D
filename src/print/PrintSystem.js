@@ -54,7 +54,7 @@ function getLayoutManager(mode) {
 // CRITICAL: Must use SAME calculation as drawPrintBoundary() for WYSIWYG consistency
 // Uses calculateFullPreviewPositions() to match what user sees in preview
 export function getPrintBoundary(canvas) {
-    if (!printMode) return null;
+	if (!printMode) return null;
 
     // Step 2a) Determine current mode
     var dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
@@ -75,8 +75,8 @@ export function getPrintBoundary(canvas) {
     // Step 2e) Calculate margin percent from the difference
     var marginX = mapInner.x - mapZone.x;
     var marginPercent = marginX / mapZone.width;
-    
-    return {
+
+	return {
         x: mapZone.x,
         y: mapZone.y,
         width: mapZone.width,
@@ -92,7 +92,7 @@ export function getPrintBoundary(canvas) {
 // Step 3) Draw full template preview on 2D canvas
 // Shows map zone, footer zone with all cells, and labels
 export function drawPrintBoundary(ctx, canvas) {
-    if (!printMode) return;
+	if (!printMode) return;
 
     // Step 3a) Determine current mode
     var dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
@@ -105,26 +105,26 @@ export function drawPrintBoundary(ctx, canvas) {
     // Step 3c) Get full template preview positions
     var preview = layoutMgr.calculateFullPreviewPositions(canvas.width, canvas.height, 30);
 
-    ctx.save();
+	ctx.save();
 
     // Only draw preview in non-printing mode
-    if (!isPrinting) {
+	if (!isPrinting) {
         // Step 3d) Draw page outline (outer boundary - red dashed)
-        ctx.strokeStyle = "#ff0000";
-        ctx.lineWidth = 2;
-        ctx.setLineDash([10, 5]);
+		ctx.strokeStyle = "#ff0000";
+		ctx.lineWidth = 2;
+		ctx.setLineDash([10, 5]);
         ctx.strokeRect(preview.page.x, preview.page.y, preview.page.width, preview.page.height);
 
         // Step 3e) Draw map zone outline
         ctx.strokeStyle = "#333333";
-        ctx.lineWidth = 1;
+		ctx.lineWidth = 1;
         ctx.setLineDash([]);
         ctx.strokeRect(preview.map.x, preview.map.y, preview.map.width, preview.map.height);
 
         // Step 3f) Draw map inner zone (print-safe area - blue dashed)
         ctx.strokeStyle = "#0066cc";
         ctx.lineWidth = 1.5;
-        ctx.setLineDash([5, 3]);
+		ctx.setLineDash([5, 3]);
         ctx.strokeRect(preview.mapInner.x, preview.mapInner.y, preview.mapInner.width, preview.mapInner.height);
 
         // Step 3g) Draw "[MAP]" label in center of map zone
@@ -242,44 +242,44 @@ export function drawPrintBoundary(ctx, canvas) {
         ctx.font = "12px Arial";
         ctx.textAlign = "left";
         ctx.fillText("Print Preview: " + printPaperSize + " " + printOrientation + " (" + mode + ")", preview.page.x + 5, preview.page.y - 8);
-    }
+	}
 
-    ctx.restore();
+	ctx.restore();
 }
 
 // ============== 3D PRINT BOUNDARY OVERLAY SYSTEM ==============
 
 // Step 4) Toggle 3D print preview mode
 export function toggle3DPrintPreview(enabled, paperSize, orientation, threeRenderer) {
-    if (enabled) {
-        create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer);
-    } else {
-        remove3DPrintBoundaryOverlay();
-    }
+	if (enabled) {
+		create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer);
+	} else {
+		remove3DPrintBoundaryOverlay();
+	}
 }
 
 // Step 5) Create overlay canvas showing print boundaries for 3D mode
 function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
     // Step 5a) Remove existing overlay if any
-    remove3DPrintBoundaryOverlay();
-    
+	remove3DPrintBoundaryOverlay();
+	
     // Step 5b) Get Three.js canvas
     var threeCanvas = threeRenderer.getCanvas();
     var rect = threeCanvas.getBoundingClientRect();
     
     // Step 5c) Create overlay canvas
     var overlayCanvas = document.createElement("canvas");
-    overlayCanvas.id = "print-boundary-3d";
-    overlayCanvas.width = rect.width;
-    overlayCanvas.height = rect.height;
-    overlayCanvas.style.position = "absolute";
-    overlayCanvas.style.left = threeCanvas.offsetLeft + "px";
-    overlayCanvas.style.top = threeCanvas.offsetTop + "px";
-    overlayCanvas.style.width = rect.width + "px";
-    overlayCanvas.style.height = rect.height + "px";
-    overlayCanvas.style.pointerEvents = "none";
-    overlayCanvas.style.zIndex = "4"; // Above Three.js canvas
-    
+	overlayCanvas.id = "print-boundary-3d";
+	overlayCanvas.width = rect.width;
+	overlayCanvas.height = rect.height;
+	overlayCanvas.style.position = "absolute";
+	overlayCanvas.style.left = threeCanvas.offsetLeft + "px";
+	overlayCanvas.style.top = threeCanvas.offsetTop + "px";
+	overlayCanvas.style.width = rect.width + "px";
+	overlayCanvas.style.height = rect.height + "px";
+	overlayCanvas.style.pointerEvents = "none";
+	overlayCanvas.style.zIndex = "4"; // Above Three.js canvas
+	
     // Step 5d) Get layout manager
     var layoutMgr = getLayoutManager("3D");
     
@@ -288,12 +288,12 @@ function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
     
     // Step 5f) Draw template preview
     var ctx = overlayCanvas.getContext("2d");
-    ctx.clearRect(0, 0, rect.width, rect.height);
-    
+	ctx.clearRect(0, 0, rect.width, rect.height);
+	
     // Page outline (red dashed)
-    ctx.strokeStyle = "red";
-    ctx.setLineDash([10, 5]);
-    ctx.lineWidth = 2;
+	ctx.strokeStyle = "red";
+	ctx.setLineDash([10, 5]);
+	ctx.lineWidth = 2;
     ctx.strokeRect(preview.page.x, preview.page.y, preview.page.width, preview.page.height);
     
     // Map zone outline
@@ -303,9 +303,9 @@ function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
     ctx.strokeRect(preview.map.x, preview.map.y, preview.map.width, preview.map.height);
     
     // Map inner zone (blue dashed)
-    ctx.strokeStyle = "rgba(0, 100, 255, 0.8)";
-    ctx.setLineDash([5, 3]);
-    ctx.lineWidth = 1.5;
+	ctx.strokeStyle = "rgba(0, 100, 255, 0.8)";
+	ctx.setLineDash([5, 3]);
+	ctx.lineWidth = 1.5;
     ctx.strokeRect(preview.mapInner.x, preview.mapInner.y, preview.mapInner.width, preview.mapInner.height);
     
     // Footer zone outline
@@ -337,62 +337,62 @@ function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
     }
     
     // Label
-    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+	ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
     ctx.fillRect(preview.page.x, preview.page.y - 22, 200, 20);
-    ctx.fillStyle = "white";
-    ctx.font = "12px Arial";
+	ctx.fillStyle = "white";
+	ctx.font = "12px Arial";
     ctx.fillText("Print Preview: " + paperSize + " " + orientation + " (3D)", preview.page.x + 5, preview.page.y - 8);
     
     // Step 5g) Insert into DOM
-    threeCanvas.parentElement.appendChild(overlayCanvas);
-    printBoundary3DOverlay = overlayCanvas;
-    
+	threeCanvas.parentElement.appendChild(overlayCanvas);
+	printBoundary3DOverlay = overlayCanvas;
+	
     // Step 5h) Store boundary info for capture (use mapInner for data capture)
-    overlayCanvas.boundaryInfo = {
+	overlayCanvas.boundaryInfo = {
         x: preview.mapInner.x,
         y: preview.mapInner.y,
         width: preview.mapInner.width,
         height: preview.mapInner.height,
         innerMargin: 0, // Already the inner margin
-        paperSize: paperSize,
-        orientation: orientation
-    };
+		paperSize: paperSize,
+		orientation: orientation
+	};
 }
 
 // Step 6) Remove 3D print boundary overlay
 function remove3DPrintBoundaryOverlay() {
-    if (printBoundary3DOverlay && printBoundary3DOverlay.parentElement) {
-        printBoundary3DOverlay.parentElement.removeChild(printBoundary3DOverlay);
-        printBoundary3DOverlay = null;
-    }
+	if (printBoundary3DOverlay && printBoundary3DOverlay.parentElement) {
+		printBoundary3DOverlay.parentElement.removeChild(printBoundary3DOverlay);
+		printBoundary3DOverlay = null;
+	}
 }
 
 // Step 7) Get 3D print boundary info (for capture system)
 export function get3DPrintBoundary() {
-    if (!printBoundary3DOverlay) return null;
-    return printBoundary3DOverlay.boundaryInfo;
+	if (!printBoundary3DOverlay) return null;
+	return printBoundary3DOverlay.boundaryInfo;
 }
 
 // Step 8) Set paper size and update boundaries
 export function setPrintPaperSize(size) {
-    printPaperSize = size;
+	printPaperSize = size;
     cachedLayoutManager = null; // Clear cache
-    
-    // Update 3D boundary if in preview mode
-    if (printMode && window.is3DMode && window.threeRenderer) {
-        toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
-    }
+	
+	// Update 3D boundary if in preview mode
+	if (printMode && window.is3DMode && window.threeRenderer) {
+		toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
+	}
 }
 
 // Step 9) Set orientation and update boundaries
 export function setPrintOrientation(orientation) {
-    printOrientation = orientation;
+	printOrientation = orientation;
     cachedLayoutManager = null; // Clear cache
-    
-    // Update 3D boundary if in preview mode
-    if (printMode && window.is3DMode && window.threeRenderer) {
-        toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
-    }
+	
+	// Update 3D boundary if in preview mode
+	if (printMode && window.is3DMode && window.threeRenderer) {
+		toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
+	}
 }
 
 // ============== PRINT TO PDF ==============
@@ -406,9 +406,9 @@ export function printToPDF(context) {
     
     // Step 10b) Enhance context with necessary print functions
     var enhancedContext = Object.assign({}, context, {
-        getPrintBoundary: getPrintBoundary,
-        get3DPrintBoundary: get3DPrintBoundary,
-        mode: mode,
+		getPrintBoundary: getPrintBoundary,
+		get3DPrintBoundary: get3DPrintBoundary,
+		mode: mode,
         is3DMode: isIn3DMode,
         printPaperSize: printPaperSize,
         printOrientation: printOrientation
@@ -421,30 +421,30 @@ export function printToPDF(context) {
         userInput.orientation = printOrientation;
         
         // Step 10e) Generate PDF based on output type
-        if (userInput.outputType === "vector") {
+		if (userInput.outputType === "vector") {
             // Vector PDF using jsPDF drawing commands
             generateTrueVectorPDF(
                 Object.assign({}, enhancedContext, {
-                    printPaperSize: printPaperSize,
-                    printOrientation: printOrientation,
-                    userInput: userInput,
-                    mode: mode
+				printPaperSize: printPaperSize,
+				printOrientation: printOrientation,
+				userInput: userInput,
+				mode: mode
                 }),
                 userInput,
                 mode
             );
-        } else {
+		} else {
             // Raster PDF (high-res PNG to PDF)
             printCanvasHiRes(
                 Object.assign({}, enhancedContext, {
-                    printPaperSize: printPaperSize,
-                    printOrientation: printOrientation,
-                    userInput: userInput,
-                    mode: mode
+				printPaperSize: printPaperSize,
+				printOrientation: printOrientation,
+				userInput: userInput,
+				mode: mode
                 })
             );
-        }
-    });
+		}
+	});
 }
 
 // Step 11) High-resolution raster PDF generation with template layout
@@ -462,12 +462,12 @@ export function printCanvasHiRes(context) {
         (!allKADDrawingsMap || allKADDrawingsMap.size === 0) && 
         (!allAvailableSurfaces || allAvailableSurfaces.length === 0)) {
         showModalMessage("No Data", "No data available for printing", "warning");
-        return;
-    }
+		return;
+	}
 
     // Step 11b) Create progress dialog
     var progressContent = document.createElement("div");
-    progressContent.style.textAlign = "center";
+	progressContent.style.textAlign = "center";
     progressContent.innerHTML = '<p>Generating High-Resolution PDF</p>' +
         '<p>Please wait, this may take a moment...</p>' +
         '<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">' +
@@ -476,17 +476,17 @@ export function printCanvasHiRes(context) {
         '<p id="pdfProgressText">Starting...</p>';
 
     var progressDialog = new FloatingDialog({
-        title: "PDF Generation",
-        content: progressContent,
-        layoutType: "standard",
-        width: 350,
-        height: 200,
-        showConfirm: false,
-        showCancel: false,
+		title: "PDF Generation",
+		content: progressContent,
+		layoutType: "standard",
+		width: 350,
+		height: 200,
+		showConfirm: false,
+		showCancel: false,
         allowOutsideClick: false
-    });
+	});
 
-    progressDialog.show();
+	progressDialog.show();
 
     var bar = document.getElementById("pdfProgressBar");
     var text = document.getElementById("pdfProgressText");
@@ -503,19 +503,19 @@ export function printCanvasHiRes(context) {
 
             // Step 11d) Safety check for maximum canvas size
             var MAX_CANVAS_SIDE = 16384;
-            if (pageWidth * mmToPx > MAX_CANVAS_SIDE || pageHeight * mmToPx > MAX_CANVAS_SIDE) {
+			if (pageWidth * mmToPx > MAX_CANVAS_SIDE || pageHeight * mmToPx > MAX_CANVAS_SIDE) {
                 throw new Error("The selected paper size (" + printPaperSize + ") creates an image too large for the browser.");
-            }
+			}
 
             // Step 11e) Resize print canvas
-            printCanvas.width = pageWidth * mmToPx;
-            printCanvas.height = pageHeight * mmToPx;
-            printCtx = printCanvas.getContext("2d");
+			printCanvas.width = pageWidth * mmToPx;
+			printCanvas.height = pageHeight * mmToPx;
+			printCtx = printCanvas.getContext("2d");
 
-            printCtx.imageSmoothingEnabled = true;
-            printCtx.imageSmoothingQuality = "high";
-            printCtx.fillStyle = "white";
-            printCtx.fillRect(0, 0, printCanvas.width, printCanvas.height);
+			printCtx.imageSmoothingEnabled = true;
+			printCtx.imageSmoothingQuality = "high";
+			printCtx.fillStyle = "white";
+			printCtx.fillRect(0, 0, printCanvas.width, printCanvas.height);
 
             // Step 11f) Get layout manager for template positions
             var layoutMgr = getLayoutManager(mode);
@@ -535,7 +535,7 @@ export function printCanvasHiRes(context) {
                 height: mapZone.height * mmToPx
             };
 
-            bar.style.width = "20%";
+					bar.style.width = "20%";
             text.textContent = "Drawing template...";
 
             setTimeout(function() {
@@ -602,7 +602,7 @@ export function printCanvasHiRes(context) {
                             printCtx.fillText("N", 0, -35 * arrowScale);
                             
                             printCtx.restore();
-                        } else {
+		} else {
                             // For 3D mode, try to capture gizmo image
                             try {
                                 var navImageDataURL = PrintCaptureManager.captureXYZGizmo(context);
@@ -614,7 +614,7 @@ export function printCanvasHiRes(context) {
                                     
                                     // Data URLs load synchronously for basic canvas-generated images
                                     printCtx.drawImage(navImg, navX, navY, navSize, navSize);
-                                } else {
+	} else {
                                     // Fallback text for 3D
                                     printCtx.fillStyle = "#000000";
                                     printCtx.font = "bold " + (20 * mmToPx / 3) + "px Arial";
@@ -850,8 +850,8 @@ export function printCanvasHiRes(context) {
                         
                         // Restore context to remove clipping
                         printCtx.restore();
-                        
-                        bar.style.width = "80%";
+
+						bar.style.width = "80%";
                         text.textContent = "Generating image...";
 
                         setTimeout(function() {
@@ -866,24 +866,24 @@ export function printCanvasHiRes(context) {
                             var pdf = new jsPDF(orientation, "mm", printPaperSize.toLowerCase());
                             pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
                             pdf.save("kirra-blast-raster-" + new Date().toISOString().split("T")[0] + ".pdf");
-                            
-                            bar.style.width = "100%";
+
+						bar.style.width = "100%";
                             text.textContent = "Complete!";
 
                             setTimeout(function() {
-                                progressDialog.close();
+							progressDialog.close();
                                 showModalMessage("Success", "Raster PDF created successfully!", "success");
-                            }, 300);
+						}, 300);
                         }, 100);
                     }, 100);
-                } catch (error) {
+					} catch (error) {
                     progressDialog.close();
                     console.error("PDF Generation Error:", error);
                     showModalMessage("PDF Creation Failed", "Error: " + error.message, "error");
                 }
             }, 250);
         } catch (error) {
-            progressDialog.close();
+						progressDialog.close();
             console.error("PDF Generation Error:", error);
             showModalMessage("PDF Creation Failed", "Error: " + error.message, "error");
         }
@@ -972,103 +972,103 @@ export function togglePrintMode(updateStatusMessageCallback, drawDataCallback) {
 
 // Step 16) Setup print event handlers
 export function setupPrintEventHandlers(contextOrGetter) {
-    // If it's a function, call it to get context; otherwise use it directly
+	// If it's a function, call it to get context; otherwise use it directly
     var getContext = typeof contextOrGetter === "function" ? contextOrGetter : function() { return contextOrGetter; };
 
     var printPreviewToggle = document.getElementById("addPrintPreviewToggle");
-    if (printPreviewToggle) {
+	if (printPreviewToggle) {
         printPreviewToggle.addEventListener("change", function() {
             var ctx = getContext();
-            togglePrintMode(ctx.updateStatusMessage, ctx.drawData);
-        });
-    }
+			togglePrintMode(ctx.updateStatusMessage, ctx.drawData);
+		});
+	}
 
     var paperSizeSelect = document.getElementById("paperSize");
-    if (paperSizeSelect) {
+	if (paperSizeSelect) {
         paperSizeSelect.addEventListener("change", function() {
             var ctx = getContext();
-            changePaperSize(ctx.drawData);
-        });
-    }
+			changePaperSize(ctx.drawData);
+		});
+	}
 
     var orientationSelect = document.getElementById("orientation");
-    if (orientationSelect) {
+	if (orientationSelect) {
         orientationSelect.addEventListener("change", function() {
             var ctx = getContext();
-            changeOrientation(ctx.drawData);
-        });
-    }
+			changeOrientation(ctx.drawData);
+		});
+	}
 
     var printToPDFBtn = document.getElementById("printToPDFBtn");
-    if (printToPDFBtn) {
+	if (printToPDFBtn) {
         printToPDFBtn.addEventListener("click", function() {
             var context = getContext();
             var printContext = {
-                allBlastHoles: context.allBlastHoles,
-                allKADDrawingsMap: context.allKADDrawingsMap,
-                allAvailableSurfaces: context.allAvailableSurfaces,
-                loadedSurfaces: context.loadedSurfaces,
-                loadedImages: context.loadedImages,
-                selectedHole: context.selectedHole,
-                canvas: context.canvas,
-                currentScale: context.currentScale,
-                centroidX: context.centroidX,
-                centroidY: context.centroidY,
+				allBlastHoles: context.allBlastHoles,
+				allKADDrawingsMap: context.allKADDrawingsMap,
+				allAvailableSurfaces: context.allAvailableSurfaces,
+				loadedSurfaces: context.loadedSurfaces,
+				loadedImages: context.loadedImages,
+				selectedHole: context.selectedHole,
+				canvas: context.canvas,
+				currentScale: context.currentScale,
+				centroidX: context.centroidX,
+				centroidY: context.centroidY,
                 currentRotation: context.currentRotation,
-                imageVisible: context.imageVisible,
-                surfaceVisible: context.surfaceVisible,
-                getDisplayOptions: context.getDisplayOptions,
-                buildHoleMap: context.buildHoleMap,
-                developerModeEnabled: context.developerModeEnabled,
-                simplifyByPxDist: context.simplifyByPxDist,
-                worldToCanvas: context.worldToCanvas,
-                delaunayTriangles: context.delaunayTriangles,
-                maxEdgeLength: context.maxEdgeLength,
-                createBlastBoundaryPolygon: context.createBlastBoundaryPolygon,
-                offsetPolygonClipper: context.offsetPolygonClipper,
-                getAverageDistance: context.getAverageDistance,
-                selectedVoronoiMetric: context.selectedVoronoiMetric,
-                isVoronoiLegendFixed: context.isVoronoiLegendFixed,
-                getVoronoiMetrics: context.getVoronoiMetrics,
-                useToeLocation: context.useToeLocation,
-                clipVoronoiCells: context.clipVoronoiCells,
-                getPFColor: context.getPFColor,
-                getMassColor: context.getMassColor,
-                getVolumeColor: context.getVolumeColor,
-                getAreaColor: context.getAreaColor,
-                getLengthColor: context.getLengthColor,
-                getHoleFiringTimeColor: context.getHoleFiringTimeColor,
-                strokeColor: context.strokeColor,
-                directionArrows: context.directionArrows,
-                contourLinesArray: context.contourLinesArray,
-                firstMovementSize: context.firstMovementSize,
-                currentFontSize: context.currentFontSize,
-                holeScale: context.holeScale,
-                transparentFillColor: context.transparentFillColor,
-                textFillColor: context.textFillColor,
-                fillColor: context.fillColor,
-                depthColor: context.depthColor,
-                angleDipColor: context.angleDipColor,
+				imageVisible: context.imageVisible,
+				surfaceVisible: context.surfaceVisible,
+				getDisplayOptions: context.getDisplayOptions,
+				buildHoleMap: context.buildHoleMap,
+				developerModeEnabled: context.developerModeEnabled,
+				simplifyByPxDist: context.simplifyByPxDist,
+				worldToCanvas: context.worldToCanvas,
+				delaunayTriangles: context.delaunayTriangles,
+				maxEdgeLength: context.maxEdgeLength,
+				createBlastBoundaryPolygon: context.createBlastBoundaryPolygon,
+				offsetPolygonClipper: context.offsetPolygonClipper,
+				getAverageDistance: context.getAverageDistance,
+				selectedVoronoiMetric: context.selectedVoronoiMetric,
+				isVoronoiLegendFixed: context.isVoronoiLegendFixed,
+				getVoronoiMetrics: context.getVoronoiMetrics,
+				useToeLocation: context.useToeLocation,
+				clipVoronoiCells: context.clipVoronoiCells,
+				getPFColor: context.getPFColor,
+				getMassColor: context.getMassColor,
+				getVolumeColor: context.getVolumeColor,
+				getAreaColor: context.getAreaColor,
+				getLengthColor: context.getLengthColor,
+				getHoleFiringTimeColor: context.getHoleFiringTimeColor,
+				strokeColor: context.strokeColor,
+				directionArrows: context.directionArrows,
+				contourLinesArray: context.contourLinesArray,
+				firstMovementSize: context.firstMovementSize,
+				currentFontSize: context.currentFontSize,
+				holeScale: context.holeScale,
+				transparentFillColor: context.transparentFillColor,
+				textFillColor: context.textFillColor,
+				fillColor: context.fillColor,
+				depthColor: context.depthColor,
+				angleDipColor: context.angleDipColor,
                 darkModeEnabled: context.darkModeEnabled,
-                isAddingConnector: context.isAddingConnector,
-                isAddingMultiConnector: context.isAddingMultiConnector,
-                fromHoleStore: context.fromHoleStore,
-                firstSelectedHole: context.firstSelectedHole,
-                secondSelectedHole: context.secondSelectedHole,
-                selectedMultipleHoles: context.selectedMultipleHoles,
-                showSurfaceLegend: context.showSurfaceLegend,
-                elevationToColor: context.elevationToColor,
-                currentGradient: context.currentGradient,
-                surfaceTextureData: context.surfaceTextureData,
-                buildVersion: context.buildVersion,
-                showModalMessage: context.showModalMessage,
-                FloatingDialog: context.FloatingDialog,
+				isAddingConnector: context.isAddingConnector,
+				isAddingMultiConnector: context.isAddingMultiConnector,
+				fromHoleStore: context.fromHoleStore,
+				firstSelectedHole: context.firstSelectedHole,
+				secondSelectedHole: context.secondSelectedHole,
+				selectedMultipleHoles: context.selectedMultipleHoles,
+				showSurfaceLegend: context.showSurfaceLegend,
+				elevationToColor: context.elevationToColor,
+				currentGradient: context.currentGradient,
+				surfaceTextureData: context.surfaceTextureData,
+				buildVersion: context.buildVersion,
+				showModalMessage: context.showModalMessage,
+				FloatingDialog: context.FloatingDialog,
                 threeRenderer: context.threeRenderer,
                 cameraControls: context.cameraControls
-            };
-            printToPDF(printContext);
-        });
-    }
+			};
+			printToPDF(printContext);
+		});
+	}
 }
 
 // #endregion PRINT
