@@ -2,75 +2,163 @@
 //=================================================
 // PrintDialog.js - User Input Dialog for Printing
 //=================================================
-// Collects blast name, designer, paper size, orientation, and output type
+// Collects designer, paper size, orientation, and output type
 
 import { FloatingDialog } from "../dialog/FloatingDialog.js";
 
 // Step 1) Show print settings dialog
 export function showPrintDialog(mode, context, onConfirm) {
-    // Step 1a) Create form fields (paper size and orientation already set in UI)
-    const fields = [
-        // {
-        //     //REDUNDANT FIELD - WILL BE REMOVED IN FUTURE
-        //     type: "text",
-        //     name: "blastName",
-        //     label: "Blast Name:",
-        //     value: "Untitled Blast",
-        //     placeholder: "Enter blast name"
-        // },
-        {
-            type: "text",
-            name: "designer",
-            label: "Designer:",
-            value: "",
-            placeholder: "Enter designer name"
-        },
-        // {
-        //     //NOT IN USE - Might be added later but for now it is not used
-        //     type: "textarea",
-        //     name: "notes",
-        //     label: "Additional Notes:",
-        //     value: "",
-        //     placeholder: "Optional notes (not currently displayed on PDF)",
-        //     rows: 3
-        // },
-        {
-            type: "radio",
-            name: "outputType",
-            label: "Output Type:",
-            value: "vector",
-            options: [
-                { value: "vector", text: "Vector PDF (scalable, smaller file)" },
-                { value: "raster", text: "High-Res Image PDF (pixel-perfect)" }
-            ]
-        }
-    ];
+    // Step 1a) Build form content manually (FloatingDialog createFormContent doesn't support radio buttons)
+    var formContent = document.createElement("div");
+    formContent.style.display = "flex";
+    formContent.style.flexDirection = "column";
+    formContent.style.gap = "12px";
+    formContent.style.padding = "10px";
+    
+    // Step 1a1) Determine if dark mode is active
+    var isDarkMode = document.body.classList.contains("dark-mode");
+    var textColor = isDarkMode ? "var(--dark-mode-text)" : "var(--light-mode-text)";
+    
+    // Step 1a2) Retrieve last designer name from localStorage
+    var lastDesigner = localStorage.getItem("kirra_print_designer") || "";
+    
+    // Step 1b) Designer input row
+    var designerRow = document.createElement("div");
+    designerRow.style.display = "grid";
+    designerRow.style.gridTemplateColumns = "100px 1fr";
+    designerRow.style.columnGap = "8px";
+    designerRow.style.alignItems = "center";
+    
+    var designerLabel = document.createElement("label");
+    designerLabel.textContent = "Designer:";
+    designerLabel.style.fontSize = "12px";
+    designerLabel.style.fontFamily = "sans-serif";
+    designerLabel.style.color = textColor;
+    designerLabel.style.textAlign = "right";
+    designerLabel.style.paddingRight = "4px";
+    
+    var designerInput = document.createElement("input");
+    designerInput.type = "text";
+    designerInput.name = "designer";
+    designerInput.placeholder = "Enter designer name";
+    designerInput.value = lastDesigner;
+    designerInput.style.fontSize = "11px";
+    designerInput.style.height = "24px";
+    designerInput.style.padding = "2px 6px";
+    designerInput.style.width = "100%";
+    designerInput.style.borderRadius = "3px";
+    designerInput.style.backgroundColor = "#fff";
+    designerInput.style.color = "#000";
+    designerInput.style.border = "1px solid #999";
+    designerInput.style.boxSizing = "border-box";
+    
+    designerRow.appendChild(designerLabel);
+    designerRow.appendChild(designerInput);
+    formContent.appendChild(designerRow);
+    
+    // Step 1c) Output type radio group
+    var outputRow = document.createElement("div");
+    outputRow.style.display = "grid";
+    outputRow.style.gridTemplateColumns = "100px 1fr";
+    outputRow.style.columnGap = "8px";
+    outputRow.style.alignItems = "start";
+    
+    var outputLabel = document.createElement("label");
+    outputLabel.textContent = "Output Type:";
+    outputLabel.style.fontSize = "12px";
+    outputLabel.style.fontFamily = "sans-serif";
+    outputLabel.style.color = textColor;
+    outputLabel.style.textAlign = "right";
+    outputLabel.style.paddingRight = "4px";
+    outputLabel.style.paddingTop = "4px";
+    
+    var radioContainer = document.createElement("div");
+    radioContainer.style.display = "flex";
+    radioContainer.style.flexDirection = "column";
+    radioContainer.style.gap = "6px";
+    
+    // Vector option
+    var vectorLabel = document.createElement("label");
+    vectorLabel.style.display = "flex";
+    vectorLabel.style.alignItems = "center";
+    vectorLabel.style.gap = "6px";
+    vectorLabel.style.fontSize = "11px";
+    vectorLabel.style.fontFamily = "sans-serif";
+    vectorLabel.style.color = textColor;
+    vectorLabel.style.cursor = "pointer";
+    
+    var vectorRadio = document.createElement("input");
+    vectorRadio.type = "radio";
+    vectorRadio.name = "outputType";
+    vectorRadio.value = "vector";
+    vectorRadio.checked = true;
+    vectorRadio.style.margin = "0";
+    vectorRadio.style.cursor = "pointer";
+    
+    vectorLabel.appendChild(vectorRadio);
+    vectorLabel.appendChild(document.createTextNode("Vector PDF (scalable, smaller file)"));
+    
+    // Raster option
+    var rasterLabel = document.createElement("label");
+    rasterLabel.style.display = "flex";
+    rasterLabel.style.alignItems = "center";
+    rasterLabel.style.gap = "6px";
+    rasterLabel.style.fontSize = "11px";
+    rasterLabel.style.fontFamily = "sans-serif";
+    rasterLabel.style.color = textColor;
+    rasterLabel.style.cursor = "pointer";
+    
+    var rasterRadio = document.createElement("input");
+    rasterRadio.type = "radio";
+    rasterRadio.name = "outputType";
+    rasterRadio.value = "raster";
+    rasterRadio.style.margin = "0";
+    rasterRadio.style.cursor = "pointer";
+    
+    rasterLabel.appendChild(rasterRadio);
+    rasterLabel.appendChild(document.createTextNode("High-Res Image PDF (pixel-perfect)"));
+    
+    radioContainer.appendChild(vectorLabel);
+    radioContainer.appendChild(rasterLabel);
+    
+    outputRow.appendChild(outputLabel);
+    outputRow.appendChild(radioContainer);
+    formContent.appendChild(outputRow);
 
-    // Step 1b) Create form content HTML
-    const formContent = createFormContent(fields);
-
-    // Step 1c) Create dialog
-    const dialog = new FloatingDialog({
+    // Step 1d) Create dialog
+    var dialog = new FloatingDialog({
         title: "Print Settings (" + mode + " Mode)",
         content: formContent,
         layoutType: "standard",
-        width: 450,
-        height: 300,
+        width: 400,
+        height: 180,
         showConfirm: true,
         showCancel: true,
         confirmText: "Generate PDF",
         cancelText: "Cancel",
         allowOutsideClick: false,
         onConfirm: function() {
-            // Step 1c1) Collect form data
-            const formData = collectFormData(fields);
+            // Step 1d1) Collect form data
+            var formData = {};
             
-            // // Step 1c2) Validate
-            // if (!formData.blastName || formData.blastName.trim() === "") {
-            //     formData.blastName = "Untitled Blast";
-            // }
+            // Get designer input
+            formData.designer = designerInput.value || "";
             
-            // Step 1c3) Call confirm callback with data
+            // Step 1d1a) Save designer name to localStorage for next time
+            if (formData.designer) {
+                localStorage.setItem("kirra_print_designer", formData.designer);
+            }
+            
+            // Get checked radio button for outputType
+            if (vectorRadio.checked) {
+                formData.outputType = "vector";
+            } else if (rasterRadio.checked) {
+                formData.outputType = "raster";
+            } else {
+                formData.outputType = "vector"; // Default
+            }
+            
+            // Step 1d2) Call confirm callback with data
             if (onConfirm) {
                 onConfirm(formData);
             }
@@ -83,197 +171,9 @@ export function showPrintDialog(mode, context, onConfirm) {
         }
     });
 
-    // Step 1d) Show dialog
+    // Step 1e) Show dialog
     dialog.show();
     
     return dialog;
-}
-
-// Step 2) Create form content HTML
-function createFormContent(fields) {
-    let html = "<div style=\"padding: 10px;\">";
-    
-    fields.forEach(function(field) {
-        html += "<div style=\"margin-bottom: 12px;\">";
-        
-        // Label
-        html += "<label style=\"display: block; margin-bottom: 5px;\">";
-        html += field.label;
-        html += "</label>";
-        
-        // Input based on type
-        if (field.type === "text") {
-            html += "<input type=\"text\" ";
-            html += "name=\"" + field.name + "\" ";
-            html += "value=\"" + (field.value || "") + "\" ";
-            html += "placeholder=\"" + (field.placeholder || "") + "\" ";
-            html += "style=\"width: 100%; padding: 5px; box-sizing: border-box;\" />";
-            
-        // } else if (field.type === "textarea") {
-        //     html += "<textarea ";
-        //     html += "name=\"" + field.name + "\" ";
-        //     html += "rows=\"" + (field.rows || 3) + "\" ";
-        //     html += "placeholder=\"" + (field.placeholder || "") + "\" ";
-        //     html += "style=\"width: 100%; padding: 5px; box-sizing: border-box;\">";
-        //     html += field.value || "";
-        //     html += "</textarea>";
-            
-        } else if (field.type === "select") {
-            html += "<select name=\"" + field.name + "\" ";
-            html += "style=\"width: 100%; padding: 5px;\">";
-            
-            field.options.forEach(function(option) {
-                html += "<option value=\"" + option.value + "\"";
-                if (option.value === field.value) {
-                    html += " selected";
-                }
-                html += ">" + option.text + "</option>";
-            });
-            
-            html += "</select>";
-            
-        } else if (field.type === "radio") {
-            field.options.forEach(function(option) {
-                html += "<label style=\"display: block; margin-bottom: 5px;\">";
-                html += "<input type=\"radio\" ";
-                html += "name=\"" + field.name + "\" ";
-                html += "value=\"" + option.value + "\"";
-                if (option.value === field.value) {
-                    html += " checked";
-                }
-                html += " /> ";
-                html += option.text;
-                html += "</label>";
-            });
-        }
-        
-        html += "</div>";
-    });
-    
-    html += "</div>";
-    
-    return html;
-}
-
-// Step 3) Collect form data
-function collectFormData(fields) {
-    const formData = {};
-    
-    fields.forEach(function(field) {
-        if (field.type === "radio") {
-            // Get checked radio button
-            const radios = document.getElementsByName(field.name);
-            for (let i = 0; i < radios.length; i++) {
-                if (radios[i].checked) {
-                    formData[field.name] = radios[i].value;
-                    break;
-                }
-            }
-        } else {
-            // Get input/select/textarea value
-            const element = document.getElementsByName(field.name)[0];
-            if (element) {
-                formData[field.name] = element.value;
-            }
-        }
-    });
-    
-    return formData;
-}
-
-// Step 4) Helper to create enhanced form with better styling (optional)
-export function createEnhancedFormContent(fields) {
-    const container = document.createElement("div");
-    container.style.padding = "10px";
-    container.style.maxHeight = "450px";
-    container.style.overflowY = "auto";
-    
-    fields.forEach(function(field) {
-        const fieldDiv = document.createElement("div");
-        fieldDiv.style.marginBottom = "12px";
-        
-        // Label
-        const label = document.createElement("label");
-        label.textContent = field.label;
-        label.style.display = "block";
-        label.style.marginBottom = "5px";
-        label.style.fontSize = "11px";
-        label.style.fontFamily = "sans-serif";
-        label.style.color = "var(--light-mode-text)";
-        label.style.lineHeight = "1.2";
-        label.style.margin = "0";
-        label.style.whiteSpace = "nowrap";
-        label.style.textAlign = "left";
-        label.style.overflow = "hidden";
-        label.style.textOverflow = "ellipsis";
-        label.style.paddingRight = "4px";
-        // label.style.fontWeight = "bold";
-        fieldDiv.appendChild(label);
-        
-        // Input
-        if (field.type === "text") {
-            const input = document.createElement("input");
-            input.type = "text";
-            input.name = field.name;
-            input.value = field.value || "";
-            input.placeholder = field.placeholder || "";
-            input.style.width = "100%";
-            input.style.padding = "5px";
-            input.style.boxSizing = "border-box";
-            fieldDiv.appendChild(input);
-            
-        // } else if (field.type === "textarea") {
-        //     const textarea = document.createElement("textarea");
-        //     textarea.name = field.name;
-        //     textarea.rows = field.rows || 3;
-        //     textarea.placeholder = field.placeholder || "";
-        //     textarea.value = field.value || "";
-        //     textarea.style.width = "100%";
-        //     textarea.style.padding = "5px";
-        //     textarea.style.boxSizing = "border-box";
-        //     fieldDiv.appendChild(textarea);
-            
-        } else if (field.type === "select") {
-            const select = document.createElement("select");
-            select.name = field.name;
-            select.style.width = "100%";
-            select.style.padding = "5px";
-            
-            field.options.forEach(function(option) {
-                const opt = document.createElement("option");
-                opt.value = option.value;
-                opt.textContent = option.text;
-                if (option.value === field.value) {
-                    opt.selected = true;
-                }
-                select.appendChild(opt);
-            });
-            
-            fieldDiv.appendChild(select);
-            
-        } else if (field.type === "radio") {
-            field.options.forEach(function(option) {
-                const radioLabel = document.createElement("label");
-                radioLabel.style.display = "block";
-                radioLabel.style.marginBottom = "5px";
-                
-                const radio = document.createElement("input");
-                radio.type = "radio";
-                radio.name = field.name;
-                radio.value = option.value;
-                if (option.value === field.value) {
-                    radio.checked = true;
-                }
-                
-                radioLabel.appendChild(radio);
-                radioLabel.appendChild(document.createTextNode(" " + option.text));
-                fieldDiv.appendChild(radioLabel);
-            });
-        }
-        
-        container.appendChild(fieldDiv);
-    });
-    
-    return container;
 }
 

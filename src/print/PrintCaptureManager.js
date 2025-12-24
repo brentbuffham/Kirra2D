@@ -117,35 +117,35 @@ export class PrintCaptureManager {
     static captureNorthArrow(context) {
         const { currentRotation, darkModeEnabled } = context;
 
-        // Step 4a) Create canvas for north arrow
+        // Step 4a) Create canvas for north arrow (larger to fit "N" label)
         const arrowCanvas = document.createElement("canvas");
-        arrowCanvas.width = 100;
-        arrowCanvas.height = 100;
+        arrowCanvas.width = 120;
+        arrowCanvas.height = 120;
         const ctx = arrowCanvas.getContext("2d");
 
         // Step 4b) Clear background
-        ctx.clearRect(0, 0, 100, 100);
+        ctx.clearRect(0, 0, 120, 120);
 
         // Step 4c) Draw arrow rotated to show true north
         ctx.save();
-        ctx.translate(50, 50);
+        ctx.translate(60, 65); // Center slightly lower to make room for "N" above
         ctx.rotate(-currentRotation || 0); // Counter-rotate canvas rotation
 
-        // Step 4d) Draw arrow shape
+        // Step 4d) Draw arrow shape (scaled to fit with "N")
         ctx.fillStyle = darkModeEnabled ? "#ffffff" : "#000000";
         ctx.beginPath();
-        ctx.moveTo(0, -40);      // Arrow point (top)
-        ctx.lineTo(-10, 20);     // Left wing
-        ctx.lineTo(0, 10);       // Center notch
-        ctx.lineTo(10, 20);      // Right wing
+        ctx.moveTo(0, -30);      // Arrow point (top)
+        ctx.lineTo(-12, 25);     // Left wing
+        ctx.lineTo(0, 15);       // Center notch
+        ctx.lineTo(12, 25);      // Right wing
         ctx.closePath();
         ctx.fill();
 
-        // Step 4e) Draw "N" label
-        ctx.font = "bold 20px Arial";
+        // Step 4e) Draw "N" label above arrow
+        ctx.font = "bold 18px Arial";
         ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("N", 0, -50);
+        ctx.textBaseline = "bottom";
+        ctx.fillText("N", 0, -35);
 
         ctx.restore();
 
@@ -172,30 +172,67 @@ export class PrintCaptureManager {
         
         threeRenderer.showAxisHelper(true, cornerX, cornerY, cameraState.scale);
 
-        // Step 5c) Render scene to capture gizmo
+        // Step 5c) Render scene and wait for completion
         threeRenderer.requestRender();
-
-        // Give a moment for render to complete
-        // Note: In production, may need to wait for render callback
         
-        // Step 5d) Extract gizmo region from canvas
+        // Step 5d) Extract gizmo region from canvas after a short delay to ensure render completes
         const canvas = threeRenderer.getCanvas();
         const gizmoCanvas = document.createElement("canvas");
         gizmoCanvas.width = 150;
         gizmoCanvas.height = 150;
         const ctx = gizmoCanvas.getContext("2d");
 
-        // Copy bottom-left corner region where gizmo is positioned
-        try {
-            ctx.drawImage(
-                canvas,
-                50, canvas.height - 200,  // Source x, y
-                150, 150,                  // Source width, height
-                0, 0,                      // Dest x, y
-                150, 150                   // Dest width, height
-            );
-        } catch (e) {
-            console.warn("Failed to capture XYZ gizmo:", e);
+        // Use a synchronous approach - try multiple times with small delays
+        var attempts = 0;
+        var maxAttempts = 10;
+        var captured = false;
+        
+        function tryCapture() {
+            attempts++;
+            try {
+                // Copy bottom-left corner region where gizmo is positioned
+                ctx.clearRect(0, 0, 150, 150);
+                ctx.drawImage(
+                    canvas,
+                    50, Math.max(0, canvas.height - 200),  // Source x, y (ensure y doesn't go negative)
+                    150, 150,                              // Source width, height
+                    0, 0,                                  // Dest x, y
+                    150, 150                               // Dest width, height
+                );
+                
+                // Check if we got valid image data (not all white/transparent)
+                var imageData = ctx.getImageData(0, 0, 150, 150);
+                var hasContent = false;
+                for (var i = 0; i < imageData.data.length; i += 4) {
+                    if (imageData.data[i + 3] > 0) { // Alpha channel > 0
+                        hasContent = true;
+                        break;
+                    }
+                }
+                
+                if (hasContent || attempts >= maxAttempts) {
+                    captured = true;
+                } else {
+                    // Try again after a short delay
+                    setTimeout(tryCapture, 50);
+                }
+            } catch (e) {
+                console.warn("Failed to capture XYZ gizmo (attempt " + attempts + "):", e);
+                if (attempts >= maxAttempts) {
+                    captured = true;
+                } else {
+                    setTimeout(tryCapture, 50);
+                }
+            }
+        }
+        
+        // Start capture attempt
+        tryCapture();
+        
+        // Wait synchronously for capture (with timeout)
+        var startTime = Date.now();
+        while (!captured && (Date.now() - startTime) < 1000) {
+            // Busy wait - but limit to 1 second max
         }
 
         // Step 5e) Restore original gizmo state

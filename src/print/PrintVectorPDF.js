@@ -234,12 +234,12 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 throw new Error("Print Preview Mode must be active");
             }
 
-            var innerMargin = screenBoundary.width * screenBoundary.marginPercent;
+            // Use explicit inner boundary from getPrintBoundary (matches preview exactly)
             var innerBoundary = {
-                x: screenBoundary.x + innerMargin,
-                y: screenBoundary.y + innerMargin,
-                width: screenBoundary.width - innerMargin * 2,
-                height: screenBoundary.height - innerMargin * 2
+                x: screenBoundary.innerX !== undefined ? screenBoundary.innerX : screenBoundary.x + screenBoundary.width * screenBoundary.marginPercent,
+                y: screenBoundary.innerY !== undefined ? screenBoundary.innerY : screenBoundary.y + screenBoundary.height * screenBoundary.marginPercent,
+                width: screenBoundary.innerWidth !== undefined ? screenBoundary.innerWidth : screenBoundary.width * (1 - 2 * screenBoundary.marginPercent),
+                height: screenBoundary.innerHeight !== undefined ? screenBoundary.innerHeight : screenBoundary.height * (1 - 2 * screenBoundary.marginPercent)
             };
 
             // Convert screen to world coordinates
@@ -485,26 +485,152 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 pdf.setFont("helvetica", "normal");
 
                 if (displayOptions.holeID) {
-                    pdf.setTextColor(0, 0, 0);
+                    pdf.setTextColor(0, 0, 0); // Black
                     pdf.text(hole.holeID, collarCoords[0] + textOffset, collarCoords[1] - textOffset);
                 }
                 if (displayOptions.holeDia) {
-                    pdf.setTextColor(0, 50, 0);
+                    pdf.setTextColor(0, 128, 0); // Green (rgb(0, 50, 0) was too dark, use rgb(0, 128, 0))
                     pdf.text(parseFloat(hole.holeDiameter).toFixed(0), collarCoords[0] + textOffset, collarCoords[1]);
                 }
                 if (displayOptions.holeLen) {
-                    pdf.setTextColor(0, 0, 67);
+                    pdf.setTextColor(0, 0, 255); // Blue (rgb(0, 0, 67) was too dark, use rgb(0, 0, 255))
                     pdf.text(parseFloat(hole.holeLengthCalculated).toFixed(1), collarCoords[0] + textOffset, collarCoords[1] + textOffset);
                 }
                 if (displayOptions.holeAng) {
-                    pdf.setTextColor(67, 30, 0);
+                    pdf.setTextColor(128, 64, 0); // Brown/Orange (rgb(67, 30, 0) was too dark, use rgb(128, 64, 0))
                     pdf.text(parseFloat(hole.holeAngle).toFixed(0) + "deg", collarCoords[0] - textOffset, collarCoords[1] - textOffset, { align: "right" });
                 }
                 if (displayOptions.holeBea) {
-                    pdf.setTextColor(255, 0, 0);
+                    pdf.setTextColor(255, 0, 0); // Red
                     pdf.text(parseFloat(hole.holeBearing).toFixed(1) + "deg", toeCoords[0] - textOffset, toeCoords[1] + textOffset, { align: "right" });
                 }
             });
+
+            bar.style.width = "65%";
+            text.textContent = "Drawing connectors...";
+
+            // Step 19a) Draw connectors (arrows between holes)
+            if (displayOptions.connector) {
+                var connScale = parseFloat(document.getElementById("connSlider")?.value || 17);
+                var holeMap = new Map();
+                visibleBlastHoles.forEach(function(hole) {
+                    var key = hole.entityName + ":::" + hole.holeID;
+                    holeMap.set(key, hole);
+                });
+
+                visibleBlastHoles.forEach(function(hole) {
+                    if (hole.fromHoleID) {
+                        try {
+                            var parts = hole.fromHoleID.split(":::");
+                            if (parts.length === 2) {
+                                var fromKey = parts[0] + ":::" + parts[1];
+                                var fromHole = holeMap.get(fromKey);
+                                if (fromHole) {
+                                    var startCoords = worldToPDF(fromHole.startXLocation, fromHole.startYLocation);
+                                    var endCoords = worldToPDF(hole.startXLocation, hole.startYLocation);
+                                    var connColor = hole.colorHexDecimal || "#000000";
+                                    var curve = hole.connectorCurve || 0;
+                                    
+                                    // Convert color to RGB
+                                    var rgb = hexToRgb(connColor);
+                                    pdf.setDrawColor(rgb.r, rgb.g, rgb.b);
+                                    pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+                                    
+                                    // Calculate arrow size based on scale
+                                    var arrowLength = (connScale / 4) * printScale * 2;
+                                    var arrowWidth = (connScale / 4) * printScale;
+                                    
+                                    if (curve === 0) {
+                                        // Straight connector
+                                        pdf.setLineWidth(0.2);
+                                        pdf.line(startCoords[0], startCoords[1], endCoords[0], endCoords[1]);
+                                        
+                                        // Draw arrowhead - angle from start TO end (direction arrow points)
+                                        var angle = Math.atan2(endCoords[1] - startCoords[1], endCoords[0] - startCoords[0]);
+                                        var arrowX1 = endCoords[0] - arrowLength * Math.cos(angle - Math.PI / 6);
+                                        var arrowY1 = endCoords[1] - arrowLength * Math.sin(angle - Math.PI / 6);
+                                        var arrowX2 = endCoords[0] - arrowLength * Math.cos(angle + Math.PI / 6);
+                                        var arrowY2 = endCoords[1] - arrowLength * Math.sin(angle + Math.PI / 6);
+                                        
+                                        pdf.triangle(endCoords[0], endCoords[1], arrowX1, arrowY1, arrowX2, arrowY2, "F");
+                                    } else {
+                                        // Curved connector using quadratic bezier
+                                        var midX = (startCoords[0] + endCoords[0]) / 2;
+                                        var midY = (startCoords[1] + endCoords[1]) / 2;
+                                        var dx = endCoords[0] - startCoords[0];
+                                        var dy = endCoords[1] - startCoords[1];
+                                        var distance = Math.sqrt(dx * dx + dy * dy);
+                                        
+                                        var curveFactor = (curve / 90) * distance * 0.5;
+                                        var perpX = -dy / distance;
+                                        var perpY = dx / distance;
+                                        var controlX = midX + perpX * curveFactor;
+                                        var controlY = midY + perpY * curveFactor;
+                                        
+                                        // Draw curved path (jsPDF doesn't support bezier directly, so approximate with line segments)
+                                        var segments = 20;
+                                        pdf.setLineWidth(0.2);
+                                        var prevX = startCoords[0];
+                                        var prevY = startCoords[1];
+                                        for (var s = 1; s <= segments; s++) {
+                                            var t = s / segments;
+                                            var x = (1 - t) * (1 - t) * startCoords[0] + 2 * (1 - t) * t * controlX + t * t * endCoords[0];
+                                            var y = (1 - t) * (1 - t) * startCoords[1] + 2 * (1 - t) * t * controlY + t * t * endCoords[1];
+                                            if (s === 1) {
+                                                pdf.line(prevX, prevY, x, y);
+                                            } else {
+                                                pdf.line(prevX, prevY, x, y);
+                                            }
+                                            prevX = x;
+                                            prevY = y;
+                                        }
+                                        
+                                        // Draw arrowhead at end
+                                        var tangentX = 2 * (endCoords[0] - controlX);
+                                        var tangentY = 2 * (endCoords[1] - controlY);
+                                        var angle = Math.atan2(tangentY, tangentX);
+                                        var arrowX1 = endCoords[0] - arrowLength * Math.cos(angle - Math.PI / 6);
+                                        var arrowY1 = endCoords[1] - arrowLength * Math.sin(angle - Math.PI / 6);
+                                        var arrowX2 = endCoords[0] - arrowLength * Math.cos(angle + Math.PI / 6);
+                                        var arrowY2 = endCoords[1] - arrowLength * Math.sin(angle + Math.PI / 6);
+                                        
+                                        pdf.triangle(endCoords[0], endCoords[1], arrowX1, arrowY1, arrowX2, arrowY2, "F");
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            console.warn("Failed to draw connector:", e);
+                        }
+                    }
+                });
+            }
+
+            bar.style.width = "70%";
+            text.textContent = "Drawing contour lines...";
+
+            // Step 19b) Draw contour lines
+            if (displayOptions.contour && context.contourLinesArray) {
+                pdf.setDrawColor(255, 0, 255); // Magenta
+                pdf.setLineWidth(0.3);
+                
+                for (var c = 0; c < context.contourLinesArray.length; c++) {
+                    var contourLines = context.contourLinesArray[c];
+                    if (contourLines && Array.isArray(contourLines)) {
+                        for (var l = 0; l < contourLines.length; l++) {
+                            var line = contourLines[l];
+                            if (line && line.length >= 2) {
+                                var startPt = line[0];
+                                var endPt = line[1];
+                                if (startPt && endPt) {
+                                    var startCoords = worldToPDF(startPt.x !== undefined ? startPt.x : startPt[0], startPt.y !== undefined ? startPt.y : startPt[1]);
+                                    var endCoords = worldToPDF(endPt.x !== undefined ? endPt.x : endPt[0], endPt.y !== undefined ? endPt.y : endPt[1]);
+                                    pdf.line(startCoords[0], startCoords[1], endCoords[0], endCoords[1]);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
             bar.style.width = "75%";
             text.textContent = "Drawing footer...";
@@ -546,7 +672,8 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                     }
                     
                     if (navImageDataURL) {
-                        var navSize = Math.min(navCell.width, navCell.height) * 0.8;
+                        // Use 60% of cell size to prevent cutting off
+                        var navSize = Math.min(navCell.width, navCell.height) * 0.6;
                         var navX = navCell.x + (navCell.width - navSize) / 2;
                         var navY = navCell.y + (navCell.height - navSize) / 2;
                         pdf.addImage(navImageDataURL, "PNG", navX, navY, navSize, navSize);
@@ -568,14 +695,14 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                     var entityNames = Object.keys(stats);
                     
                     // Draw header
-                    pdf.setFontSize(7);
+                    pdf.setFontSize(9);
                     pdf.setFont("helvetica", "bold");
                     pdf.setTextColor(0, 0, 0);
                     pdf.text("CONNECTOR COUNT", connectorCell.x + connectorCell.width / 2, connectorCell.y + 4, { align: "center" });
                     
                     // Draw delay groups as colored rows
-                    var rowY = connectorCell.y + 8;
-                    var rowHeight = 3;
+                    var rowY = connectorCell.y + 9;
+                    var rowHeight = 3.5;
                     var padding = 1;
                     
                     for (var e = 0; e < entityNames.length; e++) {
@@ -602,9 +729,9 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                                 var delayText = delay === "Unknown" ? "Unk" : delay + "ms";
                                 var txtRgb = hexToRgb(txtColor);
                                 pdf.setTextColor(txtRgb.r, txtRgb.g, txtRgb.b);
-                                pdf.setFontSize(5);
+                                pdf.setFontSize(7);
                                 pdf.setFont("helvetica", "normal");
-                                pdf.text(delayText + ": " + group.count, connectorCell.x + padding + 1, rowY + 2);
+                                pdf.text(delayText + ": " + group.count, connectorCell.x + padding + 1, rowY + 2.5);
                                 
                                 rowY += rowHeight + 0.5;
                             }
@@ -626,15 +753,15 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                     var entityKeys = Object.keys(blastStats);
                     
                     // Draw header
-                    pdf.setFontSize(7);
+                    pdf.setFontSize(9);
                     pdf.setFont("helvetica", "bold");
                     pdf.setTextColor(0, 0, 0);
                     pdf.text("BLAST STATISTICS", statsCell.x + statsCell.width / 2, statsCell.y + 4, { align: "center" });
                     
                     // Draw statistics
-                    var statY = statsCell.y + 8;
-                    var lineHeight = 2.5;
-                    pdf.setFontSize(5);
+                    var statY = statsCell.y + 9;
+                    var lineHeight = 3;
+                    pdf.setFontSize(7);
                     pdf.setFont("helvetica", "normal");
                     
                     for (var ek = 0; ek < entityKeys.length && statY < statsCell.y + statsCell.height - 3; ek++) {
@@ -707,11 +834,11 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 var blastNameList = Array.from(blastNames).join(", ");
                 var displayBlastName = blastNameList || userInput.blastName || "Untitled Blast";
                 
-                pdf.setFontSize(8);
+                pdf.setFontSize(10);
                 pdf.setFont("helvetica", "bold");
                 pdf.setTextColor(0, 0, 0);
                 pdf.text("TITLE", titleRow.x + 2, titleRow.y + titleRow.height * 0.35);
-                pdf.setFontSize(7);
+                pdf.setFontSize(8);
                 pdf.setFont("helvetica", "normal");
                 pdf.text("[" + displayBlastName + "]", titleRow.x + 2, titleRow.y + titleRow.height * 0.7);
             }
@@ -723,11 +850,11 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 var dateStr = now.toLocaleDateString("en-AU", { year: "numeric", month: "short", day: "numeric" });
                 var timeStr = now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
                 
-                pdf.setFontSize(7);
+                pdf.setFontSize(8);
                 pdf.setFont("helvetica", "bold");
                 pdf.setTextColor(0, 0, 0);
                 pdf.text("DATE", dateRow.x + 2, dateRow.y + dateRow.height * 0.35);
-                pdf.setFontSize(6);
+                pdf.setFontSize(7);
                 pdf.setFont("helvetica", "normal");
                 pdf.text("[" + dateStr + " " + timeStr + "]", dateRow.x + 2, dateRow.y + dateRow.height * 0.7);
             }
@@ -738,7 +865,7 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 var scaleRatio = layoutMgr.calculateScaleRatio(printScale);
                 var designerName = userInput.designer || "";
                 
-                pdf.setFontSize(6);
+                pdf.setFontSize(8);
                 pdf.setFont("helvetica", "normal");
                 pdf.setTextColor(0, 0, 0);
                 

@@ -233,8 +233,10 @@ function updatePopup() {
 				    <label class="labelWhite18">Update - NEW FEATURES:                           </label>
 					<hr>
 				<div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
-					<label     class="labelWhite12c">⭐️ ⭐️ November 2025 ⭐️ ⭐️                                            </label>
+					<label     class="labelWhite12c">⭐️ ⭐️ Oct - Jan 2026 ⭐️ ⭐️                                            </label>
 					<br><label class="labelWhite12c">✅ 3D View </label>
+					<br><label class="labelWhite12c">✅ Print Manager </label>
+					<br><label class="labelWhite12c">⚠️ When ready for release of Kirra summarise all the Git commits</label>
 					<hr>
 					<br><label  class="labelWhite15">New & Existing Issues & Resolved                               </label>
 					<br><label class="labelWhite12c">🐞 Voronoi Display Lag with large blasts      ❌ unresolved ❌  </label>

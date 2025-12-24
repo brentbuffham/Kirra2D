@@ -18,20 +18,19 @@ export function drawDataForPrinting(printCtx, printArea, context) {
         surfaceVisible: originalSurfaceVisible
     } = context;
 
-    // Step 1) Get the on-screen print preview boundary (red dashed box)
+    // Step 1) Get the on-screen print preview boundary (now includes innerX/Y/Width/Height)
     const screenBoundary = getPrintBoundary(canvas);
     if (!screenBoundary) {
         throw new Error("Print Preview Mode must be active to generate a WYSIWYG print.");
     }
 
-    // Step 2) Calculate the INNER boundary (blue dashed lines - print-safe area)
-    // This is what should actually be printed
-    const margin = screenBoundary.width * screenBoundary.marginPercent;
+    // Step 2) Use the explicit inner boundary from getPrintBoundary (blue dashed lines - print-safe area)
+    // This matches how the preview is calculated in calculateFullPreviewPositions
     const innerBoundary = {
-        x: screenBoundary.x + margin,
-        y: screenBoundary.y + margin,
-        width: screenBoundary.width - margin * 2,
-        height: screenBoundary.height - margin * 2
+        x: screenBoundary.innerX !== undefined ? screenBoundary.innerX : screenBoundary.x + screenBoundary.width * screenBoundary.marginPercent,
+        y: screenBoundary.innerY !== undefined ? screenBoundary.innerY : screenBoundary.y + screenBoundary.height * screenBoundary.marginPercent,
+        width: screenBoundary.innerWidth !== undefined ? screenBoundary.innerWidth : screenBoundary.width * (1 - 2 * screenBoundary.marginPercent),
+        height: screenBoundary.innerHeight !== undefined ? screenBoundary.innerHeight : screenBoundary.height * (1 - 2 * screenBoundary.marginPercent)
     };
 
     // Step 3) Convert the BLUE boundary (inner boundary) to world coordinates
@@ -982,15 +981,14 @@ export function printData(allBlastHoles, selectedHole, context) {
             // Skip non-visible entities
             if (entity.visible === false) continue;
             if (context.developerModeEnabled && entity.entityType === "point") {
-                // Draw allBlastHoles - FIX: Remove extra parameters
+                // Draw allBlastHoles - FIX: Use worldToCanvas for proper positioning within map zone
                 entity.data.forEach((point) => {
-                    const screenX = (point.pointXLocation - context.centroidX) * context.currentScale + printCanvas.width / 2;
-                    const screenY = -(point.pointYLocation - context.centroidY) * context.currentScale + printCanvas.height / 2;
+                    const [screenX, screenY] = context.worldToCanvas(point.pointXLocation, point.pointYLocation);
                     let lineWidthForDisplay = point.lineWidth;
                     if (point.lineWidth < 2) {
                         lineWidthForDisplay = 4;
                     }
-                    printKADPoints(screenX, screenY, point.pointZLocation, lineWidthForDisplay, point.color); // ← Remove pointDiameter and 1
+                    printKADPoints(screenX, screenY, point.pointZLocation, lineWidthForDisplay, point.color);
                 });
             } else if (entity.entityType === "point") {
                 // Apply pixel distance simplification to points for performance
@@ -1006,20 +1004,17 @@ export function printData(allBlastHoles, selectedHole, context) {
                     printKADPoints(x, y, pointData.pointZLocation, lineWidthForDisplay, pointData.color);
                 }
             } else if (entity.entityType === "circle") {
-                // Draw circles
+                // Draw circles - FIX: Use worldToCanvas for proper positioning within map zone
                 entity.data.forEach((circle) => {
-                    const screenX = (circle.pointXLocation - context.centroidX) * context.currentScale + printCanvas.width / 2;
-                    const screenY = -(circle.pointYLocation - context.centroidY) * context.currentScale + printCanvas.height / 2;
+                    const [screenX, screenY] = context.worldToCanvas(circle.pointXLocation, circle.pointYLocation);
                     printKADCircles(screenX, screenY, circle.pointZLocation, circle.radius, circle.lineWidth, circle.color, context);
                 });
             } else if (entity.entityType === "text") {
-                // Draw text - Fix the property name
+                // Draw text - FIX: Use worldToCanvas for proper positioning within map zone
                 entity.data.forEach((textData) => {
                     if (textData && textData.text) {
-                        // ← Change from textValue to text
-                        const screenX = (textData.pointXLocation - context.centroidX) * context.currentScale + printCanvas.width / 2;
-                        const screenY = -(textData.pointYLocation - context.centroidY) * context.currentScale + printCanvas.height / 2;
-                        printKADTexts(screenX, screenY, textData.pointZLocation, textData.text, textData.color, context); // ← Change textValue to text and strokeColor to color
+                        const [screenX, screenY] = context.worldToCanvas(textData.pointXLocation, textData.pointYLocation);
+                        printKADTexts(screenX, screenY, textData.pointZLocation, textData.text, textData.color, context);
                     }
                 });
             } else if (context.developerModeEnabled && (entity.entityType === "line" || entity.entityType === "poly")) {

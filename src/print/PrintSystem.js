@@ -10,6 +10,8 @@ import { generateTrueVectorPDF } from "./PrintVectorPDF.js";
 import { getTemplate, getPaperDimensions, PAPER_SIZES } from "./PrintTemplates.js";
 import { PrintLayoutManager } from "./PrintLayoutManager.js";
 import { showPrintDialog } from "./PrintDialog.js";
+import { PrintCaptureManager } from "./PrintCaptureManager.js";
+import { getBlastStatisticsPerEntity } from "../helpers/BlastStatistics.js";
 
 // ============== PRINT STATE VARIABLES ==============
 export var printMode = false;
@@ -49,23 +51,41 @@ function getLayoutManager(mode) {
 // ============== PRINT BOUNDARY CALCULATIONS ==============
 
 // Step 2) Calculate print-safe boundary on canvas (UNIFIED for 2D and 3D)
-// This uses the template's map zone aspect ratio for consistency
+// CRITICAL: Must use SAME calculation as drawPrintBoundary() for WYSIWYG consistency
+// Uses calculateFullPreviewPositions() to match what user sees in preview
 export function getPrintBoundary(canvas) {
     if (!printMode) return null;
 
-    // Step 2a) Get layout manager
-    var layoutMgr = getLayoutManager("2D");
+    // Step 2a) Determine current mode
+    var dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
+    var isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
+    var mode = isIn3DMode ? "3D" : "2D";
+
+    // Step 2b) Get layout manager
+    var layoutMgr = getLayoutManager(mode);
     
-    // Step 2b) Calculate preview boundary using template aspect ratio
-    var boundary = layoutMgr.calculatePreviewBoundary(canvas.width, canvas.height, 30);
+    // Step 2c) Calculate FULL preview positions (same as drawPrintBoundary uses)
+    var preview = layoutMgr.calculateFullPreviewPositions(canvas.width, canvas.height, 30);
     
-    // Step 2c) Return in expected format
+    // Step 2d) Return the mapInner zone - this is the blue dashed area where data should be positioned
+    // The outer is the map zone (black border), inner is the safe area (blue dashed)
+    var mapZone = preview.map;
+    var mapInner = preview.mapInner;
+    
+    // Step 2e) Calculate margin percent from the difference
+    var marginX = mapInner.x - mapZone.x;
+    var marginPercent = marginX / mapZone.width;
+    
     return {
-        x: boundary.outer.x,
-        y: boundary.outer.y,
-        width: boundary.outer.width,
-        height: boundary.outer.height,
-        marginPercent: boundary.marginPercent
+        x: mapZone.x,
+        y: mapZone.y,
+        width: mapZone.width,
+        height: mapZone.height,
+        innerX: mapInner.x,
+        innerY: mapInner.y,
+        innerWidth: mapInner.width,
+        innerHeight: mapInner.height,
+        marginPercent: marginPercent
     };
 }
 
@@ -507,11 +527,12 @@ export function printCanvasHiRes(context) {
             var navLogoRows = layoutMgr.getNavLogoRows();
 
             // Step 11g) Convert mm to pixels for print area
+            // Use mapZone (not mapInnerZone) to match vector PDF - data fills to border edge
             var printArea = {
-                x: mapInnerZone.x * mmToPx,
-                y: mapInnerZone.y * mmToPx,
-                width: mapInnerZone.width * mmToPx,
-                height: mapInnerZone.height * mmToPx
+                x: mapZone.x * mmToPx,
+                y: mapZone.y * mmToPx,
+                width: mapZone.width * mmToPx,
+                height: mapZone.height * mmToPx
             };
 
             bar.style.width = "20%";
@@ -548,47 +569,244 @@ export function printCanvasHiRes(context) {
                         }
                     }
                     
-                    // Step 11m) Draw footer text labels
-                    printCtx.fillStyle = "#000000";
-                    printCtx.textAlign = "center";
-                    printCtx.textBaseline = "middle";
-                    
-                    // Column labels
-                    for (var cl = 0; cl < footerColumns.length; cl++) {
-                        var fcol = footerColumns[cl];
-                        var label = "";
-                        if (fcol.id === "navIndicator" || fcol.id === "navLogoColumn") {
-                            label = mode === "3D" ? "XYZ" : "N";
-                        } else if (fcol.id === "connectorCount") {
-                            label = "CONNECTOR COUNT";
-                            printCtx.font = "bold " + (12 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText(label, (fcol.x + fcol.width / 2) * mmToPx, (fcol.y + 5) * mmToPx);
-                            continue;
-                        } else if (fcol.id === "blastStatistics") {
-                            label = "BLAST STATISTICS";
-                            printCtx.font = "bold " + (12 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText(label, (fcol.x + fcol.width / 2) * mmToPx, (fcol.y + 5) * mmToPx);
-                            continue;
-                        } else if (fcol.id === "logo") {
-                            label = "blastingapps.com";
-                            printCtx.font = (10 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText(label, (fcol.x + fcol.width / 2) * mmToPx, (fcol.y + fcol.height - 3) * mmToPx);
-                            continue;
-                        }
-                        if (label) {
-                            printCtx.font = "bold " + (14 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText(label, (fcol.x + fcol.width / 2) * mmToPx, (fcol.y + fcol.height / 2) * mmToPx);
+                    // Step 11m) Draw navigation indicator (North Arrow or XYZ Gizmo)
+                    var navCell = layoutMgr.getNavIndicatorCell();
+                    if (navCell) {
+                        // Use 60% of cell size to prevent cutting off (same as vector PDF)
+                        var navSizeMM = Math.min(navCell.width, navCell.height) * 0.6;
+                        var navSize = navSizeMM * mmToPx;
+                        var navCenterX = (navCell.x + navCell.width / 2) * mmToPx;
+                        var navCenterY = (navCell.y + navCell.height / 2) * mmToPx;
+                        
+                        if (mode === "2D") {
+                            // Draw North Arrow directly (more reliable than Image object)
+                            printCtx.save();
+                            printCtx.translate(navCenterX, navCenterY);
+                            printCtx.rotate(-(context.currentRotation || 0)); // Counter-rotate canvas rotation
+                            
+                            // Draw arrow shape scaled to navSize
+                            var arrowScale = navSize / 120; // Original arrow canvas was 120x120
+                            printCtx.fillStyle = "#000000";
+                            printCtx.beginPath();
+                            printCtx.moveTo(0, -30 * arrowScale);      // Arrow point (top)
+                            printCtx.lineTo(-12 * arrowScale, 25 * arrowScale);     // Left wing
+                            printCtx.lineTo(0, 15 * arrowScale);       // Center notch
+                            printCtx.lineTo(12 * arrowScale, 25 * arrowScale);      // Right wing
+                            printCtx.closePath();
+                            printCtx.fill();
+                            
+                            // Draw "N" label above arrow
+                            printCtx.font = "bold " + (18 * arrowScale) + "px Arial";
+                            printCtx.textAlign = "center";
+                            printCtx.textBaseline = "bottom";
+                            printCtx.fillText("N", 0, -35 * arrowScale);
+                            
+                            printCtx.restore();
+                        } else {
+                            // For 3D mode, try to capture gizmo image
+                            try {
+                                var navImageDataURL = PrintCaptureManager.captureXYZGizmo(context);
+                                if (navImageDataURL && navImageDataURL.length > 100) {
+                                    var navImg = new Image();
+                                    navImg.src = navImageDataURL;
+                                    var navX = (navCell.x + (navCell.width - navSizeMM) / 2) * mmToPx;
+                                    var navY = (navCell.y + (navCell.height - navSizeMM) / 2) * mmToPx;
+                                    
+                                    // Data URLs load synchronously for basic canvas-generated images
+                                    printCtx.drawImage(navImg, navX, navY, navSize, navSize);
+                                } else {
+                                    // Fallback text for 3D
+                                    printCtx.fillStyle = "#000000";
+                                    printCtx.font = "bold " + (20 * mmToPx / 3) + "px Arial";
+                                    printCtx.textAlign = "center";
+                                    printCtx.textBaseline = "middle";
+                                    printCtx.fillText("XYZ", navCenterX, navCenterY);
+                                }
+                            } catch (e) {
+                                console.warn("Failed to capture XYZ gizmo:", e);
+                                printCtx.fillStyle = "#000000";
+                                printCtx.font = "bold " + (20 * mmToPx / 3) + "px Arial";
+                                printCtx.textAlign = "center";
+                                printCtx.textBaseline = "middle";
+                                printCtx.fillText("XYZ", navCenterX, navCenterY);
+                            }
                         }
                     }
                     
-                    // Title block rows
+                    // Step 11n) Draw footer content (matching vector PDF)
+                    var getVoronoiMetrics = context.getVoronoiMetrics;
+                    
+                    // Helper: hex to rgb
+                    function hexToRgb(hex) {
+                        if (!hex || typeof hex !== "string") return { r: 0, g: 0, b: 0 };
+                        hex = hex.replace("#", "");
+                        if (hex.length === 3) hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+                        var r = parseInt(hex.substring(0, 2), 16);
+                        var g = parseInt(hex.substring(2, 4), 16);
+                        var b = parseInt(hex.substring(4, 6), 16);
+                        return isNaN(r) ? { r: 0, g: 0, b: 0 } : { r: r, g: g, b: b };
+                    }
+                    
+                    // Helper: get contrast color
+                    function getContrastColor(bgColor) {
+                        var rgb = hexToRgb(bgColor);
+                        var luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+                        return luminance < 0.5 ? "#ffffff" : "#000000";
+                    }
+                    
+                    // Step 11n1) Draw Connector Count with delay groups
+                    var connectorCell = layoutMgr.getConnectorCountCell();
+                    if (connectorCell && allBlastHoles && allBlastHoles.length > 0 && getVoronoiMetrics) {
+                        try {
+                            var stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+                            var entityNames = Object.keys(stats);
+                            
+                            // Draw header
+                            printCtx.fillStyle = "#000000";
+                            printCtx.font = "bold " + (9 * mmToPx / 3) + "px Arial";
+                            printCtx.textAlign = "center";
+                            printCtx.fillText("CONNECTOR COUNT", (connectorCell.x + connectorCell.width / 2) * mmToPx, (connectorCell.y + 4) * mmToPx);
+                            
+                            // Draw delay groups as colored rows
+                            var rowY = connectorCell.y + 9;
+                            var rowHeight = 3.5;
+                            var padding = 1;
+                            
+                            for (var e = 0; e < entityNames.length; e++) {
+                                var entityStats = stats[entityNames[e]];
+                                if (entityStats && entityStats.delayGroups) {
+                                    var delays = Object.keys(entityStats.delayGroups).sort(function(a, b) {
+                                        if (a === "Unknown") return 1;
+                                        if (b === "Unknown") return -1;
+                                        return parseFloat(a) - parseFloat(b);
+                                    });
+                                    
+                                    for (var d = 0; d < delays.length && rowY < connectorCell.y + connectorCell.height - 3; d++) {
+                                        var delay = delays[d];
+                                        var group = entityStats.delayGroups[delay];
+                                        var bgColor = group.color || "#ffffff";
+                                        var txtColor = getContrastColor(bgColor);
+                                        
+                                        // Draw colored background
+                                        var bgRgb = hexToRgb(bgColor);
+                                        printCtx.fillStyle = "rgb(" + bgRgb.r + "," + bgRgb.g + "," + bgRgb.b + ")";
+                                        printCtx.fillRect((connectorCell.x + padding) * mmToPx, rowY * mmToPx, (connectorCell.width - padding * 2) * mmToPx, rowHeight * mmToPx);
+                                        
+                                        // Draw text
+                                        var delayText = delay === "Unknown" ? "Unk" : delay + "ms";
+                                        printCtx.fillStyle = txtColor;
+                                        printCtx.font = (7 * mmToPx / 3) + "px Arial";
+                                        printCtx.textAlign = "left";
+                                        printCtx.fillText(delayText + ": " + group.count, (connectorCell.x + padding + 1) * mmToPx, (rowY + 2.5) * mmToPx);
+                                        
+                                        rowY += rowHeight + 0.5;
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            printCtx.fillStyle = "#000000";
+                            printCtx.font = "bold " + (9 * mmToPx / 3) + "px Arial";
+                            printCtx.textAlign = "center";
+                            printCtx.fillText("CONNECTOR COUNT", (connectorCell.x + connectorCell.width / 2) * mmToPx, (connectorCell.y + connectorCell.height / 2) * mmToPx);
+                        }
+                    } else if (connectorCell) {
+                        printCtx.fillStyle = "#000000";
+                        printCtx.font = "bold " + (9 * mmToPx / 3) + "px Arial";
+                        printCtx.textAlign = "center";
+                        printCtx.fillText("CONNECTOR COUNT", (connectorCell.x + connectorCell.width / 2) * mmToPx, (connectorCell.y + connectorCell.height / 2) * mmToPx);
+                    }
+                    
+                    // Step 11n2) Draw Blast Statistics
+                    var statsCell = layoutMgr.getBlastStatisticsCell();
+                    if (statsCell && allBlastHoles && allBlastHoles.length > 0 && getVoronoiMetrics) {
+                        try {
+                            var blastStats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+                            var entityKeys = Object.keys(blastStats);
+                            
+                            // Draw header
+                            printCtx.fillStyle = "#000000";
+                            printCtx.font = "bold " + (9 * mmToPx / 3) + "px Arial";
+                            printCtx.textAlign = "center";
+                            printCtx.fillText("BLAST STATISTICS", (statsCell.x + statsCell.width / 2) * mmToPx, (statsCell.y + 4) * mmToPx);
+                            
+                            // Draw statistics
+                            var statY = statsCell.y + 9;
+                            var lineHeight = 3;
+                            printCtx.font = (7 * mmToPx / 3) + "px Arial";
+                            printCtx.textAlign = "left";
+                            
+                            for (var ek = 0; ek < entityKeys.length && statY < statsCell.y + statsCell.height - 3; ek++) {
+                                var es = blastStats[entityKeys[ek]];
+                                if (es) {
+                                    printCtx.fillText("Holes: " + es.holeCount, (statsCell.x + 2) * mmToPx, statY * mmToPx);
+                                    statY += lineHeight;
+                                    if (statY < statsCell.y + statsCell.height - 3) {
+                                        printCtx.fillText("Burden: " + es.burden.toFixed(2) + "m", (statsCell.x + 2) * mmToPx, statY * mmToPx);
+                                        statY += lineHeight;
+                                    }
+                                    if (statY < statsCell.y + statsCell.height - 3) {
+                                        printCtx.fillText("Spacing: " + es.spacing.toFixed(2) + "m", (statsCell.x + 2) * mmToPx, statY * mmToPx);
+                                        statY += lineHeight;
+                                    }
+                                    if (statY < statsCell.y + statsCell.height - 3) {
+                                        printCtx.fillText("Drill: " + es.drillMetres.toFixed(1) + "m", (statsCell.x + 2) * mmToPx, statY * mmToPx);
+                                        statY += lineHeight;
+                                    }
+                                    if (statY < statsCell.y + statsCell.height - 3) {
+                                        printCtx.fillText("Volume: " + es.volume.toFixed(0) + "m3", (statsCell.x + 2) * mmToPx, statY * mmToPx);
+                                        statY += lineHeight;
+                                    }
+                                }
+                            }
+                        } catch (e) {
+                            printCtx.fillStyle = "#000000";
+                            printCtx.font = "bold " + (9 * mmToPx / 3) + "px Arial";
+                            printCtx.textAlign = "center";
+                            printCtx.fillText("BLAST STATISTICS", (statsCell.x + statsCell.width / 2) * mmToPx, (statsCell.y + statsCell.height / 2) * mmToPx);
+                        }
+                    } else if (statsCell) {
+                        printCtx.fillStyle = "#000000";
+                        printCtx.font = "bold " + (9 * mmToPx / 3) + "px Arial";
+                        printCtx.textAlign = "center";
+                        printCtx.fillText("BLAST STATISTICS", (statsCell.x + statsCell.width / 2) * mmToPx, (statsCell.y + statsCell.height / 2) * mmToPx);
+                    }
+                    
+                    // Step 11n3) Draw Logo/QR code
+                    var logoCell = layoutMgr.getLogoCell();
+                    if (logoCell) {
+                        // Load and draw QR code
+                        var qrImg = new Image();
+                        qrImg.crossOrigin = "anonymous";
+                        qrImg.src = "icons/kirra2d-qr-code.png";
+                        
+                        // Try to draw immediately if cached
+                        if (qrImg.complete && qrImg.naturalWidth > 0) {
+                            var qrSize = Math.min(logoCell.width, logoCell.height) * 0.6 * mmToPx;
+                            var qrX = (logoCell.x + (logoCell.width - logoCell.width * 0.6) / 2) * mmToPx;
+                            var qrY = (logoCell.y + (logoCell.height - logoCell.height * 0.6) / 2 - 2) * mmToPx;
+                            try {
+                                printCtx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+                            } catch (e) {
+                                console.warn("Could not draw QR code:", e);
+                            }
+                        }
+                        
+                        // URL below
+                        printCtx.fillStyle = "#000000";
+                        printCtx.font = (5 * mmToPx / 3) + "px Arial";
+                        printCtx.textAlign = "center";
+                        printCtx.fillText("blastingapps.com", (logoCell.x + logoCell.width / 2) * mmToPx, (logoCell.y + logoCell.height - 2) * mmToPx);
+                    }
+                    
+                    // Step 11n4) Title block rows
+                    printCtx.fillStyle = "#000000";
                     for (var tr = 0; tr < titleBlockRows.length; tr++) {
                         var trow = titleBlockRows[tr];
-                        printCtx.font = "bold " + (12 * mmToPx / 3) + "px Arial";
                         printCtx.textAlign = "left";
                         
                         if (trow.id === "title") {
-                            printCtx.fillText("TITLE", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.3) * mmToPx);
+                            printCtx.font = "bold " + (10 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText("TITLE", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.35) * mmToPx);
                             var blastNames = [];
                             if (allBlastHoles) {
                                 allBlastHoles.forEach(function(hole) {
@@ -598,18 +816,20 @@ export function printCanvasHiRes(context) {
                                 });
                             }
                             var displayName = blastNames.join(", ") || userInput.blastName || "Untitled";
-                            printCtx.font = (11 * mmToPx / 3) + "px Arial";
+                            printCtx.font = (8 * mmToPx / 3) + "px Arial";
                             printCtx.fillText("[" + displayName + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
                         } else if (trow.id === "date") {
-                            printCtx.fillText("DATE", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.3) * mmToPx);
+                            printCtx.font = "bold " + (8 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText("DATE", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.35) * mmToPx);
                             var now = new Date();
-                            var dateStr = now.toLocaleDateString() + " " + now.toLocaleTimeString();
-                            printCtx.font = (10 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText("[" + dateStr + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
+                            var dateStr = now.toLocaleDateString("en-AU", { year: "numeric", month: "short", day: "numeric" });
+                            var timeStr = now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
+                            printCtx.font = (7 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText("[" + dateStr + " " + timeStr + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
                         } else if (trow.id === "scaleDesigner") {
-                            printCtx.font = (10 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText("Scale: [1:1000]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.3) * mmToPx);
-                            printCtx.fillText("Designer: [" + (userInput.designer || "") + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
+                            printCtx.font = (8 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText("Scale: [1:1000]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.25) * mmToPx);
+                            printCtx.fillText("Designer: [" + (userInput.designer || "") + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.65) * mmToPx);
                         }
                     }
                     
@@ -617,14 +837,25 @@ export function printCanvasHiRes(context) {
                     text.textContent = "Drawing data...";
 
                     setTimeout(function() {
-                        // Step 11n) Draw data in print area
+                        // Step 11o) Draw data in print area with clipping to prevent overflow into footer
+                        printCtx.save();
+                        
+                        // Create clipping region for map zone
+                        printCtx.beginPath();
+                        printCtx.rect(printArea.x, printArea.y, printArea.width, printArea.height);
+                        printCtx.clip();
+                        
+                        // Now draw the data - it will be clipped to the map zone
                         drawDataForPrinting(printCtx, printArea, context);
+                        
+                        // Restore context to remove clipping
+                        printCtx.restore();
                         
                         bar.style.width = "80%";
                         text.textContent = "Generating image...";
 
                         setTimeout(function() {
-                            // Step 11o) Generate PDF
+                            // Step 11p) Generate PDF
                             var imgData = printCanvas.toDataURL("image/png", 1.0);
 
                             if (!imgData || imgData.length < 100 || imgData === "data:,") {
