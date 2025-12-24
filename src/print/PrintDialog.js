@@ -10,13 +10,14 @@ import { FloatingDialog } from "../dialog/FloatingDialog.js";
 export function showPrintDialog(mode, context, onConfirm) {
     // Step 1a) Create form fields (paper size and orientation already set in UI)
     const fields = [
-        {
-            type: "text",
-            name: "blastName",
-            label: "Blast Name:",
-            value: "Untitled Blast",
-            placeholder: "Enter blast name"
-        },
+        // {
+        //     //REDUNDANT FIELD - WILL BE REMOVED IN FUTURE
+        //     type: "text",
+        //     name: "blastName",
+        //     label: "Blast Name:",
+        //     value: "Untitled Blast",
+        //     placeholder: "Enter blast name"
+        // },
         {
             type: "text",
             name: "designer",
@@ -24,14 +25,15 @@ export function showPrintDialog(mode, context, onConfirm) {
             value: "",
             placeholder: "Enter designer name"
         },
-        {
-            type: "textarea",
-            name: "notes",
-            label: "Additional Notes:",
-            value: "",
-            placeholder: "Optional notes (not currently displayed on PDF)",
-            rows: 3
-        },
+        // {
+        //     //NOT IN USE - Might be added later but for now it is not used
+        //     type: "textarea",
+        //     name: "notes",
+        //     label: "Additional Notes:",
+        //     value: "",
+        //     placeholder: "Optional notes (not currently displayed on PDF)",
+        //     rows: 3
+        // },
         {
             type: "radio",
             name: "outputType",
@@ -53,7 +55,7 @@ export function showPrintDialog(mode, context, onConfirm) {
         content: formContent,
         layoutType: "standard",
         width: 450,
-        height: 400,
+        height: 300,
         showConfirm: true,
         showCancel: true,
         confirmText: "Generate PDF",
@@ -63,10 +65,10 @@ export function showPrintDialog(mode, context, onConfirm) {
             // Step 1c1) Collect form data
             const formData = collectFormData(fields);
             
-            // Step 1c2) Validate
-            if (!formData.blastName || formData.blastName.trim() === "") {
-                formData.blastName = "Untitled Blast";
-            }
+            // // Step 1c2) Validate
+            // if (!formData.blastName || formData.blastName.trim() === "") {
+            //     formData.blastName = "Untitled Blast";
+            // }
             
             // Step 1c3) Call confirm callback with data
             if (onConfirm) {
@@ -92,10 +94,10 @@ function createFormContent(fields) {
     let html = "<div style=\"padding: 10px;\">";
     
     fields.forEach(function(field) {
-        html += "<div style=\"margin-bottom: 15px;\">";
+        html += "<div style=\"margin-bottom: 12px;\">";
         
         // Label
-        html += "<label style=\"display: block; margin-bottom: 5px; font-weight: bold;\">";
+        html += "<label style=\"display: block; margin-bottom: 5px;\">";
         html += field.label;
         html += "</label>";
         
@@ -107,14 +109,14 @@ function createFormContent(fields) {
             html += "placeholder=\"" + (field.placeholder || "") + "\" ";
             html += "style=\"width: 100%; padding: 5px; box-sizing: border-box;\" />";
             
-        } else if (field.type === "textarea") {
-            html += "<textarea ";
-            html += "name=\"" + field.name + "\" ";
-            html += "rows=\"" + (field.rows || 3) + "\" ";
-            html += "placeholder=\"" + (field.placeholder || "") + "\" ";
-            html += "style=\"width: 100%; padding: 5px; box-sizing: border-box;\">";
-            html += field.value || "";
-            html += "</textarea>";
+        // } else if (field.type === "textarea") {
+        //     html += "<textarea ";
+        //     html += "name=\"" + field.name + "\" ";
+        //     html += "rows=\"" + (field.rows || 3) + "\" ";
+        //     html += "placeholder=\"" + (field.placeholder || "") + "\" ";
+        //     html += "style=\"width: 100%; padding: 5px; box-sizing: border-box;\">";
+        //     html += field.value || "";
+        //     html += "</textarea>";
             
         } else if (field.type === "select") {
             html += "<select name=\"" + field.name + "\" ";
@@ -188,14 +190,24 @@ export function createEnhancedFormContent(fields) {
     
     fields.forEach(function(field) {
         const fieldDiv = document.createElement("div");
-        fieldDiv.style.marginBottom = "15px";
+        fieldDiv.style.marginBottom = "12px";
         
         // Label
         const label = document.createElement("label");
         label.textContent = field.label;
         label.style.display = "block";
         label.style.marginBottom = "5px";
-        label.style.fontWeight = "bold";
+        label.style.fontSize = "11px";
+        label.style.fontFamily = "sans-serif";
+        label.style.color = "var(--light-mode-text)";
+        label.style.lineHeight = "1.2";
+        label.style.margin = "0";
+        label.style.whiteSpace = "nowrap";
+        label.style.textAlign = "left";
+        label.style.overflow = "hidden";
+        label.style.textOverflow = "ellipsis";
+        label.style.paddingRight = "4px";
+        // label.style.fontWeight = "bold";
         fieldDiv.appendChild(label);
         
         // Input
@@ -210,16 +222,16 @@ export function createEnhancedFormContent(fields) {
             input.style.boxSizing = "border-box";
             fieldDiv.appendChild(input);
             
-        } else if (field.type === "textarea") {
-            const textarea = document.createElement("textarea");
-            textarea.name = field.name;
-            textarea.rows = field.rows || 3;
-            textarea.placeholder = field.placeholder || "";
-            textarea.value = field.value || "";
-            textarea.style.width = "100%";
-            textarea.style.padding = "5px";
-            textarea.style.boxSizing = "border-box";
-            fieldDiv.appendChild(textarea);
+        // } else if (field.type === "textarea") {
+        //     const textarea = document.createElement("textarea");
+        //     textarea.name = field.name;
+        //     textarea.rows = field.rows || 3;
+        //     textarea.placeholder = field.placeholder || "";
+        //     textarea.value = field.value || "";
+        //     textarea.style.width = "100%";
+        //     textarea.style.padding = "5px";
+        //     textarea.style.boxSizing = "border-box";
+        //     fieldDiv.appendChild(textarea);
             
         } else if (field.type === "select") {
             const select = document.createElement("select");

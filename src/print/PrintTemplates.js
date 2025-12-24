@@ -2,424 +2,381 @@
 //=================================================
 // PrintTemplates.js - PDF Layout Template Definitions
 //=================================================
-// Defines exact layouts matching reference PDFs:
+// CRITICAL: These templates EXACTLY match the reference PDFs:
 // - Kirra2D/src/referenceFiles/PrintoutTemplateLAND.pdf
 // - Kirra2D/src/referenceFiles/PrintoutTemplatePORT.pdf
+//
+// Template Structure:
+// - Map Zone: Main drawing area (~80% of page)
+// - Footer Zone: Info table at bottom (~20% of page)
 
-// Step 1) Template definitions with table-based layouts
+// Step 1) Paper size definitions (in mm)
+export const PAPER_SIZES = {
+    A4: { width: 297, height: 210 },  // Landscape dimensions
+    A3: { width: 420, height: 297 },
+    A2: { width: 594, height: 420 },
+    A1: { width: 841, height: 594 },
+    A0: { width: 1189, height: 841 }
+};
+
+// Step 2) Template definitions matching reference PDFs
 export const PRINT_TEMPLATES = {
-    // Step 1a) Landscape 2D Template - North Arrow
-    // CORRECTED: Footer is at BOTTOM spanning full width, not right side panel
+    // =========================================================
+    // LANDSCAPE 2D Template - North Arrow in navigation cell
+    // =========================================================
+    // Layout from PrintoutTemplateLAND.pdf:
+    // +------------------------------------------------------------------+
+    // |                           [MAP AREA]                             |
+    // |                         (78% of page)                            |
+    // +----------+----------------+----------------+---------+-----------+
+    // | NORTH    | CONNECTOR      | BLAST          | [LOGO]  | TITLE     |
+    // | ARROW    | COUNT          | STATISTICS     | QR+URL  | [BLAST]   |
+    // |          |                |                |         +-----------+
+    // |          |                |                |         | DATE      |
+    // |          |                |                |         +-----------+
+    // |          |                |                |         | Scale:    |
+    // |          |                |                |         | Designer: |
+    // +----------+----------------+----------------+---------+-----------+
     LANDSCAPE_2D: {
         name: "LAND_2D",
         mode: "2D",
         orientation: "landscape",
         referenceFile: "PrintoutTemplateLAND.pdf",
+        pageMargin: 0.015,  // 1.5% margin from page edges
         zones: {
-            // Step 1a1) Main map area - takes up top portion of page
+            // Step 2a) Map zone - main drawing area
             map: {
-                x: 0.02,              // 2% margin from left
-                y: 0.02,              // 2% margin from top
-                width: 0.96,          // 96% of page width (full width)
-                height: 0.75,         // 75% of page height (leaves room for footer)
-                printSafeMargin: 0.05 // 5% internal margin
+                x: 0.015,             // 1.5% from left
+                y: 0.015,             // 1.5% from top
+                width: 0.97,          // 97% of page width
+                height: 0.78,         // 78% of page height
+                printSafeMargin: 0.02 // 2% internal safe margin
             },
-            // Step 1a2) Footer panel - BOTTOM of page, full width
-            // Structure: Leftmost column (vertical: North Arrow top, Logo bottom) | 
-            //            Second column (CONNECTOR COUNT header + data) |
-            //            Third column (BLAST STATISTICS header + data) |
-            //            Rightmost section (multi-row: TITLE/BLASTNAME, DATE/TIME, Scale/Designer)
+            // Step 2b) Footer zone - info table at bottom
             footer: {
-                x: 0.02,              // 2% margin from left
-                y: 0.77,              // Starts at 77% from top (after map)
-                width: 0.96,          // 96% of page width (full width)
-                height: 0.21,         // 21% of page height (footer height)
-                sections: {
-                    // Top row: North Arrow (leftmost) | Connector Header | Stats Header | Title/BlastName (rightmost)
-                    row1: {
-                        y: 0,
-                        height: 0.50,  // 50% of footer height (top half)
-                        cells: [
-                            {
-                                id: "navigationIndicator",
-                                content: "northArrow",
-                                widthPercent: 0.12  // Leftmost column (spans top half)
-                            },
-                            {
-                                id: "connectorCount",
-                                content: "dynamic",
-                                widthPercent: 0.20   // Second column header
-                            },
-                            {
-                                id: "blastStatistics",
-                                content: "dynamic",
-                                widthPercent: 0.20   // Third column header
-                            },
-                            {
-                                id: "titleBlastName",
-                                content: "dynamic",
-                                label: "TITLE",
-                                widthPercent: 0.48    // Rightmost section
-                            }
-                        ]
+                x: 0.015,             // 1.5% from left
+                y: 0.80,              // Starts at 80% from top
+                width: 0.97,          // 97% of page width
+                height: 0.185,        // 18.5% of page height
+                // Footer is divided into columns and rows
+                // Columns: NavIndicator(10%) | ConnectorCount(22%) | BlastStats(22%) | Logo(12%) | TitleBlock(34%)
+                columns: [
+                    { id: "navIndicator", widthPercent: 0.10 },
+                    { id: "connectorCount", widthPercent: 0.22 },
+                    { id: "blastStatistics", widthPercent: 0.22 },
+                    { id: "logo", widthPercent: 0.12 },
+                    { id: "titleBlock", widthPercent: 0.34 }
+                ],
+                // TitleBlock column has internal rows
+                titleBlockRows: [
+                    { id: "title", heightPercent: 0.35, label: "TITLE" },
+                    { id: "date", heightPercent: 0.25, label: "DATE" },
+                    { id: "scaleDesigner", heightPercent: 0.40, labels: ["Scale:", "Designer:"] }
+                ],
+                // Content definitions
+                cells: {
+                    navIndicator: {
+                        id: "navigationIndicator",
+                        content: "northArrow",
+                        label: ""
                     },
-                    // Second row: Logo (leftmost, below North Arrow) | Connector Data | Stats Data | Date/Time
-                    row2: {
-                        y: 0.50,
-                        height: 0.25,  // 25% of footer height
-                        cells: [
-                            {
-                                id: "logo",
-                                content: "qrcode",
-                                widthPercent: 0.12    // Logo below North Arrow (leftmost column bottom)
-                            },
-                            {
-                                id: "connectorData",
-                                content: "dynamic",
-                                widthPercent: 0.20    // Connector count data cell
-                            },
-                            {
-                                id: "blastStatsData",
-                                content: "dynamic",
-                                widthPercent: 0.20    // Blast statistics data cell
-                            },
-                            {
-                                id: "dateTime",
-                                content: "dynamic",
-                                label: "DATE",
-                                widthPercent: 0.48    // Date/Time in right section
-                            }
-                        ]
+                    connectorCount: {
+                        id: "connectorCount",
+                        content: "delayGroups",
+                        label: "CONNECTOR COUNT"
                     },
-                    // Third row: Empty (left columns) | Scale | Designer
-                    row3: {
-                        y: 0.75,
-                        height: 0.25,  // 25% of footer height (bottom row)
-                        cells: [
-                            {
-                                id: "emptyLeft",
-                                content: "empty",
-                                widthPercent: 0.52     // Empty space (navigation + connector + stats columns)
-                            },
-                            {
-                                id: "scale",
-                                label: "Scale:",
-                                content: "calculated",
-                                widthPercent: 0.24     // Scale in right section
-                            },
-                            {
-                                id: "designer",
-                                label: "Designer:",
-                                content: "dialog",
-                                widthPercent: 0.24     // Designer in right section
-                            }
-                        ]
+                    blastStatistics: {
+                        id: "blastStatistics",
+                        content: "statistics",
+                        label: "BLAST STATISTICS"
+                    },
+                    logo: {
+                        id: "logo",
+                        content: "qrcode",
+                        label: "blastingapps.com"
+                    },
+                    title: {
+                        id: "title",
+                        content: "blastName",
+                        label: "TITLE"
+                    },
+                    date: {
+                        id: "date",
+                        content: "dateTime",
+                        label: "DATE"
+                    },
+                    scale: {
+                        id: "scale",
+                        content: "calculated",
+                        label: "Scale:"
+                    },
+                    designer: {
+                        id: "designer",
+                        content: "userInput",
+                        label: "Designer:"
                     }
                 }
             }
         }
     },
 
-    // Step 1b) Landscape 3D Template - XYZ Gizmo (same layout as 2D, different nav indicator)
+    // =========================================================
+    // LANDSCAPE 3D Template - XYZ Gizmo in navigation cell
+    // =========================================================
     LANDSCAPE_3D: {
         name: "LAND_3D",
         mode: "3D",
         orientation: "landscape",
         referenceFile: "PrintoutTemplateLAND.pdf",
+        pageMargin: 0.015,
         zones: {
             map: {
-                x: 0.02,
-                y: 0.02,
-                width: 0.96,
-                height: 0.75,
-                printSafeMargin: 0.05
+                x: 0.015,
+                y: 0.015,
+                width: 0.97,
+                height: 0.78,
+                printSafeMargin: 0.02
             },
             footer: {
-                x: 0.02,
-                y: 0.77,
-                width: 0.96,
-                height: 0.21,
-                sections: {
-                    row1: {
-                        y: 0,
-                        height: 0.50,
-                        cells: [
-                            {
-                                id: "navigationIndicator",
-                                content: "xyzGizmo",  // Different from 2D
-                                widthPercent: 0.12
-                            },
-                            {
-                                id: "connectorCount",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "blastStatistics",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "titleBlastName",
-                                content: "dynamic",
-                                label: "TITLE",
-                                widthPercent: 0.48
-                            }
-                        ]
+                x: 0.015,
+                y: 0.80,
+                width: 0.97,
+                height: 0.185,
+                columns: [
+                    { id: "navIndicator", widthPercent: 0.10 },
+                    { id: "connectorCount", widthPercent: 0.22 },
+                    { id: "blastStatistics", widthPercent: 0.22 },
+                    { id: "logo", widthPercent: 0.12 },
+                    { id: "titleBlock", widthPercent: 0.34 }
+                ],
+                titleBlockRows: [
+                    { id: "title", heightPercent: 0.35, label: "TITLE" },
+                    { id: "date", heightPercent: 0.25, label: "DATE" },
+                    { id: "scaleDesigner", heightPercent: 0.40, labels: ["Scale:", "Designer:"] }
+                ],
+                cells: {
+                    navIndicator: {
+                        id: "navigationIndicator",
+                        content: "xyzGizmo",  // 3D uses XYZ Gizmo instead of North Arrow
+                        label: ""
                     },
-                    row2: {
-                        y: 0.50,
-                        height: 0.25,
-                        cells: [
-                            {
-                                id: "logo",
-                                content: "qrcode",
-                                widthPercent: 0.12
-                            },
-                            {
-                                id: "connectorData",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "blastStatsData",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "dateTime",
-                                content: "dynamic",
-                                label: "DATE",
-                                widthPercent: 0.48
-                            }
-                        ]
+                    connectorCount: {
+                        id: "connectorCount",
+                        content: "delayGroups",
+                        label: "CONNECTOR COUNT"
                     },
-                    row3: {
-                        y: 0.75,
-                        height: 0.25,
-                        cells: [
-                            {
-                                id: "emptyLeft",
-                                content: "empty",
-                                widthPercent: 0.52
-                            },
-                            {
-                                id: "scale",
-                                label: "Scale:",
-                                content: "calculated",
-                                widthPercent: 0.24
-                            },
-                            {
-                                id: "designer",
-                                label: "Designer:",
-                                content: "dialog",
-                                widthPercent: 0.24
-                            }
-                        ]
+                    blastStatistics: {
+                        id: "blastStatistics",
+                        content: "statistics",
+                        label: "BLAST STATISTICS"
+                    },
+                    logo: {
+                        id: "logo",
+                        content: "qrcode",
+                        label: "blastingapps.com"
+                    },
+                    title: {
+                        id: "title",
+                        content: "blastName",
+                        label: "TITLE"
+                    },
+                    date: {
+                        id: "date",
+                        content: "dateTime",
+                        label: "DATE"
+                    },
+                    scale: {
+                        id: "scale",
+                        content: "calculated",
+                        label: "Scale:"
+                    },
+                    designer: {
+                        id: "designer",
+                        content: "userInput",
+                        label: "Designer:"
                     }
                 }
             }
         }
     },
 
-    // Step 1c) Portrait 2D Template - North Arrow (footer at bottom, same structure as landscape)
+    // =========================================================
+    // PORTRAIT 2D Template - North Arrow in navigation cell
+    // =========================================================
+    // Layout from PrintoutTemplatePORT.pdf:
+    // +-------------------------------------------------------+
+    // |                      [MAP AREA]                        |
+    // |                    (78% of page)                       |
+    // +----------+-------------+-------------+-----------------+
+    // | NORTH    | CONNECTOR   | BLAST       | TITLE           |
+    // | ARROW    | COUNT       | STATISTICS  | [BLASTNAME]     |
+    // +----------+             |             +-----------------+
+    // | [LOGO]   |             |             | DATE            |
+    // | QR+URL   |             |             | [DATETIME]      |
+    // |          |             |             +-----------------+
+    // |          |             |             | Scale:          |
+    // |          |             |             | Designer:       |
+    // +----------+-------------+-------------+-----------------+
     PORTRAIT_2D: {
         name: "PORT_2D",
         mode: "2D",
         orientation: "portrait",
         referenceFile: "PrintoutTemplatePORT.pdf",
+        pageMargin: 0.015,
         zones: {
             map: {
-                x: 0.02,
-                y: 0.02,
-                width: 0.96,
-                height: 0.75,
-                printSafeMargin: 0.05
+                x: 0.015,
+                y: 0.015,
+                width: 0.97,
+                height: 0.78,
+                printSafeMargin: 0.02
             },
             footer: {
-                x: 0.02,
-                y: 0.77,
-                width: 0.96,
-                height: 0.21,
-                sections: {
-                    row1: {
-                        y: 0,
-                        height: 0.50,
-                        cells: [
-                            {
-                                id: "navigationIndicator",
-                                content: "northArrow",
-                                widthPercent: 0.12
-                            },
-                            {
-                                id: "connectorCount",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "blastStatistics",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "titleBlastName",
-                                content: "dynamic",
-                                label: "TITLE",
-                                widthPercent: 0.48
-                            }
-                        ]
+                x: 0.015,
+                y: 0.80,
+                width: 0.97,
+                height: 0.185,
+                // Portrait has different column layout
+                // Columns: NavIndicator+Logo(10%) | ConnectorCount(22%) | BlastStats(22%) | TitleBlock(46%)
+                columns: [
+                    { id: "navLogoColumn", widthPercent: 0.10 },
+                    { id: "connectorCount", widthPercent: 0.22 },
+                    { id: "blastStatistics", widthPercent: 0.22 },
+                    { id: "titleBlock", widthPercent: 0.46 }
+                ],
+                // NavLogoColumn has two rows: North Arrow (top) and Logo (bottom)
+                navLogoRows: [
+                    { id: "navIndicator", heightPercent: 0.50, content: "northArrow" },
+                    { id: "logo", heightPercent: 0.50, content: "qrcode", label: "blastingapps.com" }
+                ],
+                titleBlockRows: [
+                    { id: "title", heightPercent: 0.35, label: "TITLE" },
+                    { id: "date", heightPercent: 0.25, label: "DATE" },
+                    { id: "scaleDesigner", heightPercent: 0.40, labels: ["Scale:", "Designer:"] }
+                ],
+                cells: {
+                    navIndicator: {
+                        id: "navigationIndicator",
+                        content: "northArrow",
+                        label: ""
                     },
-                    row2: {
-                        y: 0.50,
-                        height: 0.25,
-                        cells: [
-                            {
-                                id: "logo",
-                                content: "qrcode",
-                                widthPercent: 0.12
-                            },
-                            {
-                                id: "connectorData",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "blastStatsData",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "dateTime",
-                                content: "dynamic",
-                                label: "DATE",
-                                widthPercent: 0.48
-                            }
-                        ]
+                    logo: {
+                        id: "logo",
+                        content: "qrcode",
+                        label: "blastingapps.com"
                     },
-                    row3: {
-                        y: 0.75,
-                        height: 0.25,
-                        cells: [
-                            {
-                                id: "emptyLeft",
-                                content: "empty",
-                                widthPercent: 0.52
-                            },
-                            {
-                                id: "scale",
-                                label: "Scale:",
-                                content: "calculated",
-                                widthPercent: 0.24
-                            },
-                            {
-                                id: "designer",
-                                label: "Designer:",
-                                content: "dialog",
-                                widthPercent: 0.24
-                            }
-                        ]
+                    connectorCount: {
+                        id: "connectorCount",
+                        content: "delayGroups",
+                        label: "CONNECTOR COUNT"
+                    },
+                    blastStatistics: {
+                        id: "blastStatistics",
+                        content: "statistics",
+                        label: "BLAST STATISTICS"
+                    },
+                    title: {
+                        id: "title",
+                        content: "blastName",
+                        label: "TITLE"
+                    },
+                    date: {
+                        id: "date",
+                        content: "dateTime",
+                        label: "DATE"
+                    },
+                    scale: {
+                        id: "scale",
+                        content: "calculated",
+                        label: "Scale:"
+                    },
+                    designer: {
+                        id: "designer",
+                        content: "userInput",
+                        label: "Designer:"
                     }
                 }
             }
         }
     },
 
-    // Step 1d) Portrait 3D Template - XYZ Gizmo (same structure as portrait 2D)
+    // =========================================================
+    // PORTRAIT 3D Template - XYZ Gizmo in navigation cell
+    // =========================================================
     PORTRAIT_3D: {
         name: "PORT_3D",
         mode: "3D",
         orientation: "portrait",
         referenceFile: "PrintoutTemplatePORT.pdf",
+        pageMargin: 0.015,
         zones: {
             map: {
-                x: 0.02,
-                y: 0.02,
-                width: 0.96,
-                height: 0.75,
-                printSafeMargin: 0.05
+                x: 0.015,
+                y: 0.015,
+                width: 0.97,
+                height: 0.78,
+                printSafeMargin: 0.02
             },
             footer: {
-                x: 0.02,
-                y: 0.77,
-                width: 0.96,
-                height: 0.21,
-                sections: {
-                    row1: {
-                        y: 0,
-                        height: 0.50,
-                        cells: [
-                            {
-                                id: "navigationIndicator",
-                                content: "xyzGizmo",  // Different from 2D
-                                widthPercent: 0.12
-                            },
-                            {
-                                id: "connectorCount",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "blastStatistics",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "titleBlastName",
-                                content: "dynamic",
-                                label: "TITLE",
-                                widthPercent: 0.48
-                            }
-                        ]
+                x: 0.015,
+                y: 0.80,
+                width: 0.97,
+                height: 0.185,
+                columns: [
+                    { id: "navLogoColumn", widthPercent: 0.10 },
+                    { id: "connectorCount", widthPercent: 0.22 },
+                    { id: "blastStatistics", widthPercent: 0.22 },
+                    { id: "titleBlock", widthPercent: 0.46 }
+                ],
+                navLogoRows: [
+                    { id: "navIndicator", heightPercent: 0.50, content: "xyzGizmo" },  // 3D uses XYZ Gizmo
+                    { id: "logo", heightPercent: 0.50, content: "qrcode", label: "blastingapps.com" }
+                ],
+                titleBlockRows: [
+                    { id: "title", heightPercent: 0.35, label: "TITLE" },
+                    { id: "date", heightPercent: 0.25, label: "DATE" },
+                    { id: "scaleDesigner", heightPercent: 0.40, labels: ["Scale:", "Designer:"] }
+                ],
+                cells: {
+                    navIndicator: {
+                        id: "navigationIndicator",
+                        content: "xyzGizmo",
+                        label: ""
                     },
-                    row2: {
-                        y: 0.50,
-                        height: 0.25,
-                        cells: [
-                            {
-                                id: "logo",
-                                content: "qrcode",
-                                widthPercent: 0.12
-                            },
-                            {
-                                id: "connectorData",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "blastStatsData",
-                                content: "dynamic",
-                                widthPercent: 0.20
-                            },
-                            {
-                                id: "dateTime",
-                                content: "dynamic",
-                                label: "DATE",
-                                widthPercent: 0.48
-                            }
-                        ]
+                    logo: {
+                        id: "logo",
+                        content: "qrcode",
+                        label: "blastingapps.com"
                     },
-                    row3: {
-                        y: 0.75,
-                        height: 0.25,
-                        cells: [
-                            {
-                                id: "emptyLeft",
-                                content: "empty",
-                                widthPercent: 0.52
-                            },
-                            {
-                                id: "scale",
-                                label: "Scale:",
-                                content: "calculated",
-                                widthPercent: 0.24
-                            },
-                            {
-                                id: "designer",
-                                label: "Designer:",
-                                content: "dialog",
-                                widthPercent: 0.24
-                            }
-                        ]
+                    connectorCount: {
+                        id: "connectorCount",
+                        content: "delayGroups",
+                        label: "CONNECTOR COUNT"
+                    },
+                    blastStatistics: {
+                        id: "blastStatistics",
+                        content: "statistics",
+                        label: "BLAST STATISTICS"
+                    },
+                    title: {
+                        id: "title",
+                        content: "blastName",
+                        label: "TITLE"
+                    },
+                    date: {
+                        id: "date",
+                        content: "dateTime",
+                        label: "DATE"
+                    },
+                    scale: {
+                        id: "scale",
+                        content: "calculated",
+                        label: "Scale:"
+                    },
+                    designer: {
+                        id: "designer",
+                        content: "userInput",
+                        label: "Designer:"
                     }
                 }
             }
@@ -427,21 +384,132 @@ export const PRINT_TEMPLATES = {
     }
 };
 
-// Step 2) Helper function to get template by mode and orientation
+// Step 3) Helper function to get template by mode and orientation
 export function getTemplate(mode, orientation) {
-    const key = orientation.toUpperCase() + "_" + mode.toUpperCase();
-    const template = PRINT_TEMPLATES[key];
+    // Step 3a) Build template key
+    var key = orientation.toUpperCase() + "_" + mode.toUpperCase();
+    var template = PRINT_TEMPLATES[key];
     
+    // Step 3b) Fallback to 2D if not found
     if (!template) {
-        console.error("Template not found for mode: " + mode + ", orientation: " + orientation);
-        return PRINT_TEMPLATES.LANDSCAPE_2D; // Default fallback
+        console.warn("Template not found for mode: " + mode + ", orientation: " + orientation + " - using LANDSCAPE_2D");
+        return PRINT_TEMPLATES.LANDSCAPE_2D;
     }
     
     return template;
 }
 
-// Step 3) Helper to get all available templates
+// Step 4) Helper to get paper dimensions for orientation
+export function getPaperDimensions(paperSize, orientation) {
+    var paper = PAPER_SIZES[paperSize] || PAPER_SIZES.A4;
+    
+    if (orientation === "landscape") {
+        return {
+            width: Math.max(paper.width, paper.height),
+            height: Math.min(paper.width, paper.height)
+        };
+    } else {
+        return {
+            width: Math.min(paper.width, paper.height),
+            height: Math.max(paper.width, paper.height)
+        };
+    }
+}
+
+// Step 5) Helper to get all available templates
 export function getAvailableTemplates() {
     return Object.keys(PRINT_TEMPLATES);
+}
+
+// Step 6) Calculate absolute positions for a template zone
+export function calculateZonePositions(template, pageWidth, pageHeight) {
+    var zones = template.zones;
+    var result = {};
+    
+    // Step 6a) Calculate map zone in mm
+    var map = zones.map;
+    result.map = {
+        x: map.x * pageWidth,
+        y: map.y * pageHeight,
+        width: map.width * pageWidth,
+        height: map.height * pageHeight,
+        printSafeMargin: map.printSafeMargin
+    };
+    
+    // Step 6b) Calculate inner (print-safe) map area
+    var mapMargin = result.map.width * map.printSafeMargin;
+    result.mapInner = {
+        x: result.map.x + mapMargin,
+        y: result.map.y + mapMargin,
+        width: result.map.width - mapMargin * 2,
+        height: result.map.height - mapMargin * 2
+    };
+    
+    // Step 6c) Calculate footer zone in mm
+    var footer = zones.footer;
+    result.footer = {
+        x: footer.x * pageWidth,
+        y: footer.y * pageHeight,
+        width: footer.width * pageWidth,
+        height: footer.height * pageHeight
+    };
+    
+    // Step 6d) Calculate footer column positions
+    result.footerColumns = [];
+    var columnX = result.footer.x;
+    for (var i = 0; i < footer.columns.length; i++) {
+        var col = footer.columns[i];
+        var colWidth = footer.width * pageWidth * col.widthPercent;
+        result.footerColumns.push({
+            id: col.id,
+            x: columnX,
+            y: result.footer.y,
+            width: colWidth,
+            height: result.footer.height
+        });
+        columnX += colWidth;
+    }
+    
+    // Step 6e) Calculate title block rows (last column)
+    var titleBlockCol = result.footerColumns[result.footerColumns.length - 1];
+    result.titleBlockRows = [];
+    var rowY = titleBlockCol.y;
+    for (var j = 0; j < footer.titleBlockRows.length; j++) {
+        var row = footer.titleBlockRows[j];
+        var rowHeight = titleBlockCol.height * row.heightPercent;
+        result.titleBlockRows.push({
+            id: row.id,
+            label: row.label,
+            labels: row.labels,
+            x: titleBlockCol.x,
+            y: rowY,
+            width: titleBlockCol.width,
+            height: rowHeight
+        });
+        rowY += rowHeight;
+    }
+    
+    // Step 6f) Calculate nav/logo rows for portrait mode
+    if (footer.navLogoRows) {
+        var navLogoCol = result.footerColumns[0];
+        result.navLogoRows = [];
+        var navRowY = navLogoCol.y;
+        for (var k = 0; k < footer.navLogoRows.length; k++) {
+            var navRow = footer.navLogoRows[k];
+            var navRowHeight = navLogoCol.height * navRow.heightPercent;
+            result.navLogoRows.push({
+                id: navRow.id,
+                content: navRow.content,
+                label: navRow.label,
+                x: navLogoCol.x,
+                y: navRowY,
+                width: navLogoCol.width,
+                height: navRowHeight
+            });
+            navRowY += navRowHeight;
+        }
+    }
+    
+    return result;
 }
 

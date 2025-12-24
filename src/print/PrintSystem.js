@@ -1,1180 +1,844 @@
 ///------------------ PRINT TEMPLATE SYSTEM ------------------///
 // #region PRINT
+// This module handles print preview, boundary calculations, and PDF generation
+// GeoPDF support has been removed - standard PDF output only
 
 import { jsPDF } from "jspdf";
 import { drawDataForPrinting, printSurfaceSVG, printBoundarySVG, printDataSVG } from "./PrintRendering.js";
 import { printHeader, printFooter, printHeaderSVG, printFooterSVG } from "./PrintStats.js";
-// GeoPDF removed - too complex
 import { generateTrueVectorPDF } from "./PrintVectorPDF.js";
-import { generatePDFWithPDFMake } from "./PrintPDFMake.js";
-import { getTemplate } from "./PrintTemplates.js";
+import { getTemplate, getPaperDimensions, PAPER_SIZES } from "./PrintTemplates.js";
 import { PrintLayoutManager } from "./PrintLayoutManager.js";
 import { showPrintDialog } from "./PrintDialog.js";
 
-// Print template configuration
-export let printMode = false;
-export let printOrientation = "landscape"; // 'landscape' or 'portrait'
-export let printPaperSize = "A4"; // 'A4', 'A3', 'A2', 'A1', 'A0'
-export let isPrinting = false;
+// ============== PRINT STATE VARIABLES ==============
+export var printMode = false;
+export var printOrientation = "landscape"; // 'landscape' or 'portrait'
+export var printPaperSize = "A4"; // 'A4', 'A3', 'A2', 'A1', 'A0'
+export var isPrinting = false;
 
-// Paper size ratios (width:height)
-export const paperRatios = {
-	A4: {
-		width: 297,
-		height: 210,
-	},
-	A3: {
-		width: 420,
-		height: 297,
-	},
-	A2: {
-		width: 594,
-		height: 420,
-	},
-	A1: {
-		width: 841,
-		height: 594,
-	},
-	A0: {
-		width: 1189,
-		height: 841,
-	},
-};
+// Paper size ratios (width:height in mm - landscape dimensions)
+export var paperRatios = PAPER_SIZES;
 
-// These are now declared with 'let' in the global scope to allow resizing.
-export let printCanvas = document.createElement("canvas");
-export let printCtx = printCanvas.getContext("2d");
+// Print canvas for high-res output
+export var printCanvas = document.createElement("canvas");
+export var printCtx = printCanvas.getContext("2d");
 
-// 3D print boundary overlay
-let printBoundary3DOverlay = null;
+// 3D print boundary overlay element
+var printBoundary3DOverlay = null;
 
-// Calculate print-safe boundary on canvas
-export function getPrintBoundary(canvas) {
-	if (!printMode) return null;
+// Cached layout manager for current settings
+var cachedLayoutManager = null;
 
-	const paper = paperRatios[printPaperSize];
-	const aspectRatio = printOrientation === "landscape" ? paper.width / paper.height : paper.height / paper.width;
+// ============== LAYOUT MANAGER HELPERS ==============
 
-	// Calculate boundary that fits in canvas with margins
-	const canvasMargin = 30; // pixels
-	const availableWidth = canvas.width - canvasMargin * 2;
-	const availableHeight = canvas.height - canvasMargin * 2;
-
-	let boundaryWidth, boundaryHeight;
-
-	if (availableWidth / availableHeight > aspectRatio) {
-		// Canvas is wider than needed - fit by height
-		boundaryHeight = availableHeight;
-		boundaryWidth = boundaryHeight * aspectRatio;
-	} else {
-		// Canvas is taller than needed - fit by width
-		boundaryWidth = availableWidth;
-		boundaryHeight = boundaryWidth / aspectRatio;
-	}
-
-	return {
-		x: (canvas.width - boundaryWidth) / 2,
-		y: (canvas.height - boundaryHeight) / 2,
-		width: boundaryWidth,
-		height: boundaryHeight,
-		marginPercent: 0.02, // 2% margin inside boundary
-	};
+// Step 1) Get or create layout manager for current settings
+function getLayoutManager(mode) {
+    mode = mode || "2D";
+    
+    // Step 1a) Get paper dimensions
+    var paperDims = getPaperDimensions(printPaperSize, printOrientation);
+    
+    // Step 1b) Get template
+    var template = getTemplate(mode, printOrientation);
+    
+    // Step 1c) Create layout manager
+    return new PrintLayoutManager(template, paperDims.width, paperDims.height);
 }
 
+// ============== PRINT BOUNDARY CALCULATIONS ==============
+
+// Step 2) Calculate print-safe boundary on canvas (UNIFIED for 2D and 3D)
+// This uses the template's map zone aspect ratio for consistency
+export function getPrintBoundary(canvas) {
+    if (!printMode) return null;
+
+    // Step 2a) Get layout manager
+    var layoutMgr = getLayoutManager("2D");
+    
+    // Step 2b) Calculate preview boundary using template aspect ratio
+    var boundary = layoutMgr.calculatePreviewBoundary(canvas.width, canvas.height, 30);
+    
+    // Step 2c) Return in expected format
+    return {
+        x: boundary.outer.x,
+        y: boundary.outer.y,
+        width: boundary.outer.width,
+        height: boundary.outer.height,
+        marginPercent: boundary.marginPercent
+    };
+}
+
+// Step 3) Draw full template preview on 2D canvas
+// Shows map zone, footer zone with all cells, and labels
 export function drawPrintBoundary(ctx, canvas) {
-	if (!printMode) return;
+    if (!printMode) return;
 
-	const boundary = getPrintBoundary(canvas);
-	if (!boundary) return;
+    // Step 3a) Determine current mode
+    var dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
+    var isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
+    var mode = isIn3DMode ? "3D" : "2D";
 
-	ctx.save();
+    // Step 3b) Get layout manager
+    var layoutMgr = getLayoutManager(mode);
+    
+    // Step 3c) Get full template preview positions
+    var preview = layoutMgr.calculateFullPreviewPositions(canvas.width, canvas.height, 30);
 
-	// Only draw boundaries in preview mode, not when actually printing
-	if (!isPrinting) {
-		// Draw outer boundary (paper edge)
-		ctx.strokeStyle = "#ff0000";
-		ctx.lineWidth = 2;
-		ctx.setLineDash([10, 5]);
-		ctx.strokeRect(boundary.x, boundary.y, boundary.width, boundary.height);
+    ctx.save();
 
-		// Draw inner boundary (print-safe area)
-		const margin = boundary.width * boundary.marginPercent;
-		ctx.strokeStyle = "#0066cc";
-		ctx.lineWidth = 1;
-		ctx.setLineDash([5, 3]);
-		ctx.strokeRect(boundary.x + margin, boundary.y + margin, boundary.width - margin * 2, boundary.height - margin * 2);
-	}
+    // Only draw preview in non-printing mode
+    if (!isPrinting) {
+        // Step 3d) Draw page outline (outer boundary - red dashed)
+        ctx.strokeStyle = "#ff0000";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([10, 5]);
+        ctx.strokeRect(preview.page.x, preview.page.y, preview.page.width, preview.page.height);
 
-	ctx.restore();
+        // Step 3e) Draw map zone outline
+        ctx.strokeStyle = "#333333";
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.strokeRect(preview.map.x, preview.map.y, preview.map.width, preview.map.height);
+
+        // Step 3f) Draw map inner zone (print-safe area - blue dashed)
+        ctx.strokeStyle = "#0066cc";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 3]);
+        ctx.strokeRect(preview.mapInner.x, preview.mapInner.y, preview.mapInner.width, preview.mapInner.height);
+
+        // Step 3g) Draw "[MAP]" label in center of map zone
+        ctx.setLineDash([]);
+        ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+        ctx.font = "bold 24px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("[MAP]", preview.map.x + preview.map.width / 2, preview.map.y + preview.map.height / 2);
+
+        // Step 3h) Draw footer zone outline
+        ctx.strokeStyle = "#333333";
+        ctx.lineWidth = 1;
+        ctx.strokeRect(preview.footer.x, preview.footer.y, preview.footer.width, preview.footer.height);
+
+        // Step 3i) Draw footer column borders and labels
+        ctx.font = "10px Arial";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#000000";
+
+        for (var i = 0; i < preview.footerColumns.length; i++) {
+            var col = preview.footerColumns[i];
+            
+            // Draw column border
+            ctx.strokeStyle = "#666666";
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(col.x, col.y, col.width, col.height);
+
+            // Draw column label based on ID
+            var colLabel = "";
+            if (col.id === "navIndicator" || col.id === "navLogoColumn") {
+                colLabel = mode === "3D" ? "[XYZ GIZMO]" : "[NORTH ARROW]";
+            } else if (col.id === "connectorCount") {
+                colLabel = "CONNECTOR\nCOUNT";
+            } else if (col.id === "blastStatistics") {
+                colLabel = "BLAST\nSTATISTICS";
+            } else if (col.id === "logo") {
+                colLabel = "[LOGO]\nblastingapps.com";
+            } else if (col.id === "titleBlock") {
+                // Title block has internal rows - don't label the whole column
+                colLabel = "";
+            }
+
+            if (colLabel) {
+                // Draw multi-line label
+                var lines = colLabel.split("\n");
+                var lineHeight = 12;
+                var startY = col.y + col.height / 2 - (lines.length - 1) * lineHeight / 2;
+                for (var l = 0; l < lines.length; l++) {
+                    ctx.fillText(lines[l], col.x + col.width / 2, startY + l * lineHeight);
+                }
+            }
+        }
+
+        // Step 3j) Draw title block rows
+        for (var j = 0; j < preview.titleBlockRows.length; j++) {
+            var row = preview.titleBlockRows[j];
+            
+            // Draw row border
+            ctx.strokeStyle = "#666666";
+            ctx.lineWidth = 0.5;
+            ctx.strokeRect(row.x, row.y, row.width, row.height);
+
+            // Draw row label
+            var rowLabel = "";
+            if (row.id === "title") {
+                rowLabel = "TITLE\n[BLASTNAME]";
+            } else if (row.id === "date") {
+                rowLabel = "DATE\n[DATE/TIME]";
+            } else if (row.id === "scaleDesigner") {
+                rowLabel = "Scale: [CALC]\nDesigner: [ENTRY]";
+            }
+
+            if (rowLabel) {
+                var rLines = rowLabel.split("\n");
+                var rLineHeight = 10;
+                var rStartY = row.y + row.height / 2 - (rLines.length - 1) * rLineHeight / 2;
+                ctx.font = "9px Arial";
+                for (var rl = 0; rl < rLines.length; rl++) {
+                    ctx.fillText(rLines[rl], row.x + row.width / 2, rStartY + rl * rLineHeight);
+                }
+            }
+        }
+
+        // Step 3k) Draw nav/logo rows for portrait mode
+        if (preview.navLogoRows) {
+            for (var k = 0; k < preview.navLogoRows.length; k++) {
+                var navRow = preview.navLogoRows[k];
+                
+                // Draw row border
+                ctx.strokeStyle = "#666666";
+                ctx.lineWidth = 0.5;
+                ctx.strokeRect(navRow.x, navRow.y, navRow.width, navRow.height);
+
+                // Draw row label
+                var navLabel = "";
+                if (navRow.id === "navIndicator") {
+                    navLabel = mode === "3D" ? "[XYZ]" : "[N]";
+                } else if (navRow.id === "logo") {
+                    navLabel = "[QR]";
+                }
+
+                if (navLabel) {
+                    ctx.font = "8px Arial";
+                    ctx.fillText(navLabel, navRow.x + navRow.width / 2, navRow.y + navRow.height / 2);
+                }
+            }
+        }
+
+        // Step 3l) Draw print preview label
+        ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+        ctx.fillRect(preview.page.x, preview.page.y - 22, 200, 20);
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "12px Arial";
+        ctx.textAlign = "left";
+        ctx.fillText("Print Preview: " + printPaperSize + " " + printOrientation + " (" + mode + ")", preview.page.x + 5, preview.page.y - 8);
+    }
+
+    ctx.restore();
 }
 
 // ============== 3D PRINT BOUNDARY OVERLAY SYSTEM ==============
 
-// Step 1) Toggle 3D print preview mode
+// Step 4) Toggle 3D print preview mode
 export function toggle3DPrintPreview(enabled, paperSize, orientation, threeRenderer) {
-	if (enabled) {
-		create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer);
-	} else {
-		remove3DPrintBoundaryOverlay();
-	}
+    if (enabled) {
+        create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer);
+    } else {
+        remove3DPrintBoundaryOverlay();
+    }
 }
 
-// Step 2) Create overlay canvas showing print boundaries for 3D mode
+// Step 5) Create overlay canvas showing print boundaries for 3D mode
 function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
-	// Step 2a) Remove existing overlay if any
-	remove3DPrintBoundaryOverlay();
-	
-	// Step 2b) Get Three.js canvas
-	const threeCanvas = threeRenderer.getCanvas();
-	const rect = threeCanvas.getBoundingClientRect();
-	
-	// Step 2c) Create overlay canvas
-	const overlayCanvas = document.createElement("canvas");
-	overlayCanvas.id = "print-boundary-3d";
-	overlayCanvas.width = rect.width;
-	overlayCanvas.height = rect.height;
-	overlayCanvas.style.position = "absolute";
-	overlayCanvas.style.left = threeCanvas.offsetLeft + "px";
-	overlayCanvas.style.top = threeCanvas.offsetTop + "px";
-	overlayCanvas.style.width = rect.width + "px";
-	overlayCanvas.style.height = rect.height + "px";
-	overlayCanvas.style.pointerEvents = "none";
-	overlayCanvas.style.zIndex = "4"; // Above Three.js canvas
-	
-	// Step 2d) Get template and calculate map zone dimensions
-	const template = getTemplate("3D", orientation);
-	const paper = paperRatios[paperSize];
-	const pageWidth = orientation === "landscape" ? paper.width : paper.height;
-	const pageHeight = orientation === "landscape" ? paper.height : paper.width;
-	
-	const layoutManager = new PrintLayoutManager(template, pageWidth, pageHeight);
-	const mapZone = layoutManager.getZoneRect("map");
-	
-	// Step 2e) Calculate boundary aspect ratio from template
-	const templateAspectRatio = mapZone.width / mapZone.height;
-	
-	// Step 2f) Fit boundary to canvas maintaining template aspect ratio
-	const canvasAspect = rect.width / rect.height;
-	let boundaryWidth, boundaryHeight, boundaryX, boundaryY;
-	
-	if (canvasAspect > templateAspectRatio) {
-		// Canvas wider than paper - fit to height
-		boundaryHeight = rect.height * 0.9;
-		boundaryWidth = boundaryHeight * templateAspectRatio;
-	} else {
-		// Canvas taller than paper - fit to width
-		boundaryWidth = rect.width * 0.9;
-		boundaryHeight = boundaryWidth / templateAspectRatio;
-	}
-	
-	// Center the boundary
-	boundaryX = (rect.width - boundaryWidth) / 2;
-	boundaryY = (rect.height - boundaryHeight) / 2;
-	
-	// Step 2g) Draw boundaries
-	const ctx = overlayCanvas.getContext("2d");
-	ctx.clearRect(0, 0, rect.width, rect.height);
-	
-	// Draw outer boundary (red dashed) - page edges
-	ctx.strokeStyle = "red";
-	ctx.setLineDash([10, 5]);
-	ctx.lineWidth = 2;
-	ctx.strokeRect(boundaryX, boundaryY, boundaryWidth, boundaryHeight);
-	
-	// Draw inner boundary (blue dashed) - print-safe area
-	const innerMargin = boundaryWidth * (mapZone.printSafeMargin || 0.05);
-	ctx.strokeStyle = "rgba(0, 100, 255, 0.8)";
-	ctx.setLineDash([5, 3]);
-	ctx.lineWidth = 1.5;
-	ctx.strokeRect(
-		boundaryX + innerMargin,
-		boundaryY + innerMargin,
-		boundaryWidth - 2 * innerMargin,
-		boundaryHeight - 2 * innerMargin
-	);
-	
-	// Step 2h) Add label
-	ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-	ctx.fillRect(boundaryX, boundaryY - 25, 180, 25);
-	ctx.fillStyle = "white";
-	ctx.font = "12px Arial";
-	ctx.fillText(
-		"Print Preview: " + paperSize + " " + orientation,
-		boundaryX + 5,
-		boundaryY - 8
-	);
-	
-	// Step 2i) Insert into DOM
-	threeCanvas.parentElement.appendChild(overlayCanvas);
-	printBoundary3DOverlay = overlayCanvas;
-	
-	// Step 2j) Store boundary info for capture
-	overlayCanvas.boundaryInfo = {
-		x: boundaryX,
-		y: boundaryY,
-		width: boundaryWidth,
-		height: boundaryHeight,
-		innerMargin: innerMargin,
-		paperSize: paperSize,
-		orientation: orientation
-	};
+    // Step 5a) Remove existing overlay if any
+    remove3DPrintBoundaryOverlay();
+    
+    // Step 5b) Get Three.js canvas
+    var threeCanvas = threeRenderer.getCanvas();
+    var rect = threeCanvas.getBoundingClientRect();
+    
+    // Step 5c) Create overlay canvas
+    var overlayCanvas = document.createElement("canvas");
+    overlayCanvas.id = "print-boundary-3d";
+    overlayCanvas.width = rect.width;
+    overlayCanvas.height = rect.height;
+    overlayCanvas.style.position = "absolute";
+    overlayCanvas.style.left = threeCanvas.offsetLeft + "px";
+    overlayCanvas.style.top = threeCanvas.offsetTop + "px";
+    overlayCanvas.style.width = rect.width + "px";
+    overlayCanvas.style.height = rect.height + "px";
+    overlayCanvas.style.pointerEvents = "none";
+    overlayCanvas.style.zIndex = "4"; // Above Three.js canvas
+    
+    // Step 5d) Get layout manager
+    var layoutMgr = getLayoutManager("3D");
+    
+    // Step 5e) Calculate full template preview positions
+    var preview = layoutMgr.calculateFullPreviewPositions(rect.width, rect.height, 30);
+    
+    // Step 5f) Draw template preview
+    var ctx = overlayCanvas.getContext("2d");
+    ctx.clearRect(0, 0, rect.width, rect.height);
+    
+    // Page outline (red dashed)
+    ctx.strokeStyle = "red";
+    ctx.setLineDash([10, 5]);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(preview.page.x, preview.page.y, preview.page.width, preview.page.height);
+    
+    // Map zone outline
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.strokeRect(preview.map.x, preview.map.y, preview.map.width, preview.map.height);
+    
+    // Map inner zone (blue dashed)
+    ctx.strokeStyle = "rgba(0, 100, 255, 0.8)";
+    ctx.setLineDash([5, 3]);
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(preview.mapInner.x, preview.mapInner.y, preview.mapInner.width, preview.mapInner.height);
+    
+    // Footer zone outline
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    ctx.strokeRect(preview.footer.x, preview.footer.y, preview.footer.width, preview.footer.height);
+    
+    // Footer column borders
+    ctx.strokeStyle = "#666666";
+    ctx.lineWidth = 0.5;
+    for (var i = 0; i < preview.footerColumns.length; i++) {
+        var col = preview.footerColumns[i];
+        ctx.strokeRect(col.x, col.y, col.width, col.height);
+    }
+    
+    // Title block row borders
+    for (var j = 0; j < preview.titleBlockRows.length; j++) {
+        var row = preview.titleBlockRows[j];
+        ctx.strokeRect(row.x, row.y, row.width, row.height);
+    }
+    
+    // Nav/logo rows for portrait
+    if (preview.navLogoRows) {
+        for (var k = 0; k < preview.navLogoRows.length; k++) {
+            var navRow = preview.navLogoRows[k];
+            ctx.strokeRect(navRow.x, navRow.y, navRow.width, navRow.height);
+        }
+    }
+    
+    // Label
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(preview.page.x, preview.page.y - 22, 200, 20);
+    ctx.fillStyle = "white";
+    ctx.font = "12px Arial";
+    ctx.fillText("Print Preview: " + paperSize + " " + orientation + " (3D)", preview.page.x + 5, preview.page.y - 8);
+    
+    // Step 5g) Insert into DOM
+    threeCanvas.parentElement.appendChild(overlayCanvas);
+    printBoundary3DOverlay = overlayCanvas;
+    
+    // Step 5h) Store boundary info for capture (use mapInner for data capture)
+    overlayCanvas.boundaryInfo = {
+        x: preview.mapInner.x,
+        y: preview.mapInner.y,
+        width: preview.mapInner.width,
+        height: preview.mapInner.height,
+        innerMargin: 0, // Already the inner margin
+        paperSize: paperSize,
+        orientation: orientation
+    };
 }
 
-// Step 3) Remove 3D print boundary overlay
+// Step 6) Remove 3D print boundary overlay
 function remove3DPrintBoundaryOverlay() {
-	if (printBoundary3DOverlay && printBoundary3DOverlay.parentElement) {
-		printBoundary3DOverlay.parentElement.removeChild(printBoundary3DOverlay);
-		printBoundary3DOverlay = null;
-	}
+    if (printBoundary3DOverlay && printBoundary3DOverlay.parentElement) {
+        printBoundary3DOverlay.parentElement.removeChild(printBoundary3DOverlay);
+        printBoundary3DOverlay = null;
+    }
 }
 
-// Step 4) Get 3D print boundary info (for capture system)
+// Step 7) Get 3D print boundary info (for capture system)
 export function get3DPrintBoundary() {
-	if (!printBoundary3DOverlay) return null;
-	return printBoundary3DOverlay.boundaryInfo;
+    if (!printBoundary3DOverlay) return null;
+    return printBoundary3DOverlay.boundaryInfo;
 }
 
-// Step 5) Set paper size and update 3D boundary if active
+// Step 8) Set paper size and update boundaries
 export function setPrintPaperSize(size) {
-	printPaperSize = size;
-	
-	// Update 3D boundary if in preview mode
-	if (printMode && window.is3DMode && window.threeRenderer) {
-		toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
-	}
+    printPaperSize = size;
+    cachedLayoutManager = null; // Clear cache
+    
+    // Update 3D boundary if in preview mode
+    if (printMode && window.is3DMode && window.threeRenderer) {
+        toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
+    }
 }
 
-// Step 6) Set orientation and update 3D boundary if active
+// Step 9) Set orientation and update boundaries
 export function setPrintOrientation(orientation) {
-	printOrientation = orientation;
-	
-	// Update 3D boundary if in preview mode
-	if (printMode && window.is3DMode && window.threeRenderer) {
-		toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
-	}
+    printOrientation = orientation;
+    cachedLayoutManager = null; // Clear cache
+    
+    // Update 3D boundary if in preview mode
+    if (printMode && window.is3DMode && window.threeRenderer) {
+        toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
+    }
 }
 
-// ============== END 3D PRINT BOUNDARY OVERLAY SYSTEM ==============
+// ============== PRINT TO PDF ==============
 
+// Step 10) Main print to PDF function
 export function printToPDF(context) {
-	// Step 1) Detect current mode (2D or 3D)
-	const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
-	const isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
-	const mode = isIn3DMode ? "3D" : "2D";
-	
-	// Step 2) Enhance context with necessary print functions
-	const enhancedContext = {
-		...context,
-		getPrintBoundary: getPrintBoundary,
-		get3DPrintBoundary: get3DPrintBoundary,
-		mode: mode,
-		is3DMode: isIn3DMode
-	};
-	
-    // Step 3) Show new print dialog with user input
+    // Step 10a) Detect current mode (2D or 3D)
+    var dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
+    var isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
+    var mode = isIn3DMode ? "3D" : "2D";
+    
+    // Step 10b) Enhance context with necessary print functions
+    var enhancedContext = Object.assign({}, context, {
+        getPrintBoundary: getPrintBoundary,
+        get3DPrintBoundary: get3DPrintBoundary,
+        mode: mode,
+        is3DMode: isIn3DMode,
+        printPaperSize: printPaperSize,
+        printOrientation: printOrientation
+    });
+    
+    // Step 10c) Show print dialog with user input
     showPrintDialog(mode, enhancedContext, function(userInput) {
-        // Step 4) Paper size and orientation already set from UI, add to userInput
+        // Step 10d) Add paper settings to userInput
         userInput.paperSize = printPaperSize;
         userInput.orientation = printOrientation;
         
-        // Step 5) User confirmed - start print generation
-		if (userInput.outputType === "vector") {
-			// Use PDFMake for EXACT template matching (recommended)
-			generatePDFWithPDFMake({
-				...enhancedContext,
-				printPaperSize: printPaperSize,
-				printOrientation: printOrientation,
-				userInput: userInput,
-				mode: mode
-			}, userInput, mode);
-		} else {
-			// Use raster PDF generation (high-res PNG to PDF)
-			printCanvasHiRes({
-				...enhancedContext,
-				printPaperSize: printPaperSize,
-				printOrientation: printOrientation,
-				userInput: userInput,
-				mode: mode
-			});
-		}
-	});
+        // Step 10e) Generate PDF based on output type
+        if (userInput.outputType === "vector") {
+            // Vector PDF using jsPDF drawing commands
+            generateTrueVectorPDF(
+                Object.assign({}, enhancedContext, {
+                    printPaperSize: printPaperSize,
+                    printOrientation: printOrientation,
+                    userInput: userInput,
+                    mode: mode
+                }),
+                userInput,
+                mode
+            );
+        } else {
+            // Raster PDF (high-res PNG to PDF)
+            printCanvasHiRes(
+                Object.assign({}, enhancedContext, {
+                    printPaperSize: printPaperSize,
+                    printOrientation: printOrientation,
+                    userInput: userInput,
+                    mode: mode
+                })
+            );
+        }
+    });
 }
 
-/**
- * @deprecated Use printCanvasHiResVector() for vector PDF generation
- * This function is kept for backward compatibility and fallback scenarios
- */
-export function printCanvasHiResRaster(context) {
-	printCanvasHiRes(context);
-}
-
-/**
- * @deprecated Use printCanvasHiResVector() for vector PDF generation
- * This function is kept for backward compatibility and fallback scenarios
- */
+// Step 11) High-resolution raster PDF generation with template layout
 export function printCanvasHiRes(context) {
-	const { allBlastHoles, allKADDrawingsMap, allAvailableSurfaces, showModalMessage, FloatingDialog } = context;
+    var allBlastHoles = context.allBlastHoles;
+    var allKADDrawingsMap = context.allKADDrawingsMap;
+    var allAvailableSurfaces = context.allAvailableSurfaces;
+    var showModalMessage = context.showModalMessage;
+    var FloatingDialog = context.FloatingDialog;
+    var userInput = context.userInput || { blastName: "Untitled Blast", designer: "" };
+    var mode = context.mode || "2D";
 
-	// Step 1) Fix the condition to allow printing if there are KAD drawings/surfaces/images even without blast holes
-	if ((!allBlastHoles || allBlastHoles.length === 0) && (!allKADDrawingsMap || allKADDrawingsMap.size === 0) && (!allAvailableSurfaces || allAvailableSurfaces.length === 0)) {
-		showModalMessage("No Data", "No data available for printing (no blast holes, KAD drawings, surfaces, or images)", "warning");
-		return;
-	}
+    // Step 11a) Check for data
+    if ((!allBlastHoles || allBlastHoles.length === 0) && 
+        (!allKADDrawingsMap || allKADDrawingsMap.size === 0) && 
+        (!allAvailableSurfaces || allAvailableSurfaces.length === 0)) {
+        showModalMessage("No Data", "No data available for printing", "warning");
+        return;
+    }
 
-	// Step 1) Create progress content with optional progress bar
-	const progressContent = document.createElement("div");
-	progressContent.style.textAlign = "center";
-	progressContent.innerHTML = `
-		<p>Generating High-Resolution PDF</p>
-		<p>Please wait, this may take a moment...</p>
-		<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">
-			<div id="pdfProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>
-		</div>
-		<p id="pdfProgressText">Starting...</p>
-	`;
+    // Step 11b) Create progress dialog
+    var progressContent = document.createElement("div");
+    progressContent.style.textAlign = "center";
+    progressContent.innerHTML = '<p>Generating High-Resolution PDF</p>' +
+        '<p>Please wait, this may take a moment...</p>' +
+        '<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">' +
+        '<div id="pdfProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>' +
+        '</div>' +
+        '<p id="pdfProgressText">Starting...</p>';
 
-	// Step 2) Show FloatingDialog with progress indicator
-	const progressDialog = new FloatingDialog({
-		title: "PDF Generation",
-		content: progressContent,
-		layoutType: "standard",
-		width: 350,
-		height: 200,
-		showConfirm: false,
-		showCancel: false,
-		allowOutsideClick: false,
-	});
+    var progressDialog = new FloatingDialog({
+        title: "PDF Generation",
+        content: progressContent,
+        layoutType: "standard",
+        width: 350,
+        height: 200,
+        showConfirm: false,
+        showCancel: false,
+        allowOutsideClick: false
+    });
 
-	progressDialog.show();
+    progressDialog.show();
 
-	// Step 1: Get the bar and text elements
-	const bar = document.getElementById("pdfProgressBar");
-	const text = document.getElementById("pdfProgressText");
-	// Use a short delay to ensure the browser has time to process before we
-	// try to convert the canvas to an image. This avoids race conditions.
-	setTimeout(() => {
-		try {
-			const dpi = 300;
-			const mmToPx = dpi / 25.4;
+    var bar = document.getElementById("pdfProgressBar");
+    var text = document.getElementById("pdfProgressText");
 
-			const paperSizes = {
-				A4: {
-					width: 210,
-					height: 297,
-				},
-				A3: {
-					width: 297,
-					height: 420,
-				},
-				A2: {
-					width: 420,
-					height: 594,
-				},
-				A1: {
-					width: 594,
-					height: 841,
-				},
-				A0: {
-					width: 841,
-					height: 1189,
-				},
-			};
+    setTimeout(function() {
+        try {
+            var dpi = 300;
+            var mmToPx = dpi / 25.4;
 
-			const paperSize = paperSizes[printPaperSize] || paperSizes["A4"];
-			const isLandscape = printOrientation === "landscape";
+            // Step 11c) Get paper dimensions
+            var paperDims = getPaperDimensions(printPaperSize, printOrientation);
+            var pageWidth = paperDims.width;
+            var pageHeight = paperDims.height;
 
-			const pageWidth = isLandscape ? paperSize.height : paperSize.width;
-			const pageHeight = isLandscape ? paperSize.width : paperSize.height;
+            // Step 11d) Safety check for maximum canvas size
+            var MAX_CANVAS_SIDE = 16384;
+            if (pageWidth * mmToPx > MAX_CANVAS_SIDE || pageHeight * mmToPx > MAX_CANVAS_SIDE) {
+                throw new Error("The selected paper size (" + printPaperSize + ") creates an image too large for the browser.");
+            }
 
-			// Safety check for maximum canvas size to prevent browser errors
-			const MAX_CANVAS_SIDE = 16384; // Most browsers support up to 16384px
-			if (pageWidth * mmToPx > MAX_CANVAS_SIDE || pageHeight * mmToPx > MAX_CANVAS_SIDE) {
-				throw new Error("The selected paper size (" + printPaperSize + ") creates an image too large for the browser to handle.");
-			}
+            // Step 11e) Resize print canvas
+            printCanvas.width = pageWidth * mmToPx;
+            printCanvas.height = pageHeight * mmToPx;
+            printCtx = printCanvas.getContext("2d");
 
-			// Resize the canvas and get a new context (resizing wipes the old one)
-			printCanvas.width = pageWidth * mmToPx;
-			printCanvas.height = pageHeight * mmToPx;
-			printCtx = printCanvas.getContext("2d");
+            printCtx.imageSmoothingEnabled = true;
+            printCtx.imageSmoothingQuality = "high";
+            printCtx.fillStyle = "white";
+            printCtx.fillRect(0, 0, printCanvas.width, printCanvas.height);
 
-			printCtx.imageSmoothingEnabled = true;
-			printCtx.imageSmoothingQuality = "high";
-			printCtx.fillStyle = "white";
-			printCtx.fillRect(0, 0, printCanvas.width, printCanvas.height);
+            // Step 11f) Get layout manager for template positions
+            var layoutMgr = getLayoutManager(mode);
+            var mapZone = layoutMgr.getMapZone();
+            var mapInnerZone = layoutMgr.getMapInnerZone();
+            var footerZone = layoutMgr.getFooterZone();
+            var footerColumns = layoutMgr.getFooterColumns();
+            var titleBlockRows = layoutMgr.getTitleBlockRows();
+            var navLogoRows = layoutMgr.getNavLogoRows();
 
-			const margin = pageWidth * mmToPx * 0.02;
-			const headerHeight = 200; // Approximate header height
-			const footerHeight = 20; // Approximate footer height
+            // Step 11g) Convert mm to pixels for print area
+            var printArea = {
+                x: mapInnerZone.x * mmToPx,
+                y: mapInnerZone.y * mmToPx,
+                width: mapInnerZone.width * mmToPx,
+                height: mapInnerZone.height * mmToPx
+            };
 
-			// Calculate the actual print area excluding header and footer
-			const printArea = {
-				x: margin,
-				y: margin + headerHeight,
-				width: printCanvas.width - 2 * margin,
-				height: printCanvas.height - 2 * margin - headerHeight - footerHeight,
-			};
+            bar.style.width = "20%";
+            text.textContent = "Drawing template...";
 
-			setTimeout(() => {
-				try {
-					// Step 1: Drawing header
-					printHeader(printCtx, margin, margin, printCanvas.width - 2 * margin, headerHeight, context);
-					bar.style.width = "20%";
-					text.textContent = "Drawing header...";
+            setTimeout(function() {
+                try {
+                    // Step 11h) Draw map zone border
+                    printCtx.strokeStyle = "#000000";
+                    printCtx.lineWidth = 2;
+                    printCtx.strokeRect(mapZone.x * mmToPx, mapZone.y * mmToPx, mapZone.width * mmToPx, mapZone.height * mmToPx);
+                    
+                    // Step 11i) Draw footer zone border
+                    printCtx.strokeRect(footerZone.x * mmToPx, footerZone.y * mmToPx, footerZone.width * mmToPx, footerZone.height * mmToPx);
+                    
+                    // Step 11j) Draw footer column borders
+                    printCtx.lineWidth = 1;
+                    for (var c = 0; c < footerColumns.length; c++) {
+                        var col = footerColumns[c];
+                        printCtx.strokeRect(col.x * mmToPx, col.y * mmToPx, col.width * mmToPx, col.height * mmToPx);
+                    }
+                    
+                    // Step 11k) Draw title block row borders
+                    for (var r = 0; r < titleBlockRows.length; r++) {
+                        var row = titleBlockRows[r];
+                        printCtx.strokeRect(row.x * mmToPx, row.y * mmToPx, row.width * mmToPx, row.height * mmToPx);
+                    }
+                    
+                    // Step 11l) Draw nav/logo row borders (portrait mode)
+                    if (navLogoRows) {
+                        for (var n = 0; n < navLogoRows.length; n++) {
+                            var navRow = navLogoRows[n];
+                            printCtx.strokeRect(navRow.x * mmToPx, navRow.y * mmToPx, navRow.width * mmToPx, navRow.height * mmToPx);
+                        }
+                    }
+                    
+                    // Step 11m) Draw footer text labels
+                    printCtx.fillStyle = "#000000";
+                    printCtx.textAlign = "center";
+                    printCtx.textBaseline = "middle";
+                    
+                    // Column labels
+                    for (var cl = 0; cl < footerColumns.length; cl++) {
+                        var fcol = footerColumns[cl];
+                        var label = "";
+                        if (fcol.id === "navIndicator" || fcol.id === "navLogoColumn") {
+                            label = mode === "3D" ? "XYZ" : "N";
+                        } else if (fcol.id === "connectorCount") {
+                            label = "CONNECTOR COUNT";
+                            printCtx.font = "bold " + (12 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText(label, (fcol.x + fcol.width / 2) * mmToPx, (fcol.y + 5) * mmToPx);
+                            continue;
+                        } else if (fcol.id === "blastStatistics") {
+                            label = "BLAST STATISTICS";
+                            printCtx.font = "bold " + (12 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText(label, (fcol.x + fcol.width / 2) * mmToPx, (fcol.y + 5) * mmToPx);
+                            continue;
+                        } else if (fcol.id === "logo") {
+                            label = "blastingapps.com";
+                            printCtx.font = (10 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText(label, (fcol.x + fcol.width / 2) * mmToPx, (fcol.y + fcol.height - 3) * mmToPx);
+                            continue;
+                        }
+                        if (label) {
+                            printCtx.font = "bold " + (14 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText(label, (fcol.x + fcol.width / 2) * mmToPx, (fcol.y + fcol.height / 2) * mmToPx);
+                        }
+                    }
+                    
+                    // Title block rows
+                    for (var tr = 0; tr < titleBlockRows.length; tr++) {
+                        var trow = titleBlockRows[tr];
+                        printCtx.font = "bold " + (12 * mmToPx / 3) + "px Arial";
+                        printCtx.textAlign = "left";
+                        
+                        if (trow.id === "title") {
+                            printCtx.fillText("TITLE", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.3) * mmToPx);
+                            var blastNames = [];
+                            if (allBlastHoles) {
+                                allBlastHoles.forEach(function(hole) {
+                                    if (hole.entityName && blastNames.indexOf(hole.entityName) === -1) {
+                                        blastNames.push(hole.entityName);
+                                    }
+                                });
+                            }
+                            var displayName = blastNames.join(", ") || userInput.blastName || "Untitled";
+                            printCtx.font = (11 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText("[" + displayName + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
+                        } else if (trow.id === "date") {
+                            printCtx.fillText("DATE", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.3) * mmToPx);
+                            var now = new Date();
+                            var dateStr = now.toLocaleDateString() + " " + now.toLocaleTimeString();
+                            printCtx.font = (10 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText("[" + dateStr + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
+                        } else if (trow.id === "scaleDesigner") {
+                            printCtx.font = (10 * mmToPx / 3) + "px Arial";
+                            printCtx.fillText("Scale: [1:1000]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.3) * mmToPx);
+                            printCtx.fillText("Designer: [" + (userInput.designer || "") + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
+                        }
+                    }
+                    
+                    bar.style.width = "40%";
+                    text.textContent = "Drawing data...";
 
-					setTimeout(() => {
-						// Step 2: Drawing footer
-						printFooter(printCtx, margin, printCanvas.height - margin, printCanvas.width - 2 * margin, footerHeight, context);
-						bar.style.width = "40%";
-						text.textContent = "Drawing footer...";
+                    setTimeout(function() {
+                        // Step 11n) Draw data in print area
+                        drawDataForPrinting(printCtx, printArea, context);
+                        
+                        bar.style.width = "80%";
+                        text.textContent = "Generating image...";
 
-						setTimeout(() => {
-							// Step 3: Drawing data - use the calculated print area that excludes header/footer
-							drawDataForPrinting(printCtx, printArea, context);
-							bar.style.width = "60%";
-							text.textContent = "Drawing data...";
+                        setTimeout(function() {
+                            // Step 11o) Generate PDF
+                            var imgData = printCanvas.toDataURL("image/png", 1.0);
 
-							setTimeout(() => {
-								// Step 4: Generating image
-								const imgData = printCanvas.toDataURL("image/png", 1.0);
-								bar.style.width = "80%";
-								text.textContent = "Generating image...";
+                            if (!imgData || imgData.length < 100 || imgData === "data:,") {
+                                throw new Error("Failed to generate canvas image.");
+                            }
 
-								if (!imgData || imgData.length < 100 || imgData === "data:,") {
-									throw new Error("The browser failed to generate the canvas image. This can happen if the image is too large or memory is low.");
-								}
+                            var orientation = printOrientation === "landscape" ? "l" : "p";
+                            var pdf = new jsPDF(orientation, "mm", printPaperSize.toLowerCase());
+                            pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
+                            pdf.save("kirra-blast-raster-" + new Date().toISOString().split("T")[0] + ".pdf");
+                            
+                            bar.style.width = "100%";
+                            text.textContent = "Complete!";
 
-								setTimeout(() => {
-									// Step 5: Saving PDF
-									const orientation = isLandscape ? "l" : "p";
-									const pdf = new jsPDF(orientation, "mm", printPaperSize.toLowerCase());
-									pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
-									pdf.save("kirra-2d-PDF" + new Date().toISOString().split("T")[0] + ".pdf");
-									bar.style.width = "100%";
-									text.textContent = "Saving PDF...";
-
-									setTimeout(() => {
-										progressDialog.close();
-									}, 300);
-								}, 100);
-							}, 100);
-						}, 100);
-					}, 100);
-				} catch (error) {
-					progressDialog.close();
-					console.error("PDF Generation Error:", error);
-					showModalMessage("PDF Creation Failed", "Could not generate the PDF. <br><small>Error: " + error.message + "</small>", "error");
-				}
-			}, 250);
-		} catch (error) {
-			progressDialog.close();
-			console.error("PDF Generation Error:", error);
-		}
-	}, 250); // 250ms delay
+                            setTimeout(function() {
+                                progressDialog.close();
+                                showModalMessage("Success", "Raster PDF created successfully!", "success");
+                            }, 300);
+                        }, 100);
+                    }, 100);
+                } catch (error) {
+                    progressDialog.close();
+                    console.error("PDF Generation Error:", error);
+                    showModalMessage("PDF Creation Failed", "Error: " + error.message, "error");
+                }
+            }, 250);
+        } catch (error) {
+            progressDialog.close();
+            console.error("PDF Generation Error:", error);
+            showModalMessage("PDF Creation Failed", "Error: " + error.message, "error");
+        }
+    }, 250);
 }
 
+// Step 12) Deprecated function kept for backward compatibility
+export function printCanvasHiResRaster(context) {
+    printCanvasHiRes(context);
+}
+
+// ============== UI EVENT HANDLERS ==============
+
+// Step 13) Change paper size
 export function changePaperSize(drawDataCallback) {
-	const paperSizeSelect = document.getElementById("paperSize");
-	if (paperSizeSelect) {
-		printPaperSize = paperSizeSelect.value;
-		if (printMode) {
-			drawDataCallback(); // Redraw with new paper size
-		}
-	}
+    var paperSizeSelect = document.getElementById("paperSize");
+    if (paperSizeSelect) {
+        printPaperSize = paperSizeSelect.value;
+        cachedLayoutManager = null;
+        if (printMode && drawDataCallback) {
+            drawDataCallback(); // Redraw with new paper size
+        }
+    }
 }
 
+// Step 14) Change orientation
 export function changeOrientation(drawDataCallback) {
-	const orientationSelect = document.getElementById("orientation");
-	if (orientationSelect) {
-		printOrientation = orientationSelect.value;
-		if (printMode) {
-			drawDataCallback(); // Redraw with new orientation
-		}
-	}
+    var orientationSelect = document.getElementById("orientation");
+    if (orientationSelect) {
+        printOrientation = orientationSelect.value;
+        cachedLayoutManager = null;
+        if (printMode && drawDataCallback) {
+            drawDataCallback(); // Redraw with new orientation
+        }
+    }
 }
 
+// Step 15) Toggle print preview mode
 export function togglePrintMode(updateStatusMessageCallback, drawDataCallback) {
-	printMode = !printMode;
+    printMode = !printMode;
 
-	// Sync the checkbox state
-	const toggle = document.getElementById("addPrintPreviewToggle");
-	if (toggle) toggle.checked = printMode;
+    // Sync the checkbox state
+    var toggle = document.getElementById("addPrintPreviewToggle");
+    if (toggle) toggle.checked = printMode;
 
-	// Step 1) Detect current mode (2D or 3D)
-	const dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
-	const isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
-	
-	if (printMode) {
-		// Entering print preview mode
-		if (isIn3DMode) {
-			// Step 1a) 3D mode print preview
-			if (window.threeRenderer) {
-				toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
-				if (updateStatusMessageCallback) {
-					updateStatusMessageCallback("3D Print Preview Mode ON - Boundary shows what will be printed");
-				}
-			}
-		} else {
-			// Step 1b) 2D mode print preview (existing behavior)
-			if (updateStatusMessageCallback) {
-				updateStatusMessageCallback("Print Preview Mode ON - Position elements within the print boundary");
-			}
-			drawDataCallback(); // Redraw with boundary
-		}
-	} else {
-		// Exiting print preview mode
-		if (isIn3DMode) {
-			// Step 1c) Remove 3D overlay
-			remove3DPrintBoundaryOverlay();
-			if (updateStatusMessageCallback) {
-				updateStatusMessageCallback("3D Print Preview Mode OFF");
-			}
-		} else {
-			// Step 1d) Remove 2D boundary
-			if (updateStatusMessageCallback) {
-				updateStatusMessageCallback("Print Preview Mode OFF");
-			}
-			drawDataCallback(); // Redraw without boundary
-		}
-	}
+    // Detect current mode
+    var dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
+    var isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
+
+    if (printMode) {
+        // Entering print preview mode
+        if (isIn3DMode) {
+            // 3D mode - show overlay
+            if (window.threeRenderer) {
+                toggle3DPrintPreview(true, printPaperSize, printOrientation, window.threeRenderer);
+                if (updateStatusMessageCallback) {
+                    updateStatusMessageCallback("3D Print Preview Mode ON - Template shows what will be printed");
+                }
+            }
+        } else {
+            // 2D mode - redraw with template preview
+            if (updateStatusMessageCallback) {
+                updateStatusMessageCallback("Print Preview Mode ON - Position elements within the map zone");
+            }
+            if (drawDataCallback) {
+                drawDataCallback();
+            }
+        }
+    } else {
+        // Exiting print preview mode
+        if (isIn3DMode) {
+            remove3DPrintBoundaryOverlay();
+            if (updateStatusMessageCallback) {
+                updateStatusMessageCallback("3D Print Preview Mode OFF");
+            }
+        } else {
+            if (updateStatusMessageCallback) {
+                updateStatusMessageCallback("Print Preview Mode OFF");
+            }
+            if (drawDataCallback) {
+                drawDataCallback();
+            }
+        }
+    }
 }
 
-/**
- * Vector PDF generation function using SVG
- * Generates vector-based PDFs with georeferencing support
- */
-export function printCanvasHiResVector(context) {
-	const { allBlastHoles, allKADDrawingsMap, allAvailableSurfaces, loadedSurfaces, loadedImages, showModalMessage, FloatingDialog } = context;
-
-	// Step 1) Check for data - check all possible data sources
-	const hasBlastHoles = allBlastHoles && allBlastHoles.length > 0;
-	const hasKAD = allKADDrawingsMap && allKADDrawingsMap.size > 0;
-	const hasSurfaces = (loadedSurfaces && loadedSurfaces.size > 0) || (allAvailableSurfaces && allAvailableSurfaces.length > 0);
-	const hasImages = loadedImages && loadedImages.size > 0;
-
-	if (!hasBlastHoles && !hasKAD && !hasSurfaces && !hasImages) {
-		showModalMessage("No Data", "No data available for printing (no blast holes, KAD drawings, surfaces, or images)", "warning");
-		return;
-	}
-
-	// Step 2) Create progress dialog
-	const progressContent = document.createElement("div");
-	progressContent.style.textAlign = "center";
-	progressContent.innerHTML = `
-		<p>Generating Vector PDF</p>
-		<p>Please wait, this may take a moment...</p>
-		<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">
-			<div id="pdfProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>
-		</div>
-		<p id="pdfProgressText">Starting...</p>
-	`;
-
-	const progressDialog = new FloatingDialog({
-		title: "PDF Generation",
-		content: progressContent,
-		layoutType: "standard",
-		width: 350,
-		height: 200,
-		showConfirm: false,
-		showCancel: false,
-		allowOutsideClick: false,
-	});
-
-	progressDialog.show();
-
-	const bar = document.getElementById("pdfProgressBar");
-	const text = document.getElementById("pdfProgressText");
-
-	setTimeout(() => {
-		let originalWorldToCanvas = undefined; // Declare and initialize outside try block for error handling
-		try {
-			const dpi = 300;
-			const mmToPx = dpi / 25.4;
-
-			const paperSizes = {
-				A4: { width: 210, height: 297 },
-				A3: { width: 297, height: 420 },
-				A2: { width: 420, height: 594 },
-				A1: { width: 594, height: 841 },
-				A0: { width: 841, height: 1189 },
-			};
-
-			const paperSize = paperSizes[printPaperSize] || paperSizes["A4"];
-			const isLandscape = printOrientation === "landscape";
-			const pageWidth = isLandscape ? paperSize.height : paperSize.width;
-			const pageHeight = isLandscape ? paperSize.width : paperSize.height;
-
-			// Create PDF
-			const orientation = isLandscape ? "l" : "p";
-			const pdf = new jsPDF(orientation, "mm", printPaperSize.toLowerCase());
-
-			bar.style.width = "20%";
-			text.textContent = "Calculating coordinates...";
-
-			// Step 3) Calculate coordinate bounds for georeferencing
-			let utmMinX = Infinity,
-				utmMaxX = -Infinity;
-			let utmMinY = Infinity,
-				utmMaxY = -Infinity;
-
-			const visibleBlastHoles = allBlastHoles ? allBlastHoles.filter((hole) => hole.visible !== false) : [];
-			if (visibleBlastHoles.length > 0) {
-				visibleBlastHoles.forEach((hole) => {
-					if (hole.startXLocation < utmMinX) utmMinX = hole.startXLocation;
-					if (hole.startXLocation > utmMaxX) utmMaxX = hole.startXLocation;
-					if (hole.startYLocation < utmMinY) utmMinY = hole.startYLocation;
-					if (hole.startYLocation > utmMaxY) utmMaxY = hole.startYLocation;
-				});
-			}
-
-			// Also check KAD drawings and surfaces for bounds if no holes
-			if (visibleBlastHoles.length === 0) {
-				if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-					for (const [name, entity] of allKADDrawingsMap.entries()) {
-						if (entity.visible === false) continue;
-						if (entity.data && entity.data.length > 0) {
-							entity.data.forEach((point) => {
-								const x = point.pointXLocation || point.x;
-								const y = point.pointYLocation || point.y;
-								if (x !== undefined && x < utmMinX) utmMinX = x;
-								if (x !== undefined && x > utmMaxX) utmMaxX = x;
-								if (y !== undefined && y < utmMinY) utmMinY = y;
-								if (y !== undefined && y > utmMaxY) utmMaxY = y;
-							});
-						}
-					}
-				}
-			}
-
-			// Detect UTM zone
-			const utmInfo = GeoPDF.detectUTMZone(utmMinX, utmMaxX, utmMinY, utmMaxY);
-
-			bar.style.width = "40%";
-			text.textContent = "Generating SVG layers...";
-
-			// Step 4) Calculate print area and coordinate transformation (same as raster version)
-			const margin = pageWidth * mmToPx * 0.02;
-			const headerHeight = 200;
-			const footerHeight = 20;
-			const printArea = {
-				x: margin,
-				y: margin + headerHeight,
-				width: pageWidth * mmToPx - 2 * margin,
-				height: pageHeight * mmToPx - 2 * margin - headerHeight - footerHeight,
-			};
-
-			// Use the same coordinate transformation logic as drawDataForPrinting
-			const canvas = context.canvas;
-			const screenBoundary = getPrintBoundary(canvas);
-			if (!screenBoundary) {
-				throw new Error("Print Preview Mode must be active to generate a WYSIWYG print.");
-			}
-
-			const innerMargin = screenBoundary.width * screenBoundary.marginPercent;
-			const innerBoundary = {
-				x: screenBoundary.x + innerMargin,
-				y: screenBoundary.y + innerMargin,
-				width: screenBoundary.width - innerMargin * 2,
-				height: screenBoundary.height - innerMargin * 2,
-			};
-
-			// Convert boundary to world coordinates
-			const world_x1 = (innerBoundary.x - canvas.width / 2) / context.currentScale + context.centroidX;
-			const world_y1 = -(innerBoundary.y + innerBoundary.height - canvas.height / 2) / context.currentScale + context.centroidY;
-			const world_x2 = (innerBoundary.x + innerBoundary.width - canvas.width / 2) / context.currentScale + context.centroidX;
-			const world_y2 = -(innerBoundary.y - canvas.height / 2) / context.currentScale + context.centroidY;
-
-			const minX = Math.min(world_x1, world_x2);
-			const maxX = Math.max(world_x1, world_x2);
-			const minY = Math.min(world_y1, world_y2);
-			const maxY = Math.max(world_y1, world_y2);
-
-			// Calculate scale to fit world view into print area
-			const dataWidth = maxX - minX;
-			const dataHeight = maxY - minY;
-			if (dataWidth <= 0 || dataHeight <= 0) {
-				throw new Error("Invalid data bounds for printing");
-			}
-
-			const scaleX = printArea.width / dataWidth;
-			const scaleY = printArea.height / dataHeight;
-			const printScale = Math.min(scaleX, scaleY);
-
-			const scaledWidth = dataWidth * printScale;
-			const scaledHeight = dataHeight * printScale;
-			const offsetX = printArea.x + (printArea.width - scaledWidth) / 2;
-			const offsetY = printArea.y + (printArea.height - scaledHeight) / 2;
-
-			const printCentroidX = minX + dataWidth / 2;
-			const printCentroidY = minY + dataHeight / 2;
-
-			// Create world-to-print coordinate transformation function
-			function worldToPrint(worldX, worldY) {
-				const centerX = offsetX + scaledWidth / 2;
-				const centerY = offsetY + scaledHeight / 2;
-				const x = (worldX - printCentroidX) * printScale + centerX;
-				const y = -(worldY - printCentroidY) * printScale + centerY;
-				return [x, y];
-			}
-
-			// Create SVG context with coordinate transformation
-			// IMPORTANT: Set window.worldToCanvas so printDataSVG functions can use it
-			if (typeof window !== "undefined") {
-				originalWorldToCanvas = window.worldToCanvas;
-				window.worldToCanvas = worldToPrint;
-			}
-
-			const svgCanvasWidth = pageWidth * mmToPx;
-			const svgCanvasHeight = pageHeight * mmToPx;
-			const svgContext = {
-				...context,
-				worldToCanvas: worldToPrint,
-				currentScale: printScale,
-				centroidX: printCentroidX,
-				centroidY: printCentroidY,
-				canvasWidth: svgCanvasWidth,
-				canvasHeight: svgCanvasHeight,
-				canvas: { width: svgCanvasWidth, height: svgCanvasHeight },
-				// Ensure data is explicitly passed
-				allBlastHoles: context.allBlastHoles,
-				allKADDrawingsMap: context.allKADDrawingsMap,
-				loadedSurfaces: context.loadedSurfaces,
-				loadedImages: context.loadedImages,
-				// Set imageVisible and surfaceVisible to false so printDataSVG doesn't try to render them
-				// (we'll add images as a separate raster layer)
-				imageVisible: false,
-				surfaceVisible: false,
-			};
-
-			// Debug: Log context data before rendering
-			console.log("SVG Context Check:");
-			console.log("  allBlastHoles:", svgContext.allBlastHoles ? svgContext.allBlastHoles.length : 0);
-			console.log("  allKADDrawingsMap:", svgContext.allKADDrawingsMap ? svgContext.allKADDrawingsMap.size : 0);
-			console.log("  loadedSurfaces:", svgContext.loadedSurfaces ? svgContext.loadedSurfaces.size : 0);
-			console.log("  loadedImages:", svgContext.loadedImages ? svgContext.loadedImages.size : 0);
-
-			bar.style.width = "50%";
-			text.textContent = "Rendering background images...";
-
-			// Step 5a) Create a canvas for rendering images and SVG
-			const renderCanvas = document.createElement("canvas");
-			renderCanvas.width = pageWidth * mmToPx;
-			renderCanvas.height = pageHeight * mmToPx;
-			const renderCtx = renderCanvas.getContext("2d");
-
-			// Fill white background
-			renderCtx.fillStyle = "white";
-			renderCtx.fillRect(0, 0, renderCanvas.width, renderCanvas.height);
-
-			// Render background images (as raster layer)
-			if (context.loadedImages && context.loadedImages.size > 0) {
-				context.loadedImages.forEach((image) => {
-					if (image.visible === false || !image.canvas) return;
-					const bbox = image.bbox;
-					if (bbox && bbox.length >= 4) {
-						const [x1, y1] = worldToPrint(bbox[0], bbox[3]);
-						const [x2, y2] = worldToPrint(bbox[2], bbox[1]);
-						renderCtx.save();
-						renderCtx.globalAlpha = image.transparency !== undefined && image.transparency !== null ? image.transparency : 1.0;
-						const width = Math.abs(x2 - x1);
-						const height = Math.abs(y2 - y1);
-						renderCtx.drawImage(image.canvas, Math.min(x1, x2), Math.min(y1, y2), width, height);
-						renderCtx.restore();
-					}
-				});
-			}
-
-			// Render QR code (as raster image) - load and draw it, then generate SVG
-			const qrCodeImg = new Image();
-			qrCodeImg.onload = function () {
-				const qrX = margin;
-				const qrY = margin + 35;
-				const qrSize = 110;
-				renderCtx.drawImage(qrCodeImg, qrX, qrY, qrSize, qrSize);
-
-				bar.style.width = "55%";
-				text.textContent = "Generating SVG layers...";
-
-				// Step 5b) Generate SVG content using printDataSVG function
-				let svgContent = "";
-
-				// Header SVG
-				const headerSvg = printHeaderSVG(margin, margin, pageWidth * mmToPx - 2 * margin, headerHeight, svgContext);
-				svgContent += headerSvg;
-
-				// Generate SVG for all data layers (surfaces, KAD, holes)
-				const dataSvg = printDataSVG(context.allBlastHoles, context.selectedHole, svgContext);
-				svgContent += dataSvg;
-
-				// Footer SVG
-				const footerSvg = printFooterSVG(margin, pageHeight * mmToPx - margin, pageWidth * mmToPx - 2 * margin, footerHeight, svgContext);
-				svgContent += footerSvg;
-
-				// Debug: Log SVG content length and actual content
-				console.log("SVG Content Length:", svgContent.length);
-				console.log("Header SVG Length:", headerSvg.length);
-				console.log("Data SVG Length:", dataSvg.length);
-				console.log("Footer SVG Length:", footerSvg.length);
-				console.log("Header SVG Preview:", headerSvg.substring(0, 500));
-				console.log("Data SVG Preview:", dataSvg.substring(0, 500));
-				console.log("Footer SVG:", footerSvg);
-				console.log("Visible Holes Count:", context.allBlastHoles ? context.allBlastHoles.filter((h) => h.visible !== false).length : 0);
-				console.log("KAD Map Size:", context.allKADDrawingsMap ? context.allKADDrawingsMap.size : 0);
-				console.log("Loaded Surfaces Size:", context.loadedSurfaces ? context.loadedSurfaces.size : 0);
-
-				bar.style.width = "60%";
-				text.textContent = "Converting SVG to image...";
-
-				// Step 5c) Convert SVG to image and composite onto render canvas
-				const svgWidth = pageWidth * mmToPx;
-				const svgHeight = pageHeight * mmToPx;
-				const svgString = '<svg xmlns="http://www.w3.org/2000/svg" width="' + svgWidth + '" height="' + svgHeight + '">' + svgContent + "</svg>";
-
-				// Debug: Log the full SVG string to console for inspection
-				console.log("Full SVG String (first 2000 chars):", svgString.substring(0, 2000));
-				console.log("SVG String Length:", svgString.length);
-
-				// Also save SVG to a downloadable file for debugging
-				const svgBlobForDownload = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-				const svgDownloadUrl = URL.createObjectURL(svgBlobForDownload);
-				const downloadLink = document.createElement("a");
-				downloadLink.href = svgDownloadUrl;
-				downloadLink.download = "debug-svg-output.svg";
-				downloadLink.textContent = "Download SVG";
-				downloadLink.style.display = "none";
-				document.body.appendChild(downloadLink);
-				downloadLink.click();
-				setTimeout(() => {
-					document.body.removeChild(downloadLink);
-					URL.revokeObjectURL(svgDownloadUrl);
-				}, 1000);
-
-				const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-				const svgUrl = URL.createObjectURL(svgBlob);
-
-				// Create a temporary image to load the SVG
-				const svgImage = new Image();
-				svgImage.onload = function () {
-					try {
-						// Draw the SVG image onto the render canvas (on top of background images)
-						renderCtx.drawImage(svgImage, 0, 0, renderCanvas.width, renderCanvas.height);
-
-						// Clean up
-						URL.revokeObjectURL(svgUrl);
-						if (typeof window !== "undefined" && typeof originalWorldToCanvas !== "undefined") {
-							window.worldToCanvas = originalWorldToCanvas; // Restore original
-						}
-
-						bar.style.width = "70%";
-						text.textContent = "Adding image to PDF...";
-
-						// Convert the composite canvas to image data URL
-						const canvasDataUrl = renderCanvas.toDataURL("image/png", 1.0);
-
-						// Add the composite image to PDF
-						pdf.addImage(canvasDataUrl, "PNG", 0, 0, pageWidth, pageHeight);
-
-						bar.style.width = "80%";
-						text.textContent = "Adding georeferencing...";
-
-						// Step 6) Add georeferencing metadata
-						if (utmMinX !== Infinity && utmMaxX !== -Infinity) {
-							const pdfBounds = {
-								minX: 0,
-								minY: 0,
-								maxX: pageWidth,
-								maxY: pageHeight,
-							};
-							const utmBounds = {
-								minX: utmMinX,
-								minY: utmMinY,
-								maxX: utmMaxX,
-								maxY: utmMaxY,
-							};
-							const transform = GeoPDF.calculateGeoreferencingTransform(pdfBounds.minX, pdfBounds.minY, pdfBounds.maxX, pdfBounds.maxY, utmBounds.minX, utmBounds.minY, utmBounds.maxX, utmBounds.maxY);
-
-							const geoMetadata = GeoPDF.generateGeoPDFMetadata({
-								zone: utmInfo.zone,
-								hemisphere: utmInfo.hemisphere,
-								bounds: utmBounds,
-								transform: transform,
-							});
-
-							// Attempt to inject GeoPDF metadata
-							// Note: jsPDF may not expose internal PDF object structure
-							// This may require custom PDF object manipulation
-							try {
-								// Set basic metadata
-								pdf.setProperties({
-									title: "Kirra Blast Design",
-									subject: "Georeferenced Blast Design PDF",
-									author: "Kirra Blast Design Software",
-									keywords: "blast design, georeferenced, UTM " + utmInfo.zone + utmInfo.hemisphere,
-									creator: "Kirra",
-								});
-
-								// TODO: Inject GeoPDF metadata objects into PDF structure
-								// This may require accessing pdf.internal.pdfObject or similar
-								console.log("GeoPDF metadata generated:", geoMetadata);
-							} catch (error) {
-								console.warn("Could not inject GeoPDF metadata:", error);
-							}
-						}
-
-						bar.style.width = "100%";
-						text.textContent = "Saving PDF...";
-
-						// Step 7) Save PDF
-						pdf.save("kirra-2d-vector-PDF" + new Date().toISOString().split("T")[0] + ".pdf");
-
-						setTimeout(() => {
-							progressDialog.close();
-						}, 300);
-					} catch (error) {
-						URL.revokeObjectURL(svgUrl);
-						if (typeof window !== "undefined" && typeof originalWorldToCanvas !== "undefined") {
-							window.worldToCanvas = originalWorldToCanvas; // Restore original
-						}
-						progressDialog.close();
-						console.error("Vector PDF Generation Error:", error);
-						showModalMessage("PDF Creation Failed", "Could not generate the vector PDF. <br><small>Error: " + error.message + "</small>", "error");
-					}
-				};
-
-				svgImage.onerror = function () {
-					URL.revokeObjectURL(svgUrl);
-					if (typeof window !== "undefined" && typeof originalWorldToCanvas !== "undefined") {
-						window.worldToCanvas = originalWorldToCanvas; // Restore original
-					}
-					progressDialog.close();
-					showModalMessage("PDF Creation Failed", "Could not load SVG image for PDF generation.", "error");
-				};
-
-				svgImage.src = svgUrl;
-			};
-
-			qrCodeImg.onerror = function () {
-				console.warn("QR code image failed to load, continuing without it");
-				// Continue with SVG generation even if QR code fails
-				bar.style.width = "55%";
-				text.textContent = "Generating SVG layers...";
-
-				let svgContent = "";
-				const headerSvg = printHeaderSVG(margin, margin, pageWidth * mmToPx - 2 * margin, headerHeight, svgContext);
-				svgContent += headerSvg;
-				const dataSvg = printDataSVG(context.allBlastHoles, context.selectedHole, svgContext);
-				svgContent += dataSvg;
-				const footerSvg = printFooterSVG(margin, pageHeight * mmToPx - margin, pageWidth * mmToPx - 2 * margin, footerHeight, svgContext);
-				svgContent += footerSvg;
-
-				bar.style.width = "60%";
-				text.textContent = "Converting SVG to image...";
-
-				const svgWidth = pageWidth * mmToPx;
-				const svgHeight = pageHeight * mmToPx;
-				const svgString = '<svg xmlns="http://www.w3.org/2000/svg" width="' + svgWidth + '" height="' + svgHeight + '">' + svgContent + "</svg>";
-				const svgBlob = new Blob([svgString], { type: "image/svg+xml;charset=utf-8" });
-				const svgUrl = URL.createObjectURL(svgBlob);
-
-				const svgImage = new Image();
-				svgImage.onload = function () {
-					try {
-						renderCtx.drawImage(svgImage, 0, 0, renderCanvas.width, renderCanvas.height);
-						URL.revokeObjectURL(svgUrl);
-						if (typeof window !== "undefined" && typeof originalWorldToCanvas !== "undefined") {
-							window.worldToCanvas = originalWorldToCanvas;
-						}
-
-						bar.style.width = "70%";
-						text.textContent = "Adding image to PDF...";
-
-						const canvasDataUrl = renderCanvas.toDataURL("image/png", 1.0);
-						pdf.addImage(canvasDataUrl, "PNG", 0, 0, pageWidth, pageHeight);
-
-						bar.style.width = "80%";
-						text.textContent = "Adding georeferencing...";
-
-						// Step 6) Add georeferencing metadata
-						if (utmMinX !== Infinity && utmMaxX !== -Infinity) {
-							const pdfBounds = {
-								minX: 0,
-								minY: 0,
-								maxX: pageWidth,
-								maxY: pageHeight,
-							};
-							const utmBounds = {
-								minX: utmMinX,
-								minY: utmMinY,
-								maxX: utmMaxX,
-								maxY: utmMaxY,
-							};
-							const transform = GeoPDF.calculateGeoreferencingTransform(pdfBounds.minX, pdfBounds.minY, pdfBounds.maxX, pdfBounds.maxY, utmBounds.minX, utmBounds.minY, utmBounds.maxX, utmBounds.maxY);
-
-							const geoMetadata = GeoPDF.generateGeoPDFMetadata({
-								zone: utmInfo.zone,
-								hemisphere: utmInfo.hemisphere,
-								bounds: utmBounds,
-								transform: transform,
-							});
-
-							try {
-								pdf.setProperties({
-									title: "Kirra Blast Design",
-									subject: "Georeferenced Blast Design PDF",
-									author: "Kirra Blast Design Software",
-									keywords: "blast design, georeferenced, UTM " + utmInfo.zone + utmInfo.hemisphere,
-									creator: "Kirra",
-								});
-								console.log("GeoPDF metadata generated:", geoMetadata);
-							} catch (error) {
-								console.warn("Could not inject GeoPDF metadata:", error);
-							}
-						}
-
-						bar.style.width = "100%";
-						text.textContent = "Saving PDF...";
-						pdf.save("kirra-2d-vector-PDF" + new Date().toISOString().split("T")[0] + ".pdf");
-
-						setTimeout(() => {
-							progressDialog.close();
-						}, 300);
-					} catch (error) {
-						URL.revokeObjectURL(svgUrl);
-						if (typeof window !== "undefined" && typeof originalWorldToCanvas !== "undefined") {
-							window.worldToCanvas = originalWorldToCanvas;
-						}
-						progressDialog.close();
-						console.error("Vector PDF Generation Error:", error);
-						showModalMessage("PDF Creation Failed", "Could not generate the vector PDF. <br><small>Error: " + error.message + "</small>", "error");
-					}
-				};
-				svgImage.onerror = function () {
-					URL.revokeObjectURL(svgUrl);
-					if (typeof window !== "undefined" && typeof originalWorldToCanvas !== "undefined") {
-						window.worldToCanvas = originalWorldToCanvas;
-					}
-					progressDialog.close();
-					showModalMessage("PDF Creation Failed", "Could not load SVG image for PDF generation.", "error");
-				};
-				svgImage.src = svgUrl;
-			};
-
-			qrCodeImg.src = "icons/kirra2d-qr-code.png";
-		} catch (error) {
-			// Restore window.worldToCanvas if it was set
-			if (typeof originalWorldToCanvas !== "undefined" && typeof window !== "undefined") {
-				window.worldToCanvas = originalWorldToCanvas;
-			}
-			progressDialog.close();
-			console.error("Vector PDF Generation Error:", error);
-			showModalMessage("PDF Creation Failed", "Could not generate the vector PDF. <br><small>Error: " + error.message + "</small>", "error");
-		}
-	}, 250);
-}
-
-/**
- * Sets up print event handlers
- * Moves event handler setup from kirra.js to this module
- */
+// Step 16) Setup print event handlers
 export function setupPrintEventHandlers(contextOrGetter) {
-	// If it's a function, call it to get context; otherwise use it directly
-	const getContext = typeof contextOrGetter === "function" ? contextOrGetter : () => contextOrGetter;
-	const context = getContext();
-	const { updateStatusMessage, drawData } = context;
+    // If it's a function, call it to get context; otherwise use it directly
+    var getContext = typeof contextOrGetter === "function" ? contextOrGetter : function() { return contextOrGetter; };
 
-	const printPreviewToggle = document.getElementById("addPrintPreviewToggle");
-	if (printPreviewToggle) {
-		printPreviewToggle.addEventListener("change", function () {
-			const ctx = getContext();
-			togglePrintMode(ctx.updateStatusMessage, ctx.drawData);
-		});
-	}
+    var printPreviewToggle = document.getElementById("addPrintPreviewToggle");
+    if (printPreviewToggle) {
+        printPreviewToggle.addEventListener("change", function() {
+            var ctx = getContext();
+            togglePrintMode(ctx.updateStatusMessage, ctx.drawData);
+        });
+    }
 
-	const paperSizeSelect = document.getElementById("paperSize");
-	if (paperSizeSelect) {
-		paperSizeSelect.addEventListener("change", function () {
-			const ctx = getContext();
-			changePaperSize(ctx.drawData);
-		});
-	}
+    var paperSizeSelect = document.getElementById("paperSize");
+    if (paperSizeSelect) {
+        paperSizeSelect.addEventListener("change", function() {
+            var ctx = getContext();
+            changePaperSize(ctx.drawData);
+        });
+    }
 
-	const orientationSelect = document.getElementById("orientation");
-	if (orientationSelect) {
-		orientationSelect.addEventListener("change", function () {
-			const ctx = getContext();
-			changeOrientation(ctx.drawData);
-		});
-	}
+    var orientationSelect = document.getElementById("orientation");
+    if (orientationSelect) {
+        orientationSelect.addEventListener("change", function() {
+            var ctx = getContext();
+            changeOrientation(ctx.drawData);
+        });
+    }
 
-	const printToPDFBtn = document.getElementById("printToPDFBtn");
-	if (printToPDFBtn) {
-		printToPDFBtn.addEventListener("click", function () {
-			// Get fresh context when button is clicked
-			const context = getContext();
-			// Create comprehensive context object
-			const printContext = {
-				allBlastHoles: context.allBlastHoles,
-				allKADDrawingsMap: context.allKADDrawingsMap,
-				allAvailableSurfaces: context.allAvailableSurfaces,
-				loadedSurfaces: context.loadedSurfaces,
-				loadedImages: context.loadedImages,
-				selectedHole: context.selectedHole,
-				canvas: context.canvas,
-				currentScale: context.currentScale,
-				centroidX: context.centroidX,
-				centroidY: context.centroidY,
-				imageVisible: context.imageVisible,
-				surfaceVisible: context.surfaceVisible,
-				getDisplayOptions: context.getDisplayOptions,
-				buildHoleMap: context.buildHoleMap,
-				developerModeEnabled: context.developerModeEnabled,
-				simplifyByPxDist: context.simplifyByPxDist,
-				worldToCanvas: context.worldToCanvas,
-				delaunayTriangles: context.delaunayTriangles,
-				maxEdgeLength: context.maxEdgeLength,
-				createBlastBoundaryPolygon: context.createBlastBoundaryPolygon,
-				offsetPolygonClipper: context.offsetPolygonClipper,
-				getAverageDistance: context.getAverageDistance,
-				selectedVoronoiMetric: context.selectedVoronoiMetric,
-				isVoronoiLegendFixed: context.isVoronoiLegendFixed,
-				getVoronoiMetrics: context.getVoronoiMetrics,
-				useToeLocation: context.useToeLocation,
-				clipVoronoiCells: context.clipVoronoiCells,
-				getPFColor: context.getPFColor,
-				getMassColor: context.getMassColor,
-				getVolumeColor: context.getVolumeColor,
-				getAreaColor: context.getAreaColor,
-				getLengthColor: context.getLengthColor,
-				getHoleFiringTimeColor: context.getHoleFiringTimeColor,
-				strokeColor: context.strokeColor,
-				directionArrows: context.directionArrows,
-				contourLinesArray: context.contourLinesArray,
-				firstMovementSize: context.firstMovementSize,
-				currentFontSize: context.currentFontSize,
-				holeScale: context.holeScale,
-				transparentFillColor: context.transparentFillColor,
-				textFillColor: context.textFillColor,
-				fillColor: context.fillColor,
-				depthColor: context.depthColor,
-				angleDipColor: context.angleDipColor,
-				isAddingConnector: context.isAddingConnector,
-				isAddingMultiConnector: context.isAddingMultiConnector,
-				fromHoleStore: context.fromHoleStore,
-				firstSelectedHole: context.firstSelectedHole,
-				secondSelectedHole: context.secondSelectedHole,
-				selectedMultipleHoles: context.selectedMultipleHoles,
-				loadedSurfaces: context.loadedSurfaces,
-				showSurfaceLegend: context.showSurfaceLegend,
-				elevationToColor: context.elevationToColor,
-				currentGradient: context.currentGradient,
-				surfaceTextureData: context.surfaceTextureData,
-				loadedImages: context.loadedImages,
-				buildVersion: context.buildVersion,
-				showModalMessage: context.showModalMessage,
-				FloatingDialog: context.FloatingDialog,
-			};
-			printToPDF(printContext);
-		});
-	}
+    var printToPDFBtn = document.getElementById("printToPDFBtn");
+    if (printToPDFBtn) {
+        printToPDFBtn.addEventListener("click", function() {
+            var context = getContext();
+            var printContext = {
+                allBlastHoles: context.allBlastHoles,
+                allKADDrawingsMap: context.allKADDrawingsMap,
+                allAvailableSurfaces: context.allAvailableSurfaces,
+                loadedSurfaces: context.loadedSurfaces,
+                loadedImages: context.loadedImages,
+                selectedHole: context.selectedHole,
+                canvas: context.canvas,
+                currentScale: context.currentScale,
+                centroidX: context.centroidX,
+                centroidY: context.centroidY,
+                currentRotation: context.currentRotation,
+                imageVisible: context.imageVisible,
+                surfaceVisible: context.surfaceVisible,
+                getDisplayOptions: context.getDisplayOptions,
+                buildHoleMap: context.buildHoleMap,
+                developerModeEnabled: context.developerModeEnabled,
+                simplifyByPxDist: context.simplifyByPxDist,
+                worldToCanvas: context.worldToCanvas,
+                delaunayTriangles: context.delaunayTriangles,
+                maxEdgeLength: context.maxEdgeLength,
+                createBlastBoundaryPolygon: context.createBlastBoundaryPolygon,
+                offsetPolygonClipper: context.offsetPolygonClipper,
+                getAverageDistance: context.getAverageDistance,
+                selectedVoronoiMetric: context.selectedVoronoiMetric,
+                isVoronoiLegendFixed: context.isVoronoiLegendFixed,
+                getVoronoiMetrics: context.getVoronoiMetrics,
+                useToeLocation: context.useToeLocation,
+                clipVoronoiCells: context.clipVoronoiCells,
+                getPFColor: context.getPFColor,
+                getMassColor: context.getMassColor,
+                getVolumeColor: context.getVolumeColor,
+                getAreaColor: context.getAreaColor,
+                getLengthColor: context.getLengthColor,
+                getHoleFiringTimeColor: context.getHoleFiringTimeColor,
+                strokeColor: context.strokeColor,
+                directionArrows: context.directionArrows,
+                contourLinesArray: context.contourLinesArray,
+                firstMovementSize: context.firstMovementSize,
+                currentFontSize: context.currentFontSize,
+                holeScale: context.holeScale,
+                transparentFillColor: context.transparentFillColor,
+                textFillColor: context.textFillColor,
+                fillColor: context.fillColor,
+                depthColor: context.depthColor,
+                angleDipColor: context.angleDipColor,
+                darkModeEnabled: context.darkModeEnabled,
+                isAddingConnector: context.isAddingConnector,
+                isAddingMultiConnector: context.isAddingMultiConnector,
+                fromHoleStore: context.fromHoleStore,
+                firstSelectedHole: context.firstSelectedHole,
+                secondSelectedHole: context.secondSelectedHole,
+                selectedMultipleHoles: context.selectedMultipleHoles,
+                showSurfaceLegend: context.showSurfaceLegend,
+                elevationToColor: context.elevationToColor,
+                currentGradient: context.currentGradient,
+                surfaceTextureData: context.surfaceTextureData,
+                buildVersion: context.buildVersion,
+                showModalMessage: context.showModalMessage,
+                FloatingDialog: context.FloatingDialog,
+                threeRenderer: context.threeRenderer,
+                cameraControls: context.cameraControls
+            };
+            printToPDF(printContext);
+        });
+    }
 }
 
 // #endregion PRINT
+
