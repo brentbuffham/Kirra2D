@@ -19667,14 +19667,14 @@ function completePolygonSelection() {
 		// Add selected holes to node IDs
 		if (selectedMultipleHoles.length > 0) {
 			selectedMultipleHoles.forEach((hole) => {
-				nodeIds.push("hole?" + hole.holeID);
+				nodeIds.push("hole⣿" + hole.holeID);
 			});
 		}
 
 		// Add selected KAD objects to node IDs
 		if (selectedMultipleKADObjects.length > 0) {
 			selectedMultipleKADObjects.forEach((kad) => {
-				nodeIds.push(kad.entityType + "?" + kad.entityName);
+				nodeIds.push(kad.entityType + "⣿" + kad.entityName);
 			});
 		}
 
@@ -38519,7 +38519,7 @@ function syncCanvasToTreeView() {
 		} else {
 			// Entity-level selection
 			const entityType = selectedKADObject.entityType === "point" ? "points" : selectedKADObject.entityType;
-			const nodeId = entityType + "?" + selectedKADObject.entityName;
+			const nodeId = entityType + "⣿" + selectedKADObject.entityName;
 			nodeIds.push(nodeId);
 		}
 	} else if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
@@ -38535,7 +38535,7 @@ function syncCanvasToTreeView() {
 			} else {
 				// Entity selection
 				const entityType = kadObj.entityType === "point" ? "points" : kadObj.entityType;
-				const nodeId = entityType + "?" + kadObj.entityName;
+				const nodeId = entityType + "⣿" + kadObj.entityName;
 				nodeIds.push(nodeId);
 			}
 		});
@@ -39217,10 +39217,30 @@ window.handleTreeViewShowProperties = function (nodeId, type) {
 	}
 	// Entity properties
 	else if (parts[0] === "entity") {
-		const entityName = parts.slice(1).join("?");
+		const entityName = parts.slice(1).join("⣿");
 		const firstHole = allBlastHoles.find(function (h) { return h.entityName === entityName; });
 		if (firstHole && typeof showHolePropertyEditor === "function") {
 			showHolePropertyEditor(firstHole);
+		}
+	}
+	// Surface properties
+	else if (parts[0] === "surface") {
+		const surfaceId = parts.slice(1).join("⣿");
+		if (typeof window.showSurfaceContextMenu === "function") {
+			// Use center of viewport as default position for TreeView-launched dialogs
+			const centerX = window.innerWidth / 2;
+			const centerY = window.innerHeight / 2;
+			window.showSurfaceContextMenu(centerX, centerY, surfaceId);
+		}
+	}
+	// Image properties  
+	else if (parts[0] === "image") {
+		const imageId = parts.slice(1).join("⣿");
+		if (typeof window.showImageContextMenu === "function") {
+			// Use center of viewport as default position for TreeView-launched dialogs
+			const centerX = window.innerWidth / 2;
+			const centerY = window.innerHeight / 2;
+			window.showImageContextMenu(centerX, centerY, imageId);
 		}
 	}
 };

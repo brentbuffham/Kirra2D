@@ -515,7 +515,7 @@ export class TreeView {
 					id: "hole⣿" + entityName + "⣿" + (hole.holeID || index),
 					type: "hole",
 					label: hole.holeID || "Hole " + (index + 1),
-					meta: "L:" + (hole.holeLengthCalculated || 0).toFixed(2) + "m, S:" + (hole.subdrillAmount || 0).toFixed(2) + "m, R:" + (hole.rowID || "?") + ", P:" + (hole.posID || "?"),
+					meta: "L:" + (hole.holeLengthCalculated || 0).toFixed(2) + "m, S:" + (hole.subdrillAmount || 0).toFixed(2) + "m, R:" + (hole.rowID || 0) + ", P:" + (hole.posID || 0),
 					children: [
 						{
 							id: (hole.holeID || index) + "⣿startx",
@@ -581,13 +581,13 @@ export class TreeView {
 							id: (hole.holeID || index) + "⣿rowid",
 							type: "property",
 							label: "Row ID",
-							meta: hole.rowID || "?",
+							meta: hole.rowID || 0,
 						},
 						{
 							id: (hole.holeID || index) + "⣿posid",
 							type: "property",
 							label: "Position ID",
-							meta: hole.posID || "?",
+							meta: hole.posID || 0,
 						},
 					],
 				})),
