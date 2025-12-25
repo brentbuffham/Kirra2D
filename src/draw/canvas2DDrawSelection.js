@@ -75,7 +75,7 @@ export function drawKADHighlightSelectionVisuals() {
     // Step 3) Handle single selection
     if (selectedKADObject && isSelectionPointerActive) {
         const tolerance = 5;
-        const entity = getEntityFromKADObject(selectedKADObject);
+        let entity = getEntityFromKADObject(selectedKADObject);
         if (!entity) return;
 
         // Step 3a) Common selection styling
@@ -291,7 +291,7 @@ export function drawKADHighlightSelectionVisuals() {
 
             // Step 4b) Declare variables
             const tolerance = 5;
-            const entity = getEntityFromKADObject(kadObj);
+            let entity = getEntityFromKADObject(kadObj);
 
             if (developerModeEnabled) {
                 console.log("Entity found by getEntityFromKADObject:", entity);
@@ -525,7 +525,7 @@ export function drawKADHighlightSelectionVisuals() {
         if (developerModeEnabled) {
             console.log("✅ [2D Draw] BOTH conditions met - drawing pink circle");
         }
-        const entity = getEntityFromKADObject(selectedKADObject);
+        let entity = getEntityFromKADObject(selectedKADObject);
         const allKADDrawingsMap = window.allKADDrawingsMap;
         if (!entity && allKADDrawingsMap) {
             // Try to get entity by name
