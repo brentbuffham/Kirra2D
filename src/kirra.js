@@ -6120,6 +6120,11 @@ canvasContainer.addEventListener(
 			}
 
 			drawData(allBlastHoles, selectedHole);
+			
+			// Step #) Update contour overlay after zoom - this ensures contours redraw with new scale
+			if (typeof updateOverlayColorsForTheme === "function") {
+				updateOverlayColorsForTheme();
+			}
 		}
 	},
 	{
@@ -6491,6 +6496,9 @@ function throttledRecalculateContours() {
 		}
 		updateOverlayColorsForTheme();
 		contourUpdatePending = false;
+		
+		// Step 2c) Redraw after contours/arrows are calculated to ensure immediate rendering
+		drawData(allBlastHoles, selectedHole);
 	});
 }
 
@@ -6702,6 +6710,11 @@ function handleMouseMove(event) {
 	//if (isDragging || isAddingHole || isDeletingHole || isAddingConnector || isAddingMultiConnector || isDrawingText || isDrawingLine || isDrawingPoly || isDrawingCircle || isMeasureRecording) {
 	drawData(allBlastHoles, selectedHole);
 	//}
+	
+	// Step #) Update contour overlay when panning - ensures contours stay in sync with canvas position
+	if (isDragging && typeof updateOverlayColorsForTheme === "function") {
+		updateOverlayColorsForTheme();
+	}
 
 	isUpdatingSelectionFromMove = false; // Reset the flag after drawData
 }
@@ -10357,209 +10370,8 @@ function updateSurfaceTimes(combinedHoleID, time, surfaces, holeTimes, visited =
 	visited.delete(combinedHoleID);
 }
 
-//when we added the Webworker to stop the recursion.
-function delaunayContoursSync(contourData, contourLevel, maxEdgeLength) {
-	// Only do the expensive calculation if contours or direction arrows are being displayed
-	if (!displayContours.checked && !displayFirstMovements.checked && !displayRelief.checked) {
-		return {
-			contourLines: [],
-			directionArrows: [],
-		};
-	}
-
-	if (!allBlastHoles || !Array.isArray(allBlastHoles) || allBlastHoles.length === 0) {
-		return {
-			contourLines: [],
-			directionArrows: [],
-		};
-	}
-
-	const factor = 1.6;
-	const minAngleThreshold = 5;
-	const surfaceAreaThreshold = 0.1;
-
-	// Filter out allBlastHoles where holeTime is null
-	const filteredContourData = contourData.filter((hole) => hole.holeTime !== null);
-
-	if (filteredContourData.length < 3) {
-		return {
-			contourLines: [],
-			directionArrows: [],
-		};
-	}
-
-	// Helper function to get average distance to N nearest neighbors for a specific point
-	function getLocalAverageDistance(targetPoint, allPoints, neighborCount = 6) {
-		const distances = [];
-
-		for (let i = 0; i < allPoints.length; i++) {
-			if (allPoints[i] === targetPoint) continue; // Skip self
-
-			const dx = targetPoint.x - allPoints[i].x;
-			const dy = targetPoint.y - allPoints[i].y;
-			const distance = Math.sqrt(dx * dx + dy * dy);
-			distances.push(distance);
-		}
-
-		// Sort distances and take the closest N neighbors
-		distances.sort((a, b) => a - b);
-		const nearestDistances = distances.slice(0, Math.min(neighborCount, distances.length));
-
-		// Return average of nearest neighbors
-		return nearestDistances.length > 0 ? nearestDistances.reduce((sum, dist) => sum + dist, 0) / nearestDistances.length : maxEdgeLength;
-	}
-
-	// Cache for local averages to improve performance
-	const localAverageCache = new Map();
-
-	function getCachedLocalAverage(point) {
-		if (!localAverageCache.has(point)) {
-			localAverageCache.set(point, getLocalAverageDistance(point, filteredContourData, 6));
-		}
-		return localAverageCache.get(point);
-	}
-
-	// Compute Delaunay triangulation
-	const delaunay = d3.Delaunay.from(filteredContourData.map((hole) => [hole.x, hole.y]));
-	const triangles = delaunay.triangles; // Access the triangles property directly
-
-	if (!triangles || triangles.length === 0) return;
-
-	const contourLines = [];
-	directionArrows = []; // Initialize an array to store the arrows
-
-	for (let i = 0; i < triangles.length; i += 3) {
-		const contourLine = [];
-
-		const p1 = contourData[triangles[i]];
-		const p2 = contourData[triangles[i + 1]];
-		const p3 = contourData[triangles[i + 2]];
-
-		// Get cached local average distances for each vertex of the triangle
-		const p1LocalAvg = getCachedLocalAverage(p1);
-		const p2LocalAvg = getCachedLocalAverage(p2);
-		const p3LocalAvg = getCachedLocalAverage(p3);
-
-		// Use the average of the three vertices' local averages
-		const triangleLocalAverage = (p1LocalAvg + p2LocalAvg + p3LocalAvg) / 3;
-
-		// Create adaptive max edge length for this specific triangle
-		const adaptiveMaxEdgeLength = Math.min(maxEdgeLength, triangleLocalAverage * factor);
-
-		// Calculate the centroid of the triangle (average of x, y coordinates)
-		const centroidX = (p1.x + p2.x + p3.x) / 3;
-		const centroidY = (p1.y + p2.y + p3.y) / 3;
-
-		// Calculate the vector representing the slope (using Z differences)
-		// We'll calculate two vectors: p1->p2 and p1->p3 to get a slope direction
-		const v1X = p2.x - p1.x;
-		const v1Y = p2.y - p1.y;
-		const v1Z = p2.z - p1.z; // Time difference between p1 and p2
-
-		const v2X = p3.x - p1.x;
-		const v2Y = p3.y - p1.y;
-		const v2Z = p3.z - p1.z; // Time difference between p1 and p3
-
-		// Now we calculate the cross product of these two vectors to get the slope normal
-		const slopeX = v1Y * v2Z - v1Z * v2Y;
-		const slopeY = v1Z * v2X - v1X * v2Z;
-		const slopeZ = v1X * v2Y - v1Y * v2X;
-
-		// Normalize the slope vector (we don't care about the Z component for 2D projection)
-		const slopeLength = Math.sqrt(slopeX * slopeX + slopeY * slopeY);
-		const normSlopeX = slopeX / slopeLength;
-		const normSlopeY = slopeY / slopeLength;
-
-		// Calculate the end point for the arrow based on the normalized slope
-		const arrowLength = 2; // Arrow length
-		const arrowEndX = centroidX - normSlopeX * firstMovementSize;
-		const arrowEndY = centroidY - normSlopeY * firstMovementSize;
-
-		// Get the triangle's surface area
-		const surfaceArea = Math.abs((p1.x * (p2.y - p3.y) + p2.x * (p3.y - p1.y) + p3.x * (p1.y - p2.y)) / 2);
-
-		// Check if triangle passes the local adaptive filtering
-		let trianglePassesFilter = true;
-
-		// Calculate edge lengths and check against adaptive limit
-		const edge1Length = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-		const edge2Length = Math.sqrt(Math.pow(p3.x - p2.x, 2) + Math.pow(p3.y - p2.y, 2));
-		const edge3Length = Math.sqrt(Math.pow(p1.x - p3.x, 2) + Math.pow(p1.y - p3.y, 2));
-
-		if (edge1Length > adaptiveMaxEdgeLength || edge2Length > adaptiveMaxEdgeLength || edge3Length > adaptiveMaxEdgeLength) {
-			trianglePassesFilter = false;
-		}
-
-		// Optional: Add angle check to reject very acute triangles
-		if (trianglePassesFilter) {
-			// Calculate angles using law of cosines
-			const edge1Squared = edge1Length * edge1Length;
-			const edge2Squared = edge2Length * edge2Length;
-			const edge3Squared = edge3Length * edge3Length;
-
-			const angle1 = Math.acos(Math.max(-1, Math.min(1, (edge2Squared + edge3Squared - edge1Squared) / (2 * edge2Length * edge3Length)))) * (180 / Math.PI);
-			const angle2 = Math.acos(Math.max(-1, Math.min(1, (edge1Squared + edge3Squared - edge2Squared) / (2 * edge1Length * edge3Length)))) * (180 / Math.PI);
-			const angle3 = Math.acos(Math.max(-1, Math.min(1, (edge1Squared + edge2Squared - edge3Squared) / (2 * edge1Length * edge2Length)))) * (180 / Math.PI);
-
-			const minAngle = Math.min(angle1, angle2, angle3);
-
-			// Reject triangles with very acute angles (likely bridging triangles)
-			if (minAngle < minAngleThreshold) {
-				trianglePassesFilter = false;
-			}
-		}
-
-		// Only process triangles that pass the adaptive filtering
-		if (trianglePassesFilter) {
-			if (surfaceArea > surfaceAreaThreshold) {
-				// Store the arrow (start at the centroid, end at the calculated slope direction)
-				directionArrows.push([centroidX, centroidY, arrowEndX, arrowEndY, "goldenrod", firstMovementSize]);
-			}
-
-			// Process the contour lines with adaptive edge length filtering
-			for (let j = 0; j < 3; j++) {
-				const p1 = contourData[triangles[i + j]];
-				const p2 = contourData[triangles[i + ((j + 1) % 3)]];
-
-				// Calculate distance between p1 and p2
-				const distance = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-
-				// Use adaptive edge length instead of global maxEdgeLength
-				if (distance <= adaptiveMaxEdgeLength && ((p1.z < contourLevel && p2.z >= contourLevel) || (p1.z >= contourLevel && p2.z < contourLevel))) {
-					const point = interpolate(p1, p2, contourLevel);
-					contourLine.push(point);
-				}
-			}
-
-			if (contourLine.length === 2) {
-				contourLines.push(contourLine);
-			}
-		}
-	}
-
-	const interval = 1; // Keep every arrow
-	directionArrows = directionArrows.filter((arrow, index) => index % interval === 0);
-
-	// Optional: Log some statistics for debugging
-	// console.log("Contour generation completed:");
-	// console.log("- Total contour lines:", contourLines.length);
-	// console.log("- Direction arrows:", directionArrows.length);
-	// console.log("- Cache size:", localAverageCache.size);
-
-	// Return both contour lines and the newly created arrows
-	return {
-		contourLines,
-		directionArrows,
-	};
-}
-
-function interpolate(p1, p2, contourLevel) {
-	const t = (contourLevel - p1.z) / (p2.z - p1.z);
-	return {
-		x: p1.x + t * (p2.x - p1.x),
-		y: p1.y + t * (p2.y - p1.y),
-	};
-}
+// Note: Old delaunayContoursSync function removed - replaced by calculateContoursSync at end of file
+// Note: Old interpolate function removed - replaced by interpolateContourPoint at end of file
 
 function simplifyLine(line, epsilon) {
 	if (line.length <= 2) return line;
@@ -19782,16 +19594,26 @@ function forceRecalculateContours(blastHoles) {
 	}
 }
 
-// Step 1) Helper function to compute a hash of hole positions and times for caching
+// Step 1) Helper function to compute a hash of hole positions, times, AND display options for caching
 function computeContourHash(holes) {
 	if (!holes || holes.length === 0) return "";
-	// Create a hash based on hole positions and times only
-	let hashStr = "";
+	// Step 1a) Create a hash based on hole positions and times
+	var hashStr = "";
 	for (var i = 0; i < holes.length; i++) {
 		var h = holes[i];
 		hashStr += h.startXLocation.toFixed(2) + "," + h.startYLocation.toFixed(2) + "," + (h.holeTime || 0) + ";";
 	}
-	// Simple hash function
+	
+	// Step 1b) Include display options that affect contour/arrow generation
+	// This ensures cache is invalidated when user toggles checkboxes or adjusts sliders
+	hashStr += "opts:" + 
+		(displayContours ? displayContours.checked : false) + "," +
+		(displayFirstMovements ? displayFirstMovements.checked : false) + "," +
+		(displayRelief ? displayRelief.checked : false) + "," +
+		(typeof intervalAmount !== "undefined" ? intervalAmount : 25) + "," +
+		(typeof firstMovementSize !== "undefined" ? firstMovementSize : 2);
+	
+	// Step 1c) Simple hash function
 	var hash = 0;
 	for (var j = 0; j < hashStr.length; j++) {
 		var chr = hashStr.charCodeAt(j);
@@ -21341,8 +21163,9 @@ function drawData(allBlastHoles, selectedHole) {
 				drawLegend(strokeColor);
 			}
 
-			// Step 6b) Draw slope map in Three.js when 3D is active
-			if (threeInitialized && resultTriangles && resultTriangles.length > 0) {
+			// Step 6b) Draw slope map in Three.js ONLY when in 3D mode
+			// This prevents duplicate rendering when in 2D-only mode
+			if (threeInitialized && onlyShowThreeJS && resultTriangles && resultTriangles.length > 0) {
 				drawSlopeMapThreeJS(resultTriangles, allBlastHoles);
 			}
 		}
@@ -21364,9 +21187,64 @@ function drawData(allBlastHoles, selectedHole) {
 				drawReliefLegend(strokeColor);
 			}
 
-			// Step 7b) Draw burden relief map in Three.js when 3D is active
-			if (threeInitialized && reliefTriangles && reliefTriangles.length > 0) {
+			// Step 7b) Draw burden relief map in Three.js ONLY when in 3D mode
+			// This prevents duplicate rendering when in 2D-only mode
+			if (threeInitialized && onlyShowThreeJS && reliefTriangles && reliefTriangles.length > 0) {
 				drawBurdenReliefMapThreeJS(reliefTriangles, allBlastHoles);
+			}
+		}
+
+		// Step 8) Contour Lines - Draw on main canvas for responsive pan/zoom
+		if (displayOptions.contour && contourLinesArray && contourLinesArray.length > 0) {
+			// Step 8a) Draw 2D contours only when NOT in 3D-only mode
+			if (!onlyShowThreeJS) {
+				// Step 8b) Calculate interval for time labels
+				var maxHoleTimeForLabels = 0;
+				for (var hi = 0; hi < allBlastHoles.length; hi++) {
+					var ht = allBlastHoles[hi].holeTime || 0;
+					if (ht > maxHoleTimeForLabels) maxHoleTimeForLabels = ht;
+				}
+				var contourInterval = maxHoleTimeForLabels < 350 ? 25 : maxHoleTimeForLabels < 700 ? 100 : 250;
+				if (typeof intervalAmount !== "undefined") {
+					contourInterval = parseInt(intervalAmount);
+				}
+				
+				// Step 8c) Set up contour line style
+				ctx.lineWidth = 2;
+				ctx.setLineDash([8, 4]);
+				
+				// Step 8d) Draw each contour level
+				for (var levelIdx = 0; levelIdx < contourLinesArray.length; levelIdx++) {
+					var contourLevel = contourLinesArray[levelIdx];
+					if (!contourLevel || contourLevel.length === 0) continue;
+					
+					// Step 8e) Alternate colors for visibility
+					ctx.strokeStyle = levelIdx % 2 === 0 ? "#FFFF00" : "#FF00FF";
+					
+					// Step 8f) Draw each line segment in this level
+					for (var li = 0; li < contourLevel.length; li++) {
+						var line = contourLevel[li];
+						if (!line || !line[0] || !line[1]) continue;
+						
+						var startCoords = worldToCanvas(line[0].x, line[0].y);
+						var endCoords = worldToCanvas(line[1].x, line[1].y);
+						
+						ctx.beginPath();
+						ctx.moveTo(startCoords[0], startCoords[1]);
+						ctx.lineTo(endCoords[0], endCoords[1]);
+						ctx.stroke();
+					}
+				}
+				
+				// Step 8g) Reset line dash and line width for other drawing
+				ctx.setLineDash([]);
+				ctx.lineWidth = 1;
+			}
+			
+			// Step 8h) Draw contours in Three.js ONLY when in 3D mode (onlyShowThreeJS = true)
+			// This prevents duplicate rendering when in 2D-only mode
+			if (threeInitialized && onlyShowThreeJS) {
+				drawContoursThreeJS(contourLinesArray, strokeColor, allBlastHoles);
 			}
 		}
 
@@ -21374,7 +21252,7 @@ function drawData(allBlastHoles, selectedHole) {
 		if (displayOptions.firstMovement) {
 			connScale = document.getElementById("connSlider").value;
 
-			// Step 8a) Draw 2D direction arrows only when NOT in 3D-only mode
+			// Step 9a) Draw 2D direction arrows only when NOT in 3D-only mode
 			if (!onlyShowThreeJS) {
 				for (const arrow of directionArrows) {
 					const [startX, startY] = worldToCanvas(arrow[0], arrow[1]);
@@ -21383,14 +21261,12 @@ function drawData(allBlastHoles, selectedHole) {
 				}
 			}
 
-			// Step 8b) Draw first movement arrows in Three.js (positioned at collar elevation)
-			if (threeInitialized && directionArrows && directionArrows.length > 0) {
+			// Step 9b) Draw first movement arrows in Three.js ONLY when in 3D mode
+			// This prevents duplicate rendering when in 2D-only mode
+			if (threeInitialized && onlyShowThreeJS && directionArrows && directionArrows.length > 0) {
 				drawDirectionArrowsThreeJS(directionArrows, allBlastHoles);
 			}
 		}
-
-		// Step 3) DO NOT draw contours in 2D block - moved to 3D-only block
-		// Contours will render in 3D-only block at line 22373
 
 		// Main hole loop
 		ctx.lineWidth = 1;
@@ -21651,16 +21527,10 @@ function drawData(allBlastHoles, selectedHole) {
 		// Draw surfaces (includes Three.js rendering)
 		drawSurface();
 
-		// Step 2) Draw contours in Three.js (if needed, positioned at collar elevation)
+		// Note: Contours and direction arrows are now drawn in the main 2D/3D block (Steps 8 & 9)
+		// to ensure responsive pan/zoom updates. The ThreeJS calls are made there when BOTH
+		// threeInitialized AND onlyShowThreeJS are true (follows the CRITICAL RULE above).
 		const displayOptions3D = getDisplayOptions();
-		if (displayOptions3D.contour && contourLinesArray && contourLinesArray.length > 0) {
-			drawContoursThreeJS(contourLinesArray, strokeColor, allBlastHoles);
-		}
-
-		// Step 3) Draw first movement arrows in Three.js (if needed, positioned at collar elevation)
-		if (displayOptions3D.firstMovement && directionArrows && directionArrows.length > 0) {
-			drawDirectionArrowsThreeJS(directionArrows, allBlastHoles);
-		}
 
 		// Step 3.1) Draw slope map in Three.js (3D-only mode)
 		if (displayOptions3D.slopeMap && allBlastHoles && allBlastHoles.length > 0) {

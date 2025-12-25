@@ -296,6 +296,7 @@ export function drawKADTexts(x, y, z, text, color) {
 // Arrow/Connector Drawing Functions
 //=================================================
 
+//First movement direction arrows need to work independant of releif and contour lines. Currently they are not.
 export function drawDirectionArrow(startX, startY, endX, endY, fillColor, strokeColor, connScale) {
 	try {
 		// Step 1) Cache globals for performance
@@ -309,9 +310,10 @@ export function drawDirectionArrow(startX, startY, endX, endY, fillColor, stroke
 		var tailWidth = arrowWidth * 0.7;
 		const angle = Math.atan2(endY - startY, endX - startX);
 
-		// Step 3) Set the stroke and fill colors
+		// Step 3) Set the stroke and fill colors and line width
 		ctx.strokeStyle = strokeColor;
 		ctx.fillStyle = fillColor;
+		ctx.lineWidth = 1; // Ensure consistent border width regardless of contour settings
 
 		// Step 4) Begin drawing the arrow as a single path
 		ctx.beginPath();
