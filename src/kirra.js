@@ -2541,6 +2541,23 @@ document.addEventListener("DOMContentLoaded", function () {
 					iconImg.src = "icons/badge-3d-v2.png";
 					iconImg.alt = "3D View Active (3D Only)";
 				}
+				// Step 1cd) CRITICAL: Trigger contour recalculation and drawData to populate 3D scene
+				// Without this, the 3D scene remains empty until user interaction
+				if (allBlastHoles && allBlastHoles.length > 0) {
+					// Step 1cd.1) Recalculate contours if contour OR direction arrows display is enabled
+					// This ensures both contourLinesArray and directionArrows are populated for 3D rendering
+					var needsContourRecalc = (displayContours && displayContours.checked) || 
+					                          (displayFirstMovements && displayFirstMovements.checked);
+					if (needsContourRecalc) {
+						var result = recalculateContours(allBlastHoles, 0, 0);
+						if (result) {
+							contourLinesArray = result.contourLinesArray;
+							directionArrows = result.directionArrows;
+						}
+					}
+					// Step 1cd.2) Now draw the data with populated contours/arrows
+					drawData(allBlastHoles, selectedHole);
+				}
 			} else {
 				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
 				onlyShowThreeJS = false;
@@ -2645,6 +2662,18 @@ document.addEventListener("DOMContentLoaded", function () {
 				if (iconImg) {
 					iconImg.src = "icons/badge-2d-v2.png";
 					iconImg.alt = "2D View Active (2D Only)";
+				}
+				// Step 1de) CRITICAL: Recalculate contours and redraw for 2D mode
+				// This ensures contours display correctly after switching from 3D
+				if (allBlastHoles && allBlastHoles.length > 0) {
+					if (displayContours && displayContours.checked) {
+						var result = recalculateContours(allBlastHoles, 0, 0);
+						if (result) {
+							contourLinesArray = result.contourLinesArray;
+							directionArrows = result.directionArrows;
+						}
+					}
+					drawData(allBlastHoles, selectedHole);
 				}
 			}
 
@@ -6184,12 +6213,22 @@ document.addEventListener("DOMContentLoaded", function () {
 	intervalSlider.addEventListener("input", function () {
 		intervalAmount = document.getElementById("intervalSlider").value;
 		intervalLabel.textContent = "Interval : " + intervalAmount + "ms";
+		
+		// Step 1) Invalidate cache by clearing cached data
+		cachedContourLinesArray = null;
+		cachedDirectionArrows = null;
+		
+		// Step 2) Recalculate contours with new interval
 		const result = recalculateContours(allBlastHoles, deltaX, deltaY);
 		contourLinesArray = result.contourLinesArray;
 		directionArrows = result.directionArrows;
 
-		// directionArrows now contains the arrow data for later drawing
+		// Step 3) Update overlay system if active
+		if (useContourOverlay && typeof drawContoursOnOverlayFixed === "function") {
+			drawContoursOnOverlayFixed();
+		}
 
+		// Step 4) Redraw main canvas
 		drawData(allBlastHoles, selectedHole);
 	});
 	// Access the slider element and add an event listener to track changes
@@ -6197,12 +6236,20 @@ document.addEventListener("DOMContentLoaded", function () {
 	firstMovementSlider.addEventListener("input", function () {
 		firstMovementSize = document.getElementById("firstMovementSlider").value;
 		firstMovementLabel.textContent = "First Movement Size : " + firstMovementSize;
+		
+		// Step 1) Update window global for 3D rendering
+		window.firstMovementSize = firstMovementSize;
+		
+		// Step 2) Invalidate cache
+		cachedContourLinesArray = null;
+		cachedDirectionArrows = null;
+		
+		// Step 3) Recalculate contours/arrows
 		const result = recalculateContours(allBlastHoles, deltaX, deltaY);
 		contourLinesArray = result.contourLinesArray;
 		directionArrows = result.directionArrows;
 
-		// directionArrows now contains the arrow data for later drawing
-
+		// Step 4) Redraw
 		drawData(allBlastHoles, selectedHole);
 	});
 	//snap tolerance - UPDATED TO USE PIXELS
@@ -6481,15 +6528,22 @@ function throttledRecalculateContours() {
 	requestAnimationFrame(function () {
 		if (!displayContours.checked && !displayFirstMovements.checked && !displayRelief.checked) {
 			contourUpdatePending = false;
+			// Step 2c) Redraw even when nothing is displayed to clear old data
+			drawData(allBlastHoles, selectedHole);
 			return;
 		}
 
-		// Step 2a) Use cached contours if available to avoid recalculation
-		if (cachedContourLinesArray && cachedContourLinesArray.length > 0) {
+		// Step 2a) Check if we can use cache - need BOTH contours AND arrows if arrows are requested
+		var needsArrows = displayFirstMovements && displayFirstMovements.checked;
+		var hasValidCache = cachedContourLinesArray && cachedContourLinesArray.length > 0;
+		var hasValidArrowCache = cachedDirectionArrows && cachedDirectionArrows.length > 0;
+		
+		// Step 2b) Use cache only if it has what we need, otherwise recalculate
+		if (hasValidCache && (!needsArrows || hasValidArrowCache)) {
 			contourLinesArray = cachedContourLinesArray;
 			directionArrows = cachedDirectionArrows;
 		} else {
-			// Step 2b) Recalculate if cache is empty
+			// Step 2c) Recalculate - cache is incomplete or doesn't have arrows when needed
 			var result = recalculateContours(allBlastHoles, 0, 0);
 			contourLinesArray = result.contourLinesArray;
 			directionArrows = result.directionArrows;
@@ -6497,7 +6551,7 @@ function throttledRecalculateContours() {
 		updateOverlayColorsForTheme();
 		contourUpdatePending = false;
 		
-		// Step 2c) Redraw after contours/arrows are calculated to ensure immediate rendering
+		// Step 2d) Redraw after contours/arrows are calculated to ensure immediate rendering
 		drawData(allBlastHoles, selectedHole);
 	});
 }
@@ -21196,8 +21250,9 @@ function drawData(allBlastHoles, selectedHole) {
 
 		// Step 8) Contour Lines - Draw on main canvas for responsive pan/zoom
 		if (displayOptions.contour && contourLinesArray && contourLinesArray.length > 0) {
-			// Step 8a) Draw 2D contours only when NOT in 3D-only mode
-			if (!onlyShowThreeJS) {
+			// Step 8a) Draw 2D contours (we're in the 2D-only block)
+			// Skip if overlay system is handling contours (useContourOverlay = true)
+			if (!useContourOverlay) {
 				// Step 8b) Calculate interval for time labels
 				var maxHoleTimeForLabels = 0;
 				for (var hi = 0; hi < allBlastHoles.length; hi++) {
@@ -21240,32 +21295,20 @@ function drawData(allBlastHoles, selectedHole) {
 				ctx.setLineDash([]);
 				ctx.lineWidth = 1;
 			}
-			
-			// Step 8h) Draw contours in Three.js ONLY when in 3D mode (onlyShowThreeJS = true)
-			// This prevents duplicate rendering when in 2D-only mode
-			if (threeInitialized && onlyShowThreeJS) {
-				drawContoursThreeJS(contourLinesArray, strokeColor, allBlastHoles);
-			}
+			// Note: 3D contour drawing moved to the Three.js-only block (Step 3.0)
 		}
 
 		// First Movement Direction Arrows
 		if (displayOptions.firstMovement) {
 			connScale = document.getElementById("connSlider").value;
 
-			// Step 9a) Draw 2D direction arrows only when NOT in 3D-only mode
-			if (!onlyShowThreeJS) {
-				for (const arrow of directionArrows) {
-					const [startX, startY] = worldToCanvas(arrow[0], arrow[1]);
-					const [endX, endY] = worldToCanvas(arrow[2], arrow[3]);
-					drawDirectionArrow(startX, startY, endX, endY, arrow[4], strokeColor, arrow[5]);
-				}
+			// Step 9a) Draw 2D direction arrows (we're in the 2D-only block, no need for onlyShowThreeJS check)
+			for (const arrow of directionArrows) {
+				const [startX, startY] = worldToCanvas(arrow[0], arrow[1]);
+				const [endX, endY] = worldToCanvas(arrow[2], arrow[3]);
+				drawDirectionArrow(startX, startY, endX, endY, arrow[4], strokeColor, arrow[5]);
 			}
-
-			// Step 9b) Draw first movement arrows in Three.js ONLY when in 3D mode
-			// This prevents duplicate rendering when in 2D-only mode
-			if (threeInitialized && onlyShowThreeJS && directionArrows && directionArrows.length > 0) {
-				drawDirectionArrowsThreeJS(directionArrows, allBlastHoles);
-			}
+			// Note: 3D direction arrow drawing moved to the Three.js-only block (Step 3.0b)
 		}
 
 		// Main hole loop
@@ -21527,10 +21570,23 @@ function drawData(allBlastHoles, selectedHole) {
 		// Draw surfaces (includes Three.js rendering)
 		drawSurface();
 
-		// Note: Contours and direction arrows are now drawn in the main 2D/3D block (Steps 8 & 9)
-		// to ensure responsive pan/zoom updates. The ThreeJS calls are made there when BOTH
-		// threeInitialized AND onlyShowThreeJS are true (follows the CRITICAL RULE above).
+		// Step 2.5) Get display options for 3D rendering
 		const displayOptions3D = getDisplayOptions();
+
+		// Step 3.0) Draw contours in Three.js (3D-only mode)
+		// CRITICAL FIX: This was incorrectly placed inside the 2D-only block, so 3D contours never rendered
+		// The 3D contour drawing must be here in the Three.js-only block
+		if (displayOptions3D.contour && contourLinesArray && contourLinesArray.length > 0) {
+			console.log("🔶 3D Contours: Drawing " + contourLinesArray.length + " contour levels in Three.js");
+			drawContoursThreeJS(contourLinesArray, strokeColor, allBlastHoles);
+		}
+
+		// Step 3.0b) Draw direction arrows in Three.js (3D-only mode)
+		// CRITICAL FIX: This was incorrectly placed inside the 2D-only block, so 3D arrows never rendered
+		if (displayOptions3D.firstMovement && directionArrows && directionArrows.length > 0) {
+			console.log("🔶 3D Direction Arrows: Drawing " + directionArrows.length + " arrows in Three.js");
+			drawDirectionArrowsThreeJS(directionArrows, allBlastHoles);
+		}
 
 		// Step 3.1) Draw slope map in Three.js (3D-only mode)
 		if (displayOptions3D.slopeMap && allBlastHoles && allBlastHoles.length > 0) {
@@ -24699,12 +24755,19 @@ window.onload = function () {
 
 // Add this helper function to centralize color updates
 function updateColorsForDarkMode() {
+	// Step 1) Update local color variables (must match initial declarations at lines 2941-2946)
 	transparentFillColor = darkModeEnabled ? "rgba(0, 128, 255, 0.3)" : "rgba(128, 255, 0, 0.3)";
-	fillColor = darkModeEnabled ? "lightgrey" : "darkgrey";
+	fillColor = darkModeEnabled ? "darkgrey" : "lightgrey"; // FIXED: was backwards
 	strokeColor = darkModeEnabled ? "white" : "black";
 	textFillColor = darkModeEnabled ? "white" : "black";
-	depthColor = darkModeEnabled ? "blue" : "cyan";
-	angleDipColor = darkModeEnabled ? "darkcyan" : "orange";
+	depthColor = darkModeEnabled ? "cyan" : "blue"; // FIXED: was backwards (cyan for dark, blue for light)
+	angleDipColor = darkModeEnabled ? "orange" : "darkorange"; // FIXED: was different from initial
+
+	// Step 2) Update window globals so Three.js rendering uses correct colors
+	window.textFillColor = textFillColor;
+	window.depthColor = depthColor;
+	window.angleDipColor = angleDipColor;
+	window.darkModeEnabled = darkModeEnabled;
 
 	console.log("🎨 Colors updated for dark mode:", darkModeEnabled);
 }

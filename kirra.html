@@ -76,25 +76,7 @@
 				]
 			};
 		</script>
-		<script src="https://apis.google.com/js/platform.js"></script>
-		<script async src="https://www.googletagmanager.com/gtag/js?id=G-NKJ7R9CK09"></script>
-		<script>
-			window.dataLayer = window.dataLayer || [];
-
-			function gtag() {
-				dataLayer.push(arguments);
-			}
-			gtag('js', new Date());
-
-			gtag('config', 'G-NKJ7R9CK09');
-		</script>
-		<script type="text/javascript">
-			(function (c, l, a, r, i, t, y) {
-				c[a] = c[a] || function () { (c[a].q = c[a].q || []).push(arguments) };
-				t = l.createElement(r); t.async = 1; t.src = "https://www.clarity.ms/tag/" + i;
-				y = l.getElementsByTagName(r)[0]; y.parentNode.insertBefore(t, y);
-			})(window, document, "clarity", "script", "kfxj4dnxgg");
-		</script>
+		<!-- Google Analytics and Clarity Analytics are Removed -->
 		<script>
 			const translations = {
 				"en": {
@@ -2378,11 +2360,11 @@
 						free
 					</label>-->
 
-			<label class="label2" id="addKADLabel">Draw</label>
-			<input type="number#" step="0.1" min="-10000" max="10000" id="drawingElevationToolbar" name="drawingElevationToolbar" value="200" placeholder="Elev Z" class="single" tooltip="Elevation Z">
-			<input type="button" id="floatingKADColor" name="floatingKADColor" data-jscolor="{value:'#777777'}" title="KAD Color" placeholder="KAD Color" class="color-with-input" tooltip="KAD Color">
-			<input type="number#" step="1" min="1" max="1000" id="drawingKADSizeToolbar" name="drawingKADSizeToolbar" value="1" placeholder="Point and Line Size" class="input-with-color" tooltip="Point and Line Size">
-					
+					<label class="label2" id="addKADLabel">Draw</label>
+					<input type="number#" step="0.1" min="-10000" max="10000" id="drawingElevationToolbar" name="drawingElevationToolbar" value="200" placeholder="Elev Z" class="single" tooltip="Elevation Z">
+					<input type="button" id="floatingKADColor" name="floatingKADColor" data-jscolor="{value:'#777777'}" title="KAD Color" placeholder="KAD Color" class="color-with-input" tooltip="KAD Color">
+					<input type="number#" step="1" min="1" max="1000" id="drawingKADSizeToolbar" name="drawingKADSizeToolbar" value="1" placeholder="Point and Line Size" class="input-with-color" tooltip="Point and Line Size">
+
 
 					<input type="checkbox" id="addKADPointsTool" name="addKADPointsTool" value="addKADPointsTool">
 					<label for="addKADPointsTool" class="toggle-buttons-custom icon-button" title="Add KAD Points">
@@ -2402,10 +2384,10 @@
 					</label>
 					<input type="checkbox" id="addKADCircleTool" name="addKADCircleTool" value="addKADCircleTool">
 					<label for="addKADCircleTool" class="toggle-buttons-custom icon-button" title="Add KAD Circle">
-					<img src="icons/add-kad-circle.png" alt="Add KAD Circle">
-				</label>
-				<input type="number#" step="0.1" min="0.01" max="9000" id="drawingKADRadiusToolbar" name="drawingKADRadiusToolbar" value="10.0" placeholder="Circle Radius Amount (m)" class="input-with-color">
-				
+						<img src="icons/add-kad-circle.png" alt="Add KAD Circle">
+					</label>
+					<input type="number#" step="0.1" min="0.01" max="9000" id="drawingKADRadiusToolbar" name="drawingKADRadiusToolbar" value="10.0" placeholder="Circle Radius Amount (m)" class="input-with-color">
+
 					<label class="label2" id="modifyLabel">Modify</label>
 					<input type="checkbox" id="moveToTool" name="moveToTool" value="moveToTool">
 					<label for="moveToTool" class="toggle-buttons-custom icon-button" title="Move To">
@@ -2435,15 +2417,15 @@
 					<label class="label2" id="connectLabel">Connect</label>
 					<input type="checkbox" id="tieConnectTool" name="tieConnectTool" value="tieConnectTool">
 					<label for="tieConnectTool" class="toggle-buttons-custom icon-button" title="Tie Connect">
-					<img src="icons/tieconnect.png" alt="Tie Connect">
+						<img src="icons/tieconnect.png" alt="Tie Connect">
 					</label>
 					<input type="checkbox" id="tieConnectMultiTool" name="tieConnectMultiTool" value="tieConnectMultiTool">
 					<label for="tieConnectMultiTool" class="toggle-buttons-custom icon-button" title="Tie Connect Multi">
-					<img src="icons/tieconnectmulti.png" alt="Tie Connect Multi">
+						<img src="icons/tieconnectmulti.png" alt="Tie Connect Multi">
 					</label>
-			
-				<input type="button" id="floatingConnectorColor" name="floatingConnectorColor" data-jscolor="{value:'#FF0000'}" title="Connector Color" placeholder="Connector Color" class="color-with-input">
-				<input type="number#" step="1" min="-1000" max="1000" id="floatingDelay" name="floatingDelay" value="25" placeholder="Delay Amount" class="input-with-color">
+
+					<input type="button" id="floatingConnectorColor" name="floatingConnectorColor" data-jscolor="{value:'#FF0000'}" title="Connector Color" placeholder="Connector Color" class="color-with-input">
+					<input type="number#" step="1" min="-1000" max="1000" id="floatingDelay" name="floatingDelay" value="25" placeholder="Delay Amount" class="input-with-color">
 
 
 					<label class="label2" id="measureLabel">Measure</label>

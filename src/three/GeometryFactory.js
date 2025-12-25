@@ -1108,11 +1108,12 @@ export class GeometryFactory {
 	}
 
 	// Step 18) Create direction arrows (positioned at collar Z elevation)
+	// Creates 3D arrows visible from all angles using cone (arrowhead) + box (shaft)
 	static createDirectionArrows(directionArrows, allBlastHoles, worldToThreeLocalFn) {
 		const group = new THREE.Group();
 
 		for (const arrow of directionArrows) {
-			const [startX, startY, endX, endY, color, size] = arrow;
+			const [startX, startY, endX, endY, fillColor, size] = arrow;
 
 			// Step 18a) Find nearest hole for start position to get collar Z
 			const nearestHole = this.findNearestHole(startX, startY, allBlastHoles);
@@ -1122,38 +1123,73 @@ export class GeometryFactory {
 			const localStart = worldToThreeLocalFn ? worldToThreeLocalFn(startX, startY) : { x: startX, y: startY };
 			const localEnd = worldToThreeLocalFn ? worldToThreeLocalFn(endX, endY) : { x: endX, y: endY };
 
-			// Step 19) Create arrow line at collar elevation
-			const points = [new THREE.Vector3(localStart.x, localStart.y, collarZ), new THREE.Vector3(localEnd.x, localEnd.y, collarZ)];
+			// Step 18c) Calculate arrow dimensions
+			const dx = localEnd.x - localStart.x;
+			const dy = localEnd.y - localStart.y;
+			const totalLength = Math.sqrt(dx * dx + dy * dy);
+			const angle = Math.atan2(dy, dx);
 
-			const geometry = new THREE.BufferGeometry().setFromPoints(points);
-			const material = new THREE.LineBasicMaterial({ color: new THREE.Color(color) });
-			const line = new THREE.Line(geometry, material);
+			// Step 18d) Arrow proportions - square cross-section shaft, proportional cone
+			const shaftSize = size * 0.2;         // Square cross-section (width = height)
+			const arrowHeadLength = size * 0.4;   // Cone length
+			const arrowHeadRadius = size * 0.35;  // Cone base radius (slightly larger than shaft)
+			const shaftLength = totalLength - arrowHeadLength;
 
-			// Step 20) Create arrowhead at collar elevation
-			const direction = new THREE.Vector3(localEnd.x - localStart.x, localEnd.y - localStart.y, 0).normalize();
-			const arrowSize = size * 0.3;
+			// Step 18e) Create material (shared for performance)
+			const fillMaterial = new THREE.MeshBasicMaterial({
+				color: new THREE.Color(fillColor),
+			});
+			const strokeColor = window.darkModeEnabled ? 0xffffff : 0x000000;
 
-			const perpendicular = new THREE.Vector3(-direction.y, direction.x, 0);
-			const arrowBase = new THREE.Vector3(localEnd.x, localEnd.y, collarZ);
+			// Step 18f) Create shaft (square prism) if there's length for it
+			if (shaftLength > 0.1) {
+				// BoxGeometry(width, height, depth) - width along X, height along Y, depth along Z
+				// We want square cross-section in Y-Z, length along X
+				const boxGeometry = new THREE.BoxGeometry(shaftLength, shaftSize, shaftSize);
+				const boxMesh = new THREE.Mesh(boxGeometry, fillMaterial);
+				
+				// Position box at center of shaft
+				const shaftCenterX = localStart.x + (shaftLength / 2) * Math.cos(angle);
+				const shaftCenterY = localStart.y + (shaftLength / 2) * Math.sin(angle);
+				boxMesh.position.set(shaftCenterX, shaftCenterY, collarZ + shaftSize / 2);
+				boxMesh.rotation.z = angle; // Rotate to align with direction
+				
+				// Step 18g) Create outline for shaft (edges for cartoon look)
+				const edgesGeometry = new THREE.EdgesGeometry(boxGeometry);
+				const edgesMaterial = new THREE.LineBasicMaterial({ color: strokeColor });
+				const edgesLine = new THREE.LineSegments(edgesGeometry, edgesMaterial);
+				edgesLine.position.copy(boxMesh.position);
+				edgesLine.rotation.copy(boxMesh.rotation);
+				
+				group.add(boxMesh);
+				group.add(edgesLine);
+			}
 
-			const arrowPoints = [
-				new THREE.Vector3(localEnd.x, localEnd.y, collarZ),
-				arrowBase
-					.clone()
-					.add(direction.clone().multiplyScalar(-arrowSize))
-					.add(perpendicular.clone().multiplyScalar(arrowSize * 0.5)),
-				arrowBase
-					.clone()
-					.add(direction.clone().multiplyScalar(-arrowSize))
-					.add(perpendicular.clone().multiplyScalar(-arrowSize * 0.5)),
-				new THREE.Vector3(localEnd.x, localEnd.y, collarZ),
-			];
+			// Step 18h) Create arrowhead (cone/pyramid) - 4 sided for performance
+			// ConeGeometry creates cone pointing UP (+Y axis)
+			const coneGeometry = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 4);
+			const coneMesh = new THREE.Mesh(coneGeometry, fillMaterial);
+			
+			// Step 18i) Rotate cone to point in direction of travel
+			// Default cone points +Y, we need it to point along XY plane in direction of arrow
+			// Rotate -90° around Z so tip points in direction of travel
+			coneMesh.rotation.order = 'ZYX'; // Set rotation order for predictable results
+			coneMesh.rotation.z = angle - Math.PI / 2; // Point in direction (cone tip toward end)
+			
+			// Position cone at arrow tip (cone center is at half its height)
+			const coneCenterX = localEnd.x - (arrowHeadLength / 2) * Math.cos(angle);
+			const coneCenterY = localEnd.y - (arrowHeadLength / 2) * Math.sin(angle);
+			coneMesh.position.set(coneCenterX, coneCenterY, collarZ + shaftSize / 2);
 
-			const arrowGeometry = new THREE.BufferGeometry().setFromPoints(arrowPoints);
-			const arrowLine = new THREE.Line(arrowGeometry, material);
+			// Step 18j) Create outline for cone (edges for cartoon look)
+			const coneEdgesGeometry = new THREE.EdgesGeometry(coneGeometry);
+			const coneEdgesMaterial = new THREE.LineBasicMaterial({ color: strokeColor });
+			const coneEdgesLine = new THREE.LineSegments(coneEdgesGeometry, coneEdgesMaterial);
+			coneEdgesLine.position.copy(coneMesh.position);
+			coneEdgesLine.rotation.copy(coneMesh.rotation);
 
-			group.add(line);
-			group.add(arrowLine);
+			group.add(coneMesh);
+			group.add(coneEdgesLine);
 		}
 
 		return group;
@@ -1316,11 +1352,13 @@ export class GeometryFactory {
 		}
 
 		// Step 20.5i) Add delay text if provided
+		// Use window.currentFontSize for consistency with 2D (default to 8 if not available)
 		if (delayText !== null && delayText !== undefined && delayText !== "") {
 			const midX = (fromX + toX) / 2;
 			const midY = (fromY + toY) / 2;
 			const midZ = (fromZ + toZ) / 2;
-			const textSprite = this.createKADText(midX, midY, midZ, String(delayText), 12, color, null);
+			const delayFontSize = (window.currentFontSize || 12) / 1.5; // Match hole text scaling
+			const textSprite = this.createKADText(midX, midY, midZ, String(delayText), delayFontSize, color, null);
 			group.add(textSprite);
 		}
 
