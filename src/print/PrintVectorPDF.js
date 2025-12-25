@@ -11,6 +11,132 @@ import { getBlastStatisticsPerEntity } from "../helpers/BlastStatistics.js";
 import { getTemplate, getPaperDimensions } from "./PrintTemplates.js";
 import { PrintLayoutManager } from "./PrintLayoutManager.js";
 import { PrintCaptureManager } from "./PrintCaptureManager.js";
+import ClipperLib from "clipper-lib";
+
+// ============== LINE CLIPPING HELPERS ==============
+
+// Cohen-Sutherland line clipping algorithm
+// Clips a line segment to a rectangle - more efficient than Clipper for simple line-rect clipping
+var INSIDE = 0, LEFT = 1, RIGHT = 2, BOTTOM = 4, TOP = 8;
+
+function computeOutCode(x, y, rect) {
+    var code = INSIDE;
+    if (x < rect.x) code |= LEFT;
+    else if (x > rect.x + rect.width) code |= RIGHT;
+    if (y < rect.y) code |= TOP;
+    else if (y > rect.y + rect.height) code |= BOTTOM;
+    return code;
+}
+
+// Clips line (x1,y1)-(x2,y2) to rectangle rect={x,y,width,height}
+// Returns null if line is completely outside, or {x1,y1,x2,y2} of clipped line
+function clipLineToRect(x1, y1, x2, y2, rect) {
+    var xmin = rect.x, ymin = rect.y;
+    var xmax = rect.x + rect.width, ymax = rect.y + rect.height;
+    
+    var outcode1 = computeOutCode(x1, y1, rect);
+    var outcode2 = computeOutCode(x2, y2, rect);
+    var accept = false;
+    
+    while (true) {
+        if (!(outcode1 | outcode2)) {
+            // Both points inside - trivially accept
+            accept = true;
+            break;
+        } else if (outcode1 & outcode2) {
+            // Both points share an outside zone - trivially reject
+            break;
+        } else {
+            // Line may cross rectangle - compute intersection
+            var x, y;
+            var outcodeOut = outcode1 ? outcode1 : outcode2;
+            
+            if (outcodeOut & TOP) {
+                x = x1 + (x2 - x1) * (ymin - y1) / (y2 - y1);
+                y = ymin;
+            } else if (outcodeOut & BOTTOM) {
+                x = x1 + (x2 - x1) * (ymax - y1) / (y2 - y1);
+                y = ymax;
+            } else if (outcodeOut & RIGHT) {
+                y = y1 + (y2 - y1) * (xmax - x1) / (x2 - x1);
+                x = xmax;
+            } else if (outcodeOut & LEFT) {
+                y = y1 + (y2 - y1) * (xmin - x1) / (x2 - x1);
+                x = xmin;
+            }
+            
+            if (outcodeOut === outcode1) {
+                x1 = x;
+                y1 = y;
+                outcode1 = computeOutCode(x1, y1, rect);
+            } else {
+                x2 = x;
+                y2 = y;
+                outcode2 = computeOutCode(x2, y2, rect);
+            }
+        }
+    }
+    
+    if (accept) {
+        return { x1: x1, y1: y1, x2: x2, y2: y2 };
+    }
+    return null;
+}
+
+// Check if a point is inside the map zone
+function isPointInRect(x, y, rect) {
+    return x >= rect.x && x <= rect.x + rect.width &&
+           y >= rect.y && y <= rect.y + rect.height;
+}
+
+// Check if circle is fully inside rectangle (no clipping needed)
+function isCircleFullyInRect(cx, cy, radius, rect) {
+    return cx - radius >= rect.x && cx + radius <= rect.x + rect.width &&
+           cy - radius >= rect.y && cy + radius <= rect.y + rect.height;
+}
+
+// Check if circle intersects rectangle (partially visible)
+function doesCircleIntersectRect(cx, cy, radius, rect) {
+    // Find closest point on rectangle to circle center
+    var closestX = Math.max(rect.x, Math.min(cx, rect.x + rect.width));
+    var closestY = Math.max(rect.y, Math.min(cy, rect.y + rect.height));
+    var dx = cx - closestX;
+    var dy = cy - closestY;
+    return (dx * dx + dy * dy) <= (radius * radius);
+}
+
+// Draw a clipped circle using line segments
+function drawClippedCircle(pdf, cx, cy, radius, rect, style) {
+    // If fully inside, draw normally
+    if (isCircleFullyInRect(cx, cy, radius, rect)) {
+        pdf.circle(cx, cy, radius, style);
+        return;
+    }
+    
+    // If doesn't intersect at all, skip
+    if (!doesCircleIntersectRect(cx, cy, radius, rect)) {
+        return;
+    }
+    
+    // Approximate circle with line segments and clip each
+    var segments = 36; // 10 degree segments
+    var angleStep = (2 * Math.PI) / segments;
+    
+    for (var i = 0; i < segments; i++) {
+        var angle1 = i * angleStep;
+        var angle2 = (i + 1) * angleStep;
+        
+        var x1 = cx + radius * Math.cos(angle1);
+        var y1 = cy + radius * Math.sin(angle1);
+        var x2 = cx + radius * Math.cos(angle2);
+        var y2 = cy + radius * Math.sin(angle2);
+        
+        var clipped = clipLineToRect(x1, y1, x2, y2, rect);
+        if (clipped) {
+            pdf.line(clipped.x1, clipped.y1, clipped.x2, clipped.y2);
+        }
+    }
+}
 
 // ============== HELPER FUNCTIONS ==============
 
@@ -234,7 +360,8 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 throw new Error("Print Preview Mode must be active");
             }
 
-            // Use explicit inner boundary from getPrintBoundary (matches preview exactly)
+            // Use the inner boundary for coordinate transformation
+            // This is the area where data should be positioned (inside the black template border)
             var innerBoundary = {
                 x: screenBoundary.innerX !== undefined ? screenBoundary.innerX : screenBoundary.x + screenBoundary.width * screenBoundary.marginPercent,
                 y: screenBoundary.innerY !== undefined ? screenBoundary.innerY : screenBoundary.y + screenBoundary.height * screenBoundary.marginPercent,
@@ -280,6 +407,8 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 var y = -(worldY - printCentroidY) * printScale + centerY;
                 return [x, y];
             }
+
+            // Note: Line clipping uses clipLineToRect() and isPointInRect() defined at top of file
 
             bar.style.width = "30%";
             text.textContent = "Drawing background images...";
@@ -385,27 +514,34 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                         var simplifiedPoints = simplifyByPxDist ? simplifyByPxDist(entity.data, 3) : entity.data;
                         simplifiedPoints.forEach(function(point) {
                             var coords = worldToPDF(point.pointXLocation, point.pointYLocation);
-                            var rgb = hexToRgb(point.color || "#000000");
-                            pdf.setFillColor(rgb.r, rgb.g, rgb.b);
-                            pdf.circle(coords[0], coords[1], 0.3, "F");
+                            // Clip: only draw if point is inside mapZone
+                            if (isPointInRect(coords[0], coords[1], mapZone)) {
+                                var rgb = hexToRgb(point.color || "#000000");
+                                pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+                                pdf.circle(coords[0], coords[1], 0.3, "F");
+                            }
                         });
                     } else if (entity.entityType === "circle") {
                         entity.data.forEach(function(circle) {
                             var coords = worldToPDF(circle.pointXLocation, circle.pointYLocation);
                             var radiusMM = circle.radius * printScale;
+                            // Use clipped circle drawing
                             var rgb = hexToRgb(circle.color || "#000000");
                             pdf.setDrawColor(rgb.r, rgb.g, rgb.b);
                             pdf.setLineWidth((circle.lineWidth || 1) * 0.1);
-                            pdf.circle(coords[0], coords[1], radiusMM, "S");
+                            drawClippedCircle(pdf, coords[0], coords[1], radiusMM, mapZone, "S");
                         });
                     } else if (entity.entityType === "text") {
                         entity.data.forEach(function(textData) {
                             if (textData && textData.text) {
                                 var coords = worldToPDF(textData.pointXLocation, textData.pointYLocation);
-                                var rgb = hexToRgb(textData.color || "#000000");
-                                pdf.setTextColor(rgb.r, rgb.g, rgb.b);
-                                pdf.setFontSize(8);
-                                pdf.text(String(textData.text), coords[0], coords[1]);
+                                // Clip: only draw if text position is inside mapZone
+                                if (isPointInRect(coords[0], coords[1], mapZone)) {
+                                    var rgb = hexToRgb(textData.color || "#000000");
+                                    pdf.setTextColor(rgb.r, rgb.g, rgb.b);
+                                    pdf.setFontSize(8);
+                                    pdf.text(String(textData.text), coords[0], coords[1]);
+                                }
                             }
                         });
                     } else if (entity.entityType === "line" || entity.entityType === "poly") {
@@ -415,16 +551,24 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                             pdf.setDrawColor(rgb.r, rgb.g, rgb.b);
                             pdf.setLineWidth((points[0].lineWidth || 1) * 0.1);
 
+                            // Draw line segments with clipping to mapZone
                             for (var i = 0; i < points.length - 1; i++) {
                                 var c1 = worldToPDF(points[i].pointXLocation, points[i].pointYLocation);
                                 var c2 = worldToPDF(points[i + 1].pointXLocation, points[i + 1].pointYLocation);
-                                pdf.line(c1[0], c1[1], c2[0], c2[1]);
+                                var clipped = clipLineToRect(c1[0], c1[1], c2[0], c2[1], mapZone);
+                                if (clipped) {
+                                    pdf.line(clipped.x1, clipped.y1, clipped.x2, clipped.y2);
+                                }
                             }
 
+                            // Close polygon if poly type
                             if (entity.entityType === "poly" && points.length > 2) {
                                 var cLast = worldToPDF(points[points.length - 1].pointXLocation, points[points.length - 1].pointYLocation);
                                 var cFirst = worldToPDF(points[0].pointXLocation, points[0].pointYLocation);
-                                pdf.line(cLast[0], cLast[1], cFirst[0], cFirst[1]);
+                                var clippedClose = clipLineToRect(cLast[0], cLast[1], cFirst[0], cFirst[1], mapZone);
+                                if (clippedClose) {
+                                    pdf.line(clippedClose.x1, clippedClose.y1, clippedClose.x2, clippedClose.y2);
+                                }
                             }
                         }
                     }
@@ -446,70 +590,114 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 var gradeCoords = worldToPDF(hole.gradeXLocation, hole.gradeYLocation);
                 var toeCoords = worldToPDF(hole.endXLocation, hole.endYLocation);
 
-                // Draw collar-to-toe track if angled
+                // Check if collar is inside mapZone (for elements that need it)
+                var collarInside = isPointInRect(collarCoords[0], collarCoords[1], mapZone);
+                var toeInside = isPointInRect(toeCoords[0], toeCoords[1], mapZone);
+
+                // Draw collar-to-toe track if angled - use line clipping
                 if (hole.holeAngle > 0) {
                     pdf.setLineWidth(0.1);
                     if (hole.subdrillAmount < 0) {
-                        pdf.setDrawColor(0, 0, 0);
-                        pdf.line(collarCoords[0], collarCoords[1], toeCoords[0], toeCoords[1]);
-                        pdf.setDrawColor(255, 200, 200);
-                        pdf.line(toeCoords[0], toeCoords[1], gradeCoords[0], gradeCoords[1]);
+                        // Collar to toe line
+                        var clip1 = clipLineToRect(collarCoords[0], collarCoords[1], toeCoords[0], toeCoords[1], mapZone);
+                        if (clip1) {
+                            pdf.setDrawColor(0, 0, 0);
+                            pdf.line(clip1.x1, clip1.y1, clip1.x2, clip1.y2);
+                        }
+                        // Toe to grade line
+                        var clip2 = clipLineToRect(toeCoords[0], toeCoords[1], gradeCoords[0], gradeCoords[1], mapZone);
+                        if (clip2) {
+                            pdf.setDrawColor(255, 200, 200);
+                            pdf.line(clip2.x1, clip2.y1, clip2.x2, clip2.y2);
+                        }
                     } else {
-                        pdf.setDrawColor(0, 0, 0);
-                        pdf.line(collarCoords[0], collarCoords[1], gradeCoords[0], gradeCoords[1]);
-                        pdf.setDrawColor(255, 0, 0);
-                        pdf.line(gradeCoords[0], gradeCoords[1], toeCoords[0], toeCoords[1]);
+                        // Collar to grade line
+                        var clip3 = clipLineToRect(collarCoords[0], collarCoords[1], gradeCoords[0], gradeCoords[1], mapZone);
+                        if (clip3) {
+                            pdf.setDrawColor(0, 0, 0);
+                            pdf.line(clip3.x1, clip3.y1, clip3.x2, clip3.y2);
+                        }
+                        // Grade to toe line
+                        var clip4 = clipLineToRect(gradeCoords[0], gradeCoords[1], toeCoords[0], toeCoords[1], mapZone);
+                        if (clip4) {
+                            pdf.setDrawColor(255, 0, 0);
+                            pdf.line(clip4.x1, clip4.y1, clip4.x2, clip4.y2);
+                        }
                     }
                 }
 
-                // Draw toe
+                // Draw toe with clipping - visible portion only
                 if (parseFloat(hole.holeLengthCalculated).toFixed(1) != "0.0") {
                     var toeRadius = toeSizeInMeters * printScale;
-                    pdf.setFillColor(255, 255, 255);
                     pdf.setDrawColor(0, 0, 0);
-                    pdf.setLineWidth(0.1);
-                    pdf.circle(toeCoords[0], toeCoords[1], toeRadius, "FD");
+                    pdf.setLineWidth(0.15);
+                    drawClippedCircle(pdf, toeCoords[0], toeCoords[1], toeRadius, mapZone, "S");
                 }
 
-                // Draw collar
-                var holeRadius = (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14;
-                holeRadius = Math.max(holeRadius, 0.5); // Minimum radius
-                pdf.setFillColor(0, 0, 0);
-                pdf.setDrawColor(0, 0, 0);
-                pdf.circle(collarCoords[0], collarCoords[1], holeRadius, "F");
+                // Draw collar - only if collar is inside mapZone
+                if (collarInside) {
+                    var holeRadius = (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14;
+                    holeRadius = Math.max(holeRadius, 0.5); // Minimum radius
+                    pdf.setFillColor(0, 0, 0);
+                    pdf.setDrawColor(0, 0, 0);
+                    pdf.circle(collarCoords[0], collarCoords[1], holeRadius, "F");
 
-                // Draw labels
-                var textOffset = holeRadius * 2.5;
-                var fontSize = 6;
-                pdf.setFontSize(fontSize);
-                pdf.setFont("helvetica", "normal");
+                    // Draw labels - use smaller font to match screen display
+                    var textOffset = holeRadius * 2.5;
+                    var fontSize = 4; // Reduced from 6 to better match screen font size
+                    pdf.setFontSize(fontSize);
+                    pdf.setFont("helvetica", "normal");
 
-                if (displayOptions.holeID) {
-                    pdf.setTextColor(0, 0, 0); // Black
-                    pdf.text(hole.holeID, collarCoords[0] + textOffset, collarCoords[1] - textOffset);
+                    // Right side of collar labels (ID, Dia, Len)
+                    if (displayOptions.holeID) {
+                        pdf.setTextColor(0, 0, 0); // Black (textFillColor equivalent)
+                        pdf.text(hole.holeID, collarCoords[0] + textOffset, collarCoords[1] - textOffset);
+                    }
+                    if (displayOptions.holeDia) {
+                        pdf.setTextColor(0, 128, 0); // Green
+                        pdf.text(parseFloat(hole.holeDiameter).toFixed(0), collarCoords[0] + textOffset, collarCoords[1]);
+                    }
+                    if (displayOptions.holeLen) {
+                        pdf.setTextColor(0, 0, 255); // Blue (depthColor equivalent)
+                        pdf.text(parseFloat(hole.holeLengthCalculated).toFixed(1), collarCoords[0] + textOffset, collarCoords[1] + textOffset);
+                    }
                 }
-                if (displayOptions.holeDia) {
-                    pdf.setTextColor(0, 128, 0); // Green (rgb(0, 50, 0) was too dark, use rgb(0, 128, 0))
-                    pdf.text(parseFloat(hole.holeDiameter).toFixed(0), collarCoords[0] + textOffset, collarCoords[1]);
+                
+                // Left side of collar labels (Ang, Time) - only if collar inside
+                if (collarInside && displayOptions.holeAng) {
+                    var textOffset2 = collarInside ? (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14 * 2.5 : 2;
+                    pdf.setTextColor(128, 64, 0); // Brown/Orange (angleDipColor equivalent)
+                    pdf.text(parseFloat(hole.holeAngle).toFixed(0) + "deg", collarCoords[0] - textOffset2, collarCoords[1] - textOffset2, { align: "right" });
                 }
-                if (displayOptions.holeLen) {
-                    pdf.setTextColor(0, 0, 255); // Blue (rgb(0, 0, 67) was too dark, use rgb(0, 0, 255))
-                    pdf.text(parseFloat(hole.holeLengthCalculated).toFixed(1), collarCoords[0] + textOffset, collarCoords[1] + textOffset);
-                }
-                if (displayOptions.holeAng) {
-                    pdf.setTextColor(128, 64, 0); // Brown/Orange (rgb(67, 30, 0) was too dark, use rgb(128, 64, 0))
-                    pdf.text(parseFloat(hole.holeAngle).toFixed(0) + "deg", collarCoords[0] - textOffset, collarCoords[1] - textOffset, { align: "right" });
-                }
-                if (displayOptions.holeBea) {
+                if (collarInside && displayOptions.initiationTime) {
+                    var textOffset3 = (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14 * 2.5;
                     pdf.setTextColor(255, 0, 0); // Red
-                    pdf.text(parseFloat(hole.holeBearing).toFixed(1) + "deg", toeCoords[0] - textOffset, toeCoords[1] + textOffset, { align: "right" });
+                    pdf.text(String(hole.holeTime || ""), collarCoords[0] - textOffset3, collarCoords[1], { align: "right" });
+                }
+                
+                // Left side of toe labels (Dip, Bea, Subdrill) - only if toe inside
+                if (toeInside) {
+                    var toeTextOffset = toeSizeInMeters * printScale * 1.5;
+                    if (displayOptions.holeDip) {
+                        pdf.setTextColor(128, 64, 0); // Brown/Orange (angleDipColor equivalent)
+                        var dipAngle = 90 - parseFloat(hole.holeAngle);
+                        pdf.text(dipAngle.toFixed(0) + "deg", toeCoords[0] - toeTextOffset, toeCoords[1] - toeTextOffset, { align: "right" });
+                    }
+                    if (displayOptions.holeBea) {
+                        pdf.setTextColor(255, 0, 0); // Red
+                        pdf.text(parseFloat(hole.holeBearing).toFixed(1) + "deg", toeCoords[0] - toeTextOffset, toeCoords[1] + toeTextOffset, { align: "right" });
+                    }
+                    if (displayOptions.holeSubdrill) {
+                        pdf.setTextColor(0, 0, 255); // Blue
+                        pdf.text(parseFloat(hole.subdrillAmount || 0).toFixed(1), toeCoords[0] - toeTextOffset, toeCoords[1], { align: "right" });
+                    }
                 }
             });
 
             bar.style.width = "65%";
             text.textContent = "Drawing connectors...";
 
-            // Step 19a) Draw connectors (arrows between holes)
+            // Step 19a) Draw connectors (arrows between holes) - with line clipping
             if (displayOptions.connector) {
                 var connScale = parseFloat(document.getElementById("connSlider")?.value || 17);
                 var holeMap = new Map();
@@ -540,21 +728,28 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                                     var arrowLength = (connScale / 4) * printScale * 2;
                                     var arrowWidth = (connScale / 4) * printScale;
                                     
+                                    // Check if end point is inside for arrowhead
+                                    var endInside = isPointInRect(endCoords[0], endCoords[1], mapZone);
+                                    
                                     if (curve === 0) {
-                                        // Straight connector
-                                        pdf.setLineWidth(0.2);
-                                        pdf.line(startCoords[0], startCoords[1], endCoords[0], endCoords[1]);
+                                        // Straight connector - clip line to mapZone
+                                        var clippedConn = clipLineToRect(startCoords[0], startCoords[1], endCoords[0], endCoords[1], mapZone);
+                                        if (clippedConn) {
+                                            pdf.setLineWidth(0.2);
+                                            pdf.line(clippedConn.x1, clippedConn.y1, clippedConn.x2, clippedConn.y2);
+                                        }
                                         
-                                        // Draw arrowhead - angle from start TO end (direction arrow points)
-                                        var angle = Math.atan2(endCoords[1] - startCoords[1], endCoords[0] - startCoords[0]);
-                                        var arrowX1 = endCoords[0] - arrowLength * Math.cos(angle - Math.PI / 6);
-                                        var arrowY1 = endCoords[1] - arrowLength * Math.sin(angle - Math.PI / 6);
-                                        var arrowX2 = endCoords[0] - arrowLength * Math.cos(angle + Math.PI / 6);
-                                        var arrowY2 = endCoords[1] - arrowLength * Math.sin(angle + Math.PI / 6);
-                                        
-                                        pdf.triangle(endCoords[0], endCoords[1], arrowX1, arrowY1, arrowX2, arrowY2, "F");
+                                        // Draw arrowhead only if end point is inside mapZone
+                                        if (endInside) {
+                                            var angle = Math.atan2(endCoords[1] - startCoords[1], endCoords[0] - startCoords[0]);
+                                            var arrowX1 = endCoords[0] - arrowLength * Math.cos(angle - Math.PI / 6);
+                                            var arrowY1 = endCoords[1] - arrowLength * Math.sin(angle - Math.PI / 6);
+                                            var arrowX2 = endCoords[0] - arrowLength * Math.cos(angle + Math.PI / 6);
+                                            var arrowY2 = endCoords[1] - arrowLength * Math.sin(angle + Math.PI / 6);
+                                            pdf.triangle(endCoords[0], endCoords[1], arrowX1, arrowY1, arrowX2, arrowY2, "F");
+                                        }
                                     } else {
-                                        // Curved connector using quadratic bezier
+                                        // Curved connector - clip each segment
                                         var midX = (startCoords[0] + endCoords[0]) / 2;
                                         var midY = (startCoords[1] + endCoords[1]) / 2;
                                         var dx = endCoords[0] - startCoords[0];
@@ -567,7 +762,7 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                                         var controlX = midX + perpX * curveFactor;
                                         var controlY = midY + perpY * curveFactor;
                                         
-                                        // Draw curved path (jsPDF doesn't support bezier directly, so approximate with line segments)
+                                        // Draw curved path with clipping
                                         var segments = 20;
                                         pdf.setLineWidth(0.2);
                                         var prevX = startCoords[0];
@@ -576,25 +771,25 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                                             var t = s / segments;
                                             var x = (1 - t) * (1 - t) * startCoords[0] + 2 * (1 - t) * t * controlX + t * t * endCoords[0];
                                             var y = (1 - t) * (1 - t) * startCoords[1] + 2 * (1 - t) * t * controlY + t * t * endCoords[1];
-                                            if (s === 1) {
-                                                pdf.line(prevX, prevY, x, y);
-                                            } else {
-                                                pdf.line(prevX, prevY, x, y);
+                                            var clippedSeg = clipLineToRect(prevX, prevY, x, y, mapZone);
+                                            if (clippedSeg) {
+                                                pdf.line(clippedSeg.x1, clippedSeg.y1, clippedSeg.x2, clippedSeg.y2);
                                             }
                                             prevX = x;
                                             prevY = y;
                                         }
                                         
-                                        // Draw arrowhead at end
-                                        var tangentX = 2 * (endCoords[0] - controlX);
-                                        var tangentY = 2 * (endCoords[1] - controlY);
-                                        var angle = Math.atan2(tangentY, tangentX);
-                                        var arrowX1 = endCoords[0] - arrowLength * Math.cos(angle - Math.PI / 6);
-                                        var arrowY1 = endCoords[1] - arrowLength * Math.sin(angle - Math.PI / 6);
-                                        var arrowX2 = endCoords[0] - arrowLength * Math.cos(angle + Math.PI / 6);
-                                        var arrowY2 = endCoords[1] - arrowLength * Math.sin(angle + Math.PI / 6);
-                                        
-                                        pdf.triangle(endCoords[0], endCoords[1], arrowX1, arrowY1, arrowX2, arrowY2, "F");
+                                        // Draw arrowhead only if end point is inside mapZone
+                                        if (endInside) {
+                                            var tangentX = 2 * (endCoords[0] - controlX);
+                                            var tangentY = 2 * (endCoords[1] - controlY);
+                                            var angle = Math.atan2(tangentY, tangentX);
+                                            var arrowX1 = endCoords[0] - arrowLength * Math.cos(angle - Math.PI / 6);
+                                            var arrowY1 = endCoords[1] - arrowLength * Math.sin(angle - Math.PI / 6);
+                                            var arrowX2 = endCoords[0] - arrowLength * Math.cos(angle + Math.PI / 6);
+                                            var arrowY2 = endCoords[1] - arrowLength * Math.sin(angle + Math.PI / 6);
+                                            pdf.triangle(endCoords[0], endCoords[1], arrowX1, arrowY1, arrowX2, arrowY2, "F");
+                                        }
                                     }
                                 }
                             }
@@ -608,7 +803,7 @@ export function generateTrueVectorPDF(context, userInput, mode) {
             bar.style.width = "70%";
             text.textContent = "Drawing contour lines...";
 
-            // Step 19b) Draw contour lines
+            // Step 19b) Draw contour lines - with line clipping
             if (displayOptions.contour && context.contourLinesArray) {
                 pdf.setDrawColor(255, 0, 255); // Magenta
                 pdf.setLineWidth(0.3);
@@ -624,7 +819,11 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                                 if (startPt && endPt) {
                                     var startCoords = worldToPDF(startPt.x !== undefined ? startPt.x : startPt[0], startPt.y !== undefined ? startPt.y : startPt[1]);
                                     var endCoords = worldToPDF(endPt.x !== undefined ? endPt.x : endPt[0], endPt.y !== undefined ? endPt.y : endPt[1]);
-                                    pdf.line(startCoords[0], startCoords[1], endCoords[0], endCoords[1]);
+                                    // Clip contour line to mapZone
+                                    var clippedContour = clipLineToRect(startCoords[0], startCoords[1], endCoords[0], endCoords[1], mapZone);
+                                    if (clippedContour) {
+                                        pdf.line(clippedContour.x1, clippedContour.y1, clippedContour.x2, clippedContour.y2);
+                                    }
                                 }
                             }
                         }
@@ -819,7 +1018,7 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 }
             }
 
-            // Step 28) Render Title and Blast Name
+            // Step 28) Render Title and Blast Name (no square braces)
             var titleRow = layoutMgr.getTitleCell();
             if (titleRow) {
                 // Get blast names
@@ -840,10 +1039,10 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 pdf.text("TITLE", titleRow.x + 2, titleRow.y + titleRow.height * 0.35);
                 pdf.setFontSize(8);
                 pdf.setFont("helvetica", "normal");
-                pdf.text("[" + displayBlastName + "]", titleRow.x + 2, titleRow.y + titleRow.height * 0.7);
+                pdf.text(displayBlastName, titleRow.x + 2, titleRow.y + titleRow.height * 0.7);
             }
 
-            // Step 29) Render Date and Time
+            // Step 29) Render Date and Time (no square braces)
             var dateRow = layoutMgr.getDateCell();
             if (dateRow) {
                 var now = new Date();
@@ -856,10 +1055,10 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 pdf.text("DATE", dateRow.x + 2, dateRow.y + dateRow.height * 0.35);
                 pdf.setFontSize(7);
                 pdf.setFont("helvetica", "normal");
-                pdf.text("[" + dateStr + " " + timeStr + "]", dateRow.x + 2, dateRow.y + dateRow.height * 0.7);
+                pdf.text(dateStr + " " + timeStr, dateRow.x + 2, dateRow.y + dateRow.height * 0.7);
             }
 
-            // Step 30) Render Scale and Designer
+            // Step 30) Render Scale and Designer (no square braces)
             var scaleDesignerRow = layoutMgr.getScaleDesignerCell();
             if (scaleDesignerRow) {
                 var scaleRatio = layoutMgr.calculateScaleRatio(printScale);
@@ -871,11 +1070,11 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 
                 // Scale in top half
                 pdf.text("Scale:", scaleDesignerRow.x + 2, scaleDesignerRow.y + scaleDesignerRow.height * 0.25);
-                pdf.text("[" + scaleRatio + "]", scaleDesignerRow.x + 15, scaleDesignerRow.y + scaleDesignerRow.height * 0.25);
+                pdf.text(scaleRatio, scaleDesignerRow.x + 15, scaleDesignerRow.y + scaleDesignerRow.height * 0.25);
                 
                 // Designer in bottom half
                 pdf.text("Designer:", scaleDesignerRow.x + 2, scaleDesignerRow.y + scaleDesignerRow.height * 0.65);
-                pdf.text("[" + designerName + "]", scaleDesignerRow.x + 18, scaleDesignerRow.y + scaleDesignerRow.height * 0.65);
+                pdf.text(designerName, scaleDesignerRow.x + 18, scaleDesignerRow.y + scaleDesignerRow.height * 0.65);
             }
 
             bar.style.width = "95%";
@@ -892,8 +1091,8 @@ export function generateTrueVectorPDF(context, userInput, mode) {
             bar.style.width = "100%";
             text.textContent = "Complete!";
 
-            // Step 32) Save PDF
-            var fileName = "kirra-blast-" + mode + "-" + new Date().toISOString().split("T")[0] + ".pdf";
+            // Step 32) Save PDF using user-provided or auto-generated filename
+            var fileName = userInput.fileName ? userInput.fileName + ".pdf" : "kirra-blast-" + mode + "-" + new Date().toISOString().split("T")[0] + ".pdf";
             pdf.save(fileName);
 
             setTimeout(function() {

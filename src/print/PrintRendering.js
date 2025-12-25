@@ -6,7 +6,7 @@ import * as SVG from "./SVGBuilder.js";
 const magnifyFont = 1.7;
 
 export function drawDataForPrinting(printCtx, printArea, context) {
-    // --- WYSIWYG LOGIC: Render exactly what's in the BLUE dashed boundary (print-safe area) ---
+    // --- WYSIWYG LOGIC: Render exactly what's in the print boundary ---
     const {
         canvas,
         allBlastHoles,
@@ -18,14 +18,14 @@ export function drawDataForPrinting(printCtx, printArea, context) {
         surfaceVisible: originalSurfaceVisible
     } = context;
 
-    // Step 1) Get the on-screen print preview boundary (now includes innerX/Y/Width/Height)
+    // Step 1) Get the on-screen print preview boundary
     const screenBoundary = getPrintBoundary(canvas);
     if (!screenBoundary) {
         throw new Error("Print Preview Mode must be active to generate a WYSIWYG print.");
     }
 
-    // Step 2) Use the explicit inner boundary from getPrintBoundary (blue dashed lines - print-safe area)
-    // This matches how the preview is calculated in calculateFullPreviewPositions
+    // Step 2) Use the inner boundary for coordinate transformation
+    // This is the area where data should be positioned (inside the black template border)
     const innerBoundary = {
         x: screenBoundary.innerX !== undefined ? screenBoundary.innerX : screenBoundary.x + screenBoundary.width * screenBoundary.marginPercent,
         y: screenBoundary.innerY !== undefined ? screenBoundary.innerY : screenBoundary.y + screenBoundary.height * screenBoundary.marginPercent,
@@ -33,8 +33,8 @@ export function drawDataForPrinting(printCtx, printArea, context) {
         height: screenBoundary.innerHeight !== undefined ? screenBoundary.innerHeight : screenBoundary.height * (1 - 2 * screenBoundary.marginPercent)
     };
 
-    // Step 3) Convert the BLUE boundary (inner boundary) to world coordinates
-    // This represents exactly what the user sees within the blue dashed lines
+    // Step 3) Convert the inner boundary to world coordinates
+    // This represents exactly what the user sees in the data area
     const world_x1 = (innerBoundary.x - canvas.width / 2) / originalScale + originalCentroidX;
     const world_y1 = -(innerBoundary.y + innerBoundary.height - canvas.height / 2) / originalScale + originalCentroidY;
     const world_x2 = (innerBoundary.x + innerBoundary.width - canvas.width / 2) / originalScale + originalCentroidX;
@@ -99,8 +99,9 @@ export function drawDataForPrinting(printCtx, printArea, context) {
     context.imageVisible = false;
     context.surfaceVisible = false;
 
-    // --- RENDER EVERYTHING (NO FILTERING) ---
-    // The coordinate transformation will handle what's visible
+    // --- RENDER EVERYTHING ---
+    // Note: Clipping is already applied by PrintSystem.js before calling this function
+    // The coordinate transformation handles positioning within the print area
     printData(allBlastHoles, selectedHole, context);
 
     // --- RESTORE GLOBALS ---

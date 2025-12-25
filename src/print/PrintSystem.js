@@ -53,30 +53,36 @@ function getLayoutManager(mode) {
 // Step 2) Calculate print-safe boundary on canvas (UNIFIED for 2D and 3D)
 // CRITICAL: Must use SAME calculation as drawPrintBoundary() for WYSIWYG consistency
 // Uses calculateFullPreviewPositions() to match what user sees in preview
+// Step 2) Returns the print boundary for coordinate transformation
 export function getPrintBoundary(canvas) {
-	if (!printMode) return null;
+    // Step 2a) Check if print preview is active - check BOTH the variable AND the checkbox
+    // This fixes issues where printMode variable gets out of sync with UI state
+    var toggle = document.getElementById("addPrintPreviewToggle");
+    var isPreviewActive = printMode || (toggle && toggle.checked);
+    
+    if (!isPreviewActive) return null;
 
-    // Step 2a) Determine current mode
+    // Step 2b) Determine current mode
     var dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
     var isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
     var mode = isIn3DMode ? "3D" : "2D";
 
-    // Step 2b) Get layout manager
+    // Step 2c) Get layout manager
     var layoutMgr = getLayoutManager(mode);
     
-    // Step 2c) Calculate FULL preview positions (same as drawPrintBoundary uses)
+    // Step 2d) Calculate FULL preview positions (same as drawPrintBoundary uses)
     var preview = layoutMgr.calculateFullPreviewPositions(canvas.width, canvas.height, 30);
     
-    // Step 2d) Return the mapInner zone - this is the blue dashed area where data should be positioned
-    // The outer is the map zone (black border), inner is the safe area (blue dashed)
+    // Step 2e) Return both map zone (outer) and mapInner (data area) for coordinate transformation
+    // The outer zone is the black border, inner is where data should be positioned
     var mapZone = preview.map;
     var mapInner = preview.mapInner;
     
-    // Step 2e) Calculate margin percent from the difference
+    // Step 2f) Calculate margin percent from the difference
     var marginX = mapInner.x - mapZone.x;
-    var marginPercent = marginX / mapZone.width;
+    var marginPercent = mapZone.width > 0 ? marginX / mapZone.width : 0;
 
-	return {
+    return {
         x: mapZone.x,
         y: mapZone.y,
         width: mapZone.width,
@@ -90,42 +96,36 @@ export function getPrintBoundary(canvas) {
 }
 
 // Step 3) Draw full template preview on 2D canvas
-// Shows map zone, footer zone with all cells, and labels
+// Shows map zone (print boundary), footer zone with all cells, and labels
+// Simplified: Only shows the black template boundary - no red/blue dashed lines
 export function drawPrintBoundary(ctx, canvas) {
-	if (!printMode) return;
+    // Step 3a) Check if print preview is active - check BOTH the variable AND the checkbox
+    var toggle = document.getElementById("addPrintPreviewToggle");
+    var isPreviewActive = printMode || (toggle && toggle.checked);
+    
+    if (!isPreviewActive) return;
 
-    // Step 3a) Determine current mode
+    // Step 3b) Determine current mode
     var dimension2D3DBtn = document.getElementById("dimension2D-3DBtn");
     var isIn3DMode = dimension2D3DBtn && dimension2D3DBtn.checked === true;
     var mode = isIn3DMode ? "3D" : "2D";
 
-    // Step 3b) Get layout manager
+    // Step 3c) Get layout manager
     var layoutMgr = getLayoutManager(mode);
     
-    // Step 3c) Get full template preview positions
+    // Step 3d) Get full template preview positions
     var preview = layoutMgr.calculateFullPreviewPositions(canvas.width, canvas.height, 30);
 
-	ctx.save();
+    ctx.save();
 
     // Only draw preview in non-printing mode
-	if (!isPrinting) {
-        // Step 3d) Draw page outline (outer boundary - red dashed)
-		ctx.strokeStyle = "#ff0000";
-		ctx.lineWidth = 2;
-		ctx.setLineDash([10, 5]);
-        ctx.strokeRect(preview.page.x, preview.page.y, preview.page.width, preview.page.height);
-
-        // Step 3e) Draw map zone outline
+    if (!isPrinting) {
+        // Step 3e) Draw map zone outline - the PRINT BOUNDARY (black solid line)
+        // This is the only boundary shown - data will be clipped to this area
         ctx.strokeStyle = "#333333";
-		ctx.lineWidth = 1;
+        ctx.lineWidth = 1.5;
         ctx.setLineDash([]);
         ctx.strokeRect(preview.map.x, preview.map.y, preview.map.width, preview.map.height);
-
-        // Step 3f) Draw map inner zone (print-safe area - blue dashed)
-        ctx.strokeStyle = "#0066cc";
-        ctx.lineWidth = 1.5;
-		ctx.setLineDash([5, 3]);
-        ctx.strokeRect(preview.mapInner.x, preview.mapInner.y, preview.mapInner.width, preview.mapInner.height);
 
         // Step 3g) Draw "[MAP]" label in center of map zone
         ctx.setLineDash([]);
@@ -491,7 +491,29 @@ export function printCanvasHiRes(context) {
     var bar = document.getElementById("pdfProgressBar");
     var text = document.getElementById("pdfProgressText");
 
+    // Step 11b2) Pre-load QR code image before starting rendering
+    var qrCodeImage = new Image();
+    qrCodeImage.crossOrigin = "anonymous";
+    qrCodeImage.onload = function() {
+        // QR code loaded successfully, proceed with rendering
+        startRasterRendering(qrCodeImage);
+    };
+    qrCodeImage.onerror = function() {
+        // QR code failed to load, proceed without it
+        console.warn("QR code image failed to load, proceeding without it");
+        startRasterRendering(null);
+    };
+    qrCodeImage.src = "icons/kirra2d-qr-code.png";
+    
+    // Set a timeout in case image never loads or errors
     setTimeout(function() {
+        if (!qrCodeImage.complete) {
+            console.warn("QR code image loading timed out");
+            startRasterRendering(null);
+        }
+    }, 2000);
+    
+    function startRasterRendering(preloadedQRCode) {
         try {
             var dpi = 300;
             var mmToPx = dpi / 25.4;
@@ -527,7 +549,8 @@ export function printCanvasHiRes(context) {
             var navLogoRows = layoutMgr.getNavLogoRows();
 
             // Step 11g) Convert mm to pixels for print area
-            // Use mapZone (not mapInnerZone) to match vector PDF - data fills to border edge
+            // Use mapZone (black template boundary) for BOTH clipping AND data positioning
+            // Data fills up to the black border, clipping at the black border
             var printArea = {
                 x: mapZone.x * mmToPx,
                 y: mapZone.y * mmToPx,
@@ -771,21 +794,16 @@ export function printCanvasHiRes(context) {
                         printCtx.fillText("BLAST STATISTICS", (statsCell.x + statsCell.width / 2) * mmToPx, (statsCell.y + statsCell.height / 2) * mmToPx);
                     }
                     
-                    // Step 11n3) Draw Logo/QR code
+                    // Step 11n3) Draw Logo/QR code using pre-loaded image
                     var logoCell = layoutMgr.getLogoCell();
                     if (logoCell) {
-                        // Load and draw QR code
-                        var qrImg = new Image();
-                        qrImg.crossOrigin = "anonymous";
-                        qrImg.src = "icons/kirra2d-qr-code.png";
-                        
-                        // Try to draw immediately if cached
-                        if (qrImg.complete && qrImg.naturalWidth > 0) {
+                        // Use pre-loaded QR code image
+                        if (preloadedQRCode && preloadedQRCode.complete && preloadedQRCode.naturalWidth > 0) {
                             var qrSize = Math.min(logoCell.width, logoCell.height) * 0.6 * mmToPx;
                             var qrX = (logoCell.x + (logoCell.width - logoCell.width * 0.6) / 2) * mmToPx;
                             var qrY = (logoCell.y + (logoCell.height - logoCell.height * 0.6) / 2 - 2) * mmToPx;
                             try {
-                                printCtx.drawImage(qrImg, qrX, qrY, qrSize, qrSize);
+                                printCtx.drawImage(preloadedQRCode, qrX, qrY, qrSize, qrSize);
                             } catch (e) {
                                 console.warn("Could not draw QR code:", e);
                             }
@@ -798,7 +816,7 @@ export function printCanvasHiRes(context) {
                         printCtx.fillText("blastingapps.com", (logoCell.x + logoCell.width / 2) * mmToPx, (logoCell.y + logoCell.height - 2) * mmToPx);
                     }
                     
-                    // Step 11n4) Title block rows
+                    // Step 11n4) Title block rows (no square braces)
                     printCtx.fillStyle = "#000000";
                     for (var tr = 0; tr < titleBlockRows.length; tr++) {
                         var trow = titleBlockRows[tr];
@@ -817,7 +835,7 @@ export function printCanvasHiRes(context) {
                             }
                             var displayName = blastNames.join(", ") || userInput.blastName || "Untitled";
                             printCtx.font = (8 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText("[" + displayName + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
+                            printCtx.fillText(displayName, (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
                         } else if (trow.id === "date") {
                             printCtx.font = "bold " + (8 * mmToPx / 3) + "px Arial";
                             printCtx.fillText("DATE", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.35) * mmToPx);
@@ -825,11 +843,11 @@ export function printCanvasHiRes(context) {
                             var dateStr = now.toLocaleDateString("en-AU", { year: "numeric", month: "short", day: "numeric" });
                             var timeStr = now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
                             printCtx.font = (7 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText("[" + dateStr + " " + timeStr + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
+                            printCtx.fillText(dateStr + " " + timeStr, (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.7) * mmToPx);
                         } else if (trow.id === "scaleDesigner") {
                             printCtx.font = (8 * mmToPx / 3) + "px Arial";
-                            printCtx.fillText("Scale: [1:1000]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.25) * mmToPx);
-                            printCtx.fillText("Designer: [" + (userInput.designer || "") + "]", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.65) * mmToPx);
+                            printCtx.fillText("Scale: 1:1000", (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.25) * mmToPx);
+                            printCtx.fillText("Designer: " + (userInput.designer || ""), (trow.x + 2) * mmToPx, (trow.y + trow.height * 0.65) * mmToPx);
                         }
                     }
                     
@@ -837,18 +855,15 @@ export function printCanvasHiRes(context) {
                     text.textContent = "Drawing data...";
 
                     setTimeout(function() {
-                        // Step 11o) Draw data in print area with clipping to prevent overflow into footer
+                        // Step 11o) Draw data in print area with clipping to black boundary
+                        // Both clipping and data positioning use printArea (mapZone = black template border)
                         printCtx.save();
-                        
-                        // Create clipping region for map zone
                         printCtx.beginPath();
                         printCtx.rect(printArea.x, printArea.y, printArea.width, printArea.height);
                         printCtx.clip();
                         
-                        // Now draw the data - it will be clipped to the map zone
                         drawDataForPrinting(printCtx, printArea, context);
                         
-                        // Restore context to remove clipping
                         printCtx.restore();
 
 						bar.style.width = "80%";
@@ -865,7 +880,9 @@ export function printCanvasHiRes(context) {
                             var orientation = printOrientation === "landscape" ? "l" : "p";
                             var pdf = new jsPDF(orientation, "mm", printPaperSize.toLowerCase());
                             pdf.addImage(imgData, "PNG", 0, 0, pageWidth, pageHeight);
-                            pdf.save("kirra-blast-raster-" + new Date().toISOString().split("T")[0] + ".pdf");
+                            // Use user-provided filename or auto-generated default
+                            var saveFileName = userInput.fileName ? userInput.fileName + ".pdf" : "kirra-blast-raster-" + new Date().toISOString().split("T")[0] + ".pdf";
+                            pdf.save(saveFileName);
 
 						bar.style.width = "100%";
                             text.textContent = "Complete!";
@@ -887,7 +904,7 @@ export function printCanvasHiRes(context) {
             console.error("PDF Generation Error:", error);
             showModalMessage("PDF Creation Failed", "Error: " + error.message, "error");
         }
-    }, 250);
+    } // end startRasterRendering
 }
 
 // Step 12) Deprecated function kept for backward compatibility
@@ -1064,7 +1081,8 @@ export function setupPrintEventHandlers(contextOrGetter) {
 				showModalMessage: context.showModalMessage,
 				FloatingDialog: context.FloatingDialog,
                 threeRenderer: context.threeRenderer,
-                cameraControls: context.cameraControls
+                cameraControls: context.cameraControls,
+				getDipAngle: context.getDipAngle
 			};
 			printToPDF(printContext);
 		});

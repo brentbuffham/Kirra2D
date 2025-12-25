@@ -3777,6 +3777,8 @@ document.addEventListener("DOMContentLoaded", function () {
 		buildVersion: buildVersion,
 		showModalMessage: showModalMessage,
 		FloatingDialog: FloatingDialog,
+		getDipAngle: getDipAngle,
+		currentRotation: currentRotation,
 	}));
 });
 document.getElementById("deletePatternButton").addEventListener("click", deleteSelectedPattern);
