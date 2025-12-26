@@ -2,9 +2,10 @@
 // Step 2) This module handles the 3D Scene, Camera and Lighting Settings dialog
 // Step 3) Dependencies: FloatingDialog, createEnhancedFormContent, getFormData (from FloatingDialog.js)
 // Step 4) Requires: load3DSettings, save3DSettings, apply3DSettings functions from kirra.js
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 5) Show 3D Scene, Camera and Lighting Settings dialog
-function show3DSettingsDialog() {
+export function show3DSettingsDialog() {
     // Step 5a) Access required functions from window (exposed by kirra.js)
     const load3DSettings = window.load3DSettings;
     const save3DSettings = window.save3DSettings;

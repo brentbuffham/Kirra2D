@@ -10,6 +10,7 @@ import earcut from "earcut";
 import Constrainautor from "@kninnug/constrainautor";
 import DxfParser from "dxf-data-parser";
 import Swal from "sweetalert2";
+window.Swal = Swal; // Expose to window for dialog modules
 import Plotly from "plotly.js-dist";
 import Papa from "papaparse";
 import CryptoJS from "crypto-js";
@@ -78,6 +79,25 @@ import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormDa
 // TreeView Module
 import { TreeView, initializeTreeView } from "./dialog/tree/TreeView.js";
 //=================================================
+// Dialog Modules - Converted to ES Modules for Vite bundling 2025-12-26
+// These are imported as side-effect imports - the modules set window globals
+// This avoids duplicate identifier errors with functions already in kirra.js
+//=================================================
+import "./dialog/contextMenu/HolesContextMenu.js";
+import "./dialog/contextMenu/KADContextMenu.js";
+import "./dialog/contextMenu/SurfacesContextMenu.js";
+import "./dialog/contextMenu/ImagesContextMenu.js";
+import "./dialog/contextMenu/ContextMenuManager.js";
+import "./dialog/settings/ThreeDSettingsDialog.js";
+import "./dialog/popups/confirm/ConfirmDialogs.js";
+import "./dialog/popups/error/ErrorDialogs.js";
+import "./dialog/popups/info/InfoDialogs.js";
+import "./dialog/popups/generic/PatternGenerationDialogs.js";
+import "./dialog/popups/generic/AddHoleDialog.js";
+import "./dialog/popups/generic/HolePropertyDialogs.js";
+import "./dialog/popups/generic/ExportDialogs.js";
+import "./dialog/popups/generic/KADDialogs.js";
+//=================================================
 import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
 //=================================================
 // Print and Statistics Modules
@@ -131,6 +151,7 @@ import { printHeader, printFooter, printBlastStats, printBlastStatsSimple } from
 // Author: Brent Buffham
 // Last Modified: "20250816.0140AWST"
 const buildVersion = "20251113.0000AWST"; //Backwards Compatible Date Format AWST = Australian Western Standard Time
+window.buildVersion = buildVersion; // Expose to window for dialog modules
 
 //=================================================
 // SETUP JSCOLOR
@@ -183,7 +204,9 @@ document.addEventListener("DOMContentLoaded", function () {
 //-----------------------------------------
 // Using SweetAlert Library Create a popup that gets input from the user.
 // Step 1) updatePopup() has been moved to src/dialog/popups/info/InfoDialogs.js
-// Step 2) This function is now loaded via script tag in HTML
+// Step 2) This function is now IMPORTED as ES module in kirra.js (2025-12-26)
+// Step 3) REMOVED DUPLICATE: The following function has been commented out to avoid conflict with ES import
+/*
 function updatePopup() {
 	console.log("function updatePopup()");
 	Swal.fire({
@@ -230,7 +253,7 @@ function updatePopup() {
 		<path d="M65.76,119.94c0,0-0.8-2.02-2.61-2.63c-1.81-0.61-4.99-0.91-6.88-0.92s-3.11,0.63-4.16,0c-1.05-0.63-1.66-1.39-1.66-1.39" />
 		</svg>
 			<br>
-				    <label class="labelWhite18">Update - NEW FEATURES:                           </label>
+					<label class="labelWhite18">Update - NEW FEATURES:                           </label>
 					<hr>
 				<div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">
 					<label     class="labelWhite12c">⭐️ ⭐️ Oct - Jan 2026 ⭐️ ⭐️                                            </label>
@@ -244,20 +267,20 @@ function updatePopup() {
 				</div>
 				<br><br>
 				<a href="https://www.buymeacoffee.com/BrentBuffham">
-	          <img src="https://img.buymeacoffee.com/button-api/?text=Buy Brent a coffee&emoji=&slug=BrentBuffham&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" />
-	        </a>
-	        <br>
-	        <a href="mailto:blastingapps.xyz@gmail.com?subject=Bug%20Report%20or%20Feature%20request&body=
-	          Application%20the%20issue%20or%20request%20is%20about:%0D%0A%0D%0A
-	          Description%20of%20the%20bug%20or%20feature:%0D%0A%0D%0A
-	          Steps%20to%20reproduce%20the%20bug%20or%20create%20the%20feature:%0D%0A%0D%0A
-	          Expected%20result:%0D%0A%0D%0A
-	          Actual%20result:%0D%0A%0D%0A
-	        ">
-	          <button class="button-bug">Report Bug / Request Feature</button>
-	        </a>
-	        <br>
-	        <i><label class="labelWhite15">Version: Build ${buildVersion}</i></label>
+			  <img src="https://img.buymeacoffee.com/button-api/?text=Buy Brent a coffee&emoji=&slug=BrentBuffham&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" />
+			</a>
+			<br>
+			<a href="mailto:blastingapps.xyz@gmail.com?subject=Bug%20Report%20or%20Feature%20request&body=
+			  Application%20the%20issue%20or%20request%20is%20about:%0D%0A%0D%0A
+			  Description%20of%20the%20bug%20or%20feature:%0D%0A%0D%0A
+			  Steps%20to%20reproduce%20the%20bug%20or%20create%20the%20feature:%0D%0A%0D%0A
+			  Expected%20result:%0D%0A%0D%0A
+			  Actual%20result:%0D%0A%0D%0A
+			">
+			  <button class="button-bug">Report Bug / Request Feature</button>
+			</a>
+			<br>
+			<i><label class="labelWhite15">Version: Build ${buildVersion}</i></label>
 		  `,
 		customClass: {
 			container: "custom-popup-container",
@@ -273,6 +296,7 @@ function updatePopup() {
 		}
 	});
 }
+*/ // END REMOVED DUPLICATE updatePopup function
 
 // Separate function for Voronoi initialization
 function initializeVoronoiControls() {
@@ -24086,6 +24110,8 @@ function checkAndPromptForStoredData() {
 		}
 	};
 }
+window.checkAndPromptForStoredData = checkAndPromptForStoredData; // Expose for dialog modules
+
 async function showPopup(isDBReady) {
 	console.log("showPopup called with isDBReady:", isDBReady);
 

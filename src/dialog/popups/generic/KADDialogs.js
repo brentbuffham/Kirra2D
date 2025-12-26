@@ -4,10 +4,11 @@
 //=============================================================
 // Step 1) This file contains all KAD-related dialog functions previously in kirra.js
 // Step 2) All functions use FloatingDialog for consistency and proper theming
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 //! SHOW TRIANGULATION POPUP
 // Step 3) Dialog for creating Delaunay 2.5D triangulations
-function showTriangulationPopup() {
+export function showTriangulationPopup() {
 	const selectedPolygon = window.selectedKADObject && window.selectedKADObject.entityType == "poly" ? window.selectedKADObject : null;
 
 	const fields = [
@@ -410,7 +411,7 @@ function showTriangulationPopup() {
 }
 
 // Step 20) Process form data into triangulation parameters
-function processTriangulationFormData(formData) {
+export function processTriangulationFormData(formData) {
 	return {
 		// Fix parameter names to match what createDelaunayTriangulation expects
 		useCollars: formData.blastHolePoints === "collar",
@@ -428,7 +429,7 @@ function processTriangulationFormData(formData) {
 
 //! SHOW OFFSET KAD POPUP
 // Step 21) Dialog for offsetting KAD entities (lines and polygons)
-function showOffsetKADPopup(kadObject) {
+export function showOffsetKADPopup(kadObject) {
 	const entity = window.getEntityFromKADObject(kadObject);
 	if (!entity) return;
 
@@ -578,7 +579,7 @@ function showOffsetKADPopup(kadObject) {
 
 //! SHOW RADII CONFIG POPUP
 // Step 28) Dialog for creating radii/circles around selected entities
-function showRadiiConfigPopup(selectedEntities) {
+export function showRadiiConfigPopup(selectedEntities) {
 	// Step 29) Analyze selected entities for counts and descriptions
 	const entityCount = selectedEntities.length;
 	const holeCount = selectedEntities.filter((e) => e.type === "hole").length;

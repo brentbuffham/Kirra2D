@@ -2,12 +2,13 @@
 //=============================================================
 // CONTEXT MENU MANAGER
 //=============================================================
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 1) Central dispatcher that handles all context menu routing
 // Detects 2D vs 3D environment and routes right-clicks to appropriate context menu
 
 // Step 2) Handle 2D context menu
-function handle2DContextMenu(event) {
+export function handle2DContextMenu(event) {
     event.preventDefault();
     closeAllContextMenus();
 
@@ -167,7 +168,7 @@ function handle2DContextMenu(event) {
 }
 
 // Step 3) Handle 3D context menu
-function handle3DContextMenu(event) {
+export function handle3DContextMenu(event) {
     // Step 3a) Only handle if in 3D mode
     if (!window.onlyShowThreeJS) {
         return;
@@ -551,7 +552,7 @@ function handle3DContextMenu(event) {
 }
 
 // Step 4) Helper function to close all context menus
-function closeAllContextMenus() {
+export function closeAllContextMenus() {
     // Find all elements that could be context menus
     const existingMenus = document.querySelectorAll('.context-menu, [style*="position: absolute"][style*="background"], div[onclick]');
 
@@ -573,7 +574,7 @@ function closeAllContextMenus() {
 }
 
 // Step 5) KAD context menu for when KAD tools are active
-function kadContextMenu(e) {
+export function kadContextMenu(e) {
     e.preventDefault(); // Prevent context menu
 
     // Check if any KAD drawing tool is active
@@ -590,12 +591,13 @@ function kadContextMenu(e) {
 //===========================================
 
 // Make functions available globally via namespace
-window.ContextMenuManager = {
+export const ContextMenuManager = {
     handle2DContextMenu: handle2DContextMenu,
     handle3DContextMenu: handle3DContextMenu,
     closeAllContextMenus: closeAllContextMenus,
     kadContextMenu: kadContextMenu
 };
+window.ContextMenuManager = ContextMenuManager;
 
 // Also expose directly for backwards compatibility
 window.handle2DContextMenu = handle2DContextMenu;

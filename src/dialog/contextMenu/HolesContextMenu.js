@@ -2,9 +2,10 @@
 //=============================================================
 // HOLES CONTEXT MENU
 //=============================================================
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 1) Show hole property editor for single or multiple holes
-function showHolePropertyEditor(hole) {
+export function showHolePropertyEditor(hole) {
 	// Step 1a) CHECK VISIBILITY FIRST - Filter out hidden holes
 	const visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
 
@@ -444,7 +445,7 @@ function showHolePropertyEditor(hole) {
 }
 
 // Step 11) Process hole property updates (extracted from original logic)
-function processHolePropertyUpdates(holes, formData, originalValues, isMultiple) {
+export function processHolePropertyUpdates(holes, formData, originalValues, isMultiple) {
 	// Step 11a) Helper function to handle relative/absolute value changes
 	function processNumericValue(inputValue, originalValue, currentHoleValue) {
 		if (inputValue === "" || inputValue === originalValue) {

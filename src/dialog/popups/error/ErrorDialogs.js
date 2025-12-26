@@ -2,9 +2,10 @@
 // Step 2) This module contains all error dialog functions
 // Step 3) Dependencies: FloatingDialog, showModalMessage (from FloatingDialog.js)
 // Step 4) Requires: darkModeEnabled from kirra.js
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 5) Generic error dialog with red text
-function showErrorDialog(title, content) {
+export function showErrorDialog(title, content) {
     const contentDiv = document.createElement("div");
     contentDiv.innerHTML = content;
     contentDiv.style.color = "#ff6b6b";
@@ -27,13 +28,13 @@ function showErrorDialog(title, content) {
 }
 
 // Step 6) File format error popup
-function fileFormatPopup(error) {
+export function fileFormatPopup(error) {
     console.log("File format error");
     showModalMessage("Error " + error, "This could be related to the data structure or file.<br><br>" + "Or there are NO blasts or Holes yet, if so ignore.<br><br>" + "Only files with 4, 7, 9, 14, 30, 32 and 35 columns are Accepted<br><br>" + "Column Order and Types are important.", "error");
 }
 
 // Step 7) Calculation error popup with helpful suggestions
-function showCalculationErrorPopup(originalText, errorMessage) {
+export function showCalculationErrorPopup(originalText, errorMessage) {
     return new Promise((resolve) => {
         // Step 7a) Generate helpful error message
         let helpfulMessage = "Unknown calculation error";

@@ -2,9 +2,10 @@
 //=============================================================
 // IMAGES CONTEXT MENU
 //=============================================================
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 1) Show image context menu
-function showImageContextMenu(x, y, imageId = null) {
+export function showImageContextMenu(x, y, imageId = null) {
     // Step 1a) Stop any ongoing drag operations
     window.isDragging = false;
 

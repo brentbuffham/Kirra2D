@@ -5,6 +5,7 @@
 // Step 5) All functions use FloatingDialog, createFormContent, and getFormData - NO Swal2
 // Step 6) Dependencies: FloatingDialog, createFormContent, getFormData
 // Step 7) Requires: Globals from kirra.js including selected Hole, allBlastHoles, clickedHole, blastNameValue, etc.
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 console.log("✅ HolePropertyDialogs.js: Loading...");
 
@@ -14,7 +15,7 @@ console.log("✅ HolePropertyDialogs.js: Loading...");
 // Step 8) Function to rename KAD entities (lines, polygons, etc.)
 // Step 9) Used by KAD context menu and tree view
 // Step 10) Returns a Promise to support async/await patterns
-function renameEntityDialog(entityType, oldEntityName) {
+export function renameEntityDialog(entityType, oldEntityName) {
 	// Step 11) Create form with single text field
 	const fields = [
 		{
@@ -74,7 +75,7 @@ function renameEntityDialog(entityType, oldEntityName) {
 // Step 17) Function to edit the blast name (entity name) of holes
 // Step 18) Supports editing single hole or all holes with same name
 // Step 19) Includes complex duplicate checking and merge logic
-function editBlastNamePopup(selectedHole) {
+export function editBlastNamePopup(selectedHole) {
 	// Step 20) CHECK VISIBILITY FIRST - Don't edit hidden holes
 	if (!selectedHole || !window.isHoleVisible(selectedHole)) {
 		console.log("[BAD] Cannot edit hidden hole: " + (selectedHole ? selectedHole.holeID : "none"));
@@ -312,7 +313,7 @@ function editBlastNamePopup(selectedHole) {
 // EDIT HOLE TYPE DIALOG
 // =====================================
 // Step 50) Function to edit the hole type (Production, Perimeter, etc.)
-function editHoleTypePopup() {
+export function editHoleTypePopup() {
 	// Step 51) CHECK VISIBILITY FIRST - Don't edit hidden holes
 	if (!window.selectedHole || !window.isHoleVisible(window.selectedHole)) {
 		console.log("❌ Cannot edit hidden hole: " + (window.selectedHole ? window.selectedHole.holeID : "none"));
@@ -402,7 +403,7 @@ function editHoleTypePopup() {
 // =====================================
 // Step 58) Function to edit the calculated hole length
 // Step 59) Includes validation and automatic geometry recalculation
-function editHoleLengthPopup() {
+export function editHoleLengthPopup() {
 	// Step 60) CHECK VISIBILITY FIRST - Don't edit hidden holes
 	if (!window.selectedHole || !window.isHoleVisible(window.selectedHole)) {
 		console.log("❌ Cannot edit hidden hole: " + (window.selectedHole ? window.selectedHole.holeID : "none"));
@@ -526,7 +527,7 @@ function editHoleLengthPopup() {
 // =====================================
 // Step 74) Function to record measured (actual) hole length in field
 // Step 75) Includes timestamp recording
-function measuredLengthPopup() {
+export function measuredLengthPopup() {
 	// Step 76) CHECK VISIBILITY FIRST - Don't edit hidden holes
 	if (!window.selectedHole || !window.isHoleVisible(window.selectedHole)) {
 		console.log("❌ Cannot edit hidden hole: " + (window.selectedHole ? window.selectedHole.holeID : "none"));
@@ -610,7 +611,7 @@ function measuredLengthPopup() {
 // =====================================
 // Step 82) Function to record measured mass (explosive mass) for hole
 // Step 83) Includes timestamp recording
-function measuredMassPopup() {
+export function measuredMassPopup() {
 	// Step 84) CHECK VISIBILITY FIRST - Don't edit hidden holes
 	if (!window.selectedHole || !window.isHoleVisible(window.selectedHole)) {
 		console.log("❌ Cannot edit hidden hole: " + (window.selectedHole ? window.selectedHole.holeID : "none"));
@@ -694,7 +695,7 @@ function measuredMassPopup() {
 // =====================================
 // Step 91) Function to record a comment on a hole
 // Step 92) Includes timestamp recording
-function measuredCommentPopup() {
+export function measuredCommentPopup() {
 	// Step 93) CHECK VISIBILITY FIRST - Don't edit hidden holes
 	if (!window.selectedHole || !window.isHoleVisible(window.selectedHole)) {
 		console.log("❌ Cannot edit hidden hole: " + (window.selectedHole ? window.selectedHole.holeID : "none"));

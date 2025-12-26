@@ -2,9 +2,10 @@
 //=============================================================
 // SURFACES CONTEXT MENU
 //=============================================================
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 1) Show surface context menu
-function showSurfaceContextMenu(x, y, surfaceId = null) {
+export function showSurfaceContextMenu(x, y, surfaceId = null) {
     // Step 1a) Stop any ongoing drag operations
     window.isDragging = false;
     // Step 1b) Clear any pending long press timeouts

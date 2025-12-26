@@ -2,9 +2,10 @@
 //=============================================================
 // KAD CONTEXT MENU
 //=============================================================
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
-// Step 1) Show KAD property editor popup for single K AD object
-function showKADPropertyEditorPopup(kadObject) {
+// Step 1) Show KAD property editor popup for single KAD object
+export function showKADPropertyEditorPopup(kadObject) {
     const isMultiElement = kadObject.entityType === "line" || kadObject.entityType === "poly" || kadObject.entityType === "point" || kadObject.entityType === "circle" || kadObject.entityType === "text";
 
     const entity = window.getEntityFromKADObject(kadObject);
@@ -309,7 +310,7 @@ function showKADPropertyEditorPopup(kadObject) {
 }
 
 // Step 6) Function to show property editor for multiple KAD objects
-function showMultipleKADPropertyEditor(kadObjects) {
+export function showMultipleKADPropertyEditor(kadObjects) {
     if (!kadObjects || kadObjects.length === 0) return;
 
     // Step 6a) Get first entity to determine default values
@@ -453,7 +454,7 @@ function showMultipleKADPropertyEditor(kadObjects) {
 }
 
 // Step 7) Function to convert between line and poly
-function convertLinePolyType(kadObject, newType) {
+export function convertLinePolyType(kadObject, newType) {
     const entity = window.getEntityFromKADObject(kadObject);
     if (!entity) return;
 
@@ -476,7 +477,7 @@ function convertLinePolyType(kadObject, newType) {
 }
 
 // Step 8) Function to update KAD object properties
-function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
+export function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
     const map = window.allKADDrawingsMap;
     const entity = map.get(kadObject.entityName);
 

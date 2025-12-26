@@ -2,9 +2,10 @@
 // Step 2) This module contains all informational and success dialog functions
 // Step 3) Dependencies: FloatingDialog, Swal (for legacy dialogs)
 // Step 4) Requires: buildVersion, checkAndPromptForStoredData from kirra.js
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 5) Generic success dialog
-function showSuccessDialog(title, content) {
+export function showSuccessDialog(title, content) {
     const contentDiv = document.createElement("div");
     contentDiv.innerHTML = content;
 
@@ -26,9 +27,10 @@ function showSuccessDialog(title, content) {
 }
 
 // Step 6) Update/Version popup with release notes
-function updatePopup() {
+export function updatePopup() {
     console.log("function updatePopup()");
-    Swal.fire({
+    // Step 6a) Use window.Swal since Swal is exposed from kirra.js
+    window.Swal.fire({
         showCancelButton: false,
         confirmButtonText: "Ok",
         html: '<svg version="1.1" baseProfile="basic" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="70" height="70" viewBox="-40 0 200 200" stroke-width="3" stroke="white" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
@@ -88,7 +90,7 @@ function updatePopup() {
         '<button class="button-bug">Report Bug / Request Feature</button>' +
         '</a>' +
         '<br>' +
-        '<i><label class="labelWhite15">Version: Build ' + buildVersion + '</i></label>',
+        '<i><label class="labelWhite15">Version: Build ' + window.buildVersion + '</i></label>',
         customClass: {
             container: "custom-popup-container",
             title: "swal2-title",
@@ -99,7 +101,10 @@ function updatePopup() {
         }
     }).then((result) => {
         if (result.isConfirmed) {
-            checkAndPromptForStoredData();
+            // Step 7) Call via window since function is defined in kirra.js
+            if (window.checkAndPromptForStoredData) {
+                window.checkAndPromptForStoredData();
+            }
         }
     });
 }

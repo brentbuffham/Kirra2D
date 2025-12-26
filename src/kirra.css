@@ -38,6 +38,8 @@
     --menubar-size: 50px;
     /* height of the menubar */
     --canvas-border: 1px;
+    /* Step: Force light color scheme for form inputs to prevent browser dark mode override */
+    color-scheme: light;
     /* border width of the canvas */
     --canvas-container-margin: 0px;
     /* margin of the canvas container */
@@ -622,6 +624,7 @@ img {
 input[type="number"] {
     cursor: pointer;
     color: #333;
+    background-color: #ffffff;
     font-size: 18px;
     text-align: center;
     position: relative;
@@ -630,6 +633,7 @@ input[type="number"] {
 input[type="number2"] {
     cursor: pointer;
     color: #333;
+    background-color: #ffffff;
     font-size: 15px;
     width: 5ch;
     text-align: center;
@@ -668,6 +672,7 @@ input[type="color"] {
 input[type="text"] {
     cursor: pointer;
     color: #333;
+    background-color: #ffffff;
     font-size: 18px;
     text-align: center;
     position: relative;
@@ -676,6 +681,7 @@ input[type="text"] {
 input[type="text2"] {
     cursor: pointer;
     color: #333;
+    background-color: #ffffff;
     font-size: 15px;
     width: 100%;
     text-align: center;
@@ -685,6 +691,7 @@ input[type="text2"] {
 input[type="text3"] {
     cursor: pointer;
     color: #333;
+    background-color: #ffffff;
     font-size: 15px;
     width: 18ch;
     text-align: center;
@@ -694,6 +701,7 @@ input[type="text3"] {
 textarea {
     cursor: pointer;
     color: #333;
+    background-color: #ffffff;
     font-size: 15px;
     width: auto;
     text-align: center;

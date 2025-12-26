@@ -4,9 +4,10 @@
 //=============================================================
 // Step 1) Converted from Swal2 to FloatingDialog with Single/Multiple confirm buttons
 // Step 2) Modeled after PatternGenerationDialogs.js structure
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 3) Main add hole dialog function
-function showAddHoleDialog() {
+export function showAddHoleDialog() {
     // Step 3a) Generate default blast name with timestamp
     const blastNameValue = "Added_hole_" + new Date().getTime();
 
@@ -171,7 +172,7 @@ function showAddHoleDialog() {
 }
 
 // Step 14) Event listener setup function
-function setupAddHoleEventListeners(formContent) {
+export function setupAddHoleEventListeners(formContent) {
     const useGradeZCheckbox = formContent.querySelector("#useGradeZ");
     const gradeZInput = formContent.querySelector("#gradeZ");
     const lengthInput = formContent.querySelector("#length");
@@ -234,7 +235,7 @@ function setupAddHoleEventListeners(formContent) {
 }
 
 // Step 15) Helper function to get next hole ID for an entity
-function getNextHoleIDForEntity(entityName, useCustomHoleID, customHoleID) {
+export function getNextHoleIDForEntity(entityName, useCustomHoleID, customHoleID) {
     // Step 15a) Find all holes in this entity
     const entityHoles = window.allBlastHoles ? window.allBlastHoles.filter((hole) => hole.entityName === entityName) : [];
 
@@ -286,7 +287,7 @@ function getNextHoleIDForEntity(entityName, useCustomHoleID, customHoleID) {
 }
 
 // Step 16) Process add hole function with validation
-function processAddHole(formData, isMultipleMode, dialog) {
+export function processAddHole(formData, isMultipleMode, dialog) {
     // Step 15a) Basic validation
     if (!formData.blastName || formData.blastName.trim() === "") {
         window.showModalMessage("Invalid Blast Name", "Please enter a Blast Name.", "warning");
@@ -353,7 +354,7 @@ function processAddHole(formData, isMultipleMode, dialog) {
 }
 
 // Step 16) Add hole to blast function
-function addHoleToBlast(formData, worldX, worldY, isMultipleMode, dialog) {
+export function addHoleToBlast(formData, worldX, worldY, isMultipleMode, dialog) {
     console.log("🔹 addHoleToBlast called with data:", {
         blastName: formData.blastName,
         worldX: worldX,
@@ -436,7 +437,7 @@ function addHoleToBlast(formData, worldX, worldY, isMultipleMode, dialog) {
 }
 
 // Step 18) Add hole directly without dialog (for multiple mode)
-function addHoleMultipleMode(worldX, worldY) {
+export function addHoleMultipleMode(worldX, worldY) {
     // Step 18a) Check if we have stored form data from first dialog
     if (!window.multipleAddHoleFormData) {
         console.error("❌ No stored form data for multiple mode");
@@ -465,7 +466,7 @@ function addHoleMultipleMode(worldX, worldY) {
 }
 
 // Step 19) Add hole to blast directly (without dialog parameter)
-function addHoleToBlastDirect(formData, finalX, finalY, holeID) {
+export function addHoleToBlastDirect(formData, finalX, finalY, holeID) {
     // Step 19a) Call the global addHole function from kirra.js
     if (typeof window.addHole === "function") {
         // CRITICAL: Convert string "true"/"false" to boolean

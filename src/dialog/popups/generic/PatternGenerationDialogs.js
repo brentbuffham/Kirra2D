@@ -2,9 +2,10 @@
 //=============================================================
 // PATTERN GENERATION DIALOGS MODULE
 //=============================================================
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 1) Unified pattern dialog function
-function showPatternDialog(mode, worldX, worldY) {
+export function showPatternDialog(mode, worldX, worldY) {
     // Step 1a) Determine mode and defaults
     const isAddPattern = (mode === "add_pattern");
     const title = isAddPattern ? "Add a Pattern?" : "Generate Pattern in Polygon";
@@ -209,7 +210,7 @@ function showPatternDialog(mode, worldX, worldY) {
 }
 
 // Step 6) Create event listener setup function
-function setupPatternDialogEventListeners(formContent, isAddPattern) {
+export function setupPatternDialogEventListeners(formContent, isAddPattern) {
     const useGradeZCheckbox = formContent.querySelector('#useGradeZ');
     const gradeZInput = formContent.querySelector('#gradeZ');
     const lengthInput = formContent.querySelector('#length');
@@ -262,7 +263,7 @@ function setupPatternDialogEventListeners(formContent, isAddPattern) {
 }
 
 // Step 7) Create processing function with validation
-function processPatternGeneration(formData, mode, worldX, worldY) {
+export function processPatternGeneration(formData, mode, worldX, worldY) {
     const isAddPattern = (mode === "add_pattern");
     
     // Step 7a) Basic validation checks (removed restrictive min/max limits)
@@ -352,7 +353,7 @@ function processPatternGeneration(formData, mode, worldX, worldY) {
 }
 
 // Step 8) Holes along polyline dialog function
-function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
+export function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 	// Step 8a) Generate default blast name with timestamp
 	let blastNameValue = "PolylinePattern_" + Date.now();
 	
@@ -572,7 +573,7 @@ function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 }
 
 // Step 9) Create event listener setup function for dynamic field updates
-function setupHolesAlongPolylineEventListeners(formContent) {
+export function setupHolesAlongPolylineEventListeners(formContent) {
 	const useGradeZCheckbox = formContent.querySelector("#useGradeZ");
 	const gradeZInput = formContent.querySelector("#gradeZ");
 	const lengthInput = formContent.querySelector("#length");
@@ -656,7 +657,7 @@ function setupHolesAlongPolylineEventListeners(formContent) {
 }
 
 // Step 10) Holes along line dialog function
-function showHolesAlongLinePopup() {
+export function showHolesAlongLinePopup() {
 	// Step 10a) Generate default blast name with timestamp
 	let blastNameValue = "LinePattern_" + Date.now();
 	
@@ -908,7 +909,7 @@ function showHolesAlongLinePopup() {
 }
 
 // Step 11) Create event listener setup function for dynamic field updates
-function setupHolesAlongLineEventListeners(formContent) {
+export function setupHolesAlongLineEventListeners(formContent) {
 	const useGradeZCheckbox = formContent.querySelector("#useGradeZ");
 	const gradeZInput = formContent.querySelector("#gradeZ");
 	const lengthInput = formContent.querySelector("#length");

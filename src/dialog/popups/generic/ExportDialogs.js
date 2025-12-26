@@ -4,10 +4,11 @@
 //=============================================================
 // Step 1) This file contains all export-related dialog functions previously in kirra.js
 // Step 2) Currently includes IREDES (Epiroc) XML export with 9 helper functions
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 //! IREDES (EPIROC) XML EXPORT
 // Step 3) Dialog for exporting blast holes to IREDES XML format
-function saveIREDESPopup() {
+export function saveIREDESPopup() {
 	//testEpirocCRC(); // Add this line to test
 	// Step 4) Filter visible blast holes using factory function
 	const visibleBlastHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
@@ -364,7 +365,7 @@ function saveIREDESPopup() {
  * @param {string} notes - Notes for the XML file
  * @param {string} holeTypeHandling - How to handle hole types (Undefined, convert, current)
  */
-function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeOptions, mwd, chksumType, notes, holeTypeHandling) {
+export function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeOptions, mwd, chksumType, notes, holeTypeHandling) {
 	if (!allBlastHoles || !Array.isArray(allBlastHoles) || allBlastHoles.length === 0) return;
 
 	const now = new Date();
@@ -555,7 +556,7 @@ function convertPointsToIREDESXML(allBlastHoles, filename, planID, siteID, holeO
  * @param {string} chksumType - The type of checksum to calculate
  * @returns {number|string} - The checksum in the specified format
  */
-function crc32(str, chksumType) {
+export function crc32(str, chksumType) {
 	const table = new Uint32Array(256);
 	for (let i = 256; i--;) {
 		let tmp = i;
@@ -590,7 +591,7 @@ function crc32(str, chksumType) {
  * @returns {string} calculatedChecksum - The calculated checksum
  * @returns {string} error - The error message if the checksum is invalid
  */
-function validateIREDESXML(xmlContent) {
+export function validateIREDESXML(xmlContent) {
 	// Extract the checksum from the XML
 	const checksumMatch = xmlContent.match(/<IR:ChkSum>([^<]+)<\/IR:ChkSum>/);
 	if (!checksumMatch) {
@@ -637,7 +638,7 @@ function validateIREDESXML(xmlContent) {
  * @param {string} xmlContent - The XML content to test
  * @returns {object} - Debug information and validation result
  */
-function testIREDESChecksumDebug(xmlContent) {
+export function testIREDESChecksumDebug(xmlContent) {
 	console.log("=== IREDES CHECKSUM DEBUG TEST ===");
 
 	// Extract original checksum
@@ -683,7 +684,7 @@ function testIREDESChecksumDebug(xmlContent) {
 }
 
 // Step 33) Test with the actual Epiroc XML content
-function testEpirocCRC() {
+export function testEpirocCRC() {
 	// Copy the entire Epiroc XML content and replace the checksum with "0"
 	const epirocXML = "PASTE XML HERE";
 
@@ -694,7 +695,7 @@ function testEpirocCRC() {
 
 //! ALTERNATE CHECKSUMS
 // Step 34) Alternative checksum functions for testing/validation
-function decimalChecksum(str) {
+export function decimalChecksum(str) {
 	let checksum = 0;
 	for (let i = 0; i < str.length; i++) {
 		checksum += str.charCodeAt(i);
@@ -702,17 +703,17 @@ function decimalChecksum(str) {
 	return checksum;
 }
 
-function calculateMD5Checksum(data) {
+export function calculateMD5Checksum(data) {
 	const hash = CryptoJS.MD5(data);
 	return hash.toString();
 }
 
-function calculateSHA1Checksum(data) {
+export function calculateSHA1Checksum(data) {
 	const hash = CryptoJS.SHA1(data);
 	return hash.toString();
 }
 
-function calculateSHA256Checksum(data) {
+export function calculateSHA256Checksum(data) {
 	const hash = CryptoJS.SHA256(data);
 	return hash.toString();
 }

@@ -2,9 +2,10 @@
 // Step 2) This module contains all confirmation dialog functions
 // Step 3) Dependencies: FloatingDialog, Swal (for legacy dialogs)
 // Step 4) Requires: darkModeEnabled, createSurfaceFromPoints, decimatePointCloud, saveSurfaceToDB from kirra.js
+// Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 5) Standard confirmation dialog with 2 buttons (Confirm/Cancel)
-function showConfirmationDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", onConfirm = null, onCancel = null) {
+export function showConfirmationDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", onConfirm = null, onCancel = null) {
     console.log("showConfirmationDialog: " + title);
 
     // Step 5a) Create content with warning icon and message using inline styles for dark mode
@@ -52,7 +53,7 @@ function showConfirmationDialog(title, message, confirmText = "Confirm", cancelT
 }
 
 // Step 6) Confirmation dialog with 3 buttons (Confirm/Option/Cancel)
-function showConfirmationThreeDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", optionText = "Option", onConfirm = null, onCancel = null, onOption = null) {
+export function showConfirmationThreeDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", optionText = "Option", onConfirm = null, onCancel = null, onOption = null) {
     console.log("showConfirmationThreeDialog: " + title);
 
     // Step 6a) Create content with warning icon and message using inline styles for dark mode
@@ -109,7 +110,7 @@ function showConfirmationThreeDialog(title, message, confirmText = "Confirm", ca
 }
 
 // Step 7) Duplicate resolution dialog with 4 options
-function showDuplicateResolutionDialog(duplicateReport, actionType) {
+export function showDuplicateResolutionDialog(duplicateReport, actionType) {
     const duplicateCount = duplicateReport.duplicates.length;
     const entitiesAffected = [...new Set(duplicateReport.duplicates.map((d) => d.entityName))];
 
@@ -220,7 +221,7 @@ function showDuplicateResolutionDialog(duplicateReport, actionType) {
 }
 
 // Step 8) Proximity warning dialog with 3 options (Continue/Skip/Cancel)
-function showProximityWarning(proximityHoles, newHoleInfo) {
+export function showProximityWarning(proximityHoles, newHoleInfo) {
     const holeList = proximityHoles.map((ph) => "• " + ph.hole.entityName + ":" + ph.hole.holeID + " (" + ph.distance.toFixed(3) + "m apart, need " + ph.requiredDistance.toFixed(3) + "m)").join("\n");
 
     return Swal.fire({
@@ -258,7 +259,7 @@ function showProximityWarning(proximityHoles, newHoleInfo) {
 }
 
 // Step 9) Decimation warning dialog for large point clouds
-function showDecimationWarning(points, fileName) {
+export function showDecimationWarning(points, fileName) {
     const pointCount = points.length;
 
     Swal.fire({
