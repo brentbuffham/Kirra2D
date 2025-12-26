@@ -1302,7 +1302,10 @@ function handle3DClick(event) {
 				contourLinesArray = result.contourLinesArray;
 				directionArrows = result.directionArrows;
 
-				// Step 12i.1g.1) Save connector changes to IndexedDB
+				// Step 12i.1g.1) Update contour overlay to reflect new timing
+				updateOverlayColorsForTheme();
+
+				// Step 12i.1g.2) Save connector changes to IndexedDB
 				debouncedSaveHoles();
 
 				// Step 12i.1h) Update time chart
@@ -1360,7 +1363,10 @@ function handle3DClick(event) {
 				contourLinesArray = result.contourLinesArray;
 				directionArrows = result.directionArrows;
 
-				// Step 12i.2f.1) Save multi-connector changes to IndexedDB
+				// Step 12i.2f.1) Update contour overlay to reflect new timing
+				updateOverlayColorsForTheme();
+
+				// Step 12i.2f.2) Save multi-connector changes to IndexedDB
 				debouncedSaveHoles();
 
 				// Step 12i.2g) Update time chart
@@ -2546,8 +2552,8 @@ document.addEventListener("DOMContentLoaded", function () {
 				if (allBlastHoles && allBlastHoles.length > 0) {
 					// Step 1cd.1) Recalculate contours if contour OR direction arrows display is enabled
 					// This ensures both contourLinesArray and directionArrows are populated for 3D rendering
-					var needsContourRecalc = (displayContours && displayContours.checked) || 
-					                          (displayFirstMovements && displayFirstMovements.checked);
+					var needsContourRecalc = (displayContours && displayContours.checked) ||
+						(displayFirstMovements && displayFirstMovements.checked);
 					if (needsContourRecalc) {
 						var result = recalculateContours(allBlastHoles, 0, 0);
 						if (result) {
@@ -6149,7 +6155,7 @@ canvasContainer.addEventListener(
 			}
 
 			drawData(allBlastHoles, selectedHole);
-			
+
 			// Step #) Update contour overlay after zoom - this ensures contours redraw with new scale
 			if (typeof updateOverlayColorsForTheme === "function") {
 				updateOverlayColorsForTheme();
@@ -6213,11 +6219,11 @@ document.addEventListener("DOMContentLoaded", function () {
 	intervalSlider.addEventListener("input", function () {
 		intervalAmount = document.getElementById("intervalSlider").value;
 		intervalLabel.textContent = "Interval : " + intervalAmount + "ms";
-		
+
 		// Step 1) Invalidate cache by clearing cached data
 		cachedContourLinesArray = null;
 		cachedDirectionArrows = null;
-		
+
 		// Step 2) Recalculate contours with new interval
 		const result = recalculateContours(allBlastHoles, deltaX, deltaY);
 		contourLinesArray = result.contourLinesArray;
@@ -6236,14 +6242,14 @@ document.addEventListener("DOMContentLoaded", function () {
 	firstMovementSlider.addEventListener("input", function () {
 		firstMovementSize = document.getElementById("firstMovementSlider").value;
 		firstMovementLabel.textContent = "First Movement Size : " + firstMovementSize;
-		
+
 		// Step 1) Update window global for 3D rendering
 		window.firstMovementSize = firstMovementSize;
-		
+
 		// Step 2) Invalidate cache
 		cachedContourLinesArray = null;
 		cachedDirectionArrows = null;
-		
+
 		// Step 3) Recalculate contours/arrows
 		const result = recalculateContours(allBlastHoles, deltaX, deltaY);
 		contourLinesArray = result.contourLinesArray;
@@ -6537,7 +6543,7 @@ function throttledRecalculateContours() {
 		var needsArrows = displayFirstMovements && displayFirstMovements.checked;
 		var hasValidCache = cachedContourLinesArray && cachedContourLinesArray.length > 0;
 		var hasValidArrowCache = cachedDirectionArrows && cachedDirectionArrows.length > 0;
-		
+
 		// Step 2b) Use cache only if it has what we need, otherwise recalculate
 		if (hasValidCache && (!needsArrows || hasValidArrowCache)) {
 			contourLinesArray = cachedContourLinesArray;
@@ -6550,7 +6556,7 @@ function throttledRecalculateContours() {
 		}
 		updateOverlayColorsForTheme();
 		contourUpdatePending = false;
-		
+
 		// Step 2d) Redraw after contours/arrows are calculated to ensure immediate rendering
 		drawData(allBlastHoles, selectedHole);
 	});
@@ -6764,7 +6770,7 @@ function handleMouseMove(event) {
 	//if (isDragging || isAddingHole || isDeletingHole || isAddingConnector || isAddingMultiConnector || isDrawingText || isDrawingLine || isDrawingPoly || isDrawingCircle || isMeasureRecording) {
 	drawData(allBlastHoles, selectedHole);
 	//}
-	
+
 	// Step #) Update contour overlay when panning - ensures contours stay in sync with canvas position
 	if (isDragging && typeof updateOverlayColorsForTheme === "function") {
 		updateOverlayColorsForTheme();
@@ -16040,6 +16046,9 @@ function handleConnectorClick(event) {
 				contourLinesArray = result.contourLinesArray;
 				directionArrows = result.directionArrows;
 
+				// Step #) Update contour overlay to reflect new timing
+				updateOverlayColorsForTheme();
+
 				// Save connector changes to IndexedDB
 				debouncedSaveHoles();
 
@@ -16069,6 +16078,9 @@ function handleConnectorClick(event) {
 				const result = recalculateContours(allBlastHoles, deltaX, deltaY);
 				contourLinesArray = result.contourLinesArray;
 				directionArrows = result.directionArrows;
+
+				// Step #) Update contour overlay to reflect new timing
+				updateOverlayColorsForTheme();
 
 				// Save multi-connector changes to IndexedDB
 				debouncedSaveHoles();
@@ -16141,6 +16153,8 @@ function connectHolesInLine(pointsInLine) {
 	const result = recalculateContours(allBlastHoles, deltaX, deltaY);
 	contourLinesArray = result.contourLinesArray;
 	directionArrows = result.directionArrows;
+	// Step #) Update contour overlay to reflect new timing
+	updateOverlayColorsForTheme();
 	timeChart();
 	drawData(allBlastHoles, selectedHole);
 }
@@ -19657,16 +19671,16 @@ function computeContourHash(holes) {
 		var h = holes[i];
 		hashStr += h.startXLocation.toFixed(2) + "," + h.startYLocation.toFixed(2) + "," + (h.holeTime || 0) + ";";
 	}
-	
+
 	// Step 1b) Include display options that affect contour/arrow generation
 	// This ensures cache is invalidated when user toggles checkboxes or adjusts sliders
-	hashStr += "opts:" + 
+	hashStr += "opts:" +
 		(displayContours ? displayContours.checked : false) + "," +
 		(displayFirstMovements ? displayFirstMovements.checked : false) + "," +
 		(displayRelief ? displayRelief.checked : false) + "," +
 		(typeof intervalAmount !== "undefined" ? intervalAmount : 25) + "," +
 		(typeof firstMovementSize !== "undefined" ? firstMovementSize : 2);
-	
+
 	// Step 1c) Simple hash function
 	var hash = 0;
 	for (var j = 0; j < hashStr.length; j++) {
@@ -21263,34 +21277,34 @@ function drawData(allBlastHoles, selectedHole) {
 				if (typeof intervalAmount !== "undefined") {
 					contourInterval = parseInt(intervalAmount);
 				}
-				
+
 				// Step 8c) Set up contour line style
 				ctx.lineWidth = 2;
 				ctx.setLineDash([8, 4]);
-				
+
 				// Step 8d) Draw each contour level
 				for (var levelIdx = 0; levelIdx < contourLinesArray.length; levelIdx++) {
 					var contourLevel = contourLinesArray[levelIdx];
 					if (!contourLevel || contourLevel.length === 0) continue;
-					
+
 					// Step 8e) Alternate colors for visibility
 					ctx.strokeStyle = levelIdx % 2 === 0 ? "#FFFF00" : "#FF00FF";
-					
+
 					// Step 8f) Draw each line segment in this level
 					for (var li = 0; li < contourLevel.length; li++) {
 						var line = contourLevel[li];
 						if (!line || !line[0] || !line[1]) continue;
-						
+
 						var startCoords = worldToCanvas(line[0].x, line[0].y);
 						var endCoords = worldToCanvas(line[1].x, line[1].y);
-						
+
 						ctx.beginPath();
 						ctx.moveTo(startCoords[0], startCoords[1]);
 						ctx.lineTo(endCoords[0], endCoords[1]);
 						ctx.stroke();
 					}
 				}
-				
+
 				// Step 8g) Reset line dash and line width for other drawing
 				ctx.setLineDash([]);
 				ctx.lineWidth = 1;
