@@ -28215,9 +28215,10 @@ function calculateMissingGeometry(hole) {
 		(hole.holeAngle !== undefined && hole.holeAngle !== null) &&
 		(hole.holeBearing !== undefined && hole.holeBearing !== null);
 
+	// Step 1b) Subdrill can be positive, zero, OR negative - all are valid
 	var hasSubdrill = hole.subdrillAmount !== undefined &&
 		hole.subdrillAmount !== null &&
-		hole.subdrillAmount >= 0;
+		!isNaN(hole.subdrillAmount);
 
 	// Step 2) PRIORITY 1: CollarXYZ + ToeXYZ (coordinates take precedence - IGNORE L/A/B)
 	if (hasCollarXYZ && hasToeXYZ) {
@@ -28299,10 +28300,11 @@ function calculateFromCollarAndToe(hole, hasSubdrill) {
 		}
 
 		// Step 10d) Calculate GradeXYZ from subdrill
-		if (hasSubdrill && hole.subdrillAmount > 0) {
+		if (hasSubdrill) {
+			// Step 10d-i) Use provided subdrill (respects 0, positive, AND negative values)
 			calculateGradeFromSubdrill(hole);
 		} else {
-			// Estimate subdrill as 10% of length or 1m, whichever is smaller
+			// Step 10d-ii) No subdrill provided - estimate as 10% of length or 1m, whichever is smaller
 			hole.subdrillAmount = Math.min(hole.holeLengthCalculated * 0.1, 1);
 			calculateGradeFromSubdrill(hole);
 		}
