@@ -97,6 +97,7 @@ import "./dialog/popups/generic/AddHoleDialog.js";
 import "./dialog/popups/generic/HolePropertyDialogs.js";
 import "./dialog/popups/generic/ExportDialogs.js";
 import "./dialog/popups/generic/KADDialogs.js";
+import "./dialog/popups/generic/SurfaceAssignmentDialogs.js";
 //=================================================
 import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
 //=================================================
@@ -21895,6 +21896,7 @@ function drawData(allBlastHoles, selectedHole) {
 					else if (selectedMultipleHoles && selectedMultipleHoles.find((h) => h.entityName === hole.entityName && h.holeID === hole.holeID)) {
 						highlightSelectedHoleThreeJS(hole, "multi");
 						if (hole === selectedMultipleHoles[0]) {
+							//TODO: This is too verbose for it to be rendered in the scene! We should have a shared 2D canvas overlay that displays the selected holes and their IDs. That both 2D and 3D use.
 							drawToolPromptThreeJS("Editing Selected Holes: {" + selectedMultipleHoles.map((h) => h.holeID).join(",") + "} \nEscape key to clear Selection", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 0, 150, .8)");
 						}
 					}
@@ -28192,94 +28194,216 @@ function updateHoleFromCsvData(hole, getValue, angleConvention, diameterUnit) {
 //         calculateHoleEndCoordinates(hole);
 //     }
 // }
+// GEOMETRY CONFLICT RESOLUTION - Priority-based calculation
+// Priority 1: CollarXYZ + ToeXYZ (coordinates take precedence - IGNORE L/A/B if provided)
+// Priority 2: CollarXYZ + L/A/B + Subdrill (forward calculation)
+// Priority 3: ToeXYZ + L/A/B + Subdrill (REVERSE calculation - back-calculate CollarXYZ)
+// Priority 4: CollarXYZ + ToeXYZ (no subdrill - calculate L/A/B, estimate subdrill)
+// Priority 5: CollarXYZ only (use defaults)
 function calculateMissingGeometry(hole) {
-	// Step 1) Check if we have meaningful end coordinates (not just defaults)
-	const hasEndCoords = (hole.endXLocation !== hole.startXLocation || hole.endYLocation !== hole.startYLocation || hole.endZLocation !== hole.startZLocation) && hole.endXLocation !== undefined && hole.endYLocation !== undefined && hole.endZLocation !== undefined;
+	// Step 1) Determine what data we have
+	var hasCollarXYZ = isValidCoordinate(hole.startXLocation) &&
+		isValidCoordinate(hole.startYLocation) &&
+		isValidCoordinate(hole.startZLocation);
 
-	// Step 2) Check if we have meaningful angle/bearing/length data
-	const hasAngleBearingLength = (hole.holeAngle !== 0 || hole.holeBearing !== 0 || hole.holeLengthCalculated !== 0) && hole.holeAngle !== undefined && hole.holeBearing !== undefined && hole.holeLengthCalculated !== undefined;
+	var hasToeXYZ = isValidCoordinate(hole.endXLocation) &&
+		isValidCoordinate(hole.endYLocation) &&
+		isValidCoordinate(hole.endZLocation) &&
+		coordsDifferFromCollar(hole, "end");
 
-	if (hasEndCoords && !hasAngleBearingLength) {
-		// Step 3) Calculate angle/bearing/length from end coordinates
-		const dx = hole.endXLocation - hole.startXLocation;
-		const dy = hole.endYLocation - hole.startYLocation;
-		const dz = hole.endZLocation - hole.startZLocation;
+	var hasLAB = (hole.holeLengthCalculated > 0) &&
+		(hole.holeAngle !== undefined && hole.holeAngle !== null) &&
+		(hole.holeBearing !== undefined && hole.holeBearing !== null);
 
-		const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+	var hasSubdrill = hole.subdrillAmount !== undefined &&
+		hole.subdrillAmount !== null &&
+		hole.subdrillAmount >= 0;
 
-		if (length > 0) {
-			hole.holeLengthCalculated = length;
-
-			// FIXED: Proper bearing calculation
-			// 0? = North, 90? = East, 180? = South, 270? = West
-			let bearing = Math.atan2(dx, dy) * (180 / Math.PI);
-			if (bearing < 0) bearing += 360;
-			hole.holeBearing = bearing;
-
-			// FIXED: Proper angle calculation
-			// 0? = vertical down, 90? = horizontal
-			const horizontalDistance = Math.sqrt(dx * dx + dy * dy);
-			if (horizontalDistance > 0) {
-				hole.holeAngle = Math.atan2(horizontalDistance, Math.abs(dz)) * (180 / Math.PI);
-			} else {
-				hole.holeAngle = 0; // Vertical
-			}
-
-			// ALTERATION: Calculate grade coordinates when end coordinates are provided from CSV
-			// This fixes the issue where grade coordinates remain at default values (startZ - 10)
-			// when importing CSV files with end coordinates but grade set to "-- calculate --"
-			// Check if grade coordinates are still at default values (indicating they need calculation)
-			const gradeAtDefault = (hole.gradeXLocation === hole.startXLocation && hole.gradeYLocation === hole.startYLocation && hole.gradeZLocation === hole.startZLocation - 10) || (hole.gradeXLocation === hole.startXLocation && hole.gradeYLocation === hole.startYLocation);
-
-			if (gradeAtDefault) {
-				// Step 3a) Calculate grade coordinates based on actual length and subdrill
-				const subdrillAmount = hole.subdrillAmount || 0;
-				const actualBenchHeight = hole.holeLengthCalculated - subdrillAmount;
-				const angleRad = hole.holeAngle * (Math.PI / 180);
-				const bearingRad = hole.holeBearing * (Math.PI / 180);
-
-				// Use same calculation pattern as end coordinates (sin/cos, not tan)
-				const gradeHorizontalDistance = actualBenchHeight * Math.sin(angleRad);
-				const gradeVerticalDistance = actualBenchHeight * Math.cos(angleRad);
-
-				hole.gradeXLocation = hole.startXLocation + gradeHorizontalDistance * Math.sin(bearingRad);
-				hole.gradeYLocation = hole.startYLocation + gradeHorizontalDistance * Math.cos(bearingRad);
-				hole.gradeZLocation = hole.startZLocation - gradeVerticalDistance;
-			}
-		}
-	} else if (!hasEndCoords && hasAngleBearingLength) {
-		// Step 4) Calculate end coordinates from angle/bearing/length
-		if (hole.holeLengthCalculated === 0) {
-			const benchHeight = hole.benchHeight || 10;
-			const subdrillAmount = hole.subdrillAmount || 0;
-			hole.holeLengthCalculated = benchHeight + subdrillAmount;
-		}
-
-		calculateHoleEndCoordinates(hole);
-	} else if (!hasEndCoords && !hasAngleBearingLength) {
-		// Step 5) Set defaults and calculate everything
-		const benchHeight = hole.benchHeight || 10;
-		const subdrillAmount = hole.subdrillAmount || 0;
-		hole.holeLengthCalculated = benchHeight + subdrillAmount;
-		hole.holeAngle = hole.holeAngle || 0;
-		hole.holeBearing = hole.holeBearing || 0;
-
-		calculateHoleEndCoordinates(hole);
+	// Step 2) PRIORITY 1: CollarXYZ + ToeXYZ (coordinates take precedence - IGNORE L/A/B)
+	if (hasCollarXYZ && hasToeXYZ) {
+		console.log("CSV Import: PRIORITY 1 - Using CollarXYZ + ToeXYZ (ignoring L/A/B if provided)");
+		calculateFromCollarAndToe(hole, hasSubdrill);
+		return;
 	}
-	// If both hasEndCoords and hasAngleBearingLength are true, do nothing (data is complete)
 
-	// Step 6) After all calculations, ensure subdrill is properly set
-	// If subdrill was provided in CSV, preserve it. Otherwise calculate from geometry.
-	if (hole.subdrillAmount === undefined || hole.subdrillAmount === null) {
-		// Step 6a) Calculate subdrill from geometry: holeLengthCalculated - benchHeight
-		const calculatedBenchHeight = hole.startZLocation - hole.endZLocation;
-		hole.subdrillAmount = hole.holeLengthCalculated - calculatedBenchHeight;
-		// Step 6b) Ensure subdrill is non-negative
-		if (hole.subdrillAmount < 0) {
-			hole.subdrillAmount = 0;
+	// Step 3) PRIORITY 2: CollarXYZ + L/A/B + Subdrill (forward calculation)
+	if (hasCollarXYZ && hasLAB && hasSubdrill) {
+		console.log("CSV Import: PRIORITY 2 - Using CollarXYZ + L/A/B + Subdrill");
+		calculateFromDesignParams(hole);
+		return;
+	}
+
+	// Step 4) PRIORITY 3: ToeXYZ + L/A/B + Subdrill (REVERSE calculation)
+	if (!hasCollarXYZ && hasToeXYZ && hasLAB && hasSubdrill) {
+		console.log("CSV Import: PRIORITY 3 - REVERSE CALC - ToeXYZ + L/A/B -> CollarXYZ");
+		calculateCollarFromToe(hole);
+		return;
+	}
+
+	// Step 5) PRIORITY 4: CollarXYZ + L/A/B (no subdrill - calculate with default subdrill)
+	if (hasCollarXYZ && hasLAB && !hasSubdrill) {
+		console.log("CSV Import: PRIORITY 4 - Using CollarXYZ + L/A/B (default subdrill)");
+		hole.subdrillAmount = 1; // Default subdrill
+		calculateFromDesignParams(hole);
+		return;
+	}
+
+	// Step 6) PRIORITY 5: CollarXYZ only (use defaults)
+	if (hasCollarXYZ) {
+		console.log("CSV Import: PRIORITY 5 - Using CollarXYZ only (applying defaults)");
+		applyDefaultGeometry(hole);
+		calculateFromDesignParams(hole);
+		return;
+	}
+
+	// Step 7) No valid data - cannot calculate
+	console.warn("CSV Import: No valid geometry data found for hole " + hole.holeID);
+}
+
+// Step 8) Helper: Check if coordinate is valid (not NaN, not undefined)
+function isValidCoordinate(value) {
+	return value !== undefined && value !== null && !isNaN(value);
+}
+
+// Step 9) Helper: Check if end/grade coordinates differ from collar
+function coordsDifferFromCollar(hole, type) {
+	if (type === "end") {
+		return (hole.endXLocation !== hole.startXLocation ||
+			hole.endYLocation !== hole.startYLocation ||
+			hole.endZLocation !== hole.startZLocation);
+	}
+	return false;
+}
+
+// Step 10) Calculate Length, Angle, Bearing from CollarXYZ and ToeXYZ
+function calculateFromCollarAndToe(hole, hasSubdrill) {
+	var dx = hole.endXLocation - hole.startXLocation;
+	var dy = hole.endYLocation - hole.startYLocation;
+	var dz = hole.startZLocation - hole.endZLocation; // Positive = down
+
+	// Step 10a) Calculate Length
+	hole.holeLengthCalculated = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+	if (hole.holeLengthCalculated > 0) {
+		// Step 10b) Calculate Bearing: 0=North, 90=East (clockwise)
+		var bearing = Math.atan2(dx, dy) * (180 / Math.PI);
+		if (bearing < 0) bearing += 360;
+		hole.holeBearing = bearing;
+
+		// Step 10c) Calculate Angle: 0=vertical, 90=horizontal
+		var horizontalDist = Math.sqrt(dx * dx + dy * dy);
+		if (horizontalDist > 0) {
+			hole.holeAngle = Math.atan2(horizontalDist, dz) * (180 / Math.PI);
+		} else {
+			hole.holeAngle = 0; // Vertical hole
 		}
+
+		// Step 10d) Calculate GradeXYZ from subdrill
+		if (hasSubdrill && hole.subdrillAmount > 0) {
+			calculateGradeFromSubdrill(hole);
+		} else {
+			// Estimate subdrill as 10% of length or 1m, whichever is smaller
+			hole.subdrillAmount = Math.min(hole.holeLengthCalculated * 0.1, 1);
+			calculateGradeFromSubdrill(hole);
+		}
+
+		// Step 10e) Calculate BenchHeight
+		hole.benchHeight = hole.startZLocation - hole.gradeZLocation;
 	}
 }
+
+// Step 11) Calculate GradeXYZ from ToeXYZ and Subdrill
+function calculateGradeFromSubdrill(hole) {
+	var angleRad = hole.holeAngle * (Math.PI / 180);
+	var bearingRad = hole.holeBearing * (Math.PI / 180);
+	var subdrill = hole.subdrillAmount || 0;
+
+	// Grade is subdrill distance UP from toe along hole direction
+	var subdrillVertical = subdrill * Math.cos(angleRad);
+	var subdrillHorizontal = subdrill * Math.sin(angleRad);
+
+	hole.gradeXLocation = hole.endXLocation - subdrillHorizontal * Math.sin(bearingRad);
+	hole.gradeYLocation = hole.endYLocation - subdrillHorizontal * Math.cos(bearingRad);
+	hole.gradeZLocation = hole.endZLocation + subdrillVertical;
+}
+
+// Step 12) Calculate ToeXYZ and GradeXYZ from design parameters (CollarXYZ + L/A/B + Subdrill)
+function calculateFromDesignParams(hole) {
+	var angleRad = hole.holeAngle * (Math.PI / 180);
+	var bearingRad = hole.holeBearing * (Math.PI / 180);
+
+	// Step 12a) Calculate horizontal and vertical components
+	var horizontalDist = hole.holeLengthCalculated * Math.sin(angleRad);
+	var verticalDist = hole.holeLengthCalculated * Math.cos(angleRad);
+
+	// Step 12b) Calculate ToeXYZ (end coordinates)
+	hole.endXLocation = hole.startXLocation + horizontalDist * Math.sin(bearingRad);
+	hole.endYLocation = hole.startYLocation + horizontalDist * Math.cos(bearingRad);
+	hole.endZLocation = hole.startZLocation - verticalDist; // Going down
+
+	// Step 12c) Calculate GradeXYZ from subdrill
+	calculateGradeFromSubdrill(hole);
+
+	// Step 12d) Calculate BenchHeight
+	hole.benchHeight = hole.startZLocation - hole.gradeZLocation;
+}
+
+// Step 13) Apply default geometry values
+function applyDefaultGeometry(hole) {
+	if (!hole.holeLengthCalculated || hole.holeLengthCalculated <= 0) {
+		var benchHeight = hole.benchHeight || 10;
+		var subdrill = hole.subdrillAmount || 1;
+		hole.holeLengthCalculated = benchHeight + subdrill;
+	}
+	if (hole.holeAngle === undefined || hole.holeAngle === null) {
+		hole.holeAngle = 0; // Vertical
+	}
+	if (hole.holeBearing === undefined || hole.holeBearing === null) {
+		hole.holeBearing = 0; // North
+	}
+	if (hole.subdrillAmount === undefined || hole.subdrillAmount === null) {
+		hole.subdrillAmount = 1;
+	}
+}
+
+// Step 14) REVERSE GEOMETRY: Calculate CollarXYZ from ToeXYZ + Length + Angle + Bearing + Subdrill
+// This is used when importing data that only has toe coordinates (end of hole)
+function calculateCollarFromToe(hole) {
+	var length = hole.holeLengthCalculated;
+	var angleRad = hole.holeAngle * (Math.PI / 180);
+	var bearingRad = hole.holeBearing * (Math.PI / 180);
+	var subdrill = hole.subdrillAmount || 0;
+
+	// Step 14a) Calculate horizontal and vertical components
+	var horizontalDist = length * Math.sin(angleRad);
+	var verticalDist = length * Math.cos(angleRad);
+
+	// Step 14b) Back-calculate CollarXYZ from ToeXYZ (reverse direction)
+	// Toe is at the END (endXYZ), Collar is at the START (startXYZ)
+	// Collar = Toe - (direction vector)
+	// Direction is: start -> end = (horizontal * sin(bearing), horizontal * cos(bearing), -vertical)
+	// So reverse: Collar = Toe - direction = Toe - (horizontal * sin(bearing), horizontal * cos(bearing), -vertical)
+	hole.startXLocation = hole.endXLocation - horizontalDist * Math.sin(bearingRad);
+	hole.startYLocation = hole.endYLocation - horizontalDist * Math.cos(bearingRad);
+	hole.startZLocation = hole.endZLocation + verticalDist; // Up from toe (add because going up)
+
+	// Step 14c) Calculate GradeXYZ (subdrill amount above toe along hole direction)
+	var subdrillVertical = subdrill * Math.cos(angleRad);
+	var subdrillHorizontal = subdrill * Math.sin(angleRad);
+
+	hole.gradeXLocation = hole.endXLocation - subdrillHorizontal * Math.sin(bearingRad);
+	hole.gradeYLocation = hole.endYLocation - subdrillHorizontal * Math.cos(bearingRad);
+	hole.gradeZLocation = hole.endZLocation + subdrillVertical;
+
+	// Step 14d) Calculate BenchHeight = CollarZ - GradeZ
+	hole.benchHeight = hole.startZLocation - hole.gradeZLocation;
+
+	console.log("Reverse geometry calculated: CollarZ=" + hole.startZLocation.toFixed(2) +
+		", GradeZ=" + hole.gradeZLocation.toFixed(2) +
+		", ToeZ=" + hole.endZLocation.toFixed(2) +
+		", BenchHeight=" + hole.benchHeight.toFixed(2));
+}
+
 function calculateHoleEndCoordinates(hole) {
 	const angleRad = hole.holeAngle * (Math.PI / 180);
 	const bearingRad = hole.holeBearing * (Math.PI / 180);
@@ -35183,209 +35307,338 @@ function getAllVisibleSurfaces() {
 	return visibleSurfaces;
 }
 // Helper function to assign holes to surface elevation (with proper geometry calculation)
+// Step 26) Updated to support 5 modes: collar, grade, toe, grade_keep_toe, toe_keep_grade
 function assignHoleToSurfaceElevation(hole, targetElevation, type) {
+	if (!hole) return;
+
+	var radAngle = hole.holeAngle * (Math.PI / 180);
+	var cosAngle = Math.cos(radAngle);
+	var sinAngle = Math.sin(radAngle);
+	var radBearing = ((450 - hole.holeBearing) % 360) * (Math.PI / 180);
+
 	if (type === "collar") {
-		// Keep toe fixed, adjust collar to target elevation
-		// Calculate the required vertical drop from collar to toe
-		const verticalDrop = targetElevation - hole.gradeZLocation;
+		// Step 27) Keep TOE fixed, keep ANGLE and BEARING fixed
+		// Move collar ALONG the existing hole vector to reach target Z elevation
+		// This changes collar XYZ for angled holes, but preserves the hole direction
 
-		// For angled holes, calculate the required hole length
-		const radAngle = hole.holeAngle * (Math.PI / 180);
-		const cosAngle = Math.cos(radAngle);
+		// Step 27a) Save existing toe position and geometry
+		var toeX = hole.endXLocation;
+		var toeY = hole.endYLocation;
+		var toeZ = hole.endZLocation;
+		var existingSubdrill = hole.subdrillAmount;
+		var existingAngle = hole.holeAngle;
+		var existingBearing = hole.holeBearing;
 
-		if (Math.abs(cosAngle) > 1e-9) {
-			const newLength = Math.abs(verticalDrop) / cosAngle;
-			hole.startZLocation = targetElevation;
+		// Step 27b) Calculate angle components
+		var radAngle = existingAngle * (Math.PI / 180);
+		var cosAngle = Math.cos(radAngle);
+		var sinAngle = Math.sin(radAngle);
+		var radBearing = ((450 - existingBearing) % 360) * (Math.PI / 180);
 
-			// Use calculateHoleGeometry to properly recalculate all geometry
-			calculateHoleGeometry(hole, newLength, 1); // mode 1 = Length
-			console.log("hole assigned to surface", hole);
-			debouncedSaveHoles(); // Save changes to IndexedDB
-		}
-	} else if (type === "grade") {
-		// Keep collar fixed, adjust toe to target elevation
-		// Calculate the required bench height
-		const newBenchHeight = hole.startZLocation - targetElevation;
-
-		// Update bench height and recalculate geometry
-		hole.benchHeight = newBenchHeight;
-
-		// Calculate new hole length based on bench height and subdrill
-		const radAngle = hole.holeAngle * (Math.PI / 180);
-		const cosAngle = Math.cos(radAngle);
-
-		if (Math.abs(cosAngle) > 1e-9) {
-			const newLength = (newBenchHeight + hole.subdrillAmount) / cosAngle;
-
-			// Use calculateHoleGeometry to properly recalculate all geometry
-			calculateHoleGeometry(hole, newLength, 1); // mode 1 = Length
-			console.log("hole assigned to grade", hole);
-			debouncedSaveHoles(); // Save changes to IndexedDB
-		}
-	}
-}
-
-// Updated surface assignment functions - NO NEW FUNCTIONS
-//! REDO with the FloatingDialog class
-//! REDO with the FloatingDialog class
-assignSurfaceTool.addEventListener("change", function () {
-	if (this.checked) {
-		resetFloatingToolbarButtons("assignSurfaceTool");
-
-		// Check if surface is available
-		const visibleSurfaces = getAllVisibleSurfaces();
-		if (visibleSurfaces.length === 0) {
-			// No surface available - show dialog with proper styling
-			Swal.fire({
-				title: "No Surface Loaded",
-				html: `
-					<div class="button-container-2col">
-						<div class="labelWhite12">No surface is loaded or visible.</div>
-						<div></div>
-						<div class="labelWhite12">Set collar elevation to:</div>
-						<input type="number" id="surfaceElevation" value="286" step="0.1" class="swal2-input" style="width: 80px; text-align: center;"> mZ
-					</div>
-				`,
-				showCancelButton: true,
-				confirmButtonText: "OK",
-				cancelButtonText: "Cancel",
-				customClass: {
-					container: "custom-popup-container",
-					popup: "custom-popup-container",
-					title: "swal2-title",
-					content: "swal2-content",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-				preConfirm: () => {
-					const elevation = parseFloat(document.getElementById("surfaceElevation").value);
-					if (isNaN(elevation)) {
-						Swal.showValidationMessage("Please enter a valid elevation");
-						return false;
-					}
-					return elevation;
-				},
-			}).then((result) => {
-				if (result.isConfirmed) {
-					assignHolesToFixedElevation(result.value, "collar");
-				}
-				// Deselect tool
-				this.checked = false;
-				resetFloatingToolbarButtons("none");
-			});
+		// Step 27c) Check if hole is too horizontal (can't reach target Z)
+		if (Math.abs(cosAngle) < 0.001) {
+			console.warn("Cannot assign collar for near-horizontal hole (angle: " + existingAngle + "°)");
 			return;
 		}
 
-		// Multiple surfaces available - ask which one to use
+		// Step 27d) Calculate vertical distance from toe to new collar
+		var verticalDistance = targetElevation - toeZ;
+
+		// Step 27e) Calculate new hole length along the vector
+		// Length = vertical distance / cos(angle)
+		var newLength = verticalDistance / cosAngle;
+
+		// Step 27f) Calculate horizontal distance along the vector
+		var horizontalDistance = newLength * sinAngle;
+
+		// Step 27g) Calculate new collar position (moving FROM toe TOWARD collar along vector)
+		// The hole vector points from collar to toe, so we go opposite direction
+		hole.startXLocation = toeX - horizontalDistance * Math.cos(radBearing);
+		hole.startYLocation = toeY - horizontalDistance * Math.sin(radBearing);
+		hole.startZLocation = targetElevation;
+
+		// Step 27h) Update hole length (angle and bearing stay the same)
+		hole.holeLengthCalculated = newLength;
+		hole.holeAngle = existingAngle;
+		hole.holeBearing = existingBearing;
+
+		// Step 27i) Toe stays fixed
+		hole.endXLocation = toeX;
+		hole.endYLocation = toeY;
+		hole.endZLocation = toeZ;
+		hole.subdrillAmount = existingSubdrill;
+
+		// Step 27j) Recalculate grade position (subdrill distance from toe toward collar)
+		var subdrillVertical = existingSubdrill * cosAngle;
+		var subdrillHorizontal = existingSubdrill * sinAngle;
+
+		hole.gradeZLocation = toeZ + subdrillVertical;
+		hole.gradeXLocation = toeX - subdrillHorizontal * Math.cos(radBearing);
+		hole.gradeYLocation = toeY - subdrillHorizontal * Math.sin(radBearing);
+
+		// Step 27k) Update bench height
+		hole.benchHeight = hole.startZLocation - hole.gradeZLocation;
+
+		console.log("Collar moved along vector to: (" + hole.startXLocation.toFixed(2) + ", " + hole.startYLocation.toFixed(2) + ", " + targetElevation.toFixed(2) + "), Length: " + newLength.toFixed(2) + "m, Angle: " + existingAngle.toFixed(1) + "° (preserved)");
+		debouncedSaveHoles(); // Save changes to IndexedDB
+	} else if (type === "grade") {
+		// Step 28) Keep COLLAR fixed, keep ANGLE and BEARING fixed
+		// Move GRADE along the hole vector to reach target Z, then calculate TOE from subdrill
+
+		// Step 28a) Save existing geometry
+		var collarX = hole.startXLocation;
+		var collarY = hole.startYLocation;
+		var collarZ = hole.startZLocation;
+		var existingSubdrill = hole.subdrillAmount;
+		var existingAngle = hole.holeAngle;
+		var existingBearing = hole.holeBearing;
+
+		// Step 28b) Calculate angle components
+		var gradeRadAngle = existingAngle * (Math.PI / 180);
+		var gradeCosAngle = Math.cos(gradeRadAngle);
+		var gradeSinAngle = Math.sin(gradeRadAngle);
+		var gradeRadBearing = ((450 - existingBearing) % 360) * (Math.PI / 180);
+
+		// Step 28c) Check if hole is too horizontal
+		if (Math.abs(gradeCosAngle) < 0.001) {
+			console.warn("Cannot assign grade for near-horizontal hole");
+			return;
+		}
+
+		// Step 28d) Calculate vertical distance from collar to grade (bench height)
+		var newBenchHeight = collarZ - targetElevation;
+		hole.benchHeight = newBenchHeight;
+
+		// Step 28e) Calculate distance from collar to grade along the hole vector
+		var collarToGradeLength = newBenchHeight / gradeCosAngle;
+		var collarToGradeHorizontal = collarToGradeLength * gradeSinAngle;
+
+		// Step 28f) Calculate new grade position (sliding along vector from collar)
+		hole.gradeXLocation = collarX + collarToGradeHorizontal * Math.cos(gradeRadBearing);
+		hole.gradeYLocation = collarY + collarToGradeHorizontal * Math.sin(gradeRadBearing);
+		hole.gradeZLocation = targetElevation;
+
+		// Step 28g) Calculate toe position (subdrill distance beyond grade along vector)
+		var subdrillHorizontal = existingSubdrill * gradeSinAngle;
+		var subdrillVertical = existingSubdrill * gradeCosAngle;
+
+		hole.endXLocation = hole.gradeXLocation + subdrillHorizontal * Math.cos(gradeRadBearing);
+		hole.endYLocation = hole.gradeYLocation + subdrillHorizontal * Math.sin(gradeRadBearing);
+		hole.endZLocation = hole.gradeZLocation - subdrillVertical;
+
+		// Step 28h) Calculate new hole length
+		var newLength = collarToGradeLength + existingSubdrill;
+		hole.holeLengthCalculated = newLength;
+
+		// Step 28i) Angle and bearing stay the same
+		hole.holeAngle = existingAngle;
+		hole.holeBearing = existingBearing;
+		hole.subdrillAmount = existingSubdrill;
+
+		console.log("Grade moved along vector to: (" + hole.gradeXLocation.toFixed(2) + ", " + hole.gradeYLocation.toFixed(2) + ", " + targetElevation.toFixed(2) + "), Angle: " + existingAngle.toFixed(1) + "° (preserved)");
+		debouncedSaveHoles();
+
+	} else if (type === "toe") {
+		// Step 29) Keep COLLAR fixed, keep ANGLE and BEARING fixed
+		// Move TOE along the hole vector to reach target Z, then calculate GRADE from subdrill
+
+		// Step 29a) Save existing geometry
+		var collarX = hole.startXLocation;
+		var collarY = hole.startYLocation;
+		var collarZ = hole.startZLocation;
+		var existingSubdrill = hole.subdrillAmount;
+		var existingAngle = hole.holeAngle;
+		var existingBearing = hole.holeBearing;
+
+		// Step 29b) Calculate angle components
+		var toeRadAngle = existingAngle * (Math.PI / 180);
+		var toeCosAngle = Math.cos(toeRadAngle);
+		var toeSinAngle = Math.sin(toeRadAngle);
+		var toeRadBearing = ((450 - existingBearing) % 360) * (Math.PI / 180);
+
+		// Step 29c) Check if hole is too horizontal
+		if (Math.abs(toeCosAngle) < 0.001) {
+			console.warn("Cannot assign toe for near-horizontal hole");
+			return;
+		}
+
+		// Step 29d) Calculate vertical distance from collar to toe
+		var collarToToeVertical = collarZ - targetElevation;
+
+		// Step 29e) Calculate new hole length (from collar to toe along vector)
+		var newLength = collarToToeVertical / toeCosAngle;
+		var collarToToeHorizontal = newLength * toeSinAngle;
+
+		// Step 29f) Calculate new toe position (sliding along vector from collar)
+		hole.endXLocation = collarX + collarToToeHorizontal * Math.cos(toeRadBearing);
+		hole.endYLocation = collarY + collarToToeHorizontal * Math.sin(toeRadBearing);
+		hole.endZLocation = targetElevation;
+
+		// Step 29g) Calculate grade position (subdrill distance back from toe toward collar)
+		var subdrillHorizontal = existingSubdrill * toeSinAngle;
+		var subdrillVertical = existingSubdrill * toeCosAngle;
+
+		hole.gradeXLocation = hole.endXLocation - subdrillHorizontal * Math.cos(toeRadBearing);
+		hole.gradeYLocation = hole.endYLocation - subdrillHorizontal * Math.sin(toeRadBearing);
+		hole.gradeZLocation = hole.endZLocation + subdrillVertical;
+
+		// Step 29h) Update bench height and hole length
+		hole.benchHeight = collarZ - hole.gradeZLocation;
+		hole.holeLengthCalculated = newLength;
+
+		// Step 29i) Angle and bearing stay the same
+		hole.holeAngle = existingAngle;
+		hole.holeBearing = existingBearing;
+		hole.subdrillAmount = existingSubdrill;
+
+		console.log("Toe moved along vector to: (" + hole.endXLocation.toFixed(2) + ", " + hole.endYLocation.toFixed(2) + ", " + targetElevation.toFixed(2) + "), Angle: " + existingAngle.toFixed(1) + "° (preserved)");
+		debouncedSaveHoles();
+	} else if (type === "grade_keep_toe") {
+		// Step 30) Assign GRADE elevation - keep Toe fixed, calculate new Subdrill
+		hole.gradeZLocation = targetElevation;
+
+		// Calculate new bench height
+		var newBenchHeight = hole.startZLocation - targetElevation;
+		hole.benchHeight = newBenchHeight;
+
+		// Calculate new subdrill from the vertical distance between grade and toe
+		var verticalSubdrill = targetElevation - hole.endZLocation; // Grade is above Toe
+		if (Math.abs(cosAngle) > 1e-9) {
+			hole.subdrillAmount = Math.abs(verticalSubdrill) / cosAngle;
+		} else {
+			hole.subdrillAmount = Math.abs(verticalSubdrill);
+		}
+
+		// Ensure subdrill is non-negative
+		if (hole.subdrillAmount < 0) hole.subdrillAmount = 0;
+
+		// Recalculate GradeXY based on new grade position
+		var benchDrillLength = newBenchHeight / (Math.abs(cosAngle) > 1e-9 ? cosAngle : 1);
+		var horizontalToGrade = benchDrillLength * sinAngle;
+		hole.gradeXLocation = hole.startXLocation + horizontalToGrade * Math.cos(radBearing);
+		hole.gradeYLocation = hole.startYLocation + horizontalToGrade * Math.sin(radBearing);
+
+		console.log("Grade assigned: " + targetElevation + "mZ, Toe kept at: " + hole.endZLocation.toFixed(2) + "mZ, New subdrill: " + hole.subdrillAmount.toFixed(2) + "m");
+		debouncedSaveHoles();
+
+	} else if (type === "toe_keep_grade") {
+		// Step 31) Assign TOE elevation - keep Grade fixed, calculate new Subdrill
+
+		// Calculate new subdrill from the vertical distance between grade and new toe
+		var verticalSubdrill = hole.gradeZLocation - targetElevation; // Grade is above Toe
+		if (Math.abs(cosAngle) > 1e-9) {
+			hole.subdrillAmount = Math.abs(verticalSubdrill) / cosAngle;
+		} else {
+			hole.subdrillAmount = Math.abs(verticalSubdrill);
+		}
+
+		// Ensure subdrill is non-negative
+		if (hole.subdrillAmount < 0) hole.subdrillAmount = 0;
+
+		// Calculate new hole length: (benchHeight + new subdrill) / cos(angle)
+		if (Math.abs(cosAngle) > 1e-9) {
+			var newLength = (hole.benchHeight + hole.subdrillAmount) / cosAngle;
+			hole.holeLengthCalculated = newLength;
+
+			// Recalculate ToeXYZ
+			var horizontalDist = newLength * sinAngle;
+			hole.endXLocation = hole.startXLocation + horizontalDist * Math.cos(radBearing);
+			hole.endYLocation = hole.startYLocation + horizontalDist * Math.sin(radBearing);
+			hole.endZLocation = targetElevation;
+		}
+
+		console.log("Toe assigned: " + targetElevation + "mZ, Grade kept at: " + hole.gradeZLocation.toFixed(2) + "mZ, New subdrill: " + hole.subdrillAmount.toFixed(2) + "m");
+		debouncedSaveHoles();
+	}
+}
+
+// Updated surface assignment functions - CONVERTED TO FloatingDialog
+// Step 1) Assign Surface Tool - Uses FloatingDialog instead of Swal2
+assignSurfaceTool.addEventListener("change", function () {
+	var toolCheckbox = this;
+
+	// Step 1) Cancel handler to reset toolbar
+	var cancelHandler = function () {
+		toolCheckbox.checked = false;
+		resetFloatingToolbarButtons("none");
+		updateStatusMessage("Select next tool\n to continue");
+	};
+
+	if (this.checked) {
+		resetFloatingToolbarButtons("assignSurfaceTool");
+
+		// Step 2) Check if surface is available
+		var visibleSurfaces = getAllVisibleSurfaces();
+		if (visibleSurfaces.length === 0) {
+			// Step 3) No surface available - show FloatingDialog for manual entry
+			window.showAssignCollarDialog(
+				function (elevation) {
+					// Step 4) Apply elevation to selected holes
+					window.assignHolesToFixedElevation(elevation, "collar");
+					// Step 5) Deselect tool
+					toolCheckbox.checked = false;
+					resetFloatingToolbarButtons("none");
+				},
+				cancelHandler // onCancel callback
+			);
+			return;
+		}
+
+		// Step 6) Multiple surfaces available - ask which one to use
 		if (visibleSurfaces.length > 1) {
-			const surfaceOptions = visibleSurfaces.map((surface) => `<option value="${surface.id}">${surface.name}</option>`).join("");
-
-			Swal.fire({
-				title: "Select Surface",
-				html: `
-					<div class="button-container-2col">
-						<div class="labelWhite12">Multiple surfaces are visible. Select which surface to use:</div>
-						<div></div>
-						<select id="surfaceSelect" class="dropdown-80">
-							${surfaceOptions}
-						</select>
-						<div></div>
-					</div>
-				`,
-				showCancelButton: true,
-				confirmButtonText: "Use",
-				cancelButtonText: "Cancel",
-				customClass: {
-					container: "custom-popup-container",
-					popup: "custom-popup-container",
-					title: "swal2-title",
-					content: "swal2-content",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-				preConfirm: () => {
-					return document.getElementById("surfaceSelect").value;
-				},
-			}).then((result) => {
-				if (result.isConfirmed) {
-					const selectedSurfaceId = result.value;
-
-					// Surface is available - proceed with surface assignment
+			window.showSurfaceSelectDialog(
+				visibleSurfaces,
+				"Collar",
+				function (selectedSurfaceId) {
+					// Step 7) Surface is available - proceed with surface assignment
 					if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
-						let assignedCount = 0;
-						selectedMultipleHoles.forEach((hole) => {
-							const surfaceZ = interpolateZFromSurface(hole.startXLocation, hole.startYLocation, selectedSurfaceId);
+						var assignedCount = 0;
+						for (var i = 0; i < selectedMultipleHoles.length; i++) {
+							var hole = selectedMultipleHoles[i];
+							var surfaceZ = interpolateZFromSurface(hole.startXLocation, hole.startYLocation, selectedSurfaceId);
 							if (surfaceZ !== null) {
-								assignHoleToSurfaceElevation(hole, surfaceZ, "collar");
+								window.assignHoleToSurfaceElevation(hole, surfaceZ, "collar");
 								assignedCount++;
 							}
-						});
+						}
 
-						// Show success message
-						const surface = loadedSurfaces.get(selectedSurfaceId);
-						const surfaceName = surface ? surface.name || `Surface ${selectedSurfaceId}` : "selected surface";
-
-						Swal.fire({
-							title: "Surface Assignment Complete",
-							text: `Successfully adjusted ${assignedCount} holes to ${surfaceName} elevation.`,
-							icon: "success",
-							showCancelButton: false,
-							showConfirmButton: true,
-							confirmButtonText: "OK",
-							customClass: {
-								container: "custom-popup-container",
-								popup: "custom-popup-container",
-								title: "swal2-title",
-								content: "swal2-content",
-								confirmButton: "confirm",
-								cancelButton: "cancel",
-							},
-						});
+						// Step 8) Show success message
+						var surface = loadedSurfaces.get(selectedSurfaceId);
+						var surfaceName = surface ? surface.name || ("Surface " + selectedSurfaceId) : "selected surface";
+						window.showAssignmentCompleteDialog(assignedCount, surfaceName, "collar");
 
 						updateStatusMessage("Select next tool\n to continue");
 					} else {
 						updateStatusMessage("Click on holes to assign surface elevation.");
 						canvas.addEventListener("click", handleAssignSurfaceClick);
+						return; // Don't uncheck the tool yet
 					}
-				}
-				// Deselect tool
-				this.checked = false;
-				resetFloatingToolbarButtons("none");
-			});
+					// Step 9) Deselect tool
+					toolCheckbox.checked = false;
+					resetFloatingToolbarButtons("none");
+				},
+				cancelHandler // onCancel callback
+			);
 			return;
 		}
 
-		// Single surface available - proceed directly with first surface
-		const surfaceId = visibleSurfaces[0].id;
+		// Step 10) Single surface available - proceed directly with first surface
+		var surfaceId = visibleSurfaces[0].id;
 		if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
-			let assignedCount = 0;
-			selectedMultipleHoles.forEach((hole) => {
-				const surfaceZ = interpolateZFromSurface(hole.startXLocation, hole.startYLocation, surfaceId);
+			var assignedCount = 0;
+			for (var i = 0; i < selectedMultipleHoles.length; i++) {
+				var hole = selectedMultipleHoles[i];
+				var surfaceZ = interpolateZFromSurface(hole.startXLocation, hole.startYLocation, surfaceId);
 				if (surfaceZ !== null) {
-					assignHoleToSurfaceElevation(hole, surfaceZ, "collar");
+					window.assignHoleToSurfaceElevation(hole, surfaceZ, "collar");
 					assignedCount++;
 				}
-			});
+			}
 
-			// Show success message
-			Swal.fire({
-				title: "Surface Assignment Complete",
-				text: `Successfully adjusted ${assignedCount} holes to surface elevation.`,
-				icon: "success",
-				showCancelButton: false,
-				showConfirmButton: true,
-				confirmButtonText: "OK",
-				customClass: {
-					container: "custom-popup-container",
-					popup: "custom-popup-container",
-					title: "swal2-title",
-					content: "swal2-content",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-			});
+			// Step 11) Show success message
+			window.showAssignmentCompleteDialog(assignedCount, "surface", "collar");
 
-			// Deselect tool
+			// Step 12) Deselect tool
 			this.checked = false;
 			resetFloatingToolbarButtons("none");
 			updateStatusMessage("Select next tool\n to continue");
@@ -35400,195 +35653,100 @@ assignSurfaceTool.addEventListener("change", function () {
 	}
 });
 
+// Step 13) Assign Grade Tool - ALWAYS shows Grade/Toe mode selector dialog
 assignGradeTool.addEventListener("change", function () {
+	var toolCheckbox = this;
+
 	if (this.checked) {
 		resetFloatingToolbarButtons("assignGradeTool");
 
-		const visibleSurfaces = getAllVisibleSurfaces();
-		if (visibleSurfaces.length === 0) {
-			// No surface available - show dialog for manual entry
-			Swal.fire({
-				title: "No Surface Loaded",
-				html: `
-					<div class="button-container-2col">
-						<div class="labelWhite12">No surface is loaded or visible.</div>
-						<div></div>
-						<div class="labelWhite12">Set toe elevation to:</div>
-						<input type="number" id="gradeElevation" value="274" step="0.1" class="swal2-input" style="width: 80px; text-align: center;"> mZ
-					</div>
-				`,
-				showCancelButton: true,
-				confirmButtonText: "OK",
-				cancelButtonText: "Cancel",
-				customClass: {
-					container: "custom-popup-container",
-					popup: "custom-popup-container",
-					title: "swal2-title",
-					content: "swal2-content",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-				preConfirm: () => {
-					const elevation = parseFloat(document.getElementById("gradeElevation").value);
-					if (isNaN(elevation)) {
-						Swal.showValidationMessage("Please enter a valid elevation");
-						return false;
-					}
-					return elevation;
-				},
-			}).then((result) => {
-				if (result.isConfirmed) {
-					assignHolesToFixedElevation(result.value, "grade");
-				}
-				this.checked = false;
-				resetFloatingToolbarButtons("none");
-			});
-			return;
-		}
+		// Step 14) Get visible surfaces BEFORE showing dialog
+		var visibleSurfaces = getAllVisibleSurfaces();
+		console.log("Grade/Toe assignment - visibleSurfaces:", visibleSurfaces.length, visibleSurfaces);
 
-		// Multiple surfaces available - ask which one to use
-		if (visibleSurfaces.length > 1) {
-			// Consistent with your rule - no template literals
-			// Consistent with your rule - no template literals
-			const surfaceOptions = visibleSurfaces.map((surface) => '<option value="' + surface.id + '">' + surface.name + "</option>").join("");
-			Swal.fire({
-				title: "Select Surface",
-				html: `
-					<div class="button-container-2col">
-						<div class="labelWhite12">Multiple surfaces are visible. Select which surface to use:</div>
-						<div></div>
-						<select id="surfaceSelect" class="dropdown-80">
-							${surfaceOptions}
-						</select>
-						<div></div>
-					</div>
-				`,
-				showCancelButton: true,
-				confirmButtonText: "Use",
-				cancelButtonText: "Cancel",
-				customClass: {
-					container: "custom-popup-container",
-					popup: "custom-popup-container",
-					title: "swal2-title",
-					content: "swal2-content",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-				preConfirm: () => {
-					return document.getElementById("surfaceSelect").value;
-				},
-			}).then((result) => {
-				if (result.isConfirmed) {
-					const selectedSurfaceId = result.value;
+		// Step 15) Show enhanced FloatingDialog with Grade/Toe mode selector and surface dropdown
+		window.showAssignGradeDialog(
+			visibleSurfaces,
+			// onConfirm callback: (elevation, mode, selectedSurfaceId)
+			function (elevation, mode, selectedSurfaceId) {
+				// Step 16) If we have a surface selected, use surface elevation
+				if (selectedSurfaceId) {
+					var surface = loadedSurfaces.get(selectedSurfaceId);
+					var surfaceName = surface ? (surface.name || ("Surface " + selectedSurfaceId)) : "surface";
+
 					if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
-						let assignedCount = 0;
-						selectedMultipleHoles.forEach(function (hole) {
-							const surfaceZ = interpolateZFromSurface(hole.startXLocation, hole.startYLocation, selectedSurfaceId);
+						var assignedCount = 0;
+						for (var i = 0; i < selectedMultipleHoles.length; i++) {
+							var hole = selectedMultipleHoles[i];
+							var surfaceZ = interpolateZFromSurface(hole.startXLocation, hole.startYLocation, selectedSurfaceId);
 							if (surfaceZ !== null) {
-								assignHoleToSurfaceElevation(hole, surfaceZ, "grade");
+								window.assignHoleToSurfaceElevation(hole, surfaceZ, mode);
 								assignedCount++;
 							}
-						});
-						const surface = loadedSurfaces.get(selectedSurfaceId);
-						const surfaceName = surface ? surface.name || "Surface " + selectedSurfaceId : "selected surface";
-						Swal.fire({
-							title: "Grade Assignment Complete",
-							text: "Successfully adjusted " + assignedCount + " hole grades to " + surfaceName + " elevation.",
-							icon: "success",
-							showCancelButton: false,
-							showConfirmButton: true,
-							confirmButtonText: "OK",
-							customClass: {
-								container: "custom-popup-container",
-								popup: "custom-popup-container",
-								title: "swal2-title",
-								content: "swal2-content",
-								confirmButton: "confirm",
-								cancelButton: "cancel",
-							},
-						});
+						}
+						// Step 17) Show success message
+						window.showAssignmentCompleteDialog(assignedCount, surfaceName, mode);
 						updateStatusMessage("Select next tool\n to continue");
 					} else {
-						updateStatusMessage("Click on holes to assign grade elevation to surface.");
+						// Step 18) No holes selected - enable click-to-assign mode
+						updateStatusMessage("Click on holes to assign " + mode + " elevation to surface.");
+						window._gradeAssignMode = mode;
+						window._gradeAssignSurfaceId = selectedSurfaceId;
 						canvas.addEventListener("click", handleAssignGradeClick);
+						return; // Don't uncheck the tool yet
 					}
+				} else {
+					// Step 19) No surface - use manual elevation
+					console.log("No surface - using manual elevation:", elevation, "mode:", mode);
+					window.assignHolesToFixedElevation(elevation, mode);
 				}
-				this.checked = false;
-				resetFloatingToolbarButtons("none");
-			});
-			return;
-		}
 
-		// Single surface available - proceed directly
-		const surfaceId = visibleSurfaces[0].id;
-		if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
-			let assignedCount = 0;
-			selectedMultipleHoles.forEach(function (hole) {
-				const surfaceZ = interpolateZFromSurface(hole.startXLocation, hole.startYLocation, surfaceId);
-				if (surfaceZ !== null) {
-					assignHoleToSurfaceElevation(hole, surfaceZ, "grade");
-					assignedCount++;
-				}
-			});
-			Swal.fire({
-				title: "Grade Assignment Complete",
-				text: "Successfully adjusted " + assignedCount + " hole grades to surface elevation.",
-				icon: "success",
-				showCancelButton: false,
-				showConfirmButton: true,
-				confirmButtonText: "OK",
-				customClass: {
-					container: "custom-popup-container",
-					popup: "custom-popup-container",
-					title: "swal2-title",
-					content: "swal2-content",
-					confirmButton: "confirm",
-					cancelButton: "cancel",
-				},
-			});
-			this.checked = false;
-			resetFloatingToolbarButtons("none");
-			updateStatusMessage("Select next tool\n to continue");
-		} else {
-			updateStatusMessage("Click on holes to assign grade elevation to surface.");
-			canvas.addEventListener("click", handleAssignGradeClick);
-		}
+				// Step 20) Deselect tool
+				toolCheckbox.checked = false;
+				resetFloatingToolbarButtons("none");
+			},
+			// onCancel callback
+			function () {
+				// Step 21) Cancel - reset toolbar and uncheck button
+				toolCheckbox.checked = false;
+				resetFloatingToolbarButtons("none");
+				updateStatusMessage("Select next tool\n to continue");
+			}
+		);
 	} else {
 		resetFloatingToolbarButtons("none");
 		updateStatusMessage("Select next tool\n to continue");
 		canvas.removeEventListener("click", handleAssignGradeClick);
 	}
 });
-// Helper function to assign holes to a fixed elevation (updated)
+// Step 22) Helper function to assign holes to a fixed elevation - CONVERTED TO FloatingDialog
+// Note: This function now delegates to window.assignHolesToFixedElevation from SurfaceAssignmentDialogs.js
+// Keeping local wrapper for backward compatibility with existing code
 function assignHolesToFixedElevation(elevation, type) {
-	let assignedCount = 0;
+	// Step 23) Delegate to the new FloatingDialog-based function
+	if (window.assignHolesToFixedElevation && window.assignHolesToFixedElevation !== assignHolesToFixedElevation) {
+		return window.assignHolesToFixedElevation(elevation, type);
+	}
+
+	// Step 24) Fallback implementation if SurfaceAssignmentDialogs.js not loaded
+	var assignedCount = 0;
 
 	if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
-		selectedMultipleHoles.forEach((hole) => {
-			assignHoleToSurfaceElevation(hole, elevation, type);
+		for (var i = 0; i < selectedMultipleHoles.length; i++) {
+			assignHoleToSurfaceElevation(selectedMultipleHoles[i], elevation, type);
 			assignedCount++;
-		});
+		}
 
 		debouncedSaveHoles(); // Save all changes to IndexedDB
 
-		// Show success message with proper styling
-		//! REDO with the FloatingDialog class
-		Swal.fire({
-			title: "Elevation Assignment Complete",
-			text: `Successfully adjusted ${assignedCount} holes to ${elevation}mZ ${type} elevation.`,
-			icon: "success",
-			showCancelButton: false,
-			showConfirmButton: true,
-			confirmButtonText: "OK",
-			customClass: {
-				container: "custom-popup-container",
-				popup: "custom-popup-container",
-				title: "swal2-title",
-				content: "swal2-content",
-				confirmButton: "confirm",
-				cancelButton: "cancel",
-			},
-		});
+		// Step 25) Show success message using FloatingDialog
+		if (window.showAssignmentCompleteDialog) {
+			window.showAssignmentCompleteDialog(assignedCount, elevation.toFixed(2) + "mZ", type);
+		} else if (window.showModalMessage) {
+			window.showModalMessage("Elevation Assignment Complete",
+				"Successfully adjusted " + assignedCount + " holes to " + elevation.toFixed(2) + "mZ " + type + " elevation.",
+				"success");
+		}
 	} else {
 		updateStatusMessage("No holes selected for elevation assignment.");
 	}
@@ -35631,20 +35789,24 @@ function handleAssignGradeClick(event) {
 		return;
 	}
 
-	const rect = canvas.getBoundingClientRect();
-	const clickX = event.clientX - rect.left;
-	const clickY = event.clientY - rect.top;
+	var rect = canvas.getBoundingClientRect();
+	var clickX = event.clientX - rect.left;
+	var clickY = event.clientY - rect.top;
+
+	// Step 21) Get the stored mode (grade or toe) from the dialog selection
+	var mode = window._gradeAssignMode || "grade";
 
 	// Find clicked hole using canvas coordinates
-	const clickedHole = getClickedHole(clickX, clickY);
-	if (clickedHole) {
-		const surfaceZ = interpolateZFromSurface(clickedHole.startXLocation, clickedHole.startYLocation);
+	var clickedHoleLocal = getClickedHole(clickX, clickY);
+	if (clickedHoleLocal) {
+		var surfaceZ = interpolateZFromSurface(clickedHoleLocal.startXLocation, clickedHoleLocal.startYLocation);
 		if (surfaceZ !== null) {
-			assignHoleToSurfaceElevation(clickedHole, surfaceZ, "grade");
-			updateStatusMessage("Adjusted hole " + clickedHole.holeID + "\nToe at " + surfaceZ.toFixed(2) + "m, length now " + clickedHole.holeLengthCalculated.toFixed(2) + "m");
+			assignHoleToSurfaceElevation(clickedHoleLocal, surfaceZ, mode);
+			var typeLabel = mode === "grade" ? "Grade" : "Toe";
+			updateStatusMessage("Adjusted hole " + clickedHoleLocal.holeID + "\n" + typeLabel + " at " + surfaceZ.toFixed(2) + "m, length now " + clickedHoleLocal.holeLengthCalculated.toFixed(2) + "m");
 			drawData(allBlastHoles, selectedHole);
 		} else {
-			updateStatusMessage("Hole " + clickedHole.holeID + " is not on the surface.");
+			updateStatusMessage("Hole " + clickedHoleLocal.holeID + " is not on the surface.");
 		}
 	} else {
 		updateStatusMessage("No hole found at click location.");

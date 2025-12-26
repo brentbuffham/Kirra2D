@@ -177,7 +177,7 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	// Note: centroidX/Y are local variables, so we reverse-engineer them from known world/canvas pairs
 	const canvas = window.canvas;
 	const currentScale = window.currentScale;
-	
+
 	if (!canvas || !currentScale) {
 		console.warn("⚠️ Canvas or currentScale not available, skipping text rendering");
 		return; // Skip text rendering if we can't convert properly
@@ -216,36 +216,36 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	// Step 3) Draw text at calculated world positions (matching 2D positioning exactly)
 	// drawHoleTextThreeJS will convert world coords to local internally
 	if (displayOptions.holeID) {
-		drawHoleTextThreeJS(rightSideCollarWorld.x, rightSideCollarWorld.y, collarZ, hole.holeID, fontSize/1.5, window.textFillColor, "left");
+		drawHoleTextThreeJS(rightSideCollarWorld.x, rightSideCollarWorld.y, collarZ, hole.holeID, fontSize / 1.5, window.textFillColor, "left");
 	}
 	if (displayOptions.holeDia) {
-		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, parseFloat(hole.holeDiameter).toFixed(0), fontSize/1.5, "green", "left");
+		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, parseFloat(hole.holeDiameter).toFixed(0), fontSize / 1.5, "green", "left");
 	}
 	if (displayOptions.holeLen) {
-		drawHoleTextThreeJS(bottomSideCollarWorld.x, bottomSideCollarWorld.y, collarZ, parseFloat(hole.holeLengthCalculated).toFixed(1), fontSize/1.5, window.depthColor, "left");
+		drawHoleTextThreeJS(bottomSideCollarWorld.x, bottomSideCollarWorld.y, collarZ, parseFloat(hole.holeLengthCalculated).toFixed(1), fontSize / 1.5, window.depthColor, "left");
 	}
 	if (displayOptions.holeType) {
-		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, hole.holeType, fontSize/1.5, "green", "left");
+		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, hole.holeType, fontSize / 1.5, "green", "left");
 	}
 	if (displayOptions.measuredComment) {
-		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, hole.measuredComment, fontSize/1.5, "#FF8800", "left");
+		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, hole.measuredComment, fontSize / 1.5, "#FF8800", "left");
 	}
 
 	// Step 4) Left side labels (right-aligned)
 	if (displayOptions.holeAng) {
-		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, parseFloat(hole.holeAngle).toFixed(0), fontSize/1.5, window.angleDipColor, "right");
+		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, parseFloat(hole.holeAngle).toFixed(0), fontSize / 1.5, window.angleDipColor, "right");
 	}
 	if (displayOptions.holeDip) {
-		drawHoleTextThreeJS(leftSideToeWorld.x, leftSideToeWorld.y, toeZ, 90 - parseFloat(hole.holeAngle).toFixed(0), fontSize/1.5, window.angleDipColor, "right");
+		drawHoleTextThreeJS(leftSideToeWorld.x, leftSideToeWorld.y, toeZ, 90 - parseFloat(hole.holeAngle).toFixed(0), fontSize / 1.5, window.angleDipColor, "right");
 	}
 	if (displayOptions.holeBea) {
-		drawHoleTextThreeJS(bottomSideToeWorld.x, bottomSideToeWorld.y, toeZ, parseFloat(hole.holeBearing).toFixed(1), fontSize/1.5, "red", "right");
+		drawHoleTextThreeJS(bottomSideToeWorld.x, bottomSideToeWorld.y, toeZ, parseFloat(hole.holeBearing).toFixed(1), fontSize / 1.5, "red", "right");
 	}
 	if (displayOptions.holeSubdrill) {
-		drawHoleTextThreeJS(bottomSideToeWorld.x, bottomSideToeWorld.y, toeZ, parseFloat(hole.subdrillAmount).toFixed(1), fontSize/1.5, "blue", "right");
+		drawHoleTextThreeJS(bottomSideToeWorld.x, bottomSideToeWorld.y, toeZ, parseFloat(hole.subdrillAmount).toFixed(1), fontSize / 1.5, "blue", "right");
 	}
 	if (displayOptions.initiationTime) {
-		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, hole.holeTime, fontSize/1.5, "red", "right");
+		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, hole.holeTime, fontSize / 1.5, "red", "right");
 	}
 	// Step 5) Additional coordinate and measurement labels
 	if (displayOptions.xValue) {
@@ -253,23 +253,23 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	}
 	if (displayOptions.yValue) {
 		const yPosWorld = canvasToWorld(leftSideCollar, middleSideCollar);
-		drawHoleTextThreeJS(yPosWorld.x, yPosWorld.y, collarZ, parseFloat(hole.startYLocation).toFixed(2), fontSize/1.5, window.textFillColor, "right");
+		drawHoleTextThreeJS(yPosWorld.x, yPosWorld.y, collarZ, parseFloat(hole.startYLocation).toFixed(2), fontSize / 1.5, window.textFillColor, "right");
 	}
 	if (displayOptions.zValue) {
-		drawHoleTextThreeJS(bottomSideCollarWorld.x, bottomSideCollarWorld.y, collarZ, parseFloat(hole.startZLocation).toFixed(2), fontSize/1.5, window.textFillColor, "right");
+		drawHoleTextThreeJS(bottomSideCollarWorld.x, bottomSideCollarWorld.y, collarZ, parseFloat(hole.startZLocation).toFixed(2), fontSize / 1.5, window.textFillColor, "right");
 	}
 	if (displayOptions.displayRowAndPosId) {
-		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, "Row:" + hole.rowID, fontSize/1.5, "#FF00FF", "right");
+		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, "Row:" + hole.rowID, fontSize / 1.5, "#FF00FF", "right");
 		const posPosWorld = canvasToWorld(leftSideCollar, middleSideCollar);
-		drawHoleTextThreeJS(posPosWorld.x, posPosWorld.y, collarZ, "Pos:" + hole.posID, fontSize/1.5, "#FF00FF", "right");
+		drawHoleTextThreeJS(posPosWorld.x, posPosWorld.y, collarZ, "Pos:" + hole.posID, fontSize / 1.5, "#FF00FF", "right");
 	}
 	if (displayOptions.measuredLength) {
 		const lenPosWorld = canvasToWorld(leftSideCollar, bottomSideCollar + fontSize);
-		drawHoleTextThreeJS(lenPosWorld.x, lenPosWorld.y, collarZ, hole.measuredLength, fontSize/1.5, "#FF4400", "right");
+		drawHoleTextThreeJS(lenPosWorld.x, lenPosWorld.y, collarZ, hole.measuredLength, fontSize / 1.5, "#FF4400", "right");
 	}
 	if (displayOptions.measuredMass) {
 		const massPosWorld = canvasToWorld(leftSideCollar, topSideCollar - fontSize);
-		drawHoleTextThreeJS(massPosWorld.x, massPosWorld.y, collarZ, hole.measuredMass, fontSize/1.5, "#FF6600", "right");
+		drawHoleTextThreeJS(massPosWorld.x, massPosWorld.y, collarZ, hole.measuredMass, fontSize / 1.5, "#FF6600", "right");
 	}
 }
 
@@ -735,7 +735,7 @@ export function drawConnectorThreeJS(fromHole, toHole, color, curve, delayText, 
 
 	window.threeRenderer.connectorsGroup.add(connectorGroup);
 }
-
+//TODO: This is too verbose for it to be rendered in the scene! We should have a shared 2D canvas overlay that displays the selected holes and their IDs. That both 2D and 3D use.
 // Step 17) Draw tool prompt text in Three.js
 export function drawToolPromptThreeJS(text, position, color) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
@@ -866,7 +866,7 @@ export function highlightSelectedKADPointThreeJS(kadObject, highlightType) {
 
 	// Step 18.5b) Determine colors based on highlight type
 	let color, baseRadius;
-	
+
 	switch (highlightType) {
 		case "selected":
 		case "multi":
