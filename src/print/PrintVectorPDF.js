@@ -353,65 +353,215 @@ export function generateTrueVectorPDF(context, userInput, mode) {
             // Step 13) Draw map zone border
             drawCellBorder(pdf, mapZone.x, mapZone.y, mapZone.width, mapZone.height, 0.3);
 
-            // Step 14) Calculate WYSIWYG coordinate transformation
+            // Step 13a) For 3D mode, capture WebGL canvas as image (WYSIWYG - camera orientation preserved)
+            // 3D data cannot be re-rendered from world coordinates because camera could be at any angle
+            var is3DMode = mode === "3D";
+            var captured3DImage = null;
+            var printScale = 1; // Default for footer scale calculation
+            
+            // Resolution multiplier for 3D capture (2 = 2x resolution, 3 = 3x, etc.)
+            // Higher = better print quality but larger file size
+            var hiResMultiplier = 3; // 3x resolution for print quality
+            
+            console.log("[3D Print] Mode: " + mode + ", is3DMode: " + is3DMode + ", threeRenderer available: " + !!context.threeRenderer);
+            
+            if (is3DMode && context.threeRenderer) {
+                bar.style.width = "25%";
+                text.textContent = "Capturing 3D view at " + hiResMultiplier + "x resolution...";
+                
+                try {
+                    // Step 13b) Get the WebGL canvas and renderer
+                    var threeCanvas = context.threeRenderer.getCanvas();
+                    var renderer = context.threeRenderer.renderer;
+                    var canvasRect = threeCanvas ? threeCanvas.getBoundingClientRect() : null;
+                    
+                    console.log("[3D Print] ThreeJS canvas display: " + (canvasRect ? (canvasRect.width + "x" + canvasRect.height) : "null"));
+                    
+                    if (threeCanvas && renderer) {
+                        // Get print boundary info for cropping
+                        var boundary3D = context.get3DPrintBoundary ? context.get3DPrintBoundary() : null;
+                        console.log("[3D Print] Boundary3D (display coords): " + JSON.stringify(boundary3D));
+                        
+                        // Step 13b2) Save original renderer state
+                        var originalWidth = threeCanvas.width;
+                        var originalHeight = threeCanvas.height;
+                        var originalPixelRatio = renderer.getPixelRatio();
+                        var displayWidth = canvasRect.width;
+                        var displayHeight = canvasRect.height;
+                        
+                        console.log("[3D Print] Original canvas: " + originalWidth + "x" + originalHeight + " @ pixelRatio " + originalPixelRatio);
+                        
+                        // Step 13b3) Resize renderer to high resolution
+                        var hiResWidth = Math.round(displayWidth * hiResMultiplier);
+                        var hiResHeight = Math.round(displayHeight * hiResMultiplier);
+                        
+                        console.log("[3D Print] Rendering at hi-res: " + hiResWidth + "x" + hiResHeight);
+                        
+                        // Temporarily resize renderer for high-res capture
+                        renderer.setPixelRatio(1); // Set to 1 so setSize gives us exact dimensions
+                        renderer.setSize(hiResWidth, hiResHeight, false); // false = don't update style
+                        
+                        // Update camera aspect/frustum if needed (orthographic camera)
+                        var camera = context.threeRenderer.camera;
+                        if (camera && camera.isOrthographicCamera) {
+                            // For orthographic, the frustum is already set based on world units
+                            // Just need to ensure the aspect ratio is maintained
+                            camera.updateProjectionMatrix();
+                        }
+                        
+                        // Step 13b4) Force render at high resolution
+                        context.threeRenderer.render();
+                        
+                        // Step 13b5) Capture the high-res canvas
+                        var hiResCanvas = renderer.domElement;
+                        console.log("[3D Print] Hi-res canvas actual size: " + hiResCanvas.width + "x" + hiResCanvas.height);
+                        
+                        // Create crop canvas for the boundary region at high resolution
+                        var cropCanvas = document.createElement("canvas");
+                        var cropCtx = cropCanvas.getContext("2d");
+                        
+                        if (boundary3D && boundary3D.width > 0 && boundary3D.height > 0) {
+                            // Scale boundary from display coords to hi-res coords
+                            var srcX = boundary3D.x * hiResMultiplier;
+                            var srcY = boundary3D.y * hiResMultiplier;
+                            var srcW = boundary3D.width * hiResMultiplier;
+                            var srcH = boundary3D.height * hiResMultiplier;
+                            
+                            console.log("[3D Print] Hi-res crop region: x=" + srcX.toFixed(0) + " y=" + srcY.toFixed(0) + " w=" + srcW.toFixed(0) + " h=" + srcH.toFixed(0));
+                            
+                            cropCanvas.width = srcW;
+                            cropCanvas.height = srcH;
+                            cropCtx.drawImage(
+                                hiResCanvas,
+                                srcX, srcY,
+                                srcW, srcH,
+                                0, 0,
+                                srcW, srcH
+                            );
+                        } else {
+                            // No boundary - use full hi-res canvas
+                            cropCanvas.width = hiResCanvas.width;
+                            cropCanvas.height = hiResCanvas.height;
+                            cropCtx.drawImage(hiResCanvas, 0, 0);
+                        }
+                        
+                        // Step 13b6) Restore original renderer size
+                        renderer.setPixelRatio(originalPixelRatio);
+                        renderer.setSize(displayWidth, displayHeight, false);
+                        
+                        // Re-render at original size to restore display
+                        context.threeRenderer.render();
+                        
+                        console.log("[3D Print] Renderer restored to: " + renderer.domElement.width + "x" + renderer.domElement.height);
+                        
+                        // Step 13b7) Convert to data URL
+                        captured3DImage = cropCanvas.toDataURL("image/png", 1.0);
+                        console.log("[3D Print] Captured hi-res image: " + cropCanvas.width + "x" + cropCanvas.height + " (" + (captured3DImage.length / 1024).toFixed(0) + " KB)");
+                        
+                        // Calculate approximate print scale for footer display
+                        if (context.cameraControls) {
+                            var cameraState = context.cameraControls.getCameraState();
+                            printScale = cameraState.scale || 1;
+                            console.log("[3D Print] Camera scale: " + printScale);
+                        }
+                    }
+                } catch (e) {
+                    console.error("[3D Print] Failed to capture 3D view:", e);
+                }
+                
+                // Step 13c) Insert 3D captured image into map zone
+                if (captured3DImage && captured3DImage.length > 100) {
+                    bar.style.width = "50%";
+                    text.textContent = "Adding 3D view to PDF...";
+                    
+                    try {
+                        // Add the captured image to fill the map zone
+                        pdf.addImage(captured3DImage, "PNG", mapZone.x, mapZone.y, mapZone.width, mapZone.height);
+                        console.log("[3D Print] Image added to PDF at mapZone: " + mapZone.x + "," + mapZone.y + " size: " + mapZone.width + "x" + mapZone.height);
+                    } catch (e) {
+                        console.error("[3D Print] Failed to add 3D image to PDF:", e);
+                    }
+                } else {
+                    console.warn("[3D Print] No valid 3D image captured - map zone will be blank");
+                }
+                
+                // Skip to footer section - 3D map content is from captured image
+                bar.style.width = "70%";
+                text.textContent = "Drawing footer...";
+            } else if (is3DMode && !context.threeRenderer) {
+                console.error("[3D Print] 3D mode but threeRenderer not available in context!");
+            }
+            
+            // Step 14) Calculate WYSIWYG coordinate transformation (2D mode only)
+            // For 3D mode, the captured WebGL image already contains all data
             var canvas = context.canvas;
             var screenBoundary = getPrintBoundary(canvas);
-            if (!screenBoundary) {
+            
+            // 2D mode requires print boundary for coordinate transformation
+            if (!is3DMode && !screenBoundary) {
                 throw new Error("Print Preview Mode must be active");
             }
+            
+            // Variables for 2D coordinate transformation (only used in 2D mode)
+            var worldToPDF = null;
+            var innerBoundary = null;
+            
+            if (!is3DMode && screenBoundary) {
+                // Use the inner boundary for coordinate transformation
+                // This is the area where data should be positioned (inside the black template border)
+                innerBoundary = {
+                    x: screenBoundary.innerX !== undefined ? screenBoundary.innerX : screenBoundary.x + screenBoundary.width * screenBoundary.marginPercent,
+                    y: screenBoundary.innerY !== undefined ? screenBoundary.innerY : screenBoundary.y + screenBoundary.height * screenBoundary.marginPercent,
+                    width: screenBoundary.innerWidth !== undefined ? screenBoundary.innerWidth : screenBoundary.width * (1 - 2 * screenBoundary.marginPercent),
+                    height: screenBoundary.innerHeight !== undefined ? screenBoundary.innerHeight : screenBoundary.height * (1 - 2 * screenBoundary.marginPercent)
+                };
 
-            // Use the inner boundary for coordinate transformation
-            // This is the area where data should be positioned (inside the black template border)
-            var innerBoundary = {
-                x: screenBoundary.innerX !== undefined ? screenBoundary.innerX : screenBoundary.x + screenBoundary.width * screenBoundary.marginPercent,
-                y: screenBoundary.innerY !== undefined ? screenBoundary.innerY : screenBoundary.y + screenBoundary.height * screenBoundary.marginPercent,
-                width: screenBoundary.innerWidth !== undefined ? screenBoundary.innerWidth : screenBoundary.width * (1 - 2 * screenBoundary.marginPercent),
-                height: screenBoundary.innerHeight !== undefined ? screenBoundary.innerHeight : screenBoundary.height * (1 - 2 * screenBoundary.marginPercent)
-            };
+                // Convert screen to world coordinates
+                var world_x1 = (innerBoundary.x - canvas.width / 2) / context.currentScale + context.centroidX;
+                var world_y1 = -(innerBoundary.y + innerBoundary.height - canvas.height / 2) / context.currentScale + context.centroidY;
+                var world_x2 = (innerBoundary.x + innerBoundary.width - canvas.width / 2) / context.currentScale + context.centroidX;
+                var world_y2 = -(innerBoundary.y - canvas.height / 2) / context.currentScale + context.centroidY;
 
-            // Convert screen to world coordinates
-            var world_x1 = (innerBoundary.x - canvas.width / 2) / context.currentScale + context.centroidX;
-            var world_y1 = -(innerBoundary.y + innerBoundary.height - canvas.height / 2) / context.currentScale + context.centroidY;
-            var world_x2 = (innerBoundary.x + innerBoundary.width - canvas.width / 2) / context.currentScale + context.centroidX;
-            var world_y2 = -(innerBoundary.y - canvas.height / 2) / context.currentScale + context.centroidY;
+                var minX = Math.min(world_x1, world_x2);
+                var maxX = Math.max(world_x1, world_x2);
+                var minY = Math.min(world_y1, world_y2);
+                var maxY = Math.max(world_y1, world_y2);
 
-            var minX = Math.min(world_x1, world_x2);
-            var maxX = Math.max(world_x1, world_x2);
-            var minY = Math.min(world_y1, world_y2);
-            var maxY = Math.max(world_y1, world_y2);
+                var dataWidth = maxX - minX;
+                var dataHeight = maxY - minY;
+                if (dataWidth <= 0 || dataHeight <= 0) {
+                    throw new Error("Invalid data dimensions");
+                }
 
-            var dataWidth = maxX - minX;
-            var dataHeight = maxY - minY;
-            if (dataWidth <= 0 || dataHeight <= 0) {
-                throw new Error("Invalid data dimensions");
-            }
+                // Calculate scale to fit in map inner zone
+                var scaleX = mapInnerZone.width / dataWidth;
+                var scaleY = mapInnerZone.height / dataHeight;
+                printScale = Math.min(scaleX, scaleY);
 
-            // Calculate scale to fit in map inner zone
-            var scaleX = mapInnerZone.width / dataWidth;
-            var scaleY = mapInnerZone.height / dataHeight;
-            var printScale = Math.min(scaleX, scaleY);
+                var scaledWidth = dataWidth * printScale;
+                var scaledHeight = dataHeight * printScale;
+                var offsetX = mapInnerZone.x + (mapInnerZone.width - scaledWidth) / 2;
+                var offsetY = mapInnerZone.y + (mapInnerZone.height - scaledHeight) / 2;
 
-            var scaledWidth = dataWidth * printScale;
-            var scaledHeight = dataHeight * printScale;
-            var offsetX = mapInnerZone.x + (mapInnerZone.width - scaledWidth) / 2;
-            var offsetY = mapInnerZone.y + (mapInnerZone.height - scaledHeight) / 2;
+                var printCentroidX = minX + dataWidth / 2;
+                var printCentroidY = minY + dataHeight / 2;
 
-            var printCentroidX = minX + dataWidth / 2;
-            var printCentroidY = minY + dataHeight / 2;
-
-            // Step 15) World to PDF transformation function
-            function worldToPDF(worldX, worldY) {
-                var centerX = offsetX + scaledWidth / 2;
-                var centerY = offsetY + scaledHeight / 2;
-                var x = (worldX - printCentroidX) * printScale + centerX;
-                var y = -(worldY - printCentroidY) * printScale + centerY;
-                return [x, y];
+                // Step 15) World to PDF transformation function (2D mode only)
+                worldToPDF = function(worldX, worldY) {
+                    var centerX = offsetX + scaledWidth / 2;
+                    var centerY = offsetY + scaledHeight / 2;
+                    var x = (worldX - printCentroidX) * printScale + centerX;
+                    var y = -(worldY - printCentroidY) * printScale + centerY;
+                    return [x, y];
+                };
             }
 
             // Note: Line clipping uses clipLineToRect() and isPointInRect() defined at top of file
-
-            bar.style.width = "30%";
-            text.textContent = "Drawing background images...";
+            // For 3D mode, skip 2D data rendering (use captured WebGL image instead)
+            
+            if (!is3DMode) {
+                bar.style.width = "30%";
+                text.textContent = "Drawing background images...";
 
             // Step 16) Render background images as raster layer
             if (loadedImages && loadedImages.size > 0) {
@@ -830,6 +980,8 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                     }
                 }
             }
+            
+            } // End of if (!is3DMode) - 2D data rendering block
 
             bar.style.width = "75%";
             text.textContent = "Drawing footer...";
@@ -865,9 +1017,15 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 try {
                     var navImageDataURL = null;
                     if (mode === "2D") {
+                        // 2D returns dataURL directly
                         navImageDataURL = PrintCaptureManager.captureNorthArrow(context);
                     } else {
-                        navImageDataURL = PrintCaptureManager.captureXYZGizmo(context);
+                        // 3D returns { canvas, dataURL } - extract the dataURL for jsPDF
+                        var gizmoResult = PrintCaptureManager.captureXYZGizmo(context);
+                        if (gizmoResult && gizmoResult.dataURL) {
+                            navImageDataURL = gizmoResult.dataURL;
+                        }
+                        console.log("[Vector Nav] Gizmo capture result:", gizmoResult ? "success" : "null");
                     }
                     
                     if (navImageDataURL) {
@@ -875,9 +1033,11 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                         var navSize = Math.min(navCell.width, navCell.height) * 0.6;
                         var navX = navCell.x + (navCell.width - navSize) / 2;
                         var navY = navCell.y + (navCell.height - navSize) / 2;
+                        console.log("[Vector Nav] Adding gizmo to PDF at:", navX, navY, "size:", navSize);
                         pdf.addImage(navImageDataURL, "PNG", navX, navY, navSize, navSize);
                     } else {
                         // Fallback text
+                        console.log("[Vector Nav] No nav image, drawing fallback text");
                         drawCenteredText(pdf, mode === "2D" ? "N" : "XYZ", navCell.x, navCell.y, navCell.width, navCell.height, 14, true);
                     }
                 } catch (e) {

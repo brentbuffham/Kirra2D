@@ -3838,6 +3838,10 @@ document.addEventListener("DOMContentLoaded", function () {
 		FloatingDialog: FloatingDialog,
 		getDipAngle: getDipAngle,
 		currentRotation: currentRotation,
+		// Step) 3D printing support - ThreeJS renderer and camera controls
+		threeRenderer: threeRenderer,
+		cameraControls: cameraControls,
+		darkModeEnabled: darkModeEnabled,
 	}));
 });
 document.getElementById("deletePatternButton").addEventListener("click", deleteSelectedPattern);

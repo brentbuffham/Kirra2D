@@ -286,46 +286,88 @@ function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
     // Step 5e) Calculate full template preview positions
     var preview = layoutMgr.calculateFullPreviewPositions(rect.width, rect.height, 30);
     
-    // Step 5f) Draw template preview
+    // Step 5f) Draw template preview - only black template boundary (matches 2D behavior)
+    // Red page outline and blue inner zone removed for consistency with 2D preview
     var ctx = overlayCanvas.getContext("2d");
-	ctx.clearRect(0, 0, rect.width, rect.height);
-	
-    // Page outline (red dashed)
-	ctx.strokeStyle = "red";
-	ctx.setLineDash([10, 5]);
-	ctx.lineWidth = 2;
-    ctx.strokeRect(preview.page.x, preview.page.y, preview.page.width, preview.page.height);
+    ctx.clearRect(0, 0, rect.width, rect.height);
     
-    // Map zone outline
+    // Map zone outline - the PRINT BOUNDARY (black solid line)
+    // This is the only boundary shown - data will be clipped to this area
     ctx.strokeStyle = "#333333";
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.5;
     ctx.setLineDash([]);
     ctx.strokeRect(preview.map.x, preview.map.y, preview.map.width, preview.map.height);
     
-    // Map inner zone (blue dashed)
-	ctx.strokeStyle = "rgba(0, 100, 255, 0.8)";
-	ctx.setLineDash([5, 3]);
-	ctx.lineWidth = 1.5;
-    ctx.strokeRect(preview.mapInner.x, preview.mapInner.y, preview.mapInner.width, preview.mapInner.height);
+    // Draw "[MAP]" label in center of map zone (same as 2D)
+    ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+    ctx.font = "bold 24px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText("[MAP]", preview.map.x + preview.map.width / 2, preview.map.y + preview.map.height / 2);
     
     // Footer zone outline
     ctx.strokeStyle = "#333333";
     ctx.lineWidth = 1;
-    ctx.setLineDash([]);
     ctx.strokeRect(preview.footer.x, preview.footer.y, preview.footer.width, preview.footer.height);
     
     // Footer column borders
     ctx.strokeStyle = "#666666";
     ctx.lineWidth = 0.5;
+    ctx.font = "10px Arial";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#000000";
+    
     for (var i = 0; i < preview.footerColumns.length; i++) {
         var col = preview.footerColumns[i];
         ctx.strokeRect(col.x, col.y, col.width, col.height);
+        
+        // Draw column label based on ID (same as 2D)
+        var colLabel = "";
+        if (col.id === "navIndicator" || col.id === "navLogoColumn") {
+            colLabel = "[XYZ GIZMO]";
+        } else if (col.id === "connectorCount") {
+            colLabel = "CONNECTOR\nCOUNT";
+        } else if (col.id === "blastStatistics") {
+            colLabel = "BLAST\nSTATISTICS";
+        } else if (col.id === "logo") {
+            colLabel = "[LOGO]\nblastingapps.com";
+        }
+        
+        if (colLabel) {
+            var lines = colLabel.split("\n");
+            var lineHeight = 12;
+            var startY = col.y + col.height / 2 - (lines.length - 1) * lineHeight / 2;
+            for (var l = 0; l < lines.length; l++) {
+                ctx.fillText(lines[l], col.x + col.width / 2, startY + l * lineHeight);
+            }
+        }
     }
     
     // Title block row borders
     for (var j = 0; j < preview.titleBlockRows.length; j++) {
         var row = preview.titleBlockRows[j];
         ctx.strokeRect(row.x, row.y, row.width, row.height);
+        
+        // Draw row label (same as 2D)
+        var rowLabel = "";
+        if (row.id === "title") {
+            rowLabel = "TITLE\n[BLASTNAME]";
+        } else if (row.id === "date") {
+            rowLabel = "DATE\n[DATE/TIME]";
+        } else if (row.id === "scaleDesigner") {
+            rowLabel = "Scale: [CALC]\nDesigner: [ENTRY]";
+        }
+        
+        if (rowLabel) {
+            var rLines = rowLabel.split("\n");
+            var rLineHeight = 10;
+            var rStartY = row.y + row.height / 2 - (rLines.length - 1) * rLineHeight / 2;
+            ctx.font = "9px Arial";
+            for (var rl = 0; rl < rLines.length; rl++) {
+                ctx.fillText(rLines[rl], row.x + row.width / 2, rStartY + rl * rLineHeight);
+            }
+        }
     }
     
     // Nav/logo rows for portrait
@@ -333,27 +375,41 @@ function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
         for (var k = 0; k < preview.navLogoRows.length; k++) {
             var navRow = preview.navLogoRows[k];
             ctx.strokeRect(navRow.x, navRow.y, navRow.width, navRow.height);
+            
+            // Draw row label (same as 2D)
+            var navLabel = "";
+            if (navRow.id === "navIndicator") {
+                navLabel = "[XYZ]";
+            } else if (navRow.id === "logo") {
+                navLabel = "[QR]";
+            }
+            
+            if (navLabel) {
+                ctx.font = "8px Arial";
+                ctx.fillText(navLabel, navRow.x + navRow.width / 2, navRow.y + navRow.height / 2);
+            }
         }
     }
     
-    // Label
-	ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-    ctx.fillRect(preview.page.x, preview.page.y - 22, 200, 20);
-	ctx.fillStyle = "white";
-	ctx.font = "12px Arial";
-    ctx.fillText("Print Preview: " + paperSize + " " + orientation + " (3D)", preview.page.x + 5, preview.page.y - 8);
+    // Print preview label (positioned relative to map zone instead of page)
+    ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
+    ctx.fillRect(preview.map.x, preview.map.y - 22, 200, 20);
+    ctx.fillStyle = "white";
+    ctx.font = "12px Arial";
+    ctx.textAlign = "left";
+    ctx.fillText("Print Preview: " + paperSize + " " + orientation + " (3D)", preview.map.x + 5, preview.map.y - 8);
     
     // Step 5g) Insert into DOM
 	threeCanvas.parentElement.appendChild(overlayCanvas);
 	printBoundary3DOverlay = overlayCanvas;
 	
-    // Step 5h) Store boundary info for capture (use mapInner for data capture)
+    // Step 5h) Store boundary info for capture (use map zone - matches black border shown)
 	overlayCanvas.boundaryInfo = {
-        x: preview.mapInner.x,
-        y: preview.mapInner.y,
-        width: preview.mapInner.width,
-        height: preview.mapInner.height,
-        innerMargin: 0, // Already the inner margin
+        x: preview.map.x,
+        y: preview.map.y,
+        width: preview.map.width,
+        height: preview.map.height,
+        innerMargin: 0,
 		paperSize: paperSize,
 		orientation: orientation
 	};
@@ -593,13 +649,18 @@ export function printCanvasHiRes(context) {
                     }
                     
                     // Step 11m) Draw navigation indicator (North Arrow or XYZ Gizmo)
+                    console.log("[Raster Nav] Getting nav indicator cell, mode:", mode);
                     var navCell = layoutMgr.getNavIndicatorCell();
+                    console.log("[Raster Nav] navCell:", navCell ? JSON.stringify(navCell) : "null");
+                    
                     if (navCell) {
                         // Use 60% of cell size to prevent cutting off (same as vector PDF)
                         var navSizeMM = Math.min(navCell.width, navCell.height) * 0.6;
                         var navSize = navSizeMM * mmToPx;
                         var navCenterX = (navCell.x + navCell.width / 2) * mmToPx;
                         var navCenterY = (navCell.y + navCell.height / 2) * mmToPx;
+                        
+                        console.log("[Raster Nav] Drawing nav indicator, mode:", mode, "is3D:", mode === "3D");
                         
                         if (mode === "2D") {
                             // Draw North Arrow directly (more reliable than Image object)
@@ -625,20 +686,24 @@ export function printCanvasHiRes(context) {
                             printCtx.fillText("N", 0, -35 * arrowScale);
                             
                             printCtx.restore();
-		} else {
-                            // For 3D mode, try to capture gizmo image
+                        } else {
+                            // For 3D mode, capture gizmo and draw canvas directly (synchronous)
+                            console.log("[Raster Nav] 3D mode - capturing gizmo...");
+                            console.log("[Raster Nav] context has cameraControls:", !!context.cameraControls);
                             try {
-                                var navImageDataURL = PrintCaptureManager.captureXYZGizmo(context);
-                                if (navImageDataURL && navImageDataURL.length > 100) {
-                                    var navImg = new Image();
-                                    navImg.src = navImageDataURL;
+                                var gizmoResult = PrintCaptureManager.captureXYZGizmo(context);
+                                console.log("[Raster Nav] Gizmo capture result:", gizmoResult ? "success" : "null");
+                                if (gizmoResult && gizmoResult.canvas) {
                                     var navX = (navCell.x + (navCell.width - navSizeMM) / 2) * mmToPx;
                                     var navY = (navCell.y + (navCell.height - navSizeMM) / 2) * mmToPx;
                                     
-                                    // Data URLs load synchronously for basic canvas-generated images
-                                    printCtx.drawImage(navImg, navX, navY, navSize, navSize);
-	} else {
+                                    // Draw canvas directly - this is synchronous!
+                                    console.log("[Raster Nav] Drawing gizmo canvas at:", navX, navY, "size:", navSize);
+                                    printCtx.drawImage(gizmoResult.canvas, navX, navY, navSize, navSize);
+                                    console.log("[Raster Nav] Gizmo drawn successfully");
+                                } else {
                                     // Fallback text for 3D
+                                    console.log("[Raster Nav] No gizmo canvas, drawing fallback text");
                                     printCtx.fillStyle = "#000000";
                                     printCtx.font = "bold " + (20 * mmToPx / 3) + "px Arial";
                                     printCtx.textAlign = "center";
@@ -862,7 +927,87 @@ export function printCanvasHiRes(context) {
                         printCtx.rect(printArea.x, printArea.y, printArea.width, printArea.height);
                         printCtx.clip();
                         
-                        drawDataForPrinting(printCtx, printArea, context);
+                        // Step 11o1) Check if 3D mode - capture WebGL canvas instead of 2D rendering
+                        if (mode === "3D" && context.threeRenderer) {
+                            try {
+                                // Step 11o2) Get the WebGL canvas and renderer
+                                var threeCanvas = context.threeRenderer.getCanvas();
+                                var renderer = context.threeRenderer.renderer;
+                                
+                                if (threeCanvas && renderer) {
+                                    // Step 11o3) Get print boundary info for cropping
+                                    var boundary3D = get3DPrintBoundary();
+                                    var canvasRect = threeCanvas.getBoundingClientRect();
+                                    
+                                    // High-res multiplier for raster PDF (3x for print quality)
+                                    var hiResMultiplier = 3;
+                                    
+                                    // Save original renderer state
+                                    var originalPixelRatio = renderer.getPixelRatio();
+                                    var displayWidth = canvasRect.width;
+                                    var displayHeight = canvasRect.height;
+                                    
+                                    // Calculate hi-res dimensions
+                                    var hiResWidth = Math.round(displayWidth * hiResMultiplier);
+                                    var hiResHeight = Math.round(displayHeight * hiResMultiplier);
+                                    
+                                    console.log("[3D Raster] Rendering at: " + hiResWidth + "x" + hiResHeight);
+                                    
+                                    // Resize renderer to high resolution
+                                    renderer.setPixelRatio(1);
+                                    renderer.setSize(hiResWidth, hiResHeight, false);
+                                    
+                                    // Update camera projection
+                                    var camera = context.threeRenderer.camera;
+                                    if (camera && camera.isOrthographicCamera) {
+                                        camera.updateProjectionMatrix();
+                                    }
+                                    
+                                    // Force render at high resolution
+                                    context.threeRenderer.render();
+                                    
+                                    var hiResCanvas = renderer.domElement;
+                                    
+                                    if (boundary3D && boundary3D.width > 0 && boundary3D.height > 0) {
+                                        // Scale boundary from display to hi-res coords
+                                        var srcX = boundary3D.x * hiResMultiplier;
+                                        var srcY = boundary3D.y * hiResMultiplier;
+                                        var srcW = boundary3D.width * hiResMultiplier;
+                                        var srcH = boundary3D.height * hiResMultiplier;
+                                        
+                                        // Step 11o4) Draw cropped hi-res 3D view into print area
+                                        printCtx.drawImage(
+                                            hiResCanvas,
+                                            srcX, srcY,
+                                            srcW, srcH,
+                                            printArea.x, printArea.y,
+                                            printArea.width, printArea.height
+                                        );
+                                    } else {
+                                        // No boundary - draw full hi-res canvas into print area
+                                        printCtx.drawImage(
+                                            hiResCanvas,
+                                            0, 0,
+                                            hiResCanvas.width, hiResCanvas.height,
+                                            printArea.x, printArea.y,
+                                            printArea.width, printArea.height
+                                        );
+                                    }
+                                    
+                                    // Restore original renderer size
+                                    renderer.setPixelRatio(originalPixelRatio);
+                                    renderer.setSize(displayWidth, displayHeight, false);
+                                    context.threeRenderer.render();
+                                    
+                                    console.log("[3D Raster] Renderer restored");
+                                }
+                            } catch (e) {
+                                console.warn("Failed to capture 3D view for raster PDF:", e);
+                            }
+                        } else {
+                            // 2D mode - use existing drawDataForPrinting function
+                            drawDataForPrinting(printCtx, printArea, context);
+                        }
                         
                         printCtx.restore();
 
