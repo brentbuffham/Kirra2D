@@ -88,6 +88,15 @@ export class ThreeRenderer {
 		this.surfaceMeshMap = new Map(); // surfaceId -> mesh
 		this.kadMeshMap = new Map(); // kadId -> mesh
 
+		// Step 8a) Instanced rendering for holes (optional optimization)
+		// These are only populated when useInstancedHoles is enabled
+		this.instancedCollars = null;      // InstancedMesh for collar circles
+		this.instancedGrades = null;       // InstancedMesh for grade circles
+		this.instancedToes = null;         // InstancedMesh for toe markers
+		this.instanceIdToHole = new Map(); // instanceId -> hole data object
+		this.holeToInstanceId = new Map(); // holeId string -> instanceId number
+		this.instancedHolesCount = 0;      // Current count of instanced holes
+
 		// Step 9) Raycaster for selection
 		this.raycaster = new THREE.Raycaster();
 		this.raycaster.params.Line.threshold = 5; // Increase line selection tolerance
@@ -883,6 +892,9 @@ export class ThreeRenderer {
 		this.surfaceMeshMap.clear();
 		this.kadMeshMap.clear();
 
+		// Step 21b.1) Clear instanced holes if they exist
+		this.clearInstancedHoles();
+
 		// Step 21c) Dispose axis helper if it exists
 		if (this.axisHelper) {
 			this.disposeAxisHelper();
@@ -930,6 +942,7 @@ export class ThreeRenderer {
 			case "holes":
 				this.disposeGroup(this.holesGroup);
 				this.holeMeshMap.clear();
+				this.clearInstancedHoles(); // Also clear instanced holes
 				break;
 			case "surfaces":
 				this.disposeGroup(this.surfacesGroup);
@@ -950,6 +963,95 @@ export class ThreeRenderer {
 				break;
 		}
 		this.needsRender = true;
+	}
+
+	// Step 22a) Clear instanced holes (when switching modes or reloading data)
+	clearInstancedHoles() {
+		// Step 22a.1) Dispose collar instances
+		if (this.instancedCollars) {
+			this.holesGroup.remove(this.instancedCollars);
+			if (this.instancedCollars.geometry) this.instancedCollars.geometry.dispose();
+			if (this.instancedCollars.material) this.instancedCollars.material.dispose();
+			this.instancedCollars = null;
+		}
+		
+		// Step 22a.2) Dispose grade circle instances
+		if (this.instancedGrades) {
+			this.holesGroup.remove(this.instancedGrades);
+			if (this.instancedGrades.geometry) this.instancedGrades.geometry.dispose();
+			if (this.instancedGrades.material) this.instancedGrades.material.dispose();
+			this.instancedGrades = null;
+		}
+		
+		// Step 22a.3) Dispose toe instances
+		if (this.instancedToes) {
+			this.holesGroup.remove(this.instancedToes);
+			if (this.instancedToes.geometry) this.instancedToes.geometry.dispose();
+			if (this.instancedToes.material) this.instancedToes.material.dispose();
+			this.instancedToes = null;
+		}
+		
+		// Step 22a.4) Clear mapping tables
+		this.instanceIdToHole.clear();
+		this.holeToInstanceId.clear();
+		this.instancedHolesCount = 0;
+		
+		this.needsRender = true;
+	}
+
+	// Step 22b) Update single hole position in instanced mesh (for move tool)
+	updateHolePosition(holeId, newWorldX, newWorldY, newWorldZ) {
+		// Step 22b.1) Get instance ID from hole ID
+		var instanceId = this.holeToInstanceId.get(holeId);
+		if (instanceId === undefined) {
+			// Not using instanced rendering for this hole, fall back to holeMeshMap
+			var holeGroup = this.holeMeshMap.get(holeId);
+			if (holeGroup) {
+				var local = window.worldToThreeLocal(newWorldX, newWorldY);
+				holeGroup.position.set(local.x, local.y, newWorldZ);
+				this.needsRender = true;
+			}
+			return;
+		}
+		
+		// Step 22b.2) Convert world coordinates to local Three.js coordinates
+		var local = window.worldToThreeLocal(newWorldX, newWorldY);
+		
+		// Step 22b.3) Create transformation matrix for new position
+		var matrix = new THREE.Matrix4();
+		matrix.setPosition(local.x, local.y, newWorldZ);
+		
+		// Step 22b.4) Update collar instance position
+		if (this.instancedCollars) {
+			this.instancedCollars.setMatrixAt(instanceId, matrix);
+			this.instancedCollars.instanceMatrix.needsUpdate = true;
+		}
+		
+		// Step 22b.5) Update grade circle instance position
+		if (this.instancedGrades) {
+			this.instancedGrades.setMatrixAt(instanceId, matrix);
+			this.instancedGrades.instanceMatrix.needsUpdate = true;
+		}
+		
+		// Step 22b.6) Update toe instance position (if applicable)
+		if (this.instancedToes) {
+			// Toe position calculation would need the hole's geometry data
+			// For now, update to same position - proper implementation needs hole data
+			this.instancedToes.setMatrixAt(instanceId, matrix);
+			this.instancedToes.instanceMatrix.needsUpdate = true;
+		}
+		
+		this.needsRender = true;
+	}
+
+	// Step 22c) Get hole data from instance ID (for raycasting)
+	getHoleByInstanceId(instanceId) {
+		return this.instanceIdToHole.get(instanceId);
+	}
+
+	// Step 22d) Check if instanced rendering is active
+	isUsingInstancedHoles() {
+		return this.instancedCollars !== null && this.instancedHolesCount > 0;
 	}
 
 	// Step 23) Render the scene

@@ -75,11 +75,28 @@ export class InteractionManager {
 		if (!intersects || intersects.length === 0) return null;
 
 		// Step 5a) Loop through intersects to find hole
-		for (const intersect of intersects) {
-			let object = intersect.object;
-			let userData = object.userData;
+		for (var i = 0; i < intersects.length; i++) {
+			var intersect = intersects[i];
+			var object = intersect.object;
+			var userData = object.userData;
 
-			// Step 5b) Traverse up the parent chain to find hole userData
+			// Step 5a.1) NEW: Check for instanced mesh hit (from InstancedMesh)
+			// InstancedMesh raycasts return instanceId in the intersect object
+			if (intersect.instanceId !== undefined && userData) {
+				// Step 5a.2) Check if this is an instanced hole collar or grade
+				if (userData.type === "instancedHoleCollars" || userData.type === "instancedHoleGrades") {
+					// Step 5a.3) Get hole data from ThreeRenderer's mapping
+					var holeData = this.threeRenderer.getHoleByInstanceId(intersect.instanceId);
+					if (holeData) {
+						if (developerModeEnabled) {
+							console.log("🎯 Clicked instanced hole:", holeData.holeID, "in", holeData.entityName, "instanceId:", intersect.instanceId);
+						}
+						return holeData;
+					}
+				}
+			}
+
+			// Step 5b) Traverse up the parent chain to find hole userData (non-instanced)
 			// Raycast might hit child meshes that don't have userData
 			while (object && (!userData || !userData.holeId)) {
 				object = object.parent;
@@ -95,7 +112,14 @@ export class InteractionManager {
 				// Step 5d) Find the corresponding hole data
 				// userData.holeId is now unique: entityName:::holeID (e.g. "PolygonPattern_123:::5")
 				// Match against the combined identifier
-				const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === userData.holeId);
+				var hole = null;
+				for (var j = 0; j < allBlastHoles.length; j++) {
+					var h = allBlastHoles[j];
+					if (h.entityName + ":::" + h.holeID === userData.holeId) {
+						hole = h;
+						break;
+					}
+				}
 				if (hole) {
 					if (developerModeEnabled) {
 						console.log("🎯 Clicked hole:", hole.holeID, "in", hole.entityName, "at distance:", intersect.distance.toFixed(2));
@@ -110,25 +134,39 @@ export class InteractionManager {
 
 			// Step 5e) Check for hole toe (also traverse up)
 			if (userData && userData.type === "holeToe" && userData.holeId) {
-				const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === userData.holeId);
-				if (hole) {
-					if (developerModeEnabled) {
-						console.log("🎯 Clicked hole toe:", hole.holeID);
+				var toeHole = null;
+				for (var k = 0; k < allBlastHoles.length; k++) {
+					var th = allBlastHoles[k];
+					if (th.entityName + ":::" + th.holeID === userData.holeId) {
+						toeHole = th;
+						break;
 					}
-					return hole;
+				}
+				if (toeHole) {
+					if (developerModeEnabled) {
+						console.log("🎯 Clicked hole toe:", toeHole.holeID);
+					}
+					return toeHole;
 				}
 			}
 
 			// Step 5f) Also check if parent is a Group with hole userData
 			if (object && object.parent) {
-				const parentUserData = object.parent.userData;
+				var parentUserData = object.parent.userData;
 				if (parentUserData && parentUserData.type === "hole" && parentUserData.holeId) {
-					const hole = allBlastHoles.find((h) => h.entityName + ":::" + h.holeID === parentUserData.holeId);
-					if (hole) {
-						if (developerModeEnabled) {
-							console.log("🎯 Clicked hole (via parent):", hole.holeID, "in", hole.entityName);
+					var parentHole = null;
+					for (var m = 0; m < allBlastHoles.length; m++) {
+						var ph = allBlastHoles[m];
+						if (ph.entityName + ":::" + ph.holeID === parentUserData.holeId) {
+							parentHole = ph;
+							break;
 						}
-						return hole;
+					}
+					if (parentHole) {
+						if (developerModeEnabled) {
+							console.log("🎯 Clicked hole (via parent):", parentHole.holeID, "in", parentHole.entityName);
+						}
+						return parentHole;
 					}
 				}
 			}

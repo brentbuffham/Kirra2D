@@ -129,6 +129,77 @@ export class GeometryFactory {
 		return group;
 	}
 
+	// Step 4.5) Create hole track lines ONLY (no collar circle) - for use with instanced collars
+	// Creates the track lines from collar->grade->toe without the collar/grade circles
+	static createHoleTrack(collarX, collarY, collarZ, gradeX, gradeY, gradeZ, toeX, toeY, toeZ, diameter, color, holeScale = 1, subdrillAmount = 0, isDarkMode = false) {
+		const group = new THREE.Group();
+
+		// Step 1) Check if subdrill is negative
+		const hasNegativeSubdrill = subdrillAmount < 0;
+
+		// Step 2) Determine colors based on dark mode
+		const lineColor = isDarkMode ? 0xffffff : 0x000000;
+
+		if (hasNegativeSubdrill) {
+			// NEGATIVE SUBDRILL CASE
+			// Step 3a) Draw line from collar to toe (solid)
+			const collarToToePoints = [new THREE.Vector3(collarX, collarY, collarZ), new THREE.Vector3(toeX, toeY, toeZ)];
+			const collarToToeGeometry = new THREE.BufferGeometry().setFromPoints(collarToToePoints);
+			const collarToToeMaterial = new THREE.LineBasicMaterial({
+				color: lineColor,
+				linewidth: 1,
+				transparent: false,
+				opacity: 1.0,
+			});
+			const collarToToeLine = new THREE.Line(collarToToeGeometry, collarToToeMaterial);
+			group.add(collarToToeLine);
+
+			// Step 3b) Draw RED line from toe to grade (20% opacity = 80% transparent)
+			const toeToGradePoints = [new THREE.Vector3(toeX, toeY, toeZ), new THREE.Vector3(gradeX, gradeY, gradeZ)];
+			const toeToGradeGeometry = new THREE.BufferGeometry().setFromPoints(toeToGradePoints);
+			const toeToGradeMaterial = new THREE.LineBasicMaterial({
+				color: 0xff0000,
+				linewidth: 1,
+				transparent: true,
+				opacity: 0.2,
+			});
+			const toeToGradeLine = new THREE.Line(toeToGradeGeometry, toeToGradeMaterial);
+			group.add(toeToGradeLine);
+		} else {
+			// POSITIVE SUBDRILL CASE (normal)
+			// Step 4a) Draw line from collar to grade (solid, black/white)
+			const collarToGradePoints = [new THREE.Vector3(collarX, collarY, collarZ), new THREE.Vector3(gradeX, gradeY, gradeZ)];
+			const collarToGradeGeometry = new THREE.BufferGeometry().setFromPoints(collarToGradePoints);
+			const collarToGradeMaterial = new THREE.LineBasicMaterial({
+				color: lineColor,
+				linewidth: 1,
+				transparent: false,
+				opacity: 1.0,
+			});
+			const collarToGradeLine = new THREE.Line(collarToGradeGeometry, collarToGradeMaterial);
+			group.add(collarToGradeLine);
+
+			// Step 4b) Draw RED dashed line from grade to toe (subdrill portion)
+			if (subdrillAmount > 0) {
+				const gradeToToePoints = [new THREE.Vector3(gradeX, gradeY, gradeZ), new THREE.Vector3(toeX, toeY, toeZ)];
+				const gradeToToeGeometry = new THREE.BufferGeometry().setFromPoints(gradeToToePoints);
+				const gradeToToeMaterial = new THREE.LineDashedMaterial({
+					color: 0xff0000,
+					linewidth: 1,
+					dashSize: 0.05,
+					gapSize: 0.025,
+					transparent: false,
+					opacity: 1.0,
+				});
+				const gradeToToeLine = new THREE.Line(gradeToToeGeometry, gradeToToeMaterial);
+				gradeToToeLine.computeLineDistances();
+				group.add(gradeToToeLine);
+			}
+		}
+
+		return group;
+	}
+
 	// Step 5) Create a hole toe mesh (circle at toe elevation, facing upward for plan view visibility)
 	static createHoleToe(worldX, worldY, worldZ, radius, color) {
 		const geometry = new THREE.CircleGeometry(radius, 32);
@@ -354,6 +425,437 @@ export class GeometryFactory {
 		points.position.set(0, 0, 0); // Points are positioned via geometry attributes
 
 		return points;
+	}
+
+	// Step 9b) FAST: Create batched polyline - OPTIMIZED for large DXF files
+	// Key optimizations: pre-allocated typed arrays, inline hex parsing, no THREE.Color overhead
+	static createBatchedPolyline(pointsArray, lineWidth, defaultColor, isPolygon = false) {
+		var len = pointsArray.length;
+		if (len < 2) return null;
+		
+		// Step 1) Calculate array size and pre-allocate typed arrays (faster than push)
+		var posLen = isPolygon ? (len + 1) * 3 : len * 3;
+		var positions = new Float32Array(posLen);
+		var colors = new Float32Array(posLen);
+		
+		// Step 2) Parse default color ONCE (inline hex parsing - 10x faster than THREE.Color.set)
+		var defR = 0.467, defG = 0.467, defB = 0.467; // #777777 default
+		if (defaultColor && defaultColor.charAt(0) === "#" && defaultColor.length >= 7) {
+			var hex = parseInt(defaultColor.slice(1, 7), 16);
+			defR = ((hex >> 16) & 255) / 255;
+			defG = ((hex >> 8) & 255) / 255;
+			defB = (hex & 255) / 255;
+		}
+		
+		// Step 3) Fill arrays with inline color parsing (no THREE.Color overhead)
+		for (var i = 0, j = 0; i < len; i++, j += 3) {
+			var p = pointsArray[i];
+			
+			// Position
+			positions[j] = p.x;
+			positions[j + 1] = p.y;
+			positions[j + 2] = p.z || 0;
+			
+			// Color - fast inline hex parsing
+			var col = p.color;
+			if (col && col.charAt(0) === "#" && col.length >= 7) {
+				var hex = parseInt(col.slice(1, 7), 16);
+				colors[j] = ((hex >> 16) & 255) / 255;
+				colors[j + 1] = ((hex >> 8) & 255) / 255;
+				colors[j + 2] = (hex & 255) / 255;
+			} else {
+				colors[j] = defR;
+				colors[j + 1] = defG;
+				colors[j + 2] = defB;
+			}
+		}
+		
+		// Step 4) Close polygon by copying first point
+		if (isPolygon && len > 2) {
+			var j = len * 3;
+			positions[j] = positions[0];
+			positions[j + 1] = positions[1];
+			positions[j + 2] = positions[2];
+			colors[j] = colors[0];
+			colors[j + 1] = colors[1];
+			colors[j + 2] = colors[2];
+		}
+		
+		// Step 5) Create geometry with typed arrays
+		var geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+		
+		// Step 6) Create material (vertexColors handles per-point colors)
+		var material = new THREE.LineBasicMaterial({
+			vertexColors: true,
+			depthTest: true,
+			depthWrite: true,
+		});
+		
+		// Step 7) Create and return Line object
+		var line = new THREE.Line(geometry, material);
+		line.name = isPolygon ? "kad-polygon-batched" : "kad-line-batched";
+		return line;
+	}
+
+	// Step 9c) SUPER-BATCH: Merge ALL KAD lines/polys into ONE geometry (ONE draw call!)
+	// This is the ultimate optimization for large DXF files (3000+ entities)
+	// Uses THREE.LineSegments which draws disconnected line pairs
+	// Returns { lineSegments: THREE.LineSegments, entityRanges: Map } for selection support
+	static createSuperBatchedLines(allEntities, worldToThreeLocal) {
+		if (!allEntities || allEntities.length === 0) return null;
+		
+		// Step 1) Count total segments to pre-allocate arrays
+		var totalSegments = 0;
+		for (var i = 0; i < allEntities.length; i++) {
+			var entity = allEntities[i];
+			if (entity.visible === false) continue;
+			if (entity.entityType !== "line" && entity.entityType !== "poly") continue;
+			var points = entity.data;
+			if (!points || points.length < 2) continue;
+			
+			// Each polyline of N points has N-1 segments (or N for closed polygons)
+			var numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
+			totalSegments += numSegments;
+		}
+		
+		if (totalSegments === 0) return null;
+		
+		// Step 2) Pre-allocate arrays: each segment = 2 vertices, each vertex = 3 floats
+		var positions = new Float32Array(totalSegments * 6); // 2 verts * 3 floats
+		var colors = new Float32Array(totalSegments * 6);    // 2 verts * 3 RGB
+		
+		// Step 3) Track entity ranges for selection: Map<entityName, {start, end}>
+		var entityRanges = new Map();
+		var segmentIndex = 0;
+		var posIdx = 0;
+		var colIdx = 0;
+		
+		// Step 4) Default color parsing
+		var defR = 0.467, defG = 0.467, defB = 0.467; // #777777
+		
+		// Step 5) Fill arrays by iterating all entities
+		for (var i = 0; i < allEntities.length; i++) {
+			var entity = allEntities[i];
+			if (entity.visible === false) continue;
+			if (entity.entityType !== "line" && entity.entityType !== "poly") continue;
+			var points = entity.data;
+			if (!points || points.length < 2) continue;
+			
+			// Filter visible points
+			var visiblePoints = [];
+			for (var j = 0; j < points.length; j++) {
+				if (points[j].visible !== false) visiblePoints.push(points[j]);
+			}
+			if (visiblePoints.length < 2) continue;
+			
+			// Record start segment index for this entity
+			var startSegment = segmentIndex;
+			var isPoly = entity.entityType === "poly";
+			var numPts = visiblePoints.length;
+			var numSegs = isPoly ? numPts : numPts - 1;
+			
+			// Step 5a) Add segments for this entity
+			for (var s = 0; s < numSegs; s++) {
+				var p1 = visiblePoints[s];
+				var p2 = visiblePoints[(s + 1) % numPts]; // Wrap for polygons
+				
+				// Convert to local coords
+				var local1 = worldToThreeLocal(p1.pointXLocation, p1.pointYLocation);
+				var local2 = worldToThreeLocal(p2.pointXLocation, p2.pointYLocation);
+				
+				// Positions: vertex 1
+				positions[posIdx++] = local1.x;
+				positions[posIdx++] = local1.y;
+				positions[posIdx++] = p1.pointZLocation || 0;
+				// Positions: vertex 2
+				positions[posIdx++] = local2.x;
+				positions[posIdx++] = local2.y;
+				positions[posIdx++] = p2.pointZLocation || 0;
+				
+				// Colors: parse p1 color for both vertices of this segment
+				var col = p1.color;
+				var r = defR, g = defG, b = defB;
+				if (col && col.charAt(0) === "#" && col.length >= 7) {
+					var hex = parseInt(col.slice(1, 7), 16);
+					r = ((hex >> 16) & 255) / 255;
+					g = ((hex >> 8) & 255) / 255;
+					b = (hex & 255) / 255;
+				}
+				colors[colIdx++] = r; colors[colIdx++] = g; colors[colIdx++] = b;
+				colors[colIdx++] = r; colors[colIdx++] = g; colors[colIdx++] = b;
+				
+				segmentIndex++;
+			}
+			
+			// Record entity range
+			entityRanges.set(entity.entityName, { start: startSegment, end: segmentIndex - 1 });
+		}
+		
+		// Step 6) Create geometry
+		var geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+		
+		// Step 7) Create material
+		var material = new THREE.LineBasicMaterial({
+			vertexColors: true,
+			depthTest: true,
+			depthWrite: true,
+		});
+		
+		// Step 8) Create LineSegments (draws pairs of vertices as disconnected lines)
+		var lineSegments = new THREE.LineSegments(geometry, material);
+		lineSegments.name = "kad-super-batch";
+		lineSegments.userData = { type: "kadSuperBatch", entityRanges: entityRanges };
+		
+		return { lineSegments: lineSegments, entityRanges: entityRanges, segmentCount: totalSegments };
+	}
+
+	// Step 9.5) SUPER-BATCH: Create a single THREE.Points geometry for ALL KAD points
+	// One draw call for thousands of points!
+	static createSuperBatchedPoints(allPointEntities, worldToThreeLocal) {
+		if (!allPointEntities || allPointEntities.length === 0) return null;
+		
+		// Step 1) Count total points to pre-allocate arrays
+		var totalPoints = 0;
+		var entityMetadata = []; // Store entity info for selection
+		
+		for (var i = 0; i < allPointEntities.length; i++) {
+			var entity = allPointEntities[i];
+			if (!entity.data) continue;
+			for (var j = 0; j < entity.data.length; j++) {
+				if (entity.data[j].visible !== false) {
+					totalPoints++;
+				}
+			}
+		}
+		
+		if (totalPoints === 0) return null;
+		
+		// Step 2) Pre-allocate typed arrays (3 floats per position, 3 per color, 1 per size)
+		var positions = new Float32Array(totalPoints * 3);
+		var colors = new Float32Array(totalPoints * 3);
+		var sizes = new Float32Array(totalPoints);
+		
+		// Step 3) Default color parsing
+		var defaultR = 1.0, defaultG = 0.0, defaultB = 0.0; // Red default
+		
+		// Step 4) Fill arrays
+		var posIdx = 0;
+		var colorIdx = 0;
+		var sizeIdx = 0;
+		var pointIndex = 0; // Global index for selection
+		
+		for (var i = 0; i < allPointEntities.length; i++) {
+			var entity = allPointEntities[i];
+			if (!entity.data) continue;
+			
+			var entityStartIndex = pointIndex;
+			
+			for (var j = 0; j < entity.data.length; j++) {
+				var pt = entity.data[j];
+				if (pt.visible === false) continue;
+				
+				// Position
+				var local = worldToThreeLocal(pt.pointXLocation, pt.pointYLocation);
+				positions[posIdx++] = local.x;
+				positions[posIdx++] = local.y;
+				positions[posIdx++] = pt.pointZLocation || 0;
+				
+				// Color - parse hex inline for speed
+				var r = defaultR, g = defaultG, b = defaultB;
+				var col = pt.color;
+				if (col && typeof col === "string" && col.length >= 7 && col.charAt(0) === "#") {
+					var hex = parseInt(col.slice(1, 7), 16);
+					r = ((hex >> 16) & 255) / 255;
+					g = ((hex >> 8) & 255) / 255;
+					b = (hex & 255) / 255;
+				}
+				colors[colorIdx++] = r;
+				colors[colorIdx++] = g;
+				colors[colorIdx++] = b;
+				
+				// Size - convert lineWidth to pixel size
+				var size = ((pt.lineWidth || 2) / 2) * 5; // Scale factor for visibility
+				sizes[sizeIdx++] = size;
+				
+				// Store metadata for this point
+				entityMetadata.push({
+					entityName: entity.entityName,
+					vertexIndex: j,
+					kadId: entity.entityName + ":::" + j
+				});
+				
+				pointIndex++;
+			}
+		}
+		
+		// Step 5) Create geometry
+		var geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+		geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
+		
+		// Step 6) Create circular texture for points (shared)
+		var canvas = document.createElement("canvas");
+		canvas.width = 64;
+		canvas.height = 64;
+		var ctx = canvas.getContext("2d");
+		ctx.fillStyle = "#ffffff";
+		ctx.beginPath();
+		ctx.arc(32, 32, 30, 0, Math.PI * 2);
+		ctx.fill();
+		var circleTexture = new THREE.CanvasTexture(canvas);
+		
+		// Step 7) Create PointsMaterial with vertex colors
+		var material = new THREE.PointsMaterial({
+			map: circleTexture,
+			vertexColors: true,
+			size: 10, // Default size (overridden by custom shader if needed)
+			sizeAttenuation: false, // Constant pixel size
+			transparent: true,
+			alphaTest: 0.1,
+			depthTest: true,
+			depthWrite: false
+		});
+		
+		// Step 8) Create Points object
+		var points = new THREE.Points(geometry, material);
+		points.name = "kad-super-batch-points";
+		points.userData = {
+			type: "kadSuperBatchPoints",
+			entityMetadata: entityMetadata,
+			totalPoints: totalPoints
+		};
+		
+		return { points: points, entityMetadata: entityMetadata, totalPoints: totalPoints };
+	}
+
+	// Step 9.6) SUPER-BATCH: Create a single geometry for ALL KAD circles
+	// Uses LineSegments with many circle outlines batched together
+	static createSuperBatchedCircles(allCircleEntities, worldToThreeLocal) {
+		if (!allCircleEntities || allCircleEntities.length === 0) return null;
+		
+		// Step 1) Count total segments (each circle has 64 segments)
+		var segmentsPerCircle = 64;
+		var totalCircles = 0;
+		
+		for (var i = 0; i < allCircleEntities.length; i++) {
+			var entity = allCircleEntities[i];
+			if (!entity.data) continue;
+			for (var j = 0; j < entity.data.length; j++) {
+				if (entity.data[j].visible !== false) {
+					totalCircles++;
+				}
+			}
+		}
+		
+		if (totalCircles === 0) return null;
+		
+		var totalSegments = totalCircles * segmentsPerCircle;
+		
+		// Step 2) Pre-allocate typed arrays (2 vertices per segment, 3 floats each)
+		var positions = new Float32Array(totalSegments * 6); // 2 vertices * 3 coords
+		var colors = new Float32Array(totalSegments * 6); // 2 vertices * 3 colors
+		var entityMetadata = []; // Store entity info for selection
+		
+		// Step 3) Default color
+		var defaultR = 0.0, defaultG = 0.5, defaultB = 1.0; // Blue default
+		
+		// Step 4) Fill arrays
+		var posIdx = 0;
+		var colorIdx = 0;
+		var circleIndex = 0;
+		
+		for (var i = 0; i < allCircleEntities.length; i++) {
+			var entity = allCircleEntities[i];
+			if (!entity.data) continue;
+			
+			for (var j = 0; j < entity.data.length; j++) {
+				var circleData = entity.data[j];
+				if (circleData.visible === false) continue;
+				
+				// Get circle center and radius
+				var local = worldToThreeLocal(circleData.pointXLocation, circleData.pointYLocation);
+				var cx = local.x;
+				var cy = local.y;
+				var cz = circleData.pointZLocation || 0;
+				var radius = circleData.radius || 1;
+				
+				// Parse color
+				var r = defaultR, g = defaultG, b = defaultB;
+				var col = circleData.color;
+				if (col && typeof col === "string" && col.length >= 7 && col.charAt(0) === "#") {
+					var hex = parseInt(col.slice(1, 7), 16);
+					r = ((hex >> 16) & 255) / 255;
+					g = ((hex >> 8) & 255) / 255;
+					b = (hex & 255) / 255;
+				}
+				
+				// Generate circle segments
+				for (var k = 0; k < segmentsPerCircle; k++) {
+					var theta1 = (k / segmentsPerCircle) * Math.PI * 2;
+					var theta2 = ((k + 1) / segmentsPerCircle) * Math.PI * 2;
+					
+					var x1 = cx + radius * Math.cos(theta1);
+					var y1 = cy + radius * Math.sin(theta1);
+					var x2 = cx + radius * Math.cos(theta2);
+					var y2 = cy + radius * Math.sin(theta2);
+					
+					// Start vertex
+					positions[posIdx++] = x1;
+					positions[posIdx++] = y1;
+					positions[posIdx++] = cz;
+					colors[colorIdx++] = r;
+					colors[colorIdx++] = g;
+					colors[colorIdx++] = b;
+					
+					// End vertex
+					positions[posIdx++] = x2;
+					positions[posIdx++] = y2;
+					positions[posIdx++] = cz;
+					colors[colorIdx++] = r;
+					colors[colorIdx++] = g;
+					colors[colorIdx++] = b;
+				}
+				
+				// Store metadata
+				entityMetadata.push({
+					entityName: entity.entityName,
+					vertexIndex: j,
+					kadId: entity.entityName + ":::" + j,
+					startSegment: circleIndex * segmentsPerCircle,
+					endSegment: (circleIndex + 1) * segmentsPerCircle - 1
+				});
+				
+				circleIndex++;
+			}
+		}
+		
+		// Step 5) Create geometry
+		var geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+		
+		// Step 6) Create material
+		var material = new THREE.LineBasicMaterial({
+			vertexColors: true,
+			depthTest: true,
+			depthWrite: true
+		});
+		
+		// Step 7) Create LineSegments object
+		var lineSegments = new THREE.LineSegments(geometry, material);
+		lineSegments.name = "kad-super-batch-circles";
+		lineSegments.userData = {
+			type: "kadSuperBatchCircles",
+			entityMetadata: entityMetadata,
+			totalCircles: totalCircles
+		};
+		
+		return { lineSegments: lineSegments, entityMetadata: entityMetadata, totalCircles: totalCircles };
 	}
 
 	// Step 10) Create KAD line segment (single segment between two points)
@@ -1924,5 +2426,107 @@ export class GeometryFactory {
 		mesh.scale.copy(originalMesh.scale);
 
 		return mesh;
+	}
+
+	// Step 28) Create instanced holes for performance optimization
+	// Returns an object containing InstancedMesh objects and mapping tables
+	static createInstancedHoles(allBlastHoles, holeScale, isDarkMode, worldToThreeLocal) {
+		if (!allBlastHoles || allBlastHoles.length === 0) {
+			return null;
+		}
+
+		var visibleHoles = allBlastHoles.filter(function(hole) {
+			return hole.visible !== false;
+		});
+		var holeCount = visibleHoles.length;
+		
+		if (holeCount === 0) {
+			return null;
+		}
+
+		// Step 28a) Create shared geometry for collar circles
+		// Use average diameter for shared geometry
+		var avgDiameter = 0;
+		var totalDiameter = 0;
+		for (var i = 0; i < visibleHoles.length; i++) {
+			var d = parseFloat(visibleHoles[i].holeDiameter) || 89;
+			totalDiameter += d;
+		}
+		avgDiameter = totalDiameter / visibleHoles.length;
+		var avgRadiusMeters = (avgDiameter / 1000 / 2) * (holeScale * 2);
+		
+		var collarGeometry = new THREE.CircleGeometry(avgRadiusMeters, 32);
+		var collarColor = isDarkMode ? 0xffffff : 0x000000;
+		var collarMaterial = new THREE.MeshBasicMaterial({
+			color: collarColor,
+			side: THREE.DoubleSide,
+			transparent: false,
+			depthTest: true,
+			depthWrite: true
+		});
+
+		// Step 28b) Create InstancedMesh for collars
+		var instancedCollars = new THREE.InstancedMesh(collarGeometry, collarMaterial, holeCount);
+		instancedCollars.userData = { type: "instancedHoleCollars" };
+
+		// Step 28c) Create shared geometry for grade circles (smaller than collar)
+		var gradeRadiusMeters = avgRadiusMeters * 0.5;
+		var gradeGeometry = new THREE.CircleGeometry(gradeRadiusMeters, 32);
+		var gradeMaterial = new THREE.MeshBasicMaterial({
+			color: collarColor,
+			side: THREE.DoubleSide,
+			transparent: true,
+			opacity: 0.5,
+			depthTest: true,
+			depthWrite: false
+		});
+		var instancedGrades = new THREE.InstancedMesh(gradeGeometry, gradeMaterial, holeCount);
+		instancedGrades.userData = { type: "instancedHoleGrades" };
+
+		// Step 28d) Create mapping tables
+		var instanceIdToHole = new Map();
+		var holeToInstanceId = new Map();
+
+		// Step 28e) Set positions for each hole instance
+		var matrix = new THREE.Matrix4();
+		var gradeMatrix = new THREE.Matrix4();
+		
+		for (var i = 0; i < visibleHoles.length; i++) {
+			var hole = visibleHoles[i];
+			var holeId = hole.entityName + ":::" + hole.holeID;
+			
+			// Step 28e.1) Convert world coordinates to local Three.js coordinates
+			var collarLocal = worldToThreeLocal(hole.startXLocation, hole.startYLocation);
+			var collarZ = hole.startZLocation || 0;
+			
+			// Step 28e.2) Set collar instance matrix
+			matrix.identity();
+			matrix.setPosition(collarLocal.x, collarLocal.y, collarZ);
+			instancedCollars.setMatrixAt(i, matrix);
+			
+			// Step 28e.3) Set grade circle instance matrix
+			var gradeLocal = worldToThreeLocal(hole.gradeXLocation, hole.gradeYLocation);
+			var gradeZ = hole.gradeZLocation || 0;
+			gradeMatrix.identity();
+			gradeMatrix.setPosition(gradeLocal.x, gradeLocal.y, gradeZ);
+			instancedGrades.setMatrixAt(i, gradeMatrix);
+			
+			// Step 28e.4) Store mappings
+			instanceIdToHole.set(i, hole);
+			holeToInstanceId.set(holeId, i);
+		}
+
+		// Step 28f) Update instance matrices
+		instancedCollars.instanceMatrix.needsUpdate = true;
+		instancedGrades.instanceMatrix.needsUpdate = true;
+
+		// Step 28g) Return all components
+		return {
+			instancedCollars: instancedCollars,
+			instancedGrades: instancedGrades,
+			instanceIdToHole: instanceIdToHole,
+			holeToInstanceId: holeToInstanceId,
+			holeCount: holeCount
+		};
 	}
 }

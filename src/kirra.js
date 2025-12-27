@@ -30,7 +30,7 @@ import pdfFonts from "pdfmake/build/vfs_fonts";
 import * as THREE from "three";
 import { ThreeRenderer } from "./three/ThreeRenderer.js";
 import { CameraControls } from "./three/CameraControls.js";
-import { GeometryFactory } from "./three/GeometryFactory.js";
+import { GeometryFactory, clearTextCache } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
 import { PolygonSelection3D } from "./three/PolygonSelection3D.js";
 // Troika text optimization - configure builder and preload font for optimal performance
@@ -52,6 +52,9 @@ import {
 	drawKADPointThreeJS,
 	drawKADLineSegmentThreeJS,
 	drawKADPolygonSegmentThreeJS,
+	drawKADBatchedPolylineThreeJS,
+	drawKADSuperBatchedPointsThreeJS,
+	drawKADSuperBatchedCirclesThreeJS,
 	drawKADCircleThreeJS,
 	drawKADTextThreeJS,
 	drawSurfaceThreeJS,
@@ -1096,6 +1099,47 @@ function handle3DClick(event) {
 		const snapRadiusPixels = window.snapRadiusPixels || 15; // 15 pixels on screen
 		const snapRadiusWorld = getSnapRadiusInWorldUnits3D(snapRadiusPixels);
 
+		// Step 12c.1a.0) FIRST: Calculate world coordinates from click position (fallback if no snap)
+		// This ensures we have valid coordinates even if currentMouseWorldX/Y are stale
+		var clickWorldX = currentMouseWorldX;
+		var clickWorldY = currentMouseWorldY;
+		var clickWorldZ = currentMouseWorldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
+
+		if (threeRenderer && threeRenderer.camera && threeRenderer.camera.isOrthographicCamera) {
+			var clickCanvas = threeRenderer.getCanvas();
+			var rect = clickCanvas.getBoundingClientRect();
+			var mouseX = event.clientX - rect.left;
+			var mouseY = event.clientY - rect.top;
+
+			// Get normalized device coordinates (-1 to +1)
+			var ndcX = (mouseX / rect.width) * 2 - 1;
+			var ndcY = -(mouseY / rect.height) * 2 + 1;
+
+			// Get camera state for world centroid
+			var cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
+			var calcCentroidX = centroidX;
+			var calcCentroidY = centroidY;
+
+			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
+				var originX = window.threeLocalOriginX || 0;
+				var originY = window.threeLocalOriginY || 0;
+				calcCentroidX = cameraState.centroidX + originX;
+				calcCentroidY = cameraState.centroidY + originY;
+			}
+
+			// Calculate viewport dimensions and offsets
+			var camera = threeRenderer.camera;
+			var viewportWidth = camera.right - camera.left;
+			var viewportHeight = camera.top - camera.bottom;
+
+			if (isFinite(viewportWidth) && isFinite(viewportHeight) && viewportWidth > 0 && viewportHeight > 0) {
+				var offsetX = ndcX * (viewportWidth / 2);
+				var offsetY = ndcY * (viewportHeight / 2);
+				clickWorldX = calcCentroidX + offsetX;
+				clickWorldY = calcCentroidY + offsetY;
+			}
+		}
+
 		if (interactionManager && interactionManager.raycaster) {
 			// 3D Mode: Use cylindrical snap along view ray
 			// Update raycaster to current mouse position
@@ -1108,12 +1152,13 @@ function handle3DClick(event) {
 			snapResult = snapToNearestPointWithRay(ray.origin, ray.direction, snapRadiusWorld);
 		} else {
 			// Fallback to 2D snap (shouldn't happen in 3D mode, but safe fallback)
-			snapResult = snapToNearestPoint(currentMouseWorldX, currentMouseWorldY, snapRadiusWorld);
+			snapResult = snapToNearestPoint(clickWorldX, clickWorldY, snapRadiusWorld);
 		}
 
-		worldX = snapResult.worldX || currentMouseWorldX;
-		worldY = snapResult.worldY || currentMouseWorldY;
-		worldZ = snapResult.worldZ || currentMouseWorldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
+		// Use snap result if available, otherwise use calculated click position
+		worldX = snapResult.worldX || clickWorldX;
+		worldY = snapResult.worldY || clickWorldY;
+		worldZ = snapResult.worldZ || clickWorldZ;
 
 		// Step 12c.1b) Show snap feedback if snapped
 		if (snapResult.snapped) {
@@ -1560,11 +1605,28 @@ function handle3DClick(event) {
 							}
 
 							// Step 12j.6) Create KAD object descriptor (similar to 2D getClickedKADObject)
+							// Step 12j.6a) Determine selectionType based on entity type and distance to vertex
+							// Points are always "vertex", lines/polys are "vertex" if close enough, else "segment"
+							var selectionType = "entity";
+							var vertexSnapDistance = 5; // meters - threshold for vertex vs segment selection
+
+							if (entity.entityType === "point") {
+								selectionType = "vertex"; // Points are always vertex selection
+							} else if ((entity.entityType === "line" || entity.entityType === "poly") && minDistance < vertexSnapDistance) {
+								selectionType = "vertex"; // Close to a vertex
+							} else if (entity.entityType === "line" || entity.entityType === "poly") {
+								selectionType = "segment"; // On a segment between vertices
+							}
+
+							if (developerModeEnabled) {
+								console.log("⬇️ [3D CLICK] selectionType:", selectionType, "(minDistance:", minDistance.toFixed(2) + "m, threshold:", vertexSnapDistance + "m)");
+							}
+
 							clickedKADObject = {
 								entityName: object.userData.kadId,
 								entityType: entity.entityType,
 								elementIndex: closestElementIndex, // Use calculated closest element
-								selectionType: "entity", // Mark as full entity selection
+								selectionType: selectionType, // vertex, segment, or entity based on distance
 							};
 
 							// Step 12j.7) Add type-specific properties from the clicked element
@@ -2505,6 +2567,15 @@ document.addEventListener("DOMContentLoaded", function () {
 				}
 				console.log("🧊 3D-ONLY Mode: ON (cube icon active, 2D canvas hidden)");
 
+				// Step 1cc.0) SYNC CAMERA: Match 3D camera position/zoom to current 2D view
+				syncCameraToThreeJS();
+
+				// Step 1cc.0a) Clear text cache to ensure text renders at correct scale
+				clearTextCache();
+
+				// Step 1cc.1) Force geometry rebuild when entering 3D mode
+				window.threeDataNeedsRebuild = true;
+
 				// Step 1cc) Update Move Tool if active - switch to 3D canvas
 				if (isMoveToolActive) {
 					const threeCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
@@ -2592,9 +2663,17 @@ document.addEventListener("DOMContentLoaded", function () {
 			} else {
 				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
 				onlyShowThreeJS = false;
-				// Step 1da) Reset camera pan state to prevent stuck drag
-				if (cameraControls && cameraControls.resetPanState) {
-					cameraControls.resetPanState();
+				// Step 1da) SYNC CAMERA: Get 3D camera state and apply to 2D view
+				if (cameraControls) {
+					var cameraState = cameraControls.getCameraState();
+					if (cameraState) {
+						syncCameraFromThreeJS(cameraState);
+						console.log("📷 Synced camera FROM Three.js - centroidX:", centroidX.toFixed(2), "centroidY:", centroidY.toFixed(2), "scale:", currentScale);
+					}
+					// Reset camera pan state to prevent stuck drag
+					if (cameraControls.resetPanState) {
+						cameraControls.resetPanState();
+					}
 				}
 				console.log("🎨 2D-ONLY Mode: ON (3D canvas hidden)");
 
@@ -3013,6 +3092,46 @@ developerModeCheckbox.addEventListener("change", function () {
 	developerModeEnabled = developerModeCheckbox.checked;
 	console.log("Developer mode enabled:", developerModeEnabled);
 });
+///////////////////////////
+
+///////////////////////////
+// 3D OPTIMIZATION FLAGS
+// Step 1) Get checkbox elements for 3D optimization options
+var use3DSimplificationCheckbox = document.getElementById("use3DSimplification");
+var useInstancedHolesCheckbox = document.getElementById("useInstancedHoles");
+
+// Step 2) Initialize global flags (default values match HTML checked states)
+var use3DSimplification = use3DSimplificationCheckbox ? use3DSimplificationCheckbox.checked : true;
+var useInstancedHoles = useInstancedHolesCheckbox ? useInstancedHolesCheckbox.checked : false;
+
+// Step 3) Expose to window for access from other modules
+window.use3DSimplification = use3DSimplification;
+window.useInstancedHoles = useInstancedHoles;
+
+// Step 4) Add event listeners to sync checkbox changes
+if (use3DSimplificationCheckbox) {
+	use3DSimplificationCheckbox.addEventListener("change", function () {
+		use3DSimplification = this.checked;
+		window.use3DSimplification = use3DSimplification;
+		console.log("3D Simplification " + (use3DSimplification ? "enabled" : "disabled"));
+		// Trigger redraw to apply change
+		if (typeof redraw === "function") {
+			redraw();
+		}
+	});
+}
+
+if (useInstancedHolesCheckbox) {
+	useInstancedHolesCheckbox.addEventListener("change", function () {
+		useInstancedHoles = this.checked;
+		window.useInstancedHoles = useInstancedHoles;
+		console.log("Instanced Holes " + (useInstancedHoles ? "enabled" : "disabled"));
+		// Trigger redraw to apply change
+		if (typeof redraw === "function") {
+			redraw();
+		}
+	});
+}
 ///////////////////////////
 
 //Switches
@@ -10529,6 +10648,143 @@ function simplifyByPxDist(points, pxThreshold = 5) {
 
 	return simplified;
 }
+
+// Step 1) 3D simplification using WORLD-SPACE distance based on camera zoom
+// This is MUCH faster than screen projections - just simple distance math
+// At scale 1:1000, a 0.5m segment is ~0.5px - not visible, so skip it
+function simplifyByWorldDist3D(points, minWorldDistMeters) {
+	// Step 1a) Early return if not enough points
+	if (!points || points.length < 2) return points;
+
+	var minDistSq = minWorldDistMeters * minWorldDistMeters;
+	var simplified = [points[0]]; // Always keep first point
+
+	var lastKeptPoint = points[0];
+	var lastX = lastKeptPoint.pointXLocation;
+	var lastY = lastKeptPoint.pointYLocation;
+	var lastZ = lastKeptPoint.pointZLocation || 0;
+
+	// Step 1b) Simple distance-based filtering - no expensive projections!
+	for (var i = 1; i < points.length; i++) {
+		var currentPoint = points[i];
+		var currX = currentPoint.pointXLocation;
+		var currY = currentPoint.pointYLocation;
+		var currZ = currentPoint.pointZLocation || 0;
+
+		// Step 1c) 3D distance calculation (XYZ)
+		var dx = currX - lastX;
+		var dy = currY - lastY;
+		var dz = currZ - lastZ;
+		var distSq = dx * dx + dy * dy + dz * dz;
+
+		// Step 1d) Keep point if distance is significant OR if it's the last point
+		if (distSq >= minDistSq || i === points.length - 1) {
+			simplified.push(currentPoint);
+			lastKeptPoint = currentPoint;
+			lastX = currX;
+			lastY = currY;
+			lastZ = currZ;
+		}
+	}
+
+	return simplified;
+}
+
+// Step 2) Calculate minimum visible world distance based on camera zoom
+// Returns the world distance (meters) that would appear as ~1-2 pixels on screen
+function getMinVisibleWorldDist() {
+	if (!threeRenderer || !threeRenderer.camera) return 0.5; // Default fallback
+
+	var camera = threeRenderer.camera;
+	var threeCanvas = document.getElementById("threeCanvas");
+	if (!threeCanvas) return 0.5;
+
+	// Step 2a) For orthographic camera, calculate world units per pixel
+	// camera.right - camera.left = total world width visible
+	// canvas.width = total pixels
+	var visibleWorldWidth = camera.right - camera.left;
+	var canvasWidth = threeCanvas.width || 1920;
+
+	// Step 2b) World meters per pixel (for 2 pixel threshold)
+	var metersPerPixel = visibleWorldWidth / canvasWidth;
+	var minVisibleDist = metersPerPixel * 2; // 2 pixel threshold
+
+	// Step 2c) Clamp to reasonable bounds (0.1m to 50m)
+	// At very zoomed out view, we don't want to skip more than 50m segments
+	// At very zoomed in view, we still want at least 0.1m resolution
+	if (minVisibleDist < 0.1) minVisibleDist = 0.1;
+	if (minVisibleDist > 50) minVisibleDist = 50;
+
+	return minVisibleDist;
+}
+
+// Step 3) Check if entity bounding box is visible and significant on screen
+// Returns false if entity should be culled (too small or outside view)
+function isEntityVisibleIn3D(points) {
+	if (!points || points.length < 2) return false;
+	if (!threeRenderer || !threeRenderer.camera) return true; // Draw if can't check
+
+	var camera = threeRenderer.camera;
+
+	// Step 3a) Calculate entity bounding box
+	var minX = Infinity, maxX = -Infinity;
+	var minY = Infinity, maxY = -Infinity;
+	for (var i = 0; i < points.length; i++) {
+		var p = points[i];
+		if (p.pointXLocation < minX) minX = p.pointXLocation;
+		if (p.pointXLocation > maxX) maxX = p.pointXLocation;
+		if (p.pointYLocation < minY) minY = p.pointYLocation;
+		if (p.pointYLocation > maxY) maxY = p.pointYLocation;
+	}
+
+	// Step 3b) Get camera view bounds (in local coordinates)
+	var camLeft = camera.left + centroidX;
+	var camRight = camera.right + centroidX;
+	var camBottom = camera.bottom + centroidY;
+	var camTop = camera.top + centroidY;
+
+	// Step 3c) Check if entity is completely outside camera view (frustum culling)
+	if (maxX < camLeft || minX > camRight || maxY < camBottom || minY > camTop) {
+		return false; // Entity is outside view
+	}
+
+	// Step 3d) Check if entity is too small on screen (size culling)
+	var entityWidth = maxX - minX;
+	var entityHeight = maxY - minY;
+	var entitySize = Math.max(entityWidth, entityHeight);
+
+	// Get visible world width to calculate screen size
+	var visibleWorldWidth = camera.right - camera.left;
+	var threeCanvas = document.getElementById("threeCanvas");
+	var canvasWidth = threeCanvas ? threeCanvas.width : 1920;
+
+	// Entity size in pixels
+	var entityScreenSize = (entitySize / visibleWorldWidth) * canvasWidth;
+
+	// Step 3e) Skip entities smaller than 5 pixels on screen
+	if (entityScreenSize < 5) {
+		return false;
+	}
+
+	return true;
+}
+
+// Step 2) Helper: Project 3D world point to screen coordinates using camera projection
+function worldToScreen3D(worldX, worldY, worldZ, camera, canvas) {
+	// Step 2a) Convert world coordinates to local Three.js coordinates
+	var local = worldToThreeLocal(worldX, worldY);
+
+	// Step 2b) Create 3D vector and project to normalized device coordinates (NDC)
+	var vector = new THREE.Vector3(local.x, local.y, worldZ);
+	vector.project(camera);
+
+	// Step 2c) Convert NDC (-1 to +1) to screen pixels
+	return {
+		x: (vector.x * 0.5 + 0.5) * canvas.width,
+		y: (-vector.y * 0.5 + 0.5) * canvas.height
+	};
+}
+
 //NEW: Add this hybrid simplification function that is WAY TOO AGGRESSIVE. - DO NOT USE.
 function hybridSimplify(points, currentScale, isPolygon = false) {
 	if (!points || points.length < 3) return points;
@@ -20648,7 +20904,8 @@ function drawData(allBlastHoles, selectedHole) {
 	// Step 0c) Calculate Z centroid for orbit center
 	dataCentroidZ = calculateDataZCentroid();
 
-	// Step 1) Clear Three.js geometry
+	// Step 1) Clear Three.js geometry for rebuild
+	// Note: Super-batch optimization (ONE draw call for all lines) makes this fast even for large DXFs
 	clearThreeJS();
 
 	// Step 1a) Clear 2D canvas always (to remove old content)
@@ -21606,8 +21863,6 @@ function drawData(allBlastHoles, selectedHole) {
 					drawBackgroundImageThreeJS(imageId, image.canvas, image.bbox, imageTransparency, imageZElevation);
 				}
 			});
-		} else {
-			console.log("🖼️ [3D IMAGE] Images group NOT visible");
 		}
 
 		// Draw surfaces (includes Three.js rendering)
@@ -21828,26 +22083,136 @@ function drawData(allBlastHoles, selectedHole) {
 			}
 		}
 
-		// Draw holes
-		const toeSizeInMeters3D = document.getElementById("toeSlider") ? document.getElementById("toeSlider").value : 1;
+		// Step 3.4) CLEAR old highlights and stadium zones EVERY frame (regardless of hole count)
+		// This MUST run before any highlighting code to prevent accumulation
+		if (threeRenderer) {
+			var typesToClear = ["selectionHighlight", "stadiumZone", "kadHighlight", "kadSelectionHighlight", "vertexSelectionHighlight"];
+			var groupsToClear = [threeRenderer.holesGroup, threeRenderer.connectorsGroup, threeRenderer.kadGroup];
+
+			groupsToClear.forEach(function (group) {
+				if (!group) return;
+				var childrenToRemove = [];
+				group.children.forEach(function (child) {
+					if (child.userData && typesToClear.indexOf(child.userData.type) !== -1) {
+						childrenToRemove.push(child);
+					}
+				});
+				childrenToRemove.forEach(function (child) {
+					// Dispose geometry and material to prevent memory leaks
+					if (child.traverse) {
+						child.traverse(function (obj) {
+							if (obj.geometry) obj.geometry.dispose();
+							if (obj.material) {
+								if (Array.isArray(obj.material)) {
+									obj.material.forEach(function (m) { m.dispose(); });
+								} else {
+									obj.material.dispose();
+								}
+							}
+						});
+					}
+					group.remove(child);
+				});
+			});
+		}
+
+		// Draw holes - ONLY rebuild geometry when data changes
+		var toeSizeInMeters3D = document.getElementById("toeSlider") ? document.getElementById("toeSlider").value : 1;
 		if (blastGroupVisible && allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
-			for (const hole of allBlastHoles) {
+			// Step 3.1) Check if instanced rendering is enabled
+			var usingInstancedHoles = useInstancedHoles && allBlastHoles.length > 10; // Only use instancing for >10 holes
+
+			// Step 3.1a) Create hole geometry
+			if (usingInstancedHoles && threeRenderer) {
+				// Step 3.2) Use instanced rendering for hole collars/grades (performance optimization)
+				var instanceData = GeometryFactory.createInstancedHoles(
+					allBlastHoles,
+					holeScale,
+					darkModeEnabled,
+					worldToThreeLocal
+				);
+
+				if (instanceData) {
+					// Step 3.2a) Store instanced meshes in renderer
+					threeRenderer.instancedCollars = instanceData.instancedCollars;
+					threeRenderer.instancedGrades = instanceData.instancedGrades;
+					threeRenderer.instanceIdToHole = instanceData.instanceIdToHole;
+					threeRenderer.holeToInstanceId = instanceData.holeToInstanceId;
+					threeRenderer.instancedHolesCount = instanceData.holeCount;
+
+					// Step 3.2b) Add instanced meshes to scene
+					threeRenderer.holesGroup.add(instanceData.instancedCollars);
+					threeRenderer.holesGroup.add(instanceData.instancedGrades);
+
+					// Step 3.2c) CRITICAL: Instanced collars only draw circles, NOT tracks/toes/text!
+					// We still need to draw the tracks, toe markers, and text labels individually
+					for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
+						var hole = allBlastHoles[holeIdx];
+						if (hole.visible === false) continue;
+
+						// Step 3.2c.1) Draw track lines (collar->grade->toe) - NOT instanced!
+						// These vary in length/angle so can't be efficiently instanced
+						var holeLength = parseFloat(hole.holeLengthCalculated);
+						if (holeLength > 0 && !isNaN(holeLength)) {
+							// Draw track from collar to toe using individual geometry
+							var collarLocal = worldToThreeLocal(hole.startXLocation, hole.startYLocation);
+							var gradeLocal = worldToThreeLocal(hole.gradeXLocation, hole.gradeYLocation);
+							var toeLocal = worldToThreeLocal(hole.endXLocation, hole.endYLocation);
+							var trackGroup = GeometryFactory.createHoleTrack(
+								collarLocal.x, collarLocal.y, hole.startZLocation || 0,
+								gradeLocal.x, gradeLocal.y, hole.gradeZLocation || 0,
+								toeLocal.x, toeLocal.y, hole.endZLocation || 0,
+								hole.holeDiameter, hole.holeColor || "#FF0000", holeScale, hole.subdrillAmount || 0, darkModeEnabled
+							);
+							if (trackGroup) {
+								threeRenderer.holesGroup.add(trackGroup);
+							}
+
+							// Step 3.2c.2) Draw toe circle in Three.js
+							var toeRadiusWorld = parseFloat(toeSizeInMeters3D);
+							var toeColor = strokeColor;
+							var toeHoleId = hole.entityName + ":::" + hole.holeID;
+							drawHoleToeThreeJS(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0, toeRadiusWorld, toeColor, toeHoleId);
+						}
+
+						// Step 3.2c.3) Draw hole text labels
+						if (threeInitialized) {
+							drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
+						}
+					}
+
+					if (developerModeEnabled) {
+						console.log("🚀 Instanced holes: " + instanceData.holeCount + " collars/grades + individual tracks/toes/text");
+					}
+				}
+			} else {
+				// Step 3.2c) Non-instanced: draw individual hole geometry
+				for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
+					var hole = allBlastHoles[holeIdx];
+					if (hole.visible === false) continue;
+					drawHoleThreeJS(hole);
+
+					// Draw toe circle in Three.js (if hole has length)
+					if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
+						var toeRadiusWorld = parseFloat(toeSizeInMeters3D);
+						var toeColor = strokeColor;
+						var toeHoleId = hole.entityName + ":::" + hole.holeID;
+						drawHoleToeThreeJS(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0, toeRadiusWorld, toeColor, toeHoleId);
+					}
+
+					// Draw hole text labels
+					if (threeInitialized) {
+						drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
+					}
+				}
+			}
+
+			// Step 3.5) Highlighting and connectors - run EVERY frame (not just on rebuild)
+			// NOTE: Highlight clearing moved to Step 3.4 (outside holes block) so it runs even with 0 holes
+
+			for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
+				var hole = allBlastHoles[holeIdx];
 				if (hole.visible === false) continue;
-				// Draw Three.js hole geometry
-				drawHoleThreeJS(hole);
-
-				// Step 3.4) Draw toe circle in Three.js (if hole has length)
-				if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
-					const toeRadiusWorld = parseFloat(toeSizeInMeters3D);
-					const toeColor = strokeColor;
-					const toeHoleId = hole.entityName + ":::" + hole.holeID;
-					drawHoleToeThreeJS(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0, toeRadiusWorld, toeColor, toeHoleId);
-				}
-
-				// Draw hole text labels in Three.js
-				if (threeInitialized) {
-					drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
-				}
 
 				// Step 4) Draw connectors in Three.js
 				if (threeInitialized && displayOptions3D.connector && hole.fromHoleID) {
@@ -21914,23 +22279,96 @@ function drawData(allBlastHoles, selectedHole) {
 
 		// Step 3) Draw KAD entities in Three.js
 		if (drawingsGroupVisible) {
+			// Step 3.1) SUPER-BATCH: For large DXF files, merge ALL lines/polys into ONE geometry
+			// This reduces 3799 draw calls to just 1 - massive performance improvement!
+			var linePolyEntities = [];
+			var pointEntities = [];
+			var circleEntities = [];
+			var hasLinesOrPolys = (linesGroupVisible || polygonsGroupVisible);
+			var usedSuperBatchLines = false;
+			var usedSuperBatchPoints = false;
+			var usedSuperBatchCircles = false;
+
+			if (use3DSimplification && allKADDrawingsMap.size > 50) {
+				// Step 3.1a) Collect all visible entities by type for super-batch
+				for (var [entityName, entity] of allKADDrawingsMap.entries()) {
+					if (entity.visible === false) continue;
+					// Add entityName to entity for reference in super-batch
+					entity.entityName = entityName;
+
+					if (entity.entityType === "line" && linesGroupVisible) {
+						linePolyEntities.push(entity);
+					} else if (entity.entityType === "poly" && polygonsGroupVisible) {
+						linePolyEntities.push(entity);
+					} else if (entity.entityType === "point" && pointsGroupVisible) {
+						pointEntities.push(entity);
+					} else if (entity.entityType === "circle" && circlesGroupVisible) {
+						circleEntities.push(entity);
+					}
+				}
+
+				// Step 3.1b) Create super-batched geometry for LINES/POLYGONS
+				if (linePolyEntities.length > 0) {
+					var superBatch = GeometryFactory.createSuperBatchedLines(linePolyEntities, worldToThreeLocal);
+					if (superBatch && superBatch.lineSegments) {
+						threeRenderer.kadGroup.add(superBatch.lineSegments);
+						usedSuperBatchLines = true;
+						if (developerModeEnabled) {
+							console.log("🚀 SUPER-BATCH LINES: " + linePolyEntities.length + " entities merged into 1 draw call (" + superBatch.segmentCount + " segments)");
+						}
+					}
+				}
+
+				// Step 3.1c) Create super-batched geometry for POINTS
+				if (pointEntities.length > 0) {
+					var superBatchPoints = drawKADSuperBatchedPointsThreeJS(pointEntities, worldToThreeLocal);
+					if (superBatchPoints) {
+						usedSuperBatchPoints = true;
+						if (developerModeEnabled) {
+							console.log("🚀 SUPER-BATCH POINTS: " + pointEntities.length + " entities (" + superBatchPoints.totalPoints + " points) merged into 1 draw call");
+						}
+					}
+				}
+
+				// Step 3.1d) Create super-batched geometry for CIRCLES
+				if (circleEntities.length > 0) {
+					var superBatchCircles = drawKADSuperBatchedCirclesThreeJS(circleEntities, worldToThreeLocal);
+					if (superBatchCircles) {
+						usedSuperBatchCircles = true;
+						if (developerModeEnabled) {
+							console.log("🚀 SUPER-BATCH CIRCLES: " + circleEntities.length + " entities (" + superBatchCircles.totalCircles + " circles) merged into 1 draw call");
+						}
+					}
+				}
+			}
+
+			// Step 3.2) Draw remaining entities (texts, and points/circles/lines/polys if not super-batched)
+
 			for (const [name, entity] of allKADDrawingsMap.entries()) {
 				if (entity.visible === false) continue;
 
-				// Step 4) Check sub-group visibility
+				// Step 4) Check sub-group visibility and skip if super-batched
 				let subGroupVisible = true;
 				switch (entity.entityType) {
 					case "point":
 						subGroupVisible = pointsGroupVisible;
+						// Skip if already super-batched
+						if (usedSuperBatchPoints) continue;
 						break;
 					case "line":
 						subGroupVisible = linesGroupVisible;
+						// Skip if already super-batched
+						if (usedSuperBatchLines) continue;
 						break;
 					case "poly":
 						subGroupVisible = polygonsGroupVisible;
+						// Skip if already super-batched
+						if (usedSuperBatchLines) continue;
 						break;
 					case "circle":
 						subGroupVisible = circlesGroupVisible;
+						// Skip if already super-batched
+						if (usedSuperBatchCircles) continue;
 						break;
 					case "text":
 						subGroupVisible = textsGroupVisible;
@@ -21952,47 +22390,85 @@ function drawData(allBlastHoles, selectedHole) {
 				} else if (entity.entityType === "line" || entity.entityType === "poly") {
 					// Step 6) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
 					// Each segment gets its own lineWidth and color from point data
-					const visiblePoints = entity.data.filter((point) => point.visible !== false);
+					var visiblePoints = entity.data.filter(function (point) {
+						return point.visible !== false;
+					});
 
 					if (visiblePoints.length >= 2) {
-						// Step 6a) Draw segments between consecutive points
-						// NOTE: Segment color uses nextPoint.color (the "to" point) because when user clicks
-						// a point with a new color, that color should apply to the segment leading TO that point
-						for (var i = 0; i < visiblePoints.length - 1; i++) {
-							var currentPoint = visiblePoints[i];
-							var nextPoint = visiblePoints[i + 1];
+						// Step 6a) Skip frustum culling for now - just use all visible points
+						// The batching alone gives 100x performance improvement
+						var pointsToRender = visiblePoints;
 
-							var currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
-							var nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
+						// Step 6c) Draw entity - BATCHED approach for performance when simplification enabled
+						// CRITICAL OPTIMIZATION: Instead of creating one mesh per segment (thousands of draw calls),
+						// create ONE mesh for the entire entity (one draw call per entity!)
 
-							// Step 6a.1) Use nextPoint's color and lineWidth - the segment TO the point uses that point's attributes
-							var lineWidth = nextPoint.lineWidth || 1;
-							var color = nextPoint.color || "#FF0000";
+						if (use3DSimplification) {
+							// Step 6c.1) FAST PATH: Use batched rendering (ONE draw call per entity!)
+							// Convert points to local coordinates with COLORS for vertex coloring
+							var batchedPoints = [];
+							for (var i = 0; i < pointsToRender.length; i++) {
+								var p = pointsToRender[i];
+								var local = worldToThreeLocal(p.pointXLocation, p.pointYLocation);
+								batchedPoints.push({
+									x: local.x,
+									y: local.y,
+									z: p.pointZLocation || 0,
+									color: p.color || "#777777" // Use actual color or DXF default gray
+								});
+							}
 
-							if (entity.entityType === "line") {
-								drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name);
-							} else {
-								drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name);
+							// Use first point's lineWidth (lineWidth varies less than color typically)
+							var entityLineWidth = pointsToRender[0].lineWidth || 1;
+							var entityColor = pointsToRender[0].color || "#FFFFFF"; // Fallback color
+							var isPolygon = entity.entityType === "poly";
+
+							// ONE draw call for entire entity with per-vertex colors!
+							drawKADBatchedPolylineThreeJS(batchedPoints, entityLineWidth, entityColor, name, isPolygon);
+
+						} else {
+							// Step 6c.2) SLOW PATH: Segment-by-segment for full color/width control
+							// NOTE: Segment color uses nextPoint.color (the "to" point) because when user clicks
+							// a point with a new color, that color should apply to the segment leading TO that point
+							var segmentsForThisEntity = pointsToRender.length - 1;
+
+							for (var i = 0; i < pointsToRender.length - 1; i++) {
+								var currentPoint = pointsToRender[i];
+								var nextPoint = pointsToRender[i + 1];
+
+								var currentLocal = worldToThreeLocal(currentPoint.pointXLocation, currentPoint.pointYLocation);
+								var nextLocal = worldToThreeLocal(nextPoint.pointXLocation, nextPoint.pointYLocation);
+
+								// Use nextPoint's color and lineWidth - the segment TO the point uses that point's attributes
+								var lineWidth = nextPoint.lineWidth || 1;
+								var color = nextPoint.color || "#FF0000";
+
+								if (entity.entityType === "line") {
+									drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name);
+								} else {
+									drawKADPolygonSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name);
+								}
+							}
+
+							// For polygons, close the loop with final segment
+							// NOTE: Closing segment goes TO firstPoint, so use firstPoint's color
+							if (entity.entityType === "poly" && pointsToRender.length > 2) {
+								var firstPoint = pointsToRender[0];
+								var lastPoint = pointsToRender[pointsToRender.length - 1];
+
+								var firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
+								var lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
+
+								// Use firstPoint's color - the closing segment goes TO the first point
+								var lineWidth = firstPoint.lineWidth || 1;
+								var color = firstPoint.color || "#FF0000";
+
+								drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name);
 							}
 						}
 
-						// Step 6b) For polygons, close the loop with final segment
-						// NOTE: Closing segment goes TO firstPoint, so use firstPoint's color
-						if (entity.entityType === "poly" && visiblePoints.length > 2) {
-							var firstPoint = visiblePoints[0];
-							var lastPoint = visiblePoints[visiblePoints.length - 1];
-
-							var firstLocal = worldToThreeLocal(firstPoint.pointXLocation, firstPoint.pointYLocation);
-							var lastLocal = worldToThreeLocal(lastPoint.pointXLocation, lastPoint.pointYLocation);
-
-							// Use firstPoint's color - the closing segment goes TO the first point
-							var lineWidth = firstPoint.lineWidth || 1;
-							var color = firstPoint.color || "#FF0000";
-
-							drawKADPolygonSegmentThreeJS(lastLocal.x, lastLocal.y, lastPoint.pointZLocation || 0, firstLocal.x, firstLocal.y, firstPoint.pointZLocation || 0, lineWidth, color, name);
-						}
-
-						// Step 6c) Draw invisible vertex markers for selection (raycasting only - no visual)
+						// Step 6d) Draw invisible vertex markers for selection (raycasting only - no visual)
+						// IMPORTANT: Use original visiblePoints, NOT simplified points, for vertex selection
 						// Vertices are hidden but still selectable - pink highlight appears on selection via move tool
 						for (var i = 0; i < visiblePoints.length; i++) {
 							var point = visiblePoints[i];
@@ -22002,7 +22478,7 @@ function drawData(allBlastHoles, selectedHole) {
 							var vertexSize = 0.3; // Small marker for vertex selection (invisible)
 
 							// Create invisible point for raycasting only
-							const pointMesh = GeometryFactory.createKADPoint(local.x, local.y, point.pointZLocation || 0, vertexSize, point.color || "#FF0000");
+							var pointMesh = GeometryFactory.createKADPoint(local.x, local.y, point.pointZLocation || 0, vertexSize, point.color || "#FF0000");
 							pointMesh.userData = { type: "kadPoint", kadId: kadId };
 							pointMesh.visible = false; // Make invisible but keep in scene for raycasting
 							window.threeRenderer.kadGroup.add(pointMesh);
@@ -22076,6 +22552,7 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 
 		renderThreeJS();
+
 		if (developerModeEnabled) {
 			console.log("🧊 Three.js scene rendered - drawData()");
 		}
@@ -23209,6 +23686,9 @@ async function loadAllDataWithProgress() {
 		updateLoadingProgress(loadingDialog, "Complete! All data loaded successfully", 100);
 		console.log("📊 Data load complete: " + holeCount + " holes, " + kadCount + " KADs, " + surfaceCount + " surfaces, " + imageCount + " images");
 
+		// Step 6a) Flag that 3D geometry needs rebuild after data load
+		window.threeDataNeedsRebuild = true;
+
 		// Step 7) Close dialog after brief delay
 		setTimeout(function () {
 			if (loadingDialog) {
@@ -23621,6 +24101,7 @@ function setHoleVisibility(holeID, visible) {
 
 		// ? Clear hidden entities from selections
 		clearHiddenFromSelections();
+		window.threeDataNeedsRebuild = true; // Force 3D geometry rebuild on visibility change
 		drawData(allBlastHoles, selectedHole);
 	}
 }
@@ -23634,6 +24115,7 @@ function setEntityVisibility(entityName, visible) {
 
 	// ? Clear hidden entities from selections
 	clearHiddenFromSelections();
+	window.threeDataNeedsRebuild = true; // Force 3D geometry rebuild on visibility change
 	drawData(allBlastHoles, selectedHole);
 }
 
@@ -23650,6 +24132,7 @@ function setBlastGroupVisibility(visible) {
 	blastGroupVisible = visible;
 	console.log("👁️ Blast Group visibility: " + visible);
 	clearHiddenFromSelections();
+	window.threeDataNeedsRebuild = true; // Force 3D geometry rebuild on visibility change
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
 }
@@ -23658,6 +24141,7 @@ function setDrawingsGroupVisibility(visible) {
 	drawingsGroupVisible = visible;
 	console.log("👁️ Drawings Group visibility: " + visible);
 	clearHiddenFromSelections();
+	window.threeDataNeedsRebuild = true; // Force 3D geometry rebuild on visibility change
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
 }
@@ -25920,33 +26404,53 @@ function handleMoveToolMouseMove(event) {
 				calculateHoleGeometry(hole, newY, 5); // Parameter 5 for Y position
 
 				// Step 4h.1) Update 3D hole position in real-time (without full re-render)
-				if (threeRenderer && threeRenderer.holeMeshMap) {
-					const holeGroup = threeRenderer.holeMeshMap.get(hole.holeID);
-					if (holeGroup) {
-						// CRITICAL: Calculate DELTA in local coords, not absolute position
-						// Hole geometry is already positioned at original collar location
-						// We need to OFFSET the group by the movement delta
-						const originalLocal = worldToThreeLocal(item.x, item.y);
-						const newLocal = worldToThreeLocal(newX, newY);
-						const deltaLocalX = newLocal.x - originalLocal.x;
-						const deltaLocalY = newLocal.y - originalLocal.y;
+				if (threeRenderer) {
+					var holeId = hole.entityName + ":::" + hole.holeID;
 
-						console.log("    3D offset: delta (", deltaLocalX.toFixed(3), deltaLocalY.toFixed(3), ") - was at (", holeGroup.position.x.toFixed(3), holeGroup.position.y.toFixed(3), ")");
+					// Step 4h.1a) Check if using instanced rendering
+					if (threeRenderer.isUsingInstancedHoles && threeRenderer.isUsingInstancedHoles()) {
+						// Use updateHolePosition() for instanced holes
+						threeRenderer.updateHolePosition(holeId, newX, newY, hole.startZLocation || 0);
 
-						// Update hole group position by DELTA (not absolute position)
-						holeGroup.position.set(deltaLocalX, deltaLocalY, 0);
+						// Also update highlight position
+						var originalLocal = worldToThreeLocal(item.x, item.y);
+						var newLocal = worldToThreeLocal(newX, newY);
+						var deltaLocalX = newLocal.x - originalLocal.x;
+						var deltaLocalY = newLocal.y - originalLocal.y;
 
-						// Step 4h.1a) Also update highlight position (find and move it)
-						const holeId = hole.entityName + ":::" + hole.holeID;
 						threeRenderer.holesGroup.children.forEach(function (child) {
 							if (child.userData && child.userData.type === "selectionHighlight" && child.userData.holeId === holeId) {
-								// Move highlight by same delta
 								child.position.set(deltaLocalX, deltaLocalY, 0);
 							}
 						});
+					} else if (threeRenderer.holeMeshMap) {
+						// Step 4h.1b) Use traditional holeMeshMap approach for non-instanced holes
+						var holeGroup = threeRenderer.holeMeshMap.get(hole.holeID);
+						if (holeGroup) {
+							// CRITICAL: Calculate DELTA in local coords, not absolute position
+							// Hole geometry is already positioned at original collar location
+							// We need to OFFSET the group by the movement delta
+							var originalLocal = worldToThreeLocal(item.x, item.y);
+							var newLocal = worldToThreeLocal(newX, newY);
+							var deltaLocalX = newLocal.x - originalLocal.x;
+							var deltaLocalY = newLocal.y - originalLocal.y;
 
-						// Mark that we need to update connectors/labels after drag completes
-						holeGroup.userData.needsUpdate = true;
+							console.log("    3D offset: delta (", deltaLocalX.toFixed(3), deltaLocalY.toFixed(3), ") - was at (", holeGroup.position.x.toFixed(3), holeGroup.position.y.toFixed(3), ")");
+
+							// Update hole group position by DELTA (not absolute position)
+							holeGroup.position.set(deltaLocalX, deltaLocalY, 0);
+
+							// Step 4h.1c) Also update highlight position (find and move it)
+							threeRenderer.holesGroup.children.forEach(function (child) {
+								if (child.userData && child.userData.type === "selectionHighlight" && child.userData.holeId === holeId) {
+									// Move highlight by same delta
+									child.position.set(deltaLocalX, deltaLocalY, 0);
+								}
+							});
+
+							// Mark that we need to update connectors/labels after drag completes
+							holeGroup.userData.needsUpdate = true;
+						}
 					}
 				}
 			});

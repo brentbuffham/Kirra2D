@@ -343,6 +343,61 @@ export function drawKADPolygonSegmentThreeJS(startX, startY, startZ, endX, endY,
 	window.threeRenderer.kadGroup.add(polyMesh);
 }
 
+// Step 9b) FAST: Draw entire polyline/line entity with ONE draw call (batched)
+// This is the key optimization for large DXF files
+// Instead of creating one mesh per segment, create ONE mesh for all points
+export function drawKADBatchedPolylineThreeJS(pointsArray, lineWidth, color, kadId, isPolygon) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (!pointsArray || pointsArray.length < 2) return;
+	
+	// Step 9b.1) Create batched polyline (ONE object for entire entity!)
+	var batchedLine = GeometryFactory.createBatchedPolyline(pointsArray, lineWidth, color, isPolygon);
+	if (!batchedLine) return; // Handle null return for invalid data
+	
+	// Step 9b.2) Add metadata for selection
+	if (kadId) {
+		batchedLine.userData = { 
+			type: isPolygon ? "kadPolygon" : "kadLine", 
+			kadId: kadId,
+			isBatched: true // Flag to indicate this is a batched object
+		};
+	}
+	
+	window.threeRenderer.kadGroup.add(batchedLine);
+}
+
+// Step 9c) SUPER-BATCH: Draw ALL KAD points in ONE draw call
+// This creates a single THREE.Points object containing all KAD points
+export function drawKADSuperBatchedPointsThreeJS(allPointEntities, worldToThreeLocal) {
+	if (!window.threeInitialized || !window.threeRenderer) return null;
+	if (!allPointEntities || allPointEntities.length === 0) return null;
+	
+	// Step 9c.1) Create super-batched points (ONE object for ALL points!)
+	var result = GeometryFactory.createSuperBatchedPoints(allPointEntities, worldToThreeLocal);
+	if (!result || !result.points) return null;
+	
+	// Step 9c.2) Add to KAD group
+	window.threeRenderer.kadGroup.add(result.points);
+	
+	return result;
+}
+
+// Step 9d) SUPER-BATCH: Draw ALL KAD circles in ONE draw call
+// This creates a single THREE.LineSegments object containing all KAD circles
+export function drawKADSuperBatchedCirclesThreeJS(allCircleEntities, worldToThreeLocal) {
+	if (!window.threeInitialized || !window.threeRenderer) return null;
+	if (!allCircleEntities || allCircleEntities.length === 0) return null;
+	
+	// Step 9d.1) Create super-batched circles (ONE object for ALL circles!)
+	var result = GeometryFactory.createSuperBatchedCircles(allCircleEntities, worldToThreeLocal);
+	if (!result || !result.lineSegments) return null;
+	
+	// Step 9d.2) Add to KAD group
+	window.threeRenderer.kadGroup.add(result.lineSegments);
+	
+	return result;
+}
+
 // Step 10) Draw KAD circle in Three.js
 export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
