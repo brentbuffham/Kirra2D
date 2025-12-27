@@ -1,137 +1,177 @@
-# Information Overlay System Plan
+# Information Overlay System Plan (REVISED v2)
 
 **Date:** 2025-12-26 17:00  
+**Revised:** 2025-12-27 19:45  
 **Author:** AI Assistant  
-**Status:** Planning
+**Status:** APPROVED - Ready for implementation
 
 ## Problem Statement
 
-Currently, UI text information is rendered in multiple ways:
+Currently, information text is rendered in multiple incompatible ways:
 
-- 3D scene: `drawToolPromptThreeJS()` renders verbose text sprites that look bad and clutter the scene
-- 2D canvas: Direct `ctx.fillText()` calls for legends, measurements, and status (only visible in 2D mode)
-- No unified system for coordinates, selections, or status messages
+- **2D mode**: `ctx.fillText()` draws directly on canvas
+- **3D mode**: `drawToolPromptThreeJS()` renders text as 3D sprites (looks bad)
+- **No shared solution**: Inconsistent display between 2D/3D modes
 
-## Architecture Overview
+## Solution: Unified HUD Overlay
 
-```mermaid
-flowchart TB
-    subgraph overlay [Information Overlay System]
-        IO[InformationOverlay.js]
-        LP[LegendPanel.js]
-    end
-    
-    subgraph sources [Data Sources]
-        K[kirra.js]
-        C2D[canvas2DDrawing.js]
-        C3D[canvas3DDrawing.js]
-    end
-    
-    subgraph ui [UI Output]
-        StatusBar[Status Bar - Top]
-        Coords[Coordinates - Bottom Left]
-        Selection[Selection Panel - Right]
-        Legend[Legend FloatingDialog]
-    end
-    
-    K --> IO
-    C2D --> IO
-    C3D --> IO
-    IO --> StatusBar
-    IO --> Coords
-    IO --> Selection
-    IO --> LP
-    LP --> Legend
-```
+A **single HTML/CSS overlay** (crispest text rendering) that sits between the rendering layers and the UI controls. Both 2D and 3D modes share this HUD.
 
-## Screen Layout Concept
+## Z-Index Sandwich Architecture
 
 ```
-+-------------------------------------------------------------------------+
-|                         [Status Bar / Tool Tips]                         |
-|                                                                          |
-|                                                                          |
-|                                                                          |
-|                                                                          |
-|                                                                 [Select] |
-| [Measurements]                                                  Selected |
-| Distance: 12.5m                                                 - Hole 1 |
-| Angle: 45.2deg                                                  - Hole 2 |
-|                                                                 (ESC)    |
-| [Coordinates]                                                            |
-| X: 12345.67                                                    [Legend]  |
-| Y: 67890.12                                                    (if on)   |
-| Z: 450.00                                                                |
-+-------------------------------------------------------------------------+
-|                    [Existing Toggle Buttons / View Options]              |
-+-------------------------------------------------------------------------+
+┌─────────────────────────────────────────────────────┐
+│  TOOLBARS, SIDENAV, VIEWBUTTONS, TREEVIEW          │  z-index: 200+
+├─────────────────────────────────────────────────────┤
+│  HUD OVERLAY (NEW)                                  │  z-index: 100
+├─────────────────────────────────────────────────────┤
+│  CTX CANVAS (2D drawing)                           │  z-index: 2
+├─────────────────────────────────────────────────────┤
+│  THREE.JS SCENE (3D rendering)                     │  z-index: 1
+└─────────────────────────────────────────────────────┘
 ```
 
-## File Structure
+## HUD Layout (User Specification)
 
 ```
-src/
-├── ui/                           (NEW FOLDER)
-│   ├── InformationOverlay.js     (NEW - Main overlay system)
-│   └── LegendPanel.js            (NEW - FloatingDialog-based legends)
-├── dialog/
-│   └── FloatingDialog.js         (EXISTING - Extended for legends)
-├── kirra.js                      (MODIFY - Integration)
-└── kirra.css                     (MODIFY - Add overlay styles)
++------------------------------------------------------------------------------------------+
+|                        [Status/Selection/ToolTips]                                       |
+|                                                                                          |
+|                                                                                          |
+|  [Legend]                                                    [Surface Elevation]         |
+|  Slope / Relief                                              Surf1 | Surf2 | Surf3      |
+|  0°-5°   ████                                                                            |
+|  5°-7°   ████                                                                            |
+|  7°-9°   ████                                                                            |
+|  ...                                                                                     |
+|                                                                                          |
+|                                                                                          |
+|                                                                                          |
+| Blasts[#] Holes[#]                                                                       |
+| Point[#] Lines[#] Poly[#] Circles[#] Text[#]                                            |
+| Mouse 2D [X: #.###, Y:#.###] Scale[1:###.#]                                            |
+| World 3D [X: #.###, Y: #.###, Z: #.###]                                                 |
+| L1[#.###] L2[#.###]                                                                      |
+| P1->P2[#.#°] P2->P3[#.#°] Inner[#.#°] Outer[#.#°]                                       |
+| Ver: XXXXX.XXX                                                                           |
++------------------------------------------------------------------------------------------+
 ```
+
+## HUD Panels
+
+### 1. Status/Selection/ToolTips Panel (Top Center)
+
+- Status messages: "Editing Hole 167 in ISEE_OTHER"
+- Selection info: "Selected 5 holes"
+- Tool tips: "Click to set start point"
+- Auto-clears after timeout
+
+### 2. Legend Panel (Left Side)
+
+- **Slope legend**: Color blocks with degree ranges (0°-5°, 5°-7°, etc.)
+- **Relief legend**: Color blocks with relief values
+- **Voronoi legend**: Color blocks with metric values
+- Shows/hides based on displayOptions
+
+### 3. Surface Legend Panel (Right Side)
+
+- Multiple surface names displayed
+- Shows elevation range per surface
+- Shows/hides when surfaces are visible
+
+### 4. Stats Panel (Bottom Left)
+
+All in **11pt monospace font**:
+
+```
+Blasts[3] Holes[410]
+Point[25] Lines[12] Poly[8] Circles[4] Text[15]
+Mouse 2D [X: 511.000, Y: 957.000] Scale[1:10.3]
+World 3D [X: 478754.560, Y: 6772247.390, Z: 125.500]
+L1[12.543] L2[8.221]
+P1->P2[45.2°] P2->P3[32.1°] Inner[77.3°] Outer[282.7°]
+Ver: 20251113.0000AWST
+```
+
+## File Structure (Simplified)
+
+```
+src/overlay/
+├── HUDOverlay.js              # Main HUD manager + DOM creation
+├── OverlayEventBus.js         # Event system (existing, keep)
+└── panels/
+    ├── StatusPanel.js         # Top: status/selection/tooltips
+    ├── LegendPanel.js         # Left: slope/relief/voronoi legends
+    ├── SurfaceLegendPanel.js  # Right: surface elevation legends
+    └── StatsPanel.js          # Bottom left: all stats + coords
+```
+
+## What Gets Deleted
+
+- `ViewButtonsPanel.js` - DELETE (wrong approach)
+- `CoordinatesPanel.js` - MERGE into StatsPanel
+- `SelectionPanel.js` - MERGE into StatusPanel
+- ViewButtonsPanel CSS in kirra.css - DELETE
 
 ## Implementation Phases
 
-### Phase 1: Create InformationOverlay Module
+### Phase 1: Restructure Overlay (30 mins)
 
-Create `src/ui/InformationOverlay.js`:
+- [ ] Delete ViewButtonsPanel.js
+- [ ] Create HUDOverlay.js (replaces OverlayManager.js)
+- [ ] Set up proper z-index layering
+- [ ] Create basic DOM structure
 
-**Key exports:**
-- `initInformationOverlay()` - Creates DOM structure
-- `updateOverlayStatus(message, type)` - Replaces `updateStatusMessage()`
-- `updateOverlayCoordinates(worldX, worldY, worldZ)` - Mouse/world position
-- `updateOverlaySelection(holes, kadObjects, connectorInfo)` - Selection info
-- `updateOverlayMeasurements(measurements)` - Distance, angle, etc.
-- `clearInformationOverlay()` - Reset all panels
+### Phase 2: StatsPanel (1 hour)
 
-**DOM Structure to create:**
-```html
-<div id="information-overlay" class="information-overlay">
-    <div id="overlay-status" class="overlay-panel overlay-status"></div>
-    <div id="overlay-measurements" class="overlay-panel overlay-measurements"></div>
-    <div id="overlay-coordinates" class="overlay-panel overlay-coordinates"></div>
-    <div id="overlay-selection" class="overlay-panel overlay-selection"></div>
-</div>
-```
+- [ ] Create StatsPanel.js
+- [ ] Display: Blasts, Holes, KAD entity counts
+- [ ] Display: Mouse 2D coordinates
+- [ ] Display: World 3D coordinates
+- [ ] Display: Ruler measurements (L1, L2)
+- [ ] Display: Protractor measurements (angles)
+- [ ] Display: Version
+- [ ] 11pt monospace font
+- [ ] Wire up to mouse move + data events
 
-### Phase 2: Create LegendPanel Module
+### Phase 3: StatusPanel (30 mins)
 
-Create `src/ui/LegendPanel.js`:
+- [ ] Rewrite StatusPanel.js
+- [ ] Combine status + selection + tooltips
+- [ ] Top center positioning
+- [ ] Auto-clear with configurable timeout
 
-Uses existing FloatingDialog pattern (src/dialog/FloatingDialog.js) for:
-- Draggable, closable legend window
-- Collapsible sections for each legend type
-- Auto-show/hide based on active features
+### Phase 4: LegendPanel (1 hour)
 
-**Legend types to support:**
+- [ ] Create LegendPanel.js
+- [ ] Slope legend with color blocks
+- [ ] Relief legend with color blocks
+- [ ] Voronoi legend with color blocks
+- [ ] Show/hide based on displayOptions
+- [ ] Match existing legend colors exactly
 
-| Legend Type | Source Function | Line # | When Active |
-|-------------|-----------------|--------|-------------|
-| Slope | `drawLegend()` | 20459 | `displayOptions.slopeMap` |
-| Relief | `drawReliefLegend()` | 15293 | `displayOptions.burdenRelief` |
-| Voronoi | `drawVoronoiLegendAndCells()` | 22115 | `displayOptions.voronoiPF` |
-| Surface | `drawSurfaceLegend()` | 34501 | Any surface visible |
+### Phase 5: SurfaceLegendPanel (30 mins)
 
-### Phase 3: CSS Styling
+- [ ] Create SurfaceLegendPanel.js
+- [ ] Display multiple surface names
+- [ ] Show when surfaces visible
+- [ ] Right side positioning
 
-Add to `src/kirra.css`:
+### Phase 6: Wire Up Events (1 hour)
+
+- [ ] Connect to existing displayOptions
+- [ ] Replace ctx.fillText() coordinate calls
+- [ ] Replace drawLegend() canvas drawing
+- [ ] Replace drawToolPromptThreeJS()
+- [ ] Test in both 2D and 3D modes
+
+**Total Estimated Time: 4-5 hours**
+
+## CSS Styling
 
 ```css
-/* ================================================= */
-/* Information Overlay System                        */
-/* ================================================= */
-
-.information-overlay {
+/* HUD uses HTML for crispest text */
+.hud-overlay {
     position: absolute;
     top: 0;
     left: 0;
@@ -139,156 +179,78 @@ Add to `src/kirra.css`:
     height: 100%;
     pointer-events: none;
     z-index: 100;
-    font-family: Arial, sans-serif;
-    font-size: 12px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    font-size: 11pt;
 }
 
-.overlay-panel {
+.hud-panel {
     position: absolute;
-    background: rgba(0, 0, 0, 0.75);
-    color: #ffffff;
-    padding: 8px 12px;
-    border-radius: 4px;
     pointer-events: auto;
-    display: none;
-    max-width: 280px;
+    color: #ffffff;
+    text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
 }
 
-/* Status bar - top center */
-.overlay-status {
+/* Bottom left stats - no background, just text with shadow */
+.hud-stats {
+    bottom: 10px;
+    left: 10px;
+    line-height: 1.4;
+}
+
+/* Top center status */
+.hud-status {
     top: 10px;
     left: 50%;
     transform: translateX(-50%);
     text-align: center;
-    white-space: pre-wrap;
-    max-width: 500px;
+    background: rgba(0, 0, 0, 0.7);
+    padding: 6px 12px;
+    border-radius: 4px;
 }
 
-.overlay-status.status-success { background: rgba(0, 150, 0, 0.85); }
-.overlay-status.status-warning { background: rgba(200, 150, 0, 0.85); }
-.overlay-status.status-error { background: rgba(200, 0, 0, 0.85); }
-.overlay-status.status-info { background: rgba(0, 100, 200, 0.85); }
-
-/* Measurements - bottom left */
-.overlay-measurements {
-    bottom: 80px;
+/* Left legend */
+.hud-legend {
+    top: 80px;
     left: 10px;
 }
 
-/* Coordinates - bottom left, below measurements */
-.overlay-coordinates {
-    bottom: 10px;
-    left: 10px;
-    font-family: monospace;
-    font-size: 11px;
-}
-
-/* Selection panel - right side */
-.overlay-selection {
-    top: 50%;
+/* Right surface legend */
+.hud-surface-legend {
+    top: 80px;
     right: 10px;
-    transform: translateY(-50%);
-    max-height: 60vh;
-    overflow-y: auto;
-}
-
-/* Dark mode overrides */
-.dark-mode .overlay-panel {
-    background: rgba(40, 40, 40, 0.9);
-    border: 1px solid #555;
-}
-
-/* Light mode overrides */
-body:not(.dark-mode) .overlay-panel {
-    background: rgba(255, 255, 255, 0.9);
-    color: #000000;
-    border: 1px solid #ccc;
 }
 ```
-
-### Phase 4: Integration in kirra.js
-
-**Modifications to `src/kirra.js`:**
-
-1. Import new modules (around line 144):
-```javascript
-import { initInformationOverlay, updateOverlayStatus, updateOverlayCoordinates, updateOverlaySelection, clearInformationOverlay } from "./ui/InformationOverlay.js";
-import { showLegendPanel, hideLegendPanel, updateLegendData } from "./ui/LegendPanel.js";
-```
-
-2. Initialize overlay on startup (in init function)
-
-3. Replace `updateStatusMessage()` (line 31743) calls with `updateOverlayStatus()`
-
-4. Replace `drawToolPromptThreeJS()` calls (lines 21881-21900) with `updateOverlaySelection()`
-
-5. Call `updateOverlayCoordinates()` in mouse move handlers
-
-6. Call legend functions when display options change
-
-### Phase 5: Remove/Deprecate Canvas Legend Drawing
-
-Comment out or remove:
-- `drawLegend()` function (lines 20459-20503)
-- `drawReliefLegend()` function (lines 15293-15351)
-- Canvas legend calls in `drawVoronoiLegendAndCells()` (keep cell drawing)
-- `drawSurfaceLegend()` function (lines 34501-34600)
-
-### Phase 6: Remove 3D Tool Prompts
-
-In `src/draw/canvas3DDrawing.js`:
-- Remove or deprecate `drawToolPromptThreeJS()` function (lines 739-781)
-- Update TODO comment at line 738 to mark as complete
-
-## Migration Mapping
-
-| Current Function | New Function | Call Sites |
-|-----------------|--------------|------------|
-| `updateStatusMessage()` | `updateOverlayStatus()` | ~216 |
-| `drawToolPromptThreeJS()` | `updateOverlaySelection()` | 5 |
-| `drawLegend()` | `showLegendPanel()` | 1 |
-| `drawReliefLegend()` | `showLegendPanel()` | 1 |
-| `drawVoronoiLegendAndCells()` legend part | `showLegendPanel()` | 7 |
-| `drawSurfaceLegend()` | `showLegendPanel()` | 1 |
-
-## Behavior Rules
-
-1. Status messages auto-clear after timeout (configurable, default 3s)
-2. Selection panel shows only when items selected, hides on ESC
-3. Coordinates update on mouse move (throttled for performance)
-4. Legend panel auto-shows when feature activated, can be manually closed
-5. All panels respect dark mode via CSS classes
-6. Overlay works identically in 2D and 3D modes
-7. Measurements stay on canvas ctx (cursor-following)
-
-## Implementation TODOs
-
-- [ ] Create src/ui/ folder for new overlay modules
-- [ ] Create InformationOverlay.js with status, coordinates, selection panels
-- [ ] Create LegendPanel.js using FloatingDialog for legend display
-- [ ] Add overlay CSS styles to kirra.css
-- [ ] Import and initialize overlay system in kirra.js
-- [ ] Replace updateStatusMessage calls with updateOverlayStatus
-- [ ] Replace drawToolPromptThreeJS calls with updateOverlaySelection
-- [ ] Replace canvas legend draws with LegendPanel calls
-- [ ] Remove or comment out deprecated canvas legend functions
 
 ## Testing Checklist
 
+- [ ] HUD visible in 2D mode
+- [ ] HUD visible in 3D mode (same position/content)
+- [ ] Stats update on mouse move
+- [ ] Stats show correct counts (blasts, holes, KAD entities)
+- [ ] Ruler measurements show when ruler active
+- [ ] Protractor measurements show when protractor active
+- [ ] Slope legend shows when slope enabled
+- [ ] Relief legend shows when relief enabled
+- [ ] Surface legend shows when surfaces visible
 - [ ] Status messages appear and auto-clear
-- [ ] Coordinates update on mouse move in both modes
-- [ ] Selection panel shows holes and KAD objects
-- [ ] Connector info shows during connection mode
-- [ ] Each legend type displays correctly
-- [ ] Legend panel is draggable and closable
-- [ ] Dark mode styling works
-- [ ] 3D mode no longer shows verbose text sprites
-- [ ] Performance acceptable (no lag on mouse move)
+- [ ] Selection info shows when items selected
+- [ ] All existing UI controls still work
+- [ ] Text is crisp at all zoom levels (HTML/CSS rendering)
 
-## Notes
+## Data Sources for Stats
 
-- Template literals avoided per project rules - use string concatenation
-- FloatingDialog class already supports dragging, resizing, close button
-- Consider throttling coordinate updates to 60fps max
-- Legend colors should match existing canvas legend colors exactly
-
+| Stat | Source Variable |
+|------|-----------------|
+| Blasts count | `allBlastHoles` grouped by entityName |
+| Holes count | `allBlastHoles.length` |
+| Points count | KAD entities where entityType === "point" |
+| Lines count | KAD entities where entityType === "line" |
+| Polys count | KAD entities where entityType === "poly" |
+| Circles count | KAD entities where entityType === "circle" |
+| Text count | KAD entities where entityType === "text" |
+| Mouse 2D | `event.offsetX`, `event.offsetY` (canvas coords) |
+| Scale | `currentScale` (zoom level) |
+| World 3D | `currentMouseWorldX`, `currentMouseWorldY`, `currentMouseWorldZ` |
+| L1, L2 | Ruler tool measurements |
+| Angles | Protractor tool measurements |
+| Version | `buildVersion` |

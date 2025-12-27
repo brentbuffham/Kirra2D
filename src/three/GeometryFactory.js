@@ -1206,11 +1206,11 @@ export class GeometryFactory {
 		} else if (burdenRelief < 25) {
 			return "rgb(50, 180, 255)";
 		} else if (burdenRelief < 30) {
-			return "rgb(50, 100, 255)";
+			return "rgb(50, 100, 255)"; // Blue
 		} else if (burdenRelief < 40) {
-			return "rgb(50, 0, 255)";
+			return "rgb(0, 0, 180)"; // Navy (actual dark blue)
 		} else {
-			return "rgb(75, 0, 150)";
+			return "rgb(75, 0, 150)"; // Purple - slow
 		}
 	}
 
@@ -1413,15 +1413,13 @@ export class GeometryFactory {
 		geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
 		geometry.computeVertexNormals();
 
-		// Step 16f) Create material with vertex colors
-		const material = new THREE.MeshPhongMaterial({
+		// Step 16f) Create material with vertex colors - use MeshBasicMaterial for flat/unshaded colors
+		// MeshBasicMaterial shows true colors without lighting effects (no dulling/muting)
+		const material = new THREE.MeshBasicMaterial({
 			vertexColors: true,
 			side: THREE.DoubleSide,
 			transparent: transparency < 1.0,
 			opacity: transparency,
-			shininess: 30,
-			specular: 0x222222,
-			flatShading: false,
 		});
 
 		const mesh = new THREE.Mesh(geometry, material);
@@ -1518,15 +1516,13 @@ export class GeometryFactory {
 		geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
 		geometry.computeVertexNormals();
 
-		// Step 16.5g) Create material with vertex colors
-		const material = new THREE.MeshPhongMaterial({
+		// Step 16.5g) Create material with vertex colors - use MeshBasicMaterial for flat/unshaded colors
+		// MeshBasicMaterial shows true colors without lighting effects (no dulling/muting)
+		const material = new THREE.MeshBasicMaterial({
 			vertexColors: true,
 			side: THREE.DoubleSide,
 			transparent: transparency < 1.0,
 			opacity: transparency,
-			shininess: 30,
-			specular: 0x222222,
-			flatShading: false,
 		});
 
 		const mesh = new THREE.Mesh(geometry, material);

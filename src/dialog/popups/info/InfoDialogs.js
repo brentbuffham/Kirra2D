@@ -68,8 +68,8 @@ export function updatePopup() {
         '<label class="labelWhite18">Update - NEW FEATURES:                           </label>' +
         '<hr>' +
         '<div style="max-height: 200px; overflow-y: auto; border: 1px solid #ccc; padding: 10px;">' +
-        '<label     class="labelWhite12c">⭐ ⭐ November 2025 ⭐ ⭐                                            </label>' +
-        '<br><label class="labelWhite12c">✅ 3D View </label>' +
+        '<label     class="labelWhite12c">⭐ ⭐ Oct 2025 - Jan 2026 ⭐ ⭐                                            </label>' +
+        '<br><label class="labelWhite12c">✅ Check GIT history ✅ </label>' +
         '<hr>' +
         '<br><label  class="labelWhite15">New & Existing Issues & Resolved                               </label>' +
         '<br><label class="labelWhite12c">🐞 Voronoi Display Lag with large blasts      ❌ unresolved ❌  </label>' +
