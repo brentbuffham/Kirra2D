@@ -72,6 +72,10 @@ import {
 	drawVoronoiCellsThreeJS,
 	drawKADLeadingLineThreeJS,
 	clearKADLeadingLineThreeJS,
+	drawRulerThreeJS,
+	clearRulerThreeJS,
+	drawProtractorThreeJS,
+	clearProtractorThreeJS,
 } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
@@ -104,27 +108,42 @@ import "./dialog/popups/generic/SurfaceAssignmentDialogs.js";
 //=================================================
 // Overlay System - Unified UI overlay for status, selection, coordinates
 //=================================================
-import { 
-    initHUD, 
-    OverlayEventBus, 
-    OverlayEvents,
-    // Status panel
-    showStatusMessage,
-    showSelectionMessage,
-    clearStatus,
-    // Stats panel
-    emitStats,
-    emitCoords,
-    emitRuler,
-    emitProtractor,
-    // Legend panels
-    showSlopeLegend,
-    showReliefLegend,
-    showVoronoiLegend,
-    hideSlopeLegend,
-    hideReliefLegend,
-    hideVoronoiLegend,
-    hideLegend
+import {
+	initHUD,
+	OverlayEventBus,
+	OverlayEvents,
+	// Status panel
+	showStatusMessage,
+	showSelectionMessage,
+	clearStatus,
+	// Stats panel
+	emitStats,
+	emitCoords,
+	emitRuler,
+	emitProtractor,
+	// Legend panels
+	showSlopeLegend,
+	showReliefLegend,
+	showVoronoiLegend,
+	showSurfaceLegend as showSurfaceElevationLegend,
+	hideSlopeLegend,
+	hideReliefLegend,
+	hideSurfaceLegend as hideSurfaceElevationLegend,
+	hideVoronoiLegend,
+	hideLegend,
+	// Ruler panel
+	showRulerPanel,
+	hideRulerPanel,
+	// Protractor panel
+	showProtractorPanel,
+	hideProtractorPanel,
+	// Drawing distance panel
+	showDrawingDistance,
+	hideDrawingDistance,
+	// Tooltip panel
+	showHoleTooltip,
+	showPointTooltip,
+	hideTooltipPanel
 } from "./overlay/index.js";
 //=================================================
 import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
@@ -1028,66 +1047,45 @@ function handle3DClick(event) {
 		const snapRadiusPixels = window.snapRadiusPixels || 15; // 15 pixels on screen
 		const snapRadiusWorld = getSnapRadiusInWorldUnits3D(snapRadiusPixels);
 
-		// Step 12c.1a.0) FIRST: Calculate world coordinates from click position (fallback if no snap)
-		// This ensures we have valid coordinates even if currentMouseWorldX/Y are stale
+		// Step 12c.1a.0) Get drawing elevation Z value
+		var clickWorldZ = parseFloat(drawingZValue) || parseFloat(document.getElementById("drawingElevation").value) || 0;
+
+		// Step 12c.1a.1) Calculate world coordinates using plane intersection at drawing elevation
+		// This works correctly regardless of camera angle
 		var clickWorldX = currentMouseWorldX;
 		var clickWorldY = currentMouseWorldY;
-		var clickWorldZ = currentMouseWorldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
 
-		if (threeRenderer && threeRenderer.camera && threeRenderer.camera.isOrthographicCamera) {
-			var clickCanvas = threeRenderer.getCanvas();
-			var rect = clickCanvas.getBoundingClientRect();
-			var mouseX = event.clientX - rect.left;
-			var mouseY = event.clientY - rect.top;
-
-			// Get normalized device coordinates (-1 to +1)
-			var ndcX = (mouseX / rect.width) * 2 - 1;
-			var ndcY = -(mouseY / rect.height) * 2 + 1;
-
-			// Get camera state for world centroid
-			var cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
-			var calcCentroidX = centroidX;
-			var calcCentroidY = centroidY;
-
-			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
-				var originX = window.threeLocalOriginX || 0;
-				var originY = window.threeLocalOriginY || 0;
-				calcCentroidX = cameraState.centroidX + originX;
-				calcCentroidY = cameraState.centroidY + originY;
-			}
-
-			// Calculate viewport dimensions and offsets
-			var camera = threeRenderer.camera;
-			var viewportWidth = camera.right - camera.left;
-			var viewportHeight = camera.top - camera.bottom;
-
-			if (isFinite(viewportWidth) && isFinite(viewportHeight) && viewportWidth > 0 && viewportHeight > 0) {
-				var offsetX = ndcX * (viewportWidth / 2);
-				var offsetY = ndcY * (viewportHeight / 2);
-				clickWorldX = calcCentroidX + offsetX;
-				clickWorldY = calcCentroidY + offsetY;
-			}
-		}
-
-		if (interactionManager && interactionManager.raycaster) {
-			// 3D Mode: Use cylindrical snap along view ray
-			// Update raycaster to current mouse position
+		if (interactionManager && threeRenderer) {
+			// Update raycaster to click position
 			interactionManager.updateMousePosition(event, threeRenderer.getCanvas());
 			interactionManager.raycaster.setFromCamera(interactionManager.mouse, threeRenderer.camera);
 
-			// Get ray from raycaster
-			const ray = interactionManager.raycaster.ray;
+			// Step 12c.1a.2) Intersect ray with horizontal plane at drawing elevation
+			// Use getMouseWorldPositionOnPlane which handles all camera angles correctly
+			var planeWorldPos = interactionManager.getMouseWorldPositionOnPlane(clickWorldZ);
+			if (planeWorldPos && isFinite(planeWorldPos.x) && isFinite(planeWorldPos.y)) {
+				clickWorldX = planeWorldPos.x;
+				clickWorldY = planeWorldPos.y;
+				console.log("⬇️ [3D CLICK] Plane intersection at Z=" + clickWorldZ + ": X=" + clickWorldX.toFixed(2) + ", Y=" + clickWorldY.toFixed(2));
+			} else {
+				console.warn("⬇️ [3D CLICK] Plane intersection failed, using currentMouseWorld");
+			}
+		}
 
+		// Step 12c.1a.3) Try cylindrical snap to nearby points
+		if (interactionManager && interactionManager.raycaster) {
+			// Get ray from raycaster (already set above)
+			const ray = interactionManager.raycaster.ray;
 			snapResult = snapToNearestPointWithRay(ray.origin, ray.direction, snapRadiusWorld);
 		} else {
 			// Fallback to 2D snap (shouldn't happen in 3D mode, but safe fallback)
 			snapResult = snapToNearestPoint(clickWorldX, clickWorldY, snapRadiusWorld);
 		}
 
-		// Use snap result if available, otherwise use calculated click position
-		worldX = snapResult.worldX || clickWorldX;
-		worldY = snapResult.worldY || clickWorldY;
-		worldZ = snapResult.worldZ || clickWorldZ;
+		// Use snap result if available, otherwise use plane intersection coordinates
+		worldX = snapResult.snapped && snapResult.worldX !== undefined ? snapResult.worldX : clickWorldX;
+		worldY = snapResult.snapped && snapResult.worldY !== undefined ? snapResult.worldY : clickWorldY;
+		worldZ = snapResult.snapped && snapResult.worldZ !== undefined ? snapResult.worldZ : clickWorldZ;
 
 		// Step 12c.1b) Show snap feedback if snapped
 		if (snapResult.snapped) {
@@ -1142,6 +1140,105 @@ function handle3DClick(event) {
 		// Step 12c.1e) Redraw to show new KAD object
 		drawData(allBlastHoles, selectedHole);
 		return; // Don't process as selection click
+	}
+
+	// Step 12c.2) Handle Ruler tool in 3D mode
+	if (isRulerActive) {
+		console.log("📏 [3D CLICK] Ruler tool active, handling 3D ruler click");
+
+		// Step 12c.2a) Get world coordinates from click using plane intersection
+		var rulerClickX = currentMouseWorldX;
+		var rulerClickY = currentMouseWorldY;
+		var rulerClickZ = currentMouseWorldZ || window.dataCentroidZ || 0;
+
+		// Step 12c.2b) Calculate coordinates using plane intersection (works at any camera angle)
+		if (interactionManager && threeRenderer) {
+			interactionManager.updateMousePosition(event, threeRenderer.getCanvas());
+			interactionManager.raycaster.setFromCamera(interactionManager.mouse, threeRenderer.camera);
+
+			// Intersect with horizontal plane at data centroid Z
+			var rulerPlanePos = interactionManager.getMouseWorldPositionOnPlane(rulerClickZ);
+			if (rulerPlanePos && isFinite(rulerPlanePos.x) && isFinite(rulerPlanePos.y)) {
+				rulerClickX = rulerPlanePos.x;
+				rulerClickY = rulerPlanePos.y;
+			}
+		}
+
+		// Step 12c.2c) Apply 3D snap if available
+		if (interactionManager && interactionManager.raycaster) {
+			var rulerSnapRadius = getSnapRadiusInWorldUnits3D(window.snapRadiusPixels || 15);
+			var rulerSnapResult = snapToNearestPointWithRay(interactionManager.raycaster.ray.origin, interactionManager.raycaster.ray.direction, rulerSnapRadius);
+			if (rulerSnapResult.snapped) {
+				rulerClickX = rulerSnapResult.worldX;
+				rulerClickY = rulerSnapResult.worldY;
+				rulerClickZ = rulerSnapResult.worldZ || rulerClickZ;
+				updateStatusMessage("Snapped to " + rulerSnapResult.snapTarget.description);
+				setTimeout(function () { updateStatusMessage(""); }, 1500);
+			}
+		}
+
+		// Step 12c.2d) Handle ruler click logic (same as 2D)
+		if (!rulerStartPoint) {
+			rulerStartPoint = { x: rulerClickX, y: rulerClickY, z: rulerClickZ };
+			rulerEndPoint = null;
+		} else if (!rulerEndPoint) {
+			rulerEndPoint = { x: rulerClickX, y: rulerClickY, z: rulerClickZ };
+		} else {
+			rulerStartPoint = { x: rulerClickX, y: rulerClickY, z: rulerClickZ };
+			rulerEndPoint = null;
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		drawData(allBlastHoles, selectedHole);
+		return;
+	}
+
+	// Step 12c.3) Handle Protractor tool in 3D mode
+	if (isRulerProtractorActive) {
+		console.log("📐 [3D CLICK] Protractor tool active, handling 3D protractor click");
+
+		// Step 12c.3a) Get world coordinates from click using plane intersection
+		var protClickX = currentMouseWorldX;
+		var protClickY = currentMouseWorldY;
+		var protClickZ = currentMouseWorldZ || window.dataCentroidZ || 0;
+
+		// Step 12c.3b) Calculate coordinates using plane intersection (works at any camera angle)
+		if (interactionManager && threeRenderer) {
+			interactionManager.updateMousePosition(event, threeRenderer.getCanvas());
+			interactionManager.raycaster.setFromCamera(interactionManager.mouse, threeRenderer.camera);
+
+			// Intersect with horizontal plane at data centroid Z
+			var protPlanePos = interactionManager.getMouseWorldPositionOnPlane(protClickZ);
+			if (protPlanePos && isFinite(protPlanePos.x) && isFinite(protPlanePos.y)) {
+				protClickX = protPlanePos.x;
+				protClickY = protPlanePos.y;
+			}
+		}
+
+		// Step 12c.3c) Apply 3D snap if available
+		if (interactionManager && interactionManager.raycaster) {
+			var protSnapRadius = getSnapRadiusInWorldUnits3D(window.snapRadiusPixels || 15);
+			var protSnapResult = snapToNearestPointWithRay(interactionManager.raycaster.ray.origin, interactionManager.raycaster.ray.direction, protSnapRadius);
+			if (protSnapResult.snapped) {
+				protClickX = protSnapResult.worldX;
+				protClickY = protSnapResult.worldY;
+				protClickZ = protSnapResult.worldZ || protClickZ;
+				updateStatusMessage("Snapped to " + protSnapResult.snapTarget.description);
+				setTimeout(function () { updateStatusMessage(""); }, 1500);
+			}
+		}
+
+		// Step 12c.3d) Handle protractor click logic (same as 2D)
+		rulerProtractorPoints.push({ x: protClickX, y: protClickY, z: protClickZ });
+		if (rulerProtractorPoints.length > 3) {
+			rulerProtractorPoints = [{ x: protClickX, y: protClickY, z: protClickZ }];
+		}
+
+		event.preventDefault();
+		event.stopPropagation();
+		drawData(allBlastHoles, selectedHole);
+		return;
 	}
 
 	// Step 12d) Get 3D canvas for coordinate conversion
@@ -2208,17 +2305,17 @@ function handle3DMouseMove(event) {
 		currentMouseWorldX = mouseWorldPos.x;
 		currentMouseWorldY = mouseWorldPos.y;
 		currentMouseWorldZ = mouseWorldPos.z || document.getElementById("drawingElevation").value;
-		
+
 		// Step 13f.5a) Update snapHighlight for HUD magnet icon
 		snapHighlight = snapResult.snapped ? snapResult.snapTarget : null;
-		
+
 		// Step 13f.5b) Get canvas mouse coordinates for HUD
 		const rect = threeCanvas.getBoundingClientRect();
 		const canvasMouseX = event.clientX - rect.left;
 		const canvasMouseY = event.clientY - rect.top;
 		currentMouseCanvasX = canvasMouseX;
 		currentMouseCanvasY = canvasMouseY;
-		
+
 		// Step 13f.5c) Emit coordinates to HUD (same as 2D path)
 		var isCurrentlySnapped = snapHighlight !== null && snapEnabled;
 		emitCoords(
@@ -2373,9 +2470,132 @@ function handle3DMouseMove(event) {
 			currentMouseWorldZ || parseFloat(drawZ), // Use raycast Z, fallback to drawZ
 			leadingLineColor
 		);
+
+		// Step 13f.8b) Show distance overlay for drawing tools with tool-specific color
+		var drawDx = currentMouseWorldX - lastKADDrawPoint.x;
+		var drawDy = currentMouseWorldY - lastKADDrawPoint.y;
+		var drawDistance = Math.sqrt(drawDx * drawDx + drawDy * drawDy);
+		var drawBearing = (90 - (Math.atan2(drawDy, drawDx) * 180) / Math.PI + 360) % 360;
+
+		// Determine tool type for color
+		var drawToolType = "line";
+		if (isDrawingPoint || isAddingHole) {
+			drawToolType = "point";
+		} else if (isDrawingLine) {
+			drawToolType = "line";
+		} else if (isDrawingPoly) {
+			drawToolType = "poly";
+		} else if (isDrawingCircle) {
+			drawToolType = "circle";
+		} else if (isDrawingText) {
+			drawToolType = "text";
+		}
+
+		showDrawingDistance(drawDistance, drawBearing, drawToolType, event.clientX, event.clientY);
 	} else {
 		// Clear leading line if no drawing tool active or no last point
 		clearKADLeadingLineThreeJS();
+		hideDrawingDistance();
+	}
+
+	// Step 13f.9) Draw ruler in 3D mode if active
+	if (isRulerActive && rulerStartPoint) {
+		var rulerEndX = currentMouseWorldX;
+		var rulerEndY = currentMouseWorldY;
+		var rulerEndZ = currentMouseWorldZ || rulerStartPoint.z || 0;
+
+		if (rulerEndPoint) {
+			rulerEndX = rulerEndPoint.x;
+			rulerEndY = rulerEndPoint.y;
+			rulerEndZ = rulerEndPoint.z || 0;
+		}
+
+		drawRulerThreeJS(
+			rulerStartPoint.x,
+			rulerStartPoint.y,
+			rulerStartPoint.z || 0,
+			rulerEndX,
+			rulerEndY,
+			rulerEndZ
+		);
+
+		// Step 13f.9a) Update CSS ruler panel with measurements (same as 2D drawRuler)
+		var ruler3DStartZ = rulerStartPoint.z || 0;
+		var ruler3DEndZ = rulerEndZ || 0;
+		var ruler3DDeltaX = rulerEndX - rulerStartPoint.x;
+		var ruler3DDeltaY = rulerEndY - rulerStartPoint.y;
+		var ruler3DDeltaZ = ruler3DEndZ - ruler3DStartZ;
+		var ruler3DPlanDistance = Math.sqrt(ruler3DDeltaX * ruler3DDeltaX + ruler3DDeltaY * ruler3DDeltaY);
+		var ruler3DTotalDistance = Math.sqrt(ruler3DDeltaX * ruler3DDeltaX + ruler3DDeltaY * ruler3DDeltaY + ruler3DDeltaZ * ruler3DDeltaZ);
+		var ruler3DElevationAngle = ruler3DPlanDistance > 0 ? (Math.atan(Math.abs(ruler3DDeltaZ) / ruler3DPlanDistance) * 180) / Math.PI : 0;
+		var ruler3DSlopePercent = ruler3DPlanDistance > 0 ? (Math.abs(ruler3DDeltaZ) / ruler3DPlanDistance) * 100 : 0;
+
+		showRulerPanel({
+			z1: ruler3DStartZ,
+			z2: ruler3DEndZ,
+			planDistance: ruler3DPlanDistance,
+			totalDistance: ruler3DTotalDistance,
+			deltaZ: ruler3DDeltaZ,
+			elevationAngle: ruler3DElevationAngle,
+			slopePercent: ruler3DSlopePercent,
+			mouseX: currentMouseCanvasX,
+			mouseY: currentMouseCanvasY
+		});
+	} else {
+		clearRulerThreeJS();
+		hideRulerPanel();
+	}
+
+	// Step 13f.10) Draw protractor in 3D mode if active
+	if (isRulerProtractorActive && rulerProtractorPoints.length > 0) {
+		var p1 = rulerProtractorPoints[0];
+		var p2 = rulerProtractorPoints.length > 1 ? rulerProtractorPoints[1] : { x: currentMouseWorldX, y: currentMouseWorldY, z: currentMouseWorldZ || p1.z || 0 };
+		var p3 = { x: currentMouseWorldX, y: currentMouseWorldY, z: currentMouseWorldZ || p1.z || 0 };
+
+		if (rulerProtractorPoints.length === 2) {
+			p2 = rulerProtractorPoints[1];
+		}
+		if (rulerProtractorPoints.length === 3) {
+			p3 = rulerProtractorPoints[2];
+		}
+
+		drawProtractorThreeJS(
+			p1.x, p1.y, p1.z || 0,
+			p2.x, p2.y, p2.z || 0,
+			p3.x, p3.y, p3.z || 0
+		);
+
+		// Step 13f.10a) Update CSS protractor panel with measurements (same as 2D drawProtractor)
+		var prot3DDeltaX1 = p2.x - p1.x;
+		var prot3DDeltaY1 = p2.y - p1.y;
+		var prot3DD1 = Math.sqrt(prot3DDeltaX1 * prot3DDeltaX1 + prot3DDeltaY1 * prot3DDeltaY1);
+		var prot3DBearing1 = ((90 - Math.atan2(prot3DDeltaY1, prot3DDeltaX1) * 180 / Math.PI) + 360) % 360;
+
+		var prot3DDeltaX2 = p3.x - p1.x;
+		var prot3DDeltaY2 = p3.y - p1.y;
+		var prot3DD2 = Math.sqrt(prot3DDeltaX2 * prot3DDeltaX2 + prot3DDeltaY2 * prot3DDeltaY2);
+		var prot3DBearing2 = ((90 - Math.atan2(prot3DDeltaY2, prot3DDeltaX2) * 180 / Math.PI) + 360) % 360;
+
+		// Calculate inner angle between the two legs
+		var prot3DAngle1Rad = Math.atan2(prot3DDeltaY1, prot3DDeltaX1);
+		var prot3DAngle2Rad = Math.atan2(prot3DDeltaY2, prot3DDeltaX2);
+		var prot3DInnerAngle = Math.abs(prot3DAngle2Rad - prot3DAngle1Rad) * 180 / Math.PI;
+		if (prot3DInnerAngle > 180) prot3DInnerAngle = 360 - prot3DInnerAngle;
+		var prot3DOuterAngle = 360 - prot3DInnerAngle;
+
+		showProtractorPanel({
+			d1: prot3DD1,
+			d2: prot3DD2,
+			bearing1: prot3DBearing1,
+			bearing2: prot3DBearing2,
+			innerAngle: prot3DInnerAngle,
+			outerAngle: prot3DOuterAngle,
+			mouseX: currentMouseCanvasX,
+			mouseY: currentMouseCanvasY
+		});
+	} else {
+		clearProtractorThreeJS();
+		hideProtractorPanel();
 	}
 
 	if (threeRenderer.renderer) {
@@ -3191,6 +3411,9 @@ function setAllBoolsToFalse() {
 
 	// Also clear move tool state variables
 	moveToolSelectedHole = null;
+
+	// Hide drawing distance panel when tools are deactivated
+	hideDrawingDistance();
 	isDraggingHole = false;
 
 	// Remove bearing tool listeners too
@@ -3383,6 +3606,7 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("touchstart", handleRulerClick);
 		rulerStartPoint = null;
 		rulerEndPoint = null;
+		hideRulerPanel(); // Step #) Hide CSS ruler panel when tool is removed
 	}
 
 	// Remove ruler protractor listeners
@@ -3390,6 +3614,7 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("click", handleRulerProtractorClick);
 		canvas.removeEventListener("touchstart", handleRulerProtractorClick);
 		rulerProtractorPoints = [];
+		hideProtractorPanel(); // Step #) Hide CSS protractor panel when tool is removed
 	}
 
 	// Remove selection tool listeners
@@ -3667,6 +3892,8 @@ function resetFloatingToolbarButtons(excluding) {
 	rulerStartPoint = null;
 	rulerEndPoint = null;
 	rulerProtractorPoints = [];
+	hideRulerPanel(); // Step #) Hide CSS ruler panel when switching tools
+	hideProtractorPanel(); // Step #) Hide CSS protractor panel when switching tools
 	bearingToolSelectedHole = null;
 	isDraggingBearing = false;
 	isDraggingHole = false;
@@ -6804,13 +7031,13 @@ function handleMouseMove(event) {
 	// Update global mouse tracking for interactive previews
 	currentMouseCanvasX = mouseX;
 	currentMouseCanvasY = mouseY;
-	
+
 	// Convert to world coordinates with snapping for HUD display
 	const snapResult = canvasToWorldWithSnap(mouseX, mouseY);
 	currentMouseWorldX = snapResult.worldX;
 	currentMouseWorldY = snapResult.worldY;
 	currentMouseWorldZ = snapResult.worldZ;
-	
+
 	// Update snapHighlight for HUD display (magnet icon)
 	snapHighlight = snapResult.snapped ? snapResult.snapTarget : null;
 
@@ -9313,6 +9540,95 @@ function fileFormatPopup(error) {
 
 let allKADDrawingsMap = new Map();
 
+// Step #) Convert CSS color names to hex for 3D compatibility
+// Three.js batched rendering only handles hex colors, not named colors
+function cssColorToHex(colorInput) {
+	if (!colorInput) return "#FF0000"; // Default red
+
+	var color = String(colorInput).trim();
+
+	// Already a hex color
+	if (color.charAt(0) === "#") return color;
+
+	// RGB/RGBA format
+	if (color.toLowerCase().startsWith("rgb")) return color;
+
+	// CSS color name lookup table (common colors)
+	var colorNames = {
+		"red": "#FF0000",
+		"green": "#008000",
+		"blue": "#0000FF",
+		"yellow": "#FFFF00",
+		"orange": "#FFA500",
+		"purple": "#800080",
+		"pink": "#FFC0CB",
+		"cyan": "#00FFFF",
+		"magenta": "#FF00FF",
+		"black": "#000000",
+		"white": "#FFFFFF",
+		"gray": "#808080",
+		"grey": "#808080",
+		"brown": "#A52A2A",
+		"lime": "#00FF00",
+		"limegreen": "#32CD32",
+		"navy": "#000080",
+		"teal": "#008080",
+		"maroon": "#800000",
+		"olive": "#808000",
+		"aqua": "#00FFFF",
+		"fuchsia": "#FF00FF",
+		"silver": "#C0C0C0",
+		"gold": "#FFD700",
+		"coral": "#FF7F50",
+		"crimson": "#DC143C",
+		"darkblue": "#00008B",
+		"darkgreen": "#006400",
+		"darkred": "#8B0000",
+		"lightblue": "#ADD8E6",
+		"lightgreen": "#90EE90",
+		"lightgray": "#D3D3D3",
+		"lightgrey": "#D3D3D3",
+		"darkgray": "#A9A9A9",
+		"darkgrey": "#A9A9A9",
+		"skyblue": "#87CEEB",
+		"steelblue": "#4682B4",
+		"turquoise": "#40E0D0",
+		"violet": "#EE82EE",
+		"indigo": "#4B0082",
+		"tan": "#D2B48C",
+		"beige": "#F5F5DC",
+		"salmon": "#FA8072",
+		"khaki": "#F0E68C"
+	};
+
+	var hex = colorNames[color.toLowerCase()];
+	if (hex) return hex;
+
+	// Fallback: try to use browser canvas to convert (handles any CSS color)
+	try {
+		var tempCanvas = document.createElement("canvas");
+		tempCanvas.width = 1;
+		tempCanvas.height = 1;
+		var tempCtx = tempCanvas.getContext("2d");
+		tempCtx.fillStyle = color;
+		// Get the computed color (will be in rgb format)
+		var computedColor = tempCtx.fillStyle;
+		if (computedColor.charAt(0) === "#") return computedColor;
+		// Parse rgb(r,g,b) format
+		var match = computedColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+		if (match) {
+			var r = parseInt(match[1]).toString(16).padStart(2, "0");
+			var g = parseInt(match[2]).toString(16).padStart(2, "0");
+			var b = parseInt(match[3]).toString(16).padStart(2, "0");
+			return "#" + r + g + b;
+		}
+	} catch (e) {
+		console.warn("Could not convert color:", color, e);
+	}
+
+	return "#FF0000"; // Default to red if all else fails
+}
+
 function parseKADFile(fileData) {
 	let minX = Infinity;
 	let minY = Infinity;
@@ -9416,7 +9732,7 @@ function parseKADFile(fileData) {
 						pointYLocation = parseFloat(row[4]);
 						pointZLocation = parseFloat(row[5]);
 						lineWidth = parseFloat(row[6]) || 1;
-						color = (row[7] || "#FF0000").replace(/\r$/, "");
+						color = cssColorToHex((row[7] || "#FF0000").replace(/\r$/, ""));
 
 						allKADDrawingsMap.get(entityName).data.push({
 							entityName: entityName,
@@ -9446,7 +9762,7 @@ function parseKADFile(fileData) {
 						pointYLocation = parseFloat(row[4]);
 						pointZLocation = parseFloat(row[5]);
 						lineWidth = parseFloat(row[6]);
-						color = (row[7] || "#FF0000").replace(/\r$/, "");
+						color = cssColorToHex((row[7] || "#FF0000").replace(/\r$/, ""));
 						closed = String(row[8]).trim().toLowerCase() === "true";
 
 						allKADDrawingsMap.get(entityName).data.push({
@@ -9476,7 +9792,7 @@ function parseKADFile(fileData) {
 						pointYLocation = parseFloat(row[4]);
 						pointZLocation = parseFloat(row[5]);
 						lineWidth = parseFloat(row[6]);
-						color = (row[7] || "#FF0000").replace(/\r$/, "");
+						color = cssColorToHex((row[7] || "#FF0000").replace(/\r$/, ""));
 
 						allKADDrawingsMap.get(entityName).data.push({
 							entityName: entityName,
@@ -9506,7 +9822,7 @@ function parseKADFile(fileData) {
 						pointZLocation = parseFloat(row[5]);
 						radius = parseFloat(row[6]);
 						lineWidth = parseFloat(row[7]) || 1;
-						color = (row[8] || "#FF0000").replace(/\r$/, "");
+						color = cssColorToHex((row[8] || "#FF0000").replace(/\r$/, ""));
 
 						allKADDrawingsMap.get(entityName).data.push({
 							entityName: entityName,
@@ -9535,7 +9851,7 @@ function parseKADFile(fileData) {
 						pointYLocation = parseFloat(row[4]);
 						pointZLocation = parseFloat(row[5]);
 						text = row[6] || "";
-						color = (row[7] || "#FF0000").replace(/\r$/, "");
+						color = cssColorToHex((row[7] || "#FF0000").replace(/\r$/, ""));
 
 						allKADDrawingsMap.get(entityName).data.push({
 							entityName: entityName,
@@ -15098,11 +15414,11 @@ function drawKADPreviewLine(ctx) {
 		ctx.beginPath();
 		ctx.strokeStyle = "rgba(209, 0, 0, 0.8)"; // Purple for points
 		ctx.lineWidth = 2;
+		// Step #) Distance text removed - now using CSS DrawingDistancePanel
 		if (shouldDraw) {
-			const distance = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
-			ctx.font = "12px Arial";
-			ctx.fillStyle = "rgba(209, 0, 0, 0.8)";
-			ctx.fillText(distance.toFixed(2) + "m", mouseCanvasX + 10, mouseCanvasY - 10);
+			var pointDist = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
+			var pointBearing = (90 - (Math.atan2(currentMouseWorldY - previewStartY, currentMouseWorldX - previewStartX) * 180) / Math.PI + 360) % 360;
+			showDrawingDistance(pointDist, pointBearing, "point", mouseCanvasX + canvas.getBoundingClientRect().left, mouseCanvasY + canvas.getBoundingClientRect().top);
 		}
 		ctx.arc(mouseCanvasX, mouseCanvasY, snapRadiusPixels, 0, Math.PI * 2);
 		// Draw crosshair
@@ -15114,11 +15430,11 @@ function drawKADPreviewLine(ctx) {
 	} else if (isCircleActive) {
 		ctx.beginPath();
 		ctx.lineWidth = 2;
+		// Step #) Distance text removed - now using CSS DrawingDistancePanel
 		if (shouldDraw) {
-			const distance = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
-			ctx.font = "12px Arial";
-			ctx.fillStyle = "rgba(255, 165, 0, 0.8)"; // Orange for circles
-			ctx.fillText(distance.toFixed(2) + "m", mouseCanvasX + 10, mouseCanvasY - 10);
+			var circleDist = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
+			var circleBearing = (90 - (Math.atan2(currentMouseWorldY - previewStartY, currentMouseWorldX - previewStartX) * 180) / Math.PI + 360) % 360;
+			showDrawingDistance(circleDist, circleBearing, "circle", mouseCanvasX + canvas.getBoundingClientRect().left, mouseCanvasY + canvas.getBoundingClientRect().top);
 		}
 		ctx.arc(mouseCanvasX, mouseCanvasY, parseFloat(circleRadius.value) * currentScale, 0, Math.PI * 2);
 		// // Draw crosshair
@@ -15135,11 +15451,11 @@ function drawKADPreviewLine(ctx) {
 		//ctx.setLineDash([2, 2]);
 		ctx.strokeStyle = "rgba(0, 255, 0, 0.6)"; // Green for Text
 		ctx.lineWidth = 2;
+		// Step #) Distance text removed - now using CSS DrawingDistancePanel
 		if (shouldDraw) {
-			const distance = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
-			ctx.font = "12px Arial";
-			ctx.fillStyle = "rgba(0, 255, 0, 0.7)"; // Green for text
-			ctx.fillText(distance.toFixed(2) + "m", mouseCanvasX + 10, mouseCanvasY - 10);
+			var textDist = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
+			var textBearing = (90 - (Math.atan2(currentMouseWorldY - previewStartY, currentMouseWorldX - previewStartX) * 180) / Math.PI + 360) % 360;
+			showDrawingDistance(textDist, textBearing, "text", mouseCanvasX + canvas.getBoundingClientRect().left, mouseCanvasY + canvas.getBoundingClientRect().top);
 		}
 		ctx.arc(mouseCanvasX, mouseCanvasY, snapRadiusPixels, 0, Math.PI * 2);
 		// Draw crosshair
@@ -15154,12 +15470,11 @@ function drawKADPreviewLine(ctx) {
 		//ctx.setLineDash([2, 2]);
 		ctx.strokeStyle = "rgba(0, 207, 207, 0.8)"; // Cyan for lines
 		ctx.lineWidth = 2;
-		// Calculate and display distance for line preview
+		// Step #) Distance text removed - now using CSS DrawingDistancePanel
 		if (shouldDraw) {
-			const distance = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
-			ctx.font = "12px Arial";
-			ctx.fillStyle = "rgba(0, 207, 207, 0.8)";
-			ctx.fillText(distance.toFixed(2) + "m", mouseCanvasX + 10, mouseCanvasY - 10);
+			var lineDist = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
+			var lineBearing = (90 - (Math.atan2(currentMouseWorldY - previewStartY, currentMouseWorldX - previewStartX) * 180) / Math.PI + 360) % 360;
+			showDrawingDistance(lineDist, lineBearing, "line", mouseCanvasX + canvas.getBoundingClientRect().left, mouseCanvasY + canvas.getBoundingClientRect().top);
 		}
 		ctx.arc(mouseCanvasX, mouseCanvasY, snapRadiusPixels, 0, Math.PI * 2);
 		// Draw crosshair
@@ -15174,12 +15489,11 @@ function drawKADPreviewLine(ctx) {
 		ctx.strokeStyle = "rgba(215, 0, 215, 0.6)"; // Purple for polygons
 		ctx.lineWidth = 2;
 		// Show for polygon tool
-		// Calculate and display distance for line preview
+		// Step #) Distance text removed - now using CSS DrawingDistancePanel
 		if (shouldDraw) {
-			const distance = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
-			ctx.font = "12px Arial";
-			ctx.fillStyle = "rgba(215, 0, 215, 0.6)";
-			ctx.fillText(distance.toFixed(2) + "m", mouseCanvasX + 10, mouseCanvasY - 10);
+			var polyDist = Math.sqrt(Math.pow(currentMouseWorldX - previewStartX, 2) + Math.pow(currentMouseWorldY - previewStartY, 2));
+			var polyBearing = (90 - (Math.atan2(currentMouseWorldY - previewStartY, currentMouseWorldX - previewStartX) * 180) / Math.PI + 360) % 360;
+			showDrawingDistance(polyDist, polyBearing, "poly", mouseCanvasX + canvas.getBoundingClientRect().left, mouseCanvasY + canvas.getBoundingClientRect().top);
 		}
 		ctx.arc(mouseCanvasX, mouseCanvasY, snapRadiusPixels, 0, Math.PI * 2);
 		// Draw crosshair
@@ -17493,6 +17807,38 @@ function handleKADPointClick(event) {
 	}
 }
 
+// Step #) Helper function to generate unique KAD entity names
+// This prevents duplicate names when entities are deleted and new ones created
+function getUniqueKADEntityName(prefix) {
+	// Step 1) Find all existing entity names with this prefix
+	var existingNumbers = [];
+	allKADDrawingsMap.forEach(function (entity, name) {
+		if (name.startsWith(prefix)) {
+			// Extract the number from the name (e.g., "polyObject5" -> 5)
+			var numStr = name.substring(prefix.length);
+			var num = parseInt(numStr, 10);
+			if (!isNaN(num)) {
+				existingNumbers.push(num);
+			}
+		}
+	});
+
+	// Step 2) Find the next available number (starting from 1)
+	var nextNum = 1;
+	if (existingNumbers.length > 0) {
+		// Sort and find the first gap, or use max + 1
+		existingNumbers.sort(function (a, b) { return a - b; });
+		for (var i = 0; i < existingNumbers.length; i++) {
+			if (existingNumbers[i] !== nextNum) {
+				break; // Found a gap
+			}
+			nextNum++;
+		}
+	}
+
+	return prefix + nextNum;
+}
+
 function addKADPoint() {
 	if (isDrawingPoint) {
 		const color = getJSColorHexDrawing();
@@ -17507,7 +17853,7 @@ function addKADPoint() {
 
 		// Create new entity name if needed (like other tools)
 		if (createNewEntity) {
-			entityName = "pointObject" + (allKADDrawingsMap.size + 1);
+			entityName = getUniqueKADEntityName("pointObject");
 			createNewEntity = false; // Set to false after creating new entity
 			setCurrentDrawingEntity(entityName);
 		}
@@ -17595,7 +17941,7 @@ function addKADLine() {
 		const color = getJSColorHexDrawing();
 
 		if (createNewEntity) {
-			entityName = "lineObject" + (allKADDrawingsMap.size + 1); // Changed map
+			entityName = getUniqueKADEntityName("lineObject");
 			createNewEntity = false;
 			setCurrentDrawingEntity(entityName);
 		}
@@ -17681,7 +18027,7 @@ function addKADPoly() {
 		const closed = true; // Default to closed polygon
 
 		if (createNewEntity) {
-			entityName = "polyObject" + (allKADDrawingsMap.size + 1);
+			entityName = getUniqueKADEntityName("polyObject");
 			createNewEntity = false; // Set the flag to false after creating a new entity
 			setCurrentDrawingEntity(entityName);
 		}
@@ -17770,7 +18116,7 @@ function addKADCircle() {
 
 		// Create new entity name if needed (like other tools)
 		if (createNewEntity) {
-			entityName = "circleObject" + (allKADDrawingsMap.size + 1);
+			entityName = getUniqueKADEntityName("circleObject");
 			createNewEntity = false; // Set to false after creating new entity
 			setCurrentDrawingEntity(entityName);
 		}
@@ -17992,7 +18338,7 @@ async function addKADText() {
 		// Create new entity name if needed (like other tools)
 		if (createNewEntity) {
 			console.log("Creating new entity...");
-			entityName = "textObject" + (allKADDrawingsMap.size + 1);
+			entityName = getUniqueKADEntityName("textObject");
 			createNewEntity = false; // Set to false after creating new entity
 			setCurrentDrawingEntity(entityName);
 			console.log("New entityName:", entityName);
@@ -21677,11 +22023,11 @@ function drawData(allBlastHoles, selectedHole) {
 		// Convert canvas (mouse) coordinates to world coordinates
 		const worldX = (mouseX - canvas.width / 2) / currentScale + centroidX;
 		const worldY = -(mouseY - canvas.height / 2) / currentScale + centroidY;
-		
+
 		// Count KAD entities by type from allKADDrawingsMap
 		var kadPointCount = 0, kadLineCount = 0, kadPolyCount = 0, kadCircleCount = 0, kadTextCount = 0;
 		if (typeof allKADDrawingsMap !== "undefined" && allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-			allKADDrawingsMap.forEach(function(kadObj) {
+			allKADDrawingsMap.forEach(function (kadObj) {
 				if (kadObj.entityType === "point") kadPointCount++;
 				else if (kadObj.entityType === "line") kadLineCount++;
 				else if (kadObj.entityType === "poly") kadPolyCount++;
@@ -21689,7 +22035,7 @@ function drawData(allBlastHoles, selectedHole) {
 				else if (kadObj.entityType === "text") kadTextCount++;
 			});
 		}
-		
+
 		// Count unique blast names
 		var blastNames = new Set();
 		if (allBlastHoles && Array.isArray(allBlastHoles)) {
@@ -21699,7 +22045,7 @@ function drawData(allBlastHoles, selectedHole) {
 				}
 			}
 		}
-		
+
 		// Emit to HUD
 		emitStats({
 			blastsCount: blastNames.size,
@@ -21711,7 +22057,7 @@ function drawData(allBlastHoles, selectedHole) {
 			textsCount: kadTextCount,
 			version: buildVersion
 		});
-		
+
 		// Get Z from snapped point or drawing elevation
 		var worldZ = currentMouseWorldZ || drawingZValue || 0;
 		// Check if currently snapped (snapHighlight is set when snapped)
@@ -21876,6 +22222,9 @@ function drawData(allBlastHoles, selectedHole) {
 
 		// Draw surfaces (includes Three.js rendering)
 		drawSurface();
+
+		// Step 2.4a) Update surface legend in 3D mode (must be called after drawSurface)
+		drawSurfaceLegend();
 
 		// Step 2.5) Get display options for 3D rendering
 		const displayOptions3D = getDisplayOptions();
@@ -22099,7 +22448,7 @@ function drawData(allBlastHoles, selectedHole) {
 						cellPropertyName = "powderFactor";
 				}
 				drawVoronoiCellsThreeJS(clippedCells3D, colorFunction3D, allBlastHoles, 0.2, useToeLocation, cellPropertyName);
-				
+
 				// HUD: Show appropriate Voronoi legend in 3D mode
 				switch (selectedMetric3D) {
 					case "powderFactor":
@@ -22642,7 +22991,7 @@ function drawKADCoordinates(kadPoint, screenX, screenY) {
 // Draws Voronoi cells only - legend is now in HUD overlay
 function drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, getColorForMetric, legendLabel, minValue, maxValue, step) {
 	// Legend drawing removed - now using HUD overlay (showVoronoiLegend)
-	
+
 	const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
 	const clippedCells = clipVoronoiCells(voronoiMetrics);
 
@@ -25037,7 +25386,7 @@ window.onload = function () {
 		sidenavLeft.classList.remove("dark-mode");
 		canvas.classList.remove("dark-canvas");
 	}
-	
+
 	// --- HUD Overlay System Initialization ---
 	// Step 1) Initialize the HUD overlay in the canvas container
 	var canvasContainer = document.querySelector(".canvas-container");
@@ -25049,7 +25398,7 @@ window.onload = function () {
 	} else {
 		console.warn("[Kirra] Canvas container not found - HUD not initialized");
 	}
-	
+
 	// ADD WELCOME MESAGES.
 	const messages = ["Welcome to Kirra2D!", "Support the development.", "Buy Brent a coffee\nhttps://buymeacoffee.com/brentbuffham"];
 
@@ -25123,9 +25472,11 @@ window.onload = function () {
 			} else if (isRulerActive) {
 				rulerStartPoint = null;
 				rulerEndPoint = null;
+				hideRulerPanel(); // Step #) Hide CSS ruler panel on ESC reset
 				updateStatusMessage("Ruler tool reset\nClick to set start point");
 			} else if (isRulerProtractorActive) {
 				rulerProtractorPoints = [];
+				hideProtractorPanel(); // Step #) Hide CSS protractor panel on ESC reset
 				updateStatusMessage("Protractor tool reset\nClick to set center point");
 			}
 			selectedKADPolygon = null;
@@ -31483,67 +31834,20 @@ function drawRuler(startX, startY, startZ, endX, endY, endZ) {
 	ctx.lineWidth = 2;
 	ctx.stroke();
 
-	// Prepare text content with correct values
-	const distanceText = "Z1: " + formatTo2Decimals(safeStartZ) + "m, Z2: " + formatTo2Decimals(safeEndZ) + "m"; //formatTo2Decimals(planDistance) + "m";
-	const measurementsText = "Plan: " + formatTo2Decimals(planDistance) + "m, Total: " + formatTo2Decimals(totalDistance) + "m";
-	const deltaDipText = "⍙Z: " + formatTo2Decimals(deltaZ) + "m, Angle: " + formatTo2Decimals(elevationAngle) + "°";
-	const slopeText = "Slope: " + formatTo2Decimals(slopePercent) + "%";
-
-	// Set text properties
-	ctx.font = "12px Arial";
-	ctx.fillStyle = darkModeEnabled ? "#00cccc" : "#004444";
-
-	// Measure text dimensions
-	const distanceTextWidth = ctx.measureText(distanceText).width;
-	const measurementsTextWidth = ctx.measureText(measurementsText).width;
-	const deltaDipTextWidth = ctx.measureText(deltaDipText).width;
-	const slopeTextWidth = ctx.measureText(slopeText).width;
-	const textHeight = 14;
-	const padding = 6;
-
-	// Calculate background rectangle dimensions for 4 lines
-	const bgWidth = Math.max(distanceTextWidth, measurementsTextWidth, deltaDipTextWidth, slopeTextWidth) + padding * 2;
-	const bgHeight = textHeight * 4 + padding * 5; // FOUR lines of text with padding
-
-	// Calculate background position
-	const bgX = canvasEndX + 5;
-	const bgY = canvasEndY - bgHeight - 10;
-
-	// Draw rounded rectangle background
-	ctx.fillStyle = darkModeEnabled ? "rgba(255, 255, 255, 0.1)" : "rgba(0, 0, 0, 0.1)"; // Semi-transparent white
-	ctx.strokeStyle = darkModeEnabled ? "#00cccc" : "#004444";
-	ctx.lineWidth = 1;
-
-	// Create rounded rectangle path
-	const radius = 4;
-	ctx.beginPath();
-	ctx.moveTo(bgX + radius, bgY);
-	ctx.lineTo(bgX + bgWidth - radius, bgY);
-	ctx.quadraticCurveTo(bgX + bgWidth, bgY, bgX + bgWidth, bgY + radius);
-	ctx.lineTo(bgX + bgWidth, bgY + bgHeight - radius);
-	ctx.quadraticCurveTo(bgX + bgWidth, bgY + bgHeight, bgX + bgWidth - radius, bgY + bgHeight);
-	ctx.lineTo(bgX + radius, bgY + bgHeight);
-	ctx.quadraticCurveTo(bgX, bgY + bgHeight, bgX, bgY + bgHeight - radius);
-	ctx.lineTo(bgX, bgY + radius);
-	ctx.quadraticCurveTo(bgX, bgY, bgX + radius, bgY);
-	ctx.closePath();
-
-	// Fill and stroke the background
-	ctx.fill();
-	ctx.stroke();
-
-	// Draw text with proper spacing for 4 lines
-	ctx.fillStyle = darkModeEnabled ? "#00cccc" : "#004444";
-	ctx.font = "12px Arial";
-
-	// Draw distance text (first line)
-	ctx.fillText(distanceText, bgX + padding, bgY + padding + textHeight);
-	// Draw measurements text (second line)
-	ctx.fillText(measurementsText, bgX + padding, bgY + padding + textHeight * 2 + 2);
-	// Draw delta and dip (third line)
-	ctx.fillText(deltaDipText, bgX + padding, bgY + padding + textHeight * 3 + 4);
-	// Draw slope percentage (fourth line)
-	ctx.fillText(slopeText, bgX + padding, bgY + padding + textHeight * 4 + 6);
+	// Step #) Emit ruler measurements to CSS HUD panel (instead of drawing on ctx)
+	// The CSS panel follows the mouse automatically via RulerPanel.js
+	showRulerPanel({
+		z1: safeStartZ,
+		z2: safeEndZ,
+		planDistance: planDistance,
+		totalDistance: totalDistance,
+		deltaZ: deltaZ,
+		elevationAngle: elevationAngle,
+		slopePercent: slopePercent,
+		// Pass canvas position for panel positioning near ruler end
+		mouseX: canvasEndX,
+		mouseY: canvasEndY
+	});
 
 	// Draw meter increments (perpendicular tick marks) - use plan distance for tick spacing
 	if (planDistance > 0) {
@@ -31642,16 +31946,15 @@ function drawProtractor(p1X, p1Y, p2X, p2Y, p3X, p3Y) {
 		ctx.lineTo(canvasP2X, canvasP2Y);
 		ctx.stroke();
 
-		// Text for first line
-		ctx.fillStyle = darkModeEnabled ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)";
-		ctx.font = "12px Arial";
-		const text1 = formatTo2Decimals(d1) + "m " + formatTo1Decimal(bearing1) + "°";
-		const textWidth1 = ctx.measureText(text1).width;
-		ctx.fillRect(canvasP2X + 5, canvasP2Y - 20, textWidth1 + 4, 16);
-		ctx.strokeStyle = darkModeEnabled ? "#00cccc" : "#004444";
-		ctx.strokeRect(canvasP2X + 5, canvasP2Y - 20, textWidth1 + 4, 16);
-		ctx.fillStyle = darkModeEnabled ? "#00cccc" : "#004444";
-		ctx.fillText(text1, canvasP2X + 7, canvasP2Y - 8);
+		// Step #) Show CSS panel with first leg data only (if second leg not yet set)
+		if (d2 === 0 || (p3X === p1X && p3Y === p1Y)) {
+			showProtractorPanel({
+				d1: d1,
+				bearing1: bearing1,
+				mouseX: canvasP2X,
+				mouseY: canvasP2Y
+			});
+		}
 	}
 
 	// Second line (center to p3) - only if p3 is different from p1
@@ -31663,26 +31966,17 @@ function drawProtractor(p1X, p1Y, p2X, p2Y, p3X, p3Y) {
 		ctx.lineTo(canvasP3X, canvasP3Y);
 		ctx.stroke();
 
-		// Text for second line
-		ctx.fillStyle = darkModeEnabled ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)";
-		ctx.font = "12px Arial";
-		const text2 = formatTo2Decimals(d2) + "m " + formatTo1Decimal(bearing2) + "°";
-		const textWidth2 = ctx.measureText(text2).width;
-		ctx.fillRect(canvasP3X + 5, canvasP3Y - 20, textWidth2 + 4, 16);
-		ctx.strokeStyle = darkModeEnabled ? "#00cccc" : "#004444";
-		ctx.strokeRect(canvasP3X + 5, canvasP3Y - 20, textWidth2 + 4, 16);
-		ctx.fillStyle = darkModeEnabled ? "#00cccc" : "#004444";
-		ctx.fillText(text2, canvasP3X + 7, canvasP3Y - 8);
-
-		// Angle text at center point (only when we have both lines)
-		const text3 = formatTo1Decimal(angle) + "° / " + formatTo1Decimal(360 - angle) + "°";
-		const textWidth3 = ctx.measureText(text3).width;
-		ctx.fillStyle = darkModeEnabled ? "rgba(255, 255, 255, 0.2)" : "rgba(0, 0, 0, 0.2)";
-		ctx.fillRect(canvasP1X + 5, canvasP1Y - 40, textWidth3 + 4, 16);
-		ctx.strokeStyle = darkModeEnabled ? "#00cccc" : "#004444";
-		ctx.strokeRect(canvasP1X + 5, canvasP1Y - 40, textWidth3 + 4, 16);
-		ctx.fillStyle = darkModeEnabled ? "#00cccc" : "#004444";
-		ctx.fillText(text3, canvasP1X + 7, canvasP1Y - 28);
+		// Step #) Emit protractor measurements to CSS HUD panel
+		showProtractorPanel({
+			d1: d1,
+			d2: d2,
+			bearing1: bearing1,
+			bearing2: bearing2,
+			innerAngle: angle,
+			outerAngle: 360 - angle,
+			mouseX: canvasP1X,
+			mouseY: canvasP1Y
+		});
 
 		// Draw arc between the lines
 		const arcRadius = (Math.min(d1, d2) / 3) * currentScale;
@@ -31739,6 +32033,7 @@ rulerTool.addEventListener("change", function () {
 		isRulerActive = false;
 		rulerStartPoint = null;
 		rulerEndPoint = null;
+		hideRulerPanel(); // Step #) Hide CSS ruler panel when toggled off
 		canvas.removeEventListener("click", handleRulerClick);
 		drawData(allBlastHoles, selectedHole);
 		updateStatusMessage("");
@@ -31760,6 +32055,7 @@ rulerProtractorTool.addEventListener("change", function () {
 	} else {
 		isRulerProtractorActive = false;
 		rulerProtractorPoints = [];
+		hideProtractorPanel(); // Step #) Hide CSS protractor panel when toggled off
 		canvas.removeEventListener("click", handleRulerProtractorClick);
 		drawData(allBlastHoles, selectedHole);
 		updateStatusMessage("");
@@ -35033,119 +35329,47 @@ function drawSurface() {
 		}
 	});
 }
-// FIXED: Enhanced drawSurfaceLegend function to use surface-specific gradients
+// Step #) Surface legend - now uses CSS panel stacked with other legends
 function drawSurfaceLegend() {
 	// Check if any surfaces are visible and have legend enabled
-	if (!showSurfaceLegend || loadedSurfaces.size === 0) return;
+	if (!showSurfaceLegend || loadedSurfaces.size === 0) {
+		hideSurfaceElevationLegend();
+		return;
+	}
 
 	// Get all visible surfaces
-	const visibleSurfaces = Array.from(loadedSurfaces.values()).filter((surface) => surface.visible && surface.points && surface.points.length > 0);
-
-	if (visibleSurfaces.length === 0) return;
-
-	// Group surfaces by gradient type
-	const surfacesByGradient = {};
-	visibleSurfaces.forEach((surface) => {
-		const gradient = surface.gradient || "default";
-		if (!surfacesByGradient[gradient]) {
-			surfacesByGradient[gradient] = [];
-		}
-		surfacesByGradient[gradient].push(surface);
+	var visibleSurfaces = Array.from(loadedSurfaces.values()).filter(function (surface) {
+		return surface.visible && surface.points && surface.points.length > 0;
 	});
 
-	// Legend dimensions and base position
-	const legendWidth = 20;
-	const legendHeight = 200;
-	const legendSpacing = 140; // Space between multiple legends
-	let legendIndex = 0;
+	if (visibleSurfaces.length === 0) {
+		hideSurfaceElevationLegend();
+		return;
+	}
 
-	// Draw a legend for each unique gradient
-	Object.entries(surfacesByGradient).forEach(([gradientType, surfaces]) => {
-		// Calculate combined elevation range for all surfaces using this gradient
-		let minZ = Infinity;
-		let maxZ = -Infinity;
+	// Calculate combined elevation range for all visible surfaces
+	var minZ = Infinity;
+	var maxZ = -Infinity;
+	var gradientType = "viridis";
 
-		surfaces.forEach((surface) => {
-			surface.points.forEach((point) => {
-				if (point.z < minZ) minZ = point.z;
-				if (point.z > maxZ) maxZ = point.z;
-			});
+	visibleSurfaces.forEach(function (surface) {
+		if (surface.gradient) {
+			gradientType = surface.gradient;
+		}
+		surface.points.forEach(function (point) {
+			if (point.z < minZ) minZ = point.z;
+			if (point.z > maxZ) maxZ = point.z;
 		});
-
-		if (maxZ - minZ < 0.001) return; // Skip legend for flat surfaces
-
-		// Position this legend
-		const legendX = canvas.width - legendWidth - 60 - legendIndex * legendSpacing;
-		const legendY = 50;
-		const steps = 50;
-
-		// Draw color gradient using the specific gradient type
-		for (let i = 0; i < steps; i++) {
-			const ratio = i / (steps - 1);
-			const y = legendY + legendHeight - (i * legendHeight) / steps;
-			const height = legendHeight / steps + 1;
-
-			// FIXED: Pass the gradient parameter
-			ctx.fillStyle = elevationToColor(minZ + ratio * (maxZ - minZ), minZ, maxZ, gradientType);
-			ctx.fillRect(legendX, y, legendWidth, height);
-		}
-
-		// Draw elevation labels
-		ctx.fillStyle = strokeColor;
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.textAlign = "left";
-
-		const labelCount = 5;
-		for (let i = 0; i < labelCount; i++) {
-			const ratio = i / (labelCount - 1);
-			const elevation = minZ + ratio * (maxZ - minZ);
-			const y = legendY + legendHeight - ratio * legendHeight;
-
-			// Draw tick mark
-			ctx.beginPath();
-			ctx.moveTo(legendX + legendWidth, y);
-			ctx.lineTo(legendX + legendWidth + 5, y);
-			ctx.stroke();
-
-			// Draw elevation text
-			ctx.fillText(parseFloat(elevation).toFixed(2) + "m", legendX + legendWidth + 8, y + 4);
-		}
-
-		// Draw title
-		ctx.font = "14px Arial";
-		ctx.textAlign = "center";
-		ctx.fillText("Elevation", legendX + legendWidth / 2, legendY - 20);
-
-		// Draw gradient name and surface info
-		ctx.font = "10px Arial";
-		const gradientNames = {
-			default: "Default",
-			viridis: "Viridis",
-			turbo: "Turbo",
-			parula: "Parula",
-			cividis: "Cividis",
-			terrain: "Terrain",
-		};
-
-		// FIXED: Use the surface's gradient instead of global currentGradient
-		const gradientName = gradientNames[gradientType] || "Default";
-		ctx.fillText(gradientName, legendX + legendWidth / 2, legendY + legendHeight + 20);
-
-		// If multiple surfaces, show which surfaces use this gradient
-		if (Object.keys(surfacesByGradient).length > 1) {
-			ctx.font = "9px Arial";
-			const surfaceNames = surfaces.map((s) => s.name || s.id).join(", ");
-			const maxNameLength = 20;
-			const displayName = surfaceNames.length > maxNameLength ? surfaceNames.substring(0, maxNameLength) + "..." : surfaceNames;
-			ctx.fillText(displayName, legendX + legendWidth / 2, legendY + legendHeight + 35);
-		}
-
-		legendIndex++;
 	});
 
-	// Reset text alignment
-	ctx.textAlign = "left";
+	if (maxZ - minZ < 0.001) {
+		hideSurfaceElevationLegend();
+		return; // Skip legend for flat surfaces
+	}
+
+	// Show CSS-based surface legend (stacked with Slope/Relief/Voronoi)
+	var surfaceName = visibleSurfaces.length === 1 ? (visibleSurfaces[0].name || "Surface") : "Surfaces (" + visibleSurfaces.length + ")";
+	showSurfaceElevationLegend(surfaceName, minZ, maxZ, gradientType);
 }
 // Color gradient functions
 function getViridisColor(ratio) {
@@ -35352,7 +35576,7 @@ function elevationToColor(z, minZ, maxZ, gradient = "default") {
 
 // Step 1) Enhanced drawTriangleWithGradient function with unified gradient methods and hillshade controls
 
-let gradientMethod = "default";
+let gradientMethod = "radial"; // Step #) Changed to radial for better 2D surface visualization
 let lightBearing = 135;
 let lightElevation = 15;
 

@@ -10,6 +10,10 @@ import { initStatusPanel } from "./panels/StatusPanel.js";
 import { initStatsPanel } from "./panels/StatsPanel.js";
 import { initLegendPanel } from "./panels/LegendPanel.js";
 import { initSurfaceLegendPanel } from "./panels/SurfaceLegendPanel.js";
+import { initRulerPanel } from "./panels/RulerPanel.js";
+import { initProtractorPanel } from "./panels/ProtractorPanel.js";
+import { initDrawingDistancePanel } from "./panels/DrawingDistancePanel.js";
+import { initTooltipPanel } from "./panels/TooltipPanel.js";
 
 // Step 1) Module state
 var hudContainer = null;
@@ -77,6 +81,10 @@ export function initHUD(parentContainer, options) {
     initStatsPanel(document.getElementById("hud-stats"));
     initLegendPanel(document.getElementById("hud-legend"));
     initSurfaceLegendPanel(document.getElementById("hud-surface-legend"));
+    initRulerPanel(hudContainer); // Floating panel, appended to HUD container
+    initProtractorPanel(hudContainer); // Floating protractor panel
+    initDrawingDistancePanel(hudContainer); // Floating drawing distance panel
+    initTooltipPanel(hudContainer); // Floating tooltip panel
     
     // Step 3c) Subscribe to clear event
     OverlayEventBus.on(OverlayEvents.CLEAR, function() {

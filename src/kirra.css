@@ -3465,10 +3465,10 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
     font-size: 7pt;
 }
 
-/* Step 6) Surface legend panel - right side */
+/* Step 6) Surface legend panel - left side below other legends */
 .hud-surface-legend {
-    top: 100px;
-    right: 10px;
+    top: 250px;
+    left: 8px;
     background: rgba(0, 0, 0, 0.7);
     padding: 8px 12px;
     border-radius: 6px;
@@ -3507,6 +3507,241 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
     height: 16px;
     border: 1px solid rgba(255, 255, 255, 0.5);
     border-radius: 2px;
+}
+
+/* Step 6b) Ruler measurement floating panel */
+.hud-ruler-panel {
+    position: fixed;
+    display: none;
+    background: rgba(0, 60, 60, 0.95);
+    border: 2px solid #00cccc;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    color: #00cccc;
+    z-index: 1000;
+    min-width: 180px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+.ruler-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    gap: 12px;
+}
+
+.ruler-row:last-child {
+    margin-bottom: 0;
+}
+
+.ruler-label {
+    color: #66dddd;
+    font-weight: normal;
+}
+
+.ruler-value {
+    color: #ffffff;
+    font-weight: bold;
+}
+
+/* Step 6c) Protractor measurement floating panel */
+.hud-protractor-panel {
+    position: fixed;
+    display: none;
+    background: rgba(60, 0, 60, 0.95);
+    border: 2px solid #cc00cc;
+    border-radius: 6px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    color: #cc00cc;
+    z-index: 1000;
+    min-width: 160px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+}
+
+.protractor-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+    gap: 12px;
+}
+
+.protractor-row:last-child {
+    margin-bottom: 0;
+}
+
+.protractor-label {
+    color: #dd66dd;
+    font-weight: normal;
+}
+
+.protractor-value {
+    color: #ffffff;
+    font-weight: bold;
+}
+
+/* Light mode for measurement panels */
+body:not(.dark-mode) .hud-ruler-panel {
+    background: rgba(220, 255, 255, 0.95);
+    border-color: #006666;
+    color: #004444;
+}
+
+body:not(.dark-mode) .ruler-label {
+    color: #006666;
+}
+
+body:not(.dark-mode) .ruler-value {
+    color: #003333;
+}
+
+body:not(.dark-mode) .hud-protractor-panel {
+    background: rgba(255, 220, 255, 0.95);
+    border-color: #660066;
+    color: #440044;
+}
+
+body:not(.dark-mode) .protractor-label {
+    color: #660066;
+}
+
+body:not(.dark-mode) .protractor-value {
+    color: #330033;
+}
+
+/* Step 6d) Tooltip floating panel */
+.hud-tooltip-panel {
+    position: fixed;
+    display: none;
+    background: rgba(30, 30, 40, 0.95);
+    border: 1px solid rgba(100, 100, 120, 0.8);
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    color: #e0e0e0;
+    z-index: 1000;
+    min-width: 140px;
+    max-width: 250px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    pointer-events: none;
+}
+
+.tooltip-header {
+    font-weight: bold;
+    font-size: 12px;
+    color: #00ccff;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid rgba(100, 100, 120, 0.5);
+}
+
+.tooltip-section {
+    margin-bottom: 6px;
+}
+
+.tooltip-section:last-child {
+    margin-bottom: 0;
+}
+
+.tooltip-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    margin-bottom: 2px;
+}
+
+.tooltip-row:last-child {
+    margin-bottom: 0;
+}
+
+.tooltip-label {
+    color: #8888aa;
+    flex-shrink: 0;
+}
+
+.tooltip-value {
+    color: #ffffff;
+    font-weight: 500;
+    text-align: right;
+}
+
+/* Light mode tooltip */
+body:not(.dark-mode) .hud-tooltip-panel {
+    background: rgba(255, 255, 255, 0.95);
+    border-color: rgba(100, 100, 120, 0.3);
+    color: #333333;
+}
+
+body:not(.dark-mode) .tooltip-header {
+    color: #0066aa;
+    border-bottom-color: rgba(100, 100, 120, 0.3);
+}
+
+body:not(.dark-mode) .tooltip-label {
+    color: #666666;
+}
+
+body:not(.dark-mode) .tooltip-value {
+    color: #000000;
+}
+
+/* Step 6e) Drawing distance floating panel - single color scheme */
+.hud-drawing-distance-panel {
+    position: fixed;
+    display: none;
+    background: rgba(40, 60, 40, 0.95);
+    border: 2px solid #00cc66;
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    color: #00cc66;
+    z-index: 1000;
+    min-width: 90px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+    pointer-events: none;
+    line-height: 1.2;
+}
+
+.drawing-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 1px;
+    gap: 8px;
+}
+
+.drawing-row:last-child {
+    margin-bottom: 0;
+}
+
+.drawing-label {
+    color: #66dd99;
+    font-weight: normal;
+}
+
+.drawing-value {
+    color: #ffffff;
+    font-weight: bold;
+}
+
+body:not(.dark-mode) .hud-drawing-distance-panel {
+    background: rgba(220, 255, 220, 0.95);
+    border-color: #006633;
+    color: #004422;
+}
+
+body:not(.dark-mode) .drawing-label {
+    color: #006633;
+}
+
+body:not(.dark-mode) .drawing-value {
+    color: #003311;
 }
 
 /* Step 7) Light mode overrides */

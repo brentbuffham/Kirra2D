@@ -40,17 +40,47 @@ export {
     showSlopeLegend,
     showReliefLegend,
     showVoronoiLegend,
+    showSurfaceLegend,
     hideSlopeLegend,
     hideReliefLegend,
     hideVoronoiLegend,
+    hideSurfaceLegend,
     hideLegend,
     LegendTypes
 } from "./panels/LegendPanel.js";
 
-// Step 5) Surface legend panel exports
+// Step 5) Surface legend panel - additional exports (main show/hide from LegendPanel)
 export {
-    showSurfaceLegend,
-    hideSurfaceLegend,
     updateSurface,
     removeSurface
 } from "./panels/SurfaceLegendPanel.js";
+
+// Step 6) Ruler panel exports
+export {
+    showRulerPanel,
+    hideRulerPanel,
+    emitRulerMeasurement
+} from "./panels/RulerPanel.js";
+
+// Step 6b) Protractor panel exports
+export {
+    showProtractorPanel,
+    hideProtractorPanel,
+    emitProtractorMeasurement
+} from "./panels/ProtractorPanel.js";
+
+// Step 6c) Drawing distance panel exports
+export {
+    showDrawingDistance,
+    hideDrawingDistance,
+    emitDrawingDistance
+} from "./panels/DrawingDistancePanel.js";
+
+// Step 7) Tooltip panel exports
+export {
+    showHoleTooltip,
+    showPointTooltip,
+    showCustomTooltip,
+    hideTooltipPanel,
+    emitTooltip
+} from "./panels/TooltipPanel.js";

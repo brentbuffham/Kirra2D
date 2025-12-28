@@ -108,7 +108,8 @@ export function highlightSelectedKADThreeJS() {
             const point = entityToUse.data.find(function (p) { return p.pointID === selectedPoint.pointID; });
             if (point) {
                 const localPos = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
-                const worldZ = (point.pointZLocation || 0) - dataCentroidZ;
+                // Step #) Use Z directly WITHOUT subtracting dataCentroidZ - must match entity vertex Z
+                const worldZ = point.pointZLocation || dataCentroidZ || 0;
 
                 // Use factory method for consistency (matches line 260 - selected segment vertex)
                 const sphere = GeometryFactory.createKADPointHighlight(
@@ -130,7 +131,8 @@ export function highlightSelectedKADThreeJS() {
         selectedMultiplePoints.forEach(function (point) {
             if (point && point.pointXLocation !== undefined && point.pointYLocation !== undefined) {
                 const localPos = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
-                const worldZ = (point.pointZLocation || 0) - dataCentroidZ;
+                // Step #) Use Z directly WITHOUT subtracting dataCentroidZ - must match entity vertex Z
+                const worldZ = point.pointZLocation || dataCentroidZ || 0;
 
                 // Use factory method for consistency
                 const sphere = GeometryFactory.createKADPointHighlight(

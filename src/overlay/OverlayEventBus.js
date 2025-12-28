@@ -79,12 +79,18 @@ export var OverlayEventBus = {
 export var OverlayEvents = {
     // Status/Selection/Tooltips
     STATUS: "overlay:status",
+    TOOLTIP: "overlay:tooltip",
     
     // Stats panel events
     STATS: "overlay:stats",
     COORDINATES: "overlay:coordinates",
     RULER: "overlay:ruler",
     PROTRACTOR: "overlay:protractor",
+    
+    // Floating measurement panels
+    RULER_MEASUREMENT: "overlay:rulerMeasurement",
+    PROTRACTOR_MEASUREMENT: "overlay:protractorMeasurement",
+    DRAWING_DISTANCE: "overlay:drawingDistance",
     
     // Legend events
     LEGEND: "overlay:legend",

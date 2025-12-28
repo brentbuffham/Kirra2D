@@ -1154,6 +1154,216 @@ export function clearKADLeadingLineThreeJS() {
 	});
 }
 
+//=================================================
+// Ruler and Protractor 3D Drawing Functions
+//=================================================
+
+// Step 19.8) Draw ruler leading line in Three.js
+export function drawRulerThreeJS(startWorldX, startWorldY, startWorldZ, endWorldX, endWorldY, endWorldZ) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (startWorldX === undefined || startWorldY === undefined) return;
+	if (endWorldX === undefined || endWorldY === undefined) return;
+
+	// Step 19.8a) Convert world coordinates to local Three.js coordinates
+	const startLocal = window.worldToThreeLocal(startWorldX, startWorldY);
+	const endLocal = window.worldToThreeLocal(endWorldX, endWorldY);
+	const startZ = startWorldZ || 0;
+	const endZ = endWorldZ || 0;
+
+	// Step 19.8b) Remove existing ruler line if present
+	const connectorsGroup = window.threeRenderer.connectorsGroup;
+	const toRemove = [];
+	connectorsGroup.children.forEach(function (child) {
+		if (child.userData && child.userData.type === "rulerLine") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(function (obj) {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) obj.material.dispose();
+	});
+
+	// Step 19.8c) Create solid cyan line from start to end
+	const lineColor = window.darkModeEnabled ? 0x00cccc : 0x004444;
+	const points = [new THREE.Vector3(startLocal.x, startLocal.y, startZ), new THREE.Vector3(endLocal.x, endLocal.y, endZ)];
+
+	const geometry = new THREE.BufferGeometry().setFromPoints(points);
+	const material = new THREE.LineBasicMaterial({
+		color: lineColor,
+		linewidth: 2,
+	});
+
+	const line = new THREE.Line(geometry, material);
+
+	// Step 19.8d) Add tick marks at both ends
+	const tickSize = 0.5;
+	const dx = endLocal.x - startLocal.x;
+	const dy = endLocal.y - startLocal.y;
+	const len = Math.sqrt(dx * dx + dy * dy);
+	if (len > 0) {
+		const perpX = -dy / len * tickSize;
+		const perpY = dx / len * tickSize;
+
+		// Start tick
+		const startTick = new THREE.BufferGeometry().setFromPoints([
+			new THREE.Vector3(startLocal.x - perpX, startLocal.y - perpY, startZ),
+			new THREE.Vector3(startLocal.x + perpX, startLocal.y + perpY, startZ)
+		]);
+		const startTickLine = new THREE.Line(startTick, material.clone());
+		startTickLine.userData = { type: "rulerLine" };
+		connectorsGroup.add(startTickLine);
+
+		// End tick
+		const endTick = new THREE.BufferGeometry().setFromPoints([
+			new THREE.Vector3(endLocal.x - perpX, endLocal.y - perpY, endZ),
+			new THREE.Vector3(endLocal.x + perpX, endLocal.y + perpY, endZ)
+		]);
+		const endTickLine = new THREE.Line(endTick, material.clone());
+		endTickLine.userData = { type: "rulerLine" };
+		connectorsGroup.add(endTickLine);
+	}
+
+	// Step 19.8e) Add metadata
+	line.userData = {
+		type: "rulerLine",
+	};
+
+	connectorsGroup.add(line);
+}
+
+// Step 19.9) Clear ruler line in Three.js
+export function clearRulerThreeJS() {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	const connectorsGroup = window.threeRenderer.connectorsGroup;
+	const toRemove = [];
+	connectorsGroup.children.forEach(function (child) {
+		if (child.userData && child.userData.type === "rulerLine") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(function (obj) {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) obj.material.dispose();
+	});
+}
+
+// Step 19.10) Draw protractor (two lines + arc) in Three.js
+export function drawProtractorThreeJS(centerWorldX, centerWorldY, centerWorldZ, p2WorldX, p2WorldY, p2WorldZ, p3WorldX, p3WorldY, p3WorldZ) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (centerWorldX === undefined || centerWorldY === undefined) return;
+
+	// Step 19.10a) Convert world coordinates to local Three.js coordinates
+	const centerLocal = window.worldToThreeLocal(centerWorldX, centerWorldY);
+	const centerZ = centerWorldZ || 0;
+
+	// Step 19.10b) Remove existing protractor lines if present
+	const connectorsGroup = window.threeRenderer.connectorsGroup;
+	const toRemove = [];
+	connectorsGroup.children.forEach(function (child) {
+		if (child.userData && child.userData.type === "protractorLine") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(function (obj) {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) obj.material.dispose();
+	});
+
+	const lineColor = window.darkModeEnabled ? 0x00cccc : 0x004444;
+	const arcColor = 0xff0000; // Red for arc
+
+	// Step 19.10c) Draw first line (center to p2) if p2 is defined
+	if (p2WorldX !== undefined && p2WorldY !== undefined) {
+		const p2Local = window.worldToThreeLocal(p2WorldX, p2WorldY);
+		const p2Z = p2WorldZ || 0;
+
+		const points1 = [new THREE.Vector3(centerLocal.x, centerLocal.y, centerZ), new THREE.Vector3(p2Local.x, p2Local.y, p2Z)];
+		const geometry1 = new THREE.BufferGeometry().setFromPoints(points1);
+		const material1 = new THREE.LineBasicMaterial({ color: lineColor, linewidth: 2 });
+		const line1 = new THREE.Line(geometry1, material1);
+		line1.userData = { type: "protractorLine" };
+		connectorsGroup.add(line1);
+	}
+
+	// Step 19.10d) Draw second line (center to p3) if p3 is defined and different from center
+	if (p3WorldX !== undefined && p3WorldY !== undefined && !(p3WorldX === centerWorldX && p3WorldY === centerWorldY)) {
+		const p2Local = window.worldToThreeLocal(p2WorldX, p2WorldY);
+		const p3Local = window.worldToThreeLocal(p3WorldX, p3WorldY);
+		const p2Z = p2WorldZ || 0;
+		const p3Z = p3WorldZ || 0;
+
+		const points2 = [new THREE.Vector3(centerLocal.x, centerLocal.y, centerZ), new THREE.Vector3(p3Local.x, p3Local.y, p3Z)];
+		const geometry2 = new THREE.BufferGeometry().setFromPoints(points2);
+		const material2 = new THREE.LineBasicMaterial({ color: lineColor, linewidth: 2 });
+		const line2 = new THREE.Line(geometry2, material2);
+		line2.userData = { type: "protractorLine" };
+		connectorsGroup.add(line2);
+
+		// Step 19.10e) Draw arc between the two lines
+		const d1 = Math.sqrt(Math.pow(p2Local.x - centerLocal.x, 2) + Math.pow(p2Local.y - centerLocal.y, 2));
+		const d2 = Math.sqrt(Math.pow(p3Local.x - centerLocal.x, 2) + Math.pow(p3Local.y - centerLocal.y, 2));
+		const arcRadius = Math.min(d1, d2) / 3;
+
+		if (arcRadius > 0.1) {
+			// Calculate angles
+			const angle1 = Math.atan2(p2Local.y - centerLocal.y, p2Local.x - centerLocal.x);
+			const angle2 = Math.atan2(p3Local.y - centerLocal.y, p3Local.x - centerLocal.x);
+
+			// Generate arc points
+			var arcPoints = [];
+			var startAngle = angle1;
+			var endAngle = angle2;
+			var angleDiff = endAngle - startAngle;
+			
+			// Normalize to [-PI, PI]
+			while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+			while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+			// Draw smaller arc
+			var numSegments = 32;
+			for (var i = 0; i <= numSegments; i++) {
+				var t = i / numSegments;
+				var angle = startAngle + t * angleDiff;
+				arcPoints.push(new THREE.Vector3(
+					centerLocal.x + arcRadius * Math.cos(angle),
+					centerLocal.y + arcRadius * Math.sin(angle),
+					centerZ
+				));
+			}
+
+			if (arcPoints.length > 1) {
+				const arcGeometry = new THREE.BufferGeometry().setFromPoints(arcPoints);
+				const arcMaterial = new THREE.LineBasicMaterial({ color: arcColor, linewidth: 2 });
+				const arcLine = new THREE.Line(arcGeometry, arcMaterial);
+				arcLine.userData = { type: "protractorLine" };
+				connectorsGroup.add(arcLine);
+			}
+		}
+	}
+}
+
+// Step 19.11) Clear protractor lines in Three.js
+export function clearProtractorThreeJS() {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	const connectorsGroup = window.threeRenderer.connectorsGroup;
+	const toRemove = [];
+	connectorsGroup.children.forEach(function (child) {
+		if (child.userData && child.userData.type === "protractorLine") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(function (obj) {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) obj.material.dispose();
+	});
+}
+
 // Step 20) Draw slope map in Three.js
 export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;

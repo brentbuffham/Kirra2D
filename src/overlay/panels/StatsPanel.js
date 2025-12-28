@@ -33,6 +33,34 @@ function formatNum(value, decimals) {
     return value.toFixed(decimals || 3);
 }
 
+// Step 2b) Calculate map scale ratio from zoom value
+// currentScale = pixels per world unit (meter)
+// At 96 DPI: 1 meter on screen = 3779.52 pixels (39.37 inches/m × 96 pixels/inch)
+// Scale ratio = 3779.52 / currentScale (at 96 DPI)
+function calculateScaleRatio(zoomValue) {
+    if (!zoomValue || zoomValue <= 0) return "---";
+    
+    // Step 2b.1) Calculate raw scale ratio at 96 DPI
+    var PIXELS_PER_METER_96DPI = 3779.52; // 39.37 inches/meter × 96 pixels/inch
+    var scaleRatio = PIXELS_PER_METER_96DPI / zoomValue;
+    
+    // Step 2b.2) Format the ratio nicely (round to clean numbers)
+    if (scaleRatio < 1) {
+        // Very zoomed in (bigger than real life on screen)
+        return "1:" + (1 / scaleRatio).toFixed(0);
+    } else if (scaleRatio < 10) {
+        return "1:" + scaleRatio.toFixed(1);
+    } else if (scaleRatio < 100) {
+        return "1:" + Math.round(scaleRatio);
+    } else if (scaleRatio < 1000) {
+        return "1:" + (Math.round(scaleRatio / 10) * 10);
+    } else if (scaleRatio < 10000) {
+        return "1:" + (Math.round(scaleRatio / 100) * 100);
+    } else {
+        return "1:" + (Math.round(scaleRatio / 1000) * 1000);
+    }
+}
+
 // Step 3) Build stats HTML
 function buildStatsHTML() {
     var lines = [];
@@ -43,10 +71,9 @@ function buildStatsHTML() {
     // Line 2: KAD entity counts
     lines.push("Point[" + currentData.pointsCount + "] Line[" + currentData.linesCount + "] Poly[" + currentData.polysCount + "] Circle[" + currentData.circlesCount + "] Text[" + currentData.textsCount + "]");
     
-    // Line 3: Mouse 2D + Scale
-    // TODO: Scale calculation needs proper implementation - see continuation plan
-    // Currently showing raw zoom value until proper scale ratio is calculated
-    lines.push("Mouse 2D [X: " + formatNum(currentData.mouse2D.x, 3) + ", Y: " + formatNum(currentData.mouse2D.y, 3) + "] Zoom[" + formatNum(currentData.scale, 2) + "]");
+    // Line 3: Mouse 2D + Scale (calculated from zoom as map ratio)
+    var scaleDisplay = calculateScaleRatio(currentData.scale);
+    lines.push("Mouse 2D [X: " + formatNum(currentData.mouse2D.x, 3) + ", Y: " + formatNum(currentData.mouse2D.y, 3) + "] Scale[" + scaleDisplay + "]");
     
     // Line 4: World 3D (with snap indicator)
     var world3DLabel = currentData.snapped ? "Snapped 3D" : "World 3D";

@@ -12,14 +12,16 @@ var panelElement = null;
 var activeLegends = {
     slope: null,
     relief: null,
-    voronoi: null
+    voronoi: null,
+    surface: null
 };
 
 // Step 2) Legend type definitions
 var LegendTypes = {
     SLOPE: "slope",
     RELIEF: "relief",
-    VORONOI: "voronoi"
+    VORONOI: "voronoi",
+    SURFACE: "surface"
 };
 
 // Step 3) Default slope legend colors (match existing drawLegend)
@@ -113,6 +115,42 @@ function buildGradientLegendHTML(title, minVal, maxVal, colorStops) {
     return html;
 }
 
+// Step 4d) Surface gradient presets
+var surfaceGradients = {
+    "default": "#440154 0%, #414487 15%, #2a788e 30%, #22a884 50%, #7ad151 70%, #fde725 100%",
+    "viridis": "#440154 0%, #414487 15%, #2a788e 30%, #22a884 50%, #7ad151 70%, #fde725 100%",
+    "turbo": "#23171b 0%, #4a0c6b 10%, #900c3e 20%, #c92d34 30%, #ed6925 40%, #fbb61a 50%, #cae11f 60%, #7ae147 70%, #29e5bb 80%, #18d6cb 90%, #34618d 100%",
+    "parula": "#352a87 0%, #0f5cdd 25%, #1481d6 40%, #06a4ca 50%, #2eb7a4 60%, #87bf77 70%, #d1bb59 80%, #f9fb0e 100%",
+    "cividis": "#00204d 0%, #414d6b 25%, #7c7b78 50%, #bcaf6f 75%, #ffea46 100%",
+    "terrain": "#333399 0%, #006699 20%, #33cc66 40%, #99cc33 50%, #cc9933 60%, #996633 75%, #cccccc 90%, #ffffff 100%"
+};
+
+// Step 4e) Build surface elevation gradient legend HTML
+function buildSurfaceLegendHTML(surfaceName, minZ, maxZ, gradientType) {
+    var html = "<div class='hud-legend-section hud-legend-surface'>";
+    html += "<div class='hud-legend-title'>Elevation</div>";
+    html += "<div class='hud-legend-gradient-container'>";
+    
+    // Use surface-specific gradient
+    var gradientName = gradientType || "viridis";
+    var gradientCSS = surfaceGradients[gradientName] || surfaceGradients["viridis"];
+    
+    html += "<div class='hud-legend-gradient' style='background: linear-gradient(to top, " + gradientCSS + ");'></div>";
+    html += "<div class='hud-legend-gradient-labels'>";
+    html += "<span class='hud-legend-label'>" + (maxZ !== undefined ? maxZ.toFixed(1) + "m" : "---") + "</span>";
+    html += "<span class='hud-legend-label'>" + (minZ !== undefined ? minZ.toFixed(1) + "m" : "---") + "</span>";
+    html += "</div>";
+    html += "</div>";
+    
+    // Show gradient name and surface name
+    html += "<div class='hud-legend-item' style='font-size: 7pt; opacity: 0.7; margin-top: 2px;'>";
+    html += "<span>" + (gradientName.charAt(0).toUpperCase() + gradientName.slice(1)) + "</span>";
+    html += "</div>";
+    
+    html += "</div>";
+    return html;
+}
+
 // Step 5) Update legend display
 function updateDisplay() {
     if (!panelElement) return;
@@ -146,6 +184,18 @@ function updateDisplay() {
         hasAnyLegend = true;
     }
     
+    // Surface elevation legend
+    if (activeLegends.surface) {
+        var surfaceData = activeLegends.surface;
+        html += buildSurfaceLegendHTML(
+            surfaceData.name,
+            surfaceData.minZ,
+            surfaceData.maxZ,
+            surfaceData.gradient
+        );
+        hasAnyLegend = true;
+    }
+    
     if (hasAnyLegend) {
         panelElement.innerHTML = html;
         panelElement.style.display = "block";
@@ -162,6 +212,7 @@ function handleLegendUpdate(data) {
         activeLegends.slope = null;
         activeLegends.relief = null;
         activeLegends.voronoi = null;
+        activeLegends.surface = null;
         updateDisplay();
         return;
     }
@@ -173,6 +224,7 @@ function handleLegendUpdate(data) {
         if (type === LegendTypes.SLOPE) activeLegends.slope = null;
         else if (type === LegendTypes.RELIEF) activeLegends.relief = null;
         else if (type === LegendTypes.VORONOI) activeLegends.voronoi = null;
+        else if (type === LegendTypes.SURFACE) activeLegends.surface = null;
     } else {
         // Show specific legend
         if (type === LegendTypes.SLOPE) {
@@ -185,6 +237,13 @@ function handleLegendUpdate(data) {
                 minVal: data.minVal,
                 maxVal: data.maxVal,
                 colorStops: data.colorStops
+            };
+        } else if (type === LegendTypes.SURFACE) {
+            activeLegends.surface = {
+                name: data.name || "Surface",
+                minZ: data.minZ,
+                maxZ: data.maxZ,
+                gradient: data.gradient || "viridis"
             };
         }
     }
@@ -254,6 +313,21 @@ export function hideReliefLegend() {
 
 export function hideVoronoiLegend() {
     OverlayEventBus.emit(OverlayEvents.LEGEND, { visible: false, type: LegendTypes.VORONOI });
+}
+
+export function showSurfaceLegend(name, minZ, maxZ, gradient) {
+    OverlayEventBus.emit(OverlayEvents.LEGEND, {
+        visible: true,
+        type: LegendTypes.SURFACE,
+        name: name,
+        minZ: minZ,
+        maxZ: maxZ,
+        gradient: gradient
+    });
+}
+
+export function hideSurfaceLegend() {
+    OverlayEventBus.emit(OverlayEvents.LEGEND, { visible: false, type: LegendTypes.SURFACE });
 }
 
 export function hideLegend() {
