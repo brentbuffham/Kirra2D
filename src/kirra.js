@@ -23912,6 +23912,7 @@ async function saveSurfaceToDB(surfaceId) {
 				visible: surface.visible !== undefined ? surface.visible : true,
 				gradient: surface.gradient || "default",
 				transparency: surface.transparency || 1.0,
+				hillshadeColor: surface.hillshadeColor || null, // Step 0a) Save hillshade color for 2D/3D rendering
 				created: surface.created || new Date().toISOString(),
 				metadata: surface.metadata || {},
 			};
@@ -24001,7 +24002,8 @@ async function loadSurfaceIntoMemory(surfaceId) {
 						triangles: surfaceData.triangles,
 						visible: surfaceData.visible !== false,
 						gradient: surfaceData.gradient || "default",
-						transparency: surfaceData.transparency || 1.0, // Add this line
+						transparency: surfaceData.transparency || 1.0,
+						hillshadeColor: surfaceData.hillshadeColor || null, // Step 0b) Load hillshade color from DB
 					});
 					console.log("✅ Surface " + surfaceData.name + " loaded into memory");
 				}
@@ -24152,6 +24154,7 @@ async function loadAllSurfacesIntoMemory() {
 						// Textured meshes MUST show JPG textures, not color gradients like "cividis"
 						gradient: surfaceData.isTexturedMesh ? "texture" : surfaceData.gradient || "default",
 						transparency: surfaceData.transparency || 1.0,
+						hillshadeColor: surfaceData.hillshadeColor || null, // Step 1b) Load hillshade color from DB
 					};
 
 					// Step 2) Check if this is a textured mesh
@@ -35323,21 +35326,21 @@ function drawSurface() {
 			// CRITICAL: Pass surface-specific min/max, transparency, AND gradient
 			surface.triangles.forEach((triangle, i) => {
 
-				// Fix line 20344 - Surface drawing function
-				drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, ctx, surface.transparency || 1.0, surface.gradient || "default", gradientMethod, lightBearing, lightElevation);
+				// Fix line 20344 - Surface drawing function (added hillshadeColor parameter)
+				drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, ctx, surface.transparency || 1.0, surface.gradient || "default", gradientMethod, lightBearing, lightElevation, surface.hillshadeColor || null);
 			});
 		}
 	});
 }
 // Step #) Surface legend - now uses CSS panel stacked with other legends
 function drawSurfaceLegend() {
-	// Check if any surfaces are visible and have legend enabled
+	// Step 1) Check if any surfaces are visible and have legend enabled
 	if (!showSurfaceLegend || loadedSurfaces.size === 0) {
 		hideSurfaceElevationLegend();
 		return;
 	}
 
-	// Get all visible surfaces
+	// Step 2) Get all visible surfaces
 	var visibleSurfaces = Array.from(loadedSurfaces.values()).filter(function (surface) {
 		return surface.visible && surface.points && surface.points.length > 0;
 	});
@@ -35347,29 +35350,45 @@ function drawSurfaceLegend() {
 		return;
 	}
 
-	// Calculate combined elevation range for all visible surfaces
-	var minZ = Infinity;
-	var maxZ = -Infinity;
-	var gradientType = "viridis";
+	// Step 3) Build array of surface legend data (individual surfaces, not combined)
+	var surfaceLegendData = [];
 
-	visibleSurfaces.forEach(function (surface) {
-		if (surface.gradient) {
-			gradientType = surface.gradient;
+	for (var i = 0; i < visibleSurfaces.length; i++) {
+		var surface = visibleSurfaces[i];
+
+		// Step 3a) Calculate THIS surface's elevation range
+		var surfaceMinZ = Infinity;
+		var surfaceMaxZ = -Infinity;
+
+		for (var j = 0; j < surface.points.length; j++) {
+			var point = surface.points[j];
+			if (point.z < surfaceMinZ) surfaceMinZ = point.z;
+			if (point.z > surfaceMaxZ) surfaceMaxZ = point.z;
 		}
-		surface.points.forEach(function (point) {
-			if (point.z < minZ) minZ = point.z;
-			if (point.z > maxZ) maxZ = point.z;
-		});
-	});
 
-	if (maxZ - minZ < 0.001) {
-		hideSurfaceElevationLegend();
-		return; // Skip legend for flat surfaces
+		// Step 3b) Skip flat surfaces (no elevation variation)
+		if (surfaceMaxZ - surfaceMinZ < 0.001) {
+			continue;
+		}
+
+		// Step 3c) Add surface to legend data array
+		surfaceLegendData.push({
+			name: surface.name || "Surface " + (i + 1),
+			minZ: surfaceMinZ,
+			maxZ: surfaceMaxZ,
+			gradient: surface.gradient || "default",
+			hillshadeColor: surface.hillshadeColor || null
+		});
 	}
 
-	// Show CSS-based surface legend (stacked with Slope/Relief/Voronoi)
-	var surfaceName = visibleSurfaces.length === 1 ? (visibleSurfaces[0].name || "Surface") : "Surfaces (" + visibleSurfaces.length + ")";
-	showSurfaceElevationLegend(surfaceName, minZ, maxZ, gradientType);
+	// Step 4) Show legend if we have any valid surfaces
+	if (surfaceLegendData.length === 0) {
+		hideSurfaceElevationLegend();
+		return;
+	}
+
+	// Step 5) Show CSS-based surface legend (stacked with individual surface entries)
+	showSurfaceElevationLegend(surfaceLegendData);
 }
 // Color gradient functions
 function getViridisColor(ratio) {
@@ -35616,7 +35635,7 @@ document.getElementById("lightElevationSlider").addEventListener("input", functi
 	drawData(allBlastHoles, selectedHole);
 });
 
-function drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx = ctx, alpha = 1.0, gradient = "hillshade", gradientMethod = "default", lightBearing = 315, lightElevation = 45) {
+function drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx = ctx, alpha = 1.0, gradient = "hillshade", gradientMethod = "default", lightBearing = 315, lightElevation = 45, hillshadeColor = null) {
 	const showWireFrame = false;
 	const [p1, p2, p3] = triangle.vertices;
 
@@ -35662,14 +35681,14 @@ function drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx 
 	// Step 7) Handle hillshade gradient specially with configurable lighting
 	if (gradient === "hillshade") {
 		const { aspect, slope, isFlat } = getTriangleAspect(triangle);
-		const hillshadeColor = getHillshadeColor(aspect, slope, isFlat, lightBearing, lightElevation);
+		const computedHillshadeColor = getHillshadeColor(aspect, slope, isFlat, lightBearing, lightElevation, hillshadeColor);
 
 		targetCtx.beginPath();
 		targetCtx.moveTo(x1, y1);
 		targetCtx.lineTo(x2, y2);
 		targetCtx.lineTo(x3, y3);
 		targetCtx.closePath();
-		targetCtx.fillStyle = hillshadeColor;
+		targetCtx.fillStyle = computedHillshadeColor;
 		targetCtx.fill();
 
 		if (showWireFrame) {
@@ -35950,27 +35969,42 @@ function calculateHillshade(aspect, slope, lightBearing = 315, lightElevation = 
 }
 
 // Step 44) Enhanced hillshade color function with configurable lighting
-function getHillshadeColor(aspect, slope, isFlat = false, lightBearing = 315, lightElevation = 45) {
+function getHillshadeColor(aspect, slope, isFlat = false, lightBearing = 315, lightElevation = 45, baseColor = null) {
+	// Step 44a) Parse base color if provided (for tinted hillshade)
+	var baseR = 128, baseG = 128, baseB = 128;
+	if (baseColor && baseColor.charAt(0) === "#") {
+		baseR = parseInt(baseColor.substring(1, 3), 16) || 128;
+		baseG = parseInt(baseColor.substring(3, 5), 16) || 128;
+		baseB = parseInt(baseColor.substring(5, 7), 16) || 128;
+	}
+
 	if (isFlat) {
-		// Step 45) Flat triangles = neutral grey
+		// Step 45) Flat triangles = base color at 50% intensity
+		if (baseColor) {
+			return "rgb(" + baseR + ", " + baseG + ", " + baseB + ")";
+		}
 		return "rgb(127, 127, 127)";
 	}
 
 	// Step 46) Calculate illumination with configurable light source
-	const illumination = calculateHillshade(aspect, slope, lightBearing, lightElevation);
+	var illumination = calculateHillshade(aspect, slope, lightBearing, lightElevation);
 
 	// Step 47) Enhanced color range - from dark shadow to bright highlight
-	const minGrey = 20; // 20% grey for deep shadows = rgb(51, 51, 51)
-	const maxGrey = 80; // 80% grey for bright highlights = rgb(204, 204, 204)
+	var minBrightness = 0.2; // 20% brightness for deep shadows
+	var maxBrightness = 1.2; // 120% brightness for bright highlights (clamped)
 
 	// Step 48) Apply contrast curve for more dramatic shading
-	const contrastIllumination = Math.pow(illumination, 0.8); // Gamma correction for better contrast
+	var contrastIllumination = Math.pow(illumination, 0.8); // Gamma correction for better contrast
 
-	// Step 49) Map illumination to grey range
-	const greyPercent = minGrey + (maxGrey - minGrey) * contrastIllumination;
-	const greyValue = Math.round((greyPercent * 255) / 100);
+	// Step 49) Map illumination to brightness range
+	var brightness = minBrightness + (maxBrightness - minBrightness) * contrastIllumination;
 
-	return "rgb(" + greyValue + ", " + greyValue + ", " + greyValue + ")";
+	// Step 49a) Apply brightness to base color
+	var r = Math.min(255, Math.round(baseR * brightness));
+	var g = Math.min(255, Math.round(baseG * brightness));
+	var b = Math.min(255, Math.round(baseB * brightness));
+
+	return "rgb(" + r + ", " + g + ", " + b + ")";
 }
 
 // Step 50) Enhanced triangle aspect calculation with improved normal computation

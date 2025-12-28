@@ -117,6 +117,44 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
         });
     }
 
+    // Step 6b) Add hillshade color picker section (initially hidden, shown when hillshade is selected)
+    var hillshadeSection = document.createElement("div");
+    hillshadeSection.id = "hillshadeColorSection";
+    hillshadeSection.style.gridColumn = "1 / -1";
+    hillshadeSection.style.display = currentGradient === "hillshade" ? "flex" : "none";
+    hillshadeSection.style.alignItems = "center";
+    hillshadeSection.style.gap = "8px";
+    hillshadeSection.style.marginTop = "10px";
+
+    var hillshadeLabel = document.createElement("label");
+    hillshadeLabel.textContent = "Hillshade Color:";
+    hillshadeLabel.style.fontSize = "12px";
+    hillshadeLabel.style.color = "#aaa";
+    hillshadeLabel.style.minWidth = "100px";
+
+    var hillshadeColorInput = document.createElement("input");
+    hillshadeColorInput.type = "text";
+    hillshadeColorInput.name = "hillshadeColor";
+    hillshadeColorInput.className = "jscolor";
+    hillshadeColorInput.setAttribute("data-jscolor", "{}");
+    hillshadeColorInput.value = currentSurface.hillshadeColor || "#808080";
+    hillshadeColorInput.style.width = "80px";
+    hillshadeColorInput.style.height = "24px";
+    hillshadeColorInput.style.cursor = "pointer";
+
+    hillshadeSection.appendChild(hillshadeLabel);
+    hillshadeSection.appendChild(hillshadeColorInput);
+    formContent.appendChild(hillshadeSection);
+
+    // Step 6b-1) Listen for gradient change to show/hide hillshade color picker
+    var gradientSelect = formContent.querySelector("select[name='gradient']");
+    if (gradientSelect) {
+        gradientSelect.addEventListener("change", function () {
+            var isHillshade = gradientSelect.value === "hillshade";
+            hillshadeSection.style.display = isHillshade ? "flex" : "none";
+        });
+    }
+
     // Step 6c) Add legend checkbox section
     var legendSection = document.createElement("div");
     legendSection.style.gridColumn = "1 / -1";
@@ -146,6 +184,11 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
     legendSection.appendChild(legendLabel);
     formContent.appendChild(legendSection);
 
+    // Step 6c-1) Initialize jscolor for hillshade color picker
+    if (typeof window.jscolor !== "undefined") {
+        window.jscolor.install();
+    }
+
     // Step 7) Create dialog with footer buttons
     var dialog = new window.FloatingDialog({
         title: currentSurface.name || "Surface Properties",
@@ -168,8 +211,26 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
             var newGradient = formData.gradient !== undefined ? formData.gradient : currentSurface.gradient;
             var showLegend = formData.showLegend !== undefined ? formData.showLegend : window.showSurfaceLegend;
 
+            // Step 7a-1) Get hillshade color if using hillshade gradient
+            var newHillshadeColor = currentSurface.hillshadeColor || null; // Preserve existing color
+            if (newGradient === "hillshade") {
+                // Step 7a-2) Try to get color from jscolor instance or input value
+                var hillshadeInput = formContent.querySelector("input[name='hillshadeColor']");
+                if (hillshadeInput && hillshadeInput.jscolor) {
+                    newHillshadeColor = hillshadeInput.jscolor.toHEXString();
+                } else if (hillshadeInput && hillshadeInput.value) {
+                    // Step 7a-3) Ensure the value has # prefix
+                    var colorVal = hillshadeInput.value;
+                    if (colorVal && colorVal.charAt(0) !== "#") {
+                        colorVal = "#" + colorVal;
+                    }
+                    newHillshadeColor = colorVal;
+                }
+            }
+
             currentSurface.transparency = newTransparency;
             currentSurface.gradient = newGradient;
+            currentSurface.hillshadeColor = newHillshadeColor;
             window.showSurfaceLegend = showLegend;
 
             // Save to database

@@ -3509,6 +3509,80 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
     border-radius: 2px;
 }
 
+/* Step 6a-1) Multiple surfaces stacked legend (compact) */
+.hud-legend-surfaces {
+    min-width: 80px;
+}
+
+.hud-legend-surfaces-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.hud-legend-surface-entry {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.hud-legend-surface-entry:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.hud-legend-surface-name {
+    font-weight: bold;
+    font-size: 8pt;
+    color: rgba(255, 255, 255, 0.9);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 100px;
+}
+
+.hud-legend-gradient-name {
+    font-size: 7pt;
+    opacity: 0.6;
+    margin-top: 1px;
+}
+
+/* Compact gradient container for stacked surfaces */
+.hud-legend-gradient-container.hud-legend-compact {
+    display: flex;
+    gap: 4px;
+    align-items: stretch;
+}
+
+.hud-legend-compact .hud-legend-gradient {
+    width: 14px;
+    height: 60px;
+}
+
+.hud-legend-compact .hud-legend-gradient-labels {
+    font-size: 6pt;
+    justify-content: space-between;
+    align-items: flex-end;
+}
+
+.hud-legend-label-mid {
+    opacity: 0.7;
+}
+
+/* Hillshade solid color swatch (not a gradient) */
+.hud-legend-color-swatch {
+    width: 14px;
+    height: 24px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 2px;
+}
+
+body:not(.dark-mode) .hud-legend-color-swatch {
+    border-color: rgba(0, 0, 0, 0.4);
+}
+
 /* Step 6b) Ruler measurement floating panel */
 .hud-ruler-panel {
     position: fixed;
@@ -3772,6 +3846,14 @@ body:not(.dark-mode) .hud-legend-color,
 body:not(.dark-mode) .hud-legend-gradient,
 body:not(.dark-mode) .hud-surface-color {
     border-color: rgba(0, 0, 0, 0.5);
+}
+
+body:not(.dark-mode) .hud-legend-surface-name {
+    color: rgba(0, 0, 0, 0.9);
+}
+
+body:not(.dark-mode) .hud-legend-surface-entry {
+    border-bottom-color: rgba(0, 0, 0, 0.15);
 }
 
 /* Step 8) Responsive adjustments */

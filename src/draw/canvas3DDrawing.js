@@ -15,6 +15,46 @@ import { GeometryFactory } from "../three/GeometryFactory.js";
 // - elevationToColor, rgbStringToThreeColor, dataCentroidZ
 
 //=================================================
+// Helper Functions
+//=================================================
+
+// Step 0) Convert hex color string to Three.js color object {r, g, b}
+function hexToThreeColor(hexColor) {
+	// Step 0a) Default to grey if no color provided
+	if (!hexColor) {
+		console.log("🎨 [hexToThreeColor] No color provided, using grey");
+		return { r: 0.5, g: 0.5, b: 0.5 };
+	}
+	
+	// Step 0b) Handle various formats
+	var hex = String(hexColor).trim();
+	
+	// Step 0c) Remove # prefix if present
+	if (hex.charAt(0) === "#") {
+		hex = hex.substring(1);
+	}
+	
+	// Step 0d) Handle 3-digit hex (e.g., "F0F" -> "FF00FF")
+	if (hex.length === 3) {
+		hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
+	}
+	
+	// Step 0e) Parse hex values
+	var r = parseInt(hex.substring(0, 2), 16) / 255;
+	var g = parseInt(hex.substring(2, 4), 16) / 255;
+	var b = parseInt(hex.substring(4, 6), 16) / 255;
+	
+	// Step 0f) Validate parsed values
+	if (isNaN(r) || isNaN(g) || isNaN(b)) {
+		console.log("🎨 [hexToThreeColor] Failed to parse color: " + hexColor + ", using grey");
+		return { r: 0.5, g: 0.5, b: 0.5 }; // Default grey
+	}
+	
+	console.log("🎨 [hexToThreeColor] Parsed " + hexColor + " -> rgb(" + Math.round(r * 255) + ", " + Math.round(g * 255) + ", " + Math.round(b * 255) + ")");
+	return { r: r, g: g, b: b };
+}
+
+//=================================================
 // Three.js Scene Management
 //=================================================
 
@@ -638,10 +678,24 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	});
 
 	// Step 10) Create color function for this surface
-	var colorFunction = function (z) {
-		var rgbString = window.elevationToColor(z, minZ, maxZ, gradient);
-		return window.rgbStringToThreeColor(rgbString);
-	};
+	var colorFunction;
+	
+	// Step 10a) Handle hillshade - use solid color instead of elevation gradient
+	if (gradient === "hillshade") {
+		var hillshadeHex = (surfaceData && surfaceData.hillshadeColor) ? surfaceData.hillshadeColor : "#808080";
+		console.log("🎨 [drawSurfaceThreeJS] Hillshade mode - surfaceId: " + surfaceId + ", hillshadeColor from data: " + (surfaceData ? surfaceData.hillshadeColor : "N/A") + ", using: " + hillshadeHex);
+		// Step 10a-1) Convert hex color to Three.js RGB format
+		var fixedColor = hexToThreeColor(hillshadeHex);
+		colorFunction = function (z) {
+			return fixedColor;
+		};
+	} else {
+		// Step 10b) Regular elevation-based color gradient
+		colorFunction = function (z) {
+			var rgbString = window.elevationToColor(z, minZ, maxZ, gradient);
+			return window.rgbStringToThreeColor(rgbString);
+		};
+	}
 
 	// Step 11) Create mesh with vertex colors (using local coordinates)
 	var surfaceMesh = GeometryFactory.createSurface(localTriangles, colorFunction, transparency);

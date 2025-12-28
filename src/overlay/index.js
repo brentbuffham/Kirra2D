@@ -41,6 +41,7 @@ export {
     showReliefLegend,
     showVoronoiLegend,
     showSurfaceLegend,
+    showSurfacesLegend, // Step 4a) New export for multiple surfaces
     hideSlopeLegend,
     hideReliefLegend,
     hideVoronoiLegend,
