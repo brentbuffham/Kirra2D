@@ -511,65 +511,66 @@ export class TreeView {
 				type: "entity",
 				label: entityName,
 				meta: "(" + holes.length + ", " + parseFloat(totalLength).toFixed(1) + "m, " + parseFloat(volume).toFixed(1) + "m³)",
+				// BUG FIX 2025-12-28: Wrap all numeric properties with parseFloat() to handle string values
 				children: holes.map((hole, index) => ({
 					id: "hole⣿" + entityName + "⣿" + (hole.holeID || index),
 					type: "hole",
 					label: hole.holeID || "Hole " + (index + 1),
-					meta: "L:" + (hole.holeLengthCalculated || 0).toFixed(2) + "m, S:" + (hole.subdrillAmount || 0).toFixed(2) + "m, R:" + (hole.rowID || 0) + ", P:" + (hole.posID || 0),
+					meta: "L:" + parseFloat(hole.holeLengthCalculated || 0).toFixed(2) + "m, S:" + parseFloat(hole.subdrillAmount || 0).toFixed(2) + "m, R:" + (hole.rowID || 0) + ", P:" + (hole.posID || 0),
 					children: [
 						{
 							id: (hole.holeID || index) + "⣿startx",
 							type: "property",
 							label: "Start X",
-							meta: (hole.startXLocation || 0).toFixed(3),
+							meta: parseFloat(hole.startXLocation || 0).toFixed(3),
 						},
 						{
 							id: (hole.holeID || index) + "⣿starty",
 							type: "property",
 							label: "Start Y",
-							meta: (hole.startYLocation || 0).toFixed(3),
+							meta: parseFloat(hole.startYLocation || 0).toFixed(3),
 						},
 						{
 							id: (hole.holeID || index) + "⣿startz",
 							type: "property",
 							label: "Start Z",
-							meta: (hole.startZLocation || 0).toFixed(3),
+							meta: parseFloat(hole.startZLocation || 0).toFixed(3),
 						},
 						{
 							id: (hole.holeID || index) + "⣿gradez",
 							type: "property",
 							label: "Grade Z",
-							meta: (hole.gradeZLocation || 0).toFixed(3),
+							meta: parseFloat(hole.gradeZLocation || 0).toFixed(3),
 						},
 						{
 							id: (hole.holeID || index) + "⣿diameter",
 							type: "property",
 							label: "Diameter",
-							meta: (hole.holeDiameter || 115) + "mm",
+							meta: parseFloat(hole.holeDiameter || 115) + "mm",
 						},
 						{
 							id: (hole.holeID || index) + "⣿angle",
 							type: "property",
 							label: "Angle",
-							meta: (hole.holeAngle || 0).toFixed(0) + "°",
+							meta: parseFloat(hole.holeAngle || 0).toFixed(0) + "°",
 						},
 						{
 							id: (hole.holeID || index) + "⣿bearing",
 							type: "property",
 							label: "Bearing",
-							meta: (hole.holeBearing || 0).toFixed(2) + "°",
+							meta: parseFloat(hole.holeBearing || 0).toFixed(2) + "°",
 						},
 						{
 							id: (hole.holeID || index) + "⣿length",
 							type: "property",
 							label: "Length",
-							meta: (hole.holeLengthCalculated || 0).toFixed(2) + "m",
+							meta: parseFloat(hole.holeLengthCalculated || 0).toFixed(2) + "m",
 						},
 						{
 							id: (hole.holeID || index) + "⣿subdrill",
 							type: "property",
 							label: "Subdrill",
-							meta: (hole.subdrillAmount || 0).toFixed(2) + "m",
+							meta: parseFloat(hole.subdrillAmount || 0).toFixed(2) + "m",
 						},
 						{
 							id: (hole.holeID || index) + "⣿type",
@@ -916,6 +917,20 @@ export class TreeView {
 				console.error("❌ [TreeView] MISSING CONDITIONS - Pink highlight will NOT appear!");
 				console.error("  selectedPoint:", window.selectedPoint ? "SET" : "NULL");
 				console.error("  selectedKADObject:", window.selectedKADObject ? "SET" : "NULL");
+			}
+		}
+
+		// PERFORMANCE FIX 2025-12-28: Warn about large selections from TreeView
+		var LARGE_SELECTION_WARNING_THRESHOLD = 500;
+		var totalKADSelected = window.selectedMultipleKADObjects ? window.selectedMultipleKADObjects.length : 0;
+		var totalHolesSelected = window.selectedMultipleHoles ? window.selectedMultipleHoles.length : 0;
+		var totalSelected = totalKADSelected + totalHolesSelected;
+		
+		if (totalSelected > LARGE_SELECTION_WARNING_THRESHOLD) {
+			console.log("⚠️ [TreeView] Large selection: " + totalSelected + " items");
+			if (typeof window.updateStatusMessage === "function") {
+				window.updateStatusMessage("Large selection: " + totalSelected + " items (rendering may be limited)");
+				setTimeout(function() { window.updateStatusMessage(""); }, 3000);
 			}
 		}
 

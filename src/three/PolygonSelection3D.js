@@ -676,6 +676,17 @@ export class PolygonSelection3D {
         if (selectingKAD) {
             console.log("📝 Updating KAD global state - selectedKAD.length:", selectedKAD.length);
 
+            // PERFORMANCE FIX 2025-12-28: Warn user about large selections
+            var LARGE_SELECTION_WARNING_THRESHOLD = 500;
+            if (selectedKAD.length > LARGE_SELECTION_WARNING_THRESHOLD) {
+                // Show warning but still proceed (selection limits are handled in draw code)
+                console.log("⚠️ Large KAD selection: " + selectedKAD.length + " entities");
+                if (window.updateStatusMessage) {
+                    window.updateStatusMessage("Large selection: " + selectedKAD.length + " KAD entities (rendering may be limited)");
+                    setTimeout(function() { window.updateStatusMessage(""); }, 3000);
+                }
+            }
+
             // CRITICAL: Modify the existing array, don't replace the reference
             if (!window.selectedMultipleKADObjects) {
                 window.selectedMultipleKADObjects = [];
@@ -690,12 +701,12 @@ export class PolygonSelection3D {
 
             window.selectedKADObject = null; // Clear single selection
 
-            if (selectedKAD.length > 0) {
-                // Update status message
+            if (selectedKAD.length > 0 && selectedKAD.length <= LARGE_SELECTION_WARNING_THRESHOLD) {
+                // Update status message only if not already showing large selection warning
                 if (window.updateStatusMessage) {
                     window.updateStatusMessage("Selected " + selectedKAD.length + " KAD objects");
                 }
-            } else {
+            } else if (selectedKAD.length === 0) {
                 if (window.updateStatusMessage) {
                     window.updateStatusMessage("No KAD objects found in polygon");
                 }

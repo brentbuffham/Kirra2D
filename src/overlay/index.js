@@ -30,6 +30,7 @@ export {
 export { 
     emitStats,
     emitCoords,
+    emitCentroid,
     emitRuler,
     emitProtractor,
     clearMeasurements
@@ -76,6 +77,14 @@ export {
     hideDrawingDistance,
     emitDrawingDistance
 } from "./panels/DrawingDistancePanel.js";
+
+// Step 6d) Pattern tool panel exports
+export {
+    showPatternToolLabels,
+    hidePatternToolLabels,
+    updateLabelPosition,
+    emitPatternTool
+} from "./panels/PatternToolPanel.js";
 
 // Step 7) Tooltip panel exports
 export {

@@ -54,10 +54,27 @@ export function highlightSelectedKADThreeJS() {
     }
 
     // Step 3) Handle multiple selections
+    // PERFORMANCE FIX 2025-12-28: Add limits to prevent freeze with large selections
     if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
-        console.log("🎨 Drawing 3D multiple KAD selections:", selectedMultipleKADObjects.length, "objects");
+        // Step 3.0) Performance constants
+        var MAX_3D_RENDER_COUNT = 500;  // Maximum entities to render in 3D (more expensive than 2D)
+        var selectionCount = selectedMultipleKADObjects.length;
+        var renderCount = Math.min(selectionCount, MAX_3D_RENDER_COUNT);
+        
+        console.log("🎨 Drawing 3D multiple KAD selections:", selectionCount, "objects (rendering " + renderCount + ")");
+        
+        // Step 3.0a) Show warning if selection was truncated
+        if (selectionCount > MAX_3D_RENDER_COUNT && !window._largeSelection3DWarningShown) {
+            window._largeSelection3DWarningShown = true;
+            if (typeof window.updateStatusMessage === "function") {
+                window.updateStatusMessage("Large 3D selection: rendering " + MAX_3D_RENDER_COUNT + " of " + selectionCount + " entities");
+                setTimeout(function() { window.updateStatusMessage(""); }, 3000);
+            }
+        } else if (selectionCount <= MAX_3D_RENDER_COUNT) {
+            window._largeSelection3DWarningShown = false;
+        }
 
-        selectedMultipleKADObjects.forEach((kadObj, index) => {
+        selectedMultipleKADObjects.slice(0, renderCount).forEach((kadObj, index) => {
             if (index < 3) {
                 console.log("=== DRAWING 3D KAD OBJECT " + index + " ===");
                 console.log("kadObj:", kadObj);

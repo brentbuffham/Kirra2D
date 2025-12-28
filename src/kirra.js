@@ -119,6 +119,7 @@ import {
 	// Stats panel
 	emitStats,
 	emitCoords,
+	emitCentroid,
 	emitRuler,
 	emitProtractor,
 	// Legend panels
@@ -140,6 +141,9 @@ import {
 	// Drawing distance panel
 	showDrawingDistance,
 	hideDrawingDistance,
+	// Pattern tool panel
+	showPatternToolLabels,
+	hidePatternToolLabels,
 	// Tooltip panel
 	showHoleTooltip,
 	showPointTooltip,
@@ -549,26 +553,36 @@ function updateThreeLocalOrigin() {
 }
 
 // Step 4) Calculate XYZ centroid of all data for orbit center and grid positioning
+// Note: X/Y and Z are calculated with separate counts to avoid Z values (small elevation numbers)
+// diluting the X/Y centroid calculation
 function calculateDataCentroid() {
 	let sumX = 0,
 		sumY = 0,
 		sumZ = 0;
-	let count = 0;
+	let countXY = 0;
+	let countZ = 0;
 
-	// Step 4a) Add hole XYZ values (collar, grade, toe)
+	// Step 4a) Add hole values - X/Y from collar only, Z from collar/grade/toe
+	// Note: parseFloat ensures string values are converted to numbers
 	if (allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
 		for (const hole of allBlastHoles) {
 			if (hole && typeof hole === "object") {
-				sumX += hole.startXLocation || 0;
-				sumY += hole.startYLocation || 0;
-				sumZ += hole.startZLocation || 0;
-				sumX += hole.gradeXLocation || 0;
-				sumY += hole.gradeYLocation || 0;
-				sumZ += hole.gradeZLocation || 0;
-				sumX += hole.endXLocation || 0;
-				sumY += hole.endYLocation || 0;
-				sumZ += hole.endZLocation || 0;
-				count += 3;
+				// X/Y: Only use collar position (startX/Y) to avoid zeros from grade/toe
+				sumX += parseFloat(hole.startXLocation) || 0;
+				sumY += parseFloat(hole.startYLocation) || 0;
+				countXY++;
+
+				// Z: Use all three elevations (collar, grade, toe) for better Z average
+				sumZ += parseFloat(hole.startZLocation) || 0;
+				countZ++;
+				if (hole.gradeZLocation) {
+					sumZ += parseFloat(hole.gradeZLocation) || 0;
+					countZ++;
+				}
+				if (hole.endZLocation) {
+					sumZ += parseFloat(hole.endZLocation) || 0;
+					countZ++;
+				}
 			}
 		}
 	}
@@ -577,23 +591,22 @@ function calculateDataCentroid() {
 	if (typeof loadedSurfaces !== "undefined" && loadedSurfaces && loadedSurfaces.size > 0) {
 		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
 			if (surface && surface.triangles && Array.isArray(surface.triangles) && surface.triangles.length > 0) {
-				// Step 4b.1) Standard surface with triangles
+				// Step 4b.1) Standard surface with triangles - Z only
 				for (const tri of surface.triangles) {
 					if (tri) {
-						sumZ += tri.minZ || 0;
-						sumZ += tri.maxZ || 0;
-						count += 2;
+						sumZ += parseFloat(tri.minZ) || 0;
+						sumZ += parseFloat(tri.maxZ) || 0;
+						countZ += 2;
 					}
 				}
 			} else if (surface && surface.isTexturedMesh && surface.meshBounds) {
-				// Step 4b.2) Textured mesh (OBJ) - use mesh XYZ bounds
-				sumX += surface.meshBounds.minX || 0;
-				sumX += surface.meshBounds.maxX || 0;
-				sumY += surface.meshBounds.minY || 0;
-				sumY += surface.meshBounds.maxY || 0;
-				sumZ += surface.meshBounds.minZ || 0;
-				sumZ += surface.meshBounds.maxZ || 0;
-				count += 6;
+				// Step 4b.2) Textured mesh (OBJ) - use mesh center for XY, bounds for Z
+				sumX += (parseFloat(surface.meshBounds.minX) || 0) + (parseFloat(surface.meshBounds.maxX) || 0);
+				sumY += (parseFloat(surface.meshBounds.minY) || 0) + (parseFloat(surface.meshBounds.maxY) || 0);
+				countXY += 2;
+				sumZ += parseFloat(surface.meshBounds.minZ) || 0;
+				sumZ += parseFloat(surface.meshBounds.maxZ) || 0;
+				countZ += 2;
 			}
 		}
 	}
@@ -603,19 +616,22 @@ function calculateDataCentroid() {
 			if (entity && entity.data && Array.isArray(entity.data) && entity.data.length > 0) {
 				for (const point of entity.data) {
 					if (point && typeof point === "object") {
-						sumX += point.pointXLocation || 0;
-						sumY += point.pointYLocation || 0;
-						sumZ += point.pointZLocation || 0;
-						count += 1;
+						sumX += parseFloat(point.pointXLocation) || 0;
+						sumY += parseFloat(point.pointYLocation) || 0;
+						countXY++;
+						if (point.pointZLocation) {
+							sumZ += parseFloat(point.pointZLocation) || 0;
+							countZ++;
+						}
 					}
 				}
 			}
 		}
 	}
 	return {
-		x: count > 0 ? sumX / count : 0,
-		y: count > 0 ? sumY / count : 0,
-		z: count > 0 ? sumZ / count : 0,
+		x: countXY > 0 ? sumX / countXY : 0,
+		y: countXY > 0 ? sumY / countXY : 0,
+		z: countZ > 0 ? sumZ / countZ : 0,
 	};
 }
 
@@ -1034,11 +1050,12 @@ function handle3DClick(event) {
 		return;
 	}
 
-	// Step 12c.1) Handle KAD drawing tools in 3D mode
-	// Check if any drawing tool is active and forward to appropriate handler
-	const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+	// Step 12c.1) Handle KAD drawing tools AND hole creation tools in 3D mode
+	// Check if any drawing tool or hole creation tool is active and forward to appropriate handler
+	// BUG FIX 2025-12-28: Added all hole/pattern creation tools to enable in 3D
+	const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText || isAddingHole || isAddingPattern || isPatternInPolygonActive || isHolesAlongLineActive || isHolesAlongPolyLineActive;
 	if (isAnyDrawingToolActive) {
-		console.log("⬇️ [3D CLICK] KAD drawing tool active, forwarding to drawing handler");
+		console.log("⬇️ [3D CLICK] Drawing/creation tool active, forwarding to handler");
 
 		// Step 12c.1a) Get world coordinates using 3D cylindrical snap
 		let snapResult;
@@ -1131,6 +1148,92 @@ function handle3DClick(event) {
 			addKADText();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
+		} else if (isAddingHole) {
+			// Step 12c.1c.1) Handle Add Hole tool in 3D mode (BUG FIX 2025-12-28)
+			console.log("⬇️ [3D CLICK] Adding Hole at:", worldX, worldY, worldZ);
+			// Set world coordinates for AddHoleDialog to access
+			window.worldX = worldX;
+			window.worldY = worldY;
+			window.worldZ = worldZ;
+			// Show the add hole dialog
+			if (typeof window.showAddHoleDialog === "function") {
+				window.showAddHoleDialog();
+			} else {
+				console.error("showAddHoleDialog not found - ensure AddHoleDialog.js is loaded");
+			}
+		} else if (isAddingPattern) {
+			// Step 12c.1c.2) Handle Add Pattern tool in 3D mode (BUG FIX 2025-12-28)
+			console.log("⬇️ [3D CLICK] Adding Pattern at:", worldX, worldY, worldZ);
+			// Set world coordinates for pattern creation
+			window.worldX = worldX;
+			window.worldY = worldY;
+			window.worldZ = worldZ;
+			// Show the pattern dialog using showPatternDialog from PatternGenerationDialogs.js
+			if (typeof window.showPatternDialog === "function") {
+				window.showPatternDialog("add_pattern", worldX, worldY);
+			} else {
+				console.error("showPatternDialog not found - ensure PatternGenerationDialogs.js is loaded");
+			}
+		} else if (isPatternInPolygonActive) {
+			// Step 12c.1c.3) Handle Pattern in Polygon tool in 3D mode (BUG FIX 2025-12-28)
+			console.log("⬇️ [3D CLICK] Pattern in Polygon click at:", worldX, worldY, worldZ);
+			// Set world coordinates
+			window.worldX = worldX;
+			window.worldY = worldY;
+			window.worldZ = worldZ;
+			// Create synthetic event with canvas coordinates for the 2D handler
+			var rect = canvas.getBoundingClientRect();
+			var canvasCoords = worldToCanvas(worldX, worldY);
+			var syntheticEvent = {
+				clientX: rect.left + canvasCoords[0],
+				clientY: rect.top + canvasCoords[1],
+				preventDefault: function () { },
+				stopPropagation: function () { }
+			};
+			// Call the existing handler
+			if (typeof handlePatternInPolygonClick === "function") {
+				handlePatternInPolygonClick(syntheticEvent);
+			}
+		} else if (isHolesAlongLineActive) {
+			// Step 12c.1c.4) Handle Holes Along Line tool in 3D mode (BUG FIX 2025-12-28)
+			console.log("⬇️ [3D CLICK] Holes Along Line click at:", worldX, worldY, worldZ);
+			// Set world coordinates
+			window.worldX = worldX;
+			window.worldY = worldY;
+			window.worldZ = worldZ;
+			// Create synthetic event with canvas coordinates for the 2D handler
+			var rect = canvas.getBoundingClientRect();
+			var canvasCoords = worldToCanvas(worldX, worldY);
+			var syntheticEvent = {
+				clientX: rect.left + canvasCoords[0],
+				clientY: rect.top + canvasCoords[1],
+				preventDefault: function () { },
+				stopPropagation: function () { }
+			};
+			// Call the existing handler
+			if (typeof handleHolesAlongLineClick === "function") {
+				handleHolesAlongLineClick(syntheticEvent);
+			}
+		} else if (isHolesAlongPolyLineActive) {
+			// Step 12c.1c.5) Handle Holes Along Polyline tool in 3D mode (BUG FIX 2025-12-28)
+			console.log("⬇️ [3D CLICK] Holes Along Polyline click at:", worldX, worldY, worldZ);
+			// Set world coordinates
+			window.worldX = worldX;
+			window.worldY = worldY;
+			window.worldZ = worldZ;
+			// Create synthetic event with canvas coordinates for the 2D handler
+			var rect = canvas.getBoundingClientRect();
+			var canvasCoords = worldToCanvas(worldX, worldY);
+			var syntheticEvent = {
+				clientX: rect.left + canvasCoords[0],
+				clientY: rect.top + canvasCoords[1],
+				preventDefault: function () { },
+				stopPropagation: function () { }
+			};
+			// Call the existing handler
+			if (typeof handleHolesAlongPolyLineClick === "function") {
+				handleHolesAlongPolyLineClick(syntheticEvent);
+			}
 		}
 
 		// Step 12c.1d) Prevent default and stop propagation
@@ -7322,6 +7425,10 @@ async function handleFileUpload(event) {
 				}
 				centroidX = sumX / allBlastHoles.length;
 				centroidY = sumY / allBlastHoles.length;
+
+				// Step 1a) Emit centroid to HUD overlay (includes Z from calculateDataCentroid)
+				var fullCentroid = calculateDataCentroid();
+				emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
 
 				// Recalculate contours and triangles
 				const result = recalculateContours(allBlastHoles, deltaX, deltaY);
@@ -19083,8 +19190,18 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 	let startXLocation = parseFloat(x);
 	let startYLocation = parseFloat(y);
 	let startZLocation = parseFloat(z);
+	// Step 1) Calculate gradeZLocation based on mode
+	// If useGradeZ: use the user-provided gradeZ directly
+	// Otherwise: calculate from length and subdrill
 	let gradeZLocation = useGradeToCalcLength ? parseFloat(gradeZ) : parseFloat(startZLocation - (length - subdrill) * Math.cos(angle * (Math.PI / 180)));
-	let holeLength = useGradeToCalcLength ? parseFloat(startZLocation - (gradeZLocation - subdrill) * Math.cos(angle * (Math.PI / 180))) : parseFloat(length);
+	// Step 2) Calculate hole length (bench height - collar to grade)
+	// BUG FIX 2025-12-28: When using gradeZ, calculate bench height as (CollarZ - GradeZ) / cos(angle)
+	// Previously was calculating total length which caused subdrill to be counted twice
+	let angleRad = parseFloat(angle) * (Math.PI / 180);
+	let cosAngle = Math.cos(angleRad);
+	// Protect against division by zero for horizontal holes
+	if (Math.abs(cosAngle) < 0.001) cosAngle = 0.001;
+	let holeLength = useGradeToCalcLength ? parseFloat((startZLocation - gradeZLocation) / cosAngle) : parseFloat(length);
 	let holeDiameter = parseFloat(diameter);
 	let holeType = type;
 	let holeAngle = parseFloat(angle);
@@ -19453,10 +19570,15 @@ function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLocation,
 	let endYLocation = parseFloat(startYLocation + totalLength * Math.cos((90 - angle) * (Math.PI / 180)) * Math.sin(((450 - bearing) % 360) * (Math.PI / 180)));
 	let endZLocation = parseFloat(startZLocation - totalLength * Math.cos(angle * (Math.PI / 180)));
 
-	// Calculate grade locations using only hole length (no subdrill)
+	// Step 3) Calculate grade locations using only hole length (no subdrill)
+	// BUG FIX 2025-12-28: Only recalculate gradeZLocation if NOT using user-provided gradeZ
+	// When useGradeZ is true, the user explicitly set the grade elevation - preserve it
 	let gradeXLocation = parseFloat(startXLocation + holeLengthCalculated * Math.cos((90 - angle) * (Math.PI / 180)) * Math.cos(((450 - bearing) % 360) * (Math.PI / 180)));
 	let gradeYLocation = parseFloat(startYLocation + holeLengthCalculated * Math.cos((90 - angle) * (Math.PI / 180)) * Math.sin(((450 - bearing) % 360) * (Math.PI / 180)));
-	gradeZLocation = parseFloat(startZLocation - holeLengthCalculated * Math.cos(angle * (Math.PI / 180)));
+	// Only overwrite gradeZLocation if useGradeZ is false (using length-based calculation)
+	if (!useGradeZ) {
+		gradeZLocation = parseFloat(startZLocation - holeLengthCalculated * Math.cos(angle * (Math.PI / 180)));
+	}
 
 	// Check if endXLocation, endYLocation, or endZLocation is NaN
 	if (isNaN(endXLocation)) {
@@ -22151,6 +22273,10 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 		// Add this line at the end of the drawData function, just before the final closing brace
 		drawPatternInPolygonVisual();
+		// Draw 3D visuals for pattern tool if in 3D mode
+		if (onlyShowThreeJS && threeInitialized) {
+			drawPatternInPolygon3DVisual();
+		}
 		drawPatternOnPolylineVisual();
 		drawKADPolygonHighlightSelectedVisuals();
 		drawHolesAlongLineVisuals();
@@ -24190,6 +24316,10 @@ async function loadAllSurfacesIntoMemory() {
 
 				console.log("📊 Loaded " + loadedSurfaces.size + " surfaces into memory");
 
+				// Step 2a) Emit centroid to HUD overlay (includes Z from calculateDataCentroid)
+				var fullCentroid = calculateDataCentroid();
+				emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
+
 				// Step 3) Rebuild Three.js meshes for textured surfaces (staggered to avoid blocking)
 				if (texturedSurfaceIds.length > 0) {
 					console.log("🧱 Rebuilding " + texturedSurfaceIds.length + " textured meshes...");
@@ -25173,6 +25303,10 @@ function updateCentroids() {
 		centroidX = sumX / records;
 		centroidY = sumY / records;
 	}
+
+	// Step 5) Emit centroid to HUD overlay (includes Z from calculateDataCentroid)
+	var fullCentroid = calculateDataCentroid();
+	emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
 }
 
 const darkModeToggle = document.getElementById("dark-mode-toggle");
@@ -29840,6 +29974,10 @@ function showCsvImportModal(csvData, fileName) {
 					centroidX = sumX / allBlastHoles.length;
 					centroidY = sumY / allBlastHoles.length;
 
+					// Step 0a) Emit centroid to HUD overlay (includes Z from calculateDataCentroid)
+					var fullCentroid = calculateDataCentroid();
+					emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
+
 					// Step 1) Apply smart row detection to imported holes
 					const entitiesForRowDetection = new Map();
 					importedHoles.forEach(function (hole) {
@@ -33559,7 +33697,16 @@ function showPatternInPolygonPopup() {
 }
 
 function drawPatternInPolygonVisual() {
-	if (!isPatternInPolygonActive) return;
+	if (!isPatternInPolygonActive) {
+		// Hide overlay labels when tool is not active
+		hidePatternToolLabels();
+		return;
+	}
+
+	// Prepare overlay label data
+	var overlayData = {
+		toolType: "polygon"
+	};
 
 	// Draw selected polygon outline in bright color
 	if (selectedPolygon) {
@@ -33605,11 +33752,11 @@ function drawPatternInPolygonVisual() {
 		ctx.arc(startX, startY, 6, 0, 2 * Math.PI);
 		ctx.fill();
 
-		// Add label
-		ctx.fillStyle = strokeColor; // Use strokeColor instead of hardcoded color
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.fillText("START", startX + 12, startY - 8);
+		// Add to overlay data for label
+		overlayData.startPoint = patternStartPoint;
+		overlayData.startCanvasX = startX + canvas.getBoundingClientRect().left;
+		overlayData.startCanvasY = startY + canvas.getBoundingClientRect().top;
+
 		// Draw interactive preview line to mouse cursor when start point is set but end point isn't
 		if (!patternEndPoint) {
 			ctx.strokeStyle = "rgba(0, 255, 0, 0.5)";
@@ -33620,30 +33767,25 @@ function drawPatternInPolygonVisual() {
 			ctx.lineTo(currentMouseCanvasX, currentMouseCanvasY);
 			ctx.stroke();
 			ctx.setLineDash([]);
-			// Show preview distance
+
+			// Calculate preview distance
 			const dx = currentMouseWorldX - patternStartPoint.x;
 			const dy = currentMouseWorldY - patternStartPoint.y;
-			const previewLength = Math.sqrt(dx * dx + dy * dy);
-
-			const midX = (startX + currentMouseCanvasX) / 2;
-			const midY = (startY + currentMouseCanvasY) / 2;
-
-			//const [startX, startY] = worldToCanvas(patternStartPoint.x, patternStartPoint.y);
-			const [mouseX, mouseY] = [currentMouseCanvasX, currentMouseCanvasY];
-
-			// Draw preview line (already in your code)
-			// ...
 			const lineLength = Math.sqrt(dx * dx + dy * dy);
 
+			// Add preview distance to overlay
 			if (lineLength > 5) {
 				const midX = (startX + currentMouseCanvasX) / 2;
 				const midY = (startY + currentMouseCanvasY) / 2;
+				overlayData.distance = lineLength;
+				overlayData.midCanvasX = midX + canvas.getBoundingClientRect().left;
+				overlayData.midCanvasY = midY + canvas.getBoundingClientRect().top;
 
 				// Normalized line direction vector
 				const dirX = dx / lineLength;
 				const dirY = -dy / lineLength;
 
-				// Perpendicular vector (-90? from line direction)
+				// Perpendicular vector (-90° from line direction)
 				const perpX = dirY;
 				const perpY = -dirX;
 
@@ -33669,7 +33811,7 @@ function drawPatternInPolygonVisual() {
 				const rightX = baseX - sideX;
 				const rightY = baseY - sideY;
 
-				// Draw arrow
+				// Draw arrow (direction indicator)
 				ctx.beginPath();
 				ctx.moveTo(tipX, tipY); // Tip
 				ctx.lineTo(leftX, leftY); // Left corner of base
@@ -33684,19 +33826,6 @@ function drawPatternInPolygonVisual() {
 				ctx.globalAlpha = 1.0;
 				ctx.stroke();
 			}
-
-			ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
-			ctx.fillRect(midX - 30, midY - 15, 60, 20);
-			ctx.strokeStyle = strokeColor;
-			ctx.lineWidth = 1;
-			ctx.strokeRect(midX - 30, midY - 15, 60, 20);
-
-			ctx.fillStyle = strokeColor;
-			ctx.font = "12px Arial";
-			ctx.fontWeight = "bold";
-			ctx.textAlign = "center";
-			ctx.fillText(previewLength.toFixed(2) + "m", midX, midY);
-			ctx.textAlign = "left";
 		}
 	}
 
@@ -33708,11 +33837,10 @@ function drawPatternInPolygonVisual() {
 		ctx.arc(endX, endY, 6, 0, 2 * Math.PI);
 		ctx.fill();
 
-		// Add label
-		ctx.fillStyle = strokeColor; // Use strokeColor instead of hardcoded color
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.fillText("END", endX + 12, endY - 8);
+		// Add to overlay data for label
+		overlayData.endPoint = patternEndPoint;
+		overlayData.endCanvasX = endX + canvas.getBoundingClientRect().left;
+		overlayData.endCanvasY = endY + canvas.getBoundingClientRect().top;
 	}
 
 	// Draw reference point (magenta)
@@ -33723,11 +33851,10 @@ function drawPatternInPolygonVisual() {
 		ctx.arc(refX, refY, 6, 0, 2 * Math.PI);
 		ctx.fill();
 
-		// Add label
-		ctx.fillStyle = strokeColor; // Use strokeColor instead of hardcoded color
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.fillText("REF", refX + 12, refY - 8);
+		// Add to overlay data for label
+		overlayData.refPoint = patternReferencePoint;
+		overlayData.refCanvasX = refX + canvas.getBoundingClientRect().left;
+		overlayData.refCanvasY = refY + canvas.getBoundingClientRect().top;
 	}
 
 	// Draw line from start to end to show spacing direction
@@ -33745,31 +33872,222 @@ function drawPatternInPolygonVisual() {
 		ctx.stroke();
 		ctx.setLineDash([]);
 
-		// Calculate and display line length
+		// Calculate line length for overlay
 		const dx = patternEndPoint.x - patternStartPoint.x;
 		const dy = patternEndPoint.y - patternStartPoint.y;
 		const lineLength = Math.sqrt(dx * dx + dy * dy);
 
-		// Display length at midpoint of line
+		// Set distance at midpoint for overlay
 		const midX = (startX + endX) / 2;
 		const midY = (startY + endY) / 2;
-
-		ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
-		ctx.fillRect(midX - 30, midY - 15, 60, 20);
-		ctx.strokeStyle = strokeColor;
-		ctx.lineWidth = 1;
-		ctx.strokeRect(midX - 30, midY - 15, 60, 20);
-
-		ctx.fillStyle = strokeColor;
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.textAlign = "center";
-		ctx.fillText(lineLength.toFixed(2) + "m", midX, midY);
-		ctx.textAlign = "left"; // Reset text alignment
+		overlayData.distance = lineLength;
+		overlayData.midCanvasX = midX + canvas.getBoundingClientRect().left;
+		overlayData.midCanvasY = midY + canvas.getBoundingClientRect().top;
 	}
 
-	// Show snap preview when hovering (if mouse position is available)
-	// This would need mouse tracking which could be added as an enhancement
+	// Update overlay labels (moved from canvas text to HUD overlay)
+	showPatternToolLabels(overlayData);
+}
+
+// 3D Visual feedback for Pattern in Polygon tool
+function drawPatternInPolygon3DVisual() {
+	if (!isPatternInPolygonActive || !threeInitialized || !threeRenderer) {
+		// Clean up if tool is not active
+		if (window.patternTool3DGroup && threeRenderer && threeRenderer.scene) {
+			threeRenderer.scene.remove(window.patternTool3DGroup);
+			window.patternTool3DGroup = null;
+		}
+		return;
+	}
+
+	// Clear previous pattern tool 3D objects
+	if (window.patternTool3DGroup) {
+		threeRenderer.scene.remove(window.patternTool3DGroup);
+		window.patternTool3DGroup = null;
+	}
+
+	// Create new group for pattern tool visuals
+	window.patternTool3DGroup = new THREE.Group();
+	window.patternTool3DGroup.name = "patternTool3DVisuals";
+
+	// Get Z elevation for 3D drawing (use data centroid Z or current mouse Z)
+	const drawZ = (dataCentroidZ || 0) + 2; // Slightly above surface
+
+	// Helper function to create tube geometry for thick lines (WebGL doesn't support linewidth > 1)
+	function createTubeFromPoints(pointsArray, radius, color, opacity) {
+		if (pointsArray.length < 2) return null;
+		const curve = new THREE.CatmullRomCurve3(pointsArray, false);
+		const tubeGeom = new THREE.TubeGeometry(curve, pointsArray.length * 4, radius, 8, false);
+		const tubeMat = new THREE.MeshBasicMaterial({
+			color: color,
+			transparent: opacity < 1,
+			opacity: opacity,
+			side: THREE.DoubleSide
+		});
+		return new THREE.Mesh(tubeGeom, tubeMat);
+	}
+
+	// Step 1) Draw selected polygon outline in 3D
+	if (selectedPolygon && selectedPolygon.data) {
+		const polygonPoints = selectedPolygon.data;
+		if (polygonPoints.length > 0) {
+			// Create tube geometry for polygon outline (thick green line)
+			const tubePoints = [];
+			polygonPoints.forEach((point) => {
+				const x = point.pointXLocation || point.x;
+				const y = point.pointYLocation || point.y;
+				const local = worldToThreeLocal(x, y);
+				tubePoints.push(new THREE.Vector3(local.x, local.y, drawZ));
+			});
+			// Close the polygon
+			const firstPoint = polygonPoints[0];
+			const localFirst = worldToThreeLocal(firstPoint.pointXLocation || firstPoint.x, firstPoint.pointYLocation || firstPoint.y);
+			tubePoints.push(new THREE.Vector3(localFirst.x, localFirst.y, drawZ));
+
+			// Create thick tube for polygon outline
+			const polygonTube = createTubeFromPoints(tubePoints, 1.5, 0x00ff00, 0.8);
+			if (polygonTube) {
+				window.patternTool3DGroup.add(polygonTube);
+			}
+
+			// Draw vertices as spheres (orange for visibility)
+			polygonPoints.forEach((point) => {
+				const x = point.pointXLocation || point.x;
+				const y = point.pointYLocation || point.y;
+				const local = worldToThreeLocal(x, y);
+				const sphereGeom = new THREE.SphereGeometry(3, 12, 12);
+				const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.9 });
+				const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+				sphere.position.set(local.x, local.y, drawZ);
+				window.patternTool3DGroup.add(sphere);
+			});
+		}
+	}
+
+	// Step 2) Draw start point sphere (bright green, larger)
+	if (patternStartPoint) {
+		const local = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
+		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
+		const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.9 });
+		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+		sphere.position.set(local.x, local.y, drawZ + 2);
+		window.patternTool3DGroup.add(sphere);
+	}
+
+	// Step 3) Draw end point sphere (red, larger)
+	if (patternEndPoint) {
+		const local = worldToThreeLocal(patternEndPoint.x, patternEndPoint.y);
+		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
+		const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.9 });
+		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+		sphere.position.set(local.x, local.y, drawZ + 2);
+		window.patternTool3DGroup.add(sphere);
+	}
+
+	// Step 4) Draw reference point sphere (magenta, larger)
+	if (patternReferencePoint) {
+		const local = worldToThreeLocal(patternReferencePoint.x, patternReferencePoint.y);
+		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
+		const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.8 });
+		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+		sphere.position.set(local.x, local.y, drawZ + 2);
+		window.patternTool3DGroup.add(sphere);
+	}
+
+	// Step 5) Draw direction line and pyramid indicator
+	if (patternStartPoint && patternEndPoint) {
+		const startLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
+		const endLocal = worldToThreeLocal(patternEndPoint.x, patternEndPoint.y);
+
+		// Draw tube line from start to end (using tube for visibility)
+		const dirLinePoints = [
+			new THREE.Vector3(startLocal.x, startLocal.y, drawZ + 1),
+			new THREE.Vector3(endLocal.x, endLocal.y, drawZ + 1)
+		];
+		const dirLineTube = createTubeFromPoints(dirLinePoints, 1.0, 0x00ff00, 0.7);
+		if (dirLineTube) {
+			window.patternTool3DGroup.add(dirLineTube);
+		}
+
+		// Calculate direction for pyramid
+		const dx = patternEndPoint.x - patternStartPoint.x;
+		const dy = patternEndPoint.y - patternStartPoint.y;
+		const lineLength = Math.sqrt(dx * dx + dy * dy);
+
+		if (lineLength > 1) {
+			// Create transparent pyramid (cone) to show direction
+			const midX = (startLocal.x + endLocal.x) / 2;
+			const midY = (startLocal.y + endLocal.y) / 2;
+
+			// Calculate perpendicular direction for pyramid offset
+			const dirX = dx / lineLength;
+			const dirY = dy / lineLength;
+			const perpX = -dirY;
+			const perpY = dirX;
+
+			// Pyramid position (offset perpendicular to line)
+			const pyramidOffset = 15;
+			const pyramidX = midX + perpX * pyramidOffset;
+			const pyramidY = midY + perpY * pyramidOffset;
+
+			// Create pyramid (cone) geometry - pointing in perpendicular direction
+			const pyramidHeight = 12;
+			const pyramidRadius = 6;
+			const pyramidGeom = new THREE.ConeGeometry(pyramidRadius, pyramidHeight, 4);
+			const pyramidMat = new THREE.MeshBasicMaterial({
+				color: 0x00ff00,
+				transparent: true,
+				opacity: 0.4,
+				side: THREE.DoubleSide
+			});
+			const pyramid = new THREE.Mesh(pyramidGeom, pyramidMat);
+
+			// Position pyramid
+			pyramid.position.set(pyramidX, pyramidY, drawZ + pyramidHeight / 2 + 1);
+
+			// Rotate pyramid to point in perpendicular direction (burden direction)
+			// Default cone points up (+Z), we want it to point in perpendicular direction
+			const angle = Math.atan2(perpY, perpX);
+			pyramid.rotation.z = angle;
+			pyramid.rotation.x = Math.PI / 2; // Tip pointing along XY plane
+
+			window.patternTool3DGroup.add(pyramid);
+
+			// Add wireframe outline for better visibility
+			const wireframeMat = new THREE.MeshBasicMaterial({
+				color: 0x009900,
+				wireframe: true
+			});
+			const pyramidWireframe = new THREE.Mesh(pyramidGeom.clone(), wireframeMat);
+			pyramidWireframe.position.copy(pyramid.position);
+			pyramidWireframe.rotation.copy(pyramid.rotation);
+			window.patternTool3DGroup.add(pyramidWireframe);
+		}
+	}
+
+	// Step 6) Draw preview line to mouse cursor if in step 2 (selecting end point)
+	if (patternStartPoint && !patternEndPoint && currentMouseWorldX && currentMouseWorldY) {
+		const startLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
+		const mouseLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
+
+		// Use tube for preview line (more visible than basic line)
+		const previewPoints = [
+			new THREE.Vector3(startLocal.x, startLocal.y, drawZ + 1),
+			new THREE.Vector3(mouseLocal.x, mouseLocal.y, drawZ + 1)
+		];
+		const previewTube = createTubeFromPoints(previewPoints, 0.8, 0x00ff00, 0.5);
+		if (previewTube) {
+			window.patternTool3DGroup.add(previewTube);
+		}
+	}
+
+	// Add group to scene
+	threeRenderer.scene.add(window.patternTool3DGroup);
+
+	// Debug log (remove after testing)
+	if (window.patternTool3DGroup.children.length > 0) {
+		console.log("🔷 Pattern tool 3D: Added " + window.patternTool3DGroup.children.length + " objects to scene");
+	}
 }
 // Add this function to draw poly line selection visuals
 function drawPatternOnPolylineVisual() {

@@ -6,6 +6,49 @@
 // Step 2) All functions use FloatingDialog for consistency and proper theming
 // Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
+// Step 2.5) PERFORMANCE FIX 2025-12-28: Helper function to estimate triangulation point count
+function estimateTriangulationPointCount(formData) {
+	var pointCount = 0;
+
+	// Step 2.5a) Count blast hole points based on selected options
+	var visibleHoles = window.allBlastHoles || [];
+	if (window.getVisibleHolesAndKADDrawings) {
+		var visibleElements = window.getVisibleHolesAndKADDrawings(window.allBlastHoles || [],
+			window.allKADDrawingsMap ? Array.from(window.allKADDrawingsMap.values()) : []);
+		visibleHoles = visibleElements.visibleHoles || [];
+	}
+
+	var holeMultiplier = 0;
+	if (formData.blastHolePoints === "collar") holeMultiplier = 1;
+	else if (formData.blastHolePoints === "grade") holeMultiplier = 1;
+	else if (formData.blastHolePoints === "toe") holeMultiplier = 1;
+	else if (formData.blastHolePoints === "measuredLength") holeMultiplier = 1;
+
+	pointCount += visibleHoles.length * holeMultiplier;
+
+	// Step 2.5b) Count KAD drawing points
+	var kadDrawings = [];
+	if (window.allKADDrawingsMap) {
+		kadDrawings = Array.from(window.allKADDrawingsMap.values());
+	}
+	if (window.getVisibleHolesAndKADDrawings) {
+		var visibleElements = window.getVisibleHolesAndKADDrawings([], kadDrawings);
+		kadDrawings = visibleElements.visibleKADDrawings || kadDrawings;
+	}
+
+	kadDrawings.forEach(function (entity) {
+		if (entity && entity.data) {
+			pointCount += entity.data.length;
+		}
+	});
+
+	console.log("📊 Estimated triangulation points: " + pointCount + " (holes: " + visibleHoles.length + ", KAD entities: " + kadDrawings.length + ")");
+	return pointCount;
+}
+
+// Expose for use in kirra.js if needed
+window.estimateTriangulationPointCount = estimateTriangulationPointCount;
+
 //! SHOW TRIANGULATION POPUP
 // Step 3) Dialog for creating Delaunay 2.5D triangulations
 export function showTriangulationPopup() {
@@ -149,11 +192,11 @@ export function showTriangulationPopup() {
 					value: "parpula",
 				},
 				{
-					text: "Civi",
+					text: "Cividis",
 					value: "cividis",
 				},
 				{
-					text: "terrain",
+					text: "Terrain",
 					value: "terrain",
 				},
 			],
@@ -184,7 +227,7 @@ export function showTriangulationPopup() {
 	notesDiv.innerHTML = `
 			<strong>Triangulation:</strong><br>
 			✅ Handles XY duplicate points with different Z elevations<br>
-			✅ Uses Constrainautor to constrain trianges to breaklines<br>
+			✅ Uses Constrainautor to constrain triangles to breaklines<br>
 			✅ Cull triangles by internal angle, edge length, and boundary clipping<br>
 			<strong>Approach:</strong><br>
 			• Uses proven Delaunator + Constrainautor<br>
@@ -218,8 +261,33 @@ export function showTriangulationPopup() {
 				return;
 			}
 
-			// Step 8) Show loading message
-			window.updateStatusMessage("Creating delaunay triangulation...");
+			// Step 8) PERFORMANCE FIX 2025-12-28: Estimate point count and warn user
+			var estimatedPoints = estimateTriangulationPointCount(formData);
+			var SAFE_POINT_LIMIT = 10000;
+			var LARGE_DATASET_WARNING = 5000;
+
+			if (estimatedPoints > SAFE_POINT_LIMIT) {
+				// Very large dataset - require confirmation
+				var proceed = await window.showConfirmationDialog(
+					"Very Large Dataset Warning",
+					"This triangulation has approximately " + estimatedPoints + " points. " +
+					"Processing may take several minutes and could freeze the browser. " +
+					"Consider reducing the data or using simplified settings. Continue anyway?",
+					"Continue (not recommended)",
+					"Cancel"
+				);
+				if (!proceed) {
+					window.updateStatusMessage("Triangulation cancelled");
+					return;
+				}
+			} else if (estimatedPoints > LARGE_DATASET_WARNING) {
+				// Large dataset - show info warning but proceed
+				console.log("⚠️ Large triangulation dataset: " + estimatedPoints + " points");
+				window.updateStatusMessage("Large dataset (" + estimatedPoints + " points) - this may take a moment...");
+			}
+
+			// Step 8b) Show loading message
+			window.updateStatusMessage("Creating delaunay triangulation (" + estimatedPoints + " points)...");
 
 			try {
 				// Step 9) Process form data into triangulation parameters
@@ -234,28 +302,45 @@ export function showTriangulationPopup() {
 				if (formData.useBreaklines === "yes") {
 					console.log("🔗 Using constrained triangulation");
 
-					// Step 10) Create progress dialog for triangulation
-					const progressContent = `
-                        <p>Creating Constrained Delaunay Triangulation</p>
-                        <p>Please wait, this may take a moment...</p>
-                        <div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">
-                            <div id="triangulationProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>
-                        </div>
-                        <p id="triangulationProgressText">Initializing...</p>
-                    `;
+					// Step 10) Create progress dialog for triangulation with cancel button
+					// PERFORMANCE FIX 2025-12-28: Add cancel support
+					window._triangulationCancelled = false;
+
+					var progressContentHTML = "<p>Creating Constrained Delaunay Triangulation</p>" +
+						"<p>Please wait, this may take a moment...</p>" +
+						'<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">' +
+						'<div id="triangulationProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>' +
+						"</div>" +
+						'<p id="triangulationProgressText">Initializing...</p>' +
+						'<button id="triangulationCancelBtn" style="margin-top: 10px; padding: 8px 16px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>';
+
+					var progressContentDiv = document.createElement("div");
+					progressContentDiv.innerHTML = progressContentHTML;
 
 					const progressDialog = new window.FloatingDialog({
 						title: "Triangulation Progress",
-						content: progressContent,
+						content: progressContentDiv,
 						layoutType: "standard",
 						width: 400,
-						height: 200,
+						height: 250,
 						showConfirm: false,
 						showCancel: false,
 						allowOutsideClick: false,
 					});
 
 					progressDialog.show();
+
+					// Step 10a) Setup cancel button handler
+					var cancelBtn = document.getElementById("triangulationCancelBtn");
+					if (cancelBtn) {
+						cancelBtn.addEventListener("click", function () {
+							window._triangulationCancelled = true;
+							var progressText = document.getElementById("triangulationProgressText");
+							if (progressText) progressText.textContent = "Cancelling...";
+							cancelBtn.disabled = true;
+							cancelBtn.textContent = "Cancelling...";
+						});
+					}
 
 					// Step 11) Get progress bar and text elements
 					const progressBar = document.getElementById("triangulationProgressBar");

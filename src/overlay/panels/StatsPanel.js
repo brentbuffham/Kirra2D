@@ -19,6 +19,7 @@ var currentData = {
     mouse2D: { x: 0, y: 0 },
     scale: 1,
     world3D: { x: 0, y: 0, z: 0 },
+    centroid: { x: null, y: null, z: null },
     snapped: false,
     ruler: { l1: null, l2: null },
     protractor: { p1p2: null, p2p3: null, inner: null, outer: null },
@@ -80,7 +81,12 @@ function buildStatsHTML() {
     var snapIcon = currentData.snapped ? " \ud83e\uddf2" : "";
     lines.push(world3DLabel + " [X: " + formatNum(currentData.world3D.x, 3) + ", Y: " + formatNum(currentData.world3D.y, 3) + ", Z: " + formatNum(currentData.world3D.z, 3) + "]" + snapIcon);
     
-    // Line 5: Ruler measurements (only if active)
+    // Line 5: Centroid (data origin reference - only show if values are set)
+    if (currentData.centroid.x !== null || currentData.centroid.y !== null || currentData.centroid.z !== null) {
+        lines.push("Centroid [X: " + formatNum(currentData.centroid.x, 3) + ", Y: " + formatNum(currentData.centroid.y, 3) + ", Z: " + formatNum(currentData.centroid.z, 3) + "]");
+    }
+    
+    // Line 6: Ruler measurements (only if active)
     if (currentData.ruler.l1 !== null || currentData.ruler.l2 !== null) {
         var rulerLine = "L1[" + formatNum(currentData.ruler.l1, 3) + "]";
         if (currentData.ruler.l2 !== null) {
@@ -89,7 +95,7 @@ function buildStatsHTML() {
         lines.push(rulerLine);
     }
     
-    // Line 6: Protractor measurements (only if active)
+    // Line 7: Protractor measurements (only if active)
     if (currentData.protractor.p1p2 !== null) {
         var protLine = "P1->P2[" + formatNum(currentData.protractor.p1p2, 1) + "°]";
         if (currentData.protractor.p2p3 !== null) {
@@ -104,7 +110,7 @@ function buildStatsHTML() {
         lines.push(protLine);
     }
     
-    // Line 7: Version
+    // Line 8: Version
     if (currentData.version) {
         lines.push("Ver: " + currentData.version);
     }
@@ -157,6 +163,20 @@ function handleCoordsUpdate(data) {
     updateDisplay();
 }
 
+// Step 6b) Handle centroid update event
+function handleCentroidUpdate(data) {
+    if (!data) {
+        currentData.centroid.x = null;
+        currentData.centroid.y = null;
+        currentData.centroid.z = null;
+    } else {
+        currentData.centroid.x = data.x;
+        currentData.centroid.y = data.y;
+        currentData.centroid.z = data.z;
+    }
+    updateDisplay();
+}
+
 // Step 7) Handle ruler update event
 function handleRulerUpdate(data) {
     if (!data) {
@@ -197,6 +217,7 @@ export function initStatsPanel(element) {
     // Step 9a) Subscribe to events
     OverlayEventBus.on(OverlayEvents.STATS, handleStatsUpdate);
     OverlayEventBus.on(OverlayEvents.COORDINATES, handleCoordsUpdate);
+    OverlayEventBus.on(OverlayEvents.CENTROID, handleCentroidUpdate);
     OverlayEventBus.on(OverlayEvents.RULER, handleRulerUpdate);
     OverlayEventBus.on(OverlayEvents.PROTRACTOR, handleProtractorUpdate);
     
@@ -210,6 +231,7 @@ export function initStatsPanel(element) {
 export function destroyStatsPanel() {
     OverlayEventBus.off(OverlayEvents.STATS, handleStatsUpdate);
     OverlayEventBus.off(OverlayEvents.COORDINATES, handleCoordsUpdate);
+    OverlayEventBus.off(OverlayEvents.CENTROID, handleCentroidUpdate);
     OverlayEventBus.off(OverlayEvents.RULER, handleRulerUpdate);
     OverlayEventBus.off(OverlayEvents.PROTRACTOR, handleProtractorUpdate);
     panelElement = null;
@@ -228,6 +250,11 @@ export function emitCoords(mouse2D, world3D, scale, snapped) {
         scale: scale,
         snapped: snapped || false
     }, 16); // 60fps throttle
+}
+
+// Step 12b) Convenience function to emit centroid (data origin reference)
+export function emitCentroid(x, y, z) {
+    OverlayEventBus.emit(OverlayEvents.CENTROID, { x: x, y: y, z: z });
 }
 
 // Step 13) Convenience function to emit ruler measurements

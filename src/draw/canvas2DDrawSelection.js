@@ -274,13 +274,69 @@ export function drawKADHighlightSelectionVisuals() {
     }
 
     // Step 4) Handle multiple selections - reuse the single selection drawing code
+    // PERFORMANCE FIX 2025-12-28: Add limits to prevent freeze with large selections
     if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
+        // Step 4.0) Performance constants
+        const VERTEX_DRAW_LIMIT = 50;      // Only draw vertices for selections smaller than this
+        const SIMPLIFIED_DRAW_LIMIT = 500; // Use simplified rendering above this count
+        const MAX_RENDER_COUNT = 2000;     // Maximum entities to render (prevent total freeze)
+        
+        const selectionCount = selectedMultipleKADObjects.length;
+        const skipVertices = selectionCount > VERTEX_DRAW_LIMIT;
+        const useSimplifiedRendering = selectionCount > SIMPLIFIED_DRAW_LIMIT;
+        const renderCount = Math.min(selectionCount, MAX_RENDER_COUNT);
+        
         if (developerModeEnabled) {
-            console.log("Drawing multiple selections:", selectedMultipleKADObjects.length, "objects");
+            console.log("Drawing multiple selections:", selectionCount, "objects");
+            console.log("Performance mode: skipVertices=" + skipVertices + ", simplified=" + useSimplifiedRendering + ", renderCount=" + renderCount);
+        }
+        
+        // Step 4.0a) Show warning if selection was truncated
+        if (selectionCount > MAX_RENDER_COUNT && !window._largeSelectionWarningShown) {
+            window._largeSelectionWarningShown = true;
+            if (typeof window.updateStatusMessage === "function") {
+                window.updateStatusMessage("Large selection: rendering " + MAX_RENDER_COUNT + " of " + selectionCount + " entities");
+                setTimeout(function() { window.updateStatusMessage(""); }, 3000);
+            }
+        } else if (selectionCount <= MAX_RENDER_COUNT) {
+            window._largeSelectionWarningShown = false;
         }
 
-        selectedMultipleKADObjects.forEach((kadObj, index) => {
-            if (developerModeEnabled) {
+        // Step 4.0b) Use simplified rendering for very large selections
+        if (useSimplifiedRendering) {
+            // Draw simple bounding boxes only
+            ctx.strokeStyle = nonSelectedSegmentColor;
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            
+            for (var i = 0; i < renderCount; i++) {
+                var kadObj = selectedMultipleKADObjects[i];
+                var entity = getEntityFromKADObject(kadObj);
+                if (entity && entity.data && entity.data.length > 0) {
+                    // Find bounding box of entity
+                    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    entity.data.forEach(function(point) {
+                        var px = point.pointXLocation || point.x;
+                        var py = point.pointYLocation || point.y;
+                        if (px < minX) minX = px;
+                        if (py < minY) minY = py;
+                        if (px > maxX) maxX = px;
+                        if (py > maxY) maxY = py;
+                    });
+                    
+                    if (isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
+                        var canvasMin = worldToCanvas(minX, minY);
+                        var canvasMax = worldToCanvas(maxX, maxY);
+                        ctx.strokeRect(canvasMin[0], canvasMax[1], canvasMax[0] - canvasMin[0], canvasMin[1] - canvasMax[1]);
+                    }
+                }
+            }
+            ctx.setLineDash([]);
+            return; // Exit early for simplified rendering
+        }
+
+        selectedMultipleKADObjects.slice(0, renderCount).forEach((kadObj, index) => {
+            if (developerModeEnabled && index < 3) {
                 console.log("=== DRAWING OBJECT " + index + " ===");
                 console.log("kadObj:", kadObj);
             }
@@ -292,6 +348,9 @@ export function drawKADHighlightSelectionVisuals() {
             // Step 4b) Declare variables
             const tolerance = 5;
             let entity = getEntityFromKADObject(kadObj);
+            
+            // Step 4b.1) Skip vertex drawing if selection is large
+            const drawVerticesForThis = !skipVertices;
 
             if (developerModeEnabled) {
                 console.log("Entity found by getEntityFromKADObject:", entity);
@@ -321,16 +380,19 @@ export function drawKADHighlightSelectionVisuals() {
                         ctx.stroke();
 
                         // Step 4e) Draw all other points in the entity with standard highlighting
-                        ctx.strokeStyle = nonSelectedSegmentColor;
-                        ctx.lineWidth = 2;
-                        entity.data.forEach((point, index) => {
-                            if (index !== kadObj.elementIndex) {
-                                const [opx, opy] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                                ctx.beginPath();
-                                ctx.arc(opx, opy, tolerance, 0, 2 * Math.PI);
-                                ctx.stroke();
-                            }
-                        });
+                        // PERFORMANCE FIX: Skip if large selection
+                        if (drawVerticesForThis) {
+                            ctx.strokeStyle = nonSelectedSegmentColor;
+                            ctx.lineWidth = 2;
+                            entity.data.forEach((point, index) => {
+                                if (index !== kadObj.elementIndex) {
+                                    const [opx, opy] = worldToCanvas(point.pointXLocation, point.pointYLocation);
+                                    ctx.beginPath();
+                                    ctx.arc(opx, opy, tolerance, 0, 2 * Math.PI);
+                                    ctx.stroke();
+                                }
+                            });
+                        }
                         break;
 
                     case "line":
@@ -368,13 +430,16 @@ export function drawKADHighlightSelectionVisuals() {
                         }
 
                         // Step 4h) Draw all vertices
-                        entity.data.forEach((point) => {
-                            const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                            ctx.fillStyle = verticesColor;
-                            ctx.beginPath();
-                            ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                            ctx.fill();
-                        });
+                        // PERFORMANCE FIX: Skip if large selection
+                        if (drawVerticesForThis) {
+                            entity.data.forEach((point) => {
+                                const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
+                                ctx.fillStyle = verticesColor;
+                                ctx.beginPath();
+                                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                                ctx.fill();
+                            });
+                        }
                         break;
 
                     case "poly":
@@ -412,13 +477,16 @@ export function drawKADHighlightSelectionVisuals() {
                         }
 
                         // Step 4k) Draw all vertices
-                        polygonPoints.forEach((point) => {
-                            const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
-                            ctx.fillStyle = verticesColor;
-                            ctx.beginPath();
-                            ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                            ctx.fill();
-                        });
+                        // PERFORMANCE FIX: Skip if large selection
+                        if (drawVerticesForThis) {
+                            polygonPoints.forEach((point) => {
+                                const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
+                                ctx.fillStyle = verticesColor;
+                                ctx.beginPath();
+                                ctx.arc(x, y, 4, 0, 2 * Math.PI);
+                                ctx.fill();
+                            });
+                        }
                         break;
 
                     case "circle":
@@ -438,17 +506,20 @@ export function drawKADHighlightSelectionVisuals() {
                         ctx.fill();
 
                         // Step 4m) Other circles...
-                        ctx.strokeStyle = nonSelectedSegmentColor;
-                        ctx.lineWidth = 2;
-                        entity.data.forEach((circle, index) => {
-                            if (index !== kadObj.elementIndex) {
-                                const [ocx, ocy] = worldToCanvas(circle.pointXLocation, circle.pointYLocation);
-                                const oradiusCanvas = circle.radius * currentScale;
-                                ctx.beginPath();
-                                ctx.arc(ocx, ocy, oradiusCanvas + 5, 0, 2 * Math.PI);
-                                ctx.stroke();
-                            }
-                        });
+                        // PERFORMANCE FIX: Skip if large selection
+                        if (drawVerticesForThis) {
+                            ctx.strokeStyle = nonSelectedSegmentColor;
+                            ctx.lineWidth = 2;
+                            entity.data.forEach((circle, index) => {
+                                if (index !== kadObj.elementIndex) {
+                                    const [ocx, ocy] = worldToCanvas(circle.pointXLocation, circle.pointYLocation);
+                                    const oradiusCanvas = circle.radius * currentScale;
+                                    ctx.beginPath();
+                                    ctx.arc(ocx, ocy, oradiusCanvas + 5, 0, 2 * Math.PI);
+                                    ctx.stroke();
+                                }
+                            });
+                        }
                         break;
 
                     case "text":
@@ -472,21 +543,24 @@ export function drawKADHighlightSelectionVisuals() {
                         ctx.fill();
 
                         // Step 4o) Other text elements...
-                        ctx.strokeStyle = nonSelectedSegmentColor;
-                        ctx.lineWidth = 2;
-                        entity.data.forEach((textData, index) => {
-                            if (index !== kadObj.elementIndex) {
-                                const [otx, oty] = worldToCanvas(textData.pointXLocation, textData.pointYLocation);
-                                const otherTextDimensions = calculateTextDimensions(textData.text || "Text");
+                        // PERFORMANCE FIX: Skip if large selection
+                        if (drawVerticesForThis) {
+                            ctx.strokeStyle = nonSelectedSegmentColor;
+                            ctx.lineWidth = 2;
+                            entity.data.forEach((textData, index) => {
+                                if (index !== kadObj.elementIndex) {
+                                    const [otx, oty] = worldToCanvas(textData.pointXLocation, textData.pointYLocation);
+                                    const otherTextDimensions = calculateTextDimensions(textData.text || "Text");
 
-                                const otherRectX = otx - 5;
-                                const otherRectY = oty - otherTextDimensions.lineHeight + 2;
-                                const otherRectWidth = otherTextDimensions.width + 10;
-                                const otherRectHeight = otherTextDimensions.height + 6;
+                                    const otherRectX = otx - 5;
+                                    const otherRectY = oty - otherTextDimensions.lineHeight + 2;
+                                    const otherRectWidth = otherTextDimensions.width + 10;
+                                    const otherRectHeight = otherTextDimensions.height + 6;
 
-                                ctx.strokeRect(otherRectX, otherRectY, otherRectWidth, otherRectHeight);
-                            }
-                        });
+                                    ctx.strokeRect(otherRectX, otherRectY, otherRectWidth, otherRectHeight);
+                                }
+                            });
+                        }
                         break;
                 }
             } else {

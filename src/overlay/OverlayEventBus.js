@@ -84,6 +84,7 @@ export var OverlayEvents = {
     // Stats panel events
     STATS: "overlay:stats",
     COORDINATES: "overlay:coordinates",
+    CENTROID: "overlay:centroid",
     RULER: "overlay:ruler",
     PROTRACTOR: "overlay:protractor",
     
@@ -91,6 +92,7 @@ export var OverlayEvents = {
     RULER_MEASUREMENT: "overlay:rulerMeasurement",
     PROTRACTOR_MEASUREMENT: "overlay:protractorMeasurement",
     DRAWING_DISTANCE: "overlay:drawingDistance",
+    PATTERN_TOOL: "overlay:patternTool",
     
     // Legend events
     LEGEND: "overlay:legend",

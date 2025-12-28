@@ -13,6 +13,7 @@ import { initSurfaceLegendPanel } from "./panels/SurfaceLegendPanel.js";
 import { initRulerPanel } from "./panels/RulerPanel.js";
 import { initProtractorPanel } from "./panels/ProtractorPanel.js";
 import { initDrawingDistancePanel } from "./panels/DrawingDistancePanel.js";
+import { initPatternToolPanel } from "./panels/PatternToolPanel.js";
 import { initTooltipPanel } from "./panels/TooltipPanel.js";
 
 // Step 1) Module state
@@ -84,6 +85,7 @@ export function initHUD(parentContainer, options) {
     initRulerPanel(hudContainer); // Floating panel, appended to HUD container
     initProtractorPanel(hudContainer); // Floating protractor panel
     initDrawingDistancePanel(hudContainer); // Floating drawing distance panel
+    initPatternToolPanel(hudContainer); // Pattern tool labels panel
     initTooltipPanel(hudContainer); // Floating tooltip panel
     
     // Step 3c) Subscribe to clear event
