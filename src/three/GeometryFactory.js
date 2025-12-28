@@ -5,6 +5,10 @@
 import * as THREE from "three";
 import { MeshLine, MeshLineMaterial } from "../helpers/meshLineModified.js";
 import { Text } from "troika-three-text";
+// Step A1) Fat Line imports for variable line thickness
+import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
+import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
+import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 
 // Step 0) Text object cache to prevent recreation (performance)
 const textCache = new Map(); // key: "x,y,z,text,fontSize,color"
@@ -613,6 +617,284 @@ export class GeometryFactory {
 		return { lineSegments: lineSegments, entityRanges: entityRanges, segmentCount: totalSegments };
 	}
 
+	// Step 9c-v2) HYBRID SUPER-BATCH: Thin lines use LineBasic, thick lines use FatLines
+	// Splits entities by lineWidth: <=1 goes to fast LineSegments, >1 goes to LineSegments2
+	// Returns { thinLineSegments, fatLinesByWidth, entityRanges }
+	static createHybridSuperBatchedLines(allEntities, worldToThreeLocal, resolution) {
+		if (!allEntities || allEntities.length === 0) return null;
+		
+		// Step 1) Separate thin (<=1) vs thick (>1) entities
+		var thinEntities = [];
+		var thickEntitiesByWidth = new Map(); // lineWidth -> [entities]
+		
+		for (var i = 0; i < allEntities.length; i++) {
+			var entity = allEntities[i];
+			if (entity.visible === false) continue;
+			if (entity.entityType !== "line" && entity.entityType !== "poly") continue;
+			var points = entity.data;
+			if (!points || points.length < 2) continue;
+			
+			// Get lineWidth from entity or first point, default to 1
+			var lineWidth = entity.lineWidth || (points[0] && points[0].lineWidth) || 1;
+			
+			if (lineWidth <= 1) {
+				// Standard thin line - goes to fast LineBasicMaterial batch
+				thinEntities.push(entity);
+			} else {
+				// Thick line - goes to FatLine batch grouped by width
+				var roundedWidth = Math.round(lineWidth * 2) / 2; // Round to 0.5
+				if (!thickEntitiesByWidth.has(roundedWidth)) {
+					thickEntitiesByWidth.set(roundedWidth, []);
+				}
+				thickEntitiesByWidth.get(roundedWidth).push(entity);
+			}
+		}
+		
+		var entityRanges = new Map();
+		var result = {
+			thinLineSegments: null,
+			fatLinesByWidth: new Map(),
+			entityRanges: entityRanges,
+			thinCount: 0,
+			thickCount: 0
+		};
+		
+		// Step 2) Create thin lines batch (existing LineBasicMaterial approach)
+		if (thinEntities.length > 0) {
+			var thinResult = this._createThinLinesBatch(thinEntities, worldToThreeLocal, entityRanges, 0);
+			if (thinResult) {
+				result.thinLineSegments = thinResult.lineSegments;
+				result.thinCount = thinResult.segmentCount;
+			}
+		}
+		
+		// Step 3) Create thick lines batches (FatLine approach) - only if any exist
+		if (thickEntitiesByWidth.size > 0) {
+			var globalSegmentOffset = result.thinCount;
+			
+			thickEntitiesByWidth.forEach(function(entities, lineWidth) {
+				var fatBatch = GeometryFactory._createFatLinesBatch(
+					entities, worldToThreeLocal, entityRanges, lineWidth, resolution, globalSegmentOffset
+				);
+				if (fatBatch) {
+					result.fatLinesByWidth.set(lineWidth, fatBatch.lineSegments);
+					result.thickCount += fatBatch.segmentCount;
+					globalSegmentOffset += fatBatch.segmentCount;
+				}
+			});
+		}
+		
+		return result;
+	}
+	
+	// Step 9c-v2a) Helper: Create thin lines batch with LineBasicMaterial (fast, 1 draw call)
+	static _createThinLinesBatch(entities, worldToThreeLocal, entityRanges, segmentOffset) {
+		// Step 1) Count total segments
+		var totalSegments = 0;
+		for (var i = 0; i < entities.length; i++) {
+			var entity = entities[i];
+			if (entity.visible === false) continue;
+			var points = entity.data;
+			if (!points || points.length < 2) continue;
+			
+			var visiblePoints = [];
+			for (var j = 0; j < points.length; j++) {
+				if (points[j].visible !== false) visiblePoints.push(points[j]);
+			}
+			if (visiblePoints.length < 2) continue;
+			
+			var numSegments = entity.entityType === "poly" ? visiblePoints.length : visiblePoints.length - 1;
+			totalSegments += numSegments;
+		}
+		
+		if (totalSegments === 0) return null;
+		
+		// Step 2) Pre-allocate arrays
+		var positions = new Float32Array(totalSegments * 6);
+		var colors = new Float32Array(totalSegments * 6);
+		
+		var posIdx = 0;
+		var colIdx = 0;
+		var segmentIndex = 0;
+		var defR = 0.467, defG = 0.467, defB = 0.467;
+		
+		// Step 3) Fill arrays
+		for (var i = 0; i < entities.length; i++) {
+			var entity = entities[i];
+			if (entity.visible === false) continue;
+			var points = entity.data;
+			if (!points || points.length < 2) continue;
+			
+			var visiblePoints = [];
+			for (var j = 0; j < points.length; j++) {
+				if (points[j].visible !== false) visiblePoints.push(points[j]);
+			}
+			if (visiblePoints.length < 2) continue;
+			
+			var startSegment = segmentOffset + segmentIndex;
+			var isPoly = entity.entityType === "poly";
+			var numPts = visiblePoints.length;
+			var numSegs = isPoly ? numPts : numPts - 1;
+			
+			for (var s = 0; s < numSegs; s++) {
+				var p1 = visiblePoints[s];
+				var p2 = visiblePoints[(s + 1) % numPts];
+				
+				var local1 = worldToThreeLocal(p1.pointXLocation, p1.pointYLocation);
+				var local2 = worldToThreeLocal(p2.pointXLocation, p2.pointYLocation);
+				
+				positions[posIdx++] = local1.x;
+				positions[posIdx++] = local1.y;
+				positions[posIdx++] = p1.pointZLocation || 0;
+				positions[posIdx++] = local2.x;
+				positions[posIdx++] = local2.y;
+				positions[posIdx++] = p2.pointZLocation || 0;
+				
+				var col = p1.color;
+				var r = defR, g = defG, b = defB;
+				if (col && col.charAt(0) === "#" && col.length >= 7) {
+					var hex = parseInt(col.slice(1, 7), 16);
+					r = ((hex >> 16) & 255) / 255;
+					g = ((hex >> 8) & 255) / 255;
+					b = (hex & 255) / 255;
+				}
+				colors[colIdx++] = r; colors[colIdx++] = g; colors[colIdx++] = b;
+				colors[colIdx++] = r; colors[colIdx++] = g; colors[colIdx++] = b;
+				
+				segmentIndex++;
+			}
+			
+			entityRanges.set(entity.entityName, { start: startSegment, end: segmentOffset + segmentIndex - 1, lineWidth: 1 });
+		}
+		
+		// Step 4) Create geometry and material
+		var geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+		
+		var material = new THREE.LineBasicMaterial({
+			vertexColors: true,
+			depthTest: true,
+			depthWrite: true
+		});
+		
+		var lineSegments = new THREE.LineSegments(geometry, material);
+		lineSegments.name = "kad-hybrid-thin";
+		lineSegments.userData = { type: "kadHybridThin", segmentCount: totalSegments };
+		
+		return { lineSegments: lineSegments, segmentCount: totalSegments };
+	}
+	
+	// Step 9c-v2b) Helper: Create fat lines batch with LineMaterial (screen-space thick lines)
+	static _createFatLinesBatch(entities, worldToThreeLocal, entityRanges, lineWidth, resolution, segmentOffset) {
+		// Step 1) Count segments for this group
+		var groupSegments = 0;
+		for (var i = 0; i < entities.length; i++) {
+			var entity = entities[i];
+			if (entity.visible === false) continue;
+			var points = entity.data;
+			if (!points || points.length < 2) continue;
+			
+			var visiblePoints = [];
+			for (var j = 0; j < points.length; j++) {
+				if (points[j].visible !== false) visiblePoints.push(points[j]);
+			}
+			if (visiblePoints.length < 2) continue;
+			
+			var numSegs = entity.entityType === "poly" ? visiblePoints.length : visiblePoints.length - 1;
+			groupSegments += numSegs;
+		}
+		
+		if (groupSegments === 0) return null;
+		
+		// Step 2) Pre-allocate arrays - LineSegmentsGeometry uses flat array format
+		var positions = new Float32Array(groupSegments * 6);
+		var colors = new Float32Array(groupSegments * 6);
+		
+		var posIdx = 0;
+		var colIdx = 0;
+		var segmentIndex = 0;
+		var defR = 0.467, defG = 0.467, defB = 0.467;
+		
+		// Step 3) Fill arrays
+		for (var i = 0; i < entities.length; i++) {
+			var entity = entities[i];
+			if (entity.visible === false) continue;
+			var points = entity.data;
+			if (!points || points.length < 2) continue;
+			
+			var visiblePoints = [];
+			for (var j = 0; j < points.length; j++) {
+				if (points[j].visible !== false) visiblePoints.push(points[j]);
+			}
+			if (visiblePoints.length < 2) continue;
+			
+			var startSegment = segmentOffset + segmentIndex;
+			var isPoly = entity.entityType === "poly";
+			var numPts = visiblePoints.length;
+			var numSegs = isPoly ? numPts : numPts - 1;
+			
+			for (var s = 0; s < numSegs; s++) {
+				var p1 = visiblePoints[s];
+				var p2 = visiblePoints[(s + 1) % numPts];
+				
+				var local1 = worldToThreeLocal(p1.pointXLocation, p1.pointYLocation);
+				var local2 = worldToThreeLocal(p2.pointXLocation, p2.pointYLocation);
+				
+				positions[posIdx++] = local1.x;
+				positions[posIdx++] = local1.y;
+				positions[posIdx++] = p1.pointZLocation || 0;
+				positions[posIdx++] = local2.x;
+				positions[posIdx++] = local2.y;
+				positions[posIdx++] = p2.pointZLocation || 0;
+				
+				var col = p1.color;
+				var r = defR, g = defG, b = defB;
+				if (col && col.charAt(0) === "#" && col.length >= 7) {
+					var hex = parseInt(col.slice(1, 7), 16);
+					r = ((hex >> 16) & 255) / 255;
+					g = ((hex >> 8) & 255) / 255;
+					b = (hex & 255) / 255;
+				}
+				colors[colIdx++] = r; colors[colIdx++] = g; colors[colIdx++] = b;
+				colors[colIdx++] = r; colors[colIdx++] = g; colors[colIdx++] = b;
+				
+				segmentIndex++;
+			}
+			
+			entityRanges.set(entity.entityName, { start: startSegment, end: segmentOffset + segmentIndex - 1, lineWidth: lineWidth });
+		}
+		
+		// Step 4) Create LineSegmentsGeometry (fat line compatible)
+		var geometry = new LineSegmentsGeometry();
+		geometry.setPositions(positions);
+		geometry.setColors(colors);
+		
+		// Step 5) Create LineMaterial with screen-space linewidth
+		var material = new LineMaterial({
+			color: 0xffffff,
+			linewidth: lineWidth,
+			vertexColors: true,
+			resolution: resolution,
+			dashed: false,
+			alphaToCoverage: true
+		});
+		material.depthTest = true;
+		material.depthWrite = true;
+		
+		// Step 6) Create LineSegments2
+		var lineSegments = new LineSegments2(geometry, material);
+		lineSegments.computeLineDistances();
+		lineSegments.name = "kad-hybrid-fat-" + lineWidth;
+		lineSegments.userData = { 
+			type: "kadHybridFat", 
+			lineWidth: lineWidth,
+			segmentCount: groupSegments
+		};
+		
+		return { lineSegments: lineSegments, segmentCount: groupSegments };
+	}
+
 	// Step 9.5) SUPER-BATCH: Create a single THREE.Points geometry for ALL KAD points
 	// One draw call for thousands of points!
 	static createSuperBatchedPoints(allPointEntities, worldToThreeLocal) {
@@ -856,6 +1138,228 @@ export class GeometryFactory {
 		};
 		
 		return { lineSegments: lineSegments, entityMetadata: entityMetadata, totalCircles: totalCircles };
+	}
+
+	// Step 9.7) HYBRID SUPER-BATCH for CIRCLES: Thin circles use LineBasic, thick use FatLines
+	// Splits circles by lineWidth: <=1 goes to fast LineSegments, >1 goes to LineSegments2
+	static createHybridSuperBatchedCircles(allCircleEntities, worldToThreeLocal, resolution) {
+		if (!allCircleEntities || allCircleEntities.length === 0) return null;
+		
+		// Step 1) Separate thin vs thick circles
+		var thinCircles = [];
+		var thickCirclesByWidth = new Map();
+		
+		for (var i = 0; i < allCircleEntities.length; i++) {
+			var entity = allCircleEntities[i];
+			if (!entity.data) continue;
+			
+			for (var j = 0; j < entity.data.length; j++) {
+				var circleData = entity.data[j];
+				if (circleData.visible === false) continue;
+				
+				var lineWidth = circleData.lineWidth || 1;
+				var circleInfo = {
+					entity: entity,
+					circleData: circleData,
+					vertexIndex: j
+				};
+				
+				if (lineWidth <= 1) {
+					thinCircles.push(circleInfo);
+				} else {
+					var roundedWidth = Math.round(lineWidth * 2) / 2;
+					if (!thickCirclesByWidth.has(roundedWidth)) {
+						thickCirclesByWidth.set(roundedWidth, []);
+					}
+					thickCirclesByWidth.get(roundedWidth).push(circleInfo);
+				}
+			}
+		}
+		
+		var result = {
+			thinLineSegments: null,
+			fatLinesByWidth: new Map(),
+			entityMetadata: [],
+			thinCount: 0,
+			thickCount: 0
+		};
+		
+		var segmentsPerCircle = 64;
+		
+		// Step 2) Create thin circles batch
+		if (thinCircles.length > 0) {
+			result.thinLineSegments = this._createThinCirclesBatch(thinCircles, worldToThreeLocal, segmentsPerCircle, result.entityMetadata);
+			result.thinCount = thinCircles.length;
+		}
+		
+		// Step 3) Create thick circles batches
+		if (thickCirclesByWidth.size > 0) {
+			thickCirclesByWidth.forEach(function(circles, lineWidth) {
+				var fatBatch = GeometryFactory._createFatCirclesBatch(
+					circles, worldToThreeLocal, segmentsPerCircle, lineWidth, resolution, result.entityMetadata
+				);
+				if (fatBatch) {
+					result.fatLinesByWidth.set(lineWidth, fatBatch);
+					result.thickCount += circles.length;
+				}
+			});
+		}
+		
+		return result;
+	}
+	
+	// Step 9.7a) Helper: Create thin circles batch with LineBasicMaterial
+	static _createThinCirclesBatch(circles, worldToThreeLocal, segmentsPerCircle, entityMetadata) {
+		var totalSegments = circles.length * segmentsPerCircle;
+		if (totalSegments === 0) return null;
+		
+		var positions = new Float32Array(totalSegments * 6);
+		var colors = new Float32Array(totalSegments * 6);
+		
+		var posIdx = 0;
+		var colorIdx = 0;
+		var defaultR = 0.0, defaultG = 0.5, defaultB = 1.0;
+		
+		for (var i = 0; i < circles.length; i++) {
+			var circleInfo = circles[i];
+			var circleData = circleInfo.circleData;
+			var entity = circleInfo.entity;
+			
+			var local = worldToThreeLocal(circleData.pointXLocation, circleData.pointYLocation);
+			var cx = local.x;
+			var cy = local.y;
+			var cz = circleData.pointZLocation || 0;
+			var radius = circleData.radius || 1;
+			
+			var r = defaultR, g = defaultG, b = defaultB;
+			var col = circleData.color;
+			if (col && typeof col === "string" && col.length >= 7 && col.charAt(0) === "#") {
+				var hex = parseInt(col.slice(1, 7), 16);
+				r = ((hex >> 16) & 255) / 255;
+				g = ((hex >> 8) & 255) / 255;
+				b = (hex & 255) / 255;
+			}
+			
+			for (var k = 0; k < segmentsPerCircle; k++) {
+				var theta1 = (k / segmentsPerCircle) * Math.PI * 2;
+				var theta2 = ((k + 1) / segmentsPerCircle) * Math.PI * 2;
+				
+				positions[posIdx++] = cx + radius * Math.cos(theta1);
+				positions[posIdx++] = cy + radius * Math.sin(theta1);
+				positions[posIdx++] = cz;
+				colors[colorIdx++] = r; colors[colorIdx++] = g; colors[colorIdx++] = b;
+				
+				positions[posIdx++] = cx + radius * Math.cos(theta2);
+				positions[posIdx++] = cy + radius * Math.sin(theta2);
+				positions[posIdx++] = cz;
+				colors[colorIdx++] = r; colors[colorIdx++] = g; colors[colorIdx++] = b;
+			}
+			
+			entityMetadata.push({
+				entityName: entity.entityName,
+				vertexIndex: circleInfo.vertexIndex,
+				kadId: entity.entityName + ":::" + circleInfo.vertexIndex,
+				startSegment: i * segmentsPerCircle,
+				endSegment: (i + 1) * segmentsPerCircle - 1,
+				lineWidth: 1
+			});
+		}
+		
+		var geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+		
+		var material = new THREE.LineBasicMaterial({
+			vertexColors: true,
+			depthTest: true,
+			depthWrite: true
+		});
+		
+		var lineSegments = new THREE.LineSegments(geometry, material);
+		lineSegments.name = "kad-hybrid-circles-thin";
+		lineSegments.userData = { type: "kadHybridCirclesThin" };
+		
+		return lineSegments;
+	}
+	
+	// Step 9.7b) Helper: Create fat circles batch with LineMaterial
+	static _createFatCirclesBatch(circles, worldToThreeLocal, segmentsPerCircle, lineWidth, resolution, entityMetadata) {
+		var totalSegments = circles.length * segmentsPerCircle;
+		if (totalSegments === 0) return null;
+		
+		var positions = new Float32Array(totalSegments * 6);
+		var colors = new Float32Array(totalSegments * 6);
+		
+		var posIdx = 0;
+		var colorIdx = 0;
+		var defaultR = 0.0, defaultG = 0.5, defaultB = 1.0;
+		
+		for (var i = 0; i < circles.length; i++) {
+			var circleInfo = circles[i];
+			var circleData = circleInfo.circleData;
+			var entity = circleInfo.entity;
+			
+			var local = worldToThreeLocal(circleData.pointXLocation, circleData.pointYLocation);
+			var cx = local.x;
+			var cy = local.y;
+			var cz = circleData.pointZLocation || 0;
+			var radius = circleData.radius || 1;
+			
+			var r = defaultR, g = defaultG, b = defaultB;
+			var col = circleData.color;
+			if (col && typeof col === "string" && col.length >= 7 && col.charAt(0) === "#") {
+				var hex = parseInt(col.slice(1, 7), 16);
+				r = ((hex >> 16) & 255) / 255;
+				g = ((hex >> 8) & 255) / 255;
+				b = (hex & 255) / 255;
+			}
+			
+			for (var k = 0; k < segmentsPerCircle; k++) {
+				var theta1 = (k / segmentsPerCircle) * Math.PI * 2;
+				var theta2 = ((k + 1) / segmentsPerCircle) * Math.PI * 2;
+				
+				positions[posIdx++] = cx + radius * Math.cos(theta1);
+				positions[posIdx++] = cy + radius * Math.sin(theta1);
+				positions[posIdx++] = cz;
+				colors[colorIdx++] = r; colors[colorIdx++] = g; colors[colorIdx++] = b;
+				
+				positions[posIdx++] = cx + radius * Math.cos(theta2);
+				positions[posIdx++] = cy + radius * Math.sin(theta2);
+				positions[posIdx++] = cz;
+				colors[colorIdx++] = r; colors[colorIdx++] = g; colors[colorIdx++] = b;
+			}
+			
+			entityMetadata.push({
+				entityName: entity.entityName,
+				vertexIndex: circleInfo.vertexIndex,
+				kadId: entity.entityName + ":::" + circleInfo.vertexIndex,
+				startSegment: i * segmentsPerCircle,
+				endSegment: (i + 1) * segmentsPerCircle - 1,
+				lineWidth: lineWidth
+			});
+		}
+		
+		var geometry = new LineSegmentsGeometry();
+		geometry.setPositions(positions);
+		geometry.setColors(colors);
+		
+		var material = new LineMaterial({
+			color: 0xffffff,
+			linewidth: lineWidth,
+			vertexColors: true,
+			resolution: resolution,
+			dashed: false,
+			alphaToCoverage: true
+		});
+		material.depthTest = true;
+		material.depthWrite = true;
+		
+		var lineSegments = new LineSegments2(geometry, material);
+		lineSegments.computeLineDistances();
+		lineSegments.name = "kad-hybrid-circles-fat-" + lineWidth;
+		lineSegments.userData = { type: "kadHybridCirclesFat", lineWidth: lineWidth };
+		
+		return lineSegments;
 	}
 
 	// Step 10) Create KAD line segment (single segment between two points)
@@ -2524,5 +3028,132 @@ export class GeometryFactory {
 			holeToInstanceId: holeToInstanceId,
 			holeCount: holeCount
 		};
+	}
+
+	// Step 29) Create batched highlight lines for multi-selection performance
+	// Collects all highlight segments and creates ONE or TWO LineSegments2 objects
+	// Returns { greenLines, magentaLines } for non-selected and selected segments
+	static createBatchedHighlightLines(greenSegments, magentaSegments, greenLineWidth, magentaLineWidth, resolution) {
+		var result = { greenLines: null, magentaLines: null };
+		
+		// Step 29a) Create green (non-selected) highlights
+		if (greenSegments && greenSegments.length > 0) {
+			result.greenLines = this._createHighlightLinesBatch(greenSegments, greenLineWidth, resolution, "rgba(0, 255, 0, 0.8)");
+		}
+		
+		// Step 29b) Create magenta (selected) highlights  
+		if (magentaSegments && magentaSegments.length > 0) {
+			result.magentaLines = this._createHighlightLinesBatch(magentaSegments, magentaLineWidth, resolution, "rgba(255, 68, 255, 0.8)");
+		}
+		
+		return result;
+	}
+	
+	// Step 29c) Helper: Create highlight lines batch with LineMaterial
+	static _createHighlightLinesBatch(segments, lineWidth, resolution, colorString) {
+		if (!segments || segments.length === 0) return null;
+		
+		var totalSegments = segments.length;
+		var positions = new Float32Array(totalSegments * 6);
+		
+		var posIdx = 0;
+		for (var i = 0; i < segments.length; i++) {
+			var seg = segments[i];
+			positions[posIdx++] = seg.x1;
+			positions[posIdx++] = seg.y1;
+			positions[posIdx++] = seg.z1;
+			positions[posIdx++] = seg.x2;
+			positions[posIdx++] = seg.y2;
+			positions[posIdx++] = seg.z2;
+		}
+		
+		var geometry = new LineSegmentsGeometry();
+		geometry.setPositions(positions);
+		
+		// Parse color
+		var color = new THREE.Color(colorString);
+		
+		var material = new LineMaterial({
+			color: color,
+			linewidth: lineWidth,
+			resolution: resolution,
+			dashed: false,
+			alphaToCoverage: true,
+			transparent: true,
+			opacity: 0.8
+		});
+		material.depthTest = true;
+		material.depthWrite = false;
+		
+		var lineSegments = new LineSegments2(geometry, material);
+		lineSegments.computeLineDistances();
+		lineSegments.name = "kad-highlight-batch";
+		lineSegments.userData = { type: "kadHighlightBatch" };
+		
+		return lineSegments;
+	}
+	
+	// Step 30) Create batched highlight circles for multi-selection performance
+	static createBatchedHighlightCircles(greenCircles, magentaCircles, greenLineWidth, magentaLineWidth, resolution) {
+		var result = { greenCircles: null, magentaCircles: null };
+		var segmentsPerCircle = 64;
+		
+		if (greenCircles && greenCircles.length > 0) {
+			result.greenCircles = this._createHighlightCirclesBatch(greenCircles, segmentsPerCircle, greenLineWidth, resolution, "rgba(0, 255, 0, 0.8)");
+		}
+		
+		if (magentaCircles && magentaCircles.length > 0) {
+			result.magentaCircles = this._createHighlightCirclesBatch(magentaCircles, segmentsPerCircle, magentaLineWidth, resolution, "rgba(255, 68, 255, 0.8)");
+		}
+		
+		return result;
+	}
+	
+	// Step 30a) Helper: Create highlight circles batch
+	static _createHighlightCirclesBatch(circles, segmentsPerCircle, lineWidth, resolution, colorString) {
+		if (!circles || circles.length === 0) return null;
+		
+		var totalSegments = circles.length * segmentsPerCircle;
+		var positions = new Float32Array(totalSegments * 6);
+		
+		var posIdx = 0;
+		for (var i = 0; i < circles.length; i++) {
+			var c = circles[i];
+			for (var k = 0; k < segmentsPerCircle; k++) {
+				var theta1 = (k / segmentsPerCircle) * Math.PI * 2;
+				var theta2 = ((k + 1) / segmentsPerCircle) * Math.PI * 2;
+				
+				positions[posIdx++] = c.cx + c.radius * Math.cos(theta1);
+				positions[posIdx++] = c.cy + c.radius * Math.sin(theta1);
+				positions[posIdx++] = c.cz;
+				positions[posIdx++] = c.cx + c.radius * Math.cos(theta2);
+				positions[posIdx++] = c.cy + c.radius * Math.sin(theta2);
+				positions[posIdx++] = c.cz;
+			}
+		}
+		
+		var geometry = new LineSegmentsGeometry();
+		geometry.setPositions(positions);
+		
+		var color = new THREE.Color(colorString);
+		
+		var material = new LineMaterial({
+			color: color,
+			linewidth: lineWidth,
+			resolution: resolution,
+			dashed: false,
+			alphaToCoverage: true,
+			transparent: true,
+			opacity: 0.8
+		});
+		material.depthTest = true;
+		material.depthWrite = false;
+		
+		var lineSegments = new LineSegments2(geometry, material);
+		lineSegments.computeLineDistances();
+		lineSegments.name = "kad-highlight-circles-batch";
+		lineSegments.userData = { type: "kadHighlightCirclesBatch" };
+		
+		return lineSegments;
 	}
 }

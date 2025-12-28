@@ -37,6 +37,7 @@ export function showKADPropertyEditorPopup(kadObject) {
             kadObject.lineWidth = element.lineWidth || 1;
             kadObject.radius = element.radius;
             kadObject.text = element.text || "";
+            kadObject.fontHeight = element.fontHeight || 12; // Step B3) Load fontHeight for text entities
         }
     }
 
@@ -139,6 +140,16 @@ export function showKADPropertyEditorPopup(kadObject) {
             type: "text",
             value: kadObject.text || ""
         });
+        // Step B3) Add fontHeight field for text entities
+        fields.push({
+            label: "Font Height",
+            name: "editFontHeight",
+            type: "number",
+            value: kadObject.fontHeight || 12,
+            min: "1",
+            max: "200",
+            step: "1"
+        });
     } else if (kadObject.entityType === "point") {
         fields.push({
             label: "Point Diameter/Line Width",
@@ -153,6 +164,20 @@ export function showKADPropertyEditorPopup(kadObject) {
 
     // Step 4) Create enhanced form content using the existing helper function
     const formContent = window.createEnhancedFormContent(fields, hasMultipleElements, false);
+
+    // Step 4b) Store initial values for dirty tracking (only apply explicitly changed fields on "All")
+    const initialValues = {
+        editKADColor: currentColor,
+        editXLocation: String(kadObject.pointXLocation || 0),
+        editYLocation: String(kadObject.pointYLocation || 0),
+        editZLocation: String(kadObject.pointZLocation || 0),
+        editLineWidth: String(kadObject.lineWidth || 1),
+        editRadius: String(kadObject.radius || 1),
+        editText: kadObject.text || "",
+        editFontHeight: String(kadObject.fontHeight || 12),
+        editType: kadObject.entityType,
+        onlyZCheckbox: kadObject.onlyZ || false
+    };
 
     // Step 4a) Add info note
     const noteDiv = document.createElement("div");
@@ -184,26 +209,60 @@ export function showKADPropertyEditorPopup(kadObject) {
             // Step 5a) Get form values and apply to all elements
             const formData = window.getFormData(formContent);
 
-            // Handle line/poly conversion first
-            const isLineOrPoly = kadObject.entityType === "line" || kadObject.entityType === "poly";
-            if (isLineOrPoly && formData.editType && formData.editType !== kadObject.entityType) {
+            // Step 5a.1) Handle line/poly conversion first (explicit action via dropdown)
+            const isLineOrPolyEntity = kadObject.entityType === "line" || kadObject.entityType === "poly";
+            if (isLineOrPolyEntity && formData.editType && formData.editType !== initialValues.editType) {
                 convertLinePolyType(kadObject, formData.editType);
             }
 
-            // Build properties object
-            const newProperties = {
-                color: formData.editKADColor,
-                pointXLocation: parseFloat(formData.editXLocation),
-                pointYLocation: parseFloat(formData.editYLocation),
-                pointZLocation: parseFloat(formData.editZLocation),
-                lineWidth: formData.editLineWidth,
-                radius: formData.editRadius,
-                text: formData.editText,
-                onlyZ: formData.onlyZCheckbox
-            };
+            // Step 5a.2) Build properties object with ONLY explicitly changed fields
+            // This prevents unwanted Z flattening when user only changes color/lineWidth
+            const newProperties = {};
+            var hasChanges = false;
 
-            // Use existing function
-            updateKADObjectProperties(kadObject, newProperties, "all");
+            // Step 5a.3) Compare each field to initial value - only include if changed
+            if (formData.editKADColor !== initialValues.editKADColor) {
+                newProperties.color = formData.editKADColor;
+                hasChanges = true;
+            }
+            if (formData.editLineWidth !== initialValues.editLineWidth) {
+                newProperties.lineWidth = formData.editLineWidth;
+                hasChanges = true;
+            }
+            if (formData.editXLocation !== initialValues.editXLocation) {
+                newProperties.pointXLocation = parseFloat(formData.editXLocation);
+                hasChanges = true;
+            }
+            if (formData.editYLocation !== initialValues.editYLocation) {
+                newProperties.pointYLocation = parseFloat(formData.editYLocation);
+                hasChanges = true;
+            }
+            if (formData.editZLocation !== initialValues.editZLocation) {
+                newProperties.pointZLocation = parseFloat(formData.editZLocation);
+                hasChanges = true;
+            }
+            if (formData.editRadius !== initialValues.editRadius) {
+                newProperties.radius = formData.editRadius;
+                hasChanges = true;
+            }
+            if (formData.editText !== initialValues.editText) {
+                newProperties.text = formData.editText;
+                hasChanges = true;
+            }
+            // Step B3) Include fontHeight in dirty tracking
+            if (formData.editFontHeight !== initialValues.editFontHeight) {
+                newProperties.fontHeight = formData.editFontHeight;
+                hasChanges = true;
+            }
+
+            // Step 5a.4) Always include onlyZ flag (behavior flag, not data)
+            newProperties.onlyZ = formData.onlyZCheckbox;
+
+            // Step 5a.5) Only update if something actually changed
+            if (hasChanges) {
+                updateKADObjectProperties(kadObject, newProperties, "all");
+            }
+
             window.debouncedSaveKAD();
             window.clearAllSelectionState();
             window.drawData(window.allBlastHoles, window.selectedHole);
@@ -218,7 +277,7 @@ export function showKADPropertyEditorPopup(kadObject) {
                 convertLinePolyType(kadObject, formData.editType);
             }
 
-            // Build properties object
+            // Build properties object - for "This" button, apply all values
             const newProperties = {
                 color: formData.editKADColor,
                 pointXLocation: parseFloat(formData.editXLocation),
@@ -227,6 +286,7 @@ export function showKADPropertyEditorPopup(kadObject) {
                 lineWidth: formData.editLineWidth,
                 radius: formData.editRadius,
                 text: formData.editText,
+                fontHeight: formData.editFontHeight,
                 onlyZ: formData.onlyZCheckbox
             };
 
@@ -395,6 +455,13 @@ export function showMultipleKADPropertyEditor(kadObjects) {
     const entityType = kadObjects[0].entityType || "polygon";
     const entityTypeDisplay = entityType.charAt(0).toUpperCase() + entityType.slice(1) + (entityType.endsWith("s") ? "es" : "s");
 
+    // Step 6e.1) Store initial values for dirty tracking
+    const initialMultiValues = {
+        editKADColor: firstColor,
+        editLineWidth: String(firstLineWidth),
+        editZLocation: String(firstZ)
+    };
+
     // Step 6f) Create dialog
     const dialog = new window.FloatingDialog({
         title: "Edit Multiple " + entityTypeDisplay,
@@ -410,31 +477,38 @@ export function showMultipleKADPropertyEditor(kadObjects) {
             // Step 6f.1) Get form values
             const formData = window.getFormData(formContent);
 
-            // Step 6f.2) Apply changes to all selected KAD objects
-            kadObjects.forEach((kadObj) => {
-                const entity = window.allKADDrawingsMap.get(kadObj.entityName);
-                if (entity) {
-                    // Update all points in the entity
-                    entity.data.forEach((point) => {
-                        if (formData.editKADColor) {
-                            point.color = formData.editKADColor;
-                        }
-                        if (formData.editLineWidth) {
-                            point.lineWidth = parseFloat(formData.editLineWidth);
-                        }
-                        if (formData.editZLocation) {
-                            point.pointZLocation = parseFloat(formData.editZLocation);
-                        }
-                    });
-                }
-            });
+            // Step 6f.1a) Determine which fields actually changed
+            var colorChanged = formData.editKADColor !== initialMultiValues.editKADColor;
+            var lineWidthChanged = formData.editLineWidth !== initialMultiValues.editLineWidth;
+            var zChanged = formData.editZLocation !== initialMultiValues.editZLocation;
+
+            // Step 6f.2) Apply ONLY changed properties to all selected KAD objects
+            if (colorChanged || lineWidthChanged || zChanged) {
+                kadObjects.forEach(function(kadObj) {
+                    const entity = window.allKADDrawingsMap.get(kadObj.entityName);
+                    if (entity) {
+                        // Update all points in the entity - only changed properties
+                        entity.data.forEach(function(point) {
+                            if (colorChanged) {
+                                point.color = formData.editKADColor;
+                            }
+                            if (lineWidthChanged) {
+                                point.lineWidth = parseFloat(formData.editLineWidth);
+                            }
+                            if (zChanged) {
+                                point.pointZLocation = parseFloat(formData.editZLocation);
+                            }
+                        });
+                    }
+                });
+            }
 
             // Step 6f.3) Save and redraw
             window.debouncedSaveKAD();
             window.clearAllSelectionState();
             window.drawData(window.allBlastHoles, window.selectedHole);
             window.updateStatusMessage("Updated " + kadObjects.length + " " + entityType + "(s)");
-            setTimeout(() => window.updateStatusMessage(""), 2000);
+            setTimeout(function() { window.updateStatusMessage(""); }, 2000);
         },
         onCancel: () => {
             // Step 6f.4) Just close
@@ -504,6 +578,8 @@ export function updateKADObjectProperties(kadObject, newProperties, scope = "all
                 if (newProperties.lineWidth) item.lineWidth = parseFloat(newProperties.lineWidth);
                 if (newProperties.radius) item.radius = parseFloat(newProperties.radius);
                 if (newProperties.text) item.text = newProperties.text;
+                // Step B3) Handle fontHeight for text entities
+                if (newProperties.fontHeight) item.fontHeight = parseFloat(newProperties.fontHeight);
 
                 if (onlyZ) {
                     if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
@@ -534,6 +610,8 @@ export function updateKADObjectProperties(kadObject, newProperties, scope = "all
                 if (newProperties.radius) pt.radius = parseFloat(newProperties.radius);
                 if (newProperties.text) pt.text = newProperties.text;
                 if (newProperties.pointDiameter) pt.pointDiameter = parseFloat(newProperties.pointDiameter);
+                // Step B3) Handle fontHeight for text entities
+                if (newProperties.fontHeight) pt.fontHeight = parseFloat(newProperties.fontHeight);
 
                 if (onlyZ) {
                     if (newProperties.pointZLocation !== undefined) pt.pointZLocation = parseFloat(newProperties.pointZLocation);

@@ -6226,6 +6226,17 @@ function handleBaseCanvasResize() {
 window.addEventListener("resize", resizeChart);
 window.addEventListener("resize", handleThreeJSResize);
 window.addEventListener("resize", handleBaseCanvasResize);
+// Step A5) Update LineMaterial resolution on resize for fat lines
+window.addEventListener("resize", function() {
+	if (window.threeRenderer && window.threeRenderer.kadGroup) {
+		var res = new THREE.Vector2(window.innerWidth, window.innerHeight);
+		window.threeRenderer.kadGroup.traverse(function(child) {
+			if (child.material && child.material.isLineMaterial) {
+				child.material.resolution.copy(res);
+			}
+		});
+	}
+});
 var acc = document.getElementsByClassName("accordion");
 var i;
 for (i = 0; i < acc.length; i++) {
@@ -8571,6 +8582,7 @@ async function parseDXFtoKadMaps(dxf) {
 							pointZLocation: pos.z || 0,
 							text: ent.text,
 							color: color,
+							fontHeight: ent.height || 12, // Step B1) Add fontHeight from DXF, default 12
 						},
 					],
 				});
@@ -9959,6 +9971,8 @@ function parseKADFile(fileData) {
 						pointZLocation = parseFloat(row[5]);
 						text = row[6] || "";
 						color = cssColorToHex((row[7] || "#FF0000").replace(/\r$/, ""));
+						// Step B1) Read fontHeight from column 8, default to 12 for backward compatibility
+						var textFontHeight = row[8] ? parseFloat(row[8]) : 12;
 
 						allKADDrawingsMap.get(entityName).data.push({
 							entityName: entityName,
@@ -9969,6 +9983,7 @@ function parseKADFile(fileData) {
 							pointZLocation: pointZLocation,
 							text: text,
 							color: color,
+							fontHeight: textFontHeight,
 						});
 						break;
 				}
@@ -10120,7 +10135,9 @@ function exportKADFile() {
 				}
 			} else if (entityData.entityType.trim() === "text") {
 				for (const text of entityData.data) {
-					const csvLine = `${entityName},${entityData.entityType},${text.pointID},${text.pointXLocation},${text.pointYLocation},${text.pointZLocation},${text.text},${text.color}\n`;
+					// Step B4) Include fontHeight in export (column 8), default to 12 for backward compatibility
+					var exportFontHeight = text.fontHeight || 12;
+					const csvLine = entityName + "," + entityData.entityType + "," + text.pointID + "," + text.pointXLocation + "," + text.pointYLocation + "," + text.pointZLocation + "," + text.text + "," + text.color + "," + exportFontHeight + "\n";
 					csvContentKAD += csvLine;
 					csvContentTXT += csvLine;
 				}
@@ -18462,6 +18479,7 @@ async function addKADText() {
 			pointZLocation: pointZLocation,
 			text: text, // ? Now using the processed text
 			color: color,
+			fontHeight: 12, // Step B1) Default fontHeight for new text entities
 			connected: false,
 			closed: false,
 			visible: true,
@@ -21424,7 +21442,9 @@ function drawData(allBlastHoles, selectedHole) {
 						if (textData && textData.text) {
 							const screenX = (textData.pointXLocation - centroidX) * currentScale + canvas.width / 2;
 							const screenY = -(textData.pointYLocation - centroidY) * currentScale + canvas.height / 2;
-							drawKADTexts(screenX, screenY, textData.pointZLocation, textData.text, textData.color);
+							// Step B2) Pass fontHeight to 2D text drawing
+							var textFontHeight2D = textData.fontHeight || 12;
+							drawKADTexts(screenX, screenY, textData.pointZLocation, textData.text, textData.color, textFontHeight2D);
 							drawKADCoordinates(textData, screenX, screenY);
 						}
 					});
@@ -22832,14 +22852,25 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 				}
 
-				// Step 3.1b) Create super-batched geometry for LINES/POLYGONS
+				// Step 3.1b) Create HYBRID super-batched geometry for LINES/POLYGONS
+				// Uses fast LineBasicMaterial for thin lines (<=1), FatLines for thick (>1)
 				if (linePolyEntities.length > 0) {
-					var superBatch = GeometryFactory.createSuperBatchedLines(linePolyEntities, worldToThreeLocal);
-					if (superBatch && superBatch.lineSegments) {
-						threeRenderer.kadGroup.add(superBatch.lineSegments);
+					var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+					var hybridBatch = GeometryFactory.createHybridSuperBatchedLines(linePolyEntities, worldToThreeLocal, resolution);
+					if (hybridBatch) {
+						// Add thin lines batch (1 draw call for all standard lines)
+						if (hybridBatch.thinLineSegments) {
+							threeRenderer.kadGroup.add(hybridBatch.thinLineSegments);
+						}
+						// Add fat lines batches (1 draw call per unique thick lineWidth)
+						hybridBatch.fatLinesByWidth.forEach(function(fatBatch) {
+							threeRenderer.kadGroup.add(fatBatch);
+						});
 						usedSuperBatchLines = true;
 						if (developerModeEnabled) {
-							console.log("🚀 SUPER-BATCH LINES: " + linePolyEntities.length + " entities merged into 1 draw call (" + superBatch.segmentCount + " segments)");
+							var fatCount = hybridBatch.fatLinesByWidth.size;
+							var drawCalls = (hybridBatch.thinLineSegments ? 1 : 0) + fatCount;
+							console.log("🚀 HYBRID-BATCH LINES: " + linePolyEntities.length + " entities (" + hybridBatch.thinCount + " thin + " + hybridBatch.thickCount + " thick segments) in " + drawCalls + " draw calls");
 						}
 					}
 				}
@@ -22855,13 +22886,25 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 				}
 
-				// Step 3.1d) Create super-batched geometry for CIRCLES
+				// Step 3.1d) Create HYBRID super-batched geometry for CIRCLES
+				// Uses fast LineBasicMaterial for thin circles (<=1), FatLines for thick (>1)
 				if (circleEntities.length > 0) {
-					var superBatchCircles = drawKADSuperBatchedCirclesThreeJS(circleEntities, worldToThreeLocal);
-					if (superBatchCircles) {
+					var circleResolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+					var hybridCircles = GeometryFactory.createHybridSuperBatchedCircles(circleEntities, worldToThreeLocal, circleResolution);
+					if (hybridCircles) {
+						// Add thin circles batch
+						if (hybridCircles.thinLineSegments) {
+							threeRenderer.kadGroup.add(hybridCircles.thinLineSegments);
+						}
+						// Add fat circles batches
+						hybridCircles.fatLinesByWidth.forEach(function(fatBatch) {
+							threeRenderer.kadGroup.add(fatBatch);
+						});
 						usedSuperBatchCircles = true;
 						if (developerModeEnabled) {
-							console.log("🚀 SUPER-BATCH CIRCLES: " + circleEntities.length + " entities (" + superBatchCircles.totalCircles + " circles) merged into 1 draw call");
+							var fatCircleCount = hybridCircles.fatLinesByWidth.size;
+							var circleDrawCalls = (hybridCircles.thinLineSegments ? 1 : 0) + fatCircleCount;
+							console.log("🚀 HYBRID-BATCH CIRCLES: " + circleEntities.length + " entities (" + hybridCircles.thinCount + " thin + " + hybridCircles.thickCount + " thick) in " + circleDrawCalls + " draw calls");
 						}
 					}
 				}
@@ -23027,7 +23070,9 @@ function drawData(allBlastHoles, selectedHole) {
 						const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
 						const vertexIndex = entity.data.indexOf(textData);
 						const kadId = name + ":::" + vertexIndex;
-						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, kadId); // kadId format: "entityName:::vertexIndex"
+						// Step B2) Use fontHeight attribute for text size, default to 12
+						var textFontSize = textData.fontHeight || 12;
+						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textFontSize, textData.color || "#000000", textData.backgroundColor || null, kadId); // kadId format: "entityName:::vertexIndex"
 					}
 				}
 			}
