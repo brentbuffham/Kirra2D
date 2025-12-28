@@ -274,24 +274,35 @@ export function drawKADHighlightSelectionVisuals() {
     }
 
     // Step 4) Handle multiple selections - reuse the single selection drawing code
-    // PERFORMANCE FIX 2025-12-28: Add limits to prevent freeze with large selections
+    // PERFORMANCE FIX 2025-12-28: Type-based vertex skip to prevent freeze with large selections
     if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
-        // Step 4.0) Performance constants
-        const VERTEX_DRAW_LIMIT = 50;      // Only draw vertices for selections smaller than this
-        const SIMPLIFIED_DRAW_LIMIT = 500; // Use simplified rendering above this count
-        const MAX_RENDER_COUNT = 2000;     // Maximum entities to render (prevent total freeze)
-        
-        const selectionCount = selectedMultipleKADObjects.length;
-        const skipVertices = selectionCount > VERTEX_DRAW_LIMIT;
-        const useSimplifiedRendering = selectionCount > SIMPLIFIED_DRAW_LIMIT;
-        const renderCount = Math.min(selectionCount, MAX_RENDER_COUNT);
+        // Step 4.0) Count selected entities by type (same pattern as HUD stats)
+        var kadPointCount = 0, kadLineCount = 0, kadPolyCount = 0, kadCircleCount = 0, kadTextCount = 0;
+        for (var i = 0; i < selectedMultipleKADObjects.length; i++) {
+            var type = selectedMultipleKADObjects[i].entityType;
+            if (type === "point") kadPointCount++;
+            else if (type === "line") kadLineCount++;
+            else if (type === "poly") kadPolyCount++;
+            else if (type === "circle") kadCircleCount++;
+            else if (type === "text") kadTextCount++;
+        }
+
+        // Step 4.0a) Only draw vertices if NO type has more than 1 entity
+        var maxTypeCount = Math.max(kadPointCount, kadLineCount, kadPolyCount, kadCircleCount, kadTextCount);
+        var skipVertices = maxTypeCount > 1;
+
+        // Step 4.0b) Cap render count for safety (2D canvas is fast, can handle many)
+        var MAX_RENDER_COUNT = 5000;
+        var selectionCount = selectedMultipleKADObjects.length;
+        var renderCount = Math.min(selectionCount, MAX_RENDER_COUNT);
         
         if (developerModeEnabled) {
             console.log("Drawing multiple selections:", selectionCount, "objects");
-            console.log("Performance mode: skipVertices=" + skipVertices + ", simplified=" + useSimplifiedRendering + ", renderCount=" + renderCount);
+            console.log("Type counts - Point:" + kadPointCount + " Line:" + kadLineCount + " Poly:" + kadPolyCount + " Circle:" + kadCircleCount + " Text:" + kadTextCount);
+            console.log("Performance mode: skipVertices=" + skipVertices + " (maxTypeCount=" + maxTypeCount + ")");
         }
         
-        // Step 4.0a) Show warning if selection was truncated
+        // Step 4.0c) Show warning if selection was truncated
         if (selectionCount > MAX_RENDER_COUNT && !window._largeSelectionWarningShown) {
             window._largeSelectionWarningShown = true;
             if (typeof window.updateStatusMessage === "function") {
@@ -300,39 +311,6 @@ export function drawKADHighlightSelectionVisuals() {
             }
         } else if (selectionCount <= MAX_RENDER_COUNT) {
             window._largeSelectionWarningShown = false;
-        }
-
-        // Step 4.0b) Use simplified rendering for very large selections
-        if (useSimplifiedRendering) {
-            // Draw simple bounding boxes only
-            ctx.strokeStyle = nonSelectedSegmentColor;
-            ctx.lineWidth = 1;
-            ctx.setLineDash([5, 5]);
-            
-            for (var i = 0; i < renderCount; i++) {
-                var kadObj = selectedMultipleKADObjects[i];
-                var entity = getEntityFromKADObject(kadObj);
-                if (entity && entity.data && entity.data.length > 0) {
-                    // Find bounding box of entity
-                    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-                    entity.data.forEach(function(point) {
-                        var px = point.pointXLocation || point.x;
-                        var py = point.pointYLocation || point.y;
-                        if (px < minX) minX = px;
-                        if (py < minY) minY = py;
-                        if (px > maxX) maxX = px;
-                        if (py > maxY) maxY = py;
-                    });
-                    
-                    if (isFinite(minX) && isFinite(minY) && isFinite(maxX) && isFinite(maxY)) {
-                        var canvasMin = worldToCanvas(minX, minY);
-                        var canvasMax = worldToCanvas(maxX, maxY);
-                        ctx.strokeRect(canvasMin[0], canvasMax[1], canvasMax[0] - canvasMin[0], canvasMin[1] - canvasMax[1]);
-                    }
-                }
-            }
-            ctx.setLineDash([]);
-            return; // Exit early for simplified rendering
         }
 
         selectedMultipleKADObjects.slice(0, renderCount).forEach((kadObj, index) => {

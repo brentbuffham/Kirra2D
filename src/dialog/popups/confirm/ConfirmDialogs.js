@@ -5,6 +5,8 @@
 // Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 // Step 5) Standard confirmation dialog with 2 buttons (Confirm/Cancel)
+// UPDATED 2025-12-28: Now returns a Promise for async/await usage
+// If callbacks are provided, uses callback style. Otherwise returns Promise.
 export function showConfirmationDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", onConfirm = null, onCancel = null) {
     console.log("showConfirmationDialog: " + title);
 
@@ -12,44 +14,77 @@ export function showConfirmationDialog(title, message, confirmText = "Confirm", 
     const textColor = darkModeEnabled ? "#ffffff" : "#000000";
     const content = '<div style="color: #ff9800; font-size: 24px; margin-bottom: 15px; text-align: center;">⚠️</div>' + '<div style="color: ' + textColor + '; font-size: 16px; line-height: 1.4;">' + message + "</div>";
 
-    // Step 5b) Create FloatingDialog with confirm/cancel buttons
-    const dialog = new FloatingDialog({
-        title: title,
-        content: content,
-        width: 500,
-        height: 350,
-        showConfirm: true,
-        showCancel: true,
-        showDeny: false,
-        showOption1: false,
-        showOption2: false,
-        confirmText: confirmText,
-        cancelText: cancelText,
-        draggable: true,
-        resizable: false,
-        closeOnOutsideClick: false, // Modal behavior
-        layoutType: "default",
-        onConfirm: () => {
-            // Step 5c) Handle confirm button click
-            console.log("Confirmation dialog confirmed: " + title);
-            dialog.close();
-            if (onConfirm && typeof onConfirm === "function") {
-                onConfirm();
-            }
-        },
-        onCancel: () => {
-            // Step 5d) Handle cancel button click
-            console.log("Confirmation dialog cancelled: " + title);
-            dialog.close();
-            if (onCancel && typeof onCancel === "function") {
-                onCancel();
-            }
-        }
-    });
+    // Step 5b) Check if using Promise mode (no callbacks provided)
+    var usePromiseMode = (onConfirm === null && onCancel === null);
 
-    // Step 5e) Show the dialog
-    dialog.show();
-    return dialog;
+    if (usePromiseMode) {
+        // Step 5c) Promise-based mode for async/await
+        return new Promise(function(resolve) {
+            var dialog = new FloatingDialog({
+                title: title,
+                content: content,
+                width: 500,
+                height: 350,
+                showConfirm: true,
+                showCancel: true,
+                showDeny: false,
+                showOption1: false,
+                showOption2: false,
+                confirmText: confirmText,
+                cancelText: cancelText,
+                draggable: true,
+                resizable: false,
+                closeOnOutsideClick: false,
+                layoutType: "default",
+                onConfirm: function() {
+                    console.log("Confirmation dialog confirmed: " + title);
+                    dialog.close();
+                    resolve(true);
+                },
+                onCancel: function() {
+                    console.log("Confirmation dialog cancelled: " + title);
+                    dialog.close();
+                    resolve(false);
+                }
+            });
+            dialog.show();
+        });
+    } else {
+        // Step 5d) Callback-based mode (legacy compatibility)
+        var dialog = new FloatingDialog({
+            title: title,
+            content: content,
+            width: 500,
+            height: 350,
+            showConfirm: true,
+            showCancel: true,
+            showDeny: false,
+            showOption1: false,
+            showOption2: false,
+            confirmText: confirmText,
+            cancelText: cancelText,
+            draggable: true,
+            resizable: false,
+            closeOnOutsideClick: false,
+            layoutType: "default",
+            onConfirm: function() {
+                console.log("Confirmation dialog confirmed: " + title);
+                dialog.close();
+                if (onConfirm && typeof onConfirm === "function") {
+                    onConfirm();
+                }
+            },
+            onCancel: function() {
+                console.log("Confirmation dialog cancelled: " + title);
+                dialog.close();
+                if (onCancel && typeof onCancel === "function") {
+                    onCancel();
+                }
+            }
+        });
+        dialog.show();
+        return dialog;
+    }
 }
 
 // Step 6) Confirmation dialog with 3 buttons (Confirm/Option/Cancel)

@@ -437,8 +437,20 @@ export function handle3DContextMenu(event) {
 
     console.log("🖱️  [3D Context Menu] Clicked objects - Hole:", clickedHole ? clickedHole.holeID : "null", "| KAD:", clickedKADObject ? clickedKADObject.entityType + " - " + clickedKADObject.entityName : "null");
 
-    // Step 3k) PRIORITY: If a KAD object is already selected, show its context menu (matches 2D behavior)
-    // This allows right-click to show menu for selected object regardless of where you click
+    // Step 3k) PRIORITY: Check for multiple KAD selection FIRST (before single selection)
+    // If multiple entities are selected, show the multi-edit dialog regardless of where you right-click
+    if (window.selectedMultipleKADObjects && window.selectedMultipleKADObjects.length > 1) {
+        console.log("📋 [3D CONTEXT] Multiple KAD objects selected (" + window.selectedMultipleKADObjects.length + "), showing multi-editor");
+        if (typeof window.showMultipleKADPropertyEditor === "function") {
+            window.showMultipleKADPropertyEditor(window.selectedMultipleKADObjects);
+        }
+        if (typeof window.debouncedUpdateTreeView === "function") {
+            window.debouncedUpdateTreeView();
+        }
+        return;
+    }
+
+    // Step 3k.1) If a single KAD object is selected, show its context menu
     if (window.selectedKADObject) {
         console.log("📋 [3D CONTEXT] Selected KAD object found, showing context menu:", window.selectedKADObject.entityName);
         if (typeof window.showKADPropertyEditorPopup === "function") {
@@ -448,26 +460,6 @@ export function handle3DContextMenu(event) {
             window.debouncedUpdateTreeView();
         }
         return;
-    }
-
-    // Step 3k.1) Check for multiple KAD selection
-    if (window.selectedMultipleKADObjects && window.selectedMultipleKADObjects.length > 1) {
-        // Check if we clicked on one of the selected KAD objects
-        let clickedOnSelected = false;
-        if (clickedKADObject) {
-            for (const kadObj of window.selectedMultipleKADObjects) {
-                if (kadObj.entityName === clickedKADObject.entityName && kadObj.elementIndex === clickedKADObject.elementIndex) {
-                    clickedOnSelected = true;
-                    break;
-                }
-            }
-        }
-
-        if (clickedOnSelected) {
-            window.showMultipleKADPropertyEditor(window.selectedMultipleKADObjects);
-            window.debouncedUpdateTreeView();
-            return;
-        }
     }
 
     // Step 3l) For KAD objects (Points, Lines, Polys, Circles, Text)
