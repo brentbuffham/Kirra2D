@@ -4,11 +4,16 @@
 //=================================================
 // Manages hierarchical display of blast data, drawings, surfaces, and images
 
+// PERFORMANCE FIX 2025-12-28: Chunked loading constants for KAD drawings
+const TREE_CHUNK_SIZE = 50;       // Points per chunk group
+const TREE_CHUNK_THRESHOLD = 20;  // Only chunk if more than this many points
+
 export class TreeView {
 	constructor(containerId) {
 		this.container = document.getElementById(containerId);
 		this.selectedNodes = new Set();
 		this.expandedNodes = new Set();
+		this.loadedChunks = new Set();  // PERFORMANCE FIX: Track loaded lazy chunks
 		this.dragData = {
 			isDragging: false,
 			startX: 0,
@@ -135,6 +140,12 @@ export class TreeView {
 
 	show() {
 		this.container.style.display = "flex";
+
+		// PERFORMANCE FIX 2025-12-28: Update tree if it was deferred while hidden
+		if (window._treeNeedsUpdate) {
+			window._treeNeedsUpdate = false;
+			setTimeout(() => this.updateTreeData(), 50);
+		}
 	}
 
 	// Step 1) BUG FIX 4: Fix individual hole highlighting with correct node ID format
@@ -222,6 +233,21 @@ export class TreeView {
 
 		if (!children) return;
 
+		// PERFORMANCE FIX 2025-12-28: Check if this is a lazy entity that needs loading
+		// Entity nodes: "line⣿entityName", "poly⣿entityName", "points⣿entityName", etc.
+		var isEntityNode = (nodeId.startsWith("line⣿") || nodeId.startsWith("poly⣿") || 
+			nodeId.startsWith("points⣿") || nodeId.startsWith("circle⣿") || nodeId.startsWith("text⣿")) &&
+			nodeId.split("⣿").length === 2;  // Only 2 parts = entity level
+		
+		if (isEntityNode && !this.loadedChunks.has(nodeId)) {
+			this.loadEntityChildren(nodeId, treeItem, children);
+		}
+
+		// PERFORMANCE FIX 2025-12-28: Check if this is a lazy chunk that needs loading
+		if (nodeId.includes("⣿chunk⣿") && !this.loadedChunks.has(nodeId)) {
+			this.loadChunkChildren(nodeId, treeItem, children);
+		}
+
 		if (this.expandedNodes.has(nodeId)) {
 			this.expandedNodes.delete(nodeId);
 			children.classList.remove("expanded");
@@ -231,6 +257,154 @@ export class TreeView {
 			children.classList.add("expanded");
 			expandBtn.classList.add("expanded");
 		}
+	}
+
+	// PERFORMANCE FIX 2025-12-28: Lazy load entity children when expanded
+	loadEntityChildren(nodeId, treeItem, childrenContainer) {
+		// Parse entity node ID format: "entityType⣿entityName"
+		var parts = nodeId.split("⣿");
+		if (parts.length < 2) return;
+
+		var entityTypePrefix = parts[0];  // "line", "poly", "points", "circle", "text"
+		var entityName = parts[1];
+
+		// Map prefix to actual entity type
+		var entityType = entityTypePrefix;
+		if (entityTypePrefix === "points") entityType = "point";
+
+		var entity = window.allKADDrawingsMap ? window.allKADDrawingsMap.get(entityName) : null;
+		if (!entity || !entity.data) return;
+
+		var pointCount = entity.data.length;
+		console.log("📁 Loading entity: " + entityName + " (" + pointCount + " points)");
+
+		var elementChildren;
+		if (pointCount > TREE_CHUNK_THRESHOLD) {
+			// Large entity - create chunked placeholder nodes
+			elementChildren = this.createChunkedChildren(entity, entityName);
+		} else {
+			// Small entity - create all children directly
+			elementChildren = [];
+			for (var i = 0; i < entity.data.length; i++) {
+				var element = entity.data[i];
+				var pointID = element.pointID || (i + 1);
+
+				var label = "";
+				var meta = "";
+				if (entity.entityType === "text") {
+					label = element.text || "Text " + pointID;
+					meta = "(" + (Number(element.pointXLocation) || 0).toFixed(1) + "," + (Number(element.pointYLocation) || 0).toFixed(1) + ")";
+				} else if (entity.entityType === "circle") {
+					label = "Circle " + pointID;
+					meta = "R:" + (Number(element.radius) || 0).toFixed(1);
+				} else {
+					label = "Point " + pointID;
+					meta = "(" + (Number(element.pointXLocation) || 0).toFixed(1) + "," + (Number(element.pointYLocation) || 0).toFixed(1) + "," + (Number(element.pointZLocation) || 0).toFixed(1) + ")";
+				}
+
+				elementChildren.push({
+					id: entity.entityType + "⣿" + entityName + "⣿element⣿" + pointID,
+					type: entity.entityType + "⣿element",
+					label: label,
+					meta: meta,
+					elementData: {
+						...element,
+						entityName: entityName
+					}
+				});
+			}
+		}
+
+		// Render entity children HTML
+		var html = this.renderTree(elementChildren, 0);
+		childrenContainer.innerHTML = html;
+
+		// Mark as loaded
+		this.loadedChunks.add(nodeId);
+		console.log("✅ Loaded entity children: " + elementChildren.length + " items");
+	}
+
+	// PERFORMANCE FIX 2025-12-28: Create chunked placeholder nodes for large entities
+	createChunkedChildren(entity, entityName) {
+		var chunks = [];
+		var totalPoints = entity.data ? entity.data.length : 0;
+		var entityType = entity.entityType;
+
+		for (var i = 0; i < totalPoints; i += TREE_CHUNK_SIZE) {
+			var start = i + 1;  // 1-based for display
+			var end = Math.min(i + TREE_CHUNK_SIZE, totalPoints);
+			var chunkPointCount = end - start + 1;
+
+			chunks.push({
+				id: entityType + "⣿" + entityName + "⣿chunk⣿" + start + "-" + end,
+				type: "point-chunk",
+				label: "Points " + start + "-" + end,
+				meta: "(" + chunkPointCount + " points)",
+				isLazyChunk: true,
+				children: []  // Empty - will be populated on expand
+			});
+		}
+
+		console.log("📦 Created " + chunks.length + " chunks for " + entityName + " (" + totalPoints + " points)");
+		return chunks;
+	}
+
+	// PERFORMANCE FIX 2025-12-28: Lazy load chunk children when expanded
+	loadChunkChildren(nodeId, treeItem, childrenContainer) {
+		// Parse chunk node ID format: "entityType⣿entityName⣿chunk⣿startIdx-endIdx"
+		var parts = nodeId.split("⣿");
+		if (parts.length < 4) return;
+
+		var entityType = parts[0];
+		var entityName = parts[1];
+		var rangeStr = parts[3];
+		var rangeParts = rangeStr.split("-");
+		var startIdx = parseInt(rangeParts[0]) - 1;  // Convert to 0-based
+		var endIdx = parseInt(rangeParts[1]) - 1;
+
+		var entity = window.allKADDrawingsMap ? window.allKADDrawingsMap.get(entityName) : null;
+		if (!entity || !entity.data) return;
+
+		console.log("📦 Loading chunk: " + entityName + " points " + (startIdx + 1) + "-" + (endIdx + 1));
+
+		// Generate children for this chunk only
+		var chunkChildren = [];
+		for (var i = startIdx; i <= endIdx && i < entity.data.length; i++) {
+			var element = entity.data[i];
+			var pointID = element.pointID || (i + 1);
+
+			var label = "";
+			var meta = "";
+			if (entityType === "text") {
+				label = element.text || "Text " + pointID;
+				meta = "(" + (Number(element.pointXLocation) || 0).toFixed(1) + "," + (Number(element.pointYLocation) || 0).toFixed(1) + ")";
+			} else if (entityType === "circle") {
+				label = "Circle " + pointID;
+				meta = "R:" + (Number(element.radius) || 0).toFixed(1);
+			} else {
+				label = "Point " + pointID;
+				meta = "(" + (Number(element.pointXLocation) || 0).toFixed(1) + "," + (Number(element.pointYLocation) || 0).toFixed(1) + "," + (Number(element.pointZLocation) || 0).toFixed(1) + ")";
+			}
+
+			chunkChildren.push({
+				id: entityType + "⣿" + entityName + "⣿element⣿" + pointID,
+				type: entityType + "⣿element",
+				label: label,
+				meta: meta,
+				elementData: {
+					...element,
+					entityName: entityName
+				}
+			});
+		}
+
+		// Render chunk children HTML
+		var html = this.renderTree(chunkChildren, 0);
+		childrenContainer.innerHTML = html;
+
+		// Mark as loaded
+		this.loadedChunks.add(nodeId);
+		console.log("✅ Loaded " + chunkChildren.length + " points for chunk");
 	}
 
 	handleContextMenu(e) {
@@ -446,9 +620,72 @@ export class TreeView {
 	}
 
 	updateTreeData() {
-		const treeData = this.buildTreeData();
-		const html = this.renderTree(treeData);
-		document.getElementById("treeView").innerHTML = html;
+		// PERFORMANCE FIX 2025-12-28: Skip if tree panel not visible
+		var treePanel = document.getElementById("treePanel");
+		if (!treePanel || treePanel.style.display === "none") {
+			window._treeNeedsUpdate = true;
+			return;
+		}
+
+		// Prevent concurrent updates
+		if (this._isUpdating) {
+			this._pendingUpdate = true;
+			return;
+		}
+
+		// PERFORMANCE FIX 2025-12-28: Clear loaded chunks on tree rebuild
+		this.loadedChunks.clear();
+
+		// PERFORMANCE FIX 2025-12-28: Build tree async to not block UI
+		this.buildTreeDataAsync();
+	}
+
+	// PERFORMANCE FIX 2025-12-28: Async tree building with batching
+	async buildTreeDataAsync() {
+		this._isUpdating = true;
+		var startTime = Date.now();
+
+		try {
+			// Build in stages with yields
+			var blastData = this.buildBlastData();
+			await this.yieldToUI();
+
+			var drawingData = this.buildDrawingData();
+			await this.yieldToUI();
+
+			var surfaceData = this.buildSurfaceData();
+			var imageData = this.buildImageData();
+
+			var tree = [
+				{ id: "blast", type: "blast", label: "Blast", expanded: true, children: blastData },
+				{ id: "drawings", type: "drawing", label: "Drawings", expanded: true, children: drawingData },
+				{ id: "surfaces", type: "surface", label: "Surfaces", expanded: true, children: surfaceData },
+				{ id: "images", type: "image", label: "Images", expanded: true, children: imageData }
+			];
+
+			await this.yieldToUI();
+
+			var html = this.renderTree(tree);
+			document.getElementById("treeView").innerHTML = html;
+
+			var elapsed = Date.now() - startTime;
+			if (elapsed > 100) {
+				console.log("🌲 TreeView built in " + elapsed + "ms");
+			}
+		} finally {
+			this._isUpdating = false;
+
+			// Handle pending update if any
+			if (this._pendingUpdate) {
+				this._pendingUpdate = false;
+				setTimeout(() => this.updateTreeData(), 100);
+			}
+		}
+	}
+
+	// Helper to yield to UI thread
+	yieldToUI() {
+		return new Promise(function(resolve) { setTimeout(resolve, 0); });
 	}
 
 	buildTreeData() {
@@ -617,64 +854,45 @@ export class TreeView {
 		const circlesChildren = [];
 		const textsChildren = [];
 
+		// PERFORMANCE FIX 2025-12-28: Just create entity-level nodes with EMPTY children
+		// Children will be loaded lazily when entity is expanded
 		if (typeof window.allKADDrawingsMap !== "undefined" && window.allKADDrawingsMap && window.allKADDrawingsMap.size > 0) {
-			for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
-				const elementChildren = entity.data.map((element, index) => ({
-					id: entity.entityType + "⣿" + entityName + "⣿element⣿" + (element.pointID || index + 1),
-					type: entity.entityType + "⣿element",
-					label: entity.entityType === "text" ? element.text || "Text " + (element.pointID || index + 1) : entity.entityType === "circle" ? "Circle " + (element.pointID || index + 1) : "Point " + (element.pointID || index + 1),
-					meta: entity.entityType === "circle" ? "R:" + (Number(element.radius) || 0).toFixed(1) : "(" + (Number(element.pointXLocation) || 0).toFixed(1) + "," + (Number(element.pointYLocation) || 0).toFixed(1) + "," + (Number(element.pointZLocation) || 0).toFixed(1) + ")",
-					elementData: {
-						...element,
-						entityName: entityName,
-					},
-				}));
+			// Pre-calculate entity counts for summary (fast)
+			var entityTypes = { point: 0, line: 0, poly: 0, circle: 0, text: 0 };
 
-				switch (entity.entityType) {
+			for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+				// PERFORMANCE: Minimize work per entity - just count and categorize
+				var pointCount = entity.data ? entity.data.length : 0;
+				var entityType = entity.entityType;
+				entityTypes[entityType]++;
+
+				// Create minimal entity node - will be lazy loaded
+				var nodeId, nodeType;
+				switch (entityType) {
 					case "point":
-						pointsChildren.push({
-							id: "points⣿" + entityName,
-							type: "points-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
+						nodeId = "points⣿" + entityName;
+						nodeType = "points-group";
+						pointsChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
 						break;
 					case "line":
-						linesChildren.push({
-							id: "line⣿" + entityName,
-							type: "line-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
+						nodeId = "line⣿" + entityName;
+						nodeType = "line-group";
+						linesChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
 						break;
 					case "poly":
-						polysChildren.push({
-							id: "poly⣿" + entityName,
-							type: "polygon-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
+						nodeId = "poly⣿" + entityName;
+						nodeType = "polygon-group";
+						polysChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
 						break;
 					case "circle":
-						circlesChildren.push({
-							id: "circle⣿" + entityName,
-							type: "circle-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
+						nodeId = "circle⣿" + entityName;
+						nodeType = "circle-group";
+						circlesChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
 						break;
 					case "text":
-						textsChildren.push({
-							id: "text⣿" + entityName,
-							type: "text-group",
-							label: entityName,
-							meta: "(" + (entity.data?.length || 0) + " points)",
-							children: elementChildren,
-						});
+						nodeId = "text⣿" + entityName;
+						nodeType = "text-group";
+						textsChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
 						break;
 				}
 			}

@@ -6230,6 +6230,17 @@ function handleBaseCanvasResize() {
 window.addEventListener("resize", resizeChart);
 window.addEventListener("resize", handleThreeJSResize);
 window.addEventListener("resize", handleBaseCanvasResize);
+// Step A5) Update LineMaterial resolution on resize for fat lines
+window.addEventListener("resize", function() {
+	if (window.threeRenderer && window.threeRenderer.kadGroup) {
+		var res = new THREE.Vector2(window.innerWidth, window.innerHeight);
+		window.threeRenderer.kadGroup.traverse(function(child) {
+			if (child.material && child.material.isLineMaterial) {
+				child.material.resolution.copy(res);
+			}
+		});
+	}
+});
 var acc = document.getElementsByClassName("accordion");
 var i;
 for (i = 0; i < acc.length; i++) {
@@ -8575,6 +8586,7 @@ async function parseDXFtoKadMaps(dxf) {
 							pointZLocation: pos.z || 0,
 							text: ent.text,
 							color: color,
+							fontHeight: ent.height || 12, // Step B1) Add fontHeight from DXF, default 12
 						},
 					],
 				});
@@ -9965,6 +9977,8 @@ function parseKADFile(fileData) {
 						pointZLocation = parseFloat(row[5]);
 						text = row[6] || "";
 						color = cssColorToHex((row[7] || "#FF0000").replace(/\r$/, ""));
+						// Step B1) Read fontHeight from column 8, default to 12 for backward compatibility
+						var textFontHeight = row[8] ? parseFloat(row[8]) : 12;
 
 						allKADDrawingsMap.get(entityName).data.push({
 							entityName: entityName,
@@ -9975,6 +9989,7 @@ function parseKADFile(fileData) {
 							pointZLocation: pointZLocation,
 							text: text,
 							color: color,
+							fontHeight: textFontHeight,
 						});
 						break;
 				}
@@ -10126,7 +10141,9 @@ function exportKADFile() {
 				}
 			} else if (entityData.entityType.trim() === "text") {
 				for (const text of entityData.data) {
-					const csvLine = `${entityName},${entityData.entityType},${text.pointID},${text.pointXLocation},${text.pointYLocation},${text.pointZLocation},${text.text},${text.color}\n`;
+					// Step B4) Include fontHeight in export (column 8), default to 12 for backward compatibility
+					var exportFontHeight = text.fontHeight || 12;
+					const csvLine = entityName + "," + entityData.entityType + "," + text.pointID + "," + text.pointXLocation + "," + text.pointYLocation + "," + text.pointZLocation + "," + text.text + "," + text.color + "," + exportFontHeight + "\n";
 					csvContentKAD += csvLine;
 					csvContentTXT += csvLine;
 				}
@@ -11004,7 +11021,7 @@ function simplifyLine(line, epsilon) {
 	}
 }
 // NEW: Pixel distance simplification function
-function simplifyByPxDist(points, pxThreshold = 5) {
+function simplifyByPxDist(points, pxThreshold = 10) {
 	if (!points || points.length < 2) return points;
 
 	const pxThresholdSq = pxThreshold * pxThreshold;
@@ -11444,41 +11461,156 @@ function handleTriangulationAction() {
 }
 
 //Take the visible veritces and filter any points the are within a 3D tolerance
-function getUniqueElementVertices(xyzVertices, tolerance = 0.001) {
-	let uniqueVertices = [];
+// PERFORMANCE FIX 2025-12-28: Optimized from O(n²) to O(n) using spatial hashing
+// The original O(n²) algorithm was impossibly slow for 310k+ points
+// Now async with progress updates for large datasets
+async function getUniqueElementVerticesAsync(xyzVertices, tolerance = 0.001, progressCallback = null) {
+	// Step 1) Use spatial hash map for O(n) performance
+	// Grid cell size slightly larger than tolerance to catch neighbors
+	var cellSize = tolerance * 2;
+	var spatialHash = new Map();
+	var uniqueVertices = [];
+	var totalVertices = xyzVertices.length;
+	var lastProgressUpdate = Date.now();
+	var BATCH_SIZE = 10000; // Process in batches to yield to UI
 
-	xyzVertices.forEach((vertex) => {
-		let isDuplicate = false;
+	// Step 2) Helper to get grid cell key
+	function getCellKey(x, y) {
+		var cellX = Math.floor(x / cellSize);
+		var cellY = Math.floor(y / cellSize);
+		return cellX + "," + cellY;
+	}
 
-		// Check against all existing unique vertices
-		for (let i = 0; i < uniqueVertices.length; i++) {
-			const existing = uniqueVertices[i];
-			const dx = vertex.x - existing.x;
-			const dy = vertex.y - existing.y;
-			//const dz = vertex.z - existing.z; 3D distance is not used for deduplication 3d causes triangulations to fail
-			const distance = Math.sqrt(dx * dx + dy * dy); //+ dz * dz);
+	// Step 3) Helper to check if vertex is duplicate in neighboring cells
+	function isDuplicateInNeighbors(vertex) {
+		var cellX = Math.floor(vertex.x / cellSize);
+		var cellY = Math.floor(vertex.y / cellSize);
 
-			if (distance <= tolerance) {
-				isDuplicate = true;
-				break;
+		// Check 3x3 neighborhood of cells
+		for (var dx = -1; dx <= 1; dx++) {
+			for (var dy = -1; dy <= 1; dy++) {
+				var neighborKey = (cellX + dx) + "," + (cellY + dy);
+				var cellVertices = spatialHash.get(neighborKey);
+				if (cellVertices) {
+					for (var j = 0; j < cellVertices.length; j++) {
+						var existing = cellVertices[j];
+						var distX = vertex.x - existing.x;
+						var distY = vertex.y - existing.y;
+						var distSquared = distX * distX + distY * distY;
+						if (distSquared <= tolerance * tolerance) {
+							return true;
+						}
+					}
+				}
 			}
 		}
+		return false;
+	}
 
-		// Only add if not within tolerance of any existing vertex
-		if (!isDuplicate) {
+	// Step 4) Process all vertices in batches
+	for (var i = 0; i < totalVertices; i++) {
+		var vertex = xyzVertices[i];
+
+		// Check if duplicate
+		if (!isDuplicateInNeighbors(vertex)) {
+			// Add to unique list
 			uniqueVertices.push(vertex);
+
+			// Add to spatial hash
+			var cellKey = getCellKey(vertex.x, vertex.y);
+			if (!spatialHash.has(cellKey)) {
+				spatialHash.set(cellKey, []);
+			}
+			spatialHash.get(cellKey).push(vertex);
 		}
-	});
+
+		// Step 5) Yield to UI periodically
+		if (i > 0 && i % BATCH_SIZE === 0) {
+			var now = Date.now();
+			if (now - lastProgressUpdate > 50 || progressCallback) { // Update every 50ms or if callback provided
+				var progressPercent = Math.floor((i / totalVertices) * 100);
+				if (progressCallback) {
+					await progressCallback(progressPercent, "Deduplicating: " + i.toLocaleString() + " / " + totalVertices.toLocaleString() + " (" + uniqueVertices.length.toLocaleString() + " unique)");
+				}
+				lastProgressUpdate = now;
+				// Yield to event loop
+				await new Promise(function(resolve) { setTimeout(resolve, 0); });
+			}
+		}
+	}
 
 	return uniqueVertices;
 }
 
-function createDelaunayTriangulation(params) {
+// Synchronous version for backward compatibility (small datasets)
+function getUniqueElementVertices(xyzVertices, tolerance = 0.001) {
+	// For small datasets, use synchronous version
+	var cellSize = tolerance * 2;
+	var spatialHash = new Map();
+	var uniqueVertices = [];
+
+	function getCellKey(x, y) {
+		var cellX = Math.floor(x / cellSize);
+		var cellY = Math.floor(y / cellSize);
+		return cellX + "," + cellY;
+	}
+
+	function isDuplicateInNeighbors(vertex) {
+		var cellX = Math.floor(vertex.x / cellSize);
+		var cellY = Math.floor(vertex.y / cellSize);
+
+		for (var dx = -1; dx <= 1; dx++) {
+			for (var dy = -1; dy <= 1; dy++) {
+				var neighborKey = (cellX + dx) + "," + (cellY + dy);
+				var cellVertices = spatialHash.get(neighborKey);
+				if (cellVertices) {
+					for (var j = 0; j < cellVertices.length; j++) {
+						var existing = cellVertices[j];
+						var distX = vertex.x - existing.x;
+						var distY = vertex.y - existing.y;
+						var distSquared = distX * distX + distY * distY;
+						if (distSquared <= tolerance * tolerance) {
+							return true;
+						}
+					}
+				}
+			}
+		}
+		return false;
+	}
+
+	for (var i = 0; i < xyzVertices.length; i++) {
+		var vertex = xyzVertices[i];
+		if (!isDuplicateInNeighbors(vertex)) {
+			uniqueVertices.push(vertex);
+			var cellKey = getCellKey(vertex.x, vertex.y);
+			if (!spatialHash.has(cellKey)) {
+				spatialHash.set(cellKey, []);
+			}
+			spatialHash.get(cellKey).push(vertex);
+		}
+	}
+
+	return uniqueVertices;
+}
+
+async function createDelaunayTriangulation(params, updateProgress = null) {
 	// Add the getX and getY functions at the top of the function
 	const getX = (point) => parseFloat(point.x);
 	const getY = (point) => parseFloat(point.y);
 
+	// Helper to update progress and yield to event loop
+	async function reportProgress(percent, message) {
+		if (updateProgress) {
+			await updateProgress(percent, message);
+		}
+		// Always yield to event loop for large operations
+		await new Promise(function(resolve) { setTimeout(resolve, 0); });
+	}
+
 	try {
+		await reportProgress(5, "Collecting visible elements...");
+
 		// Fix the function call by passing the required parameters
 		let visibleElements = getVisibleHolesAndKADDrawings(allBlastHoles || [], allKADDrawingsMap ? Array.from(allKADDrawingsMap.values()) : []);
 
@@ -11490,6 +11622,8 @@ function createDelaunayTriangulation(params) {
 		const minAngleTolerance = params.minAngle || 0;
 		const maxEdgeLength = params.maxEdgeLength || 0;
 		const tolerance = params.tolerance || 0.001;
+
+		await reportProgress(10, "Collecting vertices...");
 
 		// Collect all vertices from visible elements
 		let elementVertices = [];
@@ -11547,8 +11681,22 @@ function createDelaunayTriangulation(params) {
 			}
 		});
 
+		await reportProgress(15, "Removing duplicate vertices from " + elementVertices.length.toLocaleString() + " points...");
+
 		// Remove duplicate vertices within tolerance
-		elementVertices = getUniqueElementVertices(elementVertices, tolerance);
+		// Use async version for large datasets to keep UI responsive
+		var LARGE_DATASET_THRESHOLD = 10000;
+		if (elementVertices.length > LARGE_DATASET_THRESHOLD) {
+			// Async version with progress
+			elementVertices = await getUniqueElementVerticesAsync(elementVertices, tolerance, async function(percent, message) {
+				// Map deduplication progress to 15-30% range
+				var mappedPercent = 15 + Math.floor(percent * 0.15);
+				await reportProgress(mappedPercent, message);
+			});
+		} else {
+			// Sync version for small datasets
+			elementVertices = getUniqueElementVertices(elementVertices, tolerance);
+		}
 
 		console.log("🎯 Unique vertices after deduplication:", elementVertices.length);
 
@@ -11560,13 +11708,18 @@ function createDelaunayTriangulation(params) {
 			};
 		}
 
+		await reportProgress(30, "Creating triangulation with " + elementVertices.length + " vertices...");
 		console.log("✅ Creating triangulation with", elementVertices.length, "vertices");
 
 		// Construct the Delaunay triangulation object
 		const delaunay = Delaunator.from(elementVertices, getX, getY);
 
+		await reportProgress(40, "Triangulation complete, processing triangles...");
+
 		// Array to store valid triangles
 		const resultTriangles = [];
+		const totalTriangles = delaunay.triangles.length / 3;
+		var lastProgressUpdate = Date.now();
 
 		// Helper function to calculate the squared distance between two points
 		function distanceSquared(p1, p2) {
@@ -11577,6 +11730,13 @@ function createDelaunayTriangulation(params) {
 
 		// Process each triangle
 		for (let i = 0; i < delaunay.triangles.length; i += 3) {
+			// Yield to event loop periodically for large datasets (every 100ms or 5000 triangles)
+			var triangleIndex = i / 3;
+			if (Date.now() - lastProgressUpdate > 100 || triangleIndex % 5000 === 0) {
+				var progressPercent = 40 + Math.floor((triangleIndex / totalTriangles) * 25);
+				await reportProgress(progressPercent, "Processing triangle " + triangleIndex.toLocaleString() + " of " + totalTriangles.toLocaleString() + "...");
+				lastProgressUpdate = Date.now();
+			}
 			const p1Index = delaunay.triangles[i];
 			const p2Index = delaunay.triangles[i + 1];
 			const p3Index = delaunay.triangles[i + 2];
@@ -11640,6 +11800,7 @@ function createDelaunayTriangulation(params) {
 			}
 		}
 
+		await reportProgress(65, "Generated " + resultTriangles.length.toLocaleString() + " triangles");
 		console.log("🎉 Generated", resultTriangles.length, "triangles");
 
 		// ? FIX: Return triangles in the correct format that matches your system
@@ -12140,8 +12301,19 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 		console.log("📊 Collected " + elementVertices.length + " vertices before deduplication");
 
 		// *** FIX 3: Deduplicate vertices (this changes coordinates) ***
+		// PERFORMANCE FIX 2025-12-28: Use async version for large datasets
 		const originalVertexCount = elementVertices.length;
-		elementVertices = getUniqueElementVertices(elementVertices, params.tolerance || 0.001);
+		var LARGE_DATASET_THRESHOLD = 10000;
+		if (originalVertexCount > LARGE_DATASET_THRESHOLD) {
+			if (updateProgress) await updateProgress(15, "Deduplicating " + originalVertexCount.toLocaleString() + " vertices...");
+			elementVertices = await getUniqueElementVerticesAsync(elementVertices, params.tolerance || 0.001, async function(percent, message) {
+				// Map deduplication progress to 15-25% range
+				var mappedPercent = 15 + Math.floor(percent * 0.10);
+				if (updateProgress) await updateProgress(mappedPercent, message);
+			});
+		} else {
+			elementVertices = getUniqueElementVertices(elementVertices, params.tolerance || 0.001);
+		}
 
 		console.log("🔄 Deduplication: " + originalVertexCount + " → " + elementVertices.length + " vertices");
 
@@ -18468,6 +18640,7 @@ async function addKADText() {
 			pointZLocation: pointZLocation,
 			text: text, // ? Now using the processed text
 			color: color,
+			fontHeight: 12, // Step B1) Default fontHeight for new text entities
 			connected: false,
 			closed: false,
 			visible: true,
@@ -21430,7 +21603,9 @@ function drawData(allBlastHoles, selectedHole) {
 						if (textData && textData.text) {
 							const screenX = (textData.pointXLocation - centroidX) * currentScale + canvas.width / 2;
 							const screenY = -(textData.pointYLocation - centroidY) * currentScale + canvas.height / 2;
-							drawKADTexts(screenX, screenY, textData.pointZLocation, textData.text, textData.color);
+							// Step B2) Pass fontHeight to 2D text drawing
+							var textFontHeight2D = textData.fontHeight || 12;
+							drawKADTexts(screenX, screenY, textData.pointZLocation, textData.text, textData.color, textFontHeight2D);
 							drawKADCoordinates(textData, screenX, screenY);
 						}
 					});
@@ -21485,11 +21660,20 @@ function drawData(allBlastHoles, selectedHole) {
 					if (originalPoints.length < 2) continue;
 
 					// Simplify by pixel distance
-					var pointThreshold = 2;
-					if (currentScale > 1) {
-						pointThreshold = 2;
+					// Get the scale ratio like the overlay does
+					var PIXELS_PER_METER_96DPI = 3779.52;
+					var scaleRatio = PIXELS_PER_METER_96DPI / currentScale;
+					// Use scale ratio to determine pixel threshold
+					var pointThreshold;
+					if (scaleRatio > 3000) {
+						pointThreshold = 4; // Normal zoom
+					}
+					else if (scaleRatio > 600) {
+						pointThreshold = 3; // Normal zoom
+					} else if (scaleRatio > 400) {
+						pointThreshold = 2; // Normal zoom
 					} else {
-						pointThreshold = 1;
+						pointThreshold = 1; // Zoomed in
 					}
 
 					var simplifiedPoints = simplifyByPxDist(originalPoints, pointThreshold);
@@ -22838,14 +23022,25 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 				}
 
-				// Step 3.1b) Create super-batched geometry for LINES/POLYGONS
+				// Step 3.1b) Create HYBRID super-batched geometry for LINES/POLYGONS
+				// Uses fast LineBasicMaterial for thin lines (<=1), FatLines for thick (>1)
 				if (linePolyEntities.length > 0) {
-					var superBatch = GeometryFactory.createSuperBatchedLines(linePolyEntities, worldToThreeLocal);
-					if (superBatch && superBatch.lineSegments) {
-						threeRenderer.kadGroup.add(superBatch.lineSegments);
+					var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+					var hybridBatch = GeometryFactory.createHybridSuperBatchedLines(linePolyEntities, worldToThreeLocal, resolution);
+					if (hybridBatch) {
+						// Add thin lines batch (1 draw call for all standard lines)
+						if (hybridBatch.thinLineSegments) {
+							threeRenderer.kadGroup.add(hybridBatch.thinLineSegments);
+						}
+						// Add fat lines batches (1 draw call per unique thick lineWidth)
+						hybridBatch.fatLinesByWidth.forEach(function(fatBatch) {
+							threeRenderer.kadGroup.add(fatBatch);
+						});
 						usedSuperBatchLines = true;
 						if (developerModeEnabled) {
-							console.log("🚀 SUPER-BATCH LINES: " + linePolyEntities.length + " entities merged into 1 draw call (" + superBatch.segmentCount + " segments)");
+							var fatCount = hybridBatch.fatLinesByWidth.size;
+							var drawCalls = (hybridBatch.thinLineSegments ? 1 : 0) + fatCount;
+							console.log("🚀 HYBRID-BATCH LINES: " + linePolyEntities.length + " entities (" + hybridBatch.thinCount + " thin + " + hybridBatch.thickCount + " thick segments) in " + drawCalls + " draw calls");
 						}
 					}
 				}
@@ -22861,13 +23056,25 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 				}
 
-				// Step 3.1d) Create super-batched geometry for CIRCLES
+				// Step 3.1d) Create HYBRID super-batched geometry for CIRCLES
+				// Uses fast LineBasicMaterial for thin circles (<=1), FatLines for thick (>1)
 				if (circleEntities.length > 0) {
-					var superBatchCircles = drawKADSuperBatchedCirclesThreeJS(circleEntities, worldToThreeLocal);
-					if (superBatchCircles) {
+					var circleResolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+					var hybridCircles = GeometryFactory.createHybridSuperBatchedCircles(circleEntities, worldToThreeLocal, circleResolution);
+					if (hybridCircles) {
+						// Add thin circles batch
+						if (hybridCircles.thinLineSegments) {
+							threeRenderer.kadGroup.add(hybridCircles.thinLineSegments);
+						}
+						// Add fat circles batches
+						hybridCircles.fatLinesByWidth.forEach(function(fatBatch) {
+							threeRenderer.kadGroup.add(fatBatch);
+						});
 						usedSuperBatchCircles = true;
 						if (developerModeEnabled) {
-							console.log("🚀 SUPER-BATCH CIRCLES: " + circleEntities.length + " entities (" + superBatchCircles.totalCircles + " circles) merged into 1 draw call");
+							var fatCircleCount = hybridCircles.fatLinesByWidth.size;
+							var circleDrawCalls = (hybridCircles.thinLineSegments ? 1 : 0) + fatCircleCount;
+							console.log("🚀 HYBRID-BATCH CIRCLES: " + circleEntities.length + " entities (" + hybridCircles.thinCount + " thin + " + hybridCircles.thickCount + " thick) in " + circleDrawCalls + " draw calls");
 						}
 					}
 				}
@@ -23033,7 +23240,9 @@ function drawData(allBlastHoles, selectedHole) {
 						const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
 						const vertexIndex = entity.data.indexOf(textData);
 						const kadId = name + ":::" + vertexIndex;
-						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textData.fontSize || 12, textData.color || "#000000", textData.backgroundColor || null, kadId); // kadId format: "entityName:::vertexIndex"
+						// Step B2) Use fontHeight attribute for text size, default to 12
+						var textFontSize = textData.fontHeight || 12;
+						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textFontSize, textData.color || "#000000", textData.backgroundColor || null, kadId); // kadId format: "entityName:::vertexIndex"
 					}
 				}
 			}
@@ -40020,12 +40229,29 @@ function syncCanvasToTreeView() {
 
 
 // Assign the actual implementation to the forward-declared variable
-debouncedUpdateTreeView = function (delay = 100) {
+// PERFORMANCE FIX 2025-12-28: Smart tree updates - skip if hidden, use idle callback
+debouncedUpdateTreeView = function (delay = 250) {  // Increased default delay
 	if (updateTreeViewTimeout) {
 		clearTimeout(updateTreeViewTimeout);
 	}
+	
+	// Skip if tree panel is not visible
+	var treePanel = document.getElementById("treePanel");
+	if (!treePanel || treePanel.style.display === "none") {
+		// Tree is hidden - mark as needing update when shown
+		window._treeNeedsUpdate = true;
+		return;
+	}
+
 	updateTreeViewTimeout = setTimeout(function () {
-		updateTreeView(); // ? Call updateTreeView(), not itself!
+		// Use requestIdleCallback if available for non-blocking update
+		if (typeof requestIdleCallback === "function") {
+			requestIdleCallback(function() {
+				updateTreeView();
+			}, { timeout: 500 });  // Max wait 500ms
+		} else {
+			updateTreeView();
+		}
 	}, delay);
 };
 // ? Function to update TreeView visual states based on actual visibility

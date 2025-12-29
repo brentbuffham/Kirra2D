@@ -54,50 +54,99 @@ export function highlightSelectedKADThreeJS() {
     }
 
     // Step 3) Handle multiple selections
-    // PERFORMANCE FIX 2025-12-28: Add limits to prevent freeze with large selections
+    // PERFORMANCE FIX 2025-12-28: Use BATCHED fat lines (LineSegments2) instead of individual MeshLine objects
     if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
-        // Step 3.0) Performance constants
-        var MAX_3D_RENDER_COUNT = 500;  // Maximum entities to render in 3D (more expensive than 2D)
-        var selectionCount = selectedMultipleKADObjects.length;
-        var renderCount = Math.min(selectionCount, MAX_3D_RENDER_COUNT);
-        
-        console.log("🎨 Drawing 3D multiple KAD selections:", selectionCount, "objects (rendering " + renderCount + ")");
-        
-        // Step 3.0a) Show warning if selection was truncated
-        if (selectionCount > MAX_3D_RENDER_COUNT && !window._largeSelection3DWarningShown) {
-            window._largeSelection3DWarningShown = true;
-            if (typeof window.updateStatusMessage === "function") {
-                window.updateStatusMessage("Large 3D selection: rendering " + MAX_3D_RENDER_COUNT + " of " + selectionCount + " entities");
-                setTimeout(function() { window.updateStatusMessage(""); }, 3000);
-            }
-        } else if (selectionCount <= MAX_3D_RENDER_COUNT) {
-            window._largeSelection3DWarningShown = false;
+        // Step 3.0) Count selected entities by type (same pattern as HUD stats)
+        var kadPointCount = 0, kadLineCount = 0, kadPolyCount = 0, kadCircleCount = 0, kadTextCount = 0;
+        for (var i = 0; i < selectedMultipleKADObjects.length; i++) {
+            var type = selectedMultipleKADObjects[i].entityType;
+            if (type === "point") kadPointCount++;
+            else if (type === "line") kadLineCount++;
+            else if (type === "poly") kadPolyCount++;
+            else if (type === "circle") kadCircleCount++;
+            else if (type === "text") kadTextCount++;
         }
 
-        selectedMultipleKADObjects.slice(0, renderCount).forEach((kadObj, index) => {
-            if (index < 3) {
-                console.log("=== DRAWING 3D KAD OBJECT " + index + " ===");
-                console.log("kadObj:", kadObj);
-                console.log("kadObj.entityName:", kadObj.entityName);
-                console.log("kadObj.entity:", kadObj.entity);
-            }
+        // Step 3.0a) Only draw vertices if NO type has more than 1 entity
+        var maxTypeCount = Math.max(kadPointCount, kadLineCount, kadPolyCount, kadCircleCount, kadTextCount);
+        var skipVertices3D = maxTypeCount > 1;
 
-            const entity = getEntityFromKADObject(kadObj);
-            if (index < 3) {
-                console.log("Entity from getEntityFromKADObject:", entity);
-            }
+        // Step 3.0b) No render cap needed with batched approach - collect ALL segments
+        var selectionCount = selectedMultipleKADObjects.length;
+        
+        console.log("🎨 Drawing 3D multiple KAD selections (BATCHED):", selectionCount, "objects");
+        console.log("Type counts - Point:" + kadPointCount + " Line:" + kadLineCount + " Poly:" + kadPolyCount + " Circle:" + kadCircleCount + " Text:" + kadTextCount);
+        console.log("Performance mode: skipVertices3D=" + skipVertices3D + " (maxTypeCount=" + maxTypeCount + ")");
 
-            if (entity) {
-                if (index < 3) {
-                    console.log("✓ Drawing highlight for:", kadObj.entityName, "entityType:", kadObj.entityType || entity.entityType);
+        // Step 3.1) Collect ALL segments for batched rendering
+        var greenSegments = [];  // Non-selected segments (green)
+        var greenCircles = [];   // Non-selected circles
+        
+        selectedMultipleKADObjects.forEach(function(kadObj) {
+            var entity = getEntityFromKADObject(kadObj);
+            if (!entity || !entity.data) return;
+            
+            var entityType = kadObj.entityType || entity.entityType;
+            
+            if (entityType === "line" || entityType === "poly") {
+                // Step 3.1a) Collect line/poly segments
+                var points = entity.data;
+                var isClosedShape = entityType === "poly";
+                var numSegments = isClosedShape ? points.length : points.length - 1;
+                
+                for (var i = 0; i < numSegments; i++) {
+                    var point1 = points[i];
+                    var point2 = isClosedShape ? points[(i + 1) % points.length] : points[i + 1];
+                    
+                    var local1 = worldToThreeLocal(point1.pointXLocation, point1.pointYLocation);
+                    var local2 = worldToThreeLocal(point2.pointXLocation, point2.pointYLocation);
+                    
+                    var z1 = point1.pointZLocation || dataCentroidZ || 0;
+                    var z2 = point2.pointZLocation || dataCentroidZ || 0;
+                    
+                    greenSegments.push({
+                        x1: local1.x, y1: local1.y, z1: z1,
+                        x2: local2.x, y2: local2.y, z2: z2
+                    });
                 }
-                drawKADEntityHighlight(kadObj, entity, selectedSegmentColor, nonSelectedSegmentColor, verticesColor, worldToThreeLocal, dataCentroidZ, developerModeEnabled);
-            } else {
-                console.log("❌ ERROR: No entity found for:", kadObj.entityName);
+            } else if (entityType === "circle") {
+                // Step 3.1b) Collect circles
+                entity.data.forEach(function(circle) {
+                    var centerX = circle.centerX || circle.pointXLocation;
+                    var centerY = circle.centerY || circle.pointYLocation;
+                    var centerZ = circle.centerZ || circle.pointZLocation || dataCentroidZ || 0;
+                    var radius = circle.radius * 1.1 || 1;
+                    var local = worldToThreeLocal(centerX, centerY);
+                    
+                    greenCircles.push({
+                        cx: local.x, cy: local.y, cz: centerZ, radius: radius
+                    });
+                });
             }
+            // Note: Points and Text entities are handled individually (they're already efficient)
         });
-
-        console.log("✅ Finished drawing all KAD highlights");
+        
+        // Step 3.2) Create batched highlight geometry (ONE object for all segments)
+        var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+        var greenLineWidth = 3;  // Pixel width for highlights
+        
+        if (greenSegments.length > 0) {
+            var batchedLines = GeometryFactory.createBatchedHighlightLines(greenSegments, null, greenLineWidth, 0, resolution);
+            if (batchedLines.greenLines) {
+                batchedLines.greenLines.userData.type = "kadSelectionHighlight";
+                window.threeRenderer.kadGroup.add(batchedLines.greenLines);
+            }
+        }
+        
+        if (greenCircles.length > 0) {
+            var batchedCircles = GeometryFactory.createBatchedHighlightCircles(greenCircles, null, greenLineWidth, 0, resolution);
+            if (batchedCircles.greenCircles) {
+                batchedCircles.greenCircles.userData.type = "kadSelectionHighlight";
+                window.threeRenderer.kadGroup.add(batchedCircles.greenCircles);
+            }
+        }
+        
+        console.log("✅ Batched highlights created - Segments:" + greenSegments.length + " Circles:" + greenCircles.length);
     }
 
     // Step 4) Draw individual vertex highlight if selectedPoint is set
@@ -171,7 +220,8 @@ export function highlightSelectedKADThreeJS() {
 }
 
 // Step 4) Draw highlight for a single KAD entity
-function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSelectedSegmentColor, verticesColor, worldToThreeLocal, dataCentroidZ, developerModeEnabled) {
+// skipVertices parameter controls whether to skip vertex geometry for performance
+function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSelectedSegmentColor, verticesColor, worldToThreeLocal, dataCentroidZ, developerModeEnabled, skipVertices) {
     // Step 4a) Create group for highlights
     const highlightGroup = new THREE.Group();
     highlightGroup.userData = {
@@ -207,9 +257,11 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                     highlightGroup.add(sphere);
                 }
 
-                // Step 4b.3) Add red vertex markers for all points
-                const vertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
-                highlightGroup.add(vertex);
+                // Step 4b.3) Add red vertex markers for all points - SKIP if large selection
+                if (!skipVertices) {
+                    const vertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
+                    highlightGroup.add(vertex);
+                }
             });
             break;
 
@@ -268,24 +320,26 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 }
             }
 
-            // Step 4c.4) Draw vertices for all points (with zoom-based scaling)
-            points.forEach((point, index) => {
-                const local = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
-                const z = point.pointZLocation || dataCentroidZ || 0;
+            // Step 4c.4) Draw vertices for all points - SKIP if large selection
+            if (!skipVertices) {
+                points.forEach((point, index) => {
+                    const local = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
+                    const z = point.pointZLocation || dataCentroidZ || 0;
 
-                // Step 4c.4a) If this is the start vertex of the selected segment, draw it in magenta
-                const isSelectedSegmentVertex = kadObject.selectionType === "segment" && kadObject.segmentIndex === index;
+                    // Step 4c.4a) If this is the start vertex of the selected segment, draw it in magenta
+                    const isSelectedSegmentVertex = kadObject.selectionType === "segment" && kadObject.segmentIndex === index;
 
-                if (isSelectedSegmentVertex) {
-                    // Larger magenta sphere for selected segment's start vertex (with zoom scaling)
-                    const selectedVertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 1.0, selectedSegmentColor);
-                    highlightGroup.add(selectedVertex);
-                } else {
-                    // Standard red vertex marker (with zoom scaling)
-                    const vertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
-                    highlightGroup.add(vertex);
-                }
-            });
+                    if (isSelectedSegmentVertex) {
+                        // Larger magenta sphere for selected segment's start vertex (with zoom scaling)
+                        const selectedVertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 1.0, selectedSegmentColor);
+                        highlightGroup.add(selectedVertex);
+                    } else {
+                        // Standard red vertex marker (with zoom scaling)
+                        const vertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
+                        highlightGroup.add(vertex);
+                    }
+                });
+            }
             break;
 
         case "circle":
@@ -303,9 +357,11 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                     const circleMesh = GeometryFactory.createKADCircleHighlight(local.x, local.y, centerZ, radius, 30, selectedSegmentColor);
                     highlightGroup.add(circleMesh);
 
-                    // Step 4e.2) Add center point
-                    const centerPoint = GeometryFactory.createKADPointHighlight(local.x, local.y, centerZ, 0.5, verticesColor);
-                    highlightGroup.add(centerPoint);
+                    // Step 4e.2) Add center point - SKIP if large selection
+                    if (!skipVertices) {
+                        const centerPoint = GeometryFactory.createKADPointHighlight(local.x, local.y, centerZ, 0.5, verticesColor);
+                        highlightGroup.add(centerPoint);
+                    }
                 } else {
                     // Step 4e.3) Other circles get green highlight
                     const circleMesh = GeometryFactory.createKADCircleHighlight(local.x, local.y, centerZ, radius, 30, nonSelectedSegmentColor);
@@ -341,9 +397,11 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                     const boxHighlight = GeometryFactory.createKADTextBoxHighlight(local.x, local.y, z, width, height, selectedSegmentColor);
                     highlightGroup.add(boxHighlight);
 
-                    // Step 4f.3) Add anchor point
-                    const anchorPoint = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
-                    highlightGroup.add(anchorPoint);
+                    // Step 4f.3) Add anchor point - SKIP if large selection
+                    if (!skipVertices) {
+                        const anchorPoint = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
+                        highlightGroup.add(anchorPoint);
+                    }
                 } else {
                     // Step 4f.4) Other text gets green box
                     const boxHighlight = GeometryFactory.createKADTextBoxHighlight(local.x, local.y, z, width, height, nonSelectedSegmentColor);

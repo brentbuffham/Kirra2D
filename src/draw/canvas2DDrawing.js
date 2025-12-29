@@ -284,11 +284,12 @@ export function drawKADCircles(x, y, z, radius, lineWidth, strokeColor) {
 	window.ctx.stroke();
 }
 
-export function drawKADTexts(x, y, z, text, color) {
-	//window.ctx.fillStyle = color;
-	window.ctx.font = parseInt(window.currentFontSize - 2) + "px Arial";
+export function drawKADTexts(x, y, z, text, color, fontHeight) {
+	// Step B2) Use fontHeight if provided, otherwise fall back to window.currentFontSize
+	var fontSize = fontHeight || window.currentFontSize || 12;
+	window.ctx.font = parseInt(fontSize) + "px Arial";
 	window.ctx.save(); // Save the context state before setting shadow
-	drawMultilineText(window.ctx, text, x, y, window.currentFontSize, "left", color, color, false);
+	drawMultilineText(window.ctx, text, x, y, fontSize, "left", color, color, false);
 	window.ctx.restore(); // Restore context state
 }
 

@@ -51,8 +51,55 @@ window.estimateTriangulationPointCount = estimateTriangulationPointCount;
 
 //! SHOW TRIANGULATION POPUP
 // Step 3) Dialog for creating Delaunay 2.5D triangulations
-export function showTriangulationPopup() {
+export async function showTriangulationPopup() {
 	const selectedPolygon = window.selectedKADObject && window.selectedKADObject.entityType == "poly" ? window.selectedKADObject : null;
+
+	// Step 3.0) PERFORMANCE FIX 2025-12-28: Pre-estimate point count BEFORE showing main dialog
+	// This uses max possible points (all holes + all KAD) to warn user early
+	var preEstimatedPoints = 0;
+	var visibleHoles = window.allBlastHoles || [];
+	if (window.getVisibleHolesAndKADDrawings) {
+		var visibleElements = window.getVisibleHolesAndKADDrawings(window.allBlastHoles || [],
+			window.allKADDrawingsMap ? Array.from(window.allKADDrawingsMap.values()) : []);
+		visibleHoles = visibleElements.visibleHoles || [];
+	}
+	preEstimatedPoints += visibleHoles.length; // Max 1 point per hole
+
+	var kadDrawings = [];
+	if (window.allKADDrawingsMap) {
+		kadDrawings = Array.from(window.allKADDrawingsMap.values());
+	}
+	if (window.getVisibleHolesAndKADDrawings) {
+		var visibleElements = window.getVisibleHolesAndKADDrawings([], kadDrawings);
+		kadDrawings = visibleElements.visibleKADDrawings || kadDrawings;
+	}
+	kadDrawings.forEach(function (entity) {
+		if (entity && entity.data) {
+			preEstimatedPoints += entity.data.length;
+		}
+	});
+
+	console.log("📊 Pre-estimated max triangulation points: " + preEstimatedPoints);
+
+	// Step 3.0a) Show warning FIRST if dataset is very large (before main dialog)
+	var SAFE_POINT_LIMIT = 10000;
+	var LARGE_DATASET_WARNING = 5000;
+
+	if (preEstimatedPoints > SAFE_POINT_LIMIT) {
+		// Very large dataset - require confirmation BEFORE showing main dialog
+		var proceed = await window.showConfirmationDialog(
+			"Very Large Dataset Warning",
+			"This dataset has approximately " + preEstimatedPoints + " points. " +
+			"Triangulation processing may take several minutes and could freeze the browser. " +
+			"Consider reducing the visible data (hide layers) or using simplified settings. Continue to settings?",
+			"Continue to Settings",
+			"Cancel"
+		);
+		if (!proceed) {
+			window.updateStatusMessage("Triangulation cancelled - dataset too large");
+			return;
+		}
+	}
 
 	const fields = [
 		{
@@ -218,6 +265,26 @@ export function showTriangulationPopup() {
 		formContent.insertBefore(boundaryInfo, formContent.firstChild);
 	}
 
+	// Step 4.1) Add dataset size info box (always show for awareness)
+	var datasetSizeStyle = preEstimatedPoints > SAFE_POINT_LIMIT ? "rgba(255, 150, 50, 0.3)" :
+		preEstimatedPoints > LARGE_DATASET_WARNING ? "rgba(255, 255, 50, 0.2)" : "rgba(100, 100, 100, 0.2)";
+	var datasetSizeBorder = preEstimatedPoints > SAFE_POINT_LIMIT ? "#ff9800" :
+		preEstimatedPoints > LARGE_DATASET_WARNING ? "#ffeb3b" : "#666";
+	var datasetSizeIcon = preEstimatedPoints > SAFE_POINT_LIMIT ? "⚠️" :
+		preEstimatedPoints > LARGE_DATASET_WARNING ? "📊" : "📊";
+	var datasetSizeText = preEstimatedPoints > SAFE_POINT_LIMIT ? " (very large - processing may be slow)" :
+		preEstimatedPoints > LARGE_DATASET_WARNING ? " (large dataset)" : "";
+
+	const datasetInfo = document.createElement("div");
+	datasetInfo.style.gridColumn = "1 / -1";
+	datasetInfo.style.padding = "8px";
+	datasetInfo.style.backgroundColor = datasetSizeStyle;
+	datasetInfo.style.border = "1px solid " + datasetSizeBorder;
+	datasetInfo.style.borderRadius = "4px";
+	datasetInfo.style.fontSize = "11px";
+	datasetInfo.innerHTML = datasetSizeIcon + " Estimated points: ~" + preEstimatedPoints.toLocaleString() + datasetSizeText;
+	formContent.insertBefore(datasetInfo, formContent.firstChild);
+
 	// Step 5) Add HONEST notes section
 	const notesDiv = document.createElement("div");
 	notesDiv.style.gridColumn = "1 / -1";
@@ -261,29 +328,14 @@ export function showTriangulationPopup() {
 				return;
 			}
 
-			// Step 8) PERFORMANCE FIX 2025-12-28: Estimate point count and warn user
+			// Step 8) PERFORMANCE FIX 2025-12-28: Estimate actual point count based on form selections
 			var estimatedPoints = estimateTriangulationPointCount(formData);
-			var SAFE_POINT_LIMIT = 10000;
 			var LARGE_DATASET_WARNING = 5000;
 
-			if (estimatedPoints > SAFE_POINT_LIMIT) {
-				// Very large dataset - require confirmation
-				var proceed = await window.showConfirmationDialog(
-					"Very Large Dataset Warning",
-					"This triangulation has approximately " + estimatedPoints + " points. " +
-					"Processing may take several minutes and could freeze the browser. " +
-					"Consider reducing the data or using simplified settings. Continue anyway?",
-					"Continue (not recommended)",
-					"Cancel"
-				);
-				if (!proceed) {
-					window.updateStatusMessage("Triangulation cancelled");
-					return;
-				}
-			} else if (estimatedPoints > LARGE_DATASET_WARNING) {
-				// Large dataset - show info warning but proceed
+			// Note: Major warning was shown upfront before dialog opened
+			// Here we just log and update status for user awareness
+			if (estimatedPoints > LARGE_DATASET_WARNING) {
 				console.log("⚠️ Large triangulation dataset: " + estimatedPoints + " points");
-				window.updateStatusMessage("Large dataset (" + estimatedPoints + " points) - this may take a moment...");
 			}
 
 			// Step 8b) Show loading message
@@ -295,175 +347,192 @@ export function showTriangulationPopup() {
 				// ✅ FIX: Use surface name as the ID to maintain consistency
 				const surfaceId = formData.surfaceName.trim();
 
+				// Step 10) ALWAYS create progress dialog for ALL triangulation types
+				// PERFORMANCE FIX 2025-12-28: Show progress for all operations
+				window._triangulationCancelled = false;
+				var isConstrained = formData.useBreaklines === "yes";
+				var triangulationType = isConstrained ? "Constrained Delaunay" : "Delaunay";
+
+				var progressContentHTML = "<p>Creating " + triangulationType + " Triangulation</p>" +
+					"<p>Processing " + estimatedPoints.toLocaleString() + " points...</p>" +
+					'<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">' +
+					'<div id="triangulationProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>' +
+					"</div>" +
+					'<p id="triangulationProgressText">Initializing...</p>' +
+					'<button id="triangulationCancelBtn" style="margin-top: 10px; padding: 8px 16px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>';
+
+				var progressContentDiv = document.createElement("div");
+				progressContentDiv.innerHTML = progressContentHTML;
+
+				const progressDialog = new window.FloatingDialog({
+					title: "Triangulation Progress",
+					content: progressContentDiv,
+					layoutType: "standard",
+					width: 400,
+					height: 280,
+					showConfirm: false,
+					showCancel: false,
+					allowOutsideClick: false,
+				});
+
+				progressDialog.show();
+
+				// Step 10a) Setup cancel button handler
+				var cancelBtn = document.getElementById("triangulationCancelBtn");
+				if (cancelBtn) {
+					cancelBtn.addEventListener("click", function () {
+						window._triangulationCancelled = true;
+						var progressText = document.getElementById("triangulationProgressText");
+						if (progressText) progressText.textContent = "Cancelling...";
+						cancelBtn.disabled = true;
+						cancelBtn.textContent = "Cancelling...";
+					});
+				}
+
+				// Step 11) Get progress bar and text elements
+				const progressBar = document.getElementById("triangulationProgressBar");
+				const progressText = document.getElementById("triangulationProgressText");
+
+				// Step 12) Update progress function with event loop yield
+				const updateProgress = async (percent, message) => {
+					if (progressBar) progressBar.style.width = percent + "%";
+					if (progressText) progressText.textContent = message;
+					// Yield to event loop so UI updates
+					await new Promise(function(resolve) { setTimeout(resolve, 0); });
+				};
+
 				// ✅ FIX: Declare result as let instead of const for reassignment
 				let result;
 
-				// ✅ FIX: Choose triangulation method based on formData
-				if (formData.useBreaklines === "yes") {
-					console.log("🔗 Using constrained triangulation");
-
-					// Step 10) Create progress dialog for triangulation with cancel button
-					// PERFORMANCE FIX 2025-12-28: Add cancel support
-					window._triangulationCancelled = false;
-
-					var progressContentHTML = "<p>Creating Constrained Delaunay Triangulation</p>" +
-						"<p>Please wait, this may take a moment...</p>" +
-						'<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">' +
-						'<div id="triangulationProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>' +
-						"</div>" +
-						'<p id="triangulationProgressText">Initializing...</p>' +
-						'<button id="triangulationCancelBtn" style="margin-top: 10px; padding: 8px 16px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>';
-
-					var progressContentDiv = document.createElement("div");
-					progressContentDiv.innerHTML = progressContentHTML;
-
-					const progressDialog = new window.FloatingDialog({
-						title: "Triangulation Progress",
-						content: progressContentDiv,
-						layoutType: "standard",
-						width: 400,
-						height: 250,
-						showConfirm: false,
-						showCancel: false,
-						allowOutsideClick: false,
-					});
-
-					progressDialog.show();
-
-					// Step 10a) Setup cancel button handler
-					var cancelBtn = document.getElementById("triangulationCancelBtn");
-					if (cancelBtn) {
-						cancelBtn.addEventListener("click", function () {
-							window._triangulationCancelled = true;
-							var progressText = document.getElementById("triangulationProgressText");
-							if (progressText) progressText.textContent = "Cancelling...";
-							cancelBtn.disabled = true;
-							cancelBtn.textContent = "Cancelling...";
-						});
-					}
-
-					// Step 11) Get progress bar and text elements
-					const progressBar = document.getElementById("triangulationProgressBar");
-					const progressText = document.getElementById("triangulationProgressText");
-
-					// Step 12) Update progress function
-					const updateProgress = (percent, message) => {
-						if (progressBar) progressBar.style.width = percent + "%";
-						if (progressText) progressText.textContent = message;
-					};
-
-					try {
+				try {
+					// ✅ FIX: Choose triangulation method based on formData
+					if (isConstrained) {
+						console.log("🔗 Using constrained triangulation");
 						result = await window.createConstrainedDelaunayTriangulation(params, updateProgress);
 
-						// Step 13) Close progress dialog
-						setTimeout(() => {
-							progressDialog.close();
-						}, 500); // Small delay to show 100% completion
-					} catch (error) {
-						// Close dialog on error
-						progressDialog.close();
-						throw error;
+						// ✅ FIX: Fallback to basic triangulation if CDT fails
+						if (!result || !result.resultTriangles || result.resultTriangles.length === 0) {
+							console.warn("⚠️ CDT failed, falling back to basic triangulation");
+							await updateProgress(50, "CDT failed, using basic triangulation...");
+							result = await window.createDelaunayTriangulation(params, updateProgress);
+						}
+					} else {
+						console.log("🔺 Using basic Delaunay triangulation");
+						result = await window.createDelaunayTriangulation(params, updateProgress);
 					}
 
-					// ✅ FIX: Fallback to basic triangulation if CDT fails
-					if (!result || !result.resultTriangles || result.resultTriangles.length === 0) {
-						console.warn("⚠️ CDT failed, falling back to basic triangulation");
-						window.updateStatusMessage("CDT failed, using basic triangulation...");
-						result = await window.createDelaunayTriangulation(params);
-					}
-				} else {
-					console.log("🔺 Using basic Delaunay triangulation");
-					result = await window.createDelaunayTriangulation(params);
-				}
+					if (result && result.resultTriangles && result.resultTriangles.length > 0) {
+						await updateProgress(70, "Processing " + result.resultTriangles.length + " triangles...");
 
-				if (result && result.resultTriangles && result.resultTriangles.length > 0) {
-					const surface = {
-						id: surfaceId,
-						name: surfaceId,
-						type: "delaunay",
-						points: result.points || [],
-						triangles: result.resultTriangles,
-						created: new Date().toISOString(),
-						visible: true,
-						gradient: formData.surfaceStyle || "hillshade",
-						transparency: 1.0,
-						metadata: {
-							algorithm: formData.useBreaklines === "yes" ? "constrained_delaunay" : "delaunay",
-							pointCount: result.points ? result.points.length : 0,
-							triangleCount: result.resultTriangles.length,
-							constraintCount: result.constraintCount || 0,
-							blastHolePointType: params.blastHolePoints || "none",
-							cullingApplied: result.cullingStats || {},
-						},
-					};
+						const surface = {
+							id: surfaceId,
+							name: surfaceId,
+							type: "delaunay",
+							points: result.points || [],
+							triangles: result.resultTriangles,
+							created: new Date().toISOString(),
+							visible: true,
+							gradient: formData.surfaceStyle || "hillshade",
+							transparency: 1.0,
+							metadata: {
+								algorithm: isConstrained ? "constrained_delaunay" : "delaunay",
+								pointCount: result.points ? result.points.length : 0,
+								triangleCount: result.resultTriangles.length,
+								constraintCount: result.constraintCount || 0,
+								blastHolePointType: params.blastHolePoints || "none",
+								cullingApplied: result.cullingStats || {},
+							},
+						};
 
-					// Step 14) Add to loaded surfaces
-					window.loadedSurfaces.set(surfaceId, surface);
-					console.log("✅ Surface created:", surface.name, "with", result.resultTriangles.length, "triangles");
+						// Step 14) Add to loaded surfaces
+						window.loadedSurfaces.set(surfaceId, surface);
+						console.log("✅ Surface created:", surface.name, "with", result.resultTriangles.length, "triangles");
 
-					// ✅ Apply boundary clipping if requested
-					if (formData.clipToBoundary && formData.clipToBoundary !== "none") {
-						const selectedPolygon = window.selectedKADObject && window.selectedKADObject.entityType === "poly" ? window.selectedKADObject : null;
+						// ✅ Apply boundary clipping if requested
+						if (formData.clipToBoundary && formData.clipToBoundary !== "none") {
+							const selectedPolygon = window.selectedKADObject && window.selectedKADObject.entityType === "poly" ? window.selectedKADObject : null;
 
-						if (selectedPolygon) {
-							console.log("🔪 Applying boundary clipping:", formData.clipToBoundary);
-							window.updateStatusMessage("Applying boundary clipping...");
+							if (selectedPolygon) {
+								await updateProgress(75, "Applying boundary clipping...");
+								console.log("🔪 Applying boundary clipping:", formData.clipToBoundary);
 
-							const clippingSuccess = window.deleteTrianglesByClippingPolygon(surfaceId, formData.clipToBoundary);
+								const clippingSuccess = window.deleteTrianglesByClippingPolygon(surfaceId, formData.clipToBoundary);
 
-							if (clippingSuccess) {
-								const clippedSurface = window.loadedSurfaces.get(surfaceId);
-								const clippedCount = result.resultTriangles.length - clippedSurface.triangles.length;
-								console.log("✂️ Clipping applied:", clippedCount, "triangles removed,", clippedSurface.triangles.length, "remaining");
-							} else {
-								console.warn("⚠️ Boundary clipping failed");
+								if (clippingSuccess) {
+									const clippedSurface = window.loadedSurfaces.get(surfaceId);
+									const clippedCount = result.resultTriangles.length - clippedSurface.triangles.length;
+									console.log("✂️ Clipping applied:", clippedCount, "triangles removed,", clippedSurface.triangles.length, "remaining");
+								} else {
+									console.warn("⚠️ Boundary clipping failed");
+								}
 							}
 						}
-					}
 
-					// ✅ Apply internal angle filtering
-					if (params.minAngle > 0) {
-						console.log("📐 Applying internal angle filtering:", params.minAngle + "°", "3D:", params.consider3DAngle);
-						window.updateStatusMessage("Filtering by internal angle...");
+						// ✅ Apply internal angle filtering
+						if (params.minAngle > 0) {
+							await updateProgress(80, "Filtering by internal angle...");
+							console.log("📐 Applying internal angle filtering:", params.minAngle + "°", "3D:", params.consider3DAngle);
 
-						const angleFilterSuccess = window.deleteTrianglesByInternalAngle(surfaceId, params.minAngle, params.consider3DAngle);
-						if (angleFilterSuccess) {
-							const filteredSurface = window.loadedSurfaces.get(surfaceId);
-							console.log("📐 Angle filtering applied:", filteredSurface.triangles.length, "triangles remaining");
+							const angleFilterSuccess = window.deleteTrianglesByInternalAngle(surfaceId, params.minAngle, params.consider3DAngle);
+							if (angleFilterSuccess) {
+								const filteredSurface = window.loadedSurfaces.get(surfaceId);
+								console.log("📐 Angle filtering applied:", filteredSurface.triangles.length, "triangles remaining");
+							}
 						}
-					}
 
-					// ✅ Apply edge length filtering
-					if (params.maxEdgeLength > 0) {
-						console.log("📏 Applying edge length filtering: max =", params.maxEdgeLength, "3D:", params.consider3DLength);
-						window.updateStatusMessage("Filtering by edge length...");
+						// ✅ Apply edge length filtering
+						if (params.maxEdgeLength > 0) {
+							await updateProgress(85, "Filtering by edge length...");
+							console.log("📏 Applying edge length filtering: max =", params.maxEdgeLength, "3D:", params.consider3DLength);
 
-						const edgeFilterSuccess = window.deleteTrianglesByEdgeLength(surfaceId, 0, params.maxEdgeLength, params.consider3DLength);
-						if (edgeFilterSuccess) {
-							const filteredSurface = window.loadedSurfaces.get(surfaceId);
-							console.log("📏 Edge filtering applied:", filteredSurface.triangles.length, "triangles remaining");
+							const edgeFilterSuccess = window.deleteTrianglesByEdgeLength(surfaceId, 0, params.maxEdgeLength, params.consider3DLength);
+							if (edgeFilterSuccess) {
+								const filteredSurface = window.loadedSurfaces.get(surfaceId);
+								console.log("📏 Edge filtering applied:", filteredSurface.triangles.length, "triangles remaining");
+							}
 						}
+
+						// Step 15) Final status message with all filtering applied
+						const finalSurface = window.loadedSurfaces.get(surfaceId);
+						const totalRemoved = result.resultTriangles.length - finalSurface.triangles.length;
+
+						// Step 16) Save to database
+						await updateProgress(90, "Saving to database...");
+						try {
+							await window.saveSurfaceToDB(surfaceId);
+							console.log("💾 Surface saved to database successfully");
+						} catch (saveError) {
+							console.error("❌ Failed to save surface to database:", saveError);
+						}
+
+						// Step 17) Update UI - yield between heavy operations
+						await updateProgress(95, "Updating display...");
+						window.updateCentroids();
+
+						// Yield before heavy drawData call
+						await new Promise(function(resolve) { setTimeout(resolve, 10); });
+						window.drawData(window.allBlastHoles, window.selectedHole);
+
+						// Yield before tree update
+						await new Promise(function(resolve) { setTimeout(resolve, 10); });
+						window.debouncedUpdateTreeView();
+
+						await updateProgress(100, "Complete! " + finalSurface.triangles.length + " triangles");
+						window.updateStatusMessage("Surface '" + surface.name + "' created with " + finalSurface.triangles.length + " triangles (" + totalRemoved + " filtered)");
+					} else {
+						await updateProgress(100, "No triangles generated");
+						window.updateStatusMessage("No triangles generated. Check your data and settings.");
 					}
 
-					// Step 15) Final status message with all filtering applied
-					const finalSurface = window.loadedSurfaces.get(surfaceId);
-					const totalRemoved = result.resultTriangles.length - finalSurface.triangles.length;
+					// Step 13) Close progress dialog with small delay to show completion
+					setTimeout(function() {
+						progressDialog.close();
+					}, 800);
 
-					// Step 16) Save to database
-					try {
-						await window.saveSurfaceToDB(surfaceId);
-						console.log("💾 Surface saved to database successfully");
-					} catch (saveError) {
-						console.error("❌ Failed to save surface to database:", saveError);
-					}
-
-					// Step 17) Update UI
-					window.updateCentroids();
-					window.drawData(window.allBlastHoles, window.selectedHole);
-					window.debouncedUpdateTreeView();
-					window.updateStatusMessage("Surface '" + surface.name + "' created with " + finalSurface.triangles.length + " triangles (" + totalRemoved + " filtered)");
-				} else {
-					window.updateStatusMessage("No triangles generated. Check your data and settings.");
+				} catch (error) {
+					// Close dialog on error
+					progressDialog.close();
+					throw error;
 				}
 			} catch (error) {
 				console.error("Error creating triangulation:", error);
