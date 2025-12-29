@@ -3,7 +3,7 @@
 // GeometryFactory.js - Reusable Three.js geometry creators
 //=================================================
 import * as THREE from "three";
-import { MeshLine, MeshLineMaterial } from "../helpers/meshLineModified.js";
+// MeshLine removed - now using LineMaterial/LineSegments2 (fat lines) for all thick lines
 import { Text } from "troika-three-text";
 // Step A1) Fat Line imports for variable line thickness
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
@@ -437,12 +437,7 @@ export class GeometryFactory {
 		var len = pointsArray.length;
 		if (len < 2) return null;
 		
-		// Step 1) Calculate array size and pre-allocate typed arrays (faster than push)
-		var posLen = isPolygon ? (len + 1) * 3 : len * 3;
-		var positions = new Float32Array(posLen);
-		var colors = new Float32Array(posLen);
-		
-		// Step 2) Parse default color ONCE (inline hex parsing - 10x faster than THREE.Color.set)
+		// Step 0) Parse default color ONCE (inline hex parsing - 10x faster than THREE.Color.set)
 		var defR = 0.467, defG = 0.467, defB = 0.467; // #777777 default
 		if (defaultColor && defaultColor.charAt(0) === "#" && defaultColor.length >= 7) {
 			var hex = parseInt(defaultColor.slice(1, 7), 16);
@@ -451,7 +446,73 @@ export class GeometryFactory {
 			defB = (hex & 255) / 255;
 		}
 		
-		// Step 3) Fill arrays with inline color parsing (no THREE.Color overhead)
+		// Step 1) THICK LINES: Use LineMaterial/LineSegments2 (fat lines) for lineWidth > 1
+		if (lineWidth > 1) {
+			// Convert polyline to line segments format for LineSegmentsGeometry
+			var numSegments = isPolygon ? len : len - 1;
+			var segPositions = new Float32Array(numSegments * 6); // 2 points per segment, 3 floats per point
+			var segColors = new Float32Array(numSegments * 6);
+			
+			var posIdx = 0;
+			var colIdx = 0;
+			
+			for (var i = 0; i < numSegments; i++) {
+				var p1 = pointsArray[i];
+				var p2 = pointsArray[(i + 1) % len]; // Wrap around for polygon
+				
+				// Start point
+				segPositions[posIdx++] = p1.x;
+				segPositions[posIdx++] = p1.y;
+				segPositions[posIdx++] = p1.z || 0;
+				// End point
+				segPositions[posIdx++] = p2.x;
+				segPositions[posIdx++] = p2.y;
+				segPositions[posIdx++] = p2.z || 0;
+				
+				// Parse color for this segment (use p1's color)
+				var col = p1.color;
+				var r = defR, g = defG, b = defB;
+				if (col && col.charAt(0) === "#" && col.length >= 7) {
+					var hex = parseInt(col.slice(1, 7), 16);
+					r = ((hex >> 16) & 255) / 255;
+					g = ((hex >> 8) & 255) / 255;
+					b = (hex & 255) / 255;
+				}
+				// Both vertices of segment get same color
+				segColors[colIdx++] = r; segColors[colIdx++] = g; segColors[colIdx++] = b;
+				segColors[colIdx++] = r; segColors[colIdx++] = g; segColors[colIdx++] = b;
+			}
+			
+			// Create LineSegmentsGeometry (fat line compatible)
+			var geometry = new LineSegmentsGeometry();
+			geometry.setPositions(segPositions);
+			geometry.setColors(segColors);
+			
+			// Create LineMaterial with screen-space linewidth
+			var material = new LineMaterial({
+				color: 0xffffff,
+				linewidth: lineWidth,
+				vertexColors: true,
+				resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+				dashed: false,
+				alphaToCoverage: true
+			});
+			material.depthTest = true;
+			material.depthWrite = true;
+			
+			// Create LineSegments2
+			var fatLine = new LineSegments2(geometry, material);
+			fatLine.computeLineDistances();
+			fatLine.name = isPolygon ? "kad-polygon-fat" : "kad-line-fat";
+			return fatLine;
+		}
+		
+		// Step 2) THIN LINES: Use LineBasicMaterial for lineWidth <= 1 (fast path)
+		var posLen = isPolygon ? (len + 1) * 3 : len * 3;
+		var positions = new Float32Array(posLen);
+		var colors = new Float32Array(posLen);
+		
+		// Fill arrays with inline color parsing (no THREE.Color overhead)
 		for (var i = 0, j = 0; i < len; i++, j += 3) {
 			var p = pointsArray[i];
 			
@@ -474,7 +535,7 @@ export class GeometryFactory {
 			}
 		}
 		
-		// Step 4) Close polygon by copying first point
+		// Close polygon by copying first point
 		if (isPolygon && len > 2) {
 			var j = len * 3;
 			positions[j] = positions[0];
@@ -485,19 +546,19 @@ export class GeometryFactory {
 			colors[j + 2] = colors[2];
 		}
 		
-		// Step 5) Create geometry with typed arrays
+		// Create geometry with typed arrays
 		var geometry = new THREE.BufferGeometry();
 		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
 		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 		
-		// Step 6) Create material (vertexColors handles per-point colors)
+		// Create material (vertexColors handles per-point colors)
 		var material = new THREE.LineBasicMaterial({
 			vertexColors: true,
 			depthTest: true,
 			depthWrite: true,
 		});
 		
-		// Step 7) Create and return Line object
+		// Create and return Line object
 		var line = new THREE.Line(geometry, material);
 		line.name = isPolygon ? "kad-polygon-batched" : "kad-line-batched";
 		return line;
@@ -634,8 +695,8 @@ export class GeometryFactory {
 			var points = entity.data;
 			if (!points || points.length < 2) continue;
 			
-			// Get lineWidth from entity or first point, default to 1
-			var lineWidth = entity.lineWidth || (points[0] && points[0].lineWidth) || 1;
+			// Get lineWidth from first point (where it's actually stored), fallback to entity, then default to 1
+			var lineWidth = (points[0] && points[0].lineWidth) || entity.lineWidth || 1;
 			
 			if (lineWidth <= 1) {
 				// Standard thin line - goes to fast LineBasicMaterial batch
@@ -1363,44 +1424,34 @@ export class GeometryFactory {
 	}
 
 	// Step 10) Create KAD line segment (single segment between two points)
-	// Uses MeshLine for fat lines that match 2D canvas appearance
+	// Uses LineMaterial/LineSegments2 (fat lines) for consistent screen-space thickness
 	// Matches 2D canvas drawKADLines() - each segment has its own lineWidth and color
 	static createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color) {
-		// Step 10a) Create two-point line
-		const points = [new THREE.Vector3(startX, startY, startZ), new THREE.Vector3(endX, endY, endZ)];
+		// Step 10a) Use pixel width directly (matches 2D canvas)
+		const pixelWidth = lineWidth || 2;
 
-		// Step 10b) Scale lineWidth to match 2D canvas appearance
-		// 2D canvas lineWidth is in pixels; for MeshLine with sizeAttenuation: 1, use world units
-		// Multiply by a factor to make the line visible at typical scales
-		const currentScale = window.currentScale || 5;
-		//const scaledLineWidth = (lineWidth || 2) * 0.1; // Convert to world units, scale appropriately
-		const scaledLineWidth = lineWidth * 2 || 4; // Convert to world units, scale appropriately
+		// Step 10b) Create LineSegmentsGeometry with flat position array
+		const geometry = new LineSegmentsGeometry();
+		geometry.setPositions([startX, startY, startZ, endX, endY, endZ]);
 
-		// Step 10c) Create MeshLine material with proper lineWidth
-		const material = new MeshLineMaterial({
+		// Step 10c) Create LineMaterial with screen-space linewidth
+		const material = new LineMaterial({
 			color: new THREE.Color(color),
-			lineWidth: scaledLineWidth, // World units
+			linewidth: pixelWidth, // Pixel width (screen-space)
 			resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
-			//sizeAttenuation: 1, // Size attenuation enabled for world-space sizing
-			sizeAttenuation: 0, // Size attenuation disabled for world-space sizing
-			opacity: 1.0,
+			dashed: false,
+			alphaToCoverage: true
 		});
 		material.transparent = true;
 		material.depthTest = true;
 		material.depthWrite = true;
 
-		// Step 10d) Create geometry from points
-		const geometry = new THREE.BufferGeometry().setFromPoints(points);
+		// Step 10d) Create LineSegments2 and compute distances
+		const lineSegments = new LineSegments2(geometry, material);
+		lineSegments.computeLineDistances();
+		lineSegments.name = "kad-line-segment";
 
-		// Step 10e) Create MeshLine and set geometry
-		const line = new MeshLine();
-		line.setGeometry(geometry);
-
-		// Step 10f) Create and return mesh
-		const mesh = new THREE.Mesh(line, material);
-		mesh.name = "kad-line-segment";
-
-		return mesh;
+		return lineSegments;
 	}
 
 	// Step 11) Create KAD polygon segment (single segment between two points)
@@ -1410,44 +1461,45 @@ export class GeometryFactory {
 		return GeometryFactory.createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
 	}
 
-	// Step 12) Create KAD circle with MeshLine
+	// Step 12) Create KAD circle with LineMaterial/LineSegments2 (fat lines)
 	static createKADCircle(worldX, worldY, worldZ, radius, lineWidth, color) {
-		// Step 12a) Create MeshLine material
-		const material = new MeshLineMaterial({
+		// Step 12a) Use pixel width directly (matches 2D canvas)
+		const pixelWidth = lineWidth || 2;
+
+		// Step 12b) Create circle points as line segments (pairs of points)
+		const segments = 64;
+		const positions = [];
+		for (let i = 0; i < segments; i++) {
+			const theta1 = (i / segments) * Math.PI * 2;
+			const theta2 = ((i + 1) / segments) * Math.PI * 2;
+			// Start point of segment
+			positions.push(worldX + radius * Math.cos(theta1), worldY + radius * Math.sin(theta1), worldZ);
+			// End point of segment
+			positions.push(worldX + radius * Math.cos(theta2), worldY + radius * Math.sin(theta2), worldZ);
+		}
+
+		// Step 12c) Create LineSegmentsGeometry
+		const geometry = new LineSegmentsGeometry();
+		geometry.setPositions(positions);
+
+		// Step 12d) Create LineMaterial with screen-space linewidth
+		const material = new LineMaterial({
 			color: new THREE.Color(color),
-			lineWidth: lineWidth || 3, // Direct pixel width
+			linewidth: pixelWidth, // Pixel width (screen-space)
 			resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
-			sizeAttenuation: 0, // Constant screen size
-			opacity: 1.0,
+			dashed: false,
+			alphaToCoverage: true
 		});
 		material.transparent = true;
 		material.depthTest = true;
 		material.depthWrite = true;
 
-		// Step 12b) Create circle points centered at (0, 0, 0) for precision
-		const segments = 64;
-		const positions = [];
-		for (let i = 0; i <= segments; i++) {
-			const theta = (i / segments) * Math.PI * 2;
-			const x = radius * Math.cos(theta);
-			const y = radius * Math.sin(theta);
-			positions.push(x, y, 0); // Centered at origin
-		}
+		// Step 12e) Create LineSegments2
+		const circleSegments = new LineSegments2(geometry, material);
+		circleSegments.computeLineDistances();
+		circleSegments.name = "kad-circle";
 
-		// Step 12c) Create geometry from positions
-		const circleGeometry = new THREE.BufferGeometry();
-		circleGeometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-
-		// Step 12d) Create MeshLine and set geometry
-		const circle = new MeshLine();
-		circle.setGeometry(circleGeometry);
-
-		// Step 12e) Create mesh and position it at world coordinates
-		const circleMesh = new THREE.Mesh(circle.geometry, material);
-		circleMesh.position.set(worldX, worldY, worldZ);
-		circleMesh.name = "kad-circle";
-
-		return circleMesh;
+		return circleSegments;
 	}
 
 	// Step 12b) Create KAD text using troika-three-text (crisp SDF rendering)
@@ -2060,47 +2112,49 @@ export class GeometryFactory {
 					const local1 = worldToThreeLocalFn ? worldToThreeLocalFn(worldX1, worldY1) : { x: worldX1, y: worldY1 };
 					const local2 = worldToThreeLocalFn ? worldToThreeLocalFn(worldX2, worldY2) : { x: worldX2, y: worldY2 };
 
-					// Step 17d) Create points array
-					const points = [];
-					points.push(local1.x, local1.y, z1);
-					points.push(local2.x, local2.y, z2);
+					// Step 17d) Create LineSegmentsGeometry
+					const geometry = new LineSegmentsGeometry();
+					geometry.setPositions([local1.x, local1.y, z1, local2.x, local2.y, z2]);
 
-					// Step 17e) Create YELLOW dashed line (first layer)
-					const meshLineYellow = new MeshLine();
-					meshLineYellow.setPoints(points);
-
-					const yellowMaterial = new MeshLineMaterial({
+					// Step 17e) Create YELLOW dashed line (first layer) using LineMaterial
+					const yellowMaterial = new LineMaterial({
 						color: new THREE.Color(0xffff00), // Yellow
-						lineWidth: 0.3, // Reduced from 0.5 to 0.3 (approx 3 pixels)
-						dashArray: 0.1, // Dash pattern
-						dashRatio: 0.5, // 50% dash, 50% gap
-						dashOffset: 0, // No offset for yellow
+						linewidth: 3, // Pixel width
+						resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+						dashed: true,
+						dashScale: 1,
+						dashSize: 3,
+						gapSize: 3,
+						alphaToCoverage: true,
 						transparent: true,
-						opacity: 1.0,
-						depthTest: true,
-						depthWrite: false,
+						opacity: 1.0
 					});
+					yellowMaterial.depthTest = true;
+					yellowMaterial.depthWrite = false;
 
-					const yellowLine = new THREE.Mesh(meshLineYellow, yellowMaterial);
+					const yellowLine = new LineSegments2(geometry.clone(), yellowMaterial);
+					yellowLine.computeLineDistances();
 					group.add(yellowLine);
 
-					// Step 17f) Create MAGENTA dashed line (second layer, offset)
-					const meshLineMagenta = new MeshLine();
-					meshLineMagenta.setPoints(points);
-
-					const magentaMaterial = new MeshLineMaterial({
+					// Step 17f) Create MAGENTA dashed line (second layer, offset) using LineMaterial
+					const magentaMaterial = new LineMaterial({
 						color: new THREE.Color(0xff00ff), // Magenta
-						lineWidth: 0.3, // Same width
-						dashArray: 0.1, // Same dash pattern
-						dashRatio: 0.5, // Same ratio
-						dashOffset: 0.05, // Offset by half a dash to fill the gaps
+						linewidth: 3, // Same width
+						resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+						dashed: true,
+						dashScale: 1,
+						dashSize: 3,
+						gapSize: 3,
+						dashOffset: 3, // Offset by dash size to fill the gaps
+						alphaToCoverage: true,
 						transparent: true,
-						opacity: 1.0,
-						depthTest: true,
-						depthWrite: false,
+						opacity: 1.0
 					});
+					magentaMaterial.depthTest = true;
+					magentaMaterial.depthWrite = false;
 
-					const magentaLine = new THREE.Mesh(meshLineMagenta, magentaMaterial);
+					const magentaLine = new LineSegments2(geometry.clone(), magentaMaterial);
+					magentaLine.computeLineDistances();
 					group.add(magentaLine);
 				}
 			}
@@ -2466,9 +2520,9 @@ export class GeometryFactory {
 		return Math.max(0.5, Math.min(5, zoomFactor));
 	}
 
-	// Step 20.8) Create KAD line highlight for selection using MeshLine
+	// Step 20.8) Create KAD line highlight for selection using LineMaterial/LineSegments2 (fat lines)
 	// Used to highlight selected/non-selected line segments
-	// Uses MeshLine with sizeAttenuation: 0 for screen-space sizing (constant width regardless of distance)
+	// Uses LineMaterial for consistent screen-space line width
 	static createKADLineHighlight(x1, y1, z1, x2, y2, z2, baseRadius, color) {
 		// Step 20.8a) Parse color
 		let colorObj;
@@ -2488,31 +2542,29 @@ export class GeometryFactory {
 		// baseRadius is in world units (typically 0.3-0.6), convert to pixel width
 		const lineWidth = baseRadius * 20; // Convert to pixel width
 
-		// Step 20.8c) Create two-point line geometry
-		const points = [new THREE.Vector3(x1, y1, z1), new THREE.Vector3(x2, y2, z2)];
-		const geometry = new THREE.BufferGeometry().setFromPoints(points);
+		// Step 20.8c) Create LineSegmentsGeometry
+		const geometry = new LineSegmentsGeometry();
+		geometry.setPositions([x1, y1, z1, x2, y2, z2]);
 
-		// Step 20.8d) Create MeshLine material with sizeAttenuation: 0 for screen-space sizing
-		const material = new MeshLineMaterial({
+		// Step 20.8d) Create LineMaterial with screen-space linewidth
+		const material = new LineMaterial({
 			color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
-			lineWidth: lineWidth, // Pixel width
+			linewidth: lineWidth, // Pixel width (screen-space)
 			resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
-			sizeAttenuation: 0, // KEY: Disable size attenuation for constant screen-space width
+			dashed: false,
+			alphaToCoverage: true,
 			transparent: colorObj.a < 1,
-			opacity: colorObj.a,
-			depthTest: true,
-			depthWrite: false,
+			opacity: colorObj.a
 		});
+		material.depthTest = true;
+		material.depthWrite = false;
 
-		// Step 20.8e) Create MeshLine and set geometry
-		const line = new MeshLine();
-		line.setGeometry(geometry);
+		// Step 20.8e) Create LineSegments2
+		const lineSegments = new LineSegments2(geometry, material);
+		lineSegments.computeLineDistances();
+		lineSegments.name = "kad-line-highlight";
 
-		// Step 20.8f) Create and return mesh
-		const mesh = new THREE.Mesh(line, material);
-		mesh.name = "kad-line-highlight";
-
-		return mesh;
+		return lineSegments;
 	}
 
 	// Step 20.9) Create KAD point highlight for selection
@@ -2575,8 +2627,8 @@ export class GeometryFactory {
 		return points;
 	}
 
-	// Step 20.10) Create KAD circle highlight for selection
-	// Creates a circle outline using LineLoop
+	// Step 20.10) Create KAD circle highlight for selection using LineMaterial/LineSegments2 (fat lines)
+	// Creates a circle outline with consistent screen-space line width
 	static createKADCircleHighlight(x, y, z, radius, lineWidth, color) {
 		// Step 20.10a) Parse color
 		let colorObj;
@@ -2592,31 +2644,40 @@ export class GeometryFactory {
 			colorObj = { r: 0, g: 1, b: 0, a: 1 };
 		}
 
-		// Step 20.10b) Create circle geometry (64 segments for smooth circle)
+		// Step 20.10b) Create circle geometry as line segments (64 segments for smooth circle)
 		const segments = 64;
-		const points = [];
-		for (let i = 0; i <= segments; i++) {
-			const angle = (i / segments) * Math.PI * 2;
-			points.push(new THREE.Vector3(x + Math.cos(angle) * radius, y + Math.sin(angle) * radius, z));
+		const positions = [];
+		for (let i = 0; i < segments; i++) {
+			const angle1 = (i / segments) * Math.PI * 2;
+			const angle2 = ((i + 1) / segments) * Math.PI * 2;
+			// Start point of segment
+			positions.push(x + Math.cos(angle1) * radius, y + Math.sin(angle1) * radius, z);
+			// End point of segment
+			positions.push(x + Math.cos(angle2) * radius, y + Math.sin(angle2) * radius, z);
 		}
 
-		const geometry = new THREE.BufferGeometry().setFromPoints(points);
+		// Step 20.10c) Create LineSegmentsGeometry
+		const geometry = new LineSegmentsGeometry();
+		geometry.setPositions(positions);
 
-		// Step 20.10c) Use MeshLine for thick circle outline
-		const meshLine = new MeshLine();
-		meshLine.setGeometry(geometry);
-
-		const material = new MeshLineMaterial({
+		// Step 20.10d) Create LineMaterial with screen-space linewidth
+		const pixelWidth = lineWidth || 3; // Default highlight width
+		const material = new LineMaterial({
 			color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b),
-			lineWidth: lineWidth * 0.01,
+			linewidth: pixelWidth, // Pixel width (screen-space)
+			resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
+			dashed: false,
+			alphaToCoverage: true,
 			transparent: colorObj.a < 1,
-			opacity: colorObj.a,
-			depthTest: true,
-			depthWrite: false,
+			opacity: colorObj.a
 		});
+		material.depthTest = true;
+		material.depthWrite = false;
 
-		const circleMesh = new THREE.Mesh(meshLine.geometry, material);
-		return circleMesh;
+		// Step 20.10e) Create LineSegments2
+		const circleSegments = new LineSegments2(geometry, material);
+		circleSegments.computeLineDistances();
+		return circleSegments;
 	}
 
 	// Step 20.11) Create KAD text box highlight for selection

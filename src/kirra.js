@@ -857,7 +857,12 @@ function initializeThreeJS() {
 
 		console.log("✅ Three.js rendering system initialized");
 
-		// Step 10c) If data was already loaded, redraw it now that 3D is ready
+		// Step 10c) Update LineMaterial resolution for any fat lines on initial render
+		if (typeof updateAllLineMaterialResolution === "function") {
+			updateAllLineMaterialResolution();
+		}
+
+		// Step 10d) If data was already loaded, redraw it now that 3D is ready
 		if (allBlastHoles && allBlastHoles.length > 0) {
 			console.log("🎨 Redrawing existing data in 3D...");
 			drawData(allBlastHoles, selectedHole);
@@ -1149,17 +1154,33 @@ function handle3DClick(event) {
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isAddingHole) {
-			// Step 12c.1c.1) Handle Add Hole tool in 3D mode (BUG FIX 2025-12-28)
+			// Step 12c.1c.1) Handle Add Hole tool in 3D mode (BUG FIX 2025-12-28, 2025-12-29)
 			console.log("⬇️ [3D CLICK] Adding Hole at:", worldX, worldY, worldZ);
 			// Set world coordinates for AddHoleDialog to access
 			window.worldX = worldX;
 			window.worldY = worldY;
 			window.worldZ = worldZ;
-			// Show the add hole dialog
-			if (typeof window.showAddHoleDialog === "function") {
-				window.showAddHoleDialog();
+			// Step 12c.1c.1a) Check if we're in multiple mode (have stored form data)
+			// This matches the 2D behavior at line ~17954
+			if (window.isAddingSingleHole && window.multipleAddHoleFormData) {
+				// Multiple mode: Reuse stored form data, don't show dialog
+				console.log("📍📍 [3D] Multiple mode: Reusing stored form data");
+				if (typeof window.addHoleMultipleMode === "function") {
+					window.addHoleMultipleMode(worldX, worldY);
+				} else {
+					console.error("addHoleMultipleMode function not found");
+					// Fallback to showing dialog
+					if (typeof window.showAddHoleDialog === "function") {
+						window.showAddHoleDialog();
+					}
+				}
 			} else {
-				console.error("showAddHoleDialog not found - ensure AddHoleDialog.js is loaded");
+				// Single mode or first click: Show dialog
+				if (typeof window.showAddHoleDialog === "function") {
+					window.showAddHoleDialog();
+				} else {
+					console.error("showAddHoleDialog not found - ensure AddHoleDialog.js is loaded");
+				}
 			}
 		} else if (isAddingPattern) {
 			// Step 12c.1c.2) Handle Add Pattern tool in 3D mode (BUG FIX 2025-12-28)
@@ -6230,17 +6251,66 @@ function handleBaseCanvasResize() {
 window.addEventListener("resize", resizeChart);
 window.addEventListener("resize", handleThreeJSResize);
 window.addEventListener("resize", handleBaseCanvasResize);
-// Step A5) Update LineMaterial resolution on resize for fat lines
-window.addEventListener("resize", function () {
-	if (window.threeRenderer && window.threeRenderer.kadGroup) {
-		var res = new THREE.Vector2(window.innerWidth, window.innerHeight);
+
+// Step A5) Reusable function to update LineMaterial resolution for all fat lines
+// This traverses the ENTIRE scene to catch pattern tool fat lines, not just kadGroup
+// CRITICAL: Must use canvas dimensions, NOT window dimensions, for LineMaterial resolution
+function updateAllLineMaterialResolution() {
+	if (!window.threeRenderer) return;
+	
+	// Step A5.0) Use window dimensions for LineMaterial resolution
+	// LineMaterial expects CSS pixel dimensions matching the DOM viewport
+	var res = new THREE.Vector2(window.innerWidth, window.innerHeight);
+	
+	console.log("🔧 Updating LineMaterial resolution to:", window.innerWidth, "x", window.innerHeight);
+	
+	// Step A5.1) Traverse kadGroup if it exists
+	if (window.threeRenderer.kadGroup) {
 		window.threeRenderer.kadGroup.traverse(function (child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
 			}
 		});
 	}
-});
+	
+	// Step A5.2) Traverse entire scene for pattern tool fat lines
+	if (window.threeRenderer.scene) {
+		window.threeRenderer.scene.traverse(function (child) {
+			if (child.material && child.material.isLineMaterial) {
+				child.material.resolution.copy(res);
+			}
+		});
+	}
+	
+	// Step A5.3) Also update any pattern tool 3D groups
+	if (window.patternTool3DGroup) {
+		window.patternTool3DGroup.traverse(function (child) {
+			if (child.material && child.material.isLineMaterial) {
+				child.material.resolution.copy(res);
+			}
+		});
+	}
+	if (window.holesAlongLine3DGroup) {
+		window.holesAlongLine3DGroup.traverse(function (child) {
+			if (child.material && child.material.isLineMaterial) {
+				child.material.resolution.copy(res);
+			}
+		});
+	}
+	if (window.holesAlongPolyline3DGroup) {
+		window.holesAlongPolyline3DGroup.traverse(function (child) {
+			if (child.material && child.material.isLineMaterial) {
+				child.material.resolution.copy(res);
+			}
+		});
+	}
+}
+
+// Expose globally for use in other modules
+window.updateAllLineMaterialResolution = updateAllLineMaterialResolution;
+
+// Step A5.4) Update LineMaterial resolution on resize
+window.addEventListener("resize", updateAllLineMaterialResolution);
 var acc = document.getElementsByClassName("accordion");
 var i;
 for (i = 0; i < acc.length; i++) {
@@ -22468,8 +22538,16 @@ function drawData(allBlastHoles, selectedHole) {
 			drawPatternInPolygon3DVisual();
 		}
 		drawPatternOnPolylineVisual();
+		// Draw 3D visuals for polyline tool if in 3D mode
+		if (onlyShowThreeJS && threeInitialized) {
+			drawHolesAlongPolyline3DVisual();
+		}
 		drawKADPolygonHighlightSelectedVisuals();
 		drawHolesAlongLineVisuals();
+		// Draw 3D visuals for holes along line tool if in 3D mode
+		if (onlyShowThreeJS && threeInitialized) {
+			drawHolesAlongLine3DVisual();
+		}
 		drawKADHighlightSelectionVisuals(); // ADD THIS AS THE VERY LAST LINE:
 		// drawAllKADSelectionVisuals(); // this function doesn't get used...
 		drawSurfaceLegend();
@@ -23025,6 +23103,7 @@ function drawData(allBlastHoles, selectedHole) {
 				// Step 3.1b) Create HYBRID super-batched geometry for LINES/POLYGONS
 				// Uses fast LineBasicMaterial for thin lines (<=1), FatLines for thick (>1)
 				if (linePolyEntities.length > 0) {
+					// LineMaterial resolution uses window dimensions (CSS pixels)
 					var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
 					var hybridBatch = GeometryFactory.createHybridSuperBatchedLines(linePolyEntities, worldToThreeLocal, resolution);
 					if (hybridBatch) {
@@ -23059,6 +23138,7 @@ function drawData(allBlastHoles, selectedHole) {
 				// Step 3.1d) Create HYBRID super-batched geometry for CIRCLES
 				// Uses fast LineBasicMaterial for thin circles (<=1), FatLines for thick (>1)
 				if (circleEntities.length > 0) {
+					// LineMaterial resolution uses window dimensions (CSS pixels)
 					var circleResolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
 					var hybridCircles = GeometryFactory.createHybridSuperBatchedCircles(circleEntities, worldToThreeLocal, circleResolution);
 					if (hybridCircles) {
@@ -23077,6 +23157,12 @@ function drawData(allBlastHoles, selectedHole) {
 							console.log("🚀 HYBRID-BATCH CIRCLES: " + circleEntities.length + " entities (" + hybridCircles.thinCount + " thin + " + hybridCircles.thickCount + " thick) in " + circleDrawCalls + " draw calls");
 						}
 					}
+				}
+				
+				// Step 3.1e) CRITICAL: Update LineMaterial resolution after adding all fat lines
+				// This ensures fat lines render with correct thickness on initial draw
+				if (typeof updateAllLineMaterialResolution === "function") {
+					updateAllLineMaterialResolution();
 				}
 			}
 
@@ -34319,6 +34405,158 @@ function drawPatternInPolygon3DVisual() {
 		console.log("🔷 Pattern tool 3D: Added " + window.patternTool3DGroup.children.length + " objects to scene");
 	}
 }
+
+// 3D Visual feedback for Holes Along Line tool
+function drawHolesAlongLine3DVisual() {
+	if (!isHolesAlongLineActive || !threeInitialized || !threeRenderer) {
+		// Clean up if tool is not active
+		if (window.holesAlongLine3DGroup && threeRenderer && threeRenderer.scene) {
+			threeRenderer.scene.remove(window.holesAlongLine3DGroup);
+			window.holesAlongLine3DGroup = null;
+		}
+		return;
+	}
+
+	// Clear previous 3D objects
+	if (window.holesAlongLine3DGroup) {
+		threeRenderer.scene.remove(window.holesAlongLine3DGroup);
+		window.holesAlongLine3DGroup = null;
+	}
+
+	// Create new group for tool visuals
+	window.holesAlongLine3DGroup = new THREE.Group();
+	window.holesAlongLine3DGroup.name = "holesAlongLine3DVisuals";
+
+	// Get Z elevation for 3D drawing
+	const drawZ = (dataCentroidZ || 0) + 2;
+
+	// Helper function to create tube geometry for thick lines
+	function createTubeFromPoints(pointsArray, radius, color, opacity) {
+		if (pointsArray.length < 2) return null;
+		const curve = new THREE.CatmullRomCurve3(pointsArray, false);
+		const tubeGeom = new THREE.TubeGeometry(curve, pointsArray.length * 4, radius, 8, false);
+		const tubeMat = new THREE.MeshBasicMaterial({
+			color: color,
+			transparent: opacity < 1,
+			opacity: opacity,
+			side: THREE.DoubleSide
+		});
+		return new THREE.Mesh(tubeGeom, tubeMat);
+	}
+
+	// Step 1) Draw start point sphere (bright green, larger)
+	if (lineStartPoint) {
+		const local = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
+		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
+		const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.9 });
+		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+		sphere.position.set(local.x, local.y, drawZ + 2);
+		window.holesAlongLine3DGroup.add(sphere);
+	}
+
+	// Step 2) Draw end point sphere (red, larger)
+	if (lineEndPoint) {
+		const local = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
+		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
+		const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.9 });
+		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+		sphere.position.set(local.x, local.y, drawZ + 2);
+		window.holesAlongLine3DGroup.add(sphere);
+	}
+
+	// Step 3) Draw line between start and end with pyramid arrow
+	if (lineStartPoint && lineEndPoint) {
+		const startLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
+		const endLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
+
+		// Draw tube line from start to end (fat line effect)
+		const linePoints = [
+			new THREE.Vector3(startLocal.x, startLocal.y, drawZ + 1),
+			new THREE.Vector3(endLocal.x, endLocal.y, drawZ + 1)
+		];
+		const lineTube = createTubeFromPoints(linePoints, 1.2, 0x00ff00, 0.7);
+		if (lineTube) {
+			window.holesAlongLine3DGroup.add(lineTube);
+		}
+
+		// Calculate direction for pyramid arrow
+		const dx = lineEndPoint.x - lineStartPoint.x;
+		const dy = lineEndPoint.y - lineStartPoint.y;
+		const lineLength = Math.sqrt(dx * dx + dy * dy);
+
+		if (lineLength > 1) {
+			// Create pyramid at midpoint showing row direction (perpendicular)
+			const midX = (startLocal.x + endLocal.x) / 2;
+			const midY = (startLocal.y + endLocal.y) / 2;
+
+			const dirX = dx / lineLength;
+			const dirY = dy / lineLength;
+			// Perpendicular direction (90 degrees)
+			const perpX = -dirY;
+			const perpY = dirX;
+
+			// Pyramid position (offset perpendicular to line)
+			const pyramidOffset = 15;
+			const pyramidX = midX + perpX * pyramidOffset;
+			const pyramidY = midY + perpY * pyramidOffset;
+
+			// Create pyramid (cone) geometry - pointing perpendicular
+			const pyramidHeight = 12;
+			const pyramidRadius = 6;
+			const pyramidGeom = new THREE.ConeGeometry(pyramidRadius, pyramidHeight, 4);
+			const pyramidMat = new THREE.MeshBasicMaterial({
+				color: 0x00ff00,
+				transparent: true,
+				opacity: 0.4,
+				side: THREE.DoubleSide
+			});
+			const pyramid = new THREE.Mesh(pyramidGeom, pyramidMat);
+
+			pyramid.position.set(pyramidX, pyramidY, drawZ + pyramidHeight / 2 + 1);
+
+			// Rotate pyramid to point in perpendicular direction
+			const angle = Math.atan2(perpY, perpX);
+			pyramid.rotation.z = angle;
+			pyramid.rotation.x = Math.PI / 2;
+
+			window.holesAlongLine3DGroup.add(pyramid);
+
+			// Add wireframe outline for better visibility
+			const wireframeMat = new THREE.MeshBasicMaterial({
+				color: 0x009900,
+				wireframe: true
+			});
+			const pyramidWireframe = new THREE.Mesh(pyramidGeom.clone(), wireframeMat);
+			pyramidWireframe.position.copy(pyramid.position);
+			pyramidWireframe.rotation.copy(pyramid.rotation);
+			window.holesAlongLine3DGroup.add(pyramidWireframe);
+		}
+	}
+
+	// Step 4) Draw preview line to mouse cursor if selecting end point
+	if (lineStartPoint && !lineEndPoint && currentMouseWorldX && currentMouseWorldY) {
+		const startLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
+		const mouseLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
+
+		const previewPoints = [
+			new THREE.Vector3(startLocal.x, startLocal.y, drawZ + 1),
+			new THREE.Vector3(mouseLocal.x, mouseLocal.y, drawZ + 1)
+		];
+		const previewTube = createTubeFromPoints(previewPoints, 0.8, 0x00ff00, 0.5);
+		if (previewTube) {
+			window.holesAlongLine3DGroup.add(previewTube);
+		}
+	}
+
+	// Add group to scene
+	threeRenderer.scene.add(window.holesAlongLine3DGroup);
+
+	// Update LineMaterial resolution for any fat lines added
+	if (typeof updateAllLineMaterialResolution === "function") {
+		updateAllLineMaterialResolution();
+	}
+}
+
 // Add this function to draw poly line selection visuals
 function drawPatternOnPolylineVisual() {
 	if (!isHolesAlongPolyLineActive) return;
@@ -34329,7 +34567,11 @@ function drawPatternOnPolylineVisual() {
 		return;
 	}
 
-	// Draw selected polyline in bright color
+	// Step 1) Build overlay data for HUD labels (consistent with patternInPolygon)
+	var overlayData = { toolType: "polyline" };
+	var canvasRect = canvas.getBoundingClientRect();
+
+	// Step 2) Draw selected polyline in bright color
 	if (selectedPolyline) {
 		ctx.strokeStyle = "#00FF00"; // Bright green
 		ctx.lineWidth = 3;
@@ -34352,7 +34594,7 @@ function drawPatternOnPolylineVisual() {
 
 		ctx.stroke();
 
-		// Draw vertices as small circles
+		// Step 2a) Draw vertices as small circles
 		selectedPolyline.vertices.forEach((vertex) => {
 			const [canvasX, canvasY] = worldToCanvas(vertex.x, vertex.y);
 			ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
@@ -34360,38 +34602,309 @@ function drawPatternOnPolylineVisual() {
 			ctx.arc(canvasX, canvasY, 4, 0, 2 * Math.PI);
 			ctx.fill();
 		});
+
+		// Step 2b) Highlight active segment (where holes will be placed) in cyan
+		if (polylineStartPoint && polylineEndPoint) {
+			// Find the segment indices for START and END
+			var startIdx = -1;
+			var endIdx = -1;
+			for (var i = 0; i < selectedPolyline.vertices.length; i++) {
+				var v = selectedPolyline.vertices[i];
+				if (Math.abs(v.x - polylineStartPoint.x) < 0.01 && Math.abs(v.y - polylineStartPoint.y) < 0.01) {
+					startIdx = i;
+				}
+				if (Math.abs(v.x - polylineEndPoint.x) < 0.01 && Math.abs(v.y - polylineEndPoint.y) < 0.01) {
+					endIdx = i;
+				}
+			}
+			
+			// Draw active segments in cyan with thicker line
+			if (startIdx !== -1 && endIdx !== -1 && startIdx !== endIdx) {
+				ctx.strokeStyle = "#00FFFF"; // Cyan for active segment
+				ctx.lineWidth = 5;
+				ctx.setLineDash([]);
+				ctx.beginPath();
+				
+				var minIdx = Math.min(startIdx, endIdx);
+				var maxIdx = Math.max(startIdx, endIdx);
+				
+				for (var j = minIdx; j <= maxIdx; j++) {
+					var vertex = selectedPolyline.vertices[j];
+					const [canvasX, canvasY] = worldToCanvas(vertex.x, vertex.y);
+					if (j === minIdx) {
+						ctx.moveTo(canvasX, canvasY);
+					} else {
+						ctx.lineTo(canvasX, canvasY);
+					}
+				}
+				ctx.stroke();
+			}
+		}
 	}
 
-	// Draw start point (bright blue)
+	// Step 3) Draw start point (bright green)
 	if (polylineStartPoint) {
 		const [startX, startY] = worldToCanvas(polylineStartPoint.x, polylineStartPoint.y);
-		ctx.fillStyle = "rgba(0, 255, 0, 0.6)";
+		ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
 		ctx.beginPath();
-		ctx.arc(startX, startY, 3, 0, 2 * Math.PI);
+		ctx.arc(startX, startY, 6, 0, 2 * Math.PI);
 		ctx.fill();
 
-		// Add label
-		ctx.fillStyle = "rgba(0, 255, 0, 1)";
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.fillText("START", startX + 12, startY - 8);
+		// Step 3a) Add to overlay data for HUD label (no ctx.fillText)
+		overlayData.startPoint = polylineStartPoint;
+		overlayData.startCanvasX = startX + canvasRect.left;
+		overlayData.startCanvasY = startY + canvasRect.top;
 	}
 
-	// Draw end point (bright red)
+	// Step 4) Draw end point (bright red)
 	if (polylineEndPoint) {
 		const [endX, endY] = worldToCanvas(polylineEndPoint.x, polylineEndPoint.y);
-		ctx.fillStyle = "rgba(255, 0, 0, 0.6)";
+		ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
 		ctx.beginPath();
-		ctx.arc(endX, endY, 3, 0, 2 * Math.PI);
+		ctx.arc(endX, endY, 6, 0, 2 * Math.PI);
 		ctx.fill();
 
-		// Add label
-		ctx.fillStyle = "rgba(255, 0, 0,1)";
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.fillText("END", endX + 12, endY - 8);
+		// Step 4a) Add to overlay data for HUD label (no ctx.fillText)
+		overlayData.endPoint = polylineEndPoint;
+		overlayData.endCanvasX = endX + canvasRect.left;
+		overlayData.endCanvasY = endY + canvasRect.top;
+	}
+
+	// Step 5) Calculate total distance along polyline path if both points selected
+	if (polylineStartPoint && polylineEndPoint && selectedPolyline && selectedPolyline.vertices) {
+		var totalDist = 0;
+		var startIdx = -1;
+		var endIdx = -1;
+		
+		// Find indices
+		for (var i = 0; i < selectedPolyline.vertices.length; i++) {
+			var v = selectedPolyline.vertices[i];
+			if (Math.abs(v.x - polylineStartPoint.x) < 0.01 && Math.abs(v.y - polylineStartPoint.y) < 0.01) {
+				startIdx = i;
+			}
+			if (Math.abs(v.x - polylineEndPoint.x) < 0.01 && Math.abs(v.y - polylineEndPoint.y) < 0.01) {
+				endIdx = i;
+			}
+		}
+		
+		if (startIdx !== -1 && endIdx !== -1) {
+			var minIdx = Math.min(startIdx, endIdx);
+			var maxIdx = Math.max(startIdx, endIdx);
+			
+			for (var j = minIdx; j < maxIdx; j++) {
+				var v1 = selectedPolyline.vertices[j];
+				var v2 = selectedPolyline.vertices[j + 1];
+				var dx = v2.x - v1.x;
+				var dy = v2.y - v1.y;
+				totalDist += Math.sqrt(dx * dx + dy * dy);
+			}
+			
+			// Calculate midpoint in canvas coords
+			var midVertex = selectedPolyline.vertices[Math.floor((minIdx + maxIdx) / 2)];
+			var [midX, midY] = worldToCanvas(midVertex.x, midVertex.y);
+			overlayData.distance = totalDist;
+			overlayData.midCanvasX = midX + canvasRect.left;
+			overlayData.midCanvasY = midY + canvasRect.top;
+		}
+	}
+
+	// Step 6) Update HUD overlay labels (consistent styling with patternInPolygon)
+	showPatternToolLabels(overlayData);
+}
+
+// 3D Visual feedback for Holes Along Polyline tool
+function drawHolesAlongPolyline3DVisual() {
+	if (!isHolesAlongPolyLineActive || !threeInitialized || !threeRenderer) {
+		// Clean up if tool is not active
+		if (window.holesAlongPolyline3DGroup && threeRenderer && threeRenderer.scene) {
+			threeRenderer.scene.remove(window.holesAlongPolyline3DGroup);
+			window.holesAlongPolyline3DGroup = null;
+		}
+		return;
+	}
+
+	// Safety checks
+	if (!selectedPolyline || !selectedPolyline.vertices || !Array.isArray(selectedPolyline.vertices)) {
+		return;
+	}
+
+	// Clear previous 3D objects
+	if (window.holesAlongPolyline3DGroup) {
+		threeRenderer.scene.remove(window.holesAlongPolyline3DGroup);
+		window.holesAlongPolyline3DGroup = null;
+	}
+
+	// Create new group for tool visuals
+	window.holesAlongPolyline3DGroup = new THREE.Group();
+	window.holesAlongPolyline3DGroup.name = "holesAlongPolyline3DVisuals";
+
+	// Get Z elevation for 3D drawing
+	const drawZ = (dataCentroidZ || 0) + 2;
+
+	// Helper function to create tube geometry for thick lines
+	function createTubeFromPoints(pointsArray, radius, color, opacity) {
+		if (pointsArray.length < 2) return null;
+		const curve = new THREE.CatmullRomCurve3(pointsArray, false);
+		const tubeGeom = new THREE.TubeGeometry(curve, pointsArray.length * 4, radius, 8, false);
+		const tubeMat = new THREE.MeshBasicMaterial({
+			color: color,
+			transparent: opacity < 1,
+			opacity: opacity,
+			side: THREE.DoubleSide
+		});
+		return new THREE.Mesh(tubeGeom, tubeMat);
+	}
+
+	// Step 1) Draw selected polyline outline (green tubes)
+	if (selectedPolyline && selectedPolyline.vertices.length > 1) {
+		const polylinePoints = [];
+		selectedPolyline.vertices.forEach(function(vertex) {
+			const local = worldToThreeLocal(vertex.x, vertex.y);
+			polylinePoints.push(new THREE.Vector3(local.x, local.y, drawZ));
+		});
+		
+		// Close if polygon type
+		if (selectedPolyline.type === "polygon" && polylinePoints.length > 0) {
+			polylinePoints.push(polylinePoints[0].clone());
+		}
+
+		const polylineTube = createTubeFromPoints(polylinePoints, 1.5, 0x00ff00, 0.7);
+		if (polylineTube) {
+			window.holesAlongPolyline3DGroup.add(polylineTube);
+		}
+
+		// Draw vertices as small orange spheres
+		selectedPolyline.vertices.forEach(function(vertex) {
+			const local = worldToThreeLocal(vertex.x, vertex.y);
+			const sphereGeom = new THREE.SphereGeometry(3, 12, 12);
+			const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.8 });
+			const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+			sphere.position.set(local.x, local.y, drawZ);
+			window.holesAlongPolyline3DGroup.add(sphere);
+		});
+	}
+
+	// Step 2) Highlight active segment (where holes will be placed) in cyan
+	if (polylineStartPoint && polylineEndPoint && selectedPolyline && selectedPolyline.vertices) {
+		// Find the segment indices for START and END
+		var startIdx = -1;
+		var endIdx = -1;
+		for (var i = 0; i < selectedPolyline.vertices.length; i++) {
+			var v = selectedPolyline.vertices[i];
+			if (Math.abs(v.x - polylineStartPoint.x) < 0.01 && Math.abs(v.y - polylineStartPoint.y) < 0.01) {
+				startIdx = i;
+			}
+			if (Math.abs(v.x - polylineEndPoint.x) < 0.01 && Math.abs(v.y - polylineEndPoint.y) < 0.01) {
+				endIdx = i;
+			}
+		}
+		
+		// Draw active segments in cyan with thicker tube
+		if (startIdx !== -1 && endIdx !== -1 && startIdx !== endIdx) {
+			var minIdx = Math.min(startIdx, endIdx);
+			var maxIdx = Math.max(startIdx, endIdx);
+			
+			var activeSegmentPoints = [];
+			for (var j = minIdx; j <= maxIdx; j++) {
+				var vertex = selectedPolyline.vertices[j];
+				var local = worldToThreeLocal(vertex.x, vertex.y);
+				activeSegmentPoints.push(new THREE.Vector3(local.x, local.y, drawZ + 1));
+			}
+			
+			// Create thicker cyan tube for active segment
+			var activeSegmentTube = createTubeFromPoints(activeSegmentPoints, 2.5, 0x00ffff, 0.9);
+			if (activeSegmentTube) {
+				window.holesAlongPolyline3DGroup.add(activeSegmentTube);
+			}
+			
+			// Add pyramid arrow at midpoint of active segment
+			if (activeSegmentPoints.length >= 2) {
+				var midIdx = Math.floor(activeSegmentPoints.length / 2);
+				var midPoint = activeSegmentPoints[midIdx];
+				
+				// Calculate direction along active segment
+				var prevPoint = activeSegmentPoints[Math.max(0, midIdx - 1)];
+				var nextPoint = activeSegmentPoints[Math.min(activeSegmentPoints.length - 1, midIdx + 1)];
+				var segDx = nextPoint.x - prevPoint.x;
+				var segDy = nextPoint.y - prevPoint.y;
+				var segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+				
+				if (segLen > 1) {
+					var dirX = segDx / segLen;
+					var dirY = segDy / segLen;
+					// Perpendicular direction (90 degrees)
+					var perpX = -dirY;
+					var perpY = dirX;
+					
+					// Pyramid position (offset perpendicular to segment)
+					var pyramidOffset = 15;
+					var pyramidX = midPoint.x + perpX * pyramidOffset;
+					var pyramidY = midPoint.y + perpY * pyramidOffset;
+					
+					// Create pyramid (cone) geometry
+					var pyramidHeight = 12;
+					var pyramidRadius = 6;
+					var pyramidGeom = new THREE.ConeGeometry(pyramidRadius, pyramidHeight, 4);
+					var pyramidMat = new THREE.MeshBasicMaterial({
+						color: 0x00ffff,
+						transparent: true,
+						opacity: 0.4,
+						side: THREE.DoubleSide
+					});
+					var pyramid = new THREE.Mesh(pyramidGeom, pyramidMat);
+					
+					pyramid.position.set(pyramidX, pyramidY, drawZ + pyramidHeight / 2 + 2);
+					
+					// Rotate pyramid to point in perpendicular direction
+					var angle = Math.atan2(perpY, perpX);
+					pyramid.rotation.z = angle;
+					pyramid.rotation.x = Math.PI / 2;
+					
+					window.holesAlongPolyline3DGroup.add(pyramid);
+					
+					// Add wireframe outline
+					var wireframeMat = new THREE.MeshBasicMaterial({
+						color: 0x00aaaa,
+						wireframe: true
+					});
+					var pyramidWireframe = new THREE.Mesh(pyramidGeom.clone(), wireframeMat);
+					pyramidWireframe.position.copy(pyramid.position);
+					pyramidWireframe.rotation.copy(pyramid.rotation);
+					window.holesAlongPolyline3DGroup.add(pyramidWireframe);
+				}
+			}
+		}
+	}
+
+	// Step 3) Draw start point sphere (bright green, larger)
+	if (polylineStartPoint) {
+		const local = worldToThreeLocal(polylineStartPoint.x, polylineStartPoint.y);
+		const sphereGeom = new THREE.SphereGeometry(6, 16, 16);
+		const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.9 });
+		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+		sphere.position.set(local.x, local.y, drawZ + 3);
+		window.holesAlongPolyline3DGroup.add(sphere);
+	}
+
+	// Step 4) Draw end point sphere (red, larger)
+	if (polylineEndPoint) {
+		const local = worldToThreeLocal(polylineEndPoint.x, polylineEndPoint.y);
+		const sphereGeom = new THREE.SphereGeometry(6, 16, 16);
+		const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.9 });
+		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
+		sphere.position.set(local.x, local.y, drawZ + 3);
+		window.holesAlongPolyline3DGroup.add(sphere);
+	}
+
+	// Add group to scene
+	threeRenderer.scene.add(window.holesAlongPolyline3DGroup);
+
+	// Update LineMaterial resolution for any fat lines added
+	if (typeof updateAllLineMaterialResolution === "function") {
+		updateAllLineMaterialResolution();
 	}
 }
+
 // Function to draw KAD polygon selection visuals
 function drawKADPolygonHighlightSelectedVisuals() {
 	if (!selectedKADPolygon || !isSelectionPointerActive) return;
@@ -34442,21 +34955,24 @@ function drawHolesAlongLineVisuals() {
 	// Only draw visuals if holes along line tool is active
 	if (!isHolesAlongLineActive) return;
 
-	// Draw start point (bright blue) when selected
+	// Step 1) Build overlay data for HUD labels (consistent with patternInPolygon)
+	var overlayData = { toolType: "line" };
+	var canvasRect = canvas.getBoundingClientRect();
+
+	// Step 2) Draw start point (bright green) when selected
 	if (lineStartPoint) {
 		const [startX, startY] = worldToCanvas(lineStartPoint.x, lineStartPoint.y);
 		ctx.fillStyle = "rgba(0, 255, 0, 0.8)";
 		ctx.beginPath();
-		ctx.arc(startX, startY, 5, 0, 2 * Math.PI);
+		ctx.arc(startX, startY, 6, 0, 2 * Math.PI);
 		ctx.fill();
 
-		// Add label
-		ctx.fillStyle = "rgba(0, 255, 0, 1)";
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.fillText("START", startX + 10, startY - 10);
+		// Step 2a) Add to overlay data for HUD label (no ctx.fillText)
+		overlayData.startPoint = lineStartPoint;
+		overlayData.startCanvasX = startX + canvasRect.left;
+		overlayData.startCanvasY = startY + canvasRect.top;
 
-		// Draw interactive preview line to mouse cursor when start point is set but end point isn't
+		// Step 2b) Draw interactive preview line to mouse cursor when start point is set but end point isn't
 		if (!lineEndPoint && holesLineStep === 1) {
 			ctx.strokeStyle = "rgba(0, 255, 0, 0.5)";
 			ctx.lineWidth = 1;
@@ -34467,52 +34983,43 @@ function drawHolesAlongLineVisuals() {
 			ctx.stroke();
 			ctx.setLineDash([]);
 
-			// Show preview distance
+			// Step 2c) Calculate preview distance for HUD overlay
 			const dx = currentMouseWorldX - lineStartPoint.x;
 			const dy = currentMouseWorldY - lineStartPoint.y;
 			const previewLength = Math.sqrt(dx * dx + dy * dy);
 
-			const midX = (startX + currentMouseCanvasX) / 2;
-			const midY = (startY + currentMouseCanvasY) / 2;
-
-			ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
-			ctx.fillRect(midX - 30, midY - 15, 60, 20);
-			ctx.strokeStyle = strokeColor;
-			ctx.lineWidth = 1;
-			ctx.strokeRect(midX - 30, midY - 15, 60, 20);
-
-			ctx.fillStyle = strokeColor;
-			ctx.font = "12px Arial";
-			ctx.fontWeight = "bold";
-			ctx.textAlign = "center";
-			ctx.fillText(previewLength.toFixed(2) + "m", midX, midY);
-			ctx.textAlign = "left";
+			if (previewLength > 5) {
+				const midX = (startX + currentMouseCanvasX) / 2;
+				const midY = (startY + currentMouseCanvasY) / 2;
+				overlayData.distance = previewLength;
+				overlayData.midCanvasX = midX + canvasRect.left;
+				overlayData.midCanvasY = midY + canvasRect.top;
+			}
 		}
 	}
 
-	// Draw end point (bright red/orange) when selected
+	// Step 3) Draw end point (bright red) when selected
 	if (lineEndPoint) {
 		const [endX, endY] = worldToCanvas(lineEndPoint.x, lineEndPoint.y);
-		ctx.fillStyle = "rgba(255, 0, 0, 0.5)";
+		ctx.fillStyle = "rgba(255, 0, 0, 0.8)";
 		ctx.beginPath();
-		ctx.arc(endX, endY, 5, 0, 2 * Math.PI);
+		ctx.arc(endX, endY, 6, 0, 2 * Math.PI);
 		ctx.fill();
 
-		// Add label
-		ctx.fillStyle = "rgba(255, 0, 0, 1)";
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.fillText("END", endX + 10, endY - 10);
+		// Step 3a) Add to overlay data for HUD label (no ctx.fillText)
+		overlayData.endPoint = lineEndPoint;
+		overlayData.endCanvasX = endX + canvasRect.left;
+		overlayData.endCanvasY = endY + canvasRect.top;
 	}
 
-	// Draw line connecting start and end points when both are selected
+	// Step 4) Draw line connecting start and end points when both are selected
 	if (lineStartPoint && lineEndPoint) {
 		const [startX, startY] = worldToCanvas(lineStartPoint.x, lineStartPoint.y);
 		const [endX, endY] = worldToCanvas(lineEndPoint.x, lineEndPoint.y);
 
-		// Draw the main line
+		// Step 4a) Draw the main line (dashed green)
 		ctx.strokeStyle = "rgba(0, 255, 0, 0.8)";
-		ctx.lineWidth = 1;
+		ctx.lineWidth = 2;
 		ctx.setLineDash([10, 5]);
 		ctx.beginPath();
 		ctx.moveTo(startX, startY);
@@ -34520,28 +35027,20 @@ function drawHolesAlongLineVisuals() {
 		ctx.stroke();
 		ctx.setLineDash([]);
 
-		// Calculate and display line length
+		// Step 4b) Calculate line length and set distance for HUD overlay
 		const dx = lineEndPoint.x - lineStartPoint.x;
 		const dy = lineEndPoint.y - lineStartPoint.y;
 		const lineLength = Math.sqrt(dx * dx + dy * dy);
 
-		// Display length at midpoint of line
 		const midX = (startX + endX) / 2;
 		const midY = (startY + endY) / 2;
-
-		ctx.fillStyle = "rgba(0, 255, 0, 0.2)";
-		ctx.fillRect(midX - 30, midY - 15, 60, 20);
-		ctx.strokeStyle = strokeColor;
-		ctx.lineWidth = 1;
-		ctx.strokeRect(midX - 30, midY - 15, 60, 20);
-
-		ctx.fillStyle = strokeColor;
-		ctx.font = "12px Arial";
-		ctx.fontWeight = "bold";
-		ctx.textAlign = "center";
-		ctx.fillText(lineLength.toFixed(2) + "m", midX, midY);
-		ctx.textAlign = "left"; // Reset text alignment
+		overlayData.distance = lineLength;
+		overlayData.midCanvasX = midX + canvasRect.left;
+		overlayData.midCanvasY = midY + canvasRect.top;
 	}
+
+	// Step 5) Update HUD overlay labels (consistent styling with patternInPolygon)
+	showPatternToolLabels(overlayData);
 }
 // Add this new function to generate holes along a polyline or polygon edge
 // ADDED ROWID AND POSID
