@@ -289,6 +289,19 @@ export class TreeView {
 			if (parts[0] === "image" && parts.length === 2) {
 				showRename = true;
 			}
+			// Step 276a) Allow renaming individual holes (HoleID rename)
+			// Node ID format: "hole⣿entityName⣿holeID"
+			if (parts[0] === "hole" && parts.length === 3) {
+				showRename = true;
+			}
+		}
+		// Step 276b) Allow renaming when multiple holes are selected (BlastName reassignment)
+		// Only show if ALL selected items are holes
+		if (selectedNodeIds.length > 1) {
+			const allAreHoles = selectedNodeIds.every((id) => id.startsWith("hole⣿"));
+			if (allAreHoles) {
+				showRename = true;
+			}
 		}
 
 		if (renameItem) {
@@ -945,12 +958,22 @@ export class TreeView {
 	}
 
 	renameEntity() {
-		if (this.selectedNodes.size !== 1) return;
-		const nodeId = Array.from(this.selectedNodes)[0];
-
-		// Delegate to global function
-		if (typeof window.handleTreeViewRename === "function") {
-			window.handleTreeViewRename(nodeId, this);
+		// Step 947a) Support single selection rename
+		if (this.selectedNodes.size === 1) {
+			const nodeId = Array.from(this.selectedNodes)[0];
+			if (typeof window.handleTreeViewRename === "function") {
+				window.handleTreeViewRename(nodeId, this);
+			}
+			return;
+		}
+		
+		// Step 947b) Support multiple hole selection rename (BlastName reassignment)
+		if (this.selectedNodes.size > 1) {
+			const nodeIds = Array.from(this.selectedNodes);
+			const allAreHoles = nodeIds.every((id) => id.startsWith("hole⣿"));
+			if (allAreHoles && typeof window.handleTreeViewRenameMultipleHoles === "function") {
+				window.handleTreeViewRenameMultipleHoles(nodeIds, this);
+			}
 		}
 	}
 

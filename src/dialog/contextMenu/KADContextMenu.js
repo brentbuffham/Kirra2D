@@ -37,6 +37,7 @@ export function showKADPropertyEditorPopup(kadObject) {
             kadObject.lineWidth = element.lineWidth || 1;
             kadObject.radius = element.radius;
             kadObject.text = element.text || "";
+            kadObject.fontHeight = element.fontHeight || element.lineWidth || 12;
         }
     }
 
@@ -139,6 +140,15 @@ export function showKADPropertyEditorPopup(kadObject) {
             type: "text",
             value: kadObject.text || ""
         });
+        fields.push({
+            label: "Font Height",
+            name: "editFontHeight",
+            type: "number",
+            value: kadObject.fontHeight || kadObject.lineWidth || 12,
+            min: "1",
+            max: "500",
+            step: "1"
+        });
     } else if (kadObject.entityType === "point") {
         fields.push({
             label: "Point Diameter/Line Width",
@@ -199,6 +209,7 @@ export function showKADPropertyEditorPopup(kadObject) {
                 lineWidth: formData.editLineWidth,
                 radius: formData.editRadius,
                 text: formData.editText,
+                fontHeight: formData.editFontHeight ? parseFloat(formData.editFontHeight) : undefined,
                 onlyZ: formData.onlyZCheckbox
             };
 
@@ -227,6 +238,7 @@ export function showKADPropertyEditorPopup(kadObject) {
                 lineWidth: formData.editLineWidth,
                 radius: formData.editRadius,
                 text: formData.editText,
+                fontHeight: formData.editFontHeight ? parseFloat(formData.editFontHeight) : undefined,
                 onlyZ: formData.onlyZCheckbox
             };
 
@@ -504,6 +516,7 @@ export function updateKADObjectProperties(kadObject, newProperties, scope = "all
                 if (newProperties.lineWidth) item.lineWidth = parseFloat(newProperties.lineWidth);
                 if (newProperties.radius) item.radius = parseFloat(newProperties.radius);
                 if (newProperties.text) item.text = newProperties.text;
+                if (newProperties.fontHeight) item.fontHeight = parseFloat(newProperties.fontHeight);
 
                 if (onlyZ) {
                     if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
@@ -533,6 +546,7 @@ export function updateKADObjectProperties(kadObject, newProperties, scope = "all
                 if (newProperties.lineWidth) pt.lineWidth = parseFloat(newProperties.lineWidth);
                 if (newProperties.radius) pt.radius = parseFloat(newProperties.radius);
                 if (newProperties.text) pt.text = newProperties.text;
+                if (newProperties.fontHeight) pt.fontHeight = parseFloat(newProperties.fontHeight);
                 if (newProperties.pointDiameter) pt.pointDiameter = parseFloat(newProperties.pointDiameter);
 
                 if (onlyZ) {

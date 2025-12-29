@@ -680,19 +680,23 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	// Step 10) Create color function for this surface
 	var colorFunction;
 	
-	// Step 10a) Handle hillshade - use solid color instead of elevation gradient
+	// Step 10a) Get custom min/max limits from surface data if available
+	var surfaceMinLimit = (surfaceData && surfaceData.minLimit !== null && surfaceData.minLimit !== undefined) ? surfaceData.minLimit : null;
+	var surfaceMaxLimit = (surfaceData && surfaceData.maxLimit !== null && surfaceData.maxLimit !== undefined) ? surfaceData.maxLimit : null;
+	
+	// Step 10b) Handle hillshade - use solid color instead of elevation gradient
 	if (gradient === "hillshade") {
 		var hillshadeHex = (surfaceData && surfaceData.hillshadeColor) ? surfaceData.hillshadeColor : "#808080";
 		console.log("🎨 [drawSurfaceThreeJS] Hillshade mode - surfaceId: " + surfaceId + ", hillshadeColor from data: " + (surfaceData ? surfaceData.hillshadeColor : "N/A") + ", using: " + hillshadeHex);
-		// Step 10a-1) Convert hex color to Three.js RGB format
+		// Step 10b-1) Convert hex color to Three.js RGB format
 		var fixedColor = hexToThreeColor(hillshadeHex);
 		colorFunction = function (z) {
 			return fixedColor;
 		};
 	} else {
-		// Step 10b) Regular elevation-based color gradient
+		// Step 10c) Regular elevation-based color gradient with custom limits support
 		colorFunction = function (z) {
-			var rgbString = window.elevationToColor(z, minZ, maxZ, gradient);
+			var rgbString = window.elevationToColor(z, minZ, maxZ, gradient, surfaceMinLimit, surfaceMaxLimit);
 			return window.rgbStringToThreeColor(rgbString);
 		};
 	}

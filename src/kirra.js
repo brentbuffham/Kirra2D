@@ -155,7 +155,7 @@ import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
 // Print and Statistics Modules
 //=================================================
 import { getBlastStatisticsPerEntity } from "./helpers/BlastStatistics.js";
-import { printMode, printOrientation, printPaperSize, isPrinting, paperRatios, printCanvas, printCtx, togglePrintMode, getPrintBoundary, drawPrintBoundary, printCanvasHiRes, printToPDF, setupPrintEventHandlers } from "./print/PrintSystem.js";
+import { printMode, printOrientation, printPaperSize, isPrinting, paperRatios, printCanvas, printCtx, togglePrintMode, getPrintBoundary, drawPrintBoundary, printCanvasHiRes, printToPDF, setupPrintEventHandlers, remove3DPrintBoundaryOverlay } from "./print/PrintSystem.js";
 import {
 	drawDataForPrinting,
 	drawCompleteBlastDataForPrint,
@@ -3016,6 +3016,10 @@ document.addEventListener("DOMContentLoaded", function () {
 					clearThreeJS();
 					console.log("🎨 Cleared Three.js geometry on switch to 2D mode");
 				}
+
+				// Step 1dc.1) Remove 3D print preview overlay if present
+				remove3DPrintBoundaryOverlay();
+				console.log("🖨️ Removed 3D print boundary overlay on switch to 2D mode");
 
 				if (threeCanvas) {
 					threeCanvas.style.zIndex = "0"; // Three.js behind
@@ -8633,6 +8637,8 @@ async function parseDXFtoKadMaps(dxf) {
 			visible: true,
 			gradient: "hillshade", // Could be "hillshade" for your lighting effect
 			transparency: 1.0,
+			minLimit: null,
+			maxLimit: null,
 		});
 
 		// Update display
@@ -24039,6 +24045,8 @@ async function saveSurfaceToDB(surfaceId) {
 				gradient: surface.gradient || "default",
 				transparency: surface.transparency || 1.0,
 				hillshadeColor: surface.hillshadeColor || null, // Step 0a) Save hillshade color for 2D/3D rendering
+				minLimit: surface.minLimit || null,
+				maxLimit: surface.maxLimit || null,
 				created: surface.created || new Date().toISOString(),
 				metadata: surface.metadata || {},
 			};
@@ -24130,6 +24138,8 @@ async function loadSurfaceIntoMemory(surfaceId) {
 						gradient: surfaceData.gradient || "default",
 						transparency: surfaceData.transparency || 1.0,
 						hillshadeColor: surfaceData.hillshadeColor || null, // Step 0b) Load hillshade color from DB
+						minLimit: surfaceData.minLimit || null,
+						maxLimit: surfaceData.maxLimit || null,
 					});
 					console.log("✅ Surface " + surfaceData.name + " loaded into memory");
 				}
@@ -26305,6 +26315,12 @@ moveToTool.addEventListener("change", function () {
 // When Move tool is active, isDragging is not set and panning is disabled
 // The tool handles its own dragging behavior for moving KAD vertices/holes
 function handleMoveToolMouseDown(event) {
+	// Step 1) Guard: Don't start move if connector tools are active
+	if (isAddingConnector || isAddingMultiConnector) {
+		console.log("🚫 [MOVE TOOL] Blocked - connector tool is active");
+		return;
+	}
+
 	// Step 1a) Allow Alt+drag to pass through for camera orbit
 	if (event.altKey) {
 		// Don't block Alt+drag - let CameraControls handle it
@@ -26810,6 +26826,11 @@ document.addEventListener("keyup", (event) => {
 
 // Handle move tool mouse move - move holes
 function handleMoveToolMouseMove(event) {
+	// Step 0) Guard: Don't continue if connector tools are active
+	if (isAddingConnector || isAddingMultiConnector) {
+		return;
+	}
+
 	console.log("👋 [MOVE TOOL MOUSEMOVE] Called - isDraggingHole:", isDraggingHole, "moveToolSelectedHole:", moveToolSelectedHole, "moveToolSelectedKAD:", moveToolSelectedKAD, "moveToolIn3DMode:", moveToolIn3DMode);
 	if (!isDraggingHole || (!moveToolSelectedHole && !moveToolSelectedKAD)) {
 		console.log("👋 [MOVE TOOL MOUSEMOVE] Early return - not dragging or no selection");
@@ -34500,6 +34521,170 @@ window.generateHolesAlongPolyline = generateHolesAlongPolyline;
 // WITH this multi-surface system:
 let loadedSurfaces = new Map(); // Map<surfaceId, {id, name, points, triangles, visible, gradient}>
 
+// Step 0) Surface 2D rendering cache - stores pre-rendered surface images for performance
+// Cache is invalidated when: surface properties change, zoom changes beyond threshold, or surface is modified
+let surface2DCache = new Map(); // Map<surfaceId, {canvas, ctx, zoom, centroidX, centroidY, bounds, gradient, minLimit, maxLimit, transparency}>
+const SURFACE_CACHE_ZOOM_THRESHOLD = 1.5; // Re-render if zoom changes by more than 50%
+const SURFACE_CACHE_OVERSAMPLE = 1.0; // Render at 1x resolution (can increase for quality)
+
+// Step 0a) Check if surface cache is valid for current view
+function isSurfaceCacheValid(surfaceId, surface) {
+	var cache = surface2DCache.get(surfaceId);
+	if (!cache) return false;
+
+	// Step 0b) Check if surface properties changed
+	if (cache.gradient !== (surface.gradient || "default")) return false;
+	if (cache.minLimit !== surface.minLimit) return false;
+	if (cache.maxLimit !== surface.maxLimit) return false;
+	if (cache.transparency !== (surface.transparency || 1.0)) return false;
+	if (cache.hillshadeColor !== (surface.hillshadeColor || null)) return false;
+
+	// Step 0c) Check if zoom changed too much
+	var zoomRatio = currentScale / cache.zoom;
+	if (zoomRatio > SURFACE_CACHE_ZOOM_THRESHOLD || zoomRatio < (1 / SURFACE_CACHE_ZOOM_THRESHOLD)) {
+		return false;
+	}
+
+	return true;
+}
+
+// Step 0d) Render surface to off-screen canvas cache
+function renderSurfaceToCache(surfaceId, surface, surfaceMinZ, surfaceMaxZ) {
+	// Step 1) Calculate surface bounds in world coordinates
+	var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+	surface.points.forEach(function (point) {
+		if (point.x < minX) minX = point.x;
+		if (point.x > maxX) maxX = point.x;
+		if (point.y < minY) minY = point.y;
+		if (point.y > maxY) maxY = point.y;
+	});
+
+	// Step 2) Add padding to bounds (5% each side)
+	var padX = (maxX - minX) * 0.05;
+	var padY = (maxY - minY) * 0.05;
+	minX -= padX; maxX += padX;
+	minY -= padY; maxY += padY;
+
+	// Step 3) Calculate canvas size based on world bounds and current scale
+	var worldWidth = maxX - minX;
+	var worldHeight = maxY - minY;
+	var cacheWidth = Math.ceil(worldWidth * currentScale * SURFACE_CACHE_OVERSAMPLE);
+	var cacheHeight = Math.ceil(worldHeight * currentScale * SURFACE_CACHE_OVERSAMPLE);
+
+	// Step 4) Limit max cache size to prevent memory issues
+	var maxCacheSize = 4096;
+	if (cacheWidth > maxCacheSize || cacheHeight > maxCacheSize) {
+		var scaleDown = maxCacheSize / Math.max(cacheWidth, cacheHeight);
+		cacheWidth = Math.ceil(cacheWidth * scaleDown);
+		cacheHeight = Math.ceil(cacheHeight * scaleDown);
+	}
+
+	// Step 5) Create or reuse off-screen canvas
+	var cacheCanvas = document.createElement("canvas");
+	cacheCanvas.width = cacheWidth;
+	cacheCanvas.height = cacheHeight;
+	var cacheCtx = cacheCanvas.getContext("2d");
+
+	// Step 6) Set up transform to map world coords to cache canvas
+	// Cache canvas origin is at (minX, maxY) in world coords (Y flipped)
+	var cacheScale = cacheWidth / worldWidth;
+
+	// Step 7) Clear and set up context
+	cacheCtx.clearRect(0, 0, cacheWidth, cacheHeight);
+
+	// Step 8) Draw each triangle to cache canvas
+	var gradient = surface.gradient || "default";
+	var transparency = surface.transparency || 1.0;
+
+	surface.triangles.forEach(function (triangle) {
+		var p1 = triangle.vertices[0];
+		var p2 = triangle.vertices[1];
+		var p3 = triangle.vertices[2];
+
+		// Convert world coords to cache canvas coords
+		var x1 = (p1.x - minX) * cacheScale;
+		var y1 = (maxY - p1.y) * cacheScale; // Y flipped
+		var x2 = (p2.x - minX) * cacheScale;
+		var y2 = (maxY - p2.y) * cacheScale;
+		var x3 = (p3.x - minX) * cacheScale;
+		var y3 = (maxY - p3.y) * cacheScale;
+
+		var z1 = p1.z;
+		var z2 = p2.z;
+		var z3 = p3.z;
+
+		// Draw triangle with solid color (average elevation)
+		var avgZ = (z1 + z2 + z3) / 3;
+
+		cacheCtx.globalAlpha = transparency;
+		cacheCtx.beginPath();
+		cacheCtx.moveTo(x1, y1);
+		cacheCtx.lineTo(x2, y2);
+		cacheCtx.lineTo(x3, y3);
+		cacheCtx.closePath();
+
+		// Handle hillshade specially
+		if (gradient === "hillshade") {
+			var aspectData = getTriangleAspect(triangle);
+			var hillshadeColor = getHillshadeColor(aspectData.aspect, aspectData.slope, aspectData.isFlat, lightBearing, lightElevation, surface.hillshadeColor || null);
+			cacheCtx.fillStyle = hillshadeColor;
+		} else {
+			cacheCtx.fillStyle = elevationToColor(avgZ, surfaceMinZ, surfaceMaxZ, gradient, surface.minLimit, surface.maxLimit);
+		}
+		cacheCtx.fill();
+	});
+
+	// Step 9) Store cache entry
+	surface2DCache.set(surfaceId, {
+		canvas: cacheCanvas,
+		zoom: currentScale,
+		bounds: { minX: minX, maxX: maxX, minY: minY, maxY: maxY },
+		gradient: gradient,
+		minLimit: surface.minLimit,
+		maxLimit: surface.maxLimit,
+		transparency: transparency,
+		hillshadeColor: surface.hillshadeColor || null
+	});
+
+	if (developerModeEnabled) {
+		console.log("📦 Surface cache created for " + surfaceId + ": " + cacheWidth + "x" + cacheHeight + " at zoom " + currentScale.toFixed(2));
+	}
+
+	return surface2DCache.get(surfaceId);
+}
+
+// Step 0e) Draw cached surface to main canvas
+function drawCachedSurface(cache) {
+	if (!cache || !cache.canvas) return false;
+
+	// Step 1) Calculate where to draw the cached image on main canvas
+	var topLeft = worldToCanvas(cache.bounds.minX, cache.bounds.maxY);
+	var bottomRight = worldToCanvas(cache.bounds.maxX, cache.bounds.minY);
+
+	var destX = topLeft[0];
+	var destY = topLeft[1];
+	var destWidth = bottomRight[0] - topLeft[0];
+	var destHeight = bottomRight[1] - topLeft[1];
+
+	// Step 2) Draw the cached canvas image
+	ctx.drawImage(cache.canvas, destX, destY, destWidth, destHeight);
+
+	return true;
+}
+
+// Step 0f) Invalidate surface cache (call when surface properties change)
+function invalidateSurfaceCache(surfaceId) {
+	if (surfaceId) {
+		surface2DCache.delete(surfaceId);
+	} else {
+		// Invalidate all caches
+		surface2DCache.clear();
+	}
+}
+
+// Step 0g) Export invalidate function for use in context menu
+window.invalidateSurfaceCache = invalidateSurfaceCache;
+
 const assignSurfaceToHolesTool = document.getElementById("assignSurfaceTool");
 const assignGradeTool = document.getElementById("assignGradeTool");
 let showSurfaceLegend = true; // Add legend visibility control
@@ -35641,11 +35826,26 @@ function drawSurface() {
 
 		// Step 3) Draw surface in 2D canvas (only when not in Three.js-only mode)
 		if (!onlyShowThreeJS) {
+			// Step 3a) Check if we can use cached surface image
+			if (isSurfaceCacheValid(surfaceId, surface)) {
+				// Step 3b) Use cached image - much faster!
+				var cache = surface2DCache.get(surfaceId);
+				if (drawCachedSurface(cache)) {
+					return; // Successfully drew from cache, skip triangle rendering
+				}
+			}
+
+			// Step 3c) Cache miss or invalid - render to cache first, then draw
+			var cache = renderSurfaceToCache(surfaceId, surface, surfaceMinZ, surfaceMaxZ);
+			if (cache && drawCachedSurface(cache)) {
+				return; // Successfully rendered and drew from cache
+			}
+
+			// Step 3d) Fallback: Direct triangle rendering (if caching fails)
 			// CRITICAL: Pass surface-specific min/max, transparency, AND gradient
 			surface.triangles.forEach((triangle, i) => {
-
 				// Fix line 20344 - Surface drawing function (added hillshadeColor parameter)
-				drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, ctx, surface.transparency || 1.0, surface.gradient || "default", gradientMethod, lightBearing, lightElevation, surface.hillshadeColor || null);
+				drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, ctx, surface.transparency || 1.0, surface.gradient || "default", gradientMethod, lightBearing, lightElevation, surface.hillshadeColor || null, surface.minLimit, surface.maxLimit);
 			});
 		}
 	});
@@ -35689,11 +35889,18 @@ function drawSurfaceLegend() {
 			continue;
 		}
 
-		// Step 3c) Add surface to legend data array
+		// Step 3c) Determine display range (custom limits if set, otherwise actual range)
+		var displayMinZ = surface.minLimit !== null ? surface.minLimit : surfaceMinZ;
+		var displayMaxZ = surface.maxLimit !== null ? surface.maxLimit : surfaceMaxZ;
+
+		// Step 3d) Add surface to legend data array
 		surfaceLegendData.push({
 			name: surface.name || "Surface " + (i + 1),
-			minZ: surfaceMinZ,
-			maxZ: surfaceMaxZ,
+			actualMinZ: surfaceMinZ,
+			actualMaxZ: surfaceMaxZ,
+			displayMinZ: displayMinZ,
+			displayMaxZ: displayMaxZ,
+			hasCustomLimits: surface.minLimit !== null || surface.maxLimit !== null,
 			gradient: surface.gradient || "default",
 			hillshadeColor: surface.hillshadeColor || null
 		});
@@ -35793,15 +36000,22 @@ function interpolateColors(colors, ratio) {
 	return `rgb(${r}, ${g}, ${b})`;
 }
 
-// Updated elevationToColor function to accept gradient parameter
-function elevationToColor(z, minZ, maxZ, gradient = "default") {
-	// Check if the surface is flat (no elevation variation)
-	if (maxZ - minZ < 0.001) {
+// Updated elevationToColor function to accept gradient parameter and custom limits
+function elevationToColor(z, minZ, maxZ, gradient = "default", minLimit = null, maxLimit = null) {
+	// Use custom limits if provided, otherwise use actual surface range
+	const effectiveMinZ = minLimit !== null ? minLimit : minZ;
+	const effectiveMaxZ = maxLimit !== null ? maxLimit : maxZ;
+	const effectiveRange = effectiveMaxZ - effectiveMinZ;
+
+	// Check if the effective range is too small (flat surface)
+	if (effectiveRange < 0.001) {
 		// Very small tolerance for floating point comparison
 		return "rgb(255, 165, 0)"; // Orange for flat surfaces
 	}
 
-	const ratio = (z - minZ) / (maxZ - minZ);
+	// Clamp z value to the effective range for coloring
+	const clampedZ = Math.max(effectiveMinZ, Math.min(effectiveMaxZ, z));
+	const ratio = (clampedZ - effectiveMinZ) / effectiveRange;
 
 	// Apply selected gradient (now surface-specific)
 	switch (gradient) {
@@ -35939,6 +36153,8 @@ document.getElementById("lightBearingSlider").addEventListener("input", function
 	if (developerModeEnabled) {
 		console.log("Light bearing changed to: " + lightBearing);
 	}
+	// Invalidate all surface caches (hillshade depends on light direction)
+	invalidateSurfaceCache(null);
 	drawData(allBlastHoles, selectedHole);
 });
 
@@ -35950,10 +36166,12 @@ document.getElementById("lightElevationSlider").addEventListener("input", functi
 	if (developerModeEnabled) {
 		console.log("Light elevation changed to: " + lightElevation);
 	}
+	// Invalidate all surface caches (hillshade depends on light direction)
+	invalidateSurfaceCache(null);
 	drawData(allBlastHoles, selectedHole);
 });
 
-function drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx = ctx, alpha = 1.0, gradient = "hillshade", gradientMethod = "default", lightBearing = 315, lightElevation = 45, hillshadeColor = null) {
+function drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx = ctx, alpha = 1.0, gradient = "hillshade", gradientMethod = "default", lightBearing = 315, lightElevation = 45, hillshadeColor = null, minLimit = null, maxLimit = null) {
 	const showWireFrame = false;
 	const [p1, p2, p3] = triangle.vertices;
 
@@ -35984,7 +36202,7 @@ function drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx 
 
 		// Use elevation coloring but with different palette for textured surfaces
 		const avgZ = (z1 + z2 + z3) / 3;
-		targetCtx.fillStyle = elevationToColor(avgZ, surfaceMinZ, surfaceMaxZ, gradient);
+		targetCtx.fillStyle = elevationToColor(avgZ, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
 		targetCtx.fill();
 
 		if (showWireFrame) {
@@ -36043,14 +36261,14 @@ function drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx 
 	// Step 9) Apply gradient method based on gradientMethod parameter
 	switch (gradientMethod) {
 		case "radial":
-			drawRadialGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame);
+			drawRadialGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame, minLimit, maxLimit);
 			break;
 		case "barycentric":
-			drawBarycentricGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame);
+			drawBarycentricGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame, minLimit, maxLimit);
 			break;
 		case "default":
 		default:
-			drawLinearGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame);
+			drawLinearGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame, minLimit, maxLimit);
 			break;
 	}
 
@@ -36059,7 +36277,7 @@ function drawTriangleWithGradient(triangle, surfaceMinZ, surfaceMaxZ, targetCtx 
 }
 
 // Step 11) Linear gradient method (improved default)
-function drawLinearGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame) {
+function drawLinearGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame, minLimit = null, maxLimit = null) {
 	// Step 12) Find vertices with min and max Z values for better gradient orientation
 	const vertices = [
 		{ x: x1, y: y1, z: z1, index: 0 },
@@ -36078,7 +36296,7 @@ function drawLinearGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z
 	if (elevationDiff < 0.001) {
 		// Essentially flat triangle - use average color
 		const avgZ = (z1 + z2 + z3) / 3;
-		const flatColor = elevationToColor(avgZ, surfaceMinZ, surfaceMaxZ, gradient);
+		const flatColor = elevationToColor(avgZ, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
 
 		targetCtx.beginPath();
 		targetCtx.moveTo(x1, y1);
@@ -36092,8 +36310,8 @@ function drawLinearGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z
 		const canvasGradient = targetCtx.createLinearGradient(minZVertex.x, minZVertex.y, maxZVertex.x, maxZVertex.y);
 
 		// Step 16) Map Z values to colors using THIS surface's elevation range AND gradient
-		const minColor = elevationToColor(minZVertex.z, surfaceMinZ, surfaceMaxZ, gradient);
-		const maxColor = elevationToColor(maxZVertex.z, surfaceMinZ, surfaceMaxZ, gradient);
+		const minColor = elevationToColor(minZVertex.z, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
+		const maxColor = elevationToColor(maxZVertex.z, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
 
 		// Step 17) Add color stops - more natural gradient flow
 		canvasGradient.addColorStop(0, minColor);
@@ -36116,7 +36334,7 @@ function drawLinearGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z
 				const projectionRatio = (midDx * dx + midDy * dy) / (dx * dx + dy * dy);
 				const clampedRatio = Math.max(0.1, Math.min(0.9, projectionRatio));
 
-				const midColor = elevationToColor(midZVertex.z, surfaceMinZ, surfaceMaxZ, gradient);
+				const midColor = elevationToColor(midZVertex.z, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
 				canvasGradient.addColorStop(clampedRatio, midColor);
 			}
 		}
@@ -36140,7 +36358,7 @@ function drawLinearGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z
 }
 
 // Step 22) Radial gradient method for natural elevation flow
-function drawRadialGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame) {
+function drawRadialGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame, minLimit = null, maxLimit = null) {
 	// Step 23) Calculate triangle centroid
 	const centerX = (x1 + x2 + x3) / 3;
 	const centerY = (y1 + y2 + y3) / 3;
@@ -36161,14 +36379,14 @@ function drawRadialGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z
 
 	if (elevationRange < 0.001) {
 		// Flat triangle - use single color
-		const flatColor = elevationToColor(centerZ, surfaceMinZ, surfaceMaxZ, gradient);
+		const flatColor = elevationToColor(centerZ, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
 		innerColor = flatColor;
 		outerColor = flatColor;
 	} else {
 		// Step 27) Use center elevation for inner, highest elevation for outer (creates peak effect)
 		const highestZ = Math.max(z1, z2, z3);
-		innerColor = elevationToColor(centerZ, surfaceMinZ, surfaceMaxZ, gradient);
-		outerColor = elevationToColor(highestZ, surfaceMinZ, surfaceMaxZ, gradient);
+		innerColor = elevationToColor(centerZ, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
+		outerColor = elevationToColor(highestZ, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
 	}
 
 	radialGradient.addColorStop(0, innerColor);
@@ -36192,12 +36410,12 @@ function drawRadialGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z
 }
 
 // Step 30) Barycentric gradient method for smooth color interpolation
-function drawBarycentricGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame) {
+function drawBarycentricGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, y3, z3, surfaceMinZ, surfaceMaxZ, gradient, showWireFrame, minLimit = null, maxLimit = null) {
 	// Step 31) For small triangles or minimal elevation difference, use single color
 	const elevationRange = Math.max(z1, z2, z3) - Math.min(z1, z2, z3);
 	if (elevationRange < 0.001) {
 		const avgZ = (z1 + z2 + z3) / 3;
-		const solidColor = elevationToColor(avgZ, surfaceMinZ, surfaceMaxZ, gradient);
+		const solidColor = elevationToColor(avgZ, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
 
 		targetCtx.beginPath();
 		targetCtx.moveTo(x1, y1);
@@ -36239,9 +36457,9 @@ function drawBarycentricGradientTriangle(targetCtx, x1, y1, z1, x2, y2, z2, x3, 
 	const linearGradient = targetCtx.createLinearGradient(lowVertex.x, lowVertex.y, highVertex.x, highVertex.y);
 
 	// Step 36) Sample colors at key points
-	const color1 = elevationToColor(z1, surfaceMinZ, surfaceMaxZ, gradient);
-	const color2 = elevationToColor(z2, surfaceMinZ, surfaceMaxZ, gradient);
-	const color3 = elevationToColor(z3, surfaceMinZ, surfaceMaxZ, gradient);
+	const color1 = elevationToColor(z1, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
+	const color2 = elevationToColor(z2, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
+	const color3 = elevationToColor(z3, surfaceMinZ, surfaceMaxZ, gradient, minLimit, maxLimit);
 
 	// Step 37) Create blended gradient based on vertex positions and elevations
 	const sortedByElevation = [
@@ -40428,9 +40646,237 @@ window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 		}
 		return;
 	}
+
+	// Step 3b) Single hole HoleID rename
+	// Node ID format: "hole⣿entityName⣿holeID"
+	if (parts[0] === "hole" && parts.length === 3) {
+		const entityName = parts[1];
+		const oldHoleID = parts[2];
+		const hole = allBlastHoles.find(function (h) {
+			return h.entityName === entityName && h.holeID === oldHoleID;
+		});
+
+		if (!hole) {
+			console.log("🚫 [TreeView] Hole not found:", entityName, oldHoleID);
+			return;
+		}
+
+		// Step 3b.1) Generate unique code suffix for suggestion
+		var generateUniqueCode = function () {
+			var chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+			var code = "";
+			for (var i = 0; i < 4; i++) {
+				code += chars.charAt(Math.floor(Math.random() * chars.length));
+			}
+			return code;
+		};
+
+		// Step 3b.2) Check if HoleID already exists in the same blast
+		var holeIDExists = function (blastName, holeID) {
+			return allBlastHoles.some(function (h) {
+				return h.entityName === blastName && h.holeID === holeID;
+			});
+		};
+
+		window.showConfirmationDialogWithInput(
+			"Rename Hole ID",
+			"Enter new Hole ID for " + oldHoleID + " in " + entityName + ":<br><small>Note: Must be unique within the blast pattern.</small>",
+			"New Hole ID",
+			"text",
+			oldHoleID + "_" + generateUniqueCode(),
+			"OK",
+			"Cancel",
+			function (newHoleID) {
+				if (newHoleID && newHoleID.trim() && newHoleID.trim() !== oldHoleID) {
+					var trimmedID = newHoleID.trim();
+
+					// Step 3b.3) Check for duplicate HoleID in the same blast
+					if (holeIDExists(entityName, trimmedID)) {
+						showModalMessage("Duplicate ID", "A hole with ID '" + trimmedID + "' already exists in " + entityName + ". Please choose a different ID.", "error");
+						return;
+					}
+
+					// Step 3b.4) Update the hole ID
+					hole.holeID = trimmedID;
+
+					// Step 3b.5) Save to IndexedDB
+					if (typeof debouncedSaveBlastHoles === "function") {
+						debouncedSaveBlastHoles();
+					}
+
+					// Step 3b.6) Update TreeView
+					if (treeViewInstance && typeof treeViewInstance.updateTreeData === "function") {
+						treeViewInstance.updateTreeData();
+					}
+
+					drawData(allBlastHoles, selectedHole);
+					console.log("✅ Hole ID renamed:", oldHoleID, "->", trimmedID, "in", entityName);
+				}
+			},
+			function () {
+				// Cancelled
+			}
+		);
+		return;
+	}
 };
 
-// Step 4) Handle TreeView show properties
+// Step 4) Handle multiple hole BlastName reassignment
+window.handleTreeViewRenameMultipleHoles = function (nodeIds, treeViewInstance) {
+	console.log("🎄 [TreeView] BlastName reassignment requested for", nodeIds.length, "holes");
+
+	// Step 4a) Extract all selected holes
+	var selectedHolesList = [];
+	nodeIds.forEach(function (nodeId) {
+		var parts = nodeId.split("⣿");
+		if (parts[0] === "hole" && parts.length === 3) {
+			var entityName = parts[1];
+			var holeID = parts[2];
+			var hole = allBlastHoles.find(function (h) {
+				return h.entityName === entityName && h.holeID === holeID;
+			});
+			if (hole) {
+				selectedHolesList.push(hole);
+			}
+		}
+	});
+
+	if (selectedHolesList.length === 0) {
+		console.log("🚫 [TreeView] No holes found for reassignment");
+		return;
+	}
+
+	// Step 4b) Get list of existing blast names for selection
+	var existingBlastNames = new Set();
+	allBlastHoles.forEach(function (h) {
+		if (h.entityName) {
+			existingBlastNames.add(h.entityName);
+		}
+	});
+	var blastNameOptions = Array.from(existingBlastNames).sort();
+
+	// Step 4c) Build select options HTML
+	var optionsHtml = blastNameOptions.map(function (name) {
+		return "<option value=\"" + name + "\">" + name + "</option>";
+	}).join("");
+
+	// Step 4d) Create dialog content with select dropdown and new name input
+	var dialogContent = document.createElement("div");
+	dialogContent.innerHTML =
+		"<p style=\"margin-bottom:10px;\">Reassign " + selectedHolesList.length + " hole(s) to a different blast pattern:</p>" +
+		"<div style=\"margin-bottom:10px;\">" +
+		"<label style=\"display:block;margin-bottom:5px;\">Select existing blast:</label>" +
+		"<select id=\"blastNameSelect\" style=\"width:100%;padding:5px;\">" +
+		"<option value=\"\">-- Select a blast --</option>" +
+		optionsHtml +
+		"<option value=\"__NEW__\">+ Create New Blast...</option>" +
+		"</select>" +
+		"</div>" +
+		"<div id=\"newBlastNameDiv\" style=\"display:none;margin-bottom:10px;\">" +
+		"<label style=\"display:block;margin-bottom:5px;\">New blast name:</label>" +
+		"<input type=\"text\" id=\"newBlastNameInput\" style=\"width:100%;padding:5px;\" placeholder=\"Enter new blast name\">" +
+		"</div>";
+
+	// Step 4e) Create dialog
+	var dialog = new FloatingDialog({
+		title: "Reassign Holes to Blast",
+		content: dialogContent,
+		layoutType: "default",
+		width: 400,
+		height: 280,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Reassign",
+		cancelText: "Cancel",
+		onConfirm: function () {
+			var selectEl = document.getElementById("blastNameSelect");
+			var newNameInput = document.getElementById("newBlastNameInput");
+			var targetBlastName = "";
+
+			if (selectEl.value === "__NEW__") {
+				targetBlastName = newNameInput.value.trim();
+				if (!targetBlastName) {
+					showModalMessage("Invalid Name", "Please enter a valid blast name.", "error");
+					return;
+				}
+			} else if (selectEl.value) {
+				targetBlastName = selectEl.value;
+			} else {
+				showModalMessage("No Selection", "Please select a blast pattern.", "error");
+				return;
+			}
+
+			// Step 4f) Handle HoleID conflicts when moving to new blast
+			// Generate unique suffix for conflicting IDs
+			var generateUniqueCode = function () {
+				var chars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+				var code = "";
+				for (var i = 0; i < 4; i++) {
+					code += chars.charAt(Math.floor(Math.random() * chars.length));
+				}
+				return code;
+			};
+
+			var existingHoleIDs = new Set();
+			allBlastHoles.forEach(function (h) {
+				if (h.entityName === targetBlastName) {
+					existingHoleIDs.add(h.holeID);
+				}
+			});
+
+			// Step 4g) Reassign holes with conflict resolution
+			var renamedCount = 0;
+			selectedHolesList.forEach(function (hole) {
+				if (hole.entityName !== targetBlastName) {
+					var newHoleID = hole.holeID;
+
+					// Check for conflict and generate unique ID
+					while (existingHoleIDs.has(newHoleID)) {
+						newHoleID = hole.holeID + "_" + generateUniqueCode();
+					}
+
+					hole.entityName = targetBlastName;
+					hole.holeID = newHoleID;
+					existingHoleIDs.add(newHoleID);
+					renamedCount++;
+				}
+			});
+
+			// Step 4h) Save and update
+			if (typeof debouncedSaveBlastHoles === "function") {
+				debouncedSaveBlastHoles();
+			}
+
+			if (treeViewInstance && typeof treeViewInstance.updateTreeData === "function") {
+				treeViewInstance.updateTreeData();
+				treeViewInstance.clearSelection();
+			}
+
+			drawData(allBlastHoles, selectedHole);
+			console.log("✅ Reassigned", renamedCount, "holes to", targetBlastName);
+			updateStatusMessage("Reassigned " + renamedCount + " holes to " + targetBlastName);
+			setTimeout(function () { updateStatusMessage(""); }, 3000);
+		},
+		onCancel: function () {
+			// Cancelled
+		}
+	});
+
+	dialog.show();
+
+	// Step 4i) Show/hide new blast name input based on selection
+	setTimeout(function () {
+		var selectEl = document.getElementById("blastNameSelect");
+		var newBlastDiv = document.getElementById("newBlastNameDiv");
+		if (selectEl && newBlastDiv) {
+			selectEl.addEventListener("change", function () {
+				newBlastDiv.style.display = selectEl.value === "__NEW__" ? "block" : "none";
+			});
+		}
+	}, 100);
+};
+
+// Step 5) Handle TreeView show properties
 window.handleTreeViewShowProperties = function (nodeId, type) {
 	console.log("🎄 [TreeView] Show properties for:", nodeId);
 

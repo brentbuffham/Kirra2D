@@ -168,14 +168,18 @@ function buildSingleSurfaceLegendHTML(surface) {
         html += "<div class='hud-legend-gradient' style='background: linear-gradient(to top, " + gradientCSS + ");'></div>";
     }
     
+    // Step 4e-5a) Use display values (custom limits) if available, otherwise fall back to actual values
+    var legendMinZ = surface.displayMinZ !== undefined ? surface.displayMinZ : (surface.actualMinZ !== undefined ? surface.actualMinZ : surface.minZ);
+    var legendMaxZ = surface.displayMaxZ !== undefined ? surface.displayMaxZ : (surface.actualMaxZ !== undefined ? surface.actualMaxZ : surface.maxZ);
+    
     html += "<div class='hud-legend-gradient-labels'>";
-    html += "<span class='hud-legend-label'>" + (surface.maxZ !== undefined ? surface.maxZ.toFixed(1) + "m" : "---") + "</span>";
+    html += "<span class='hud-legend-label'>" + (legendMaxZ !== undefined ? legendMaxZ.toFixed(1) + "m" : "---") + "</span>";
     if (!isHillshade) {
         // Step 4e-6) Show middle value for gradients
-        var midZ = (surface.minZ !== undefined && surface.maxZ !== undefined) ? ((surface.minZ + surface.maxZ) / 2) : undefined;
+        var midZ = (legendMinZ !== undefined && legendMaxZ !== undefined) ? ((legendMinZ + legendMaxZ) / 2) : undefined;
         html += "<span class='hud-legend-label hud-legend-label-mid'>" + (midZ !== undefined ? midZ.toFixed(1) + "m" : "-") + "</span>";
         // Step 4e-7) Show min label for gradients
-        html += "<span class='hud-legend-label'>" + (surface.minZ !== undefined ? surface.minZ.toFixed(1) + "m" : "---") + "</span>";
+        html += "<span class='hud-legend-label'>" + (legendMinZ !== undefined ? legendMinZ.toFixed(1) + "m" : "---") + "</span>";
     }
     html += "</div>";
     html += "</div>";

@@ -416,7 +416,7 @@ function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
 }
 
 // Step 6) Remove 3D print boundary overlay
-function remove3DPrintBoundaryOverlay() {
+export function remove3DPrintBoundaryOverlay() {
 	if (printBoundary3DOverlay && printBoundary3DOverlay.parentElement) {
 		printBoundary3DOverlay.parentElement.removeChild(printBoundary3DOverlay);
 		printBoundary3DOverlay = null;

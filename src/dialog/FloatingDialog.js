@@ -784,6 +784,11 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 			input.style.border = "1px solid #999";
 			input.style.appearance = "none";
 			input.style.boxSizing = "border-box";
+			
+			// Step 43a) Apply custom style if provided (overrides default width etc.)
+			if (field.style) {
+				input.style.cssText += field.style;
+			}
 		}
 
 		// Step 44) Mark the row with field name for easy reference

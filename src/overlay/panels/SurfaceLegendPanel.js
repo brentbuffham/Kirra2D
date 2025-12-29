@@ -21,10 +21,25 @@ function buildSurfaceLegendHTML() {
         var surface = currentSurfaces[i];
         html += "<div class='hud-surface-legend-item'>";
         html += "<span class='hud-surface-name'>" + (surface.name || "Surface " + (i + 1)) + "</span>";
-        if (surface.minZ !== undefined && surface.maxZ !== undefined) {
+        if (surface.displayMinZ !== undefined && surface.displayMaxZ !== undefined) {
             html += "<span class='hud-surface-range'>";
-            html += "Z: " + surface.minZ.toFixed(1) + " - " + surface.maxZ.toFixed(1);
+            if (surface.hasCustomLimits) {
+                // Show custom range with indication it's limited
+                html += "Z: " + surface.displayMinZ.toFixed(1) + " - " + surface.displayMaxZ.toFixed(1) + " (limited)";
+            } else {
+                // Show actual range
+                html += "Z: " + surface.displayMinZ.toFixed(1) + " - " + surface.displayMaxZ.toFixed(1);
+            }
             html += "</span>";
+
+            // Optional: Show actual range if different from display range
+            if (surface.hasCustomLimits &&
+                (Math.abs(surface.actualMinZ - surface.displayMinZ) > 0.1 ||
+                 Math.abs(surface.actualMaxZ - surface.displayMaxZ) > 0.1)) {
+                html += "<span class='hud-surface-actual-range'>";
+                html += "(actual: " + surface.actualMinZ.toFixed(1) + " - " + surface.actualMaxZ.toFixed(1) + ")";
+                html += "</span>";
+            }
         }
         if (surface.color) {
             html += "<span class='hud-surface-color' style='background-color: " + surface.color + ";'></span>";

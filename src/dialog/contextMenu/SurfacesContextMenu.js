@@ -24,8 +24,8 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
     var surface = surfaceId
         ? window.loadedSurfaces.get(surfaceId)
         : Array.from(window.loadedSurfaces.values()).find(function (s) {
-              return s.visible;
-          });
+            return s.visible;
+        });
     if (!surface) return;
 
     // Step 3) Store reference for dialog callbacks
@@ -50,6 +50,19 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
     // Step 5) Create fields array for form content
     var initialTransparency = Math.round((currentSurface.transparency || 1.0) * 100);
     var currentGradient = currentSurface.gradient || "default";
+    var currentMinLimit = currentSurface.minLimit !== undefined ? currentSurface.minLimit : null;
+    var currentMaxLimit = currentSurface.maxLimit !== undefined ? currentSurface.maxLimit : null;
+
+    // Get actual surface min/max for reference
+    var actualMinZ = Infinity;
+    var actualMaxZ = -Infinity;
+    if (currentSurface.points && currentSurface.points.length > 0) {
+        for (var i = 0; i < currentSurface.points.length; i++) {
+            var point = currentSurface.points[i];
+            if (point.z < actualMinZ) actualMinZ = point.z;
+            if (point.z > actualMaxZ) actualMaxZ = point.z;
+        }
+    }
 
     var fields = [
         {
@@ -69,6 +82,24 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
             type: "select",
             value: currentGradient,
             options: gradientOptions
+        },
+        {
+            label: "Min Elevation Limit (actual: " + (isFinite(actualMinZ) ? actualMinZ.toFixed(2) : "N/A") + ")",
+            name: "minLimit",
+            type: "number",
+            value: currentMinLimit,
+            step: 0.1,
+            placeholder: "Auto (no limit)",
+            style: "width:80%"
+        },
+        {
+            label: "Max Elevation Limit (actual: " + (isFinite(actualMaxZ) ? actualMaxZ.toFixed(2) : "N/A") + ")",
+            name: "maxLimit",
+            type: "number",
+            value: currentMaxLimit,
+            step: 0.1,
+            placeholder: "Auto (no limit)",
+            style: "width:80%"
         }
     ];
 
@@ -211,6 +242,10 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
             var newGradient = formData.gradient !== undefined ? formData.gradient : currentSurface.gradient;
             var showLegend = formData.showLegend !== undefined ? formData.showLegend : window.showSurfaceLegend;
 
+            // Handle min/max limits (convert empty strings to null)
+            var newMinLimit = formData.minLimit !== undefined && formData.minLimit !== "" ? parseFloat(formData.minLimit) : null;
+            var newMaxLimit = formData.maxLimit !== undefined && formData.maxLimit !== "" ? parseFloat(formData.maxLimit) : null;
+
             // Step 7a-1) Get hillshade color if using hillshade gradient
             var newHillshadeColor = currentSurface.hillshadeColor || null; // Preserve existing color
             if (newGradient === "hillshade") {
@@ -231,7 +266,14 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
             currentSurface.transparency = newTransparency;
             currentSurface.gradient = newGradient;
             currentSurface.hillshadeColor = newHillshadeColor;
+            currentSurface.minLimit = newMinLimit;
+            currentSurface.maxLimit = newMaxLimit;
             window.showSurfaceLegend = showLegend;
+
+            // Step 7a-4) Invalidate 2D surface cache so it re-renders with new settings
+            if (typeof window.invalidateSurfaceCache === "function") {
+                window.invalidateSurfaceCache(currentSurface.id);
+            }
 
             // Save to database
             window.saveSurfaceToDB(currentSurface.id).catch(function (err) {
