@@ -134,11 +134,22 @@ export function showKADPropertyEditorPopup(kadObject) {
             step: "0.1"
         });
     } else if (kadObject.entityType === "text") {
+        // Step 3a) Text field for text entities
         fields.push({
             label: "Text",
             name: "editText",
             type: "text",
             value: kadObject.text || ""
+        });
+        // Step 3b) Font Height field for text entities
+        fields.push({
+            label: "Font Height",
+            name: "editFontHeight",
+            type: "number",
+            value: kadObject.fontHeight || 12,
+            min: "1",
+            max: "200",
+            step: "1"
         });
     } else if (kadObject.entityType === "point") {
         fields.push({
@@ -368,6 +379,8 @@ export function showMultipleKADPropertyEditor(kadObjects) {
     const firstColor = firstEntity && firstEntity.data && firstEntity.data[0] ? firstEntity.data[0].color || "#FF0000" : "#FF0000";
     const firstLineWidth = firstEntity && firstEntity.data && firstEntity.data[0] ? firstEntity.data[0].lineWidth || 2 : 2;
     const firstZ = firstEntity && firstEntity.data && firstEntity.data[0] ? firstEntity.data[0].pointZLocation || 0 : 0;
+    const firstFontHeight = firstEntity && firstEntity.data && firstEntity.data[0] ? firstEntity.data[0].fontHeight || 12 : 12;
+    const entityType = kadObjects[0].entityType || "polygon";
 
     // Step 6b) Common properties that can be edited for all KAD objects
     const fields = [
@@ -394,6 +407,19 @@ export function showMultipleKADPropertyEditor(kadObjects) {
             step: "0.1"
         }
     ];
+
+    // Step 6b.1) Add Font Height field for text entities
+    if (entityType === "text") {
+        fields.push({
+            label: "Font Height",
+            name: "editFontHeight",
+            type: "number",
+            value: firstFontHeight,
+            min: "1",
+            max: "200",
+            step: "1"
+        });
+    }
 
     // Step 6c) Use the same enhanced form content helper for consistent styling
     const formContent = window.createEnhancedFormContent ? window.createEnhancedFormContent(fields, false, false) : document.createElement("div");
@@ -441,8 +467,7 @@ export function showMultipleKADPropertyEditor(kadObjects) {
     noteDiv.innerHTML = "Editing " + kadObjects.length + " " + (kadObjects[0].entityType || "polygon") + "(s)";
     formContent.appendChild(noteDiv);
 
-    // Step 6e) Determine entity type for title
-    const entityType = kadObjects[0].entityType || "polygon";
+    // Step 6e) Determine entity type display for title (entityType already defined above)
     const entityTypeDisplay = entityType.charAt(0).toUpperCase() + entityType.slice(1) + (entityType.endsWith("s") ? "es" : "s");
 
     // Step 6e.1) Store initial values for dirty tracking
@@ -481,6 +506,10 @@ export function showMultipleKADPropertyEditor(kadObjects) {
                         }
                         if (formData.editZLocation) {
                             point.pointZLocation = parseFloat(formData.editZLocation);
+                        }
+                        // Step 6f.2a) Apply fontHeight for text entities
+                        if (formData.editFontHeight) {
+                            point.fontHeight = parseFloat(formData.editFontHeight);
                         }
                     });
                 }

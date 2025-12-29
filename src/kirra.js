@@ -6231,10 +6231,10 @@ window.addEventListener("resize", resizeChart);
 window.addEventListener("resize", handleThreeJSResize);
 window.addEventListener("resize", handleBaseCanvasResize);
 // Step A5) Update LineMaterial resolution on resize for fat lines
-window.addEventListener("resize", function() {
+window.addEventListener("resize", function () {
 	if (window.threeRenderer && window.threeRenderer.kadGroup) {
 		var res = new THREE.Vector2(window.innerWidth, window.innerHeight);
-		window.threeRenderer.kadGroup.traverse(function(child) {
+		window.threeRenderer.kadGroup.traverse(function (child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
 			}
@@ -11534,7 +11534,7 @@ async function getUniqueElementVerticesAsync(xyzVertices, tolerance = 0.001, pro
 				}
 				lastProgressUpdate = now;
 				// Yield to event loop
-				await new Promise(function(resolve) { setTimeout(resolve, 0); });
+				await new Promise(function (resolve) { setTimeout(resolve, 0); });
 			}
 		}
 	}
@@ -11605,7 +11605,7 @@ async function createDelaunayTriangulation(params, updateProgress = null) {
 			await updateProgress(percent, message);
 		}
 		// Always yield to event loop for large operations
-		await new Promise(function(resolve) { setTimeout(resolve, 0); });
+		await new Promise(function (resolve) { setTimeout(resolve, 0); });
 	}
 
 	try {
@@ -11688,7 +11688,7 @@ async function createDelaunayTriangulation(params, updateProgress = null) {
 		var LARGE_DATASET_THRESHOLD = 10000;
 		if (elementVertices.length > LARGE_DATASET_THRESHOLD) {
 			// Async version with progress
-			elementVertices = await getUniqueElementVerticesAsync(elementVertices, tolerance, async function(percent, message) {
+			elementVertices = await getUniqueElementVerticesAsync(elementVertices, tolerance, async function (percent, message) {
 				// Map deduplication progress to 15-30% range
 				var mappedPercent = 15 + Math.floor(percent * 0.15);
 				await reportProgress(mappedPercent, message);
@@ -12306,7 +12306,7 @@ async function createConstrainedDelaunayTriangulation(params, updateProgress = n
 		var LARGE_DATASET_THRESHOLD = 10000;
 		if (originalVertexCount > LARGE_DATASET_THRESHOLD) {
 			if (updateProgress) await updateProgress(15, "Deduplicating " + originalVertexCount.toLocaleString() + " vertices...");
-			elementVertices = await getUniqueElementVerticesAsync(elementVertices, params.tolerance || 0.001, async function(percent, message) {
+			elementVertices = await getUniqueElementVerticesAsync(elementVertices, params.tolerance || 0.001, async function (percent, message) {
 				// Map deduplication progress to 15-25% range
 				var mappedPercent = 15 + Math.floor(percent * 0.10);
 				if (updateProgress) await updateProgress(mappedPercent, message);
@@ -23033,7 +23033,7 @@ function drawData(allBlastHoles, selectedHole) {
 							threeRenderer.kadGroup.add(hybridBatch.thinLineSegments);
 						}
 						// Add fat lines batches (1 draw call per unique thick lineWidth)
-						hybridBatch.fatLinesByWidth.forEach(function(fatBatch) {
+						hybridBatch.fatLinesByWidth.forEach(function (fatBatch) {
 							threeRenderer.kadGroup.add(fatBatch);
 						});
 						usedSuperBatchLines = true;
@@ -23067,7 +23067,7 @@ function drawData(allBlastHoles, selectedHole) {
 							threeRenderer.kadGroup.add(hybridCircles.thinLineSegments);
 						}
 						// Add fat circles batches
-						hybridCircles.fatLinesByWidth.forEach(function(fatBatch) {
+						hybridCircles.fatLinesByWidth.forEach(function (fatBatch) {
 							threeRenderer.kadGroup.add(fatBatch);
 						});
 						usedSuperBatchCircles = true;
@@ -40234,7 +40234,7 @@ debouncedUpdateTreeView = function (delay = 250) {  // Increased default delay
 	if (updateTreeViewTimeout) {
 		clearTimeout(updateTreeViewTimeout);
 	}
-	
+
 	// Skip if tree panel is not visible
 	var treePanel = document.getElementById("treePanel");
 	if (!treePanel || treePanel.style.display === "none") {
@@ -40246,7 +40246,7 @@ debouncedUpdateTreeView = function (delay = 250) {  // Increased default delay
 	updateTreeViewTimeout = setTimeout(function () {
 		// Use requestIdleCallback if available for non-blocking update
 		if (typeof requestIdleCallback === "function") {
-			requestIdleCallback(function() {
+			requestIdleCallback(function () {
 				updateTreeView();
 			}, { timeout: 500 });  // Max wait 500ms
 		} else {

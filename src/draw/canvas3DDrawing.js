@@ -460,14 +460,16 @@ export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, 
 }
 
 // Step 11) Draw KAD text in Three.js
-export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, kadId = null) {
+// anchorX defaults to "left" to match 2D canvas text alignment
+export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, kadId = null, anchorX = "left") {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	if (developerModeEnabled) {
 		console.log("🔧 [drawKADTextThreeJS] kadId:", kadId);
 	}
 
-	const textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor);
+	// Step 11a) Create text with left alignment to match 2D canvas rendering
+	const textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor, anchorX);
 
 	// Step 11a) Add metadata for selection
 	if (kadId) {

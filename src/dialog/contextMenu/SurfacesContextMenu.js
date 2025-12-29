@@ -90,7 +90,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
             value: currentMinLimit,
             step: 0.1,
             placeholder: "Auto (no limit)",
-            style: "width:80%"
+            style: "width:100px"
         },
         {
             label: "Max Elevation Limit (actual: " + (isFinite(actualMaxZ) ? actualMaxZ.toFixed(2) : "N/A") + ")",
@@ -99,7 +99,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
             value: currentMaxLimit,
             step: 0.1,
             placeholder: "Auto (no limit)",
-            style: "width:80%"
+            style: "width:100px"
         }
     ];
 

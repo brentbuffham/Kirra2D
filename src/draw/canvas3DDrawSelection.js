@@ -7,6 +7,26 @@
 import * as THREE from "three";
 import { GeometryFactory } from "../three/GeometryFactory.js";
 
+// Step 0) Restore original colors on text meshes that were highlighted
+// Called before drawing new highlights or when clearing selection
+export function restoreTextColorsThreeJS() {
+    if (!window.threeRenderer || !window.threeRenderer.kadGroup) return;
+    
+    window.threeRenderer.kadGroup.traverse(function(obj) {
+        // Step 0a) Check if this object was highlighted
+        if (obj.userData && obj.userData.isHighlighted && obj.userData.originalColor !== undefined) {
+            // Step 0b) Restore original color
+            obj.color = obj.userData.originalColor;
+            obj.userData.isHighlighted = false;
+            
+            // Step 0c) Sync to update the color
+            if (obj.sync) {
+                obj.sync();
+            }
+        }
+    });
+}
+
 // Step 1) Highlight selected KAD objects in Three.js
 // Mimics drawKADHighlightSelectionVisuals() for 2D canvas
 export function highlightSelectedKADThreeJS() {
@@ -15,6 +35,9 @@ export function highlightSelectedKADThreeJS() {
         console.log("⚠️ highlightSelectedKADThreeJS - Three.js not initialized");
         return;
     }
+
+    // Step 1a.1) Restore any previously highlighted text colors before new highlighting
+    restoreTextColorsThreeJS();
 
     // Step 1b) Access globals from window object
     const selectedKADObject = window.selectedKADObject;
@@ -122,8 +145,39 @@ export function highlightSelectedKADThreeJS() {
                         cx: local.x, cy: local.y, cz: centerZ, radius: radius
                     });
                 });
+            } else if (entityType === "text") {
+                // Step 3.1c) Color-based highlight for text (more efficient than boxes)
+                entity.data.forEach(function(textData, index) {
+                    var kadId = kadObj.entityName + ":::" + index;
+                    
+                    // Find the existing text mesh in kadGroup by kadId
+                    var textMesh = null;
+                    window.threeRenderer.kadGroup.traverse(function(obj) {
+                        if (obj.userData && obj.userData.kadId === kadId && obj.userData.type === "kadText") {
+                            textMesh = obj;
+                        }
+                    });
+                    
+                    if (textMesh) {
+                        // Store original color if not already stored
+                        if (textMesh.userData.originalColor === undefined) {
+                            textMesh.userData.originalColor = textMesh.color;
+                        }
+                        
+                        // All selected text gets green highlight
+                        textMesh.color = 0x00FF00;
+                        
+                        // Sync to update the color
+                        if (textMesh.sync) {
+                            textMesh.sync();
+                        }
+                        
+                        // Mark for color restoration later
+                        textMesh.userData.isHighlighted = true;
+                    }
+                });
             }
-            // Note: Points and Text entities are handled individually (they're already efficient)
+            // Note: Points are handled individually (they're already efficient)
         });
         
         // Step 3.2) Create batched highlight geometry (ONE object for all segments)
@@ -371,41 +425,41 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
             break;
 
         case "text":
-            // Step 4f) Highlight text (match troika text dimensions)
+            // Step 4f) Highlight text by changing text color (no boxes/verts for better performance)
+            // Find and colorize the existing troika text meshes in kadGroup
             entity.data.forEach((textData, index) => {
-                const local = worldToThreeLocal(textData.pointXLocation, textData.pointYLocation);
-                const z = textData.pointZLocation || dataCentroidZ || 0;
-
-                // Step 4f.1) Calculate text dimensions matching GeometryFactory.createKADText()
-                // Troika text uses fontSize / currentScale for world units
-                const fontSize = textData.fontSize || 12;
-                const text = textData.text || "Text";
-                const currentScale = window.currentScale || 5;
-                const fontSizeWorldUnits = fontSize / currentScale; // Match GeometryFactory scaling
-
-                // Step 4f.1a) Estimate width based on character count (more accurate than fixed width)
-                const charWidth = fontSizeWorldUnits * 0.6; // Approximate character width
-                const textWidth = text.length * charWidth;
-                const textHeight = fontSizeWorldUnits;
-
-                // Step 4f.1b) Make highlight box slightly larger for visibility
-                const width = textWidth * 1.2;
-                const height = textHeight * 1.5;
-
-                // Step 4f.2) Selected text gets magenta box
-                if (index === kadObject.elementIndex) {
-                    const boxHighlight = GeometryFactory.createKADTextBoxHighlight(local.x, local.y, z, width, height, selectedSegmentColor);
-                    highlightGroup.add(boxHighlight);
-
-                    // Step 4f.3) Add anchor point - SKIP if large selection
-                    if (!skipVertices) {
-                        const anchorPoint = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
-                        highlightGroup.add(anchorPoint);
+                const kadId = kadObject.entityName + ":::" + index;
+                
+                // Step 4f.1) Find the existing text mesh in kadGroup by kadId
+                var textMesh = null;
+                window.threeRenderer.kadGroup.traverse(function(obj) {
+                    if (obj.userData && obj.userData.kadId === kadId && obj.userData.type === "kadText") {
+                        textMesh = obj;
                     }
-                } else {
-                    // Step 4f.4) Other text gets green box
-                    const boxHighlight = GeometryFactory.createKADTextBoxHighlight(local.x, local.y, z, width, height, nonSelectedSegmentColor);
-                    highlightGroup.add(boxHighlight);
+                });
+                
+                if (textMesh) {
+                    // Step 4f.2) Store original color if not already stored
+                    if (textMesh.userData.originalColor === undefined) {
+                        textMesh.userData.originalColor = textMesh.color;
+                    }
+                    
+                    // Step 4f.3) Selected text gets magenta color, others get green
+                    if (index === kadObject.elementIndex) {
+                        // Selected text: bright magenta/pink
+                        textMesh.color = 0xFF44FF;
+                    } else {
+                        // Non-selected text in same entity: bright green
+                        textMesh.color = 0x00FF00;
+                    }
+                    
+                    // Step 4f.4) Sync to update the color
+                    if (textMesh.sync) {
+                        textMesh.sync();
+                    }
+                    
+                    // Step 4f.5) Mark for color restoration later
+                    textMesh.userData.isHighlighted = true;
                 }
             });
             break;

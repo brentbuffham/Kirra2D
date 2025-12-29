@@ -2,49 +2,13 @@
 //=================================================
 // canvas2DDrawSelection.js - 2D KAD Selection Visuals
 // Extracted from kirra.js for modularity
+// 2025-12-29: Text highlighting now uses color change instead of boxes
 //=================================================
 
-// Step 1) Helper function to calculate exact text dimensions (matches drawKADTexts)
-function calculateTextDimensions(text) {
-    if (!text)
-        return {
-            width: 0,
-            height: 0,
-            lines: []
-        };
-
-    // Step 1a) Set the same font as drawKADTexts
-    const ctx = window.ctx;
-    const currentFontSize = window.currentFontSize;
-    ctx.font = parseInt(currentFontSize - 2) + "px Arial";
-
-    const lines = text.split("\n");
-    const lineHeight = currentFontSize; // Same as drawMultilineText
-
-    // Step 1b) Calculate the width of the widest line (same logic as drawMultilineText)
-    let maxWidth = 0;
-    for (let i = 0; i < lines.length; i++) {
-        const lineWidth = ctx.measureText(lines[i]).width;
-        if (lineWidth > maxWidth) {
-            maxWidth = lineWidth;
-        }
-    }
-
-    const totalHeight = lines.length * lineHeight;
-
-    return {
-        width: maxWidth,
-        height: totalHeight,
-        lineHeight: lineHeight,
-        lines: lines,
-        numLines: lines.length
-    };
-}
-
-// Step 2) Draw KAD selection highlights in 2D canvas
+// Step 1) Draw KAD selection highlights in 2D canvas
 // ENHANCED: Fix segment highlighting to show only the clicked segment
 export function drawKADHighlightSelectionVisuals() {
-    // Step 2a) Access globals from window object
+    // Step 1a) Access globals from window object
     const selectedKADObject = window.selectedKADObject;
     const selectedMultipleKADObjects = window.selectedMultipleKADObjects;
     const isSelectionPointerActive = window.isSelectionPointerActive;
@@ -54,7 +18,7 @@ export function drawKADHighlightSelectionVisuals() {
     const currentScale = window.currentScale;
     const getEntityFromKADObject = window.getEntityFromKADObject;
 
-    // Step 2b) Early exit if no selection
+    // Step 1b) Early exit if no selection
     if (!selectedKADObject && (!selectedMultipleKADObjects || selectedMultipleKADObjects.length === 0)) return;
 
     if (developerModeEnabled) {
@@ -65,20 +29,20 @@ export function drawKADHighlightSelectionVisuals() {
         console.log("selectedMultipleKADObjects.length:", selectedMultipleKADObjects?.length);
     }
 
-    // Step 2c) Define colors
+    // Step 1c) Define colors
     const selectedSegmentColor = "rgba(255, 68, 255, 0.8)";
     const selectedVertexColor = "rgba(255, 68, 255, 0.8)";
     const nonSelectedSegmentColor = "#00FF00"; // Green for non-selected segments
     const nonSelectedPointColor = "rgba(0, 255, 0, 0.5)"; // Green for non-selected points
     const verticesColor = "rgba(255,0,0,0.5)";
 
-    // Step 3) Handle single selection
+    // Step 2) Handle single selection
     if (selectedKADObject && isSelectionPointerActive) {
         const tolerance = 5;
         let entity = getEntityFromKADObject(selectedKADObject);
         if (!entity) return;
 
-        // Step 3a) Common selection styling
+        // Step 2a) Common selection styling
         ctx.strokeStyle = nonSelectedSegmentColor; // Bright green
         ctx.lineWidth = 3;
         ctx.setLineDash([]);
@@ -86,7 +50,7 @@ export function drawKADHighlightSelectionVisuals() {
 
         switch (selectedKADObject.entityType) {
             case "point":
-                // Step 3b) Highlight the selected point with extra emphasis
+                // Step 2b) Highlight the selected point with extra emphasis
                 const [px, py] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
 
                 ctx.strokeStyle = selectedSegmentColor;
@@ -95,7 +59,7 @@ export function drawKADHighlightSelectionVisuals() {
                 ctx.arc(px, py, tolerance + 3, 0, 2 * Math.PI);
                 ctx.stroke();
 
-                // Step 3c) Draw all other points in the entity with standard highlighting
+                // Step 2c) Draw all other points in the entity with standard highlighting
                 ctx.strokeStyle = nonSelectedSegmentColor;
                 ctx.lineWidth = 5;
                 entity.data.forEach((point, index) => {
@@ -109,7 +73,7 @@ export function drawKADHighlightSelectionVisuals() {
                 break;
 
             case "line":
-                // Step 3d) Draw ALL segments first with standard highlighting
+                // Step 2d) Draw ALL segments first with standard highlighting
                 entity.data.forEach((point, index) => {
                     if (index > 0) {
                         const [prevX, prevY] = worldToCanvas(entity.data[index - 1].pointXLocation, entity.data[index - 1].pointYLocation);
@@ -124,7 +88,7 @@ export function drawKADHighlightSelectionVisuals() {
                     }
                 });
 
-                // Step 3e) Then highlight ONLY the selected segment
+                // Step 2e) Then highlight ONLY the selected segment
                 if (selectedKADObject.selectionType === "segment") {
                     const segmentIndex = selectedKADObject.segmentIndex;
                     if (segmentIndex < entity.data.length - 1) {
@@ -142,7 +106,7 @@ export function drawKADHighlightSelectionVisuals() {
                     }
                 }
 
-                // Step 3f) Draw all vertices
+                // Step 2f) Draw all vertices
                 entity.data.forEach((point) => {
                     const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
                     ctx.fillStyle = verticesColor;
@@ -155,7 +119,7 @@ export function drawKADHighlightSelectionVisuals() {
             case "poly":
                 const polygonPoints = entity.data;
 
-                // Step 3g) Draw ALL segments first with standard highlighting
+                // Step 2g) Draw ALL segments first with standard highlighting
                 for (let i = 0; i < polygonPoints.length; i++) {
                     const point1 = polygonPoints[i];
                     const point2 = polygonPoints[(i + 1) % polygonPoints.length];
@@ -170,13 +134,13 @@ export function drawKADHighlightSelectionVisuals() {
                     ctx.stroke();
                 }
 
-                // Step 3h) Then highlight ONLY the selected segment
+                // Step 2h) Then highlight ONLY the selected segment
                 if (selectedKADObject.selectionType === "segment") {
                     const segmentIndex = selectedKADObject.segmentIndex;
                     const point1 = polygonPoints[segmentIndex];
                     const point2 = polygonPoints[(segmentIndex + 1) % polygonPoints.length];
 
-                    // Step 3i) Check if points exist before accessing properties
+                    // Step 2i) Check if points exist before accessing properties
                     if (point1 && point2 && point1.pointXLocation !== undefined && point2.pointXLocation !== undefined) {
                         const [x1, y1] = worldToCanvas(point1.pointXLocation, point1.pointYLocation);
                         const [x2, y2] = worldToCanvas(point2.pointXLocation, point2.pointYLocation);
@@ -190,9 +154,9 @@ export function drawKADHighlightSelectionVisuals() {
                     }
                 }
 
-                // Step 3j) Draw all vertices
+                // Step 2j) Draw all vertices
                 polygonPoints.forEach((point) => {
-                    // Step 3k) Check if point exists before accessing properties
+                    // Step 2k) Check if point exists before accessing properties
                     if (point && point.pointXLocation !== undefined) {
                         const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
                         ctx.fillStyle = verticesColor;
@@ -204,7 +168,7 @@ export function drawKADHighlightSelectionVisuals() {
                 break;
 
             case "circle":
-                // Step 3l) Circle highlighting
+                // Step 2l) Circle highlighting
                 const [cx, cy] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
 
                 ctx.strokeStyle = selectedSegmentColor;
@@ -219,7 +183,7 @@ export function drawKADHighlightSelectionVisuals() {
                 ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
                 ctx.fill();
 
-                // Step 3m) Other circles...
+                // Step 2m) Other circles...
                 ctx.strokeStyle = nonSelectedSegmentColor;
                 ctx.lineWidth = 2;
                 entity.data.forEach((circle, index) => {
@@ -234,49 +198,38 @@ export function drawKADHighlightSelectionVisuals() {
                 break;
 
             case "text":
-                // Step 3n) Text highlighting
-                const [tx, ty] = worldToCanvas(selectedKADObject.pointXLocation, selectedKADObject.pointYLocation);
-                const textDimensions = calculateTextDimensions(selectedKADObject.text || "Text");
-
-                ctx.strokeStyle = selectedSegmentColor;
-                ctx.lineWidth = 4;
-
-                const rectX = tx - 5;
-                const rectY = ty - textDimensions.lineHeight + 2;
-                const rectWidth = textDimensions.width + 10;
-                const rectHeight = textDimensions.height + 6;
-
-                ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
-
-                ctx.fillStyle = verticesColor;
-                ctx.beginPath();
-                ctx.arc(tx, ty, 4, 0, 2 * Math.PI);
-                ctx.fill();
-
-                // Step 3o) Other text elements...
-                ctx.strokeStyle = nonSelectedSegmentColor;
-                ctx.lineWidth = 2;
+                // Step 2n) Text highlighting - redraw text in highlight color (no boxes for performance)
+                // Selected text gets magenta, others in same entity get green
                 entity.data.forEach((textData, index) => {
-                    if (index !== selectedKADObject.elementIndex) {
-                        const [otx, oty] = worldToCanvas(textData.pointXLocation, textData.pointYLocation);
-                        const otherTextDimensions = calculateTextDimensions(textData.text || "Text");
-
-                        const otherRectX = otx - 5;
-                        const otherRectY = oty - otherTextDimensions.lineHeight + 2;
-                        const otherRectWidth = otherTextDimensions.width + 10;
-                        const otherRectHeight = otherTextDimensions.height + 6;
-
-                        ctx.strokeRect(otherRectX, otherRectY, otherRectWidth, otherRectHeight);
+                    const [textX, textY] = worldToCanvas(textData.pointXLocation, textData.pointYLocation);
+                    const fontSize = textData.fontHeight || window.currentFontSize || 12;
+                    const textContent = textData.text || "Text";
+                    
+                    // Step 2n.1) Set font to match original drawing
+                    ctx.font = parseInt(fontSize) + "px Arial";
+                    
+                    // Step 2n.2) Selected text gets magenta, others get green
+                    if (index === selectedKADObject.elementIndex) {
+                        ctx.fillStyle = selectedSegmentColor; // Magenta for selected
+                    } else {
+                        ctx.fillStyle = nonSelectedSegmentColor; // Green for others
+                    }
+                    
+                    // Step 2n.3) Redraw text in highlight color (multiline support)
+                    const lines = textContent.split("\n");
+                    const lineHeight = fontSize;
+                    for (var i = 0; i < lines.length; i++) {
+                        ctx.fillText(lines[i], textX, textY + i * lineHeight);
                     }
                 });
                 break;
         }
     }
 
-    // Step 4) Handle multiple selections - reuse the single selection drawing code
+    // Step 3) Handle multiple selections - reuse the single selection drawing code
     // PERFORMANCE FIX 2025-12-28: Type-based vertex skip to prevent freeze with large selections
     if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
-        // Step 4.0) Count selected entities by type (same pattern as HUD stats)
+        // Step 3.0) Count selected entities by type (same pattern as HUD stats)
         var kadPointCount = 0, kadLineCount = 0, kadPolyCount = 0, kadCircleCount = 0, kadTextCount = 0;
         for (var i = 0; i < selectedMultipleKADObjects.length; i++) {
             var type = selectedMultipleKADObjects[i].entityType;
@@ -287,11 +240,11 @@ export function drawKADHighlightSelectionVisuals() {
             else if (type === "text") kadTextCount++;
         }
 
-        // Step 4.0a) Only draw vertices if NO type has more than 1 entity
+        // Step 3.0a) Only draw vertices if NO type has more than 1 entity
         var maxTypeCount = Math.max(kadPointCount, kadLineCount, kadPolyCount, kadCircleCount, kadTextCount);
         var skipVertices = maxTypeCount > 1;
 
-        // Step 4.0b) Cap render count for safety (2D canvas is fast, can handle many)
+        // Step 3.0b) Cap render count for safety (2D canvas is fast, can handle many)
         var MAX_RENDER_COUNT = 5000;
         var selectionCount = selectedMultipleKADObjects.length;
         var renderCount = Math.min(selectionCount, MAX_RENDER_COUNT);
@@ -302,7 +255,7 @@ export function drawKADHighlightSelectionVisuals() {
             console.log("Performance mode: skipVertices=" + skipVertices + " (maxTypeCount=" + maxTypeCount + ")");
         }
         
-        // Step 4.0c) Show warning if selection was truncated
+        // Step 3.0c) Show warning if selection was truncated
         if (selectionCount > MAX_RENDER_COUNT && !window._largeSelectionWarningShown) {
             window._largeSelectionWarningShown = true;
             if (typeof window.updateStatusMessage === "function") {
@@ -319,15 +272,15 @@ export function drawKADHighlightSelectionVisuals() {
                 console.log("kadObj:", kadObj);
             }
 
-            // Step 4a) Temporarily replace selectedKADObject with this one
+            // Step 3a) Temporarily replace selectedKADObject with this one
             const temp = window.selectedKADObject;
             window.selectedKADObject = kadObj;
 
-            // Step 4b) Declare variables
+            // Step 3b) Declare variables
             const tolerance = 5;
             let entity = getEntityFromKADObject(kadObj);
             
-            // Step 4b.1) Skip vertex drawing if selection is large
+            // Step 3b.1) Skip vertex drawing if selection is large
             const drawVerticesForThis = !skipVertices;
 
             if (developerModeEnabled) {
@@ -340,7 +293,7 @@ export function drawKADHighlightSelectionVisuals() {
                     console.log("Entity found - proceeding with drawing for:", kadObj.entityType);
                 }
 
-                // Step 4c) Common selection styling
+                // Step 3c) Common selection styling
                 ctx.strokeStyle = nonSelectedSegmentColor; // Bright green
                 ctx.lineWidth = 3;
                 ctx.setLineDash([]);
@@ -348,7 +301,7 @@ export function drawKADHighlightSelectionVisuals() {
 
                 switch (kadObj.entityType) {
                     case "point":
-                        // Step 4d) Highlight the selected point with extra emphasis
+                        // Step 3d) Highlight the selected point with extra emphasis
                         const [px, py] = worldToCanvas(kadObj.pointXLocation, kadObj.pointYLocation);
 
                         ctx.strokeStyle = selectedSegmentColor; // Orange for selected element
@@ -357,7 +310,7 @@ export function drawKADHighlightSelectionVisuals() {
                         ctx.arc(px, py, tolerance + 3, 0, 2 * Math.PI);
                         ctx.stroke();
 
-                        // Step 4e) Draw all other points in the entity with standard highlighting
+                        // Step 3e) Draw all other points in the entity with standard highlighting
                         // PERFORMANCE FIX: Skip if large selection
                         if (drawVerticesForThis) {
                             ctx.strokeStyle = nonSelectedSegmentColor;
@@ -374,7 +327,7 @@ export function drawKADHighlightSelectionVisuals() {
                         break;
 
                     case "line":
-                        // Step 4f) Draw ALL segments first with standard highlighting
+                        // Step 3f) Draw ALL segments first with standard highlighting
                         entity.data.forEach((point, index) => {
                             if (index > 0) {
                                 const [prevX, prevY] = worldToCanvas(entity.data[index - 1].pointXLocation, entity.data[index - 1].pointYLocation);
@@ -389,7 +342,7 @@ export function drawKADHighlightSelectionVisuals() {
                             }
                         });
 
-                        // Step 4g) Then highlight ONLY the selected segment
+                        // Step 3g) Then highlight ONLY the selected segment
                         if (kadObj.selectionType === "segment") {
                             const segmentIndex = kadObj.segmentIndex;
                             if (segmentIndex < entity.data.length - 1) {
@@ -407,7 +360,7 @@ export function drawKADHighlightSelectionVisuals() {
                             }
                         }
 
-                        // Step 4h) Draw all vertices
+                        // Step 3h) Draw all vertices
                         // PERFORMANCE FIX: Skip if large selection
                         if (drawVerticesForThis) {
                             entity.data.forEach((point) => {
@@ -423,7 +376,7 @@ export function drawKADHighlightSelectionVisuals() {
                     case "poly":
                         const polygonPoints = entity.data;
 
-                        // Step 4i) Draw ALL segments first with standard highlighting
+                        // Step 3i) Draw ALL segments first with standard highlighting
                         for (let i = 0; i < polygonPoints.length; i++) {
                             const point1 = polygonPoints[i];
                             const point2 = polygonPoints[(i + 1) % polygonPoints.length];
@@ -438,7 +391,7 @@ export function drawKADHighlightSelectionVisuals() {
                             ctx.stroke();
                         }
 
-                        // Step 4j) Then highlight ONLY the selected segment
+                        // Step 3j) Then highlight ONLY the selected segment
                         if (kadObj.selectionType === "segment") {
                             const segmentIndex = kadObj.segmentIndex;
                             const point1 = polygonPoints[segmentIndex];
@@ -454,7 +407,7 @@ export function drawKADHighlightSelectionVisuals() {
                             ctx.stroke();
                         }
 
-                        // Step 4k) Draw all vertices
+                        // Step 3k) Draw all vertices
                         // PERFORMANCE FIX: Skip if large selection
                         if (drawVerticesForThis) {
                             polygonPoints.forEach((point) => {
@@ -468,7 +421,7 @@ export function drawKADHighlightSelectionVisuals() {
                         break;
 
                     case "circle":
-                        // Step 4l) Circle highlighting
+                        // Step 3l) Circle highlighting
                         const [cx, cy] = worldToCanvas(kadObj.pointXLocation, kadObj.pointYLocation);
 
                         ctx.strokeStyle = selectedSegmentColor; // Orange for selected segment
@@ -483,7 +436,7 @@ export function drawKADHighlightSelectionVisuals() {
                         ctx.arc(cx, cy, 4, 0, 2 * Math.PI);
                         ctx.fill();
 
-                        // Step 4m) Other circles...
+                        // Step 3m) Other circles...
                         // PERFORMANCE FIX: Skip if large selection
                         if (drawVerticesForThis) {
                             ctx.strokeStyle = nonSelectedSegmentColor;
@@ -501,44 +454,26 @@ export function drawKADHighlightSelectionVisuals() {
                         break;
 
                     case "text":
-                        // Step 4n) Text highlighting
-                        const [tx, ty] = worldToCanvas(kadObj.pointXLocation, kadObj.pointYLocation);
-                        const textDimensions = calculateTextDimensions(kadObj.text || "Text");
-
-                        ctx.strokeStyle = selectedSegmentColor; // Orange for selected segment
-                        ctx.lineWidth = 4;
-
-                        const rectX = tx - 5;
-                        const rectY = ty - textDimensions.lineHeight + 2;
-                        const rectWidth = textDimensions.width + 10;
-                        const rectHeight = textDimensions.height + 6;
-
-                        ctx.strokeRect(rectX, rectY, rectWidth, rectHeight);
-
-                        ctx.fillStyle = verticesColor;
-                        ctx.beginPath();
-                        ctx.arc(tx, ty, 4, 0, 2 * Math.PI);
-                        ctx.fill();
-
-                        // Step 4o) Other text elements...
-                        // PERFORMANCE FIX: Skip if large selection
-                        if (drawVerticesForThis) {
-                            ctx.strokeStyle = nonSelectedSegmentColor;
-                            ctx.lineWidth = 2;
-                            entity.data.forEach((textData, index) => {
-                                if (index !== kadObj.elementIndex) {
-                                    const [otx, oty] = worldToCanvas(textData.pointXLocation, textData.pointYLocation);
-                                    const otherTextDimensions = calculateTextDimensions(textData.text || "Text");
-
-                                    const otherRectX = otx - 5;
-                                    const otherRectY = oty - otherTextDimensions.lineHeight + 2;
-                                    const otherRectWidth = otherTextDimensions.width + 10;
-                                    const otherRectHeight = otherTextDimensions.height + 6;
-
-                                    ctx.strokeRect(otherRectX, otherRectY, otherRectWidth, otherRectHeight);
-                                }
-                            });
-                        }
+                        // Step 3n) Text highlighting - redraw text in highlight color (no boxes for performance)
+                        // All selected text entities get green highlight
+                        entity.data.forEach((textData, index) => {
+                            const [textX, textY] = worldToCanvas(textData.pointXLocation, textData.pointYLocation);
+                            const fontSize = textData.fontHeight || window.currentFontSize || 12;
+                            const textContent = textData.text || "Text";
+                            
+                            // Step 3n.1) Set font to match original drawing
+                            ctx.font = parseInt(fontSize) + "px Arial";
+                            
+                            // Step 3n.2) All selected text gets green
+                            ctx.fillStyle = nonSelectedSegmentColor; // Green for all selected
+                            
+                            // Step 3n.3) Redraw text in highlight color (multiline support)
+                            const lines = textContent.split("\n");
+                            const lineHeight = fontSize;
+                            for (var i = 0; i < lines.length; i++) {
+                                ctx.fillText(lines[i], textX, textY + i * lineHeight);
+                            }
+                        });
                         break;
                 }
             } else {
@@ -558,12 +493,12 @@ export function drawKADHighlightSelectionVisuals() {
                 }
             }
 
-            // Step 4p) Restore original
+            // Step 3p) Restore original
             window.selectedKADObject = temp;
         });
     }
 
-    // Step 5) Draw individual vertex highlight if selectedPoint is set
+    // Step 4) Draw individual vertex highlight if selectedPoint is set
     const selectedPoint = window.selectedPoint;
 
     if (developerModeEnabled) {
@@ -602,7 +537,7 @@ export function drawKADHighlightSelectionVisuals() {
         }
     }
 
-    // Step 6) Draw multiple selected vertices (from TreeView multi-select)
+    // Step 5) Draw multiple selected vertices (from TreeView multi-select)
     const selectedMultiplePoints = window.selectedMultiplePoints;
     if (selectedMultiplePoints && selectedMultiplePoints.length > 0) {
         selectedMultiplePoints.forEach(function (point) {
