@@ -25620,8 +25620,35 @@ function checkAndPromptForStoredData() {
 			surfaceRequest.onsuccess = (surfaceEvent) => {
 				const surfaceData = surfaceEvent.target.result || [];
 
-				// Step 5) Show popup if ANY data exists: holes (IndexedDB or localStorage), KAD drawings, OR surfaces
-				if (hasHolesInDB || allBlastHolesDataLocalStorage || (kadData && kadData.data && kadData.data.length > 0) || surfaceData.length > 0) {
+				// Step 5) Check for images
+				const imageTransaction = db.transaction([IMAGE_STORE_NAME], "readonly");
+				const imageStore = imageTransaction.objectStore(IMAGE_STORE_NAME);
+				const imageRequest = imageStore.getAll();
+
+				imageRequest.onsuccess = (imageEvent) => {
+					const imageData = imageEvent.target.result || [];
+
+					// Step 6) Show popup if ANY data exists: holes (IndexedDB or localStorage), KAD drawings, surfaces, OR images
+					if (hasHolesInDB || allBlastHolesDataLocalStorage || (kadData && kadData.data && kadData.data.length > 0) || surfaceData.length > 0 || imageData.length > 0) {
+						showPopup(true);
+						debouncedUpdateTreeView();
+					}
+				};
+
+				imageRequest.onerror = (imageErrorEvent) => {
+					console.error("Could not check for images data in IndexedDB.", imageErrorEvent.target.error);
+					// Still show popup if other data exists
+					if (hasHolesInDB || allBlastHolesDataLocalStorage || (kadData && kadData.data && kadData.data.length > 0) || surfaceData.length > 0) {
+						showPopup(true);
+						debouncedUpdateTreeView();
+					}
+				};
+			};
+
+			surfaceRequest.onerror = (surfaceErrorEvent) => {
+				console.error("Could not check for surfaces data in IndexedDB.", surfaceErrorEvent.target.error);
+				// Still show popup if other data exists
+				if (hasHolesInDB || allBlastHolesDataLocalStorage || (kadData && kadData.data && kadData.data.length > 0)) {
 					showPopup(true);
 					debouncedUpdateTreeView();
 				}
