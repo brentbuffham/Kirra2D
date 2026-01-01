@@ -458,6 +458,8 @@ function exposeGlobalsToWindow() {
 	window.selectedMultiplePoints = selectedMultiplePoints; // CRITICAL: Expose for multi-vertex highlighting
 	window.isSelectionPointerActive = isSelectionPointerActive;
 	window.allKADDrawingsMap = allKADDrawingsMap;
+	window.isPatternInPolygonActive = isPatternInPolygonActive;
+	window.isHolesAlongPolyLineActive = isHolesAlongPolyLineActive;
 	window.getEntityFromKADObject = getEntityFromKADObject;
 	window.developerModeEnabled = developerModeEnabled;
 	// Step 6a) Expose radio buttons and helper functions for 3D polygon selection
@@ -32921,7 +32923,9 @@ patternInPolygonTool.addEventListener("change", function () {
 		patternStartPoint = null;
 		patternEndPoint = null;
 		patternReferencePoint = null;
-		// Clear window.selectedKADObject to remove polygon highlight in 3D
+		// Clear both local and window selectedKADObject to remove polygon highlight in 3D
+		selectedKADObject = null;
+		selectedKADPolygon = null;
 		window.selectedKADObject = null;
 
 		canvas.removeEventListener("click", handlePatternInPolygonClick);
@@ -34640,12 +34644,12 @@ function drawPatternInPolygon3DVisual() {
 		// Step 5d) Create flat triangle extruded 200mm (0.2 units) instead of pyramid
 		// Triangle points perpendicular to direction line (burden direction)
 		// Calculate perpendicular direction (90° clockwise from line direction)
-		var perpX = -dirY; // Perpendicular X (90° clockwise)
-		var perpY = dirX;  // Perpendicular Y (90° clockwise)
+		var perpX = dirY; // Perpendicular X (90° counter-clockwise)
+		var perpY = -dirX;  // Perpendicular Y (90° counter-clockwise)
 		var perpAngle = Math.atan2(perpY, perpX); // Angle of perpendicular direction
 		
 		// Create triangle shape: equilateral triangle, 2 units wide, pointing in perpendicular direction
-		var triangleSize = 2.0; // Size of triangle base
+		var triangleSize = 3.0; // Size of triangle base
 		var triangleShape = new THREE.Shape();
 		// Triangle vertices: point at top (0, triangleSize), base corners at (-triangleSize/2, 0) and (triangleSize/2, 0)
 		triangleShape.moveTo(0, triangleSize);
@@ -34797,7 +34801,7 @@ function drawHolesAlongLine3DVisual() {
 		var startLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
 		// FIX: Use actual Z from lineStartPoint
 		var startZ = (lineStartPoint.z || drawZ) + 0.2;
-		var startPoint = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, startZ, 0.8, "rgba(0, 255, 0, 1.0)");
+		var startPoint = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, startZ, 0.8, "rgba(0, 255, 0, 0.8)");
 		window.holesAlongLine3DGroup.add(startPoint);
 	}
 
@@ -34806,97 +34810,109 @@ function drawHolesAlongLine3DVisual() {
 		var endLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
 		// FIX: Use actual Z from lineEndPoint
 		var endZ = (lineEndPoint.z || drawZ) + 0.2;
-		var endPoint = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 1.0)");
+		var endPoint = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 0.8)");
 		window.holesAlongLine3DGroup.add(endPoint);
 	}
 
-		// Step 3) Draw dashed line between start and end with triangle arrow (same style as PatternInPolygon)
-		if (lineStartPoint && lineEndPoint) {
-			var sLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
-			var eLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
-			var dx = lineEndPoint.x - lineStartPoint.x;
-			var dy = lineEndPoint.y - lineStartPoint.y;
-			var lineLength = Math.sqrt(dx * dx + dy * dy);
+	// Step 3) Draw direction line and arrow - works for both completed line and preview
+	var sLocal = null;
+	var eLocal = null;
+	var dx = 0;
+	var dy = 0;
+	var lineLength = 0;
 
-			// Step 3a) Draw dashed line using cheap THREE.LineDashedMaterial (like PatternInPolygon)
-			var lineZ = drawZ;
-			if (lineStartPoint.z !== undefined) {
-				lineZ = lineStartPoint.z + 0.1;
-			} else if (lineEndPoint.z !== undefined) {
-				lineZ = lineEndPoint.z + 0.1;
-			}
-			var linePoints = [
-				new THREE.Vector3(sLocal.x, sLocal.y, lineZ),
-				new THREE.Vector3(eLocal.x, eLocal.y, lineZ)
-			];
-			var lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-			var lineMat = new THREE.LineDashedMaterial({
-				color: 0x00ff00, // Green
-				dashSize: 1.0,
-				gapSize: 0.5,
-				transparent: true,
-				opacity: 0.7
-			});
-			var dirLine = new THREE.Line(lineGeom, lineMat);
-			dirLine.computeLineDistances(); // Required for dashed lines
-			window.holesAlongLine3DGroup.add(dirLine);
+	if (lineStartPoint && lineEndPoint) {
+		// Full line from start to end
+		sLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
+		eLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
+		dx = lineEndPoint.x - lineStartPoint.x;
+		dy = lineEndPoint.y - lineStartPoint.y;
+		lineLength = Math.sqrt(dx * dx + dy * dy);
 
-			// Step 3b) Calculate direction for triangle arrow (points toward end/last hole)
-			if (lineLength > 1) {
-				var dirX = dx / lineLength;
-				var dirY = dy / lineLength;
-
-				// Step 3c) Calculate midpoint
-				var startVec = new THREE.Vector3(sLocal.x, sLocal.y, lineZ);
-				var endVec = new THREE.Vector3(eLocal.x, eLocal.y, lineZ);
-				var midPoint = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5);
-
-				// Step 3d) Create flat triangle extruded 200mm (0.2 units) pointing along line direction
-				var triangleSize = 2.0; // Size of triangle base
-				var triangleShape = new THREE.Shape();
-				// Triangle vertices: point at top (0, triangleSize), base corners at (-triangleSize/2, 0) and (triangleSize/2, 0)
-				triangleShape.moveTo(0, triangleSize);
-				triangleShape.lineTo(-triangleSize / 2, 0);
-				triangleShape.lineTo(triangleSize / 2, 0);
-				triangleShape.lineTo(0, triangleSize); // Close triangle
-				
-				// Extrude settings: depth 0.2 (200mm), no bevel
-				var extrudeSettings = {
-					depth: 0.2, // 200mm extrusion
-					bevelEnabled: false
-				};
-				
-				// Create extruded triangle geometry
-				var triangleGeom = new THREE.ExtrudeGeometry(triangleShape, extrudeSettings);
-				var triangleMat = new THREE.MeshBasicMaterial({
-					color: 0x00ff00,
-					transparent: true,
-					opacity: 0.6,
-					side: THREE.DoubleSide
-				});
-				var triangle = new THREE.Mesh(triangleGeom, triangleMat);
-				
-				// Step 3e) Position triangle at exact midpoint
-				triangle.position.copy(midPoint);
-				
-				// Step 3f) Orient triangle: lay flat on XY plane, point along line direction (toward end)
-				// IMPORTANT: HolesAlongLine triangle should rotate 90° clockwise around Z axis (arrow points to end point)
-				// Triangle is created in XY plane (pointing up in +Y), rotate to point along line
-				var lineAngle = Math.atan2(dirY, dirX);
-				triangle.rotation.z = lineAngle + Math.PI / 2; // Rotate 90° clockwise around Z to point to end point
-				// Triangle is already flat on XY plane (no X rotation needed)
-
-				window.holesAlongLine3DGroup.add(triangle);
-
-				// Step 3g) Add wireframe edge for visibility
-				var edgeGeom = new THREE.EdgesGeometry(triangleGeom);
-				var edgeMat = new THREE.LineBasicMaterial({ color: 0x008800 });
-				var edges = new THREE.LineSegments(edgeGeom, edgeMat);
-				edges.position.copy(triangle.position);
-				edges.rotation.copy(triangle.rotation);
-				window.holesAlongLine3DGroup.add(edges);
-			}
+		// Step 3a) Draw dashed line using cheap THREE.LineDashedMaterial
+		var lineZ = drawZ;
+		if (lineStartPoint.z !== undefined) {
+			lineZ = lineStartPoint.z + 0.1;
+		} else if (lineEndPoint.z !== undefined) {
+			lineZ = lineEndPoint.z + 0.1;
 		}
+		var linePoints = [
+			new THREE.Vector3(sLocal.x, sLocal.y, lineZ),
+			new THREE.Vector3(eLocal.x, eLocal.y, lineZ)
+		];
+		var lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+		var lineMat = new THREE.LineDashedMaterial({
+			color: 0x00ff00, // Green
+			dashSize: 1.0,
+			gapSize: 0.5,
+			transparent: true,
+			opacity: 0.7
+		});
+		var dirLine = new THREE.Line(lineGeom, lineMat);
+		dirLine.computeLineDistances(); // Required for dashed lines
+		window.holesAlongLine3DGroup.add(dirLine);
+	} else if (lineStartPoint && !lineEndPoint && currentMouseWorldX && currentMouseWorldY) {
+		// Preview line to mouse cursor - calculate values for arrow and label
+		sLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
+		eLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
+		dx = currentMouseWorldX - lineStartPoint.x;
+		dy = currentMouseWorldY - lineStartPoint.y;
+		lineLength = Math.sqrt(dx * dx + dy * dy);
+	}
+
+	// Step 3b) Draw triangle arrow at midpoint (works for both completed and preview)
+	if (sLocal && eLocal && lineLength > 1) {
+		var dirX = dx / lineLength;
+		var dirY = dy / lineLength;
+
+		// Step 3c) Calculate midpoint
+		var lineZ = drawZ;
+		if (lineStartPoint.z !== undefined) {
+			lineZ = lineStartPoint.z + 0.1;
+		}
+		var startVec = new THREE.Vector3(sLocal.x, sLocal.y, lineZ);
+		var endVec = new THREE.Vector3(eLocal.x, eLocal.y, lineZ);
+		var midPoint = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5);
+
+		// Step 3d) Create flat triangle extruded 200mm (0.2 units) pointing along line direction
+		var triangleSize = 2.0;
+		var triangleShape = new THREE.Shape();
+		triangleShape.moveTo(0, triangleSize);
+		triangleShape.lineTo(-triangleSize / 2, 0);
+		triangleShape.lineTo(triangleSize / 2, 0);
+		triangleShape.lineTo(0, triangleSize);
+
+		var extrudeSettings = {
+			depth: 0.2,
+			bevelEnabled: false
+		};
+
+		var triangleGeom = new THREE.ExtrudeGeometry(triangleShape, extrudeSettings);
+		var triangleMat = new THREE.MeshBasicMaterial({
+			color: 0x00ff00,
+			transparent: true,
+			opacity: 0.6,
+			side: THREE.DoubleSide
+		});
+		var triangle = new THREE.Mesh(triangleGeom, triangleMat);
+
+		// Step 3e) Position triangle at exact midpoint
+		triangle.position.copy(midPoint);
+
+		// Step 3f) Orient triangle to point toward end
+		var lineAngle = Math.atan2(dirY, dirX);
+		triangle.rotation.z = lineAngle + Math.PI / 2 + Math.PI;
+
+		window.holesAlongLine3DGroup.add(triangle);
+
+		// Step 3g) Add wireframe edge for visibility
+		var edgeGeom = new THREE.EdgesGeometry(triangleGeom);
+		var edgeMat = new THREE.LineBasicMaterial({ color: 0x008800 });
+		var edges = new THREE.LineSegments(edgeGeom, edgeMat);
+		edges.position.copy(triangle.position);
+		edges.rotation.copy(triangle.rotation);
+		window.holesAlongLine3DGroup.add(edges);
+	}
 
 	// Step 4) Leading line from start to mouse is handled in handle3DMouseMove() (same as PatternInPolygon)
 	// This ensures live updates as mouse moves
@@ -34927,15 +34943,19 @@ function drawHolesAlongLine3DVisual() {
 		}
 	}
 	
-	// Step 6c) Add distance label
-	if (lineStartPoint && lineEndPoint) {
-		var dx = lineEndPoint.x - lineStartPoint.x;
-		var dy = lineEndPoint.y - lineStartPoint.y;
+	// Step 6c) Add distance label (works for both completed line and preview)
+	if (lineStartPoint && (lineEndPoint || (currentMouseWorldX && currentMouseWorldY))) {
+		// Use end point if it exists, otherwise use mouse position for preview
+		var endX = lineEndPoint ? lineEndPoint.x : currentMouseWorldX;
+		var endY = lineEndPoint ? lineEndPoint.y : currentMouseWorldY;
+
+		var dx = endX - lineStartPoint.x;
+		var dy = endY - lineStartPoint.y;
 		var distance = Math.sqrt(dx * dx + dy * dy);
 		// Calculate bearing: North = 0°, East = 90° (clockwise)
 		var bearing = (90 - (Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
-		var midWorldX = (lineStartPoint.x + lineEndPoint.x) / 2;
-		var midWorldY = (lineStartPoint.y + lineEndPoint.y) / 2;
+		var midWorldX = (lineStartPoint.x + endX) / 2;
+		var midWorldY = (lineStartPoint.y + endY) / 2;
 		var screenMid = worldToScreen(midWorldX, midWorldY, dataCentroidZ || 0);
 		if (screenMid) {
 			overlayData.distance = distance;

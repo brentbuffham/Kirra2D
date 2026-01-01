@@ -77,20 +77,31 @@ export function highlightSelectedKADThreeJS() {
 
     // Only highlight if:
     // 1. Selection pointer is active (normal selection mode), OR
-    // 2. PatternInPolygon tool is active AND selected entity is a polygon, OR
-    // 3. HolesAlongPolyLine tool is active AND selected entity is a polyline
+    // 2. PatternInPolygon tool is active AND selected entity is a poly, OR
+    // 3. HolesAlongPolyLine tool is active AND selected entity is a line OR a poly 
     const shouldHighlight = selectedKADObject && (
         (isSelectionPointerActive && !isPatternInPolygonActive && !isHolesAlongPolyLineActive) ||
-        (isPatternInPolygonActive && selectedKADObject.entityType === "poly") ||
-        (isHolesAlongPolyLineActive && selectedKADObject.entityType === "polyline")
+        (isPatternInPolygonActive && selectedKADObject.entityType === "poly") || (isHolesAlongPolyLineActive && (selectedKADObject.entityType === "line" || selectedKADObject.entityType === "poly"))
     );
 
 
     if (shouldHighlight) {
+       // if (developerModeEnabled) {
+            console.log("🎨 [HIGHLIGHT DEBUG] shouldHighlight=true, selectedKADObject:", selectedKADObject);
+            console.log("🎨 [HIGHLIGHT DEBUG] entityName:", selectedKADObject.entityName, "entityType:", selectedKADObject.entityType);
+        //}
         const entity = getEntityFromKADObject(selectedKADObject);
 
         if (!entity) return;
-
+        //if (developerModeEnabled) { 
+            console.log("🎨 [HIGHLIGHT DEBUG] getEntityFromKADObject returned:", entity);
+        //} 
+        if (!entity) { 
+            //if (developerModeEnabled) { 
+                console.log("🎨 [HIGHLIGHT DEBUG] entity is null, returning early"); 
+            //} 
+            return; 
+        }
         drawKADEntityHighlight(selectedKADObject, entity, selectedSegmentColor, nonSelectedSegmentColor, verticesColor, worldToThreeLocal, dataCentroidZ, developerModeEnabled);
     }
 
