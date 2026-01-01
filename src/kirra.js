@@ -439,7 +439,17 @@ function exposeGlobalsToWindow() {
 	window.worldToCanvas = worldToCanvas;
 
 	// Step 6) Selection state for KAD and holes (for selection highlighting modules)
-	window.selectedKADObject = selectedKADObject;
+	// FIX: Preserve window.selectedKADObject if local variable is null but window already has a value
+	// This prevents pattern tool selections from being cleared when exposeGlobalsToWindow() runs
+	if (selectedKADObject !== null && selectedKADObject !== undefined) {
+		window.selectedKADObject = selectedKADObject;
+	} else if (window.selectedKADObject && (window.isPatternInPolygonActive || window.isHolesAlongPolyLineActive)) {
+		// Preserve window.selectedKADObject for pattern tools even if local variable is null
+		// This handles the case where drawData() calls exposeGlobalsToWindow() before the local variable is set
+		// The local variable will be set by the click handler, but exposeGlobalsToWindow() runs first
+	} else {
+		window.selectedKADObject = selectedKADObject;
+	}
 	window.selectedKADPolygon = selectedKADPolygon;
 	window.selectedMultipleKADObjects = selectedMultipleKADObjects;
 	window.selectedHole = selectedHole;
@@ -797,6 +807,19 @@ function initializeThreeJS() {
 		}
 
 		cameraControls.attachEvents();
+
+		// Step 6d) Set callback for camera changes to update pattern tool labels
+		cameraControls.onCameraChange = function() {
+			if (isPatternInPolygonActive) {
+				drawPatternInPolygon3DVisual(); // Updates HUD label positions via worldToScreen()
+			}
+			if (isHolesAlongLineActive) {
+				drawHolesAlongLine3DVisual();
+			}
+			if (isHolesAlongPolyLineActive) {
+				drawHolesAlongPolyline3DVisual();
+			}
+		};
 
 		// Step 6a) Create interaction manager for 3D raycasting
 		interactionManager = new InteractionManager(threeRenderer, threeRenderer.camera);
@@ -1196,38 +1219,148 @@ function handle3DClick(event) {
 				console.error("showPatternDialog not found - ensure PatternGenerationDialogs.js is loaded");
 			}
 		} else if (isPatternInPolygonActive) {
-			// Step 12c.1c.3) Handle Pattern in Polygon tool in 3D mode (BUG FIX 2025-12-28)
+			// Step 12c.1c.3) Handle Pattern in Polygon tool in 3D mode
 			console.log("⬇️ [3D CLICK] Pattern in Polygon click at:", worldX, worldY, worldZ);
-			// Set world coordinates
-			window.worldX = worldX;
-			window.worldY = worldY;
-			window.worldZ = worldZ;
-			// Create synthetic event with canvas coordinates for the 2D handler
-			var rect = canvas.getBoundingClientRect();
-			var canvasCoords = worldToCanvas(worldX, worldY);
-			var syntheticEvent = {
-				clientX: rect.left + canvasCoords[0],
-				clientY: rect.top + canvasCoords[1],
-				preventDefault: function () { },
-				stopPropagation: function () { }
-			};
-			// Call the existing handler
-			if (typeof handlePatternInPolygonClick === "function") {
-				handlePatternInPolygonClick(syntheticEvent);
+			
+			// Step 12c.1c.3a) For polygon selection (step 0), use 3D raycast to find KAD polygon
+			if (patternPolygonStep === 0) {
+				// Perform raycast to find KAD objects
+				const threeCanvas = threeRenderer.getCanvas();
+				if (!threeCanvas || !interactionManager) {
+					console.warn("⬇️ [3D CLICK] Pattern tool: Missing threeCanvas or interactionManager");
+					return;
+				}
+				interactionManager.updateMousePosition(event, threeCanvas);
+				const intersects = interactionManager.raycast();
+				
+				let clickedKADObject = null;
+				// Search intersects for KAD polygon objects
+				for (const intersect of intersects) {
+					let object = intersect.object;
+					
+					// Skip selection highlights
+					let isHighlight = false;
+					let checkObj = object;
+					let depth = 0;
+					while (checkObj && depth < 10) {
+						if (checkObj.userData && checkObj.userData.type === "kadSelectionHighlight") {
+							isHighlight = true;
+							break;
+						}
+						checkObj = checkObj.parent;
+						depth++;
+					}
+					if (isHighlight) continue;
+					
+					// Traverse up to find KAD polygon
+					depth = 0;
+					while (object && depth < 10) {
+						if (object.userData && object.userData.kadId && object.userData.type === "kadPolygon") {
+							const entity = allKADDrawingsMap.get(object.userData.kadId);
+							if (entity && entity.entityType === "poly") {
+								// Found polygon - create KAD object descriptor
+								clickedKADObject = {
+									entityName: object.userData.kadId,
+									entity: entity,
+									entityType: "poly"
+								};
+								break;
+							}
+						}
+						object = object.parent;
+						depth++;
+					}
+					if (clickedKADObject) break;
+				}
+				
+				// If polygon found, set selection state
+				if (clickedKADObject) {
+					selectedPolygon = clickedKADObject.entity;
+					// CRITICAL: Set local module variable so exposeGlobalsToWindow() doesn't overwrite it
+					selectedKADObject = clickedKADObject;
+					window.selectedKADObject = clickedKADObject;
+					patternPolygonStep = 1;
+					updateStatusMessage("Step 2: Click to select pattern start point");
+
+					// FIX: Ensure highlight is drawn by calling drawData and then explicitly calling highlight function
+					drawData(allBlastHoles, selectedHole);
+					// Explicitly trigger highlight after drawData to ensure it runs
+					if (window.selectedKADObject && window.selectedKADObject.entityType === "poly") {
+						highlightSelectedKADThreeJS();
+					}
+					event.preventDefault();
+					event.stopPropagation();
+					return;
+				} else {
+					updateStatusMessage("No polygon found.\nStep 1: Click on a polygon to select it");
+					drawData(allBlastHoles, selectedHole);
+					event.preventDefault();
+					event.stopPropagation();
+					return;
+				}
+			} else {
+				// For steps 1-3 (point selection), use snapping same as 2D
+				var rect = canvas.getBoundingClientRect();
+				var canvasCoords = worldToCanvas(worldX, worldY);
+				var clickX = canvasCoords[0];
+				var clickY = canvasCoords[1];
+
+				// Step 1) Apply same snapping as 2D tools (snaps to KAD entities, holes, grid, etc.)
+				var patternSnapResult = canvasToWorldWithSnap(clickX, clickY);
+				var snappedWorldX = patternSnapResult.worldX;
+				var snappedWorldY = patternSnapResult.worldY;
+
+				// Step 2) Show snap feedback if snapped (same as 2D)
+				if (patternSnapResult.snapped) {
+					updateStatusMessage("Snapped to " + patternSnapResult.snapTarget.description);
+					setTimeout(() => updateStatusMessage(""), 1500);
+				}
+
+				// Step 3) Set snapped coordinates for handler
+				window.worldX = snappedWorldX;
+				window.worldY = snappedWorldY;
+				window.worldZ = worldZ;
+
+				// Step 4) Create synthetic event with canvas coordinates (handler will re-apply snap, but coordinates already snapped)
+				var syntheticEvent = {
+					clientX: rect.left + clickX,
+					clientY: rect.top + clickY,
+					preventDefault: function () { },
+					stopPropagation: function () { }
+				};
+				if (typeof handlePatternInPolygonClick === "function") {
+					handlePatternInPolygonClick(syntheticEvent);
+				}
 			}
 		} else if (isHolesAlongLineActive) {
 			// Step 12c.1c.4) Handle Holes Along Line tool in 3D mode (BUG FIX 2025-12-28)
 			console.log("⬇️ [3D CLICK] Holes Along Line click at:", worldX, worldY, worldZ);
-			// Set world coordinates
-			window.worldX = worldX;
-			window.worldY = worldY;
-			window.worldZ = worldZ;
-			// Create synthetic event with canvas coordinates for the 2D handler
+			// Use snapping same as 2D
 			var rect = canvas.getBoundingClientRect();
 			var canvasCoords = worldToCanvas(worldX, worldY);
+			var clickX = canvasCoords[0];
+			var clickY = canvasCoords[1];
+
+			// Step 1) Apply same snapping as 2D tools (snaps to KAD entities, holes, grid, etc.)
+			const snapResult = canvasToWorldWithSnap(clickX, clickY);
+			var snappedWorldX = snapResult.worldX;
+			var snappedWorldY = snapResult.worldY;
+
+			// Step 2) Show snap feedback if snapped (same as 2D)
+			if (snapResult.snapped) {
+				updateStatusMessage("Snapped to " + snapResult.snapTarget.description);
+				setTimeout(() => updateStatusMessage(""), 1500);
+			}
+
+			// Step 3) Set snapped coordinates for handler
+			window.worldX = snappedWorldX;
+			window.worldY = snappedWorldY;
+			window.worldZ = worldZ;
+
+			// Step 4) Create synthetic event with canvas coordinates for the 2D handler
 			var syntheticEvent = {
-				clientX: rect.left + canvasCoords[0],
-				clientY: rect.top + canvasCoords[1],
+				clientX: rect.left + clickX,
+				clientY: rect.top + clickY,
 				preventDefault: function () { },
 				stopPropagation: function () { }
 			};
@@ -1238,16 +1371,32 @@ function handle3DClick(event) {
 		} else if (isHolesAlongPolyLineActive) {
 			// Step 12c.1c.5) Handle Holes Along Polyline tool in 3D mode (BUG FIX 2025-12-28)
 			console.log("⬇️ [3D CLICK] Holes Along Polyline click at:", worldX, worldY, worldZ);
-			// Set world coordinates
-			window.worldX = worldX;
-			window.worldY = worldY;
-			window.worldZ = worldZ;
-			// Create synthetic event with canvas coordinates for the 2D handler
+			// Use snapping same as 2D
 			var rect = canvas.getBoundingClientRect();
 			var canvasCoords = worldToCanvas(worldX, worldY);
+			var clickX = canvasCoords[0];
+			var clickY = canvasCoords[1];
+
+			// Step 1) Apply same snapping as 2D tools (snaps to KAD entities, holes, grid, etc.)
+			const snapResult = canvasToWorldWithSnap(clickX, clickY);
+			var snappedWorldX = snapResult.worldX;
+			var snappedWorldY = snapResult.worldY;
+
+			// Step 2) Show snap feedback if snapped (same as 2D)
+			if (snapResult.snapped) {
+				updateStatusMessage("Snapped to " + snapResult.snapTarget.description);
+				setTimeout(() => updateStatusMessage(""), 1500);
+			}
+
+			// Step 3) Set snapped coordinates for handler
+			window.worldX = snappedWorldX;
+			window.worldY = snappedWorldY;
+			window.worldZ = worldZ;
+
+			// Step 4) Create synthetic event with canvas coordinates for the 2D handler
 			var syntheticEvent = {
-				clientX: rect.left + canvasCoords[0],
-				clientY: rect.top + canvasCoords[1],
+				clientX: rect.left + clickX,
+				clientY: rect.top + clickY,
 				preventDefault: function () { },
 				stopPropagation: function () { }
 			};
@@ -2670,6 +2819,46 @@ function handle3DMouseMove(event) {
 		hideRulerPanel();
 	}
 
+	// Step 13f.9.5) Draw Pattern In Polygon leading line if active
+	if (isPatternInPolygonActive && patternStartPoint && !patternEndPoint) {
+		// Step 13f.9.5a) Get snapped mouse coordinates (same as 2D)
+		var mouseCanvasCoords = worldToCanvas(currentMouseWorldX, currentMouseWorldY);
+		var patternSnapResult = canvasToWorldWithSnap(mouseCanvasCoords[0], mouseCanvasCoords[1]);
+		var snappedMouseX = patternSnapResult.worldX;
+		var snappedMouseY = patternSnapResult.worldY;
+		
+		// Step 13f.9.5b) Reuse existing drawKADLeadingLineThreeJS for cheap dashed line
+		var startZ = patternStartPoint.z || dataCentroidZ || 0;
+		var mouseZ = currentMouseWorldZ || startZ;
+		drawKADLeadingLineThreeJS(
+			patternStartPoint.x, patternStartPoint.y, startZ,
+			snappedMouseX, snappedMouseY, mouseZ,
+			"rgba(0, 255, 0, 0.5)" // Green to match 2D
+		);
+		// Also redraw markers via the visual function
+		drawPatternInPolygon3DVisual();
+	}
+
+	// Step 13f.9.6) Draw Holes Along Line leading line if active
+	if (isHolesAlongLineActive && lineStartPoint && !lineEndPoint) {
+		var mouseCanvasCoords = worldToCanvas(currentMouseWorldX, currentMouseWorldY);
+		var holesLineSnapResult = canvasToWorldWithSnap(mouseCanvasCoords[0], mouseCanvasCoords[1]);
+		var snappedMouseX = holesLineSnapResult.worldX;
+		var snappedMouseY = holesLineSnapResult.worldY;
+		
+		var startZ = lineStartPoint.z || dataCentroidZ || 0;
+		var mouseZ = currentMouseWorldZ || startZ;
+		drawKADLeadingLineThreeJS(
+			lineStartPoint.x, lineStartPoint.y, startZ,
+			snappedMouseX, snappedMouseY, mouseZ,
+			"rgba(0, 255, 0, 0.5)"
+		);
+		drawHolesAlongLine3DVisual();
+	}
+
+	// Step 13f.9.7) Draw Holes Along Polyline leading line if active - REMOVED per user request
+	// Leading line removed for holesAlongPolyline tool
+
 	// Step 13f.10) Draw protractor in 3D mode if active
 	if (isRulerProtractorActive && rulerProtractorPoints.length > 0) {
 		var p1 = rulerProtractorPoints[0];
@@ -2720,6 +2909,23 @@ function handle3DMouseMove(event) {
 	} else {
 		clearProtractorThreeJS();
 		hideProtractorPanel();
+	}
+
+	// Step 13f.11) Draw Pattern In Polygon leading line and visuals if active
+	if (isPatternInPolygonActive && patternStartPoint && !patternEndPoint) {
+		// Reuse existing drawKADLeadingLineThreeJS for cheap dashed line to mouse
+		var patternStartZ = patternStartPoint.z || dataCentroidZ || 0;
+		var patternMouseZ = currentMouseWorldZ || patternStartZ;
+		drawKADLeadingLineThreeJS(
+			patternStartPoint.x, patternStartPoint.y, patternStartZ,
+			currentMouseWorldX, currentMouseWorldY, patternMouseZ,
+			"rgba(0, 255, 0, 0.5)" // Green to match 2D
+		);
+		// Redraw markers and arrow via the visual function
+		drawPatternInPolygon3DVisual();
+	} else if (isPatternInPolygonActive) {
+		// Still active but no leading line needed - just update visuals (markers, direction line, arrow)
+		drawPatternInPolygon3DVisual();
 	}
 
 	if (threeRenderer.renderer) {
@@ -3135,16 +3341,16 @@ class BlastHole {
 		this.gradeXLocation = data.gradeXLocation || 0;
 		this.gradeYLocation = data.gradeYLocation || 0;
 		this.gradeZLocation = data.gradeZLocation || 0;
-		this.subdrillAmount = data.subdrillAmount || 0;
-		this.subdrillLength = data.subdrillLength || 0;
-		this.benchHeight = data.benchHeight || 0;
+		this.subdrillAmount = data.subdrillAmount || 0; //deltaZ of gradeZ to toeZ -> downhole =+ve uphole =-ve
+		this.subdrillLength = data.subdrillLength || 0; //distance of subdrill from gradeXYZ to toeXYZ -> downhole =+ve uphole =-ve
+		this.benchHeight = data.benchHeight || 0; //deltaZ of collarZ to gradeZ -> always Absolute
 		this.holeDiameter = data.holeDiameter || 115;
 		this.holeType = data.holeType || "Undefined";
 		this.fromHoleID = data.fromHoleID || "";
 		this.timingDelayMilliseconds = data.timingDelayMilliseconds || 0;
 		this.colorHexDecimal = data.colorHexDecimal || "red";
-		this.holeLengthCalculated = data.holeLengthCalculated || 0;
-		this.holeAngle = data.holeAngle || 0;
+		this.holeLengthCalculated = data.holeLengthCalculated || 0; //Distance from the collarXYZ to the ToeXYZ
+		this.holeAngle = data.holeAngle || 0; //Angle of the blast hole from Collar to Toe --> 0° = Vertical
 		this.holeBearing = data.holeBearing || 0;
 		this.measuredLength = data.measuredLength || 0;
 		this.measuredLengthTimeStamp = data.measuredLengthTimeStamp || "09/05/1975 00:00:00";
@@ -3195,7 +3401,18 @@ let textsGroupVisible = true;
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
 // debouncedUpdateTreeView is defined later - stub it to prevent errors
-let debouncedUpdateTreeView = function () { };
+let debouncedUpdateTreeView = function () { 
+	if (typeof treeView !== "undefined" && treeView && typeof treeView.updateTreeData === "function") {
+		treeView.updateTreeData();
+	}
+};
+
+// Function to update TreeView when holes are added
+window.updateTreeFromBlastHoles = function() {
+	if (typeof debouncedUpdateTreeView === "function") {
+		debouncedUpdateTreeView();
+	}
+};
 
 // Variable to store the "fromHole" ID during connector mode
 let fromHoleStore = null;
@@ -3796,6 +4013,11 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("click", handleHolesAlongPolyLineClick);
 		canvas.removeEventListener("touchstart", handleHolesAlongPolyLineClick);
 		isHolesAlongPolyLineActive = false;
+	}
+	
+	// Hide pattern tool HUD labels when any pattern tool is deactivated
+	if (!excluding.includes("patternInPolygonTool") || !excluding.includes("holesAlongLineTool") || !excluding.includes("holesAlongPolyLineTool")) {
+		hidePatternToolLabels();
 	}
 
 	// Remove measured length click listeners
@@ -7599,7 +7821,7 @@ async function checkAndResolveDuplicateHoleIDs(allBlastHoles, actionType = "impo
 
 	// If duplicates found, resolve them
 	if (duplicateReport.hasDuplicates) {
-		console.warn("?? DUPLICATE HOLE IDs DETECTED:", duplicateReport.duplicates.length, "conflicts found");
+		console.warn("⚠️ DUPLICATE HOLE IDs DETECTED:", duplicateReport.duplicates.length, "conflicts found");
 
 		// Show user dialog for resolution strategy
 		const resolution = await showDuplicateResolutionDialog(duplicateReport, actionType);
@@ -7645,7 +7867,7 @@ function showDuplicateResolutionDialog(duplicateReport, actionType) {
 	warningHeader.style.marginBottom = "10px";
 	warningHeader.style.fontSize = "14px";
 	warningHeader.style.fontWeight = "bold";
-	warningHeader.textContent = "?? Duplicate Hole IDs Detected";
+	warningHeader.textContent = "⚠️ Duplicate Hole IDs Detected";
 	contentDiv.appendChild(warningHeader);
 
 	// Conflict count - uses labelWhite15 class
@@ -7898,7 +8120,7 @@ function validateUniqueHoleID(entityName, holeID, excludeHole = null) {
 
 	if (existing) {
 		const newID = generateUniqueHoleID(entityName, holeIDStr);
-		console.warn("⚠️ Duplicate hole ID detected:", entityName + ":" + holeIDStr, "? Auto-assigned:", newID);
+		console.warn("⚠️ Duplicate hole ID detected:", entityName + ":" + holeIDStr, "✅ Auto-assigned:", newID);
 		return newID;
 	}
 
@@ -19760,7 +19982,7 @@ function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLocation,
 		newHoleID = validateUniqueHoleID(entityName, originalHoleID);
 
 		if (newHoleID !== originalHoleID) {
-			console.warn("?? Duplicate hole ID detected during addHole:", entityName + ":" + originalHoleID, "? Auto-assigned:", newHoleID);
+			console.warn("⚠️ Duplicate hole ID detected during addHole:", entityName + ":" + originalHoleID, "? Auto-assigned:", newHoleID);
 		}
 	} else if (useCustomHoleID === false) {
 		if (allBlastHoles !== null) {
@@ -19808,26 +20030,48 @@ function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLocation,
 		holeLengthCalculated = 0;
 	}
 
-	// Calculate subdrill length
-	let subdrillLength = holeAngle > 0 ? subdrillAmount / Math.sin((90 - holeAngle) * (Math.PI / 180)) : subdrillAmount;
+	// Step 2.5) Calculate angle components for geometry
+	let angleRad = angle * (Math.PI / 180);
+	let bearingRad = ((450 - bearing) % 360) * (Math.PI / 180);
+	let cosAngle = Math.cos(angleRad);
+	let sinAngle = Math.sin(angleRad);
 
-	// Calculate total length including subdrill
-	let totalLength = holeLengthCalculated + subdrillLength;
+	// Step 2.6) Calculate benchHeight from gradeZ or holeLengthCalculated
+	// benchHeight is the VERTICAL distance from collar to grade
+	let benchHeight;
+	if (useGradeZ && !isNaN(parseFloat(gradeZLocation))) {
+		benchHeight = startZLocation - parseFloat(gradeZLocation);
+	} else {
+		benchHeight = holeLengthCalculated * cosAngle;
+	}
 
-	// Calculate end locations using the total length (includes subdrill)
-	let endXLocation = parseFloat(startXLocation + totalLength * Math.cos((90 - angle) * (Math.PI / 180)) * Math.cos(((450 - bearing) % 360) * (Math.PI / 180)));
-	let endYLocation = parseFloat(startYLocation + totalLength * Math.cos((90 - angle) * (Math.PI / 180)) * Math.sin(((450 - bearing) % 360) * (Math.PI / 180)));
-	let endZLocation = parseFloat(startZLocation - totalLength * Math.cos(angle * (Math.PI / 180)));
+	// Step 2.7) Calculate total hole length along axis (collar to toe)
+	// This already includes subdrill when calculated from gradeZ
+	let totalLength = holeLengthCalculated;
 
-	// Step 3) Calculate grade locations using only hole length (no subdrill)
-	// BUG FIX 2025-12-28: Only recalculate gradeZLocation if NOT using user-provided gradeZ
-	// When useGradeZ is true, the user explicitly set the grade elevation - preserve it
-	let gradeXLocation = parseFloat(startXLocation + holeLengthCalculated * Math.cos((90 - angle) * (Math.PI / 180)) * Math.cos(((450 - bearing) % 360) * (Math.PI / 180)));
-	let gradeYLocation = parseFloat(startYLocation + holeLengthCalculated * Math.cos((90 - angle) * (Math.PI / 180)) * Math.sin(((450 - bearing) % 360) * (Math.PI / 180)));
+	// Step 2.8) Calculate horizontal projection for toe
+	let horizontalProjection = totalLength * sinAngle;
+
+	// Step 3) Calculate end locations (toe) using the total length
+	let endXLocation = parseFloat(startXLocation + horizontalProjection * Math.cos(bearingRad));
+	let endYLocation = parseFloat(startYLocation + horizontalProjection * Math.sin(bearingRad));
+	let endZLocation = parseFloat(startZLocation - totalLength * cosAngle);
+
+	// Step 3.5) Calculate grade locations using bench length only (without subdrill)
+	// benchLength is the distance along the hole axis from collar to grade
+	let benchLength = Math.abs(cosAngle) > 1e-9 ? benchHeight / cosAngle : 0;
+	let horizontalProjectionToGrade = benchLength * sinAngle;
+	let gradeXLocation = parseFloat(startXLocation + horizontalProjectionToGrade * Math.cos(bearingRad));
+	let gradeYLocation = parseFloat(startYLocation + horizontalProjectionToGrade * Math.sin(bearingRad));
+	
 	// Only overwrite gradeZLocation if useGradeZ is false (using length-based calculation)
 	if (!useGradeZ) {
-		gradeZLocation = parseFloat(startZLocation - holeLengthCalculated * Math.cos(angle * (Math.PI / 180)));
+		gradeZLocation = parseFloat(startZLocation - benchHeight);
 	}
+
+	// Step 3.6) Calculate subdrillLength (distance along hole axis from grade to toe)
+	// This is the measured length of the subdrill section
+	let subdrillLength = Math.abs(cosAngle) > 1e-9 ? subdrillAmount / cosAngle : subdrillAmount;
 
 	// Check if endXLocation, endYLocation, or endZLocation is NaN
 	if (isNaN(endXLocation)) {
@@ -19861,7 +20105,8 @@ function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLocation,
 	let measuredComment = "None";
 	let measuredCommentTimeStamp = "09/05/1975 00:00:00";
 
-	let benchHeight = holeLengthCalculated * Math.cos(holeAngle * (Math.PI / 180));
+	// benchHeight already calculated above in Step 2.6
+	// No need to recalculate here
 
 	// PROXIMITY CHECK: Check for nearby holes before adding
 	const proximityHoles = checkHoleProximity(startXLocation, startYLocation, holeDiameter, allBlastHoles);
@@ -22531,23 +22776,11 @@ function drawData(allBlastHoles, selectedHole) {
 				drawProtractor(rulerProtractorPoints[0].x, rulerProtractorPoints[0].y, rulerProtractorPoints[1].x, rulerProtractorPoints[1].y, worldMouseX, worldMouseY);
 			}
 		}
-		// Add this line at the end of the drawData function, just before the final closing brace
+		// Step A) Draw pattern tool visuals (2D only - 3D handled in 3D block below)
 		drawPatternInPolygonVisual();
-		// Draw 3D visuals for pattern tool if in 3D mode
-		if (onlyShowThreeJS && threeInitialized) {
-			drawPatternInPolygon3DVisual();
-		}
 		drawPatternOnPolylineVisual();
-		// Draw 3D visuals for polyline tool if in 3D mode
-		if (onlyShowThreeJS && threeInitialized) {
-			drawHolesAlongPolyline3DVisual();
-		}
 		drawKADPolygonHighlightSelectedVisuals();
 		drawHolesAlongLineVisuals();
-		// Draw 3D visuals for holes along line tool if in 3D mode
-		if (onlyShowThreeJS && threeInitialized) {
-			drawHolesAlongLine3DVisual();
-		}
 		drawKADHighlightSelectionVisuals(); // ADD THIS AS THE VERY LAST LINE:
 		// drawAllKADSelectionVisuals(); // this function doesn't get used...
 		drawSurfaceLegend();
@@ -23376,6 +23609,12 @@ function drawData(allBlastHoles, selectedHole) {
 				drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z);
 			}
 		}
+
+		// Step B) Draw 3D visuals for pattern tools (MUST be in 3D block to actually render!)
+		// These were incorrectly placed in the 2D block where onlyShowThreeJS is always false
+		drawPatternInPolygon3DVisual();
+		drawHolesAlongPolyline3DVisual();
+		drawHolesAlongLine3DVisual();
 
 		renderThreeJS();
 
@@ -25744,6 +25983,9 @@ function endKadTools() {
 		}, 1500);
 		drawData(allBlastHoles, selectedHole);
 	}
+	
+	// Step 4) Hide pattern tool HUD labels when switching tools
+	hidePatternToolLabels();
 }
 
 function findClosestKadPoint(worldPoint, snapDistance) {
@@ -29658,9 +29900,10 @@ function calculateGradeFromSubdrill(hole) {
 	var bearingRad = hole.holeBearing * (Math.PI / 180);
 	var subdrill = hole.subdrillAmount || 0;
 
-	// Grade is subdrill distance UP from toe along hole direction
-	var subdrillVertical = subdrill * Math.cos(angleRad);
-	var subdrillHorizontal = subdrill * Math.sin(angleRad);
+	// Step 11a) subdrill is the VERTICAL distance (gradeZ - toeZ)
+	// Calculate horizontal displacement using tan(angle)
+	var subdrillVertical = subdrill;
+	var subdrillHorizontal = subdrill * Math.tan(angleRad);
 
 	hole.gradeXLocation = hole.endXLocation - subdrillHorizontal * Math.sin(bearingRad);
 	hole.gradeYLocation = hole.endYLocation - subdrillHorizontal * Math.cos(bearingRad);
@@ -29728,8 +29971,9 @@ function calculateCollarFromToe(hole) {
 	hole.startZLocation = hole.endZLocation + verticalDist; // Up from toe (add because going up)
 
 	// Step 14c) Calculate GradeXYZ (subdrill amount above toe along hole direction)
-	var subdrillVertical = subdrill * Math.cos(angleRad);
-	var subdrillHorizontal = subdrill * Math.sin(angleRad);
+	// subdrill is the VERTICAL distance (gradeZ - toeZ)
+	var subdrillVertical = subdrill;
+	var subdrillHorizontal = subdrill * Math.tan(angleRad);
 
 	hole.gradeXLocation = hole.endXLocation - subdrillHorizontal * Math.sin(bearingRad);
 	hole.gradeYLocation = hole.endYLocation - subdrillHorizontal * Math.cos(bearingRad);
@@ -32677,6 +32921,8 @@ patternInPolygonTool.addEventListener("change", function () {
 		patternStartPoint = null;
 		patternEndPoint = null;
 		patternReferencePoint = null;
+		// Clear window.selectedKADObject to remove polygon highlight in 3D
+		window.selectedKADObject = null;
 
 		canvas.removeEventListener("click", handlePatternInPolygonClick);
 		canvas.removeEventListener("touchstart", handlePatternInPolygonClick);
@@ -32728,9 +32974,15 @@ function handlePatternInPolygonClick(event) {
 
 	switch (patternPolygonStep) {
 		case 0: // Select polygon
+			// The equivalent 3D(ThreeJS) Mode Selection function is handlePatternInPolygonClick3D or similar.
 			const clickedEntityInfo = getClickedKADEntity(worldX, worldY);
 			if (clickedEntityInfo && clickedEntityInfo.entity.entityType === "poly") {
 				selectedPolygon = clickedEntityInfo.entity; // ? Extract just the entity
+				// CRITICAL: Set local module variable so exposeGlobalsToWindow() doesn't overwrite it
+				selectedKADObject = clickedEntityInfo;
+				selectedKADPolygon = clickedEntityInfo; // Backward compatibility
+				// REUSE: Set window.selectedKADObject so highlightSelectedKADThreeJS() handles highlight in 3D
+				window.selectedKADObject = clickedEntityInfo;
 				patternPolygonStep = 1;
 				updateStatusMessage("Step 2: Click to select pattern start point");
 			} else {
@@ -32739,29 +32991,50 @@ function handlePatternInPolygonClick(event) {
 			break;
 
 		case 1: // Select start point
+			// FIX: Get Z from window.worldZ (set by 3D click) or polygon
+			var startZ = window.worldZ;
+			if (startZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+				var firstPt = selectedPolygon.data[0];
+				startZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
+			}
 			patternStartPoint = {
 				x: worldX,
 				y: worldY,
+				z: startZ
 			};
 			patternPolygonStep = 2;
 			updateStatusMessage("Step 3: Click to select pattern\nend point (for orientation)");
-			console.log("Pattern start point set to:", worldX.toFixed(2), worldY.toFixed(2));
+			console.log("Pattern start point set to:", worldX.toFixed(2), worldY.toFixed(2), startZ?.toFixed(2));
 			break;
 
 		case 2: // Select end point
+			// FIX: Get Z from window.worldZ (set by 3D click) or polygon
+			var endZ = window.worldZ;
+			if (endZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+				var firstPt = selectedPolygon.data[0];
+				endZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
+			}
 			patternEndPoint = {
 				x: worldX,
 				y: worldY,
+				z: endZ
 			};
 			patternPolygonStep = 3;
 			updateStatusMessage("Step 4: Click to select reference point");
-			console.log("Pattern end point set to:", worldX.toFixed(2), worldY.toFixed(2));
+			console.log("Pattern end point set to:", worldX.toFixed(2), worldY.toFixed(2), endZ?.toFixed(2));
 			break;
 
 		case 3: // Select reference point
+			// FIX: Get Z from window.worldZ (set by 3D click) or polygon
+			var refZ = window.worldZ;
+			if (refZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+				var firstPt = selectedPolygon.data[0];
+				refZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
+			}
 			patternReferencePoint = {
 				x: worldX,
 				y: worldY,
+				z: refZ
 			};
 			updateStatusMessage("Reference point selected");
 			console.log("Pattern reference point set to:", worldX.toFixed(2), worldY.toFixed(2));
@@ -32862,15 +33135,23 @@ function handleHolesAlongPolyLineClick(event) {
 			// Use the same robust selection method as the select pointer tool
 			const clickedKADObject = getClickedKADObject(clickX, clickY);
 
+
 			if (clickedKADObject && (clickedKADObject.entityType === "line" || clickedKADObject.entityType === "poly")) {
+				var entity = allKADDrawingsMap.get(clickedKADObject.entityName);
 				selectedPolyline = {
 					type: clickedKADObject.entityType === "line" ? "line" : "polygon",
-					vertices: allKADDrawingsMap.get(clickedKADObject.entityName).data.map((point) => ({
+					vertices: entity.data.map((point) => ({
 						x: point.pointXLocation,
 						y: point.pointYLocation,
+						z: point.pointZLocation || point.z || dataCentroidZ || 0, // FIX: Include Z values
 					})),
-					entity: allKADDrawingsMap.get(clickedKADObject.entityName),
+					entity: entity,
 				};
+				// CRITICAL: Set local module variable so exposeGlobalsToWindow() doesn't overwrite it
+				selectedKADObject = clickedKADObject;
+				window.selectedKADObject = clickedKADObject; // Set for highlighting
+				// FIX: Also set selectedKADPolygon for backward compatibility
+				selectedKADPolygon = clickedKADObject;
 				polylineStep = 1;
 				updateStatusMessage("Step 2: Click on a vertex or point along the " + selectedPolyline.type + " to set the start point.");
 				console.log("Selected " + selectedPolyline.type + " with", selectedPolyline.vertices.length, "vertices");
@@ -34206,355 +34487,466 @@ function drawPatternInPolygonVisual() {
 }
 
 // 3D Visual feedback for Pattern in Polygon tool
+// NOTE: The polygon itself is drawn by the main KAD drawing loop - we only draw markers and arrow here
 function drawPatternInPolygon3DVisual() {
+	// Step 0) Guard checks - clean up if tool inactive
 	if (!isPatternInPolygonActive || !threeInitialized || !threeRenderer) {
-		// Clean up if tool is not active
 		if (window.patternTool3DGroup && threeRenderer && threeRenderer.scene) {
 			threeRenderer.scene.remove(window.patternTool3DGroup);
 			window.patternTool3DGroup = null;
 		}
+		// Step 0.1) Hide HUD labels and clear leading line when tool is inactive
+		hidePatternToolLabels();
+		clearKADLeadingLineThreeJS();
 		return;
 	}
 
-	// Clear previous pattern tool 3D objects
+	// Step 0a) Clear previous pattern tool 3D objects
 	if (window.patternTool3DGroup) {
 		threeRenderer.scene.remove(window.patternTool3DGroup);
 		window.patternTool3DGroup = null;
 	}
 
-	// Create new group for pattern tool visuals
+	// Step 0b) Create new group for pattern tool visuals
 	window.patternTool3DGroup = new THREE.Group();
 	window.patternTool3DGroup.name = "patternTool3DVisuals";
 
-	// Get Z elevation for 3D drawing (use data centroid Z or current mouse Z)
-	const drawZ = (dataCentroidZ || 0) + 2; // Slightly above surface
+	// Step 0c) Get Z elevation from polygon's actual point data (Phase 4 fix)
+	var drawZ = dataCentroidZ || 0;
+	if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+		var firstPt = selectedPolygon.data[0];
+		drawZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
+	}
+	drawZ += 0.5; // Slight offset above polygon
 
-	// Helper function to create tube geometry for thick lines (WebGL doesn't support linewidth > 1)
-	function createTubeFromPoints(pointsArray, radius, color, opacity) {
-		if (pointsArray.length < 2) return null;
-		const curve = new THREE.CatmullRomCurve3(pointsArray, false);
-		const tubeGeom = new THREE.TubeGeometry(curve, pointsArray.length * 4, radius, 8, false);
-		const tubeMat = new THREE.MeshBasicMaterial({
-			color: color,
-			transparent: opacity < 1,
-			opacity: opacity,
+	// NOTE: Polygon highlight is now handled by highlightSelectedKADThreeJS() via window.selectedKADObject
+	// We only draw markers, direction line, and arrow here
+
+	// Step 1) Draw start point as billboard point (bright green)
+	if (patternStartPoint) {
+		var startLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
+		// Use polygon's Z if available, otherwise use drawZ
+		var startZ = drawZ;
+		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+			var firstPt = selectedPolygon.data[0];
+			startZ = (firstPt.pointZLocation || firstPt.z || drawZ) + 0.2;
+		} else {
+			startZ = drawZ + 0.2;
+		}
+		var startPoint = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, startZ, 0.8, "rgba(0, 255, 0, 1.0)");
+		window.patternTool3DGroup.add(startPoint);
+	}
+
+	// Step 2) Draw end point as billboard point (bright red)
+	if (patternEndPoint) {
+		var endLocal = worldToThreeLocal(patternEndPoint.x, patternEndPoint.y);
+		// Use polygon's Z if available, otherwise use drawZ
+		var endZ = drawZ;
+		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+			var firstPt = selectedPolygon.data[0];
+			endZ = (firstPt.pointZLocation || firstPt.z || drawZ) + 0.2;
+		} else {
+			endZ = drawZ + 0.2;
+		}
+		var endPoint = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 1.0)");
+		window.patternTool3DGroup.add(endPoint);
+	}
+
+	// Step 3) Draw reference point as billboard point (magenta)
+	if (patternReferencePoint) {
+		var refLocal = worldToThreeLocal(patternReferencePoint.x, patternReferencePoint.y);
+		// Use polygon's Z if available, otherwise use drawZ
+		var refZ = drawZ;
+		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+			var firstPt = selectedPolygon.data[0];
+			refZ = (firstPt.pointZLocation || firstPt.z || drawZ) + 0.2;
+		} else {
+			refZ = drawZ + 0.2;
+		}
+		var refPoint = GeometryFactory.createKADPointHighlight(refLocal.x, refLocal.y, refZ, 0.8, "rgba(255, 0, 255, 1.0)");
+		window.patternTool3DGroup.add(refPoint);
+	}
+
+	// Step 4) Draw direction line from start to end (or start to mouse) with perpendicular arrow
+	var sLocal = null;
+	var eLocal = null;
+	var dx = 0;
+	var dy = 0;
+	var lineLength = 0;
+	
+	if (patternStartPoint && patternEndPoint) {
+		// Full line from start to end
+		sLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
+		eLocal = worldToThreeLocal(patternEndPoint.x, patternEndPoint.y);
+		dx = patternEndPoint.x - patternStartPoint.x;
+		dy = patternEndPoint.y - patternStartPoint.y;
+		lineLength = Math.sqrt(dx * dx + dy * dy);
+		
+		// Step 4a) Draw dashed line using cheap THREE.LineDashedMaterial (like drawKADLeadingLineThreeJS)
+		// Use polygon's Z for line elevation
+		var lineZ = drawZ;
+		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+			var firstPt = selectedPolygon.data[0];
+			lineZ = (firstPt.pointZLocation || firstPt.z || drawZ) + 0.1;
+		} else {
+			lineZ = drawZ + 0.1;
+		}
+		var linePoints = [
+			new THREE.Vector3(sLocal.x, sLocal.y, lineZ),
+			new THREE.Vector3(eLocal.x, eLocal.y, lineZ)
+		];
+		var lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+		var lineMat = new THREE.LineDashedMaterial({
+			color: 0x00ff00, // Green
+			dashSize: 1.0,
+			gapSize: 0.5,
+			transparent: true,
+			opacity: 0.7
+		});
+		var dirLine = new THREE.Line(lineGeom, lineMat);
+		dirLine.computeLineDistances(); // Required for dashed lines
+		window.patternTool3DGroup.add(dirLine);
+	} else if (patternStartPoint && !patternEndPoint && currentMouseWorldX && currentMouseWorldY) {
+		// Preview line to mouse cursor - handled by drawKADLeadingLineThreeJS in handle3DMouseMove
+		// Just calculate values for arrow positioning
+		sLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
+		eLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
+		dx = currentMouseWorldX - patternStartPoint.x;
+		dy = currentMouseWorldY - patternStartPoint.y;
+		lineLength = Math.sqrt(dx * dx + dy * dy);
+	}
+
+	// Step 5) Draw square pyramid arrow at exact midpoint of leading line
+	// PatternInPolygon: Points toward END (increasing hole numbers), base parallel to line,
+	// apex perpendicular to line, lies on side in XY plane
+	if (sLocal && eLocal && lineLength > 1) {
+		// Step 5a) Calculate line direction vector
+		var dirX = dx / lineLength;
+		var dirY = dy / lineLength;
+		var dirZ = 0; // Line is in XY plane
+
+		// Step 5b) Calculate exact midpoint of line using Vector3.lerp
+		var startVec = new THREE.Vector3(sLocal.x, sLocal.y, drawZ);
+		var endVec = new THREE.Vector3(eLocal.x, eLocal.y, drawZ);
+		var midPoint = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5);
+
+		// Step 5c) Get polygon's Z elevation for correct positioning
+		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+			var firstPt = selectedPolygon.data[0];
+			var polygonZ = (firstPt.pointZLocation || firstPt.z || drawZ);
+			midPoint.z = polygonZ; // Position at polygon's Z elevation
+		}
+
+		// Step 5d) Create flat triangle extruded 200mm (0.2 units) instead of pyramid
+		// Triangle points perpendicular to direction line (burden direction)
+		// Calculate perpendicular direction (90° clockwise from line direction)
+		var perpX = -dirY; // Perpendicular X (90° clockwise)
+		var perpY = dirX;  // Perpendicular Y (90° clockwise)
+		var perpAngle = Math.atan2(perpY, perpX); // Angle of perpendicular direction
+		
+		// Create triangle shape: equilateral triangle, 2 units wide, pointing in perpendicular direction
+		var triangleSize = 2.0; // Size of triangle base
+		var triangleShape = new THREE.Shape();
+		// Triangle vertices: point at top (0, triangleSize), base corners at (-triangleSize/2, 0) and (triangleSize/2, 0)
+		triangleShape.moveTo(0, triangleSize);
+		triangleShape.lineTo(-triangleSize / 2, 0);
+		triangleShape.lineTo(triangleSize / 2, 0);
+		triangleShape.lineTo(0, triangleSize); // Close triangle
+		
+		// Extrude settings: depth 0.2 (200mm), no bevel
+		var extrudeSettings = {
+			depth: 0.2, // 200mm extrusion
+			bevelEnabled: false
+		};
+		
+		// Create extruded triangle geometry
+		var triangleGeom = new THREE.ExtrudeGeometry(triangleShape, extrudeSettings);
+		var triangleMat = new THREE.MeshBasicMaterial({
+			color: 0x00ff00,
+			transparent: true,
+			opacity: 0.6,
 			side: THREE.DoubleSide
 		});
-		return new THREE.Mesh(tubeGeom, tubeMat);
+		var triangle = new THREE.Mesh(triangleGeom, triangleMat);
+		
+		// Step 5e) Position triangle at exact midpoint
+		triangle.position.copy(midPoint);
+		
+		// Step 5f) Orient triangle: lay flat on XY plane, point in perpendicular direction
+		// IMPORTANT: PatternInPolygon triangle should be rotated 90° clockwise around Z axis
+		// Triangle is created in XY plane (pointing up in +Y), rotate to point perpendicular to line
+		triangle.rotation.z = perpAngle + Math.PI / 2; // Rotate 90° clockwise around Z to point perpendicular to line
+		// Triangle is already flat on XY plane (no X rotation needed)
+
+		window.patternTool3DGroup.add(triangle);
+
+		// Step 5g) Add wireframe edge for visibility
+		var edgeGeom = new THREE.EdgesGeometry(triangleGeom);
+		var edgeMat = new THREE.LineBasicMaterial({ color: 0x008800 });
+		var edges = new THREE.LineSegments(edgeGeom, edgeMat);
+		edges.position.copy(triangle.position);
+		edges.rotation.copy(triangle.rotation);
+		window.patternTool3DGroup.add(edges);
 	}
 
-	// Step 1) Draw selected polygon outline in 3D
-	if (selectedPolygon && selectedPolygon.data) {
-		const polygonPoints = selectedPolygon.data;
-		if (polygonPoints.length > 0) {
-			// Create tube geometry for polygon outline (thick green line)
-			const tubePoints = [];
-			polygonPoints.forEach((point) => {
-				const x = point.pointXLocation || point.x;
-				const y = point.pointYLocation || point.y;
-				const local = worldToThreeLocal(x, y);
-				tubePoints.push(new THREE.Vector3(local.x, local.y, drawZ));
-			});
-			// Close the polygon
-			const firstPoint = polygonPoints[0];
-			const localFirst = worldToThreeLocal(firstPoint.pointXLocation || firstPoint.x, firstPoint.pointYLocation || firstPoint.y);
-			tubePoints.push(new THREE.Vector3(localFirst.x, localFirst.y, drawZ));
-
-			// Create thick tube for polygon outline
-			const polygonTube = createTubeFromPoints(tubePoints, 1.5, 0x00ff00, 0.8);
-			if (polygonTube) {
-				window.patternTool3DGroup.add(polygonTube);
-			}
-
-			// Draw vertices as spheres (orange for visibility)
-			polygonPoints.forEach((point) => {
-				const x = point.pointXLocation || point.x;
-				const y = point.pointYLocation || point.y;
-				const local = worldToThreeLocal(x, y);
-				const sphereGeom = new THREE.SphereGeometry(3, 12, 12);
-				const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.9 });
-				const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-				sphere.position.set(local.x, local.y, drawZ);
-				window.patternTool3DGroup.add(sphere);
-			});
-		}
-	}
-
-	// Step 2) Draw start point sphere (bright green, larger)
-	if (patternStartPoint) {
-		const local = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
-		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
-		const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.9 });
-		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-		sphere.position.set(local.x, local.y, drawZ + 2);
-		window.patternTool3DGroup.add(sphere);
-	}
-
-	// Step 3) Draw end point sphere (red, larger)
-	if (patternEndPoint) {
-		const local = worldToThreeLocal(patternEndPoint.x, patternEndPoint.y);
-		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
-		const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.9 });
-		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-		sphere.position.set(local.x, local.y, drawZ + 2);
-		window.patternTool3DGroup.add(sphere);
-	}
-
-	// Step 4) Draw reference point sphere (magenta, larger)
-	if (patternReferencePoint) {
-		const local = worldToThreeLocal(patternReferencePoint.x, patternReferencePoint.y);
-		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
-		const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff00ff, transparent: true, opacity: 0.8 });
-		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-		sphere.position.set(local.x, local.y, drawZ + 2);
-		window.patternTool3DGroup.add(sphere);
-	}
-
-	// Step 5) Draw direction line and pyramid indicator
-	if (patternStartPoint && patternEndPoint) {
-		const startLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
-		const endLocal = worldToThreeLocal(patternEndPoint.x, patternEndPoint.y);
-
-		// Draw tube line from start to end (using tube for visibility)
-		const dirLinePoints = [
-			new THREE.Vector3(startLocal.x, startLocal.y, drawZ + 1),
-			new THREE.Vector3(endLocal.x, endLocal.y, drawZ + 1)
-		];
-		const dirLineTube = createTubeFromPoints(dirLinePoints, 1.0, 0x00ff00, 0.7);
-		if (dirLineTube) {
-			window.patternTool3DGroup.add(dirLineTube);
-		}
-
-		// Calculate direction for pyramid
-		const dx = patternEndPoint.x - patternStartPoint.x;
-		const dy = patternEndPoint.y - patternStartPoint.y;
-		const lineLength = Math.sqrt(dx * dx + dy * dy);
-
-		if (lineLength > 1) {
-			// Create transparent pyramid (cone) to show direction
-			const midX = (startLocal.x + endLocal.x) / 2;
-			const midY = (startLocal.y + endLocal.y) / 2;
-
-			// Calculate perpendicular direction for pyramid offset
-			const dirX = dx / lineLength;
-			const dirY = dy / lineLength;
-			const perpX = -dirY;
-			const perpY = dirX;
-
-			// Pyramid position (offset perpendicular to line)
-			const pyramidOffset = 15;
-			const pyramidX = midX + perpX * pyramidOffset;
-			const pyramidY = midY + perpY * pyramidOffset;
-
-			// Create pyramid (cone) geometry - pointing in perpendicular direction
-			const pyramidHeight = 12;
-			const pyramidRadius = 6;
-			const pyramidGeom = new THREE.ConeGeometry(pyramidRadius, pyramidHeight, 4);
-			const pyramidMat = new THREE.MeshBasicMaterial({
-				color: 0x00ff00,
-				transparent: true,
-				opacity: 0.4,
-				side: THREE.DoubleSide
-			});
-			const pyramid = new THREE.Mesh(pyramidGeom, pyramidMat);
-
-			// Position pyramid
-			pyramid.position.set(pyramidX, pyramidY, drawZ + pyramidHeight / 2 + 1);
-
-			// Rotate pyramid to point in perpendicular direction (burden direction)
-			// Default cone points up (+Z), we want it to point in perpendicular direction
-			const angle = Math.atan2(perpY, perpX);
-			pyramid.rotation.z = angle;
-			pyramid.rotation.x = Math.PI / 2; // Tip pointing along XY plane
-
-			window.patternTool3DGroup.add(pyramid);
-
-			// Add wireframe outline for better visibility
-			const wireframeMat = new THREE.MeshBasicMaterial({
-				color: 0x009900,
-				wireframe: true
-			});
-			const pyramidWireframe = new THREE.Mesh(pyramidGeom.clone(), wireframeMat);
-			pyramidWireframe.position.copy(pyramid.position);
-			pyramidWireframe.rotation.copy(pyramid.rotation);
-			window.patternTool3DGroup.add(pyramidWireframe);
-		}
-	}
-
-	// Step 6) Draw preview line to mouse cursor if in step 2 (selecting end point)
-	if (patternStartPoint && !patternEndPoint && currentMouseWorldX && currentMouseWorldY) {
-		const startLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
-		const mouseLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
-
-		// Use tube for preview line (more visible than basic line)
-		const previewPoints = [
-			new THREE.Vector3(startLocal.x, startLocal.y, drawZ + 1),
-			new THREE.Vector3(mouseLocal.x, mouseLocal.y, drawZ + 1)
-		];
-		const previewTube = createTubeFromPoints(previewPoints, 0.8, 0x00ff00, 0.5);
-		if (previewTube) {
-			window.patternTool3DGroup.add(previewTube);
-		}
-	}
-
-	// Add group to scene
+	// Step 6) Add group to scene
 	threeRenderer.scene.add(window.patternTool3DGroup);
-
-	// Debug log (remove after testing)
-	if (window.patternTool3DGroup.children.length > 0) {
-		console.log("🔷 Pattern tool 3D: Added " + window.patternTool3DGroup.children.length + " objects to scene");
+	
+	// Step 8) Build overlay data for HUD labels (consistent with 2D)
+	var overlayData = { toolType: "polygon" };
+	
+	// Step 8a) Add start point label
+	if (patternStartPoint) {
+		// FIX: Use actual Z from patternStartPoint or polygon
+		var startZ = patternStartPoint.z;
+		if (startZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+			var firstPt = selectedPolygon.data[0];
+			startZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
+		}
+		var screenStart = worldToScreen(patternStartPoint.x, patternStartPoint.y, startZ || dataCentroidZ || 0);
+		if (screenStart) {
+			overlayData.startPoint = patternStartPoint;
+			overlayData.startCanvasX = screenStart.x;
+			overlayData.startCanvasY = screenStart.y;
+		}
 	}
+	
+	// Step 8b) Add end point label
+	if (patternEndPoint) {
+		// FIX: Use actual Z from patternEndPoint or polygon
+		var endZ = patternEndPoint.z;
+		if (endZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+			var firstPt = selectedPolygon.data[0];
+			endZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
+		}
+		var screenEnd = worldToScreen(patternEndPoint.x, patternEndPoint.y, endZ || dataCentroidZ || 0);
+		if (screenEnd) {
+			overlayData.endPoint = patternEndPoint;
+			overlayData.endCanvasX = screenEnd.x;
+			overlayData.endCanvasY = screenEnd.y;
+		}
+	}
+	
+	// Step 8c) Add reference point label
+	if (patternReferencePoint) {
+		// FIX: Use actual Z from patternReferencePoint or polygon
+		var refZ = patternReferencePoint.z;
+		if (refZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
+			var firstPt = selectedPolygon.data[0];
+			refZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
+		}
+		var screenRef = worldToScreen(patternReferencePoint.x, patternReferencePoint.y, refZ || dataCentroidZ || 0);
+		if (screenRef) {
+			overlayData.refPoint = patternReferencePoint;
+			overlayData.refCanvasX = screenRef.x;
+			overlayData.refCanvasY = screenRef.y;
+		}
+	}
+	
+	// Step 8d) Add distance label
+	if (patternStartPoint && patternEndPoint) {
+		var dx = patternEndPoint.x - patternStartPoint.x;
+		var dy = patternEndPoint.y - patternStartPoint.y;
+		var distance = Math.sqrt(dx * dx + dy * dy);
+		var midWorldX = (patternStartPoint.x + patternEndPoint.x) / 2;
+		var midWorldY = (patternStartPoint.y + patternEndPoint.y) / 2;
+		var screenMid = worldToScreen(midWorldX, midWorldY, dataCentroidZ || 0);
+		if (screenMid) {
+			overlayData.distance = distance;
+			overlayData.midCanvasX = screenMid.x;
+			overlayData.midCanvasY = screenMid.y;
+		}
+	}
+	
+	// Step 8e) Show HUD overlay labels
+	showPatternToolLabels(overlayData);
 }
 
 // 3D Visual feedback for Holes Along Line tool
+// Uses fat lines and billboard points to match 2D aesthetic and multiple KAD selection style
 function drawHolesAlongLine3DVisual() {
+	// Step 0) Guard checks - clean up if tool inactive
 	if (!isHolesAlongLineActive || !threeInitialized || !threeRenderer) {
-		// Clean up if tool is not active
 		if (window.holesAlongLine3DGroup && threeRenderer && threeRenderer.scene) {
 			threeRenderer.scene.remove(window.holesAlongLine3DGroup);
 			window.holesAlongLine3DGroup = null;
 		}
+		// Step 0.1) Hide HUD labels when tool is inactive
+		hidePatternToolLabels();
 		return;
 	}
 
-	// Clear previous 3D objects
+	// Step 0a) Clear previous 3D objects
 	if (window.holesAlongLine3DGroup) {
 		threeRenderer.scene.remove(window.holesAlongLine3DGroup);
 		window.holesAlongLine3DGroup = null;
 	}
 
-	// Create new group for tool visuals
+	// Step 0b) Create new group for tool visuals
 	window.holesAlongLine3DGroup = new THREE.Group();
 	window.holesAlongLine3DGroup.name = "holesAlongLine3DVisuals";
 
-	// Get Z elevation for 3D drawing
-	const drawZ = (dataCentroidZ || 0) + 2;
+	// Step 0c) Get Z elevation for 3D drawing (slightly above surface)
+	var drawZ = (dataCentroidZ || 0) + 0.5;
 
-	// Helper function to create tube geometry for thick lines
-	function createTubeFromPoints(pointsArray, radius, color, opacity) {
-		if (pointsArray.length < 2) return null;
-		const curve = new THREE.CatmullRomCurve3(pointsArray, false);
-		const tubeGeom = new THREE.TubeGeometry(curve, pointsArray.length * 4, radius, 8, false);
-		const tubeMat = new THREE.MeshBasicMaterial({
-			color: color,
-			transparent: opacity < 1,
-			opacity: opacity,
-			side: THREE.DoubleSide
-		});
-		return new THREE.Mesh(tubeGeom, tubeMat);
-	}
+	// Step 0d) Get resolution for fat lines
+	var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
 
-	// Step 1) Draw start point sphere (bright green, larger)
+	// Step 1) Draw start point as billboard point (bright green)
 	if (lineStartPoint) {
-		const local = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
-		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
-		const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.9 });
-		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-		sphere.position.set(local.x, local.y, drawZ + 2);
-		window.holesAlongLine3DGroup.add(sphere);
+		var startLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
+		// FIX: Use actual Z from lineStartPoint
+		var startZ = (lineStartPoint.z || drawZ) + 0.2;
+		var startPoint = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, startZ, 0.8, "rgba(0, 255, 0, 1.0)");
+		window.holesAlongLine3DGroup.add(startPoint);
 	}
 
-	// Step 2) Draw end point sphere (red, larger)
+	// Step 2) Draw end point as billboard point (bright red)
 	if (lineEndPoint) {
-		const local = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
-		const sphereGeom = new THREE.SphereGeometry(5, 16, 16);
-		const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.9 });
-		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-		sphere.position.set(local.x, local.y, drawZ + 2);
-		window.holesAlongLine3DGroup.add(sphere);
+		var endLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
+		// FIX: Use actual Z from lineEndPoint
+		var endZ = (lineEndPoint.z || drawZ) + 0.2;
+		var endPoint = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 1.0)");
+		window.holesAlongLine3DGroup.add(endPoint);
 	}
 
-	// Step 3) Draw line between start and end with pyramid arrow
-	if (lineStartPoint && lineEndPoint) {
-		const startLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
-		const endLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
+		// Step 3) Draw dashed line between start and end with triangle arrow (same style as PatternInPolygon)
+		if (lineStartPoint && lineEndPoint) {
+			var sLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
+			var eLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
+			var dx = lineEndPoint.x - lineStartPoint.x;
+			var dy = lineEndPoint.y - lineStartPoint.y;
+			var lineLength = Math.sqrt(dx * dx + dy * dy);
 
-		// Draw tube line from start to end (fat line effect)
-		const linePoints = [
-			new THREE.Vector3(startLocal.x, startLocal.y, drawZ + 1),
-			new THREE.Vector3(endLocal.x, endLocal.y, drawZ + 1)
-		];
-		const lineTube = createTubeFromPoints(linePoints, 1.2, 0x00ff00, 0.7);
-		if (lineTube) {
-			window.holesAlongLine3DGroup.add(lineTube);
-		}
-
-		// Calculate direction for pyramid arrow
-		const dx = lineEndPoint.x - lineStartPoint.x;
-		const dy = lineEndPoint.y - lineStartPoint.y;
-		const lineLength = Math.sqrt(dx * dx + dy * dy);
-
-		if (lineLength > 1) {
-			// Create pyramid at midpoint showing row direction (perpendicular)
-			const midX = (startLocal.x + endLocal.x) / 2;
-			const midY = (startLocal.y + endLocal.y) / 2;
-
-			const dirX = dx / lineLength;
-			const dirY = dy / lineLength;
-			// Perpendicular direction (90 degrees)
-			const perpX = -dirY;
-			const perpY = dirX;
-
-			// Pyramid position (offset perpendicular to line)
-			const pyramidOffset = 15;
-			const pyramidX = midX + perpX * pyramidOffset;
-			const pyramidY = midY + perpY * pyramidOffset;
-
-			// Create pyramid (cone) geometry - pointing perpendicular
-			const pyramidHeight = 12;
-			const pyramidRadius = 6;
-			const pyramidGeom = new THREE.ConeGeometry(pyramidRadius, pyramidHeight, 4);
-			const pyramidMat = new THREE.MeshBasicMaterial({
-				color: 0x00ff00,
+			// Step 3a) Draw dashed line using cheap THREE.LineDashedMaterial (like PatternInPolygon)
+			var lineZ = drawZ;
+			if (lineStartPoint.z !== undefined) {
+				lineZ = lineStartPoint.z + 0.1;
+			} else if (lineEndPoint.z !== undefined) {
+				lineZ = lineEndPoint.z + 0.1;
+			}
+			var linePoints = [
+				new THREE.Vector3(sLocal.x, sLocal.y, lineZ),
+				new THREE.Vector3(eLocal.x, eLocal.y, lineZ)
+			];
+			var lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
+			var lineMat = new THREE.LineDashedMaterial({
+				color: 0x00ff00, // Green
+				dashSize: 1.0,
+				gapSize: 0.5,
 				transparent: true,
-				opacity: 0.4,
-				side: THREE.DoubleSide
+				opacity: 0.7
 			});
-			const pyramid = new THREE.Mesh(pyramidGeom, pyramidMat);
+			var dirLine = new THREE.Line(lineGeom, lineMat);
+			dirLine.computeLineDistances(); // Required for dashed lines
+			window.holesAlongLine3DGroup.add(dirLine);
 
-			pyramid.position.set(pyramidX, pyramidY, drawZ + pyramidHeight / 2 + 1);
+			// Step 3b) Calculate direction for triangle arrow (points toward end/last hole)
+			if (lineLength > 1) {
+				var dirX = dx / lineLength;
+				var dirY = dy / lineLength;
 
-			// Rotate pyramid to point in perpendicular direction
-			const angle = Math.atan2(perpY, perpX);
-			pyramid.rotation.z = angle;
-			pyramid.rotation.x = Math.PI / 2;
+				// Step 3c) Calculate midpoint
+				var startVec = new THREE.Vector3(sLocal.x, sLocal.y, lineZ);
+				var endVec = new THREE.Vector3(eLocal.x, eLocal.y, lineZ);
+				var midPoint = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5);
 
-			window.holesAlongLine3DGroup.add(pyramid);
+				// Step 3d) Create flat triangle extruded 200mm (0.2 units) pointing along line direction
+				var triangleSize = 2.0; // Size of triangle base
+				var triangleShape = new THREE.Shape();
+				// Triangle vertices: point at top (0, triangleSize), base corners at (-triangleSize/2, 0) and (triangleSize/2, 0)
+				triangleShape.moveTo(0, triangleSize);
+				triangleShape.lineTo(-triangleSize / 2, 0);
+				triangleShape.lineTo(triangleSize / 2, 0);
+				triangleShape.lineTo(0, triangleSize); // Close triangle
+				
+				// Extrude settings: depth 0.2 (200mm), no bevel
+				var extrudeSettings = {
+					depth: 0.2, // 200mm extrusion
+					bevelEnabled: false
+				};
+				
+				// Create extruded triangle geometry
+				var triangleGeom = new THREE.ExtrudeGeometry(triangleShape, extrudeSettings);
+				var triangleMat = new THREE.MeshBasicMaterial({
+					color: 0x00ff00,
+					transparent: true,
+					opacity: 0.6,
+					side: THREE.DoubleSide
+				});
+				var triangle = new THREE.Mesh(triangleGeom, triangleMat);
+				
+				// Step 3e) Position triangle at exact midpoint
+				triangle.position.copy(midPoint);
+				
+				// Step 3f) Orient triangle: lay flat on XY plane, point along line direction (toward end)
+				// IMPORTANT: HolesAlongLine triangle should rotate 90° clockwise around Z axis (arrow points to end point)
+				// Triangle is created in XY plane (pointing up in +Y), rotate to point along line
+				var lineAngle = Math.atan2(dirY, dirX);
+				triangle.rotation.z = lineAngle + Math.PI / 2; // Rotate 90° clockwise around Z to point to end point
+				// Triangle is already flat on XY plane (no X rotation needed)
 
-			// Add wireframe outline for better visibility
-			const wireframeMat = new THREE.MeshBasicMaterial({
-				color: 0x009900,
-				wireframe: true
-			});
-			const pyramidWireframe = new THREE.Mesh(pyramidGeom.clone(), wireframeMat);
-			pyramidWireframe.position.copy(pyramid.position);
-			pyramidWireframe.rotation.copy(pyramid.rotation);
-			window.holesAlongLine3DGroup.add(pyramidWireframe);
+				window.holesAlongLine3DGroup.add(triangle);
+
+				// Step 3g) Add wireframe edge for visibility
+				var edgeGeom = new THREE.EdgesGeometry(triangleGeom);
+				var edgeMat = new THREE.LineBasicMaterial({ color: 0x008800 });
+				var edges = new THREE.LineSegments(edgeGeom, edgeMat);
+				edges.position.copy(triangle.position);
+				edges.rotation.copy(triangle.rotation);
+				window.holesAlongLine3DGroup.add(edges);
+			}
 		}
-	}
 
-	// Step 4) Draw preview line to mouse cursor if selecting end point
-	if (lineStartPoint && !lineEndPoint && currentMouseWorldX && currentMouseWorldY) {
-		const startLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
-		const mouseLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
+	// Step 4) Leading line from start to mouse is handled in handle3DMouseMove() (same as PatternInPolygon)
+	// This ensures live updates as mouse moves
 
-		const previewPoints = [
-			new THREE.Vector3(startLocal.x, startLocal.y, drawZ + 1),
-			new THREE.Vector3(mouseLocal.x, mouseLocal.y, drawZ + 1)
-		];
-		const previewTube = createTubeFromPoints(previewPoints, 0.8, 0x00ff00, 0.5);
-		if (previewTube) {
-			window.holesAlongLine3DGroup.add(previewTube);
-		}
-	}
-
-	// Add group to scene
+	// Step 5) Add group to scene
 	threeRenderer.scene.add(window.holesAlongLine3DGroup);
-
-	// Update LineMaterial resolution for any fat lines added
-	if (typeof updateAllLineMaterialResolution === "function") {
-		updateAllLineMaterialResolution();
+	
+	// Step 6) Build overlay data for HUD labels (consistent with 2D)
+	var overlayData = { toolType: "line" };
+	
+	// Step 6a) Add start point label
+	if (lineStartPoint) {
+		var screenStart = worldToScreen(lineStartPoint.x, lineStartPoint.y, dataCentroidZ || 0);
+		if (screenStart) {
+			overlayData.startPoint = lineStartPoint;
+			overlayData.startCanvasX = screenStart.x;
+			overlayData.startCanvasY = screenStart.y;
+		}
 	}
+	
+	// Step 6b) Add end point label
+	if (lineEndPoint) {
+		var screenEnd = worldToScreen(lineEndPoint.x, lineEndPoint.y, dataCentroidZ || 0);
+		if (screenEnd) {
+			overlayData.endPoint = lineEndPoint;
+			overlayData.endCanvasX = screenEnd.x;
+			overlayData.endCanvasY = screenEnd.y;
+		}
+	}
+	
+	// Step 6c) Add distance label
+	if (lineStartPoint && lineEndPoint) {
+		var dx = lineEndPoint.x - lineStartPoint.x;
+		var dy = lineEndPoint.y - lineStartPoint.y;
+		var distance = Math.sqrt(dx * dx + dy * dy);
+		// Calculate bearing: North = 0°, East = 90° (clockwise)
+		var bearing = (90 - (Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
+		var midWorldX = (lineStartPoint.x + lineEndPoint.x) / 2;
+		var midWorldY = (lineStartPoint.y + lineEndPoint.y) / 2;
+		var screenMid = worldToScreen(midWorldX, midWorldY, dataCentroidZ || 0);
+		if (screenMid) {
+			overlayData.distance = distance;
+			overlayData.bearing = bearing;
+			overlayData.midCanvasX = screenMid.x;
+			overlayData.midCanvasY = screenMid.y;
+		}
+	}
+
+	// Step 6d) Show HUD overlay labels
+	showPatternToolLabels(overlayData);
 }
 
 // Add this function to draw poly line selection visuals
@@ -34713,196 +35105,287 @@ function drawPatternOnPolylineVisual() {
 }
 
 // 3D Visual feedback for Holes Along Polyline tool
+// Matches the clean, minimal 2D aesthetic with thin lines and small markers
 function drawHolesAlongPolyline3DVisual() {
+	// Step 0) Guard checks - clean up if tool inactive
 	if (!isHolesAlongPolyLineActive || !threeInitialized || !threeRenderer) {
-		// Clean up if tool is not active
 		if (window.holesAlongPolyline3DGroup && threeRenderer && threeRenderer.scene) {
 			threeRenderer.scene.remove(window.holesAlongPolyline3DGroup);
 			window.holesAlongPolyline3DGroup = null;
 		}
+		// Step 0.1) Hide HUD labels when tool is inactive
+		hidePatternToolLabels();
 		return;
 	}
 
-	// Safety checks
+	// Step 0a) Safety checks
 	if (!selectedPolyline || !selectedPolyline.vertices || !Array.isArray(selectedPolyline.vertices)) {
 		return;
 	}
 
-	// Clear previous 3D objects
+	// Step 0b) Clear previous 3D objects
 	if (window.holesAlongPolyline3DGroup) {
 		threeRenderer.scene.remove(window.holesAlongPolyline3DGroup);
 		window.holesAlongPolyline3DGroup = null;
 	}
 
-	// Create new group for tool visuals
+	// Step 0c) Create new group for tool visuals
 	window.holesAlongPolyline3DGroup = new THREE.Group();
 	window.holesAlongPolyline3DGroup.name = "holesAlongPolyline3DVisuals";
 
-	// Get Z elevation for 3D drawing
-	const drawZ = (dataCentroidZ || 0) + 2;
-
-	// Helper function to create tube geometry for thick lines
-	function createTubeFromPoints(pointsArray, radius, color, opacity) {
-		if (pointsArray.length < 2) return null;
-		const curve = new THREE.CatmullRomCurve3(pointsArray, false);
-		const tubeGeom = new THREE.TubeGeometry(curve, pointsArray.length * 4, radius, 8, false);
-		const tubeMat = new THREE.MeshBasicMaterial({
-			color: color,
-			transparent: opacity < 1,
-			opacity: opacity,
-			side: THREE.DoubleSide
-		});
-		return new THREE.Mesh(tubeGeom, tubeMat);
+	// Step 0d) Get Z elevation from selected polyline's actual Z values
+	var drawZ = (dataCentroidZ || 0) + 0.5;
+	// FIX: Use actual Z from selected polyline if available
+	if (selectedPolyline && selectedPolyline.vertices && selectedPolyline.vertices.length > 0) {
+		var firstVtx = selectedPolyline.vertices[0];
+		drawZ = (firstVtx.z || dataCentroidZ || 0) + 0.5;
 	}
 
-	// Step 1) Draw selected polyline outline (green tubes)
-	if (selectedPolyline && selectedPolyline.vertices.length > 1) {
-		const polylinePoints = [];
-		selectedPolyline.vertices.forEach(function(vertex) {
-			const local = worldToThreeLocal(vertex.x, vertex.y);
-			polylinePoints.push(new THREE.Vector3(local.x, local.y, drawZ));
-		});
-		
-		// Close if polygon type
-		if (selectedPolyline.type === "polygon" && polylinePoints.length > 0) {
-			polylinePoints.push(polylinePoints[0].clone());
-		}
+	// Step 0e) Get resolution for fat lines
+	var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
 
-		const polylineTube = createTubeFromPoints(polylinePoints, 1.5, 0x00ff00, 0.7);
-		if (polylineTube) {
-			window.holesAlongPolyline3DGroup.add(polylineTube);
-		}
+	// NOTE: We do NOT draw the polyline outline here - it's already drawn by the main KAD drawing loop
+	// The polyline is displayed in its original color from the KAD entity
 
-		// Draw vertices as small orange spheres
-		selectedPolyline.vertices.forEach(function(vertex) {
-			const local = worldToThreeLocal(vertex.x, vertex.y);
-			const sphereGeom = new THREE.SphereGeometry(3, 12, 12);
-			const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff6600, transparent: true, opacity: 0.8 });
-			const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-			sphere.position.set(local.x, local.y, drawZ);
-			window.holesAlongPolyline3DGroup.add(sphere);
-		});
-	}
-
-	// Step 2) Highlight active segment (where holes will be placed) in cyan
-	if (polylineStartPoint && polylineEndPoint && selectedPolyline && selectedPolyline.vertices) {
-		// Find the segment indices for START and END
+	// Step 1) Highlight active segment (where holes will be placed) in cyan using fat lines
+	if (polylineStartPoint && polylineEndPoint && selectedPolyline) {
+		// Step 1a) Find the segment indices for START and END
+		// FIX: Use entity.data to find indices (same as what we use for segments) for perfect alignment
 		var startIdx = -1;
 		var endIdx = -1;
-		for (var i = 0; i < selectedPolyline.vertices.length; i++) {
-			var v = selectedPolyline.vertices[i];
-			if (Math.abs(v.x - polylineStartPoint.x) < 0.01 && Math.abs(v.y - polylineStartPoint.y) < 0.01) {
-				startIdx = i;
-			}
-			if (Math.abs(v.x - polylineEndPoint.x) < 0.01 && Math.abs(v.y - polylineEndPoint.y) < 0.01) {
-				endIdx = i;
-			}
-		}
+		var searchPoints = selectedPolyline.entity && selectedPolyline.entity.data ? selectedPolyline.entity.data : selectedPolyline.vertices;
 		
-		// Draw active segments in cyan with thicker tube
-		if (startIdx !== -1 && endIdx !== -1 && startIdx !== endIdx) {
-			var minIdx = Math.min(startIdx, endIdx);
-			var maxIdx = Math.max(startIdx, endIdx);
-			
-			var activeSegmentPoints = [];
-			for (var j = minIdx; j <= maxIdx; j++) {
-				var vertex = selectedPolyline.vertices[j];
-				var local = worldToThreeLocal(vertex.x, vertex.y);
-				activeSegmentPoints.push(new THREE.Vector3(local.x, local.y, drawZ + 1));
+		for (var k = 0; k < searchPoints.length; k++) {
+			var pt = searchPoints[k];
+			var ptX = pt.pointXLocation || pt.x;
+			var ptY = pt.pointYLocation || pt.y;
+			if (Math.abs(ptX - polylineStartPoint.x) < 0.01 && Math.abs(ptY - polylineStartPoint.y) < 0.01) {
+				startIdx = k;
+				// FIX: Ensure polylineStartPoint has Z value from point
+				var ptZ = pt.pointZLocation || pt.z;
+				if (ptZ !== undefined && ptZ !== null && polylineStartPoint.z === undefined) {
+					polylineStartPoint.z = ptZ;
+				}
 			}
-			
-			// Create thicker cyan tube for active segment
-			var activeSegmentTube = createTubeFromPoints(activeSegmentPoints, 2.5, 0x00ffff, 0.9);
-			if (activeSegmentTube) {
-				window.holesAlongPolyline3DGroup.add(activeSegmentTube);
-			}
-			
-			// Add pyramid arrow at midpoint of active segment
-			if (activeSegmentPoints.length >= 2) {
-				var midIdx = Math.floor(activeSegmentPoints.length / 2);
-				var midPoint = activeSegmentPoints[midIdx];
-				
-				// Calculate direction along active segment
-				var prevPoint = activeSegmentPoints[Math.max(0, midIdx - 1)];
-				var nextPoint = activeSegmentPoints[Math.min(activeSegmentPoints.length - 1, midIdx + 1)];
-				var segDx = nextPoint.x - prevPoint.x;
-				var segDy = nextPoint.y - prevPoint.y;
-				var segLen = Math.sqrt(segDx * segDx + segDy * segDy);
-				
-				if (segLen > 1) {
-					var dirX = segDx / segLen;
-					var dirY = segDy / segLen;
-					// Perpendicular direction (90 degrees)
-					var perpX = -dirY;
-					var perpY = dirX;
-					
-					// Pyramid position (offset perpendicular to segment)
-					var pyramidOffset = 15;
-					var pyramidX = midPoint.x + perpX * pyramidOffset;
-					var pyramidY = midPoint.y + perpY * pyramidOffset;
-					
-					// Create pyramid (cone) geometry
-					var pyramidHeight = 12;
-					var pyramidRadius = 6;
-					var pyramidGeom = new THREE.ConeGeometry(pyramidRadius, pyramidHeight, 4);
-					var pyramidMat = new THREE.MeshBasicMaterial({
-						color: 0x00ffff,
-						transparent: true,
-						opacity: 0.4,
-						side: THREE.DoubleSide
-					});
-					var pyramid = new THREE.Mesh(pyramidGeom, pyramidMat);
-					
-					pyramid.position.set(pyramidX, pyramidY, drawZ + pyramidHeight / 2 + 2);
-					
-					// Rotate pyramid to point in perpendicular direction
-					var angle = Math.atan2(perpY, perpX);
-					pyramid.rotation.z = angle;
-					pyramid.rotation.x = Math.PI / 2;
-					
-					window.holesAlongPolyline3DGroup.add(pyramid);
-					
-					// Add wireframe outline
-					var wireframeMat = new THREE.MeshBasicMaterial({
-						color: 0x00aaaa,
-						wireframe: true
-					});
-					var pyramidWireframe = new THREE.Mesh(pyramidGeom.clone(), wireframeMat);
-					pyramidWireframe.position.copy(pyramid.position);
-					pyramidWireframe.rotation.copy(pyramid.rotation);
-					window.holesAlongPolyline3DGroup.add(pyramidWireframe);
+			if (Math.abs(ptX - polylineEndPoint.x) < 0.01 && Math.abs(ptY - polylineEndPoint.y) < 0.01) {
+				endIdx = k;
+				// FIX: Ensure polylineEndPoint has Z value from point
+				var ptZ = pt.pointZLocation || pt.z;
+				if (ptZ !== undefined && ptZ !== null && polylineEndPoint.z === undefined) {
+					polylineEndPoint.z = ptZ;
 				}
 			}
 		}
+		
+		// Step 2b) Draw active segments in cyan using fat lines (thicker than green outline)
+		if (startIdx !== -1 && endIdx !== -1 && startIdx !== endIdx) {
+			var minIdx = Math.min(startIdx, endIdx);
+			var maxIdx = Math.max(startIdx, endIdx);
+			// Track if we're going from high index to low (reversed direction)
+			var isReversed = startIdx > endIdx;
+			
+			// Step 2c) Collect cyan segments for active path
+			// FIX: Use actual entity geometry (entity.data) instead of vertices array to ensure perfect alignment
+			// This matches how drawKADEntityHighlight() works - uses entity.data directly
+			var cyanSegments = [];
+			if (selectedPolyline.entity && selectedPolyline.entity.data) {
+				// Use entity.data directly (same as highlight function) for perfect geometry match
+				var entityPoints = selectedPolyline.entity.data;
+				var isClosedShape = selectedPolyline.type === "polygon";
+				var numSegments = isClosedShape ? entityPoints.length : entityPoints.length - 1;
+				
+				for (var m = minIdx; m < maxIdx && m < numSegments; m++) {
+					var point1 = entityPoints[m];
+					var point2 = isClosedShape ? entityPoints[(m + 1) % entityPoints.length] : entityPoints[m + 1];
+					
+					var segLocal1 = worldToThreeLocal(point1.pointXLocation, point1.pointYLocation);
+					var segLocal2 = worldToThreeLocal(point2.pointXLocation, point2.pointYLocation);
+					
+					// Use actual Z from entity points (same as highlight function)
+					var cyanZ1 = (point1.pointZLocation || dataCentroidZ || 0) + 0.2;
+					var cyanZ2 = (point2.pointZLocation || dataCentroidZ || 0) + 0.2;
+					
+					cyanSegments.push({
+						x1: segLocal1.x, y1: segLocal1.y, z1: cyanZ1,
+						x2: segLocal2.x, y2: segLocal2.y, z2: cyanZ2
+					});
+				}
+			} else {
+				// Fallback to vertices if entity.data not available
+				for (var m = minIdx; m < maxIdx; m++) {
+					var segVertex1 = selectedPolyline.vertices[m];
+					var segVertex2 = selectedPolyline.vertices[m + 1];
+					var segLocal1 = worldToThreeLocal(segVertex1.x, segVertex1.y);
+					var segLocal2 = worldToThreeLocal(segVertex2.x, segVertex2.y);
+					var cyanZ1 = (segVertex1.z !== undefined && segVertex1.z !== null) ? segVertex1.z + 0.2 : drawZ + 0.2;
+					var cyanZ2 = (segVertex2.z !== undefined && segVertex2.z !== null) ? segVertex2.z + 0.2 : drawZ + 0.2;
+					cyanSegments.push({
+						x1: segLocal1.x, y1: segLocal1.y, z1: cyanZ1,
+						x2: segLocal2.x, y2: segLocal2.y, z2: cyanZ2
+					});
+				}
+			}
+			
+			// Step 2d) Create cyan fat lines for active segment (slightly thicker)
+			if (cyanSegments.length > 0) {
+				var cyanLines = GeometryFactory._createHighlightLinesBatch(cyanSegments, 5, resolution, "rgba(0, 255, 255, 1.0)");
+
+				if (cyanLines) {
+					window.holesAlongPolyline3DGroup.add(cyanLines);
+				}
+			}
+			
+			// Step 2e) Add small pyramid arrow at midpoint of active segment
+			if (cyanSegments.length >= 1) {
+				// Step 2f) Calculate midpoint and direction along active segment path
+				var totalLength = 0;
+				var segLengths = [];
+				for (var n = 0; n < cyanSegments.length; n++) {
+					var seg = cyanSegments[n];
+					var dx = seg.x2 - seg.x1;
+					var dy = seg.y2 - seg.y1;
+					var len = Math.sqrt(dx * dx + dy * dy);
+					segLengths.push(len);
+					totalLength += len;
+				}
+				
+				// Step 2g) Find midpoint along path
+				var halfLength = totalLength / 2;
+				var accumulated = 0;
+				var midX = 0, midY = 0, dirX = 0, dirY = 0;
+				for (var p = 0; p < cyanSegments.length; p++) {
+					if (accumulated + segLengths[p] >= halfLength) {
+						// Midpoint is on this segment
+						var t = (halfLength - accumulated) / segLengths[p];
+						var seg2 = cyanSegments[p];
+						midX = seg2.x1 + t * (seg2.x2 - seg2.x1);
+						midY = seg2.y1 + t * (seg2.y2 - seg2.y1);
+						// Direction is along this segment toward end
+						var segDx = seg2.x2 - seg2.x1;
+						var segDy = seg2.y2 - seg2.y1;
+						var segLen = Math.sqrt(segDx * segDx + segDy * segDy);
+						if (segLen > 0) {
+							dirX = segDx / segLen;
+							dirY = segDy / segLen;
+						}
+						break;
+					}
+					accumulated += segLengths[p];
+				}
+				
+				// Removed pyramid from HolesAlongPolyLine tool as per user requirements
+			}
+		}
 	}
 
-	// Step 3) Draw start point sphere (bright green, larger)
+	// Step 3) Draw start point as billboard point (bright green)
 	if (polylineStartPoint) {
-		const local = worldToThreeLocal(polylineStartPoint.x, polylineStartPoint.y);
-		const sphereGeom = new THREE.SphereGeometry(6, 16, 16);
-		const sphereMat = new THREE.MeshBasicMaterial({ color: 0x00ff00, transparent: true, opacity: 0.9 });
-		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-		sphere.position.set(local.x, local.y, drawZ + 3);
-		window.holesAlongPolyline3DGroup.add(sphere);
+		var startLocal = worldToThreeLocal(polylineStartPoint.x, polylineStartPoint.y);
+		// FIX: Use actual Z from polylineStartPoint (check for undefined/null, not falsy)
+		var startZ = (polylineStartPoint.z !== undefined && polylineStartPoint.z !== null) ? polylineStartPoint.z + 0.2 : drawZ + 0.2;
+		var startPoint = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, startZ, 0.8, "rgba(0, 255, 0, 1.0)");
+		window.holesAlongPolyline3DGroup.add(startPoint);
 	}
 
-	// Step 4) Draw end point sphere (red, larger)
+	// Step 4) Draw end point as billboard point (bright red)
 	if (polylineEndPoint) {
-		const local = worldToThreeLocal(polylineEndPoint.x, polylineEndPoint.y);
-		const sphereGeom = new THREE.SphereGeometry(6, 16, 16);
-		const sphereMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.9 });
-		const sphere = new THREE.Mesh(sphereGeom, sphereMat);
-		sphere.position.set(local.x, local.y, drawZ + 3);
-		window.holesAlongPolyline3DGroup.add(sphere);
+		var endLocal = worldToThreeLocal(polylineEndPoint.x, polylineEndPoint.y);
+		// FIX: Use actual Z from polylineEndPoint (check for undefined/null, not falsy)
+		var endZ = (polylineEndPoint.z !== undefined && polylineEndPoint.z !== null) ? polylineEndPoint.z + 0.2 : drawZ + 0.2;
+		var endPoint = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 1.0)");
+		window.holesAlongPolyline3DGroup.add(endPoint);
 	}
 
-	// Add group to scene
+	// Step 5) Add group to scene
 	threeRenderer.scene.add(window.holesAlongPolyline3DGroup);
-
-	// Update LineMaterial resolution for any fat lines added
-	if (typeof updateAllLineMaterialResolution === "function") {
-		updateAllLineMaterialResolution();
+	
+	// Step 6) Build overlay data for HUD labels (consistent with 2D)
+	var overlayData = { toolType: "polyline" };
+	
+	// Step 6a) Add start point label
+	if (polylineStartPoint) {
+		// FIX: Use actual Z from polylineStartPoint or selected polyline
+		var startZ = polylineStartPoint.z;
+		if (!startZ && selectedPolyline && selectedPolyline.vertices && selectedPolyline.vertices.length > 0) {
+			// Find matching vertex Z
+			for (var vIdx = 0; vIdx < selectedPolyline.vertices.length; vIdx++) {
+				var vtx = selectedPolyline.vertices[vIdx];
+				if (Math.abs(vtx.x - polylineStartPoint.x) < 0.01 && Math.abs(vtx.y - polylineStartPoint.y) < 0.01) {
+					startZ = vtx.z || dataCentroidZ || 0;
+					break;
+				}
+			}
+		}
+		var screenStart = worldToScreen(polylineStartPoint.x, polylineStartPoint.y, startZ || dataCentroidZ || 0);
+		if (screenStart) {
+			overlayData.startPoint = polylineStartPoint;
+			overlayData.startCanvasX = screenStart.x;
+			overlayData.startCanvasY = screenStart.y;
+		}
 	}
+	
+	// Step 6b) Add end point label
+	if (polylineEndPoint) {
+		// FIX: Use actual Z from polylineEndPoint or selected polyline
+		var endZ = polylineEndPoint.z;
+		if (!endZ && selectedPolyline && selectedPolyline.vertices && selectedPolyline.vertices.length > 0) {
+			// Find matching vertex Z
+			for (var vIdx = 0; vIdx < selectedPolyline.vertices.length; vIdx++) {
+				var vtx = selectedPolyline.vertices[vIdx];
+				if (Math.abs(vtx.x - polylineEndPoint.x) < 0.01 && Math.abs(vtx.y - polylineEndPoint.y) < 0.01) {
+					endZ = vtx.z || dataCentroidZ || 0;
+					break;
+				}
+			}
+		}
+		var screenEnd = worldToScreen(polylineEndPoint.x, polylineEndPoint.y, endZ || dataCentroidZ || 0);
+		if (screenEnd) {
+			overlayData.endPoint = polylineEndPoint;
+			overlayData.endCanvasX = screenEnd.x;
+			overlayData.endCanvasY = screenEnd.y;
+		}
+	}
+	
+	// Step 6c) Add distance label if both points selected
+	if (polylineStartPoint && polylineEndPoint && selectedPolyline && selectedPolyline.vertices) {
+		// Calculate total distance along polyline path
+		var startIdx = -1;
+		var endIdx = -1;
+		for (var idx = 0; idx < selectedPolyline.vertices.length; idx++) {
+			var vtx = selectedPolyline.vertices[idx];
+			if (Math.abs(vtx.x - polylineStartPoint.x) < 0.01 && Math.abs(vtx.y - polylineStartPoint.y) < 0.01) {
+				startIdx = idx;
+			}
+			if (Math.abs(vtx.x - polylineEndPoint.x) < 0.01 && Math.abs(vtx.y - polylineEndPoint.y) < 0.01) {
+				endIdx = idx;
+			}
+		}
+		
+		if (startIdx !== -1 && endIdx !== -1) {
+			var totalDist = 0;
+			var minI = Math.min(startIdx, endIdx);
+			var maxI = Math.max(startIdx, endIdx);
+			for (var dIdx = minI; dIdx < maxI; dIdx++) {
+				var v1 = selectedPolyline.vertices[dIdx];
+				var v2 = selectedPolyline.vertices[dIdx + 1];
+				var ddx = v2.x - v1.x;
+				var ddy = v2.y - v1.y;
+				totalDist += Math.sqrt(ddx * ddx + ddy * ddy);
+			}
+			
+			// Get midpoint along active segment
+			var midVertex = selectedPolyline.vertices[Math.floor((minI + maxI) / 2)];
+			var screenMid = worldToScreen(midVertex.x, midVertex.y, midVertex.z || dataCentroidZ || 0);
+			if (screenMid) {
+				overlayData.distance = totalDist;
+				overlayData.midCanvasX = screenMid.x;
+				overlayData.midCanvasY = screenMid.y;
+			}
+		}
+	}
+	
+	// Step 6d) Show HUD overlay labels
+	showPatternToolLabels(overlayData);
 }
 
 // Function to draw KAD polygon selection visuals
@@ -37407,8 +37890,9 @@ function assignHoleToSurfaceElevation(hole, targetElevation, type) {
 		hole.subdrillAmount = existingSubdrill;
 
 		// Step 27j) Recalculate grade position (subdrill distance from toe toward collar)
-		var subdrillVertical = existingSubdrill * cosAngle;
-		var subdrillHorizontal = existingSubdrill * sinAngle;
+		// existingSubdrill is the VERTICAL distance (gradeZ - toeZ)
+		var subdrillVertical = existingSubdrill;
+		var subdrillHorizontal = existingSubdrill * Math.tan(angleRad);
 
 		hole.gradeZLocation = toeZ + subdrillVertical;
 		hole.gradeXLocation = toeX - subdrillHorizontal * Math.cos(radBearing);
@@ -37457,8 +37941,9 @@ function assignHoleToSurfaceElevation(hole, targetElevation, type) {
 		hole.gradeZLocation = targetElevation;
 
 		// Step 28g) Calculate toe position (subdrill distance beyond grade along vector)
-		var subdrillHorizontal = existingSubdrill * gradeSinAngle;
-		var subdrillVertical = existingSubdrill * gradeCosAngle;
+		// existingSubdrill is the VERTICAL distance (gradeZ - toeZ)
+		var subdrillVertical = existingSubdrill;
+		var subdrillHorizontal = existingSubdrill * Math.tan(gradeRadAngle);
 
 		hole.endXLocation = hole.gradeXLocation + subdrillHorizontal * Math.cos(gradeRadBearing);
 		hole.endYLocation = hole.gradeYLocation + subdrillHorizontal * Math.sin(gradeRadBearing);
@@ -37513,8 +37998,9 @@ function assignHoleToSurfaceElevation(hole, targetElevation, type) {
 		hole.endZLocation = targetElevation;
 
 		// Step 29g) Calculate grade position (subdrill distance back from toe toward collar)
-		var subdrillHorizontal = existingSubdrill * toeSinAngle;
-		var subdrillVertical = existingSubdrill * toeCosAngle;
+		// existingSubdrill is the VERTICAL distance (gradeZ - toeZ)
+		var subdrillVertical = existingSubdrill;
+		var subdrillHorizontal = existingSubdrill * Math.tan(toeRadAngle);
 
 		hole.gradeXLocation = hole.endXLocation - subdrillHorizontal * Math.cos(toeRadBearing);
 		hole.gradeYLocation = hole.endYLocation - subdrillHorizontal * Math.sin(toeRadBearing);
@@ -43138,6 +43624,23 @@ document.addEventListener("DOMContentLoaded", function () {
 		if (treePanel) {
 			if (treePanel.style.display === "none" || !treePanel.style.display) {
 				treePanel.style.display = "flex";
+				// FIX: Populate tree immediately when opened (use cached data if available)
+				if (treeView && treeView._cachedTreeData) {
+					var tree = [
+						{ id: "blast", type: "blast", label: "Blast", expanded: true, children: treeView._cachedTreeData.blastData },
+						{ id: "drawings", type: "drawing", label: "Drawings", expanded: true, children: treeView._cachedTreeData.drawingData },
+						{ id: "surfaces", type: "surface", label: "Surfaces", expanded: true, children: treeView._cachedTreeData.surfaceData || [] },
+						{ id: "images", type: "image", label: "Images", expanded: true, children: treeView._cachedTreeData.imageData || [] }
+					];
+					var html = treeView.renderTree(tree);
+					var treeViewElement = document.getElementById("treeView");
+					if (treeViewElement) {
+						treeViewElement.innerHTML = html;
+					}
+				} else {
+					// No cached data, trigger update
+					treeView.updateTreeData();
+				}
 			} else {
 				treePanel.style.display = "none";
 			}

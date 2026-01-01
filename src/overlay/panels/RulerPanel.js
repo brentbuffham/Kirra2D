@@ -34,8 +34,8 @@ function buildRulerHTML(data) {
     // Line 2: Distances
     lines.push("<div class='ruler-row'><span class='ruler-label'>Plan:</span><span class='ruler-value'>" + formatNum(data.planDistance) + "m</span> <span class='ruler-label'>Total:</span><span class='ruler-value'>" + formatNum(data.totalDistance) + "m</span></div>");
     
-    // Line 3: Delta Z and Angle
-    lines.push("<div class='ruler-row'><span class='ruler-label'>\u0394Z:</span><span class='ruler-value'>" + formatNum(data.deltaZ) + "m</span> <span class='ruler-label'>Angle:</span><span class='ruler-value'>" + formatNum(data.elevationAngle, 1) + "\u00B0</span></div>");
+    // Line 3: Delta Z and Dip. Dip is the angle of the line from the horizontal plane.
+    lines.push("<div class='ruler-row'><span class='ruler-label'>\u0394Z:</span><span class='ruler-value'>" + formatNum(data.deltaZ) + "m</span> <span class='ruler-label'>Dip:</span><span class='ruler-value'>" + formatNum(data.elevationAngle, 1) + "\u00B0</span></div>");
     
     // Line 4: Slope
     lines.push("<div class='ruler-row'><span class='ruler-label'>Slope:</span><span class='ruler-value'>" + formatNum(data.slopePercent, 1) + "%</span></div>");

@@ -646,8 +646,9 @@ function assignHoleToSurfaceElevation(hole, targetElevation, type) {
 		hole.gradeZLocation = targetElevation;
 
 		// Step 37g) Calculate toe position (subdrill distance beyond grade along vector)
-		var subdrillHorizontal = existingSubdrill * gradeSinAngle;
-		var subdrillVertical = existingSubdrill * gradeCosAngle;
+		// existingSubdrill is the VERTICAL distance (gradeZ - toeZ)
+		var subdrillVertical = existingSubdrill;
+		var subdrillHorizontal = existingSubdrill * Math.tan(gradeRadAngle);
 
 		hole.endXLocation = hole.gradeXLocation + subdrillHorizontal * Math.cos(gradeRadBearing);
 		hole.endYLocation = hole.gradeYLocation + subdrillHorizontal * Math.sin(gradeRadBearing);

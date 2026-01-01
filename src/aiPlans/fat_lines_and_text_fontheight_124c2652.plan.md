@@ -198,5 +198,3 @@ fontHeight: parseFloat(row[X]) || 12  // Default to 12 if missing
 ```
 
 ---
-
-## Performance Summary

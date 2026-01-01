@@ -212,5 +212,3 @@ flowchart TD
 - [ ] Add Hole multiple mode works in 3D without reopening dialog
 - [ ] Holes Along Line shows START/END labels via HUD in 2D
 - [ ] Holes Along Polyline shows START/END labels via HUD in 2D
-- [ ] Pattern in Polygon shows visual feedback in 3D
-- [ ] Holes Along Line shows visual feedback in 3D

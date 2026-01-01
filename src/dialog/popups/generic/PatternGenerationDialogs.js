@@ -180,6 +180,11 @@ export function showPatternDialog(mode, worldX, worldY) {
                 window.patternInPolygonTool.dispatchEvent(new Event("change"));
             }
             
+            // CRITICAL: Also reset the flag variable
+            if (typeof window.isPatternInPolygonActive !== "undefined") {
+                window.isPatternInPolygonActive = false;
+            }
+            
             // Clear any selection states
             if (window.selectedPolygon) {
                 window.selectedPolygon = null;
@@ -192,6 +197,11 @@ export function showPatternDialog(mode, worldX, worldY) {
             }
             if (window.patternReferencePoint) {
                 window.patternReferencePoint = null;
+            }
+            
+            // Clear window.selectedKADObject to remove highlight
+            if (window.selectedKADObject) {
+                window.selectedKADObject = null;
             }
             
             // Redraw to clear any visual indicators

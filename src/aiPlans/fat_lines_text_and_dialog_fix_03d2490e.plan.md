@@ -63,17 +63,7 @@ todos:
 
 ## Scope Summary
 
-| Feature | Description |
-
-|---------|-------------|
-
-| Lines/Polys/Circles Base | Hybrid: thin=LineBasic, thick=FatLines |
-
-| Selection Highlights | Batched FatLines for performance |
-
-| Text KAD | New `fontHeight` attribute (default 12) |
-
-| KAD Dialog Fix | Only apply explicitly changed values on "All" |---
+| Feature | Description ||---------|-------------|| Lines/Polys/Circles Base | Hybrid: thin=LineBasic, thick=FatLines || Selection Highlights | Batched FatLines for performance || Text KAD | New `fontHeight` attribute (default 12) || KAD Dialog Fix | Only apply explicitly changed values on "All" |---
 
 ## Part A: Fat Lines Implementation
 
@@ -224,21 +214,8 @@ For single element edits, keep applying all values (user is intentionally editin
 
 ### Expected Behavior After Fix
 
-| User Action | Result |
-
-|-------------|--------|
-
-| Change color only, click All | Only color changes on all points |
-
-| Change lineWidth only, click All | Only lineWidth changes on all points |
-
-| Change Z, click All | Z offset applied to all points |
-
-| Change color + lineWidth, click All | Both change, Z unchanged |
-
-| Any change, click This | All form values apply to single point |---
+| User Action | Result ||-------------|--------|| Change color only, click All | Only color changes on all points || Change lineWidth only, click All | Only lineWidth changes on all points || Change Z, click All | Z offset applied to all points || Change color + lineWidth, click All | Both change, Z unchanged || Any change, click This | All form values apply to single point |---
 
 ## Implementation Order
 
 1. **Part C first** (Dialog fix) - standalone bug fix
-2. **Part B** (Text fontHeight) - simple addition

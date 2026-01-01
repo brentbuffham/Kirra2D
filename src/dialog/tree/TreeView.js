@@ -620,15 +620,17 @@ export class TreeView {
 	}
 
 	updateTreeData() {
-		// PERFORMANCE FIX 2025-12-28: Skip if tree panel not visible
+		// #region agent log
+		fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:622',message:'updateTreeData called',data:{hasTreePanel:!!document.getElementById("treePanel"),treePanelDisplay:document.getElementById("treePanel")?.style.display},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+		// #endregion
 		var treePanel = document.getElementById("treePanel");
-		if (!treePanel || treePanel.style.display === "none") {
-			window._treeNeedsUpdate = true;
-			return;
-		}
-
+		var isPanelVisible = treePanel && treePanel.style.display !== "none";
+		
 		// Prevent concurrent updates
 		if (this._isUpdating) {
+			// #region agent log
+			fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:631',message:'TreeView update deferred - already updating',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
+			// #endregion
 			this._pendingUpdate = true;
 			return;
 		}
@@ -636,14 +638,20 @@ export class TreeView {
 		// PERFORMANCE FIX 2025-12-28: Clear loaded chunks on tree rebuild
 		this.loadedChunks.clear();
 
-		// PERFORMANCE FIX 2025-12-28: Build tree async to not block UI
-		this.buildTreeDataAsync();
+		// FIX: Always build tree data in background (even when panel hidden)
+		// This ensures tree is cached and ready when user opens panel
+		this.buildTreeDataAsync(isPanelVisible);
 	}
 
 	// PERFORMANCE FIX 2025-12-28: Async tree building with batching
-	async buildTreeDataAsync() {
+	// FIX: Accept isPanelVisible parameter to control rendering
+	async buildTreeDataAsync(isPanelVisible = true) {
 		this._isUpdating = true;
 		var startTime = Date.now();
+
+		// #region agent log
+		fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:644',message:'buildTreeDataAsync started',data:{hasAllKADDrawingsMap:typeof window.allKADDrawingsMap !== "undefined",kadMapSize:window.allKADDrawingsMap?.size || 0,isPanelVisible:isPanelVisible},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+		// #endregion
 
 		try {
 			// Build in stages with yields
@@ -651,10 +659,22 @@ export class TreeView {
 			await this.yieldToUI();
 
 			var drawingData = this.buildDrawingData();
+			// #region agent log
+			fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:653',message:'buildDrawingData result',data:{drawingDataLength:drawingData?.length || 0,blastDataLength:blastData?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
+			// #endregion
+			
 			await this.yieldToUI();
 
 			var surfaceData = this.buildSurfaceData();
 			var imageData = this.buildImageData();
+			
+			// Store tree data in cache even if panel is hidden
+			this._cachedTreeData = {
+				blastData: blastData,
+				drawingData: drawingData,
+				surfaceData: surfaceData,
+				imageData: imageData
+			};
 
 			var tree = [
 				{ id: "blast", type: "blast", label: "Blast", expanded: true, children: blastData },
@@ -665,8 +685,17 @@ export class TreeView {
 
 			await this.yieldToUI();
 
-			var html = this.renderTree(tree);
-			document.getElementById("treeView").innerHTML = html;
+			// Only render HTML if panel is visible (or was just opened)
+			if (isPanelVisible) {
+				var html = this.renderTree(tree);
+				// #region agent log
+				fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:668',message:'renderTree result',data:{htmlLength:html?.length || 0,hasTreeViewElement:!!document.getElementById("treeView"),treeStructure:JSON.stringify(tree.map(n => ({id:n.id,type:n.type,label:n.label,childrenCount:n.children?.length || 0,firstChildId:n.children?.[0]?.id})))},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
+				// #endregion
+				var treeViewElement = document.getElementById("treeView");
+				if (treeViewElement) {
+					treeViewElement.innerHTML = html;
+				}
+			}
 
 			var elapsed = Date.now() - startTime;
 			if (elapsed > 100) {
@@ -983,7 +1012,14 @@ export class TreeView {
 	renderTree(nodes, level = 0) {
 		return nodes
 			.map((node) => {
-				const hasChildren = node.children && node.children.length > 0;
+				// Step 1) Check if node has children OR is an entity node that can be lazy-loaded
+				var hasChildren = node.children && node.children.length > 0;
+				// Entity nodes with empty children arrays should still show expand button for lazy loading
+				var isEntityNode = (node.id && (node.id.startsWith("line⣿") || node.id.startsWith("poly⣿") || 
+					node.id.startsWith("points⣿") || node.id.startsWith("circle⣿") || node.id.startsWith("text⣿")) &&
+					node.id.split("⣿").length === 2);
+				var shouldShowExpand = hasChildren || isEntityNode;
+				
 				const isExpanded = this.expandedNodes.has(node.id) || node.expanded;
 				const isSelected = this.selectedNodes.has(node.id);
 
@@ -993,10 +1029,15 @@ export class TreeView {
 					colorSwatchHtml = "<span class=\"color-swatch\" style=\"background-color: " + color + ";\" data-element-id=\"" + node.id + "\" data-entity-name=\"" + node.elementData.entityName + "\" data-point-id=\"" + node.elementData.pointID + "\"></span>";
 				}
 
-				let html = "<li class=\"tree-node\"><div class=\"tree-item " + (isSelected ? "selected" : "") + "\" data-node-id=\"" + node.id + "\"><span class=\"tree-expand " + (hasChildren ? (isExpanded ? "expanded" : "") : "leaf") + "\"></span><span class=\"tree-icon " + node.type + "\"></span>" + colorSwatchHtml + "<span class=\"tree-label\">" + node.label + "</span>" + (node.meta ? "<span class=\"tree-meta\">" + node.meta + "</span>" : "") + "</div>";
+				let html = "<li class=\"tree-node\"><div class=\"tree-item " + (isSelected ? "selected" : "") + "\" data-node-id=\"" + node.id + "\"><span class=\"tree-expand " + (shouldShowExpand ? (isExpanded ? "expanded" : "") : "leaf") + "\"></span><span class=\"tree-icon " + node.type + "\"></span>" + colorSwatchHtml + "<span class=\"tree-label\">" + node.label + "</span>" + (node.meta ? "<span class=\"tree-meta\">" + node.meta + "</span>" : "") + "</div>";
 
-				if (hasChildren) {
-					html += "<ul class=\"tree-children " + (isExpanded ? "expanded" : "") + "\">" + this.renderTree(node.children, level + 1) + "</ul>";
+				// Step 2) Always create children container for entity nodes (even if empty) for lazy loading
+				if (shouldShowExpand) {
+					html += "<ul class=\"tree-children " + (isExpanded ? "expanded" : "") + "\">";
+					if (hasChildren) {
+						html += this.renderTree(node.children, level + 1);
+					}
+					html += "</ul>";
 				}
 
 				html += "</li>";

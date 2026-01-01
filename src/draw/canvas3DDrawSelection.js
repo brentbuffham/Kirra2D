@@ -43,6 +43,7 @@ export function highlightSelectedKADThreeJS() {
     const selectedKADObject = window.selectedKADObject;
     const selectedMultipleKADObjects = window.selectedMultipleKADObjects;
     const isSelectionPointerActive = window.isSelectionPointerActive;
+    
     const developerModeEnabled = window.developerModeEnabled;
     const getEntityFromKADObject = window.getEntityFromKADObject;
     const worldToThreeLocal = window.worldToThreeLocal;
@@ -69,8 +70,25 @@ export function highlightSelectedKADThreeJS() {
     const verticesColor = "rgba(255,0,0,0.5)";
 
     // Step 2) Handle single selection
-    if (selectedKADObject && isSelectionPointerActive) {
+    // Ignore normal KAD/hole selection when pattern tools are active
+    const isPatternInPolygonActive = window.isPatternInPolygonActive;
+    const isHolesAlongPolyLineActive = window.isHolesAlongPolyLineActive;
+
+
+    // Only highlight if:
+    // 1. Selection pointer is active (normal selection mode), OR
+    // 2. PatternInPolygon tool is active AND selected entity is a polygon, OR
+    // 3. HolesAlongPolyLine tool is active AND selected entity is a polyline
+    const shouldHighlight = selectedKADObject && (
+        (isSelectionPointerActive && !isPatternInPolygonActive && !isHolesAlongPolyLineActive) ||
+        (isPatternInPolygonActive && selectedKADObject.entityType === "poly") ||
+        (isHolesAlongPolyLineActive && selectedKADObject.entityType === "polyline")
+    );
+
+
+    if (shouldHighlight) {
         const entity = getEntityFromKADObject(selectedKADObject);
+
         if (!entity) return;
 
         drawKADEntityHighlight(selectedKADObject, entity, selectedSegmentColor, nonSelectedSegmentColor, verticesColor, worldToThreeLocal, dataCentroidZ, developerModeEnabled);
@@ -113,6 +131,7 @@ export function highlightSelectedKADThreeJS() {
             
             if (entityType === "line" || entityType === "poly") {
                 // Step 3.1a) Collect line/poly segments
+                console.log("🎨 Drawing 3D multiple KAD selections (BATCHED):", selectionCount, "objects");
                 var points = entity.data;
                 var isClosedShape = entityType === "poly";
                 var numSegments = isClosedShape ? points.length : points.length - 1;
@@ -321,7 +340,7 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
 
         case "line":
         case "poly":
-            // Step 4c) Highlight line/poly segments using tube geometry (unified - only difference is closed vs open)
+            // Step 4c) Highlight line/poly segments using batched fat lines (matches multiple selection aesthetic)
             const points = entity.data;
             const isClosedShape = entityType === "poly";
             const numSegments = isClosedShape ? points.length : points.length - 1;
@@ -330,12 +349,11 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 console.log("🎨 [3D HIGHLIGHT] Drawing " + entityType + " with " + numSegments + " segments, isClosedShape:", isClosedShape);
             }
 
-            // Step 4c.1) Base radius for tube highlights (in world units)
-            // Non-selected segments use smaller radius, selected uses larger
-            const baseRadiusNonSelected = 0.3; // Base radius for non-selected segments
-            const baseRadiusSelected = 0.6; // Base radius for selected segment
+            // Step 4c.1) Collect all segments into arrays for batched rendering
+            var greenSegments = [];
+            var magentaSegments = [];
 
-            // Step 4c.2) Draw ALL segments first with standard green highlighting
+            // Step 4c.2) Collect ALL segments for green highlighting
             for (let i = 0; i < numSegments; i++) {
                 const point1 = points[i];
                 const point2 = isClosedShape ? points[(i + 1) % points.length] : points[i + 1];
@@ -346,12 +364,13 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 const z1 = point1.pointZLocation || dataCentroidZ || 0;
                 const z2 = point2.pointZLocation || dataCentroidZ || 0;
 
-                // Draw green segment (non-selected) using tube geometry
-                const lineMesh = GeometryFactory.createKADLineHighlight(local1.x, local1.y, z1, local2.x, local2.y, z2, baseRadiusNonSelected, nonSelectedSegmentColor);
-                highlightGroup.add(lineMesh);
+                greenSegments.push({
+                    x1: local1.x, y1: local1.y, z1: z1,
+                    x2: local2.x, y2: local2.y, z2: z2
+                });
             }
 
-            // Step 4c.3) Then overdraw ONLY the selected segment in magenta
+            // Step 4c.3) Collect selected segment for magenta highlighting
             if (kadObject.selectionType === "segment" && kadObject.segmentIndex !== undefined) {
                 const segmentIndex = kadObject.segmentIndex;
                 if (segmentIndex >= 0 && segmentIndex < numSegments) {
@@ -364,9 +383,10 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                     const z1 = point1.pointZLocation || dataCentroidZ || 0;
                     const z2 = point2.pointZLocation || dataCentroidZ || 0;
 
-                    // Overdraw with thicker magenta segment using tube geometry
-                    const selectedLineMesh = GeometryFactory.createKADLineHighlight(local1.x, local1.y, z1, local2.x, local2.y, z2, baseRadiusSelected, selectedSegmentColor);
-                    highlightGroup.add(selectedLineMesh);
+                    magentaSegments.push({
+                        x1: local1.x, y1: local1.y, z1: z1,
+                        x2: local2.x, y2: local2.y, z2: z2
+                    });
 
                     if (developerModeEnabled) {
                         console.log("🎨 [3D HIGHLIGHT] Drawing selected segment " + segmentIndex + " in magenta for " + kadObject.entityType);
@@ -374,21 +394,34 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 }
             }
 
-            // Step 4c.4) Draw vertices for all points - SKIP if large selection
+            // Step 4c.4) Create batched fat lines (ONE draw call, matches multiple selection aesthetic)
+            var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+            var greenLineWidth = 3;   // Match multiple selection line width
+            var magentaLineWidth = 5; // Slightly thicker for selected segment
+            var batchedLines = GeometryFactory.createBatchedHighlightLines(greenSegments, magentaSegments, greenLineWidth, magentaLineWidth, resolution);
+            
+            if (batchedLines.greenLines) {
+                highlightGroup.add(batchedLines.greenLines);
+            }
+            if (batchedLines.magentaLines) {
+                highlightGroup.add(batchedLines.magentaLines);
+            }
+
+            // Step 4c.5) Draw vertices for all points using billboard points - SKIP if large selection
             if (!skipVertices) {
                 points.forEach((point, index) => {
                     const local = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
                     const z = point.pointZLocation || dataCentroidZ || 0;
 
-                    // Step 4c.4a) If this is the start vertex of the selected segment, draw it in magenta
+                    // Step 4c.5a) If this is the start vertex of the selected segment, draw it in magenta
                     const isSelectedSegmentVertex = kadObject.selectionType === "segment" && kadObject.segmentIndex === index;
 
                     if (isSelectedSegmentVertex) {
-                        // Larger magenta sphere for selected segment's start vertex (with zoom scaling)
+                        // Larger magenta billboard point for selected segment's start vertex
                         const selectedVertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 1.0, selectedSegmentColor);
                         highlightGroup.add(selectedVertex);
                     } else {
-                        // Standard red vertex marker (with zoom scaling)
+                        // Standard red billboard point for vertex marker
                         const vertex = GeometryFactory.createKADPointHighlight(local.x, local.y, z, 0.5, verticesColor);
                         highlightGroup.add(vertex);
                     }

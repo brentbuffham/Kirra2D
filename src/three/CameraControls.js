@@ -115,6 +115,9 @@ export class CameraControls {
         this.touchStartCentroidX = 0;
         this.touchStartCentroidY = 0;
         this.touchStartScale = 1;
+
+        // Step 7a) Callback for camera change events (for pattern tool label updates)
+        this.onCameraChange = null;
     }
 
     // Step 8) Initialize event listeners for unified orthographic controls
@@ -636,6 +639,11 @@ export class CameraControls {
             }
             this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
 
+            // Notify pattern tools to update label positions
+            if (this.onCameraChange) {
+                this.onCameraChange();
+            }
+
             if (this.gizmoDisplayMode === "always") {
                 this.updateGizmoDisplayForControls();
             }
@@ -662,6 +670,11 @@ export class CameraControls {
             this.lastMouseY = event.clientY;
 
             this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+
+            // Notify pattern tools to update label positions
+            if (this.onCameraChange) {
+                this.onCameraChange();
+            }
 
             return { rotation: this.rotation, mode: "roll" };
         } else if (this.isOrbiting) {
@@ -761,6 +774,11 @@ export class CameraControls {
             this.lastMouseY = event.clientY;
 
             this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+
+            // Notify pattern tools to update label positions
+            if (this.onCameraChange) {
+                this.onCameraChange();
+            }
 
             return { orbitX: this.orbitX, orbitY: this.orbitY, mode: "orbit" };
         }
@@ -1050,6 +1068,11 @@ export class CameraControls {
         // Step 32d) Update camera if anything changed
         if (updated) {
             this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+
+            // Notify pattern tools to update label positions during momentum
+            if (this.onCameraChange) {
+                this.onCameraChange();
+            }
         }
 
         // Step 32e) Continue animation loop
