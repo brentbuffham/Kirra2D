@@ -25620,11 +25620,29 @@ function checkAndPromptForStoredData() {
 			surfaceRequest.onsuccess = (surfaceEvent) => {
 				const surfaceData = surfaceEvent.target.result || [];
 
-				// Step 5) Show popup if ANY data exists: holes (IndexedDB or localStorage), KAD drawings, OR surfaces
-				if (hasHolesInDB || allBlastHolesDataLocalStorage || (kadData && kadData.data && kadData.data.length > 0) || surfaceData.length > 0) {
-					showPopup(true);
-					debouncedUpdateTreeView();
-				}
+				// Step 5) Check for images
+				const imageTransaction = db.transaction([IMAGE_STORE_NAME], "readonly");
+				const imageStore = imageTransaction.objectStore(IMAGE_STORE_NAME);
+				const imageRequest = imageStore.getAll();
+
+				imageRequest.onsuccess = (imageEvent) => {
+					const imageData = imageEvent.target.result || [];
+
+					// Step 6) Show popup if ANY data exists: holes, KAD drawings, surfaces, OR images
+					if (hasHolesInDB || allBlastHolesDataLocalStorage || (kadData && kadData.data && kadData.data.length > 0) || surfaceData.length > 0 || imageData.length > 0) {
+						showPopup(true);
+						debouncedUpdateTreeView();
+					}
+				};
+
+				imageRequest.onerror = (event) => {
+					console.error("Could not check for image data in IndexedDB.", event.target.error);
+					// Still show popup if other data exists
+					if (hasHolesInDB || allBlastHolesDataLocalStorage || (kadData && kadData.data && kadData.data.length > 0) || surfaceData.length > 0) {
+						showPopup(true);
+						debouncedUpdateTreeView();
+					}
+				};
 			};
 		};
 
@@ -26444,19 +26462,28 @@ async function clearLoadedData() {
 		}
 	}
 
-	// Clear memory maps
+	// Step 3) Clear localStorage (for backward compatibility)
+	localStorage.removeItem("kirraDataPoints");
+	console.log("✅ localStorage cleared");
+
+	// Step 4) Clear memory maps
 	allKADDrawingsMap.clear();
 	loadedSurfaces.clear();
 	loadedImages.clear();
 
-	// Reset other states if necessary
+	// Step 5) Reset other states if necessary
 	selectedHole = null;
 	selectedPoint = null;
-	//selectedMultiplePoints = []
-	selectedPoint = null;
+	selectedMultiplePoints = [];
+	selectedKADObject = null;
+	selectedKADPolygon = null;
+	selectedMultipleKADObjects = [];
+	window.selectedKADObject = null;
 
-	// Redraw the empty canvas
+	// Step 6) Redraw the empty canvas
 	drawData(allBlastHoles, selectedHole);
+
+	console.log("✅ All data cleared successfully");
 }
 window.addEventListener("resize", () => {
 	if (htmlUIVersion === "1") {
