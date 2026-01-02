@@ -436,7 +436,7 @@ export class GeometryFactory {
 	static createBatchedPolyline(pointsArray, lineWidth, defaultColor, isPolygon = false) {
 		var len = pointsArray.length;
 		if (len < 2) return null;
-		
+
 		// Step 0) Parse default color ONCE (inline hex parsing - 10x faster than THREE.Color.set)
 		var defR = 0.467, defG = 0.467, defB = 0.467; // #777777 default
 		if (defaultColor && defaultColor.charAt(0) === "#" && defaultColor.length >= 7) {
@@ -445,9 +445,10 @@ export class GeometryFactory {
 			defG = ((hex >> 8) & 255) / 255;
 			defB = (hex & 255) / 255;
 		}
-		
-		// Step 1) THICK LINES: Use LineMaterial/LineSegments2 (fat lines) for lineWidth > 1
-		if (lineWidth > 1) {
+
+		// Step 1) ALWAYS USE FAT LINES: LineMaterial/LineSegments2 supports variable thickness
+		// LineBasicMaterial does not support linewidth in WebGL (deprecated property)
+		if (true) {  // Always use fat lines for proper thickness support
 			// Convert polyline to line segments format for LineSegmentsGeometry
 			var numSegments = isPolygon ? len : len - 1;
 			var segPositions = new Float32Array(numSegments * 6); // 2 points per segment, 3 floats per point
@@ -469,8 +470,8 @@ export class GeometryFactory {
 				segPositions[posIdx++] = p2.y;
 				segPositions[posIdx++] = p2.z || 0;
 				
-				// Parse color for this segment (use p1's color)
-				var col = p1.color;
+				// Parse color for this segment (use p2's color - segment TO the point uses that point's color)
+				var col = p2.color; 
 				var r = defR, g = defG, b = defB;
 				if (col && col.charAt(0) === "#" && col.length >= 7) {
 					var hex = parseInt(col.slice(1, 7), 16);
@@ -506,62 +507,6 @@ export class GeometryFactory {
 			fatLine.name = isPolygon ? "kad-polygon-fat" : "kad-line-fat";
 			return fatLine;
 		}
-		
-		// Step 2) THIN LINES: Use LineBasicMaterial for lineWidth <= 1 (fast path)
-		var posLen = isPolygon ? (len + 1) * 3 : len * 3;
-		var positions = new Float32Array(posLen);
-		var colors = new Float32Array(posLen);
-		
-		// Fill arrays with inline color parsing (no THREE.Color overhead)
-		for (var i = 0, j = 0; i < len; i++, j += 3) {
-			var p = pointsArray[i];
-			
-			// Position
-			positions[j] = p.x;
-			positions[j + 1] = p.y;
-			positions[j + 2] = p.z || 0;
-			
-			// Color - fast inline hex parsing
-			var col = p.color;
-			if (col && col.charAt(0) === "#" && col.length >= 7) {
-				var hex = parseInt(col.slice(1, 7), 16);
-				colors[j] = ((hex >> 16) & 255) / 255;
-				colors[j + 1] = ((hex >> 8) & 255) / 255;
-				colors[j + 2] = (hex & 255) / 255;
-			} else {
-				colors[j] = defR;
-				colors[j + 1] = defG;
-				colors[j + 2] = defB;
-			}
-		}
-		
-		// Close polygon by copying first point
-		if (isPolygon && len > 2) {
-			var j = len * 3;
-			positions[j] = positions[0];
-			positions[j + 1] = positions[1];
-			positions[j + 2] = positions[2];
-			colors[j] = colors[0];
-			colors[j + 1] = colors[1];
-			colors[j + 2] = colors[2];
-		}
-		
-		// Create geometry with typed arrays
-		var geometry = new THREE.BufferGeometry();
-		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-		
-		// Create material (vertexColors handles per-point colors)
-		var material = new THREE.LineBasicMaterial({
-			vertexColors: true,
-			depthTest: true,
-			depthWrite: true,
-		});
-		
-		// Create and return Line object
-		var line = new THREE.Line(geometry, material);
-		line.name = isPolygon ? "kad-polygon-batched" : "kad-line-batched";
-		return line;
 	}
 
 	// Step 9c) SUPER-BATCH: Merge ALL KAD lines/polys into ONE geometry (ONE draw call!)
@@ -683,20 +628,33 @@ export class GeometryFactory {
 	// Returns { thinLineSegments, fatLinesByWidth, entityRanges }
 	static createHybridSuperBatchedLines(allEntities, worldToThreeLocal, resolution) {
 		if (!allEntities || allEntities.length === 0) return null;
-		
+
 		// Step 1) Separate thin (<=1) vs thick (>1) entities
 		var thinEntities = [];
 		var thickEntitiesByWidth = new Map(); // lineWidth -> [entities]
-		
+
 		for (var i = 0; i < allEntities.length; i++) {
 			var entity = allEntities[i];
 			if (entity.visible === false) continue;
 			if (entity.entityType !== "line" && entity.entityType !== "poly") continue;
 			var points = entity.data;
 			if (!points || points.length < 2) continue;
-			
-			// Get lineWidth from first point (where it's actually stored), fallback to entity, then default to 1
-			var lineWidth = (points[0] && points[0].lineWidth) || entity.lineWidth || 1;
+
+			// Check if lineWidths vary within entity - if they do, skip super-batching
+			var firstWidth = (points[0] && points[0].lineWidth) || 1;
+			var hasVaryingWidths = false;
+			for (var j = 1; j < points.length; j++) {
+				var currentWidth = (points[j] && points[j].lineWidth) || 1;
+				if (currentWidth !== firstWidth) {
+					hasVaryingWidths = true;
+					break;
+				}
+			}
+
+			// Skip entities with varying lineWidths - they should use segment-by-segment rendering
+			if (hasVaryingWidths) continue;
+
+			var lineWidth = firstWidth;
 			
 			if (lineWidth <= 1) {
 				// Standard thin line - goes to fast LineBasicMaterial batch
@@ -711,11 +669,11 @@ export class GeometryFactory {
 			}
 		}
 		
-		var entityRanges = new Map();
+		var entityRanges = new Map(); // Maps entityName -> {start, end, lineWidth} (also serves as list of batched entities)
 		var result = {
 			thinLineSegments: null,
 			fatLinesByWidth: new Map(),
-			entityRanges: entityRanges,
+			entityRanges: entityRanges, // Caller can use entityRanges.has(entityName) to check if batched
 			thinCount: 0,
 			thickCount: 0
 		};
@@ -757,61 +715,62 @@ export class GeometryFactory {
 			if (entity.visible === false) continue;
 			var points = entity.data;
 			if (!points || points.length < 2) continue;
-			
+
 			var visiblePoints = [];
 			for (var j = 0; j < points.length; j++) {
 				if (points[j].visible !== false) visiblePoints.push(points[j]);
 			}
 			if (visiblePoints.length < 2) continue;
-			
+
 			var numSegments = entity.entityType === "poly" ? visiblePoints.length : visiblePoints.length - 1;
 			totalSegments += numSegments;
 		}
-		
+
 		if (totalSegments === 0) return null;
-		
+
 		// Step 2) Pre-allocate arrays
 		var positions = new Float32Array(totalSegments * 6);
 		var colors = new Float32Array(totalSegments * 6);
-		
+
 		var posIdx = 0;
 		var colIdx = 0;
 		var segmentIndex = 0;
 		var defR = 0.467, defG = 0.467, defB = 0.467;
-		
+
 		// Step 3) Fill arrays
 		for (var i = 0; i < entities.length; i++) {
 			var entity = entities[i];
 			if (entity.visible === false) continue;
 			var points = entity.data;
 			if (!points || points.length < 2) continue;
-			
+
 			var visiblePoints = [];
 			for (var j = 0; j < points.length; j++) {
 				if (points[j].visible !== false) visiblePoints.push(points[j]);
 			}
 			if (visiblePoints.length < 2) continue;
-			
+
 			var startSegment = segmentOffset + segmentIndex;
 			var isPoly = entity.entityType === "poly";
 			var numPts = visiblePoints.length;
 			var numSegs = isPoly ? numPts : numPts - 1;
-			
+
 			for (var s = 0; s < numSegs; s++) {
 				var p1 = visiblePoints[s];
 				var p2 = visiblePoints[(s + 1) % numPts];
-				
+
 				var local1 = worldToThreeLocal(p1.pointXLocation, p1.pointYLocation);
 				var local2 = worldToThreeLocal(p2.pointXLocation, p2.pointYLocation);
-				
+
 				positions[posIdx++] = local1.x;
 				positions[posIdx++] = local1.y;
 				positions[posIdx++] = p1.pointZLocation || 0;
 				positions[posIdx++] = local2.x;
 				positions[posIdx++] = local2.y;
 				positions[posIdx++] = p2.pointZLocation || 0;
-				
-				var col = p1.color;
+
+				// Use p2's color - segment TO the point uses that point's color (matches 2D)
+				var col = p2.color;
 				var r = defR, g = defG, b = defB;
 				if (col && col.charAt(0) === "#" && col.length >= 7) {
 					var hex = parseInt(col.slice(1, 7), 16);
@@ -855,61 +814,62 @@ export class GeometryFactory {
 			if (entity.visible === false) continue;
 			var points = entity.data;
 			if (!points || points.length < 2) continue;
-			
+
 			var visiblePoints = [];
 			for (var j = 0; j < points.length; j++) {
 				if (points[j].visible !== false) visiblePoints.push(points[j]);
 			}
 			if (visiblePoints.length < 2) continue;
-			
+
 			var numSegs = entity.entityType === "poly" ? visiblePoints.length : visiblePoints.length - 1;
 			groupSegments += numSegs;
 		}
-		
+
 		if (groupSegments === 0) return null;
-		
+
 		// Step 2) Pre-allocate arrays - LineSegmentsGeometry uses flat array format
 		var positions = new Float32Array(groupSegments * 6);
 		var colors = new Float32Array(groupSegments * 6);
-		
+
 		var posIdx = 0;
 		var colIdx = 0;
 		var segmentIndex = 0;
 		var defR = 0.467, defG = 0.467, defB = 0.467;
-		
+
 		// Step 3) Fill arrays
 		for (var i = 0; i < entities.length; i++) {
 			var entity = entities[i];
 			if (entity.visible === false) continue;
 			var points = entity.data;
 			if (!points || points.length < 2) continue;
-			
+
 			var visiblePoints = [];
 			for (var j = 0; j < points.length; j++) {
 				if (points[j].visible !== false) visiblePoints.push(points[j]);
 			}
 			if (visiblePoints.length < 2) continue;
-			
+
 			var startSegment = segmentOffset + segmentIndex;
 			var isPoly = entity.entityType === "poly";
 			var numPts = visiblePoints.length;
 			var numSegs = isPoly ? numPts : numPts - 1;
-			
+
 			for (var s = 0; s < numSegs; s++) {
 				var p1 = visiblePoints[s];
 				var p2 = visiblePoints[(s + 1) % numPts];
-				
+
 				var local1 = worldToThreeLocal(p1.pointXLocation, p1.pointYLocation);
 				var local2 = worldToThreeLocal(p2.pointXLocation, p2.pointYLocation);
-				
+
 				positions[posIdx++] = local1.x;
 				positions[posIdx++] = local1.y;
 				positions[posIdx++] = p1.pointZLocation || 0;
 				positions[posIdx++] = local2.x;
 				positions[posIdx++] = local2.y;
 				positions[posIdx++] = p2.pointZLocation || 0;
-				
-				var col = p1.color;
+
+				// Use p2's color - segment TO the point uses that point's color (matches 2D)
+				var col = p2.color;
 				var r = defR, g = defG, b = defB;
 				if (col && col.charAt(0) === "#" && col.length >= 7) {
 					var hex = parseInt(col.slice(1, 7), 16);

@@ -474,7 +474,8 @@ export function showMultipleKADPropertyEditor(kadObjects) {
     const initialMultiValues = {
         editKADColor: firstColor,
         editLineWidth: String(firstLineWidth),
-        editZLocation: String(firstZ)
+        editZLocation: String(firstZ),
+        editFontHeight: String(firstFontHeight)
     };
 
     // Step 6f) Create dialog
@@ -492,23 +493,24 @@ export function showMultipleKADPropertyEditor(kadObjects) {
             // Step 6f.1) Get form values
             const formData = window.getFormData(formContent);
 
-            // Step 6f.2) Apply changes to all selected KAD objects
+            // Step 6f.2) Apply changes to all selected KAD objects - ONLY if field was modified (dirty flag)
             kadObjects.forEach((kadObj) => {
                 const entity = window.allKADDrawingsMap.get(kadObj.entityName);
                 if (entity) {
                     // Update all points in the entity
                     entity.data.forEach((point) => {
-                        if (formData.editKADColor) {
+                        // Only apply if value changed from initial (dirty flag check)
+                        if (formData.editKADColor && formData.editKADColor !== initialMultiValues.editKADColor) {
                             point.color = formData.editKADColor;
                         }
-                        if (formData.editLineWidth) {
+                        if (formData.editLineWidth && formData.editLineWidth !== initialMultiValues.editLineWidth) {
                             point.lineWidth = parseFloat(formData.editLineWidth);
                         }
-                        if (formData.editZLocation) {
+                        if (formData.editZLocation && formData.editZLocation !== initialMultiValues.editZLocation) {
                             point.pointZLocation = parseFloat(formData.editZLocation);
                         }
-                        // Step 6f.2a) Apply fontHeight for text entities
-                        if (formData.editFontHeight) {
+                        // Step 6f.2a) Apply fontHeight for text entities (only if changed)
+                        if (formData.editFontHeight && formData.editFontHeight !== initialMultiValues.editFontHeight) {
                             point.fontHeight = parseFloat(formData.editFontHeight);
                         }
                     });

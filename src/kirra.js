@@ -23316,6 +23316,7 @@ function drawData(allBlastHoles, selectedHole) {
 			var usedSuperBatchLines = false;
 			var usedSuperBatchPoints = false;
 			var usedSuperBatchCircles = false;
+			var superBatchedLineEntities = new Map(); //Track which line/poly entities were actually superbatched.
 
 			if (use3DSimplification && allKADDrawingsMap.size > 50) {
 				// Step 3.1a) Collect all visible entities by type for super-batch
@@ -23351,6 +23352,7 @@ function drawData(allBlastHoles, selectedHole) {
 							threeRenderer.kadGroup.add(fatBatch);
 						});
 						usedSuperBatchLines = true;
+						superBatchedLineEntities = hybridBatch.entityRanges;
 						if (developerModeEnabled) {
 							var fatCount = hybridBatch.fatLinesByWidth.size;
 							var drawCalls = (hybridBatch.thinLineSegments ? 1 : 0) + fatCount;
@@ -23417,12 +23419,12 @@ function drawData(allBlastHoles, selectedHole) {
 					case "line":
 						subGroupVisible = linesGroupVisible;
 						// Skip if already super-batched
-						if (usedSuperBatchLines) continue;
+						if (superBatchedLineEntities.has(name)) continue;
 						break;
 					case "poly":
 						subGroupVisible = polygonsGroupVisible;
 						// Skip if already super-batched
-						if (usedSuperBatchLines) continue;
+						if (superBatchedLineEntities.has(name)) continue;
 						break;
 					case "circle":
 						subGroupVisible = circlesGroupVisible;
@@ -23458,11 +23460,24 @@ function drawData(allBlastHoles, selectedHole) {
 						// The batching alone gives 100x performance improvement
 						var pointsToRender = visiblePoints;
 
+						// Step 6b) Check if lineWidths vary across points
+						var hasVaryingLineWidths = false;
+						if (pointsToRender.length > 1) {
+							var firstWidth = pointsToRender[0].lineWidth || 1;
+							for (var i = 1; i < pointsToRender.length; i++) {
+								if ((pointsToRender[i].lineWidth || 1) !== firstWidth) {
+									hasVaryingLineWidths = true;
+									break;
+								}
+							}
+						}
+
 						// Step 6c) Draw entity - BATCHED approach for performance when simplification enabled
 						// CRITICAL OPTIMIZATION: Instead of creating one mesh per segment (thousands of draw calls),
 						// create ONE mesh for the entire entity (one draw call per entity!)
+						// NOTE: Batching requires uniform lineWidth - if widths vary, use segment-by-segment
 
-						if (use3DSimplification) {
+						if (use3DSimplification && !hasVaryingLineWidths) {
 							// Step 6c.1) FAST PATH: Use batched rendering (ONE draw call per entity!)
 							// Convert points to local coordinates with COLORS for vertex coloring
 							var batchedPoints = [];
@@ -23482,6 +23497,8 @@ function drawData(allBlastHoles, selectedHole) {
 							var entityColor = pointsToRender[0].color || "#FFFFFF"; // Fallback color
 							var isPolygon = entity.entityType === "poly";
 
+							console.log("[3D Batched] entity:", name, "lineWidth:", entityLineWidth, "rawValue:", pointsToRender[0].lineWidth, "numPoints:", pointsToRender.length);
+
 							// ONE draw call for entire entity with per-vertex colors!
 							drawKADBatchedPolylineThreeJS(batchedPoints, entityLineWidth, entityColor, name, isPolygon);
 
@@ -23490,6 +23507,8 @@ function drawData(allBlastHoles, selectedHole) {
 							// NOTE: Segment color uses nextPoint.color (the "to" point) because when user clicks
 							// a point with a new color, that color should apply to the segment leading TO that point
 							var segmentsForThisEntity = pointsToRender.length - 1;
+
+							console.log("[3D Segment-by-Segment] entity:", name, "numSegments:", segmentsForThisEntity);
 
 							for (var i = 0; i < pointsToRender.length - 1; i++) {
 								var currentPoint = pointsToRender[i];
@@ -23501,6 +23520,10 @@ function drawData(allBlastHoles, selectedHole) {
 								// Use nextPoint's color and lineWidth - the segment TO the point uses that point's attributes
 								var lineWidth = nextPoint.lineWidth || 1;
 								var color = nextPoint.color || "#FF0000";
+
+								if (i === 0) {
+									console.log("[3D Segment] segment", i, "lineWidth:", lineWidth, "rawValue:", nextPoint.lineWidth, "color:", color);
+								}
 
 								if (entity.entityType === "line") {
 									drawKADLineSegmentThreeJS(currentLocal.x, currentLocal.y, currentPoint.pointZLocation || 0, nextLocal.x, nextLocal.y, nextPoint.pointZLocation || 0, lineWidth, color, name);
