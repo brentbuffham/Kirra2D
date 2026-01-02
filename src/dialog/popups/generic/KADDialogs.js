@@ -645,6 +645,29 @@ export function showOffsetKADPopup(kadObject) {
 			checked: true,
 			labelInLeftColumn: false,
 		},
+		{
+			label: "Keep Elevations (interpolate)",
+			name: "keepElevations",
+			type: "checkbox",
+			checked: true,
+			labelInLeftColumn: false,
+		},
+		{
+			label: "Limit to Elevation",
+			name: "limitElevation",
+			type: "checkbox",
+			checked: false,
+			labelInLeftColumn: false,
+		},
+		{
+			label: "Elevation Limit (m)",
+			name: "elevationLimit",
+			type: "number",
+			value: "0.0",
+			step: "0.1",
+			min: "-1000",
+			max: "10000",
+		},
 	];
 
 	const formContent = window.createEnhancedFormContent(fields, false, false);
@@ -658,12 +681,14 @@ export function showOffsetKADPopup(kadObject) {
 	notesDiv.innerHTML = `
                 <strong>Notes:</strong><br>
                 • Lines: Positive values offset to the right, negative to the left<br>
-                • Polygons: Positive values offset outwards, negative to the left<br>
+                • Polygons: Positive values offset outwards, negative inwards<br>
                 • 0° = horizontal, +° = up slope, -° = down slope<br>
-                • Distance Priority: 12m total distance from line<br>
-                • Vertical Priority: 12m vertical offset (may be >12m total distance)<br>
-                • Multiple offsets create lines at distance × 1, distance × 2, etc.<br>
-                • Handle Crossovers creates clean connections at intersections
+                • Distance Priority: total distance from line<br>
+                • Vertical Priority: vertical offset (may be >total distance)<br>
+                • Multiple offsets create lines at distance × 1, × 2, etc.<br>
+                • Handle Crossovers creates clean connections at intersections<br>
+                • Keep Elevations: maintains original point elevations (unchecked = set to max RL)<br>
+                • Limit to Elevation: modulates offset distance based on point elevation difference
     `;
 	formContent.appendChild(notesDiv);
 
@@ -688,6 +713,9 @@ export function showOffsetKADPopup(kadObject) {
 				priorityMode: formData.priorityMode,
 				color: formData.offsetColor,
 				handleCrossovers: formData.handleCrossovers === "true",
+				keepElevations: formData.keepElevations === "true",
+				limitElevation: formData.limitElevation === "true",
+				elevationLimit: parseFloat(formData.elevationLimit),
 				originalEntityName: kadObject.entityName,
 			};
 

@@ -531,18 +531,20 @@ export function showHolePropertyEditor(hole) {
 					delete newHole.gradeXLocation;
 					delete newHole.gradeYLocation;
 					delete newHole.gradeZLocation;
-
-					if (typeof window.calculateHoleGeometry === "function") {
-						// Recalculate geometry based on new collar position using mode 1 (Length)
-						window.calculateHoleGeometry(newHole, newHole.holeLengthCalculated, 1);
-					}
+					delete newHole.benchHeight;
 
 					const globalIndex = window.allBlastHoles.findIndex(h =>
 						h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName
 					);
 
 					if (globalIndex !== -1) {
+						// Insert hole into array FIRST (calculateHoleGeometry needs it to exist in array)
 						window.allBlastHoles.splice(globalIndex, 0, newHole);
+
+						// Now recalculate geometry based on new collar position using mode 1 (Length)
+						if (typeof window.calculateHoleGeometry === "function") {
+							window.calculateHoleGeometry(newHole, newHole.holeLengthCalculated, 1);
+						}
 
 						if (!customID || !customID.trim()) {
 							const sourceNum = sourceHole.holeID.match(/\d+/);
@@ -638,18 +640,20 @@ export function showHolePropertyEditor(hole) {
 					delete newHole.gradeXLocation;
 					delete newHole.gradeYLocation;
 					delete newHole.gradeZLocation;
-
-					if (typeof window.calculateHoleGeometry === "function") {
-						// Recalculate geometry based on new collar position using mode 1 (Length)
-						window.calculateHoleGeometry(newHole, newHole.holeLengthCalculated, 1);
-					}
+					delete newHole.benchHeight;
 
 					const globalIndex = window.allBlastHoles.findIndex(h =>
 						h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName
 					);
 
 					if (globalIndex !== -1) {
+						// Insert hole into array FIRST (calculateHoleGeometry needs it to exist in array)
 						window.allBlastHoles.splice(globalIndex + 1, 0, newHole);
+
+						// Now recalculate geometry based on new collar position using mode 1 (Length)
+						if (typeof window.calculateHoleGeometry === "function") {
+							window.calculateHoleGeometry(newHole, newHole.holeLengthCalculated, 1);
+						}
 
 						if (!customID || !customID.trim()) {
 							const sourceNum = sourceHole.holeID.match(/\d+/);

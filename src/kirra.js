@@ -1,5 +1,3 @@
-/* prettier-ignore-file */
-
 //=================================================
 // IMPORTS
 //=================================================
@@ -24,6 +22,7 @@ import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
+import { evaluate } from "mathjs";
 //=================================================
 // Three.js Rendering System
 //=================================================
@@ -202,7 +201,7 @@ import { printHeader, printFooter, printBlastStats, printBlastStatsSimple } from
 // Description: This file contains the main functions for the Kirra App
 // Author: Brent Buffham
 // Last Modified: "20250816.0140AWST"
-const buildVersion = "20251113.0000AWST"; //Backwards Compatible Date Format AWST = Australian Western Standard Time
+const buildVersion = "202601023.0000AWST"; //Backwards Compatible Date Format AWST = Australian Western Standard Time
 window.buildVersion = buildVersion; // Expose to window for dialog modules
 
 //=================================================
@@ -3402,12 +3401,8 @@ let textsGroupVisible = true;
 // These prevent "not defined" errors when used early
 let contourOverlayCanvas = null;
 let contourOverlayCtx = null;
-// debouncedUpdateTreeView is defined later - stub it to prevent errors
-let debouncedUpdateTreeView = function () { 
-	if (typeof treeView !== "undefined" && treeView && typeof treeView.updateTreeData === "function") {
-		treeView.updateTreeData();
-	}
-};
+// debouncedUpdateTreeView is defined later at line ~41322 with proper debouncing
+let debouncedUpdateTreeView;
 
 // Function to update TreeView when holes are added
 window.updateTreeFromBlastHoles = function() {
@@ -14794,7 +14789,7 @@ function handleOffsetKADClick(event) {
 // Step 4) Function extracted: showOffsetKADPopup() - Dialog for offsetting KAD entities
 // Step 5) Function is exposed globally via window.showOffsetKADPopup in KADDialogs.js
 
-function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, color, offsetIndex, handleCrossovers = true, priorityMode = "distance", originalEntityName = null) {
+function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, color, offsetIndex, handleCrossovers = true, priorityMode = "distance", originalEntityName = null, keepElevations = true, limitElevation = false, elevationLimit = 0.0) {
 	try {
 		const originalPoints = originalEntity.data;
 
@@ -14892,21 +14887,102 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 
 			// Calculate perpendicular vector (rotated 90 degrees) for horizontal offset
 			// Negative dy and positive dx gives us the right-hand perpendicular
-			const perpX = (-dy / length) * horizontalOffset;
-			const perpY = (dx / length) * horizontalOffset;
+			let perpX1 = (-dy / length) * horizontalOffset;
+			let perpY1 = (dx / length) * horizontalOffset;
+			let perpX2 = perpX1;
+			let perpY2 = perpY1;
+
+			// Apply elevation limit (project to level) if enabled
+			let p1ZDelta = parseFloat(zDelta);
+			let p2ZDelta = parseFloat(zDelta);
+
+			if (limitElevation && projectionAngle !== 0) {
+				const angleRad = Math.abs(projectionAngle * Math.PI / 180);
+				const tanAngle = Math.tan(angleRad);
+
+				// Check p1 (start point) - limit projection to elevation limit
+				const p1OrigZ = parseFloat(p1.pointZLocation);
+
+				if (projectionAngle < 0) {
+					// Projecting downward
+					if (p1OrigZ > elevationLimit) {
+						// Point is above limit - project down to limit
+						p1ZDelta = elevationLimit - p1OrigZ;
+						const verticalDrop = p1OrigZ - elevationLimit;
+						const horizontalDistance = verticalDrop / tanAngle;
+						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+					} else {
+						// Point is at or below limit - no offset
+						p1ZDelta = 0;
+						perpX1 = 0;
+						perpY1 = 0;
+					}
+				} else if (projectionAngle > 0) {
+					// Projecting upward
+					if (p1OrigZ < elevationLimit) {
+						// Point is below limit - project up to limit
+						p1ZDelta = elevationLimit - p1OrigZ;
+						const verticalRise = elevationLimit - p1OrigZ;
+						const horizontalDistance = verticalRise / tanAngle;
+						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+					} else {
+						// Point is at or above limit - no offset
+						p1ZDelta = 0;
+						perpX1 = 0;
+						perpY1 = 0;
+					}
+				}
+
+				// Check p2 (end point) - limit projection to elevation limit
+				const p2OrigZ = parseFloat(p2.pointZLocation);
+
+				if (projectionAngle < 0) {
+					// Projecting downward
+					if (p2OrigZ > elevationLimit) {
+						// Point is above limit - project down to limit
+						p2ZDelta = elevationLimit - p2OrigZ;
+						const verticalDrop = p2OrigZ - elevationLimit;
+						const horizontalDistance = verticalDrop / tanAngle;
+						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+					} else {
+						// Point is at or below limit - no offset
+						p2ZDelta = 0;
+						perpX2 = 0;
+						perpY2 = 0;
+					}
+				} else if (projectionAngle > 0) {
+					// Projecting upward
+					if (p2OrigZ < elevationLimit) {
+						// Point is below limit - project up to limit
+						p2ZDelta = elevationLimit - p2OrigZ;
+						const verticalRise = elevationLimit - p2OrigZ;
+						const horizontalDistance = verticalRise / tanAngle;
+						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+					} else {
+						// Point is at or above limit - no offset
+						p2ZDelta = 0;
+						perpX2 = 0;
+						perpY2 = 0;
+					}
+				}
+			}
 
 			// Create offset segment with proper Z calculation
 			// IMPORTANT: Ensure all values are numbers, not strings
 			const offsetSeg = {
 				start: {
-					x: p1.pointXLocation + perpX,
-					y: p1.pointYLocation + perpY,
-					z: parseFloat(p1.pointZLocation) + parseFloat(zDelta), // Fix string concatenation issue
+					x: p1.pointXLocation + perpX1,
+					y: p1.pointYLocation + perpY1,
+					z: parseFloat(p1.pointZLocation) + p1ZDelta,
 				},
 				end: {
-					x: p2.pointXLocation + perpX,
-					y: p2.pointYLocation + perpY,
-					z: parseFloat(p2.pointZLocation) + parseFloat(zDelta), // Fix string concatenation issue
+					x: p2.pointXLocation + perpX2,
+					y: p2.pointYLocation + perpY2,
+					z: parseFloat(p2.pointZLocation) + p2ZDelta,
 				},
 				index: i,
 			};
@@ -14924,22 +15000,119 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			const length = Math.sqrt(dx * dx + dy * dy);
 
 			if (length > 0) {
-				const perpX = (-dy / length) * horizontalOffset;
-				const perpY = (dx / length) * horizontalOffset;
+				//const perpX = (-dy / length) * horizontalOffset;
+				//const perpY = (dx / length) * horizontalOffset;
+//
+				//offsetSegments.push({
+				//	start: {
+				//		x: p1.pointXLocation + perpX,
+				//		y: p1.pointYLocation + perpY,
+				//		z: parseFloat(p1.pointZLocation) + parseFloat(zDelta), // Fix string concatenation
+				//	},
+				//	end: {
+				//		x: p2.pointXLocation + perpX,
+				//		y: p2.pointYLocation + perpY,
+				//		z: parseFloat(p2.pointZLocation) + parseFloat(zDelta), // Fix string concatenation
+				//	},
+				//	index: 0,
+				//});
+				  			let perpX1 = (-dy / length) * horizontalOffset;
+  			let perpY1 = (dx / length) * horizontalOffset;
+  			let perpX2 = perpX1;
+  			let perpY2 = perpY1;
 
-				offsetSegments.push({
-					start: {
-						x: p1.pointXLocation + perpX,
-						y: p1.pointYLocation + perpY,
-						z: parseFloat(p1.pointZLocation) + parseFloat(zDelta), // Fix string concatenation
-					},
-					end: {
-						x: p2.pointXLocation + perpX,
-						y: p2.pointYLocation + perpY,
-						z: parseFloat(p2.pointZLocation) + parseFloat(zDelta), // Fix string concatenation
-					},
-					index: 0,
-				});
+  			// Apply elevation limit (project to level) if enabled
+  			let p1ZDelta = parseFloat(zDelta);
+  			let p2ZDelta = parseFloat(zDelta);
+
+  			if (limitElevation && projectionAngle !== 0) {
+  				const angleRad = Math.abs(projectionAngle * Math.PI / 180);
+  				const tanAngle = Math.tan(angleRad);
+
+  				// Check p1 (start point) - limit projection to elevation limit
+  				const p1OrigZ = parseFloat(p1.pointZLocation);
+
+  				if (projectionAngle < 0) {
+  					// Projecting downward
+  					if (p1OrigZ > elevationLimit) {
+  						// Point is above limit - project down to limit
+  						p1ZDelta = elevationLimit - p1OrigZ;
+  						const verticalDrop = p1OrigZ - elevationLimit;
+  						const horizontalDistance = verticalDrop / tanAngle;
+  						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  					} else {
+  						// Point is at or below limit - no offset
+  						p1ZDelta = 0;
+  						perpX1 = 0;
+  						perpY1 = 0;
+  					}
+  				} else if (projectionAngle > 0) {
+  					// Projecting upward
+  					if (p1OrigZ < elevationLimit) {
+  						// Point is below limit - project up to limit
+  						p1ZDelta = elevationLimit - p1OrigZ;
+  						const verticalRise = elevationLimit - p1OrigZ;
+  						const horizontalDistance = verticalRise / tanAngle;
+  						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  					} else {
+  						// Point is at or above limit - no offset
+  						p1ZDelta = 0;
+  						perpX1 = 0;
+  						perpY1 = 0;
+  					}
+  				}
+
+  				// Check p2 (end point) - limit projection to elevation limit
+  				const p2OrigZ = parseFloat(p2.pointZLocation);
+
+  				if (projectionAngle < 0) {
+  					// Projecting downward
+  					if (p2OrigZ > elevationLimit) {
+  						// Point is above limit - project down to limit
+  						p2ZDelta = elevationLimit - p2OrigZ;
+  						const verticalDrop = p2OrigZ - elevationLimit;
+  						const horizontalDistance = verticalDrop / tanAngle;
+  						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  					} else {
+  						// Point is at or below limit - no offset
+  						p2ZDelta = 0;
+  						perpX2 = 0;
+  						perpY2 = 0;
+  					}
+  				} else if (projectionAngle > 0) {
+  					// Projecting upward
+  					if (p2OrigZ < elevationLimit) {
+  						// Point is below limit - project up to limit
+  						p2ZDelta = elevationLimit - p2OrigZ;
+  						const verticalRise = elevationLimit - p2OrigZ;
+  						const horizontalDistance = verticalRise / tanAngle;
+  						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  					} else {
+  						// Point is at or above limit - no offset
+  						p2ZDelta = 0;
+  						perpX2 = 0;
+  						perpY2 = 0;
+  					}
+  				}
+  			}
+
+  			offsetSegments.push({
+  				start: {
+  					x: p1.pointXLocation + perpX1,
+  					y: p1.pointYLocation + perpY1,
+  					z: parseFloat(p1.pointZLocation) + p1ZDelta,
+  				},
+  				end: {
+  					x: p2.pointXLocation + perpX2,
+  					y: p2.pointYLocation + perpY2,
+  					z: parseFloat(p2.pointZLocation) + p2ZDelta,
+  				},
+  				index: 0,
+  			});
 			}
 		}
 
@@ -15116,7 +15289,7 @@ function findLineIntersection(x1, y1, x2, y2, x3, y3, x4, y4) {
 }
 
 // Update the createOffsetEntity function for polygons
-function createOffsetEntity(originalEntity, offsetAmount, projectionAngle, color, offsetIndex, handleCrossovers = true, priorityMode = "distance", originalEntityName = null) {
+function createOffsetEntity(originalEntity, offsetAmount, projectionAngle, color, offsetIndex, handleCrossovers = true, priorityMode = "distance", originalEntityName = null, keepElevations = true, limitElevation = false, elevationLimit = 0.0) {
 	try {
 		const scale = 100000;
 		const originalPoints = originalEntity.data;
@@ -15130,7 +15303,7 @@ function createOffsetEntity(originalEntity, offsetAmount, projectionAngle, color
 
 		// For lines, use custom offset method
 		if (originalEntity.entityType === "line") {
-			return createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, color, offsetIndex, handleCrossovers, priorityMode, baseEntityName);
+			return createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, color, offsetIndex, handleCrossovers, priorityMode, baseEntityName, keepElevations, limitElevation, elevationLimit);
 		}
 
 		// For polygons, use ClipperLib
@@ -15203,19 +15376,56 @@ function createOffsetEntity(originalEntity, offsetAmount, projectionAngle, color
 		const newEntityData = offsetPath.map((pt, index) => {
 			const worldX = pt.X / scale;
 			const worldY = pt.Y / scale;
+					
+			// Determine elevation based on keepElevations setting
+			let worldZ;
+			if (keepElevations) {
+				// Find closest original point to interpolate/maintain elevation
+				let closestPoint = originalPoints[0];
+				let minDist = Infinity;
+				for (let i = 0; i < originalPoints.length; i++) {
+					const dx = worldX - originalPoints[i].pointXLocation;
+					const dy = worldY - originalPoints[i].pointYLocation;
+					const dist = Math.sqrt(dx * dx + dy * dy);
+					if (dist < minDist) {
+						minDist = dist;
+						closestPoint = originalPoints[i];
+					}
+				}
 
-			// Apply the correct Z delta
-			// IMPORTANT: Use the first point's Z as reference and parse as float
-			// to avoid string concatenation issues
-			const worldZ = parseFloat(originalPoints[0].pointZLocation) + parseFloat(zDelta);
+				// Calculate target Z with delta
+				let targetZ = parseFloat(closestPoint.pointZLocation) + parseFloat(zDelta);
 
+				// Apply elevation limit if enabled
+				if (limitElevation && projectionAngle !== 0) {
+					if ((projectionAngle > 0 && targetZ > elevationLimit) || (projectionAngle < 0 && targetZ < elevationLimit)) {
+						// Cap at elevation limit
+						targetZ = elevationLimit;
+					}
+				}
+
+				worldZ = targetZ;
+			} else {
+				// Use max elevation (first point's Z as reference)
+				let targetZ = parseFloat(originalPoints[0].pointZLocation) + parseFloat(zDelta);
+
+				// Apply elevation limit if enabled
+				if (limitElevation && projectionAngle !== 0) {
+					if ((projectionAngle > 0 && targetZ > elevationLimit) || (projectionAngle < 0 && targetZ < elevationLimit)) {
+						targetZ = elevationLimit;
+					}
+				}
+
+				worldZ = targetZ;
+			}
+			
 			return {
 				entityName: newEntityName,
 				entityType: originalEntity.entityType,
 				pointID: index + 1,
 				pointXLocation: worldX,
 				pointYLocation: worldY,
-				pointZLocation: worldZ, // This is now correctly calculated
+				pointZLocation: worldZ,
 				lineWidth: originalPoints[0].lineWidth || 1,
 				color: color,
 				closed: originalEntity.entityType === "poly",
@@ -15251,7 +15461,7 @@ function performKADOffset(entity, params) {
 		for (let i = 1; i <= params.numberOfOffsets; i++) {
 			const offsetAmount = params.baseAmount * i;
 
-			const offsetEntity = createOffsetEntity(entity, offsetAmount, params.projectionAngle, params.color, i, params.handleCrossovers, params.priorityMode, params.originalEntityName);
+			const offsetEntity = createOffsetEntity(entity, offsetAmount, params.projectionAngle, params.color, i, params.handleCrossovers, params.priorityMode, params.originalEntityName, params.keepElevations, params.limitElevation, params.elevationLimit);
 
 			if (offsetEntity) {
 				results.push(offsetEntity);
@@ -18802,7 +19012,7 @@ async function processTextCalculationWithValidation(text) {
 	if (text.startsWith("=")) {
 		try {
 			const expression = text.substring(1); // Remove '='
-			const calculatedValue = eval(expression);
+			const calculatedValue = evaluate(expression);
 
 			// Check if result is valid
 			if (isNaN(calculatedValue) || !isFinite(calculatedValue)) {
@@ -18826,17 +19036,17 @@ function showCalculationErrorPopup(originalText, errorMessage) {
 		let helpfulMessage = "Unknown calculation error";
 		let suggestions = "";
 
-		if (errorMessage.includes("Unexpected token")) {
+		if (errorMessage.includes("Unexpected token") || errorMessage.includes("Unexpected")) {
 			helpfulMessage = "Invalid mathematical expression";
-			suggestions = "? Check for typos in operators (+, -, *, /)<br>? Make sure parentheses are balanced<br>? Use only numbers and basic math operators";
-		} else if (errorMessage.includes("not defined")) {
+			suggestions = "? Check for typos in operators (+, -, *, /)<br>? Make sure parentheses are balanced<br>? Use numbers, operators, and math functions";
+		} else if (errorMessage.includes("Undefined symbol") || errorMessage.includes("not defined")) {
 			helpfulMessage = "Unknown variable or function";
-			suggestions = "? Only use numbers and basic math operators (+, -, *, /, ())<br>? Variables and custom functions are not supported";
+			suggestions = "? Supported functions: sqrt, sin, cos, tan, abs, round, etc.<br>? Variables are not supported<br>? Check function spelling";
 		} else if (errorMessage.includes("not a valid number")) {
 			helpfulMessage = "Calculation result is invalid";
 			suggestions = "? Check for division by zero<br>? Ensure the result is a finite number";
 		} else {
-			suggestions = "? Use format: =5+3 or =10*2<br>? Only basic math operators are supported<br>? Check for syntax errors";
+			suggestions = "? Use format: =5+3 or =sqrt(16)<br>? Supported: +, -, *, /, (), sqrt, sin, cos, etc.<br>? Check for syntax errors";
 		}
 
 		// Step 1) Create content with error details using inline styles for dark mode
@@ -18852,7 +19062,8 @@ function showCalculationErrorPopup(originalText, errorMessage) {
 				<label style="color: ${textColor}; font-size: 12px; font-weight: bold;"><strong>Examples:</strong></label><br>
 				<label style="color: ${textColor}; font-size: 10px;">=5+3 ? 8</label><br>
 				<label style="color: ${textColor}; font-size: 10px;">=10*2.5 ? 25</label><br>
-				<label style="color: ${textColor}; font-size: 10px;">=(100+50)/2 ? 75</label>
+				<label style="color: ${textColor}; font-size: 10px;">=(100+50)/2 ? 75</label><br>
+				<label style="color: ${textColor}; font-size: 10px;">=sqrt(16) ? 4</label>
 			</div>
 		`;
 
@@ -23511,10 +23722,15 @@ function drawData(allBlastHoles, selectedHole) {
 							for (var i = 0; i < pointsToRender.length; i++) {
 								var p = pointsToRender[i];
 								var local = worldToThreeLocal(p.pointXLocation, p.pointYLocation);
+								// Properly handle NaN values - NaN || 0 still gives NaN!
+								var zVal = p.pointZLocation;
+								if (isNaN(zVal) || zVal === null || zVal === undefined) {
+									zVal = 0;
+								}
 								batchedPoints.push({
 									x: local.x,
 									y: local.y,
-									z: p.pointZLocation || 0,
+									z: zVal,
 									color: p.color || "#777777" // Use actual color or DXF default gray
 								});
 							}
@@ -23524,7 +23740,9 @@ function drawData(allBlastHoles, selectedHole) {
 							var entityColor = pointsToRender[0].color || "#FFFFFF"; // Fallback color
 							var isPolygon = entity.entityType === "poly";
 
+							if(developerModeEnabled){
 							console.log("[3D Batched] entity:", name, "lineWidth:", entityLineWidth, "rawValue:", pointsToRender[0].lineWidth, "numPoints:", pointsToRender.length);
+						}
 
 							// ONE draw call for entire entity with per-vertex colors!
 							drawKADBatchedPolylineThreeJS(batchedPoints, entityLineWidth, entityColor, name, isPolygon);
@@ -41746,13 +41964,11 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 					});
 				}
 
-				// Save and update (USE FACTORY CODE)
-				if (typeof debouncedSaveHoles === "function") {
-					debouncedSaveHoles();
-				}
-
-				treeViewInstance.updateTreeData();
-				drawData(allBlastHoles, selectedHole);
+				// Clear selections
+				selectedHole = null;
+				selectedMultipleHoles = [];				
+				// Use refreshPoints() for complete update
+				refreshPoints();				
 				updateStatusMessage("Deleted holes without renumbering");
 				setTimeout(function () { updateStatusMessage(""); }, 2000);
 			}

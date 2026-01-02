@@ -646,17 +646,11 @@ export class TreeView {
 	}
 
 	updateTreeData() {
-		// #region agent log
-		fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:622',message:'updateTreeData called',data:{hasTreePanel:!!document.getElementById("treePanel"),treePanelDisplay:document.getElementById("treePanel")?.style.display},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
-		// #endregion
 		var treePanel = document.getElementById("treePanel");
 		var isPanelVisible = treePanel && treePanel.style.display !== "none";
 		
 		// Prevent concurrent updates
 		if (this._isUpdating) {
-			// #region agent log
-			fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:631',message:'TreeView update deferred - already updating',data:{},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'A'})}).catch(()=>{});
-			// #endregion
 			this._pendingUpdate = true;
 			return;
 		}
@@ -675,20 +669,13 @@ export class TreeView {
 		this._isUpdating = true;
 		var startTime = Date.now();
 
-		// #region agent log
-		fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:644',message:'buildTreeDataAsync started',data:{hasAllKADDrawingsMap:typeof window.allKADDrawingsMap !== "undefined",kadMapSize:window.allKADDrawingsMap?.size || 0,isPanelVisible:isPanelVisible},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-		// #endregion
-
 		try {
 			// Build in stages with yields
 			var blastData = this.buildBlastData();
 			await this.yieldToUI();
 
 			var drawingData = this.buildDrawingData();
-			// #region agent log
-			fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:653',message:'buildDrawingData result',data:{drawingDataLength:drawingData?.length || 0,blastDataLength:blastData?.length || 0},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'B'})}).catch(()=>{});
-			// #endregion
-			
+
 			await this.yieldToUI();
 
 			var surfaceData = this.buildSurfaceData();
@@ -714,9 +701,6 @@ export class TreeView {
 			// Only render HTML if panel is visible (or was just opened)
 			if (isPanelVisible) {
 				var html = this.renderTree(tree);
-				// #region agent log
-				fetch('http://127.0.0.1:7243/ingest/e103d325-2602-4005-a42c-de637629b3ed',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'TreeView.js:668',message:'renderTree result',data:{htmlLength:html?.length || 0,hasTreeViewElement:!!document.getElementById("treeView"),treeStructure:JSON.stringify(tree.map(n => ({id:n.id,type:n.type,label:n.label,childrenCount:n.children?.length || 0,firstChildId:n.children?.[0]?.id})))},timestamp:Date.now(),sessionId:'debug-session',runId:'initial',hypothesisId:'C'})}).catch(()=>{});
-				// #endregion
 				var treeViewElement = document.getElementById("treeView");
 				if (treeViewElement) {
 					treeViewElement.innerHTML = html;
