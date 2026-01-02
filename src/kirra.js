@@ -26006,6 +26006,8 @@ function endKadTools() {
 	
 	// Step 4) Hide pattern tool HUD labels when switching tools
 	hidePatternToolLabels();
+	// Step 5) Hide drawingDistance panel when KAD tools end
+	hideDrawingDistance();
 }
 
 function findClosestKadPoint(worldPoint, snapDistance) {
