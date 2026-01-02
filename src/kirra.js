@@ -14948,9 +14948,9 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			throw new Error("No valid segments after crossover handling");
 		}
 
-		// Create unique name with timestamp to avoid overwrites
-		const timestamp = Date.now();
-		const newEntityName = baseEntityName + "_offset_" + offsetIndex + "_" + timestamp;
+		// Create unique name with short ID to avoid overwrites
+		const shortId = Math.random().toString(36).substring(2, 6);
+		const newEntityName = baseEntityName + "_offset_" + offsetIndex + "_" + shortId;
 
 		const newEntityData = offsetPoints.map((pt, index) => ({
 			entityName: newEntityName,
@@ -15177,8 +15177,9 @@ function createOffsetEntity(originalEntity, offsetAmount, projectionAngle, color
 		}
 
 		const offsetPath = offsetPaths[0];
-		const timestamp = Date.now();
-		const newEntityName = baseEntityName + "_offset_" + offsetIndex + "_" + timestamp;
+		// Create unique name with short ID to avoid overwrites
+		const shortId = Math.random().toString(36).substring(2, 6);
+		const newEntityName = baseEntityName + "_offset_" + offsetIndex + "_" + shortId;
 
 		const newEntityData = offsetPath.map((pt, index) => {
 			const worldX = pt.X / scale;
@@ -18393,8 +18394,13 @@ function getUniqueKADEntityName(prefix) {
 	var existingNumbers = [];
 	allKADDrawingsMap.forEach(function (entity, name) {
 		if (name.startsWith(prefix)) {
-			// Extract the number from the name (e.g., "polyObject5" -> 5)
+			// Extract the number from the name (e.g., "polyObject5_a3k7" -> 5)
 			var numStr = name.substring(prefix.length);
+			// Handle both old format (no underscore) and new format (with _uid)
+			var underscoreIndex = numStr.indexOf("_");
+			if (underscoreIndex !== -1) {
+				numStr = numStr.substring(0, underscoreIndex);
+			}
 			var num = parseInt(numStr, 10);
 			if (!isNaN(num)) {
 				existingNumbers.push(num);
@@ -18415,7 +18421,9 @@ function getUniqueKADEntityName(prefix) {
 		}
 	}
 
-	return prefix + nextNum;
+	// Step 3) Add short unique ID suffix to guarantee uniqueness
+	var shortId = Math.random().toString(36).substring(2, 6);
+	return prefix + nextNum + "_" + shortId;
 }
 
 function addKADPoint() {
@@ -42183,6 +42191,48 @@ window.handleTreeViewShowProperties = function (nodeId, type) {
 				if (typeof window.showKADPropertyEditorPopup === "function") {
 					window.showKADPropertyEditorPopup(kadObject);
 				}
+			}
+		}
+	}
+	// KAD chunk properties (show first point in chunk range)
+	else if (parts.length === 4 && parts[2] === "chunk") {
+		const entityType = parts[0];
+		const entityName = parts[1];
+		const rangeStr = parts[3]; // e.g., "1-50"
+		const rangeParts = rangeStr.split("-");
+		const startIndex = parseInt(rangeParts[0]) - 1; // Convert to 0-based index
+
+		const entity = allKADDrawingsMap.get(entityName);
+		if (entity && entity.data && entity.data[startIndex]) {
+			const element = entity.data[startIndex];
+			const kadObject = {
+				...element,
+				entityName: entityName,
+				entityType: entity.entityType,
+				elementIndex: startIndex
+			};
+			if (typeof window.showKADPropertyEditorPopup === "function") {
+				window.showKADPropertyEditorPopup(kadObject);
+			}
+		}
+	}
+	// KAD entity properties (show first point in entity)
+	else if ((parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" ||
+			  parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
+		const entityType = parts[0];
+		const entityName = parts[1];
+
+		const entity = allKADDrawingsMap.get(entityName);
+		if (entity && entity.data && entity.data.length > 0) {
+			const element = entity.data[0]; // Show first point
+			const kadObject = {
+				...element,
+				entityName: entityName,
+				entityType: entity.entityType,
+				elementIndex: 0
+			};
+			if (typeof window.showKADPropertyEditorPopup === "function") {
+				window.showKADPropertyEditorPopup(kadObject);
 			}
 		}
 	}

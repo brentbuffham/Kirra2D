@@ -429,7 +429,13 @@ export class TreeView {
 		const isTopLevelParent = selectedNodeIds.some((nodeId) => nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images");
 		const hasHoles = selectedNodeIds.some((nodeId) => nodeId.startsWith("hole⣿"));
 		const isSubGroup = selectedNodeIds.some((nodeId) => nodeId.startsWith("drawings⣿") && nodeId.split("⣿").length === 2);
-
+		// Step 276c) Check if any selected node is an entity node (line⣿name, poly⣿name, etc.) or chunk node
+		const hasEntityOrChunk = selectedNodeIds.some((nodeId) => {
+			const parts = nodeId.split("⣿");
+			const isEntityNode = (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
+			const isChunkNode = parts.length === 4 && parts[2] === "chunk";
+			return isEntityNode || isChunkNode;
+		});
 		const renameItem = menu.querySelector("[data-action=\"rename\"]");
 		const resetConnectionsItem = menu.querySelector("[data-action=\"reset-connections\"]");
 		const propertiesItem = menu.querySelector("[data-action=\"properties\"]");
@@ -444,7 +450,9 @@ export class TreeView {
 		}
 
 		if (propertiesItem) {
-			propertiesItem.style.display = isTopLevelParent || isSubGroup ? "none" : "flex";
+			// Show properties for entity nodes, chunk nodes, and regular elements 
+			// Hide only for top-level parents and subgroups that don't contain entity or chunk nodes
+			propertiesItem.style.display = (isTopLevelParent || isSubGroup) && !hasEntityOrChunk ? "none" : "flex";  
 		}
 
 		let showRename = false;
@@ -597,11 +605,29 @@ export class TreeView {
 
 	showProperties() {
 		if (this.selectedNodes.size === 1) {
+			// Single selection - use existing handler
 			const nodeId = Array.from(this.selectedNodes)[0];
 			const type = nodeId.split("⣿")[0];
 
 			if (typeof window.handleTreeViewShowProperties === "function") {
 				window.handleTreeViewShowProperties(nodeId, type);
+			}
+		} else if (this.selectedNodes.size > 1) {
+			// Multiple selection - check if all are KAD entities/chunks/elements
+			const selectedNodeIds = Array.from(this.selectedNodes);
+
+			// Check if all selected nodes are KAD-related (entities, chunks, or elements)
+			const allKAD = selectedNodeIds.every((nodeId) => {
+				const parts = nodeId.split("⣿");
+				return (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" ||
+						parts[0] === "circle" || parts[0] === "text");
+			});
+
+			if (allKAD && window.selectedMultipleKADObjects && window.selectedMultipleKADObjects.length > 1) {
+				// Show multiple KAD property editor
+				if (typeof window.showMultipleKADPropertyEditor === "function") {
+					window.showMultipleKADPropertyEditor(window.selectedMultipleKADObjects);
+				}
 			}
 		}
 	}
@@ -1018,7 +1044,8 @@ export class TreeView {
 				var isEntityNode = (node.id && (node.id.startsWith("line⣿") || node.id.startsWith("poly⣿") || 
 					node.id.startsWith("points⣿") || node.id.startsWith("circle⣿") || node.id.startsWith("text⣿")) &&
 					node.id.split("⣿").length === 2);
-				var shouldShowExpand = hasChildren || isEntityNode;
+				var isChunkNode = node.type === "point-chunk" || (node.id && node.id.includes("⣿chunk⣿"));
+				var shouldShowExpand = hasChildren || isEntityNode || isChunkNode;
 				
 				const isExpanded = this.expandedNodes.has(node.id) || node.expanded;
 				const isSelected = this.selectedNodes.has(node.id);
@@ -1095,6 +1122,32 @@ export class TreeView {
 							selectionType: "vertex",
 							pointID: elementId // Add pointID for easier reference
 						});
+					}
+				}
+			} else if (parts.length === 4 && parts[2] === "chunk") {
+				// Chunk selection - Select all points in the chunk range
+				// Node ID format: "entityType⣿entityName⣿chunk⣿1-50" (4 parts)
+				const entityType = parts[0];
+				const entityName = parts[1];
+				const rangeStr = parts[3]; // e.g., "1-50"
+				const rangeParts = rangeStr.split("-");
+				const startIndex = parseInt(rangeParts[0]) - 1; // Convert to 0-based index
+				const endIndex = parseInt(rangeParts[1]) - 1; // Convert to 0-based index
+
+				const entity = window.allKADDrawingsMap.get(entityName);
+				if (entity && entity.data && window.selectedMultipleKADObjects) {
+					// Add all points in the chunk range as vertex selections
+					for (let i = startIndex; i <= endIndex && i < entity.data.length; i++) {
+						const element = entity.data[i];
+						if (element) {
+							window.selectedMultipleKADObjects.push({
+								entityName: entityName,
+								entityType: entityType,
+								elementIndex: i,
+								selectionType: "vertex",
+								pointID: element.pointID
+							});
+						}
 					}
 				}
 			} else if (["points", "line", "poly", "circle", "text"].includes(parts[0])) {
