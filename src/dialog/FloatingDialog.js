@@ -1015,6 +1015,116 @@ function showConfirmationDialogWithInput(title, message, inputLabel, inputType =
 	return dialog;
 }
 
+// Step 60a) Create utility function for confirmation dialogs with input and Before/After buttons
+function showConfirmationDialogWithInputAndBeforeAfter(title, message, inputLabel, inputType = "text", defaultValue = "", onBefore = null, onAfter = null, onCancel = null) {
+	console.log("showConfirmationDialogWithInputAndBeforeAfter: " + title);
+
+	// Create content container
+	const container = document.createElement("div");
+	container.style.padding = "10px";
+	container.style.display = "flex";
+	container.style.flexDirection = "column";
+	container.style.gap = "15px";
+
+	// Add warning icon and message
+	const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
+	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
+
+	const iconDiv = document.createElement("div");
+	iconDiv.style.color = "#2196F3";
+	iconDiv.style.fontSize = "18px";
+	iconDiv.style.textAlign = "center";
+	iconDiv.textContent = "➕";
+	container.appendChild(iconDiv);
+
+	const messageDiv = document.createElement("div");
+	messageDiv.style.color = textColor;
+	messageDiv.style.fontSize = "12px";
+	messageDiv.style.lineHeight = "1.1";
+	messageDiv.style.textAlign = "center";
+	messageDiv.textContent = message;
+	container.appendChild(messageDiv);
+
+	// Add input field
+	const field = [{
+		label: inputLabel,
+		name: "inputValue",
+		type: inputType,
+		value: defaultValue,
+		placeholder: defaultValue
+	}];
+
+	const formContent = window.createEnhancedFormContent ? window.createEnhancedFormContent(field, false) : createBasicInput(field[0]);
+	container.appendChild(formContent);
+
+	// Create FloatingDialog with Before/After/Cancel buttons
+	const dialog = new FloatingDialog({
+		title: title,
+		content: container,
+		width: 380,
+		height: 280,
+		showConfirm: false,
+		showCancel: true,
+		showDeny: true,
+		showOption1: true,
+		showOption2: false,
+		showOption3: false,
+		denyText: "Before",
+		option1Text: "After",
+		cancelText: "Cancel",
+		draggable: true,
+		resizable: false,
+		closeOnOutsideClick: false,
+		layoutType: "default",
+		onDeny: () => {
+			// "Before" button clicked
+			console.log("Insert BEFORE confirmed");
+			let inputValue = defaultValue;
+			if (window.getFormData) {
+				const formData = window.getFormData(formContent);
+				inputValue = formData.inputValue || defaultValue;
+			} else {
+				const input = formContent.querySelector("input");
+				if (input) {
+					inputValue = input.value || defaultValue;
+				}
+			}
+			dialog.close();
+			if (onBefore && typeof onBefore === "function") {
+				onBefore(inputValue);
+			}
+		},
+		onOption1: () => {
+			// "After" button clicked
+			console.log("Insert AFTER confirmed");
+			let inputValue = defaultValue;
+			if (window.getFormData) {
+				const formData = window.getFormData(formContent);
+				inputValue = formData.inputValue || defaultValue;
+			} else {
+				const input = formContent.querySelector("input");
+				if (input) {
+					inputValue = input.value || defaultValue;
+				}
+			}
+			dialog.close();
+			if (onAfter && typeof onAfter === "function") {
+				onAfter(inputValue);
+			}
+		},
+		onCancel: () => {
+			console.log("Insert hole cancelled");
+			dialog.close();
+			if (onCancel && typeof onCancel === "function") {
+				onCancel();
+			}
+		},
+	});
+
+	dialog.show();
+	return dialog;
+}
+
 // Step 61) Fallback function to create basic input if createEnhancedFormContent is not available
 function createBasicInput(field) {
 	const container = document.createElement("div");
@@ -1165,10 +1275,11 @@ window.createEnhancedFormContent = createEnhancedFormContent;
 window.getFormData = getFormData;
 window.showConfirmationDialog = showConfirmationDialog;
 window.showConfirmationDialogWithInput = showConfirmationDialogWithInput;
+window.showConfirmationDialogWithInputAndBeforeAfter = showConfirmationDialogWithInputAndBeforeAfter;
 window.showConfirmationThreeDialog = showConfirmationThreeDialog;
 window.showModalMessage = showModalMessage;
 
 // Step 1) Export for ES6 modules (kirra.js uses ES6 imports at line 77)
 // Step 2) Also expose via window.functionName for backward compatibility
-export { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationDialogWithInput, showConfirmationThreeDialog, showModalMessage };
+export { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationDialogWithInput, showConfirmationDialogWithInputAndBeforeAfter, showConfirmationThreeDialog, showModalMessage };
 
