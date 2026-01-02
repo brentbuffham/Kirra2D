@@ -14855,10 +14855,19 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			}
 		}
 
+		// Determine if this is a closed polygon
+		const isClosedPolygon = originalEntity.entityType === "polygon" || originalPoints[0].closed === true;
+
+		// For polygons, reverse the offset direction (positive = expand outward, negative = contract inward)
+		if (isClosedPolygon) {
+			horizontalOffset = -horizontalOffset;
+		}
+
 		console.log("🔧 Offset calculation:");
 		console.log("  offsetAmount:", offsetAmount, "(direction:", offsetAmount > 0 ? "right" : "left", ")");
 		console.log("  projectionAngle:", projectionAngle, "°");
 		console.log("  priorityMode:", priorityMode);
+		console.log("  isClosedPolygon:", isClosedPolygon);
 		console.log("  horizontalOffset:", horizontalOffset.toFixed(3));
 		console.log("  verticalOffset:", verticalOffset.toFixed(3));
 		console.log("  zDelta:", zDelta.toFixed(3));
@@ -14874,9 +14883,11 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 		const offsetSegments = [];
 
 		// Generate offset segments for each original segment
-		for (let i = 0; i < originalPoints.length - 1; i++) {
+		// For polygons, include the closing segment from last point to first
+		const numSegments = isClosedPolygon ? originalPoints.length : originalPoints.length - 1;
+		for (let i = 0; i < numSegments; i++) {
 			const p1 = originalPoints[i];
-			const p2 = originalPoints[i + 1];
+			const p2 = originalPoints[(i + 1) % originalPoints.length]; // Wrap around for closed polygons
 
 			// Calculate segment direction vector
 			const dx = p2.pointXLocation - p1.pointXLocation;
@@ -15146,21 +15157,21 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 
 		const newEntityData = offsetPoints.map((pt, index) => ({
 			entityName: newEntityName,
-			entityType: "line",
+			entityType: originalEntity.entityType || "line",
 			pointID: index + 1,
 			pointXLocation: pt.pointXLocation,
 			pointYLocation: pt.pointYLocation,
 			pointZLocation: pt.pointZLocation,
 			lineWidth: originalPoints[0].lineWidth || 1,
 			color: color,
-			closed: false,
+			closed: isClosedPolygon,
 			visible: true,
 		}));
 
 		// Add to the map
 		allKADDrawingsMap.set(newEntityName, {
 			entityName: newEntityName,
-			entityType: "line",
+			entityType: originalEntity.entityType || "line",
 			data: newEntityData,
 			visible: true,
 		});
@@ -15301,8 +15312,8 @@ function createOffsetEntity(originalEntity, offsetAmount, projectionAngle, color
 		/// Fix Issue #2: Handle undefined entityName - use passed name or fallback
 		const baseEntityName = originalEntityName || originalEntity.entityName || "undef";
 
-		// For lines, use custom offset method
-		if (originalEntity.entityType === "line") {
+		// For lines AND polygons with projection angle or elevation limiting, use custom offset method
+		if (originalEntity.entityType === "line" || (projectionAngle !== 0 || limitElevation)) {
 			return createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, color, offsetIndex, handleCrossovers, priorityMode, baseEntityName, keepElevations, limitElevation, elevationLimit);
 		}
 
