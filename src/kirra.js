@@ -4166,17 +4166,36 @@ function resetFloatingToolbarButtons(excluding) {
 
 	// CRITICAL: Remove move and bearing tool listeners when switching away
 	if (excluding !== "moveToTool") {
+		// Remove the 2D move tool listeners
 		canvas.removeEventListener("mousedown", handleMoveToolMouseDown);
 		canvas.removeEventListener("touchstart", handleMoveToolMouseDown);
 		canvas.removeEventListener("mousemove", handleMoveToolMouseMove);
 		canvas.removeEventListener("touchmove", handleMoveToolMouseMove);
 		canvas.removeEventListener("mouseup", handleMoveToolMouseUp);
 		canvas.removeEventListener("touchend", handleMoveToolMouseUp);
+
+		//ALSO Remove from 3Dcanvas if it exists
+		const threeCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
+		if (threeCanvas) {
+			threeCanvas.removeEventListener("mousedown", handleMoveToolMouseDown);
+			threeCanvas.removeEventListener("touchstart", handleMoveToolMouseDown);
+			threeCanvas.removeEventListener("mousemove", handleMoveToolMouseMove);
+			threeCanvas.removeEventListener("touchmove", handleMoveToolMouseMove);
+			threeCanvas.removeEventListener("mouseup", handleMoveToolMouseUp);
+			threeCanvas.removeEventListener("touchend", handleMoveToolMouseUp);
+		}
+
+		//clear move tool state
 		moveToolSelectedHole = null;
+		moveToolSelectedKAD = null;
 		isDraggingHole = false;
+		window.isdraggingHole = false;
+		moveToolIn3DMode = false;
+		dragPlaneZ = 0;
 	}
 
 	if (excluding !== "bearingTool") {
+		// Remove the 2D bearing tool listeners
 		canvas.removeEventListener("mousedown", handleBearingToolMouseDown);
 		canvas.removeEventListener("mousemove", handleBearingToolMouseMove);
 		canvas.removeEventListener("mouseup", handleBearingToolMouseUp);

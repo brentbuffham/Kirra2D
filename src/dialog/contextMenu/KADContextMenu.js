@@ -189,7 +189,10 @@ export function showKADPropertyEditorPopup(kadObject) {
     noteDiv.innerHTML = "<b>All:</b> Move all points by the same offset as this point (unless Only Z is checked).<br>" + "<b>This:</b> Move only this point (unless Only Z is checked).";
     formContent.appendChild(noteDiv);
 
-    // Step 5) Create the dialog with 5 buttons (added Delete)
+    // Step 5) Check if Insert button should be shown (only for line/poly segments)
+    const showInsertButton = isLineOrPoly && kadObject.selectionType === "segment";
+
+    // Step 5a) Create the dialog with 6 buttons (added Insert)
     const dialog = new window.FloatingDialog({
         title: title,
         content: formContent,
@@ -199,12 +202,14 @@ export function showKADPropertyEditorPopup(kadObject) {
         showCancel: true, // "Cancel" button
         showOption1: true, // "Hide" button
         showOption2: true, // "Delete" button
+        showOption3: showInsertButton, // "Insert" button (only for line/poly segments)
         confirmText: "All",
         denyText: "This",
         cancelText: "Cancel",
         option1Text: "Hide",
         option2Text: "Delete",
-        width: 400,
+        option3Text: "Insert",
+        width: 430,
         height: isLineOrPoly ? 400 : 350,
         onConfirm: () => {
             // Step 5a) Get form values and apply to all elements
@@ -363,6 +368,61 @@ export function showKADPropertyEditorPopup(kadObject) {
             window.clearAllSelectionState();
             window.drawData(window.allBlastHoles, window.selectedHole);
 
+            setTimeout(() => window.updateStatusMessage(""), 2000);
+        },
+        onOption3: () => {
+            // Step 5f) Insert point at midpoint of selected segment
+            dialog.close();
+
+            const entity = window.getEntityFromKADObject(kadObject);
+            if (!entity) return;
+
+            // Get the segment indices
+            const segmentStartIndex = kadObject.elementIndex;
+            const isPoly = kadObject.entityType === "poly";
+            const numPoints = entity.data.length;
+            const segmentEndIndex = isPoly ? (segmentStartIndex + 1) % numPoints : segmentStartIndex + 1;
+
+            if (segmentEndIndex >= numPoints && !isPoly) {
+                window.updateStatusMessage("Cannot insert after last point in line");
+                setTimeout(() => window.updateStatusMessage(""), 2000);
+                return;
+            }
+
+            const p1 = entity.data[segmentStartIndex];
+            const p2 = entity.data[segmentEndIndex];
+
+            // Calculate midpoint and interpolated Z
+            const midX = (p1.pointXLocation + p2.pointXLocation) / 2;
+            const midY = (p1.pointYLocation + p2.pointYLocation) / 2;
+            const midZ = (p1.pointZLocation + p2.pointZLocation) / 2;
+
+            // Create new point with interpolated properties
+            const newPoint = {
+                entityName: kadObject.entityName,
+                entityType: kadObject.entityType,
+                pointID: 0, // Will be renumbered
+                pointXLocation: midX,
+                pointYLocation: midY,
+                pointZLocation: midZ,
+                lineWidth: p2.lineWidth || p1.lineWidth || 1,
+                color: p2.color || p1.color || "#FF0000",
+                visible: true,
+                closed: isPoly
+            };
+
+            // Insert the new point after the segment start
+            const insertIndex = isPoly ? segmentEndIndex : segmentStartIndex + 1;
+            entity.data.splice(insertIndex, 0, newPoint);
+
+            // Renumber points
+            window.renumberEntityPoints(entity);
+
+            // Save and redraw
+            window.debouncedSaveKAD();
+            window.debouncedUpdateTreeView();
+            window.drawData(window.allBlastHoles, window.selectedHole);
+            window.updateStatusMessage("Inserted point in " + kadObject.entityName);
             setTimeout(() => window.updateStatusMessage(""), 2000);
         }
     });

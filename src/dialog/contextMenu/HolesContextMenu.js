@@ -333,11 +333,13 @@ export function showHolePropertyEditor(hole) {
 		showCancel: true,
 		showOption1: true, // Hide button
 		showOption2: true, // Delete button
+		showOption3: !isMultiple, // Insert button (only for single hole)
 		confirmText: "Apply",
 		cancelText: "Cancel",
 		option1Text: "Hide",
 		option2Text: "Delete",
-		width: 350,
+		option3Text: "Insert",
+		width: 380,
 		height: 600,
 		onConfirm: () => {
 			// Step 10a) Get form values and process updates
@@ -436,6 +438,133 @@ export function showHolePropertyEditor(hole) {
 					window.drawData(window.allBlastHoles, window.selectedHole);
 					window.updateStatusMessage("Deleted " + holes.length + " hole(s)");
 					setTimeout(() => window.updateStatusMessage(""), 2000);
+				}
+			);
+		},
+		onOption3: () => {
+			// Step 10e) Insert hole after selected hole
+			dialog.close();
+
+			const sourceHole = holes[0]; // Single hole only
+
+			// Find holes in same entity and row
+			const holesInRow = window.allBlastHoles.filter(h =>
+				h.entityName === sourceHole.entityName &&
+				h.rowID === sourceHole.rowID
+			).sort((a, b) => parseInt(a.posID) - parseInt(b.posID));
+
+			const sourceIndex = holesInRow.findIndex(h => h.holeID === sourceHole.holeID);
+			const nextHole = sourceIndex < holesInRow.length - 1 ? holesInRow[sourceIndex + 1] : null;
+
+			// Calculate insert position
+			let insertX, insertY, insertZ;
+			if (nextHole) {
+				// Midpoint between selected and next hole
+				insertX = (sourceHole.startXLocation + nextHole.startXLocation) / 2;
+				insertY = (sourceHole.startYLocation + nextHole.startYLocation) / 2;
+				insertZ = (sourceHole.startZLocation + nextHole.startZLocation) / 2;
+			} else {
+				// At end of row - use spacing distance
+				const spacing = sourceHole.spacing || 3;
+				const bearing = (sourceHole.holeBearing || 0) * Math.PI / 180;
+				insertX = sourceHole.startXLocation + spacing * Math.sin(bearing);
+				insertY = sourceHole.startYLocation + spacing * Math.cos(bearing);
+				insertZ = sourceHole.startZLocation;
+			}
+
+			// Show dialog to ask for renumber or custom ID
+			window.showConfirmationDialogWithInput(
+				"Insert Hole",
+				"Enter custom Hole ID or leave blank to auto-renumber:",
+				"Hole ID (optional)",
+				"text",
+				"",
+				"Insert",
+				"Cancel",
+				(customID) => {
+					// Validate custom hole ID if provided
+					if (customID && customID.trim()) {
+						const trimmedID = customID.trim();
+						// Check if this hole ID already exists in the entity
+						const existingHole = window.allBlastHoles.find(h =>
+							h.entityName === sourceHole.entityName && h.holeID === trimmedID
+						);
+
+						if (existingHole) {
+							// Show error dialog and cancel insertion
+							window.showErrorDialog(
+								"Duplicate Hole ID",
+								"Hole ID '" + trimmedID + "' already exists in entity '" + sourceHole.entityName + "'.\n\nPlease choose a different ID or leave blank to auto-renumber.",
+								"OK"
+							);
+							return; // Cancel insertion
+						}
+					}
+
+					// Create new hole with source hole properties
+					const newHole = {
+						...sourceHole,
+						holeID: customID && customID.trim() ? customID.trim() : "TEMP_ID",
+						startXLocation: insertX,
+						startYLocation: insertY,
+						startZLocation: insertZ,
+						posID: sourceHole.posID ? String(parseInt(sourceHole.posID) + 1) : "1",
+						visible: true
+					};
+
+					// Recalculate end position based on geometry
+					if (typeof window.calculateHoleGeometry === "function") {
+						window.calculateHoleGeometry(newHole, newHole.holeDiameter, 7);
+					}
+
+					// Find insert index in allBlastHoles (after source hole)
+					const globalIndex = window.allBlastHoles.findIndex(h =>
+						h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName
+					);
+
+					if (globalIndex !== -1) {
+						window.allBlastHoles.splice(globalIndex + 1, 0, newHole);
+
+						// If no custom ID, auto-generate ID and renumber only subsequent holes
+						if (!customID || !customID.trim()) {
+							// Extract number and prefix from source hole ID
+							const sourceNum = sourceHole.holeID.match(/\d+/);
+							const sourceNumber = sourceNum ? parseInt(sourceNum[0]) : 1;
+							const prefix = sourceHole.holeID.replace(/\d+/g, '');
+
+							// Set the new hole's ID (increment from source)
+							newHole.holeID = prefix + (sourceNumber + 1);
+
+							// Renumber ONLY holes in the entity after the inserted one
+							let nextNum = sourceNumber + 2;
+							for (let i = globalIndex + 2; i < window.allBlastHoles.length; i++) {
+								const h = window.allBlastHoles[i];
+								if (h.entityName === sourceHole.entityName) {
+									h.holeID = prefix + nextNum;
+									nextNum++;
+								}
+							}
+						}
+
+						// Increment posID for all holes in same row after insertion (both auto and custom ID cases)
+						for (let i = globalIndex + 2; i < window.allBlastHoles.length; i++) {
+							const h = window.allBlastHoles[i];
+							if (h.entityName === sourceHole.entityName && h.rowID === sourceHole.rowID) {
+								h.posID = String(parseInt(h.posID || 0) + 1);
+							}
+						}
+
+						window.debouncedSaveHoles();
+						window.debouncedUpdateTreeView();
+						window.drawData(window.allBlastHoles, window.selectedHole);
+						window.updateStatusMessage("Inserted hole after " + sourceHole.holeID);
+						setTimeout(() => window.updateStatusMessage(""), 2000);
+					}
+				},
+				() => {
+					// Cancelled
+					window.updateStatusMessage("Insert cancelled");
+					setTimeout(() => window.updateStatusMessage(""), 1500);
 				}
 			);
 		},

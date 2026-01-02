@@ -17,11 +17,13 @@ class FloatingDialog {
 			showDeny: false,
 			showOption1: false,
 			showOption2: false,
+			showOption3: false,
 			confirmText: "OK",
 			cancelText: "Cancel",
 			denyText: "Deny",
 			option1Text: "Option 1",
 			option2Text: "Option 2",
+			option3Text: "Option 3",
 			layoutType: "default", // default, compact, wide
 			draggable: true,
 			resizable: true,
@@ -31,6 +33,7 @@ class FloatingDialog {
 			onDeny: null,
 			onOption1: null,
 			onOption2: null,
+			onOption3: null,
 			...options,
 		};
 
@@ -98,7 +101,7 @@ class FloatingDialog {
 		this.element.appendChild(content);
 
 		// Step 9) Create footer with buttons
-		if (this.options.showConfirm || this.options.showCancel || this.options.showOption1 || this.options.showOption2) {
+		if (this.options.showConfirm || this.options.showCancel || this.options.showOption1 || this.options.showOption2 || this.options.showOption3) {
 			const footer = this.createFooter();
 			this.element.appendChild(footer);
 		}
@@ -164,7 +167,16 @@ class FloatingDialog {
 		const footer = document.createElement("div");
 		footer.className = "floating-dialog-footer";
 
-		// Step 13) Option2 button (fourth button)
+		// Step 13) Option3 button (fifth button)
+		if (this.options.showOption3) {
+			const option3Btn = this.createButton(this.options.option3Text, "option3", () => {
+				if (this.options.onOption3) this.options.onOption3();
+				this.close();
+			});
+			footer.appendChild(option3Btn);
+		}
+
+		// Step 13a) Option2 button (fourth button)
 		if (this.options.showOption2) {
 			const option2Btn = this.createButton(this.options.option2Text, "option2", () => {
 				if (this.options.onOption2) this.options.onOption2();
