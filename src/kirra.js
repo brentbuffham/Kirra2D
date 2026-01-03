@@ -2715,7 +2715,11 @@ function handle3DMouseMove(event) {
 		// Step 13f.7h) If snapped, change color to indicate snap (bright green)
 		// MUST use rgba() format - parseRGBA only handles rgba/rgb, not hex colors!
 		if (snapResult && snapResult.snapped && snapResult.snapTarget) {
-			torusColor = "rgba(0, 255, 0, 0.8)";
+			// Different alpha for vertices vs segments
+			const snapType = snapResult.snapTarget.type;
+			const isSegmentSnap = snapType && (snapType.includes("SEGMENT") || snapType.includes("LINE_SEGMENT") || snapType.includes("POLYGON_SEGMENT"));
+			const snapAlpha = isSegmentSnap ? 0.3 : 0.8; // Dimmer for segments, brighter for vertices/points
+			torusColor = `rgba(0, 255, 0, ${snapAlpha})`;
 		} else {
 			// Otherwise use tool-specific colors
 			var isAnyDrawingToolActiveForTorus = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText || isAddingHole;
@@ -14946,12 +14950,10 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 		}
 
 		// Determine if this is a closed polygon
-		const isClosedPolygon = originalEntity.entityType === "polygon" || originalPoints[0].closed === true;
+		const isClosedPolygon = originalEntity.entityType === "poly" || originalPoints[0].closed === true;
 
-		// For polygons, reverse the offset direction (positive = expand outward, negative = contract inward)
-		if (isClosedPolygon) {
-			horizontalOffset = -horizontalOffset;
-		}
+		// Note: Polygon offset direction is now handled correctly by the perpendicular vector calculation
+		// No negation needed since we fixed the perpendicular direction (dy, -dx) vs old (-dy, dx)
 
 		console.log("🔧 Offset calculation:");
 		console.log("  offsetAmount:", offsetAmount, "(direction:", offsetAmount > 0 ? "right" : "left", ")");
@@ -14987,9 +14989,9 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			if (length === 0) continue; // Skip zero-length segments
 
 			// Calculate perpendicular vector (rotated 90 degrees) for horizontal offset
-			// Negative dy and positive dx gives us the right-hand perpendicular
-			let perpX1 = (-dy / length) * horizontalOffset;
-			let perpY1 = (dx / length) * horizontalOffset;
+			// Positive dy and negative dx gives us the left-hand perpendicular (positive = outward)
+			let perpX1 = (dy / length) * horizontalOffset;
+			let perpY1 = (-dx / length) * horizontalOffset;
 			let perpX2 = perpX1;
 			let perpY2 = perpY1;
 
@@ -15011,8 +15013,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 						p1ZDelta = elevationLimit - p1OrigZ;
 						const verticalDrop = p1OrigZ - elevationLimit;
 						const horizontalDistance = verticalDrop / tanAngle;
-						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
 					} else {
 						// Point is at or below limit - no offset
 						p1ZDelta = 0;
@@ -15026,8 +15028,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 						p1ZDelta = elevationLimit - p1OrigZ;
 						const verticalRise = elevationLimit - p1OrigZ;
 						const horizontalDistance = verticalRise / tanAngle;
-						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
 					} else {
 						// Point is at or above limit - no offset
 						p1ZDelta = 0;
@@ -15046,8 +15048,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 						p2ZDelta = elevationLimit - p2OrigZ;
 						const verticalDrop = p2OrigZ - elevationLimit;
 						const horizontalDistance = verticalDrop / tanAngle;
-						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
 					} else {
 						// Point is at or below limit - no offset
 						p2ZDelta = 0;
@@ -15061,8 +15063,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 						p2ZDelta = elevationLimit - p2OrigZ;
 						const verticalRise = elevationLimit - p2OrigZ;
 						const horizontalDistance = verticalRise / tanAngle;
-						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
 					} else {
 						// Point is at or above limit - no offset
 						p2ZDelta = 0;
@@ -15101,8 +15103,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			const length = Math.sqrt(dx * dx + dy * dy);
 
 			if (length > 0) {
-				//const perpX = (-dy / length) * horizontalOffset;
-				//const perpY = (dx / length) * horizontalOffset;
+				//const perpX = (dy / length) * horizontalOffset;
+				//const perpY = (-dx / length) * horizontalOffset;
 //
 				//offsetSegments.push({
 				//	start: {
@@ -15117,8 +15119,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 				//	},
 				//	index: 0,
 				//});
-				  			let perpX1 = (-dy / length) * horizontalOffset;
-  			let perpY1 = (dx / length) * horizontalOffset;
+				  			let perpX1 = (dy / length) * horizontalOffset;
+  			let perpY1 = (-dx / length) * horizontalOffset;
   			let perpX2 = perpX1;
   			let perpY2 = perpY1;
 
@@ -15140,8 +15142,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
   						p1ZDelta = elevationLimit - p1OrigZ;
   						const verticalDrop = p1OrigZ - elevationLimit;
   						const horizontalDistance = verticalDrop / tanAngle;
-  						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
   					} else {
   						// Point is at or below limit - no offset
   						p1ZDelta = 0;
@@ -15155,8 +15157,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
   						p1ZDelta = elevationLimit - p1OrigZ;
   						const verticalRise = elevationLimit - p1OrigZ;
   						const horizontalDistance = verticalRise / tanAngle;
-  						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
   					} else {
   						// Point is at or above limit - no offset
   						p1ZDelta = 0;
@@ -15175,8 +15177,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
   						p2ZDelta = elevationLimit - p2OrigZ;
   						const verticalDrop = p2OrigZ - elevationLimit;
   						const horizontalDistance = verticalDrop / tanAngle;
-  						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
   					} else {
   						// Point is at or below limit - no offset
   						p2ZDelta = 0;
@@ -15190,8 +15192,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
   						p2ZDelta = elevationLimit - p2OrigZ;
   						const verticalRise = elevationLimit - p2OrigZ;
   						const horizontalDistance = verticalRise / tanAngle;
-  						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+  						perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
   					} else {
   						// Point is at or above limit - no offset
   						p2ZDelta = 0;
@@ -15291,8 +15293,8 @@ function createSimpleLineOffset(originalEntity, horizontalOffset, zDelta, color,
 		if (length === 0) continue;
 
 		// Calculate perpendicular vector (rotated 90 degrees) for horizontal offset
-		const perpX = (-dy / length) * horizontalOffset;
-		const perpY = (dx / length) * horizontalOffset;
+		const perpX = (dy / length) * horizontalOffset;
+		const perpY = (-dx / length) * horizontalOffset;
 
 		// Apply the correct Z delta
 		// IMPORTANT: Parse float to avoid string concatenation
@@ -40064,11 +40066,13 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 
 			// Check vertices (points, line endpoints, polygon vertices, etc.)
 			entity.data.forEach((dataPoint) => {
-				// Convert world coords to local for ray comparison
-				const pointLocal = worldToLocal(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || 0);
-				const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
+				// Use SCREEN-SPACE distance for vertices (same as segments)
+				const screenPos = worldToScreen(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || window.dataCentroidZ || 0);
+				const dx = mouseScreenX - screenPos.x;
+				const dy = mouseScreenY - screenPos.y;
+				const screenDist = Math.sqrt(dx * dx + dy * dy);
 
-				if (pointResult.distance <= snapRadiusWorld && pointResult.rayT > 0) {
+				if (screenDist <= snapRadiusPixels) {
 					// Determine type and priority based on entity type
 					let snapType = "KAD_POINT";
 					let priority = SNAP_PRIORITIES.KAD_POINT;
@@ -40090,10 +40094,10 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 						priority = SNAP_PRIORITIES.KAD_TEXT_POSITION;
 					}
 
-					// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
+					// IMPORTANT: Return the ACTUAL object world coordinates
 					snapCandidates.push({
-						distance: pointResult.distance,
-						rayT: pointResult.rayT,
+						distance: screenDist, // Screen pixel distance for consistent sorting
+						rayT: 50, // Arbitrary depth for vertices (vertices have higher priority anyway)
 						point: { x: dataPoint.pointXLocation, y: dataPoint.pointYLocation, z: dataPoint.pointZLocation || 0 },
 						type: snapType,
 						priority: priority,
