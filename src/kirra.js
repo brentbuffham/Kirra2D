@@ -15128,7 +15128,7 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 		}
 
 		// Handle crossovers by finding intersections and trimming/extending segments
-		const cleanedSegments = handleCrossovers ? handleSegmentCrossovers(offsetSegments) : offsetSegments;
+		const cleanedSegments = handleCrossovers ? handleSegmentCrossovers(offsetSegments, isClosedPolygon) : offsetSegments;
 
 		// Convert cleaned segments to point array
 		const offsetPoints = [];
@@ -15248,7 +15248,7 @@ function createSimpleLineOffset(originalEntity, horizontalOffset, zDelta, color,
 }
 
 // Handle crossovers between offset segments
-function handleSegmentCrossovers(segments) {
+function handleSegmentCrossovers(segments, isClosedPolygon = false) {
 	if (segments.length < 2) return segments;
 
 	const cleanedSegments = [...segments];
@@ -15267,6 +15267,22 @@ function handleSegmentCrossovers(segments) {
 			seg1.end.y = intersection.y;
 			seg2.start.x = intersection.x;
 			seg2.start.y = intersection.y;
+		}
+	}
+
+	// For closed polygons, also handle the intersection between last and first segment
+	if (isClosedPolygon && cleanedSegments.length > 2) {
+		const lastSeg = cleanedSegments[cleanedSegments.length - 1];
+		const firstSeg = cleanedSegments[0];
+
+		const intersection = findLineIntersection(lastSeg.start.x, lastSeg.start.y, lastSeg.end.x, lastSeg.end.y, firstSeg.start.x, firstSeg.start.y, firstSeg.end.x, firstSeg.end.y);
+
+		if (intersection) {
+			// Extend/trim segments to meet at intersection
+			lastSeg.end.x = intersection.x;
+			lastSeg.end.y = intersection.y;
+			firstSeg.start.x = intersection.x;
+			firstSeg.start.y = intersection.y;
 		}
 	}
 
