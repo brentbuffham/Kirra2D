@@ -1122,7 +1122,13 @@ function handle3DClick(event) {
 		if (interactionManager && interactionManager.raycaster) {
 			// Get ray from raycaster (already set above)
 			const ray = interactionManager.raycaster.ray;
-			snapResult = snapToNearestPointWithRay(ray.origin, ray.direction, snapRadiusWorld);
+
+			// Calculate mouse screen coordinates for snap
+			const rect = threeRenderer.getCanvas().getBoundingClientRect();
+			const mouseScreenX = event.clientX - rect.left;
+			const mouseScreenY = event.clientY - rect.top;
+
+			snapResult = snapToNearestPointWithRay(ray.origin, ray.direction, snapRadiusPixels, mouseScreenX, mouseScreenY);
 		} else {
 			// Fallback to 2D snap (shouldn't happen in 3D mode, but safe fallback)
 			snapResult = snapToNearestPoint(clickWorldX, clickWorldY, snapRadiusWorld);
@@ -1302,12 +1308,8 @@ function handle3DClick(event) {
 			} else {
 				// For steps 1-3 (point selection), use snapping same as 2D
 				var rect = canvas.getBoundingClientRect();
-				var canvasCoords = worldToCanvas(worldX, worldY);
-				var clickX = canvasCoords[0];
-				var clickY = canvasCoords[1];
-
-				// Step 1) Apply same snapping as 2D tools (snaps to KAD entities, holes, grid, etc.)
-				var patternSnapResult = canvasToWorldWithSnap(clickX, clickY);
+				// Step 1) Apply snapping directly to world coords (no canvas conversion in 3D mode)
+				var patternSnapResult = snapToNearestPoint(worldX, worldY);
 				var snappedWorldX = patternSnapResult.worldX;
 				var snappedWorldY = patternSnapResult.worldY;
 
@@ -1336,16 +1338,18 @@ function handle3DClick(event) {
 		} else if (isHolesAlongLineActive) {
 			// Step 12c.1c.4) Handle Holes Along Line tool in 3D mode (BUG FIX 2025-12-28)
 			console.log("⬇️ [3D CLICK] Holes Along Line click at:", worldX, worldY, worldZ);
-			// Use snapping same as 2D
+			// Use snapping directly to world coords
 			var rect = canvas.getBoundingClientRect();
-			var canvasCoords = worldToCanvas(worldX, worldY);
-			var clickX = canvasCoords[0];
-			var clickY = canvasCoords[1];
 
-			// Step 1) Apply same snapping as 2D tools (snaps to KAD entities, holes, grid, etc.)
-			const snapResult = canvasToWorldWithSnap(clickX, clickY);
+			// Step 1) Apply snapping directly to world coords (no canvas conversion in 3D mode)
+			const snapResult = snapToNearestPoint(worldX, worldY);
 			var snappedWorldX = snapResult.worldX;
 			var snappedWorldY = snapResult.worldY;
+
+			// Convert snapped world coords to canvas for synthetic event
+			var canvasCoords = worldToCanvas(snappedWorldX, snappedWorldY);
+			var clickX = canvasCoords[0];
+			var clickY = canvasCoords[1];
 
 			// Step 2) Show snap feedback if snapped (same as 2D)
 			if (snapResult.snapped) {
@@ -1372,16 +1376,18 @@ function handle3DClick(event) {
 		} else if (isHolesAlongPolyLineActive) {
 			// Step 12c.1c.5) Handle Holes Along Polyline tool in 3D mode (BUG FIX 2025-12-28)
 			console.log("⬇️ [3D CLICK] Holes Along Polyline click at:", worldX, worldY, worldZ);
-			// Use snapping same as 2D
+			// Use snapping directly to world coords
 			var rect = canvas.getBoundingClientRect();
-			var canvasCoords = worldToCanvas(worldX, worldY);
-			var clickX = canvasCoords[0];
-			var clickY = canvasCoords[1];
 
-			// Step 1) Apply same snapping as 2D tools (snaps to KAD entities, holes, grid, etc.)
-			const snapResult = canvasToWorldWithSnap(clickX, clickY);
+			// Step 1) Apply snapping directly to world coords (no canvas conversion in 3D mode)
+			const snapResult = snapToNearestPoint(worldX, worldY);
 			var snappedWorldX = snapResult.worldX;
 			var snappedWorldY = snapResult.worldY;
+
+			// Convert snapped world coords to canvas for synthetic event
+			var canvasCoords = worldToCanvas(snappedWorldX, snappedWorldY);
+			var clickX = canvasCoords[0];
+			var clickY = canvasCoords[1];
 
 			// Step 2) Show snap feedback if snapped (same as 2D)
 			if (snapResult.snapped) {
@@ -1440,8 +1446,14 @@ function handle3DClick(event) {
 
 		// Step 12c.2c) Apply 3D snap if available
 		if (interactionManager && interactionManager.raycaster) {
-			var rulerSnapRadius = getSnapRadiusInWorldUnits3D(window.snapRadiusPixels || 15);
-			var rulerSnapResult = snapToNearestPointWithRay(interactionManager.raycaster.ray.origin, interactionManager.raycaster.ray.direction, rulerSnapRadius);
+			const rulerSnapRadiusPixels = window.snapRadiusPixels || 15;
+
+			// Calculate mouse screen coordinates for snap
+			const rect = threeRenderer.getCanvas().getBoundingClientRect();
+			const mouseScreenX = event.clientX - rect.left;
+			const mouseScreenY = event.clientY - rect.top;
+
+			var rulerSnapResult = snapToNearestPointWithRay(interactionManager.raycaster.ray.origin, interactionManager.raycaster.ray.direction, rulerSnapRadiusPixels, mouseScreenX, mouseScreenY);
 			if (rulerSnapResult.snapped) {
 				rulerClickX = rulerSnapResult.worldX;
 				rulerClickY = rulerSnapResult.worldY;
@@ -1492,8 +1504,14 @@ function handle3DClick(event) {
 
 		// Step 12c.3c) Apply 3D snap if available
 		if (interactionManager && interactionManager.raycaster) {
-			var protSnapRadius = getSnapRadiusInWorldUnits3D(window.snapRadiusPixels || 15);
-			var protSnapResult = snapToNearestPointWithRay(interactionManager.raycaster.ray.origin, interactionManager.raycaster.ray.direction, protSnapRadius);
+			const protSnapRadiusPixels = window.snapRadiusPixels || 15;
+
+			// Calculate mouse screen coordinates for snap
+			const rect = threeRenderer.getCanvas().getBoundingClientRect();
+			const mouseScreenX = event.clientX - rect.left;
+			const mouseScreenY = event.clientY - rect.top;
+
+			var protSnapResult = snapToNearestPointWithRay(interactionManager.raycaster.ray.origin, interactionManager.raycaster.ray.direction, protSnapRadiusPixels, mouseScreenX, mouseScreenY);
 			if (protSnapResult.snapped) {
 				protClickX = protSnapResult.worldX;
 				protClickY = protSnapResult.worldY;
@@ -2533,16 +2551,19 @@ function handle3DMouseMove(event) {
 	};
 
 	if (snapEnabled && interactionManager && interactionManager.raycaster) {
-		// Step 13f.4a) Calculate snap radius in world units
+		// Step 13f.4a) Calculate snap radius in pixels (NOT world units - use screen space!)
 		const snapRadiusPixels = window.snapRadiusPixels || 15; // 15 pixels on screen
-		const snapRadiusWorld = getSnapRadiusInWorldUnits3D(snapRadiusPixels);
 
-		// Step 13f.4b) Get ray from raycaster
+		// Step 13f.4b) Get ray from raycaster and mouse screen coordinates
 		interactionManager.raycaster.setFromCamera(interactionManager.mouse, threeRenderer.camera);
 		const ray = interactionManager.raycaster.ray;
 
-		// Step 13f.4c) Perform cylindrical snap along view ray
-		snapResult = snapToNearestPointWithRay(ray.origin, ray.direction, snapRadiusWorld);
+		const rect = threeCanvas.getBoundingClientRect();
+		const mouseScreenX = event.clientX - rect.left;
+		const mouseScreenY = event.clientY - rect.top;
+
+		// Step 13f.4c) Perform snap using screen-space for segments, ray for points
+		snapResult = snapToNearestPointWithRay(ray.origin, ray.direction, snapRadiusPixels, mouseScreenX, mouseScreenY);
 
 		// Step 13f.4d) If snapped, use snap position; otherwise use mouseWorldPos
 		if (snapResult.snapped && snapResult.snapTarget) {
@@ -2822,9 +2843,11 @@ function handle3DMouseMove(event) {
 
 	// Step 13f.9.5) Draw Pattern In Polygon leading line if active
 	if (isPatternInPolygonActive && patternStartPoint && !patternEndPoint) {
-		// Step 13f.9.5a) Get snapped mouse coordinates (same as 2D)
-		var mouseCanvasCoords = worldToCanvas(currentMouseWorldX, currentMouseWorldY);
-		var patternSnapResult = canvasToWorldWithSnap(mouseCanvasCoords[0], mouseCanvasCoords[1]);
+		// Step 13f.9.5a) Get snapped mouse coordinates
+		// In 3D mode, use current mouseWorldPos (calculated fresh this frame)
+		var patternSnapResult = mouseWorldPos
+			? snapToNearestPoint(mouseWorldPos.x, mouseWorldPos.y)
+			: snapToNearestPoint(currentMouseWorldX, currentMouseWorldY);
 		var snappedMouseX = patternSnapResult.worldX;
 		var snappedMouseY = patternSnapResult.worldY;
 		
@@ -2842,8 +2865,10 @@ function handle3DMouseMove(event) {
 
 	// Step 13f.9.6) Draw Holes Along Line leading line if active
 	if (isHolesAlongLineActive && lineStartPoint && !lineEndPoint) {
-		var mouseCanvasCoords = worldToCanvas(currentMouseWorldX, currentMouseWorldY);
-		var holesLineSnapResult = canvasToWorldWithSnap(mouseCanvasCoords[0], mouseCanvasCoords[1]);
+		// In 3D mode, use current mouseWorldPos (calculated fresh this frame)
+		var holesLineSnapResult = mouseWorldPos
+			? snapToNearestPoint(mouseWorldPos.x, mouseWorldPos.y)
+			: snapToNearestPoint(currentMouseWorldX, currentMouseWorldY);
 		var snappedMouseX = holesLineSnapResult.worldX;
 		var snappedMouseY = holesLineSnapResult.worldY;
 		
@@ -3065,17 +3090,23 @@ document.addEventListener("DOMContentLoaded", function () {
 					cameraControls.resetPanState();
 				}
 				console.log("🧊 3D-ONLY Mode: ON (cube icon active, 2D canvas hidden)");
+				
+				// Step 1cc.0) CRITICAL FIX: Call resetZoom() - this is EXACTLY what fixes it
+				// resetZoom() does: reset scale/rotation, updateCentroids(), syncCamera, drawData(), zoomToFitAll()
+				if ((allBlastHoles && allBlastHoles.length > 0) || 
+					(allKADDrawingsMap && allKADDrawingsMap.size > 0) || 
+					(loadedSurfaces && loadedSurfaces.size > 0)) {
+					resetZoom();
+					console.log("🔄 resetZoom() called on 3D mode switch");
+				}
 
-				// Step 1cc.0) SYNC CAMERA: Match 3D camera position/zoom to current 2D view
-				syncCameraToThreeJS();
-
-				// Step 1cc.0a) Clear text cache to ensure text renders at correct scale
+				// Step 1cc.0b) Clear text cache to ensure text renders at correct scale
 				clearTextCache();
 
 				// Step 1cc.1) Force geometry rebuild when entering 3D mode
 				window.threeDataNeedsRebuild = true;
 
-				// Step 1cc) Update Move Tool if active - switch to 3D canvas
+				// Step 1cc.2) Update Move Tool if active - switch to 3D canvas
 				if (isMoveToolActive) {
 					const threeCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
 					if (threeCanvas) {
@@ -3097,7 +3128,7 @@ document.addEventListener("DOMContentLoaded", function () {
 					}
 				}
 
-				// Step 1cc.1) Handle KAD drawing tools when switching to 3D
+				// Step 1cc.3) Handle KAD drawing tools when switching to 3D
 				const anyKADToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
 				if (anyKADToolActive) {
 					// Remove event listeners from 2D canvas (drawing doesn't work in 3D)
@@ -3157,8 +3188,60 @@ document.addEventListener("DOMContentLoaded", function () {
 						}
 					}
 					// Step 1cd.2) Now draw the data with populated contours/arrows
+					// Step 1cd.2a) Store Three.js initialization state BEFORE drawData()
+					var wasThreeInitialized = threeInitialized;
 					drawData(allBlastHoles, selectedHole);
+					
+					// Step 1cd.3) CRITICAL FIX: Complete 3D setup AFTER drawData() initializes Three.js
+					// This ensures threeRenderer and cameraControls exist
+					if (threeInitialized) {
+						// Three.js was just initialized during drawData()
+						console.log("📷 Three.js just initialized - completing 3D mode setup");
+						
+						// Step 1cd.3a) Now set the orbit center (threeRenderer now exists)
+						if (threeRenderer && typeof threeRenderer.setOrbitCenter === "function") {
+							var fullCentroid = calculateDataCentroid();
+							threeRenderer.setOrbitCenter(fullCentroid.x, fullCentroid.y, fullCentroid.z);
+							console.log("🎯 Orbit center set after init: X=" + fullCentroid.x.toFixed(2) + " Y=" + fullCentroid.y.toFixed(2) + " Z=" + fullCentroid.z.toFixed(2));
+						}
+						
+						// Step 1cd.3b) Sync camera with proper state
+						syncCameraToThreeJS();
+						console.log("📷 Camera synced after Three.js initialization on 3D mode switch");
+						
+						// Step 1cd.3c) Force a mouse move event to initialize the torus indicator
+						requestAnimationFrame(function() {
+							if (threeRenderer) {
+								var threeCanvas = threeRenderer.getCanvas();
+								if (threeCanvas) {
+									var rect = threeCanvas.getBoundingClientRect();
+									var centerX = rect.left + rect.width / 2;
+									var centerY = rect.top + rect.height / 2;
+									var syntheticEvent = new MouseEvent("mousemove", {
+										bubbles: true,
+										cancelable: true,
+										clientX: centerX,
+										clientY: centerY,
+										button: 0,
+										buttons: 0
+									});
+									document.dispatchEvent(syntheticEvent);
+									console.log("🖱️ Synthetic mouse move dispatched to initialize cursor");
+								}
+							}
+						});
+					}
 				}
+				console.log("🔄 3D mode setup complete");
+				console.log("🔄 threeInitialized:", threeInitialized);
+				console.log("🔄 cameraControls:", cameraControls);
+				console.log("🔄 threeRenderer:", threeRenderer);
+				console.log("🔄 interactionManager:", interactionManager);
+				console.log("🔄 threeCanvas:", threeCanvas);
+				console.log("🔄 canvas:", canvas);
+				console.log("🔄 ctx:", ctx);
+				console.log("🔄 allBlastHoles:", allBlastHoles);
+				console.log("🔄 selectedHole:", selectedHole);
 			} else {
 				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
 				onlyShowThreeJS = false;
@@ -3288,6 +3371,13 @@ document.addEventListener("DOMContentLoaded", function () {
 					}
 					drawData(allBlastHoles, selectedHole);
 				}
+				console.log("🔄 2D mode setup complete");
+				console.log("🔄 onlyShowThreeJS:", onlyShowThreeJS);
+				console.log("🔄 threeCanvas:", threeCanvas);
+				console.log("🔄 canvas:", canvas);
+				console.log("🔄 ctx:", ctx);
+				console.log("🔄 allBlastHoles:", allBlastHoles);
+				console.log("🔄 selectedHole:", selectedHole);
 			}
 
 			// Redraw to apply changes
@@ -23780,8 +23870,6 @@ function drawData(allBlastHoles, selectedHole) {
 							// a point with a new color, that color should apply to the segment leading TO that point
 							var segmentsForThisEntity = pointsToRender.length - 1;
 
-							console.log("[3D Segment-by-Segment] entity:", name, "numSegments:", segmentsForThisEntity);
-
 							for (var i = 0; i < pointsToRender.length - 1; i++) {
 								var currentPoint = pointsToRender[i];
 								var nextPoint = pointsToRender[i + 1];
@@ -23794,7 +23882,7 @@ function drawData(allBlastHoles, selectedHole) {
 								var color = nextPoint.color || "#FF0000";
 
 								if (i === 0) {
-									console.log("[3D Segment] segment", i, "lineWidth:", lineWidth, "rawValue:", nextPoint.lineWidth, "color:", color);
+								//	console.log("[3D Segment] segment", i, "lineWidth:", lineWidth, "rawValue:", nextPoint.lineWidth, "color:", color);
 								}
 
 								if (entity.entityType === "line") {
@@ -27744,7 +27832,13 @@ function handleMoveToolMouseMove(event) {
 			// Step 4d.4) ONLY if snapping is enabled, override with snap position
 			if (snapEnabled) {
 				// Moving holes: snap to KAD and surfaces, NOT other holes
-				snapResult = snapToNearestPointExcludingHolesWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusWorld);
+
+				// Calculate mouse screen coordinates for snap
+				const rect = targetCanvas.getBoundingClientRect();
+				const mouseScreenX = event.clientX - rect.left;
+				const mouseScreenY = event.clientY - rect.top;
+
+				snapResult = snapToNearestPointExcludingHolesWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusPixels, mouseScreenX, mouseScreenY);
 				// Override screen-space position ONLY if snap found
 				if (snapResult && snapResult.snapped) {
 					worldX = snapResult.worldX;
@@ -27757,14 +27851,19 @@ function handleMoveToolMouseMove(event) {
 		else if (moveToolSelectedKAD || (dragInitialKADPositions && dragInitialKADPositions.length > 0)) {
 			// Step 4e.1) Use 3D snap raycast to get full XYZ position (same as KAD drawing tools)
 			// This allows movement in all 3 dimensions based on what the ray intersects
-			snapResult = snapToNearestPointWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusWorld);
+
+			// Calculate mouse screen coordinates for snap
+			const rect = targetCanvas.getBoundingClientRect();
+			const mouseScreenX = event.clientX - rect.left;
+			const mouseScreenY = event.clientY - rect.top;
+
+			snapResult = snapToNearestPointWithRay(raycaster.ray.origin, raycaster.ray.direction, snapRadiusPixels, mouseScreenX, mouseScreenY);
 
 			if (snapResult && snapResult.snapped) {
 				// Step 4e.2) Use snapped 3D position
 				worldX = snapResult.worldX;
 				worldY = snapResult.worldY;
 				worldZ = snapResult.worldZ || dragPlaneZ; // Use snap Z if available, fallback to initial Z
-				console.log("👋 [MOVE TOOL 3D MOVE KAD] Snapped to:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2), "from", snapResult.snapTarget.description);
 			} else {
 				// Step 4e.3) No snap found - use plane at initial Z as fallback (screen-space XY movement)
 				const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -dragPlaneZ);
@@ -27779,7 +27878,6 @@ function handleMoveToolMouseMove(event) {
 				worldX = intersectionPoint.x + threeLocalOriginX;
 				worldY = intersectionPoint.y + threeLocalOriginY;
 				worldZ = dragPlaneZ; // Keep initial Z if no snap
-				console.log("👋 [MOVE TOOL 3D MOVE KAD] No snap - using plane intersection:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
 			}
 		} else {
 			// Step 4e.4) No object selected - should not reach here
@@ -33651,8 +33749,6 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 	let minDistance = tolerance;
 	let snapType = null;
 
-	console.log("Searching for snap points near:", worldX.toFixed(2), worldY.toFixed(2), "tolerance:", tolerance);
-
 	// Search CAD vertices from allKADDrawingsMap
 	if (typeof allKADDrawingsMap !== "undefined" && allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 		console.log("Searching", allKADDrawingsMap.size, "polygons for vertices");
@@ -33709,7 +33805,6 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 
 	// Search hole collar allBlastHoles
 	if (allBlastHoles && allBlastHoles.length > 0) {
-		console.log("Searching", allBlastHoles.length, "holes for snap allBlastHoles");
 		allBlastHoles.forEach((hole, holeIndex) => {
 			// Collar point
 			if (hole.startXLocation !== undefined && hole.startYLocation !== undefined) {
@@ -33758,9 +33853,9 @@ function findNearestSnapPoint(worldX, worldY, tolerance = getSnapToleranceInWorl
 	}
 
 	if (closestPoint) {
-		console.log("SNAP FOUND:", snapType, "at", closestPoint.x.toFixed(2), closestPoint.y.toFixed(2), "distance:", minDistance.toFixed(2));
+		// Snap found
 	} else {
-		console.log("No snap allBlastHoles found within tolerance");
+		// No snap found
 	}
 
 	return closestPoint
@@ -38844,12 +38939,13 @@ const SNAP_PRIORITIES = {
 	KAD_POINT: 4,
 	KAD_LINE_VERTEX: 5,
 	KAD_POLYGON_VERTEX: 6,
-	KAD_CIRCLE_CENTER: 7,
-	KAD_TEXT_POSITION: 8,
-	KAD_LINE_SEGMENT: 9, // Segments get lower priority
-	KAD_POLYGON_SEGMENT: 10, // Segments get lower priority
-	SURFACE_POINT: 11,
-	SURFACE_FACE: 12, // Lowest priority
+	KAD_SEGMENT_INTERSECT_XY: 7, // XY intersection of segments (ignoring Z)
+	KAD_CIRCLE_CENTER: 8,
+	KAD_TEXT_POSITION: 9,
+	KAD_LINE_SEGMENT: 10, // Segments get lower priority
+	KAD_POLYGON_SEGMENT: 11, // Segments get lower priority
+	SURFACE_POINT: 12,
+	SURFACE_FACE: 13, // Lowest priority
 };
 
 // Step 1) Snap priorities for Move Tool (holes moving - excludes hole snap targets)
@@ -38857,12 +38953,13 @@ const MOVE_SNAP_PRIORITIES = {
 	KAD_POINT: 1, // Highest priority
 	KAD_LINE_VERTEX: 2,
 	KAD_POLYGON_VERTEX: 3,
-	KAD_CIRCLE_CENTER: 4,
-	KAD_TEXT_POSITION: 5,
-	KAD_LINE_SEGMENT: 6, // Segments lower priority
-	KAD_POLYGON_SEGMENT: 7,
-	SURFACE_POINT: 8,
-	SURFACE_FACE: 9, // Lowest priority (with interpolation)
+	KAD_SEGMENT_INTERSECT_XY: 4, // XY intersection of segments (ignoring Z)
+	KAD_CIRCLE_CENTER: 5,
+	KAD_TEXT_POSITION: 6,
+	KAD_LINE_SEGMENT: 7, // Segments lower priority
+	KAD_POLYGON_SEGMENT: 8,
+	SURFACE_POINT: 9,
+	SURFACE_FACE: 10, // Lowest priority (with interpolation)
 };
 
 // Step 2) Snap function for Move Tool - excludes holes (holes cannot snap to other holes)
@@ -39094,13 +39191,16 @@ function projectPointOntoTriangle(px, py, v1, v2, v3) {
 
 // Step 3) 3D variant: Snap function for Move Tool with ray-based snapping (cylindrical snap)
 // Excludes holes - for moving holes in 3D mode
-function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRadius) {
+function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRadiusPixels, mouseScreenX, mouseScreenY) {
 	if (!snapEnabled) {
 		return {
 			snapped: false,
 			snapTarget: null,
 		};
 	}
+
+	// Convert pixel radius to world units for point snapping (ray-based)
+	const snapRadiusWorld = snapRadiusPixels * 0.0441; // Approximate conversion based on current zoom
 
 	const snapCandidates = [];
 
@@ -39125,7 +39225,7 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 				const pointLocal = worldToLocal(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || 0);
 				const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
 
-				if (pointResult.distance <= snapRadius && pointResult.rayT > 0) {
+				if (pointResult.distance <= snapRadiusWorld && pointResult.rayT > 0) {
 					// Determine type and priority
 					let snapType = "KAD_POINT";
 					let priority = MOVE_SNAP_PRIORITIES.KAD_POINT;
@@ -39169,35 +39269,61 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 						const p1 = points[i];
 						const p2 = points[(i + 1) % points.length];
 
-						// Sample points along the segment for 3D ray snapping
-						const samples = 10;
-						for (let s = 0; s <= samples; s++) {
-							const t = s / samples;
-							// Calculate sample point in world coordinates
-							const samplePointWorld = {
-								x: p1.pointXLocation + t * (p2.pointXLocation - p1.pointXLocation),
-								y: p1.pointYLocation + t * (p2.pointYLocation - p1.pointYLocation),
-								z: (p1.pointZLocation || 0) + t * ((p2.pointZLocation || 0) - (p1.pointZLocation || 0)),
+						// SCREEN-SPACE SNAP: Project segment to screen and measure pixel distance
+						const screen1 = worldToScreen(p1.pointXLocation, p1.pointYLocation, p1.pointZLocation || window.dataCentroidZ || 0);
+						const screen2 = worldToScreen(p2.pointXLocation, p2.pointYLocation, p2.pointZLocation || window.dataCentroidZ || 0);
+
+						// Calculate 2D screen distance from mouse to segment (in pixels)
+						const A = mouseScreenX - screen1.x;
+						const B = mouseScreenY - screen1.y;
+						const C = screen2.x - screen1.x;
+						const D = screen2.y - screen1.y;
+						const dot = A * C + B * D;
+						const lenSq = C * C + D * D;
+						let screenDist;
+						if (lenSq === 0) {
+							screenDist = Math.sqrt(A * A + B * B);
+						} else {
+							let t = dot / lenSq;
+							t = Math.max(0, Math.min(1, t));
+							const projX = screen1.x + t * C;
+							const projY = screen1.y + t * D;
+							const dx = mouseScreenX - projX;
+							const dy = mouseScreenY - projY;
+							screenDist = Math.sqrt(dx * dx + dy * dy);
+						}
+
+						if (screenDist <= snapRadiusPixels) {
+							// Find the parameter t along the segment in SCREEN space
+							const dx = screen2.x - screen1.x;
+							const dy = screen2.y - screen1.y;
+							const lengthSq = dx * dx + dy * dy;
+							let segmentT = 0;
+							if (lengthSq > 1e-10) {
+								const px = mouseScreenX - screen1.x;
+								const py = mouseScreenY - screen1.y;
+								const dot = px * dx + py * dy;
+								segmentT = Math.max(0, Math.min(1, dot / lengthSq));
+							}
+
+							// Calculate the snap point in world coordinates using the segment parameter
+							const snapPointWorld = {
+								x: p1.pointXLocation + segmentT * (p2.pointXLocation - p1.pointXLocation),
+								y: p1.pointYLocation + segmentT * (p2.pointYLocation - p1.pointYLocation),
+								z: (p1.pointZLocation || 0) + segmentT * ((p2.pointZLocation || 0) - (p1.pointZLocation || 0)),
 							};
 
-							// Convert sample point to local coords for ray comparison
-							const samplePointLocal = worldToLocal(samplePointWorld.x, samplePointWorld.y, samplePointWorld.z);
-							const segmentResult = distanceFromPointToRay(samplePointLocal, rayOrigin, rayDirection);
+							const segmentType = entity.entityType === "line" ? "KAD_LINE_SEGMENT" : "KAD_POLYGON_SEGMENT";
+							const priority = MOVE_SNAP_PRIORITIES[segmentType];
 
-							if (segmentResult.distance <= snapRadius && segmentResult.rayT > 0) {
-								const segmentType = entity.entityType === "line" ? "KAD_LINE_SEGMENT" : "KAD_POLYGON_SEGMENT";
-								const priority = MOVE_SNAP_PRIORITIES[segmentType];
-
-								// Return actual segment sample point in world coordinates
-								snapCandidates.push({
-									distance: segmentResult.distance,
-									rayT: segmentResult.rayT,
-									point: samplePointWorld,
-									type: segmentType,
-									priority: priority,
-									description: entity.entityType + " segment " + (i + 1),
-								});
-							}
+							snapCandidates.push({
+								distance: screenDist, // Screen pixel distance for sorting
+								rayT: 100, // Arbitrary depth for segments
+								point: snapPointWorld,
+								type: segmentType,
+								priority: priority,
+								description: entity.entityType + " segment " + (i + 1),
+							});
 						}
 					}
 				}
@@ -39214,7 +39340,7 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 					const pointLocal = worldToLocal(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0);
 					const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
 
-					if (pointResult.distance <= snapRadius && pointResult.rayT > 0) {
+					if (pointResult.distance <= snapRadiusWorld && pointResult.rayT > 0) {
 						// Return actual object world coordinates
 						snapCandidates.push({
 							distance: pointResult.distance,
@@ -39287,7 +39413,6 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 
 		const bestCandidate = snapCandidates[0];
 
-		console.log("🎯 [3D MOVE SNAP] Snapped to: " + bestCandidate.type + " (" + bestCandidate.description + ") | Priority: " + bestCandidate.priority);
 
 		return {
 			worldX: bestCandidate.point.x,
@@ -39614,8 +39739,11 @@ function getSnapRadiusInWorldUnits3D(pixelRadius) {
 		// frustumWidth / screenWidth / zoom = world units per pixel
 		const frustumWidth = camera.right - camera.left;
 		const frustumHeight = camera.top - camera.bottom;
-		const canvasWidth = canvas.width;
-		const canvasHeight = canvas.height;
+
+		// CRITICAL: canvas.width/height include devicePixelRatio, but we need CSS pixels
+		// Use clientWidth/clientHeight for actual screen pixels
+		const canvasWidth = canvas.clientWidth || canvas.width;
+		const canvasHeight = canvas.clientHeight || canvas.height;
 		const zoom = camera.zoom || 1.0;
 
 		// Use the smaller dimension to ensure radius works in both X and Y
@@ -39675,16 +39803,183 @@ function distanceFromPointToRay(point, rayOrigin, rayDirection) {
 	};
 }
 
+// Helper: Calculate closest distance and point between a ray and a line segment
+function distanceFromRayToLineSegment(rayOrigin, rayDirection, segmentStart, segmentEnd) {
+	// Line segment direction
+	const segDir = {
+		x: segmentEnd.x - segmentStart.x,
+		y: segmentEnd.y - segmentStart.y,
+		z: segmentEnd.z - segmentStart.z
+	};
+
+	// Vector from segment start to ray origin
+	const w0 = {
+		x: rayOrigin.x - segmentStart.x,
+		y: rayOrigin.y - segmentStart.y,
+		z: rayOrigin.z - segmentStart.z
+	};
+
+	const a = segDir.x * segDir.x + segDir.y * segDir.y + segDir.z * segDir.z; // |segDir|^2
+	const b = segDir.x * rayDirection.x + segDir.y * rayDirection.y + segDir.z * rayDirection.z;
+	const c = rayDirection.x * rayDirection.x + rayDirection.y * rayDirection.y + rayDirection.z * rayDirection.z; // Should be 1 if normalized
+	const d = segDir.x * w0.x + segDir.y * w0.y + segDir.z * w0.z;
+	const e = rayDirection.x * w0.x + rayDirection.y * w0.y + rayDirection.z * w0.z;
+
+	const denom = a * c - b * b;
+
+	let sc, tc; // Parameters along segment and ray
+
+	if (Math.abs(denom) < 1e-10) {
+		// Lines are parallel
+		sc = 0.0;
+		tc = (b > c ? d / b : e / c);
+	} else {
+		sc = (b * e - c * d) / denom;
+		tc = (a * e - b * d) / denom;
+	}
+
+	// Clamp sc to [0, 1] to stay on segment
+	sc = Math.max(0, Math.min(1, sc));
+
+	// Recalculate tc after clamping sc to find the closest point on the ray to the clamped segment point
+	const closestOnSegment = {
+		x: segmentStart.x + sc * segDir.x,
+		y: segmentStart.y + sc * segDir.y,
+		z: segmentStart.z + sc * segDir.z
+	};
+
+	// Vector from ray origin to closest point on segment
+	const wc = {
+		x: closestOnSegment.x - rayOrigin.x,
+		y: closestOnSegment.y - rayOrigin.y,
+		z: closestOnSegment.z - rayOrigin.z
+	};
+
+	// Project this vector onto the ray direction to find tc
+	tc = rayDirection.x * wc.x + rayDirection.y * wc.y + rayDirection.z * wc.z;
+
+	const closestOnRay = {
+		x: rayOrigin.x + tc * rayDirection.x,
+		y: rayOrigin.y + tc * rayDirection.y,
+		z: rayOrigin.z + tc * rayDirection.z
+	};
+
+	// Distance between closest points
+	const dx = closestOnRay.x - closestOnSegment.x;
+	const dy = closestOnRay.y - closestOnSegment.y;
+	const dz = closestOnRay.z - closestOnSegment.z;
+	const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+	return {
+		distance: distance,
+		rayT: tc,
+		segmentT: sc,
+		closestOnSegment: closestOnSegment,
+		closestOnRay: closestOnRay
+	};
+}
+
+// Helper: Find XY intersections between line/polygon segments (ignoring Z)
+function findSegmentIntersectionsXY() {
+	const intersections = [];
+
+	if (!allKADDrawingsMap || allKADDrawingsMap.size === 0) return intersections;
+
+	// Collect all segments from all KAD entities
+	const allSegments = [];
+
+	allKADDrawingsMap.forEach((entity, entityName) => {
+		if (!isEntityVisible(entityName)) return;
+
+		if (entity.entityType === "line" || entity.entityType === "poly" || entity.entityType === "polygon") {
+			const points = entity.data;
+			if (points.length >= 2) {
+				const numSegments = (entity.entityType === "poly" || entity.entityType === "polygon") ? points.length : points.length - 1;
+
+				for (let i = 0; i < numSegments; i++) {
+					const p1 = points[i];
+					const p2 = points[(i + 1) % points.length];
+
+					allSegments.push({
+						entityName: entityName,
+						entityType: entity.entityType,
+						segmentIndex: i,
+						p1: p1,
+						p2: p2
+					});
+				}
+			}
+		}
+	});
+
+	// Find intersections between all pairs of segments (XY only)
+	for (let i = 0; i < allSegments.length; i++) {
+		for (let j = i + 1; j < allSegments.length; j++) {
+			const seg1 = allSegments[i];
+			const seg2 = allSegments[j];
+
+			// Skip if same entity
+			if (seg1.entityName === seg2.entityName) continue;
+
+			// Calculate 2D intersection in XY plane
+			const intersection = findLineIntersection(
+				seg1.p1.pointXLocation, seg1.p1.pointYLocation,
+				seg1.p2.pointXLocation, seg1.p2.pointYLocation,
+				seg2.p1.pointXLocation, seg2.p1.pointYLocation,
+				seg2.p2.pointXLocation, seg2.p2.pointYLocation
+			);
+
+			if (intersection) {
+				// Interpolate Z value from both segments and average them
+				const t1 = calculateTValue(seg1.p1, seg1.p2, intersection);
+				const t2 = calculateTValue(seg2.p1, seg2.p2, intersection);
+
+				const z1 = (seg1.p1.pointZLocation || 0) + t1 * ((seg1.p2.pointZLocation || 0) - (seg1.p1.pointZLocation || 0));
+				const z2 = (seg2.p1.pointZLocation || 0) + t2 * ((seg2.p2.pointZLocation || 0) - (seg2.p1.pointZLocation || 0));
+				const avgZ = (z1 + z2) / 2;
+
+				intersections.push({
+					x: intersection.x,
+					y: intersection.y,
+					z: avgZ,
+					segment1: seg1.entityName + " seg " + (seg1.segmentIndex + 1),
+					segment2: seg2.entityName + " seg " + (seg2.segmentIndex + 1),
+				});
+			}
+		}
+	}
+
+	return intersections;
+}
+
+// Helper: Calculate t value (0-1) for point on line segment
+function calculateTValue(p1, p2, point) {
+	const dx = p2.pointXLocation - p1.pointXLocation;
+	const dy = p2.pointYLocation - p1.pointYLocation;
+	const length = Math.sqrt(dx * dx + dy * dy);
+
+	if (length < 1e-10) return 0;
+
+	const px = point.x - p1.pointXLocation;
+	const py = point.y - p1.pointYLocation;
+	const dot = px * dx + py * dy;
+
+	return Math.max(0, Math.min(1, dot / (length * length)));
+}
+
 // 3D Cylindrical Snap: Snap to anything in the "shadow" along the view ray
-// Uses same priorities as 2D snap but works in 3D space
-// CRITICAL: Ray is in Three.js local coordinates, so all object positions must be converted to local before comparison
-function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
+// Uses screen-space distance for segments (pixels), ray distance for points
+// CRITICAL: Segments use 2D screen projection, points use 3D ray distance
+function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mouseScreenX, mouseScreenY) {
 	if (!snapEnabled) {
 		return {
 			snapped: false,
 			snapTarget: null,
 		};
 	}
+
+	// Convert pixel radius to world units for point snapping (ray-based)
+	const snapRadiusWorld = snapRadiusPixels * 0.0441; // Approximate conversion based on current zoom
 
 	const snapCandidates = [];
 
@@ -39773,7 +40068,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
 				const pointLocal = worldToLocal(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || 0);
 				const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
 
-				if (pointResult.distance <= snapRadius && pointResult.rayT > 0) {
+				if (pointResult.distance <= snapRadiusWorld && pointResult.rayT > 0) {
 					// Determine type and priority based on entity type
 					let snapType = "KAD_POINT";
 					let priority = SNAP_PRIORITIES.KAD_POINT;
@@ -39808,55 +40103,102 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
 			});
 
 			// Check segments for lines and polygons
-			if (entity.entityType === "line" || entity.entityType === "poly") {
+			if (entity.entityType === "line" || entity.entityType === "poly" || entity.entityType === "polygon") {
 				const points = entity.data;
 				if (points.length >= 2) {
-					const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
+					const numSegments = (entity.entityType === "poly" || entity.entityType === "polygon") ? points.length : points.length - 1;
 
 					for (let i = 0; i < numSegments; i++) {
 						const p1 = points[i];
 						const p2 = points[(i + 1) % points.length];
 
-						// For segment snapping in 3D, sample points along the segment
-						const samples = 10;
-						for (let s = 0; s <= samples; s++) {
-							const t = s / samples;
-							// Calculate sample point in world coordinates
-							const samplePointWorld = {
-								x: p1.pointXLocation + t * (p2.pointXLocation - p1.pointXLocation),
-								y: p1.pointYLocation + t * (p2.pointYLocation - p1.pointYLocation),
-								z: (p1.pointZLocation || 0) + t * ((p2.pointZLocation || 0) - (p1.pointZLocation || 0)),
+						// SCREEN-SPACE SNAP: Project segment to screen and measure pixel distance
+						// This matches the selection behavior and avoids coordinate system issues
+						const screen1 = worldToScreen(p1.pointXLocation, p1.pointYLocation, p1.pointZLocation || window.dataCentroidZ || 0);
+						const screen2 = worldToScreen(p2.pointXLocation, p2.pointYLocation, p2.pointZLocation || window.dataCentroidZ || 0);
+
+						// Calculate 2D screen distance from mouse to segment (in pixels)
+						// Inline helper - same as used in selection code
+						const A = mouseScreenX - screen1.x;
+						const B = mouseScreenY - screen1.y;
+						const C = screen2.x - screen1.x;
+						const D = screen2.y - screen1.y;
+						const dot = A * C + B * D;
+						const lenSq = C * C + D * D;
+						let screenDist;
+						if (lenSq === 0) {
+							screenDist = Math.sqrt(A * A + B * B);
+						} else {
+							let t = dot / lenSq;
+							t = Math.max(0, Math.min(1, t));
+							const projX = screen1.x + t * C;
+							const projY = screen1.y + t * D;
+							const dx = mouseScreenX - projX;
+							const dy = mouseScreenY - projY;
+							screenDist = Math.sqrt(dx * dx + dy * dy);
+						}
+
+						if (screenDist <= snapRadiusPixels) {
+							// Find the parameter t along the segment in SCREEN space
+							const dx = screen2.x - screen1.x;
+							const dy = screen2.y - screen1.y;
+							const lengthSq = dx * dx + dy * dy;
+							let segmentT = 0;
+							if (lengthSq > 1e-10) {
+								const px = mouseScreenX - screen1.x;
+								const py = mouseScreenY - screen1.y;
+								const dot = px * dx + py * dy;
+								segmentT = Math.max(0, Math.min(1, dot / lengthSq));
+							}
+
+							// Calculate the snap point in world coordinates using the segment parameter
+							const snapPointWorld = {
+								x: p1.pointXLocation + segmentT * (p2.pointXLocation - p1.pointXLocation),
+								y: p1.pointYLocation + segmentT * (p2.pointYLocation - p1.pointYLocation),
+								z: (p1.pointZLocation || 0) + segmentT * ((p2.pointZLocation || 0) - (p1.pointZLocation || 0)),
 							};
 
-							// Convert sample point to local coords for ray comparison
-							const samplePointLocal = worldToLocal(samplePointWorld.x, samplePointWorld.y, samplePointWorld.z);
-							const segmentResult = distanceFromPointToRay(samplePointLocal, rayOrigin, rayDirection);
+							const segmentType = entity.entityType === "line" ? "KAD_LINE_SEGMENT" : "KAD_POLYGON_SEGMENT";
+							const priority = SNAP_PRIORITIES[segmentType];
 
-							if (segmentResult.distance <= snapRadius && segmentResult.rayT > 0) {
-								const segmentType = entity.entityType === "line" ? "KAD_LINE_SEGMENT" : "KAD_POLYGON_SEGMENT";
-								const priority = SNAP_PRIORITIES[segmentType];
-
-								// IMPORTANT: Return the ACTUAL segment sample point in world coordinates, NOT the ray projection point
-								snapCandidates.push({
-									distance: segmentResult.distance,
-									rayT: segmentResult.rayT,
-									point: samplePointWorld, // Actual segment point in world coords
-									type: segmentType,
-									priority: priority,
-									description: entity.entityType + " segment " + (i + 1),
-									segmentInfo: {
-										entityName: entity.entityName,
-										segmentIndex: i,
-										interpolationT: t,
-									},
-								});
-							}
+							snapCandidates.push({
+								distance: screenDist, // Screen pixel distance for sorting
+								rayT: 100, // Arbitrary depth for segments (segments have lower priority anyway)
+								point: snapPointWorld,
+								type: segmentType,
+								priority: priority,
+								description: entity.entityName + " segment " + (i + 1),
+								segmentInfo: {
+									entityName: entity.entityName,
+									segmentIndex: i,
+									interpolationT: segmentT,
+								},
+							});
 						}
 					}
 				}
 			}
 		});
 	}
+
+	// Step 4.5) Search KAD segment intersections in XY plane (ignoring Z)
+	const intersections = findSegmentIntersectionsXY();
+	intersections.forEach((intersection) => {
+		// Convert world coords to local for ray comparison
+		const intersectionLocal = worldToLocal(intersection.x, intersection.y, intersection.z);
+		const intersectionResult = distanceFromPointToRay(intersectionLocal, rayOrigin, rayDirection);
+
+		if (intersectionResult.distance <= snapRadiusWorld && intersectionResult.rayT > 0) {
+			snapCandidates.push({
+				distance: intersectionResult.distance,
+				rayT: intersectionResult.rayT,
+				point: { x: intersection.x, y: intersection.y, z: intersection.z },
+				type: "KAD_SEGMENT_INTERSECT_XY",
+				priority: SNAP_PRIORITIES.KAD_SEGMENT_INTERSECT_XY,
+				description: "Intersection of " + intersection.entity1 + " and " + intersection.entity2,
+			});
+		}
+	});
 
 	// Step 5) Search Surface Points (if surfaces are loaded) - convert to local coords for comparison
 	if (loadedSurfaces && loadedSurfaces.size > 0) {
@@ -39867,7 +40209,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadius) {
 					const pointLocal = worldToLocal(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0);
 					const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
 
-					if (pointResult.distance <= snapRadius && pointResult.rayT > 0) {
+					if (pointResult.distance <= snapRadiusWorld && pointResult.rayT > 0) {
 						// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
 						snapCandidates.push({
 							distance: pointResult.distance,
