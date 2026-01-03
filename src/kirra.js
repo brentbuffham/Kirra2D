@@ -41910,14 +41910,13 @@ debouncedUpdateTreeView = function (delay = 250) {  // Increased default delay
 		clearTimeout(updateTreeViewTimeout);
 	}
 
-	// Skip if tree panel is not visible
-	var treePanel = document.getElementById("treePanel");
-	if (!treePanel || treePanel.style.display === "none") {
-		// Tree is hidden - mark as needing update when shown
-		window._treeNeedsUpdate = true;
-		return;
+	// Initialize TreeView in background if not already created
+	if (!treeView) {
+		console.log("🌳 [Background] Creating TreeView for background caching...");
+		treeView = new TreeView("treePanel");
 	}
 
+	// ALWAYS update tree data in background for caching (even when hidden)
 	updateTreeViewTimeout = setTimeout(function () {
 		// Use requestIdleCallback if available for non-blocking update
 		if (typeof requestIdleCallback === "function") {
@@ -44340,11 +44339,11 @@ document.addEventListener("DOMContentLoaded", function () {
 		treePanel.style.display = "none";
 	}
 
-	// Initialize TreeView ONLY when the button is first clicked
+	// Toggle TreeView panel visibility (TreeView is now created in background automatically)
 	document.getElementById("showTreeBtn").addEventListener("click", function () {
-		// Create TreeView on first use
+		// Ensure TreeView exists (should already be created in background)
 		if (!treeView) {
-			console.log("🌳 Creating TreeView for first time...");
+			console.log("🌳 Creating TreeView on demand (should have been created in background)...");
 			treeView = new TreeView("treePanel");
 			updateTreeView();
 		}
