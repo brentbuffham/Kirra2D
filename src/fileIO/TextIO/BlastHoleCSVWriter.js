@@ -4,9 +4,10 @@
 //=============================================================
 // Step 1) Writes blast hole data to CSV files in various formats
 // Step 2) Extracted from kirra.js convertPointsTo*CSV() functions (lines 11125-11268)
-// Step 3) Supports 12, 14, 35 column formats, actual (measured), and allcolumns (dynamic)
+// Step 3) Supports all CSV formats: 4, 7, 9, 12, 14, 30, 32, 35 columns, actual (measured), and allcolumns (dynamic)
 // Step 4) Created: 2026-01-03
 // Step 5) Updated: 2026-01-04 - Added generateAllColumnsCSV() for future-proof export
+// Step 6) Updated: 2026-01-04 - Added all remaining column formats (4, 7, 9, 30, 32)
 
 import BaseWriter from "../BaseWriter.js";
 
@@ -16,18 +17,28 @@ class BlastHoleCSVWriter extends BaseWriter {
 		super(options);
 
 		// Step 6) Writer options
-		this.format = options.format || "35column"; // 12column, 14column, 35column, actual, allcolumns
+		this.format = options.format || "35column"; // 4column, 7column, 9column, 12column, 14column, 30column, 32column, 35column, actual, allcolumns
 		this.decimalPlaces = options.decimalPlaces || 4;
 	}
 
-	// Step 7) Main write method
+	// Step 7) Helper function to safely format numeric values
+	safeToFixed(value, dp) {
+		// Step 7a) Convert to number and check if valid
+		var num = parseFloat(value);
+		if (isNaN(num)) {
+			return "0." + "0".repeat(dp); // Return "0.0000" for invalid values
+		}
+		return num.toFixed(dp);
+	}
+
+	// Step 8) Main write method
 	async write(data) {
-		// Step 8) Validate input data
+		// Step 9) Validate input data
 		if (!data || !Array.isArray(data.holes)) {
 			throw new Error("Invalid data: holes array required");
 		}
 
-		// Step 9) Filter visible holes using base class helper
+		// Step 10) Filter visible holes using base class helper
 		var visibleHoles = this.filterVisibleHoles(data.holes);
 
 		if (visibleHoles.length === 0) {
@@ -37,10 +48,20 @@ class BlastHoleCSVWriter extends BaseWriter {
 		// Step 10) Generate CSV based on format
 		var csv = "";
 
-		if (this.format === "12column") {
+		if (this.format === "4column") {
+			csv = this.generate4ColumnCSV(visibleHoles);
+		} else if (this.format === "7column") {
+			csv = this.generate7ColumnCSV(visibleHoles);
+		} else if (this.format === "9column") {
+			csv = this.generate9ColumnCSV(visibleHoles);
+		} else if (this.format === "12column") {
 			csv = this.generate12ColumnCSV(visibleHoles);
 		} else if (this.format === "14column") {
 			csv = this.generate14ColumnCSV(visibleHoles);
+		} else if (this.format === "30column") {
+			csv = this.generate30ColumnCSV(visibleHoles);
+		} else if (this.format === "32column") {
+			csv = this.generate32ColumnCSV(visibleHoles);
 		} else if (this.format === "35column") {
 			csv = this.generate35ColumnCSV(visibleHoles);
 		} else if (this.format === "actual") {
@@ -55,26 +76,209 @@ class BlastHoleCSVWriter extends BaseWriter {
 		return this.createBlob(csv, "text/csv");
 	}
 
-	// Step 12) Generate 12 column CSV format
-	generate12ColumnCSV(holes) {
+	// Step 12) Generate 4 column CSV format: [ID, CollarX, CollarY, CollarZ]
+	generate4ColumnCSV(holes) {
 		var csv = "";
+		var dp = this.decimalPlaces;
 
 		for (var i = 0; i < holes.length; i++) {
 			var hole = holes[i];
-			var row = hole.entityName + "," + hole.entityType + "," + hole.holeID + "," + hole.startXLocation + "," + hole.startYLocation + "," + hole.startZLocation + "," + hole.endXLocation + "," + hole.endYLocation + "," + hole.endZLocation + "," + hole.holeDiameter + "," + hole.holeType + "," + hole.fromHoleID + "," + hole.timingDelayMilliseconds + "," + hole.colorHexDecimal;
+			var row = (hole.holeID || "") + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp);
 			csv += row + "\n";
 		}
 
 		return csv;
 	}
 
-	// Step 13) Generate 14 column CSV format (same as 12 column currently)
-	generate14ColumnCSV(holes) {
+	// Step 13) Generate 7 column CSV format: [ID, CX, CY, CZ, TX, TY, TZ]
+	generate7ColumnCSV(holes) {
 		var csv = "";
+		var dp = this.decimalPlaces;
 
 		for (var i = 0; i < holes.length; i++) {
 			var hole = holes[i];
-			var row = hole.entityName + "," + hole.entityType + "," + hole.holeID + "," + hole.startXLocation + "," + hole.startYLocation + "," + hole.startZLocation + "," + hole.endXLocation + "," + hole.endYLocation + "," + hole.endZLocation + "," + hole.holeDiameter + "," + hole.holeType + "," + hole.fromHoleID + "," + hole.timingDelayMilliseconds + "," + hole.colorHexDecimal;
+			var row = (hole.holeID || "") + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp) + "," +
+				this.safeToFixed(hole.endXLocation, dp) + "," +
+				this.safeToFixed(hole.endYLocation, dp) + "," +
+				this.safeToFixed(hole.endZLocation, dp);
+			csv += row + "\n";
+		}
+
+		return csv;
+	}
+
+	// Step 14) Generate 9 column CSV format: [ID, CX, CY, CZ, TX, TY, TZ, DIAM, HOLETYPE]
+	generate9ColumnCSV(holes) {
+		var csv = "";
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			var row = (hole.holeID || "") + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp) + "," +
+				this.safeToFixed(hole.endXLocation, dp) + "," +
+				this.safeToFixed(hole.endYLocation, dp) + "," +
+				this.safeToFixed(hole.endZLocation, dp) + "," +
+				this.safeToFixed(hole.holeDiameter, dp) + "," +
+				(hole.holeType || "");
+			csv += row + "\n";
+		}
+
+		return csv;
+	}
+
+	// Step 15) Generate 12 column CSV format: [ID, X, Y, Z, ToeX, ToeY, ToeZ, Diameter, Type, FromHole, Delay, Color]
+	generate12ColumnCSV(holes) {
+		var csv = "";
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			var row = (hole.holeID || "") + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp) + "," +
+				this.safeToFixed(hole.endXLocation, dp) + "," +
+				this.safeToFixed(hole.endYLocation, dp) + "," +
+				this.safeToFixed(hole.endZLocation, dp) + "," +
+				this.safeToFixed(hole.holeDiameter, dp) + "," +
+				(hole.holeType || "") + "," +
+				(hole.fromHoleID || "") + "," +
+				(hole.timingDelayMilliseconds || 0) + "," +
+				(hole.colorHexDecimal || "");
+			csv += row + "\n";
+		}
+
+		return csv;
+	}
+
+	// Step 16) Generate 14 column CSV format: [entityName, entityType, ID, X, Y, Z, ToeX, ToeY, ToeZ, Diameter, Type, FromHole, Delay, Color]
+	generate14ColumnCSV(holes) {
+		var csv = "";
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			var row = (hole.entityName || "") + "," +
+				(hole.entityType || "") + "," +
+				(hole.holeID || "") + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp) + "," +
+				this.safeToFixed(hole.endXLocation, dp) + "," +
+				this.safeToFixed(hole.endYLocation, dp) + "," +
+				this.safeToFixed(hole.endZLocation, dp) + "," +
+				this.safeToFixed(hole.holeDiameter, dp) + "," +
+				(hole.holeType || "") + "," +
+				(hole.fromHoleID || "") + "," +
+				(hole.timingDelayMilliseconds || 0) + "," +
+				(hole.colorHexDecimal || "");
+			csv += row + "\n";
+		}
+
+		return csv;
+	}
+
+	// Step 17) Generate 30 column CSV format (35 columns minus measured data)
+	generate30ColumnCSV(holes) {
+		var csv = "";
+		var header = "entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation,gradeYLocation,gradeZLocation,subdrillAmount,subdrillLength,benchHeight,holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,rowID,posID,burden,spacing,connectorCurve";
+		csv += header + "\n";
+
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+
+			// 30 columns: All standard data without measured fields
+			var row = (hole.entityName || "") + "," +
+				(hole.entityType || "") + "," +
+				(hole.holeID || "") + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp) + "," +
+				this.safeToFixed(hole.endXLocation, dp) + "," +
+				this.safeToFixed(hole.endYLocation, dp) + "," +
+				this.safeToFixed(hole.endZLocation, dp) + "," +
+				this.safeToFixed(hole.gradeXLocation, dp) + "," +
+				this.safeToFixed(hole.gradeYLocation, dp) + "," +
+				this.safeToFixed(hole.gradeZLocation, dp) + "," +
+				this.safeToFixed(hole.subdrillAmount, dp) + "," +
+				this.safeToFixed(hole.subdrillLength, dp) + "," +
+				this.safeToFixed(hole.benchHeight, dp) + "," +
+				this.safeToFixed(hole.holeDiameter, dp) + "," +
+				(hole.holeType || "") + "," +
+				(hole.fromHoleID || "") + "," +
+				(hole.timingDelayMilliseconds || 0) + "," +
+				(hole.colorHexDecimal || "") + "," +
+				this.safeToFixed(hole.holeLengthCalculated, dp) + "," +
+				this.safeToFixed(hole.holeAngle, dp) + "," +
+				this.safeToFixed(hole.holeBearing, dp) + "," +
+				(hole.holeTime || "") + "," +
+				(hole.rowID || "") + "," +
+				(hole.posID || "") + "," +
+				this.safeToFixed(hole.burden, dp) + "," +
+				this.safeToFixed(hole.spacing, dp) + "," +
+				(hole.connectorCurve || "");
+
+			csv += row + "\n";
+		}
+
+		return csv;
+	}
+
+	// Step 18) Generate 32 column CSV format (30 columns plus measuredLength and measuredMass)
+	generate32ColumnCSV(holes) {
+		var csv = "";
+		var header = "entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation,gradeYLocation,gradeZLocation,subdrillAmount,subdrillLength,benchHeight,holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredMass,rowID,posID,burden,spacing,connectorCurve";
+		csv += header + "\n";
+
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+
+			// 32 columns: 30 columns plus measuredLength and measuredMass
+			var row = (hole.entityName || "") + "," +
+				(hole.entityType || "") + "," +
+				(hole.holeID || "") + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp) + "," +
+				this.safeToFixed(hole.endXLocation, dp) + "," +
+				this.safeToFixed(hole.endYLocation, dp) + "," +
+				this.safeToFixed(hole.endZLocation, dp) + "," +
+				this.safeToFixed(hole.gradeXLocation, dp) + "," +
+				this.safeToFixed(hole.gradeYLocation, dp) + "," +
+				this.safeToFixed(hole.gradeZLocation, dp) + "," +
+				this.safeToFixed(hole.subdrillAmount, dp) + "," +
+				this.safeToFixed(hole.subdrillLength, dp) + "," +
+				this.safeToFixed(hole.benchHeight, dp) + "," +
+				this.safeToFixed(hole.holeDiameter, dp) + "," +
+				(hole.holeType || "") + "," +
+				(hole.fromHoleID || "") + "," +
+				(hole.timingDelayMilliseconds || 0) + "," +
+				(hole.colorHexDecimal || "") + "," +
+				this.safeToFixed(hole.holeLengthCalculated, dp) + "," +
+				this.safeToFixed(hole.holeAngle, dp) + "," +
+				this.safeToFixed(hole.holeBearing, dp) + "," +
+				(hole.holeTime || "") + "," +
+				this.safeToFixed(hole.measuredLength, dp) + "," +
+				this.safeToFixed(hole.measuredMass, dp) + "," +
+				(hole.rowID || "") + "," +
+				(hole.posID || "") + "," +
+				this.safeToFixed(hole.burden, dp) + "," +
+				this.safeToFixed(hole.spacing, dp) + "," +
+				(hole.connectorCurve || "");
+
 			csv += row + "\n";
 		}
 
@@ -92,8 +296,42 @@ class BlastHoleCSVWriter extends BaseWriter {
 		for (var i = 0; i < holes.length; i++) {
 			var hole = holes[i];
 
-			// Step 15) Build row with proper decimal formatting (no template literals per RULES)
-			var row = hole.entityName + "," + hole.entityType + "," + hole.holeID + "," + hole.startXLocation.toFixed(dp) + "," + hole.startYLocation.toFixed(dp) + "," + hole.startZLocation + "," + hole.endXLocation.toFixed(dp) + "," + hole.endYLocation.toFixed(dp) + "," + hole.endZLocation.toFixed(dp) + "," + hole.gradeXLocation.toFixed(dp) + "," + hole.gradeYLocation.toFixed(dp) + "," + hole.gradeZLocation.toFixed(dp) + "," + hole.subdrillAmount.toFixed(dp) + "," + hole.subdrillLength.toFixed(dp) + "," + hole.benchHeight.toFixed(dp) + "," + hole.holeDiameter.toFixed(dp) + "," + hole.holeType + "," + hole.fromHoleID + "," + hole.timingDelayMilliseconds + "," + hole.colorHexDecimal + "," + hole.holeLengthCalculated.toFixed(dp) + "," + hole.holeAngle.toFixed(dp) + "," + hole.holeBearing.toFixed(dp) + "," + hole.holeTime + "," + hole.measuredLength.toFixed(dp) + "," + hole.measuredLengthTimeStamp + "," + hole.measuredMass.toFixed(dp) + "," + hole.measuredMassTimeStamp + "," + hole.measuredComment + "," + hole.measuredCommentTimeStamp + "," + hole.rowID + "," + hole.posID + "," + hole.burden + "," + hole.spacing + "," + hole.connectorCurve;
+			// Step 15) Build row with safe decimal formatting
+			var row = (hole.entityName || "") + "," +
+				(hole.entityType || "") + "," +
+				(hole.holeID || "") + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp) + "," +
+				this.safeToFixed(hole.endXLocation, dp) + "," +
+				this.safeToFixed(hole.endYLocation, dp) + "," +
+				this.safeToFixed(hole.endZLocation, dp) + "," +
+				this.safeToFixed(hole.gradeXLocation, dp) + "," +
+				this.safeToFixed(hole.gradeYLocation, dp) + "," +
+				this.safeToFixed(hole.gradeZLocation, dp) + "," +
+				this.safeToFixed(hole.subdrillAmount, dp) + "," +
+				this.safeToFixed(hole.subdrillLength, dp) + "," +
+				this.safeToFixed(hole.benchHeight, dp) + "," +
+				this.safeToFixed(hole.holeDiameter, dp) + "," +
+				(hole.holeType || "") + "," +
+				(hole.fromHoleID || "") + "," +
+				(hole.timingDelayMilliseconds || 0) + "," +
+				(hole.colorHexDecimal || "") + "," +
+				this.safeToFixed(hole.holeLengthCalculated, dp) + "," +
+				this.safeToFixed(hole.holeAngle, dp) + "," +
+				this.safeToFixed(hole.holeBearing, dp) + "," +
+				(hole.holeTime || "") + "," +
+				this.safeToFixed(hole.measuredLength, dp) + "," +
+				(hole.measuredLengthTimeStamp || "") + "," +
+				this.safeToFixed(hole.measuredMass, dp) + "," +
+				(hole.measuredMassTimeStamp || "") + "," +
+				(hole.measuredComment || "") + "," +
+				(hole.measuredCommentTimeStamp || "") + "," +
+				(hole.rowID || "") + "," +
+				(hole.posID || "") + "," +
+				this.safeToFixed(hole.burden, dp) + "," +
+				this.safeToFixed(hole.spacing, dp) + "," +
+				(hole.connectorCurve || "");
 
 			csv += row + "\n";
 		}
@@ -148,7 +386,10 @@ class BlastHoleCSVWriter extends BaseWriter {
 					rowValues.push("");
 				} else if (typeof value === "number") {
 					// Step 24) Format numbers with decimal places if they have decimals
-					if (value % 1 !== 0) {
+					// Use safeToFixed to handle NaN values
+					if (isNaN(value)) {
+						rowValues.push("0." + "0".repeat(this.decimalPlaces));
+					} else if (value % 1 !== 0) {
 						rowValues.push(value.toFixed(this.decimalPlaces));
 					} else {
 						rowValues.push(value);

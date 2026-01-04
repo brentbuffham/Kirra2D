@@ -7035,6 +7035,23 @@ document.querySelectorAll(".dxf-holes-output-btn").forEach(function (button) {
 // HOLES CSV IMPORT - Using FileManager BlastHoleCSVParser
 document.querySelectorAll(".holes-input-btn").forEach(function (button) {
 	button.addEventListener("click", function () {
+		// Step 1) Check if there's a format dropdown to determine import type
+		var formatDropdown = document.getElementById("holesColumnFormat") || document.getElementById("holesFormat") || document.getElementById("csvFormat");
+		var format = formatDropdown ? formatDropdown.value : null;
+
+		// Step 2) If custom CSV format selected, trigger the custom CSV file input
+		if (format === "custom-csv") {
+			var customCsvInput = document.getElementById("fileInputCustomCSV");
+			if (customCsvInput) {
+				customCsvInput.click();
+				return;
+			} else {
+				showModalMessage("Not Found", "Custom CSV import not available", "warning");
+				return;
+			}
+		}
+
+		// Step 3) Otherwise, use standard CSV import
 		var input = document.createElement("input");
 		input.type = "file";
 		input.accept = ".csv,.txt";
@@ -7061,10 +7078,19 @@ document.querySelectorAll(".holes-input-btn").forEach(function (button) {
 document.querySelectorAll(".holes-output-btn").forEach(function (button) {
 	button.addEventListener("click", async function () {
 		// Step 1) Check if there's a format dropdown (new UI) or use data-target (old UI)
-		var formatDropdown = document.getElementById("holesFormat") || document.getElementById("csvFormat");
+		var formatDropdown = document.getElementById("holesColumnFormat") || document.getElementById("holesFormat") || document.getElementById("csvFormat");
 		var format = formatDropdown ? formatDropdown.value : null;
 
-		// Step 2) If no dropdown, check data-target attribute (backward compatibility)
+		console.log("CSV Export - Dropdown found:", formatDropdown ? "YES" : "NO");
+		console.log("CSV Export - Selected format value:", format);
+
+		// Step 2) Handle custom CSV format - show column selection dialog
+		if (format === "custom-csv") {
+			showCustomCsvExportModal();
+			return;
+		}
+
+		// Step 3) If no dropdown, check data-target attribute (backward compatibility)
 		if (!format) {
 			var target = button.getAttribute("data-target");
 			if (target) {
@@ -7083,10 +7109,24 @@ document.querySelectorAll(".holes-output-btn").forEach(function (button) {
 			}
 		}
 
+		// Step 3a) Convert dropdown numeric values to format strings
+		if (format === "4" || format === "7" || format === "9" || format === "12" || format === "14" || format === "30" || format === "32" || format === "35") {
+			format = format + "column";
+		}
+
 		// Step 4) Map "all" or "allcolumns" to dynamic all-columns format
 		if (format === "all" || format === "allcolumns" || format === "all-columns") {
 			format = "allcolumns";
 		}
+
+		// Step 4a) Ensure we have a valid format
+		var validFormats = ["4column", "7column", "9column", "12column", "14column", "30column", "32column", "35column", "actual", "allcolumns", "all"];
+		if (!validFormats.includes(format)) {
+			console.warn("CSV Export - Unknown format '" + format + "', defaulting to 35column");
+			format = "35column";
+		}
+
+		console.log("CSV Export - Format selected:", format);
 
 		// Step 5) Filter visible holes
 		var visibleHoles = window.allBlastHoles.filter(function (hole) {
@@ -7167,7 +7207,7 @@ document.querySelectorAll(".dxf-input-btn").forEach(function (button) {
 
 // DXF EXPORT - Multiple formats
 document.querySelectorAll(".dxf-output-btn").forEach(function (button) {
-	button.addEventListener("click", function () {
+	button.addEventListener("click", async function () {
 		var format = document.getElementById("dxfFormat").value;
 
 		if (format === "dxf-holes") {
@@ -7181,18 +7221,35 @@ document.querySelectorAll(".dxf-output-btn").forEach(function (button) {
 			try {
 				var Writer = window.fileManager.writers.get("dxf-holes");
 				var writer = new Writer();
-				var blob = writer.write({ holes: visibleHoles });
+				var blob = await writer.write({ holes: visibleHoles });
 				var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
 				writer.downloadFile(blob, "KIRRA_HOLES_DXF_" + timestamp + ".dxf");
 			} catch (error) {
 				showModalMessage("Export Failed", "Error: " + error.message, "error");
 			}
 		} else if (format === "dxf-kad") {
-			// Use existing exportKADDXF function (if it exists)
-			if (typeof exportKADDXF === "function") {
-				exportKADDXF();
-			} else {
-				showModalMessage("Coming Soon", "DXF KAD export will be available in a future update", "info");
+			// Use existing exportKADDXF function
+			exportKADDXF();
+		} else if (format === "vulcan-tagged") {
+			// Vulcan Tagged DXF - 3D POLYLINE with Vulcan XData
+			var visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
+			if (visibleHoles.length === 0) {
+				showModalMessage("No Data", "No visible holes to export", "warning");
+				return;
+			}
+
+			try {
+				var Writer = window.fileManager.writers.get("dxf-vulcan");
+				if (!Writer) {
+					throw new Error("DXF Vulcan writer not registered");
+				}
+
+				var writer = new Writer();
+				var blob = await writer.write({ holes: visibleHoles });
+				var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+				writer.downloadFile(blob, "KIRRA_VULCAN_DXF_" + timestamp + ".dxf");
+			} catch (error) {
+				showModalMessage("Export Failed", "Error: " + error.message, "error");
 			}
 		} else {
 			showModalMessage("Coming Soon", format + " export will be available in a future update", "info");
@@ -7290,11 +7347,27 @@ document.querySelectorAll(".kml-input-btn, .kml-output-btn").forEach(function (b
 	});
 });
 
-// EPIROC SURFACE MANAGER (IREDES) - Coming Soon
-document.querySelectorAll(".surfaceManager-input-btn, .surfaceManager-output-btn").forEach(function (button) {
+// EPIROC SURFACE MANAGER (IREDES) - Using existing saveIREDESPopup
+document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "Epiroc Surface Manager import will be available in a future update", "info");
+	});
+});
+
+document.querySelectorAll(".surfaceManager-output-btn").forEach(function (button) {
 	button.addEventListener("click", function () {
 		var format = document.getElementById("surfaceManagerFormat").value;
-		showModalMessage("Coming Soon", "Epiroc " + format + " will be available in a future update", "info");
+
+		if (format === "iredes") {
+			// Use existing IREDES export dialog
+			if (typeof saveIREDESPopup === "function") {
+				saveIREDESPopup();
+			} else {
+				showModalMessage("Export Error", "IREDES export function not loaded", "error");
+			}
+		} else {
+			showModalMessage("Coming Soon", "Epiroc " + format + " will be available in a future update", "info");
+		}
 	});
 });
 
@@ -7302,10 +7375,10 @@ document.querySelectorAll(".surfaceManager-input-btn, .surfaceManager-output-btn
 document.querySelectorAll(".aqm-output-btn").forEach(function (button) {
 	button.addEventListener("click", function () {
 		// Use existing AQM export dialog
-		if (typeof askForAQMExportDetails === "function") {
-			askForAQMExportDetails();
+		if (typeof saveAQMPopup === "function") {
+			saveAQMPopup();
 		} else {
-			showModalMessage("Coming Soon", "AQM export dialog will be available in a future update", "info");
+			showModalMessage("Export Error", "AQM export function not loaded", "error");
 		}
 	});
 });
@@ -29736,8 +29809,45 @@ fileInputCustomCSV.addEventListener("change", function () {
 	}
 });
 
+// ============================================================================
+// #region CUSTOM CSV IMPORT/EXPORT - EXTRACTED TO FILEMANAGER
+// ============================================================================
+// EXTRACTION DATE: 2026-01-04
+// EXTRACTION SCOPE: ~3,080 lines (29783-32795)
+//
+// MOVED TO: src/fileIO/TextIO/CustomBlastHoleTextParser.js (~1,100 lines)
+//           src/fileIO/TextIO/CustomBlastHoleTextWriter.js (~220 lines)
+//
+// WHAT WAS EXTRACTED:
+// 1. HOLE_FIELD_MAPPING schema (23 fields with validation) - lines 29783-30001
+// 2. processCsvData() and helper functions - lines 30421-30568
+// 3. updateHoleFromCsvData() - field mapping and validation
+// 4. setHoleDefaults() - default value application
+// 5. calculateMissingGeometry() + 14 geometry calculation helpers
+// 6. improvedSmartRowDetection() + 49 row detection algorithms - lines 32339-32795
+//
+// WHAT REMAINS IN KIRRA.JS (UI orchestration):
+// 1. fileInputCustomCSV event listener (Papa.parse) - lines 29718-29777
+// 2. showCsvImportModal() - FloatingDialog UI - lines 30573-30986
+// 3. setupCsvDialogEventListeners() - DOM manipulation - lines 30989-31294
+// 4. getColumnOrderFromForm() - form extraction - lines 31296-31308
+//
+// HOW TO USE THE NEW PARSER:
+//   const CustomCSVParser = window.fileManager.parsers.get("custom-csv");
+//   const parser = new CustomCSVParser({
+//     allBlastHoles: allBlastHoles,
+//     developerModeEnabled: developerModeEnabled || false
+//   });
+//   const result = parser.processCsvData(csvData, columnMapping, fileName);
+//   const importedHoles = result.holes;
+//   parser.improvedSmartRowDetection(holes, entityName);
+//
+// NOTE: The code below is marked for potential removal in a future cleanup.
+//       It is currently retained for backward compatibility and reference.
+// ============================================================================
+
 // ===================================================================
-// FIELD MAPPING STRUCTURE
+// FIELD MAPPING STRUCTURE (EXTRACTED - See CustomBlastHoleTextParser.js)
 // ===================================================================
 
 const HOLE_FIELD_MAPPING = {
@@ -30820,8 +30930,24 @@ function showCsvImportModal(csvData, fileName) {
 		cancelText: "Cancel",
 		onConfirm: function () {
 			try {
+				// Step 1) Get column mapping from form
 				const columnOrder = getColumnOrderFromForm();
-				const importedHoles = processCsvData(csvData, columnOrder, fileName);
+
+				// Step 2) Use FileManager Custom CSV parser
+				const CustomCSVParser = window.fileManager.parsers.get("custom-csv");
+				if (!CustomCSVParser) {
+					throw new Error("Custom CSV parser not found in FileManager");
+				}
+
+				// Step 3) Instantiate parser with dependencies
+				const parser = new CustomCSVParser({
+					allBlastHoles: allBlastHoles,
+					developerModeEnabled: developerModeEnabled || false
+				});
+
+				// Step 4) Parse CSV data
+				const result = parser.processCsvData(csvData, columnOrder, fileName);
+				const importedHoles = result.holes;
 
 				if (importedHoles && importedHoles.length > 0) {
 					// CRITICAL: Recalculate everything after import like existing code does
@@ -30838,7 +30964,7 @@ function showCsvImportModal(csvData, fileName) {
 					var fullCentroid = calculateDataCentroid();
 					emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
 
-					// Step 1) Apply smart row detection to imported holes
+					// Step 1) Apply smart row detection to imported holes (using parser method)
 					const entitiesForRowDetection = new Map();
 					importedHoles.forEach(function (hole) {
 						if (!entitiesForRowDetection.has(hole.entityName)) {
@@ -30847,9 +30973,9 @@ function showCsvImportModal(csvData, fileName) {
 						entitiesForRowDetection.get(hole.entityName).push(hole);
 					});
 
-					// Step 2) Run smart row detection for each entity
+					// Step 2) Run smart row detection for each entity using parser
 					entitiesForRowDetection.forEach(function (holes, entityName) {
-						improvedSmartRowDetection(holes, entityName);
+						parser.improvedSmartRowDetection(holes, entityName);
 					});
 
 					// Step 3) Auto-assign rowID/posID for holes that still don't have them
@@ -31251,6 +31377,169 @@ function getColumnOrderFromForm() {
 	}
 
 	return order;
+}
+
+/**
+ * Custom CSV Export Dialog - Select columns and configure export options
+ */
+function showCustomCsvExportModal() {
+	// Step 1) Get visible holes to export
+	var visibleHoles = window.allBlastHoles.filter(function (hole) {
+		return window.isHoleVisible(hole);
+	});
+
+	if (visibleHoles.length === 0) {
+		showModalMessage("No Data", "No visible holes to export", "warning");
+		return;
+	}
+
+	// Step 2) Define available columns (from HOLE_FIELD_MAPPING)
+	var availableColumns = [
+		{ name: "entityName", label: "Blast Name", group: "Identifiers" },
+		{ name: "holeID", label: "Hole ID", group: "Identifiers" },
+		{ name: "holeType", label: "Hole Type", group: "Identifiers" },
+		{ name: "rowID", label: "Row ID", group: "Identifiers" },
+		{ name: "posID", label: "Position ID", group: "Identifiers" },
+		{ name: "startXLocation", label: "Start X (mE)", group: "Collar" },
+		{ name: "startYLocation", label: "Start Y (mN)", group: "Collar" },
+		{ name: "startZLocation", label: "Start Z (mRL)", group: "Collar" },
+		{ name: "endXLocation", label: "End X (mE)", group: "Toe" },
+		{ name: "endYLocation", label: "End Y (mN)", group: "Toe" },
+		{ name: "endZLocation", label: "End Z (mRL)", group: "Toe" },
+		{ name: "gradeXLocation", label: "Grade X (mE)", group: "Grade" },
+		{ name: "gradeYLocation", label: "Grade Y (mN)", group: "Grade" },
+		{ name: "gradeZLocation", label: "Grade Z (mRL)", group: "Grade" },
+		{ name: "holeAngle", label: "Hole Angle/Dip", group: "Geometry" },
+		{ name: "holeBearing", label: "Hole Bearing", group: "Geometry" },
+		{ name: "holeLengthCalculated", label: "Hole Length", group: "Geometry" },
+		{ name: "holeDiameter", label: "Diameter", group: "Geometry" },
+		{ name: "subdrillAmount", label: "Subdrill", group: "Geometry" },
+		{ name: "benchHeight", label: "Bench Height", group: "Geometry" },
+		{ name: "fromHoleID", label: "From Hole ID", group: "Timing" },
+		{ name: "timingDelayMilliseconds", label: "Timing Delay", group: "Timing" },
+		{ name: "initiationTime", label: "Initiation Time", group: "Timing" },
+		{ name: "colorHexDecimal", label: "Tie Color", group: "Timing" },
+		{ name: "measuredLength", label: "Measured Length", group: "Measured" },
+		{ name: "measuredMass", label: "Measured Mass", group: "Measured" },
+		{ name: "measuredComment", label: "Measured Comment", group: "Measured" }
+	];
+
+	// Step 3) Default selected columns (12-column format)
+	var selectedColumns = ["holeID", "startXLocation", "startYLocation", "startZLocation", "holeAngle", "holeBearing", "holeLengthCalculated", "holeDiameter", "subdrillAmount", "benchHeight", "rowID", "posID"];
+
+	// Step 4) Create dialog content
+	var contentHTML = '<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">';
+
+	// Header section
+	contentHTML += '<div style="padding: 10px; border-bottom: 1px solid var(--light-mode-border);" class="button-container-2col">';
+	contentHTML += '<label class="labelWhite15"><strong>Holes to Export:</strong> ' + visibleHoles.length + '</label>';
+	contentHTML += '<div></div>';
+	contentHTML += '<label class="labelWhite12">Angle Convention:</label>';
+	contentHTML += '<select id="export-csv-angle-convention">';
+	contentHTML += '<option value="angle">Angle (0° = vertical)</option>';
+	contentHTML += '<option value="dip">Dip (0° = horizontal)</option>';
+	contentHTML += '</select>';
+	contentHTML += '<label class="labelWhite12">Diameter Units:</label>';
+	contentHTML += '<select id="export-csv-diameter-unit">';
+	contentHTML += '<option value="mm">mm</option>';
+	contentHTML += '<option value="m">m</option>';
+	contentHTML += '<option value="in">inches</option>';
+	contentHTML += '</select>';
+	contentHTML += '</div>';
+
+	// Column selection section
+	contentHTML += '<div style="flex: 1; overflow-y: auto; padding: 10px;">';
+	contentHTML += '<label class="labelWhite15" style="margin-bottom: 10px; display: block;"><strong>Select Columns to Export:</strong></label>';
+
+	// Group columns by category
+	var groups = {};
+	for (var i = 0; i < availableColumns.length; i++) {
+		var col = availableColumns[i];
+		if (!groups[col.group]) groups[col.group] = [];
+		groups[col.group].push(col);
+	}
+
+	// Render checkboxes grouped by category
+	Object.keys(groups).forEach(function (groupName) {
+		contentHTML += '<div style="margin-bottom: 15px;">';
+		contentHTML += '<label class="labelWhite12" style="font-weight: bold; color: var(--accent-color);">' + groupName + ':</label><br>';
+
+		groups[groupName].forEach(function (col) {
+			var isChecked = selectedColumns.indexOf(col.name) !== -1 ? 'checked' : '';
+			contentHTML += '<label class="labelWhite12" style="margin-left: 15px;">';
+			contentHTML += '<input type="checkbox" id="export-col-' + col.name + '" value="' + col.name + '" ' + isChecked + '> ';
+			contentHTML += col.label;
+			contentHTML += '</label><br>';
+		});
+
+		contentHTML += '</div>';
+	});
+
+	contentHTML += '</div>';
+	contentHTML += '</div>';
+
+	// Step 5) Create dialog
+	var dialog = new FloatingDialog({
+		title: "Custom CSV Export - Select Columns",
+		content: contentHTML,
+		layoutType: "default",
+		width: 600,
+		height: 700,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Export",
+		cancelText: "Cancel",
+		onConfirm: async function () {
+			try {
+				// Step 6) Get selected columns in order
+				var columnOrder = [];
+				for (var i = 0; i < availableColumns.length; i++) {
+					var checkbox = document.getElementById("export-col-" + availableColumns[i].name);
+					if (checkbox && checkbox.checked) {
+						columnOrder.push(availableColumns[i].name);
+					}
+				}
+
+				if (columnOrder.length === 0) {
+					showModalMessage("No Columns", "Please select at least one column to export", "warning");
+					return;
+				}
+
+				// Step 7) Get export options
+				var angleConvention = document.getElementById("export-csv-angle-convention").value;
+				var diameterUnit = document.getElementById("export-csv-diameter-unit").value;
+
+				// Step 8) Use FileManager CustomBlastHoleTextWriter
+				var Writer = window.fileManager.writers.get("custom-csv");
+				if (!Writer) {
+					throw new Error("Custom CSV writer not found in FileManager");
+				}
+
+				var writer = new Writer({
+					columnOrder: columnOrder,
+					angleConvention: angleConvention,
+					diameterUnit: diameterUnit,
+					includeHeaders: true,
+					decimalPlaces: 4
+				});
+
+				// Step 9) Generate CSV
+				var blob = await writer.write({ holes: visibleHoles });
+
+				// Step 10) Download file
+				var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+				var filename = "KIRRA_CUSTOM_CSV_" + timestamp + ".csv";
+				writer.downloadFile(blob, filename);
+
+				console.log("Exported " + visibleHoles.length + " holes with " + columnOrder.length + " columns");
+			} catch (error) {
+				console.error("Custom CSV export error:", error);
+				showModalMessage("Export Failed", "Error: " + error.message, "error");
+			}
+		}
+	});
+
+	dialog.show();
 }
 
 //---------------- END CUSTOM STRUCTURED CSV IMPORTER ----------------//
@@ -31743,6 +32032,14 @@ function distancePointToLine(point, lineStart, lineEnd) {
 
 	return distance;
 }
+
+// ============================================================================
+// #endregion CUSTOM CSV IMPORT/EXPORT - EXTRACTED TO FILEMANAGER
+// ============================================================================
+// The above code section (HOLE_FIELD_MAPPING through row detection functions)
+// has been extracted to FileManager modules. See comment at line 29779 for details.
+// This code is retained for backward compatibility during transition period.
+// ============================================================================
 
 /**
  * HDBSCAN-BASED ROW DETECTION (RECOMMENDED APPROACH)
@@ -36777,25 +37074,45 @@ function parseOBJFile(content, mtlContent) {
 }
 // XYZ parser (space-delimited X Y Z format)
 function parseXYZFile(content) {
-	const lines = content.split("\n");
-	const points = [];
+	var lines = content.split("\n");
+	var points = [];
 
-	lines.forEach((line) => {
-		const parts = line.trim().split(/\s+/);
+	for (var i = 0; i < lines.length; i++) {
+		var line = lines[i].trim();
+
+		// Step 1) Skip empty lines and comments
+		if (line === "" || line.startsWith("#") || line.startsWith("//")) {
+			continue;
+		}
+
+		var parts = line.split(/\s+/);
+
+		// Step 2) Parse X,Y,Z (required)
 		if (parts.length >= 3) {
-			const x = parseFloat(parts[0]);
-			const y = parseFloat(parts[1]);
-			const z = parseFloat(parts[2]);
+			var x = parseFloat(parts[0]);
+			var y = parseFloat(parts[1]);
+			var z = parseFloat(parts[2]);
 
 			if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-				points.push({
-					x,
-					y,
-					z,
-				});
+				var point = { x: x, y: y, z: z };
+
+				// Step 3) Parse R,G,B if available (parts[3], parts[4], parts[5])
+				if (parts.length >= 6) {
+					var r = parseFloat(parts[3]);
+					var g = parseFloat(parts[4]);
+					var b = parseFloat(parts[5]);
+
+					if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+						point.r = r;
+						point.g = g;
+						point.b = b;
+					}
+				}
+
+				points.push(point);
 			}
 		}
-	});
+	}
 
 	return points;
 }
@@ -36894,28 +37211,48 @@ function parsePLYFile(content) {
 }
 // PTS parser (point count + XYZ + intensity)
 function parsePTSFile(content) {
-	const lines = content.split("\n");
-	const points = [];
+	var lines = content.split("\n");
+	var points = [];
 
-	// First line might be point count
-	let startIndex = 0;
+	// Step 1) First line might be point count
+	var startIndex = 0;
 	if (lines[0] && !isNaN(parseInt(lines[0].trim()))) {
 		startIndex = 1;
 	}
 
-	for (let i = startIndex; i < lines.length; i++) {
-		const parts = lines[i].trim().split(/\s+/);
+	// Step 2) Parse each line
+	for (var i = startIndex; i < lines.length; i++) {
+		var line = lines[i].trim();
+
+		// Skip empty lines and comments
+		if (line === "" || line.startsWith("#") || line.startsWith("//")) {
+			continue;
+		}
+
+		var parts = line.split(/\s+/);
+
 		if (parts.length >= 3) {
-			const x = parseFloat(parts[0]);
-			const y = parseFloat(parts[1]);
-			const z = parseFloat(parts[2]);
+			var x = parseFloat(parts[0]);
+			var y = parseFloat(parts[1]);
+			var z = parseFloat(parts[2]);
 
 			if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-				points.push({
-					x,
-					y,
-					z,
-				});
+				var point = { x: x, y: y, z: z };
+
+				// Step 3) Parse R,G,B if available
+				if (parts.length >= 6) {
+					var r = parseFloat(parts[3]);
+					var g = parseFloat(parts[4]);
+					var b = parseFloat(parts[5]);
+
+					if (!isNaN(r) && !isNaN(g) && !isNaN(b)) {
+						point.r = r;
+						point.g = g;
+						point.b = b;
+					}
+				}
+
+				points.push(point);
 			}
 		}
 	}
@@ -37031,71 +37368,180 @@ function createSurfaceFromPoints(points, surfaceName = null, autoSave = true) {
 		saveSurfaceToDB(surfaceId).catch((err) => console.error("Failed to save surface:", err));
 	}
 }
-// Keep the decimation warning (optional enhancement)
+// Point Cloud Decimation Dialog - FloatingDialog with 4 buttons
 function showDecimationWarning(points, fileName) {
-	const pointCount = points.length;
+	var pointCount = points.length;
 
-	Swal.fire({
+	// Step 1) Create dialog content
+	var contentHTML = '<div style="text-align: center; padding: 20px;">';
+	contentHTML += '<label class="labelWhite16"><strong>' + fileName + '</strong></label><br>';
+	contentHTML += '<label class="labelWhite14">Contains ' + pointCount.toLocaleString() + ' points</label><br><br>';
+	contentHTML += '<label class="labelWhite12">Large point clouds may cause performance issues</label><br>';
+	contentHTML += '<label class="labelWhite12">Choose how to import this point cloud:</label>';
+	contentHTML += '</div>';
+
+	// Step 2) Create dialog with 4 buttons in button row
+	// Button order: option2 (As Points), option1 (Decimate), cancel, confirm (Continue)
+	var dialog = new FloatingDialog({
 		title: "Large Point Cloud Detected",
-		showCancelButton: true,
-		confirmButtonText: "Load All",
-		cancelButtonText: "Decimate",
-		icon: "warning",
-		html: `
-            <div style="text-align: center;">
-                <label class="labelWhite16"><strong>${fileName}</strong></label><br>
-                <label class="labelWhite14">Contains ${pointCount.toLocaleString()} points</label><br><br>
-                <label class="labelWhite12">?? Large point clouds may cause performance issues</label><br>
-                <label class="labelWhite12">Recommended: Decimate to ~5,000 points for better performance</label>
-            </div>
-        `,
-		customClass: {
-			container: "custom-popup-container",
-			title: "swal2-title",
-			confirmButton: "confirm",
-			cancelButton: "cancel",
-			content: "swal2-content",
-			htmlContainer: "swal2-html-container",
-			icon: "swal2-icon",
-		},
-	}).then(async (result) => {
-		// Make this async
-		if (result.isConfirmed) {
+		content: contentHTML,
+		layoutType: "default",
+		width: 500,
+		height: 250,
+		showConfirm: true,
+		showCancel: true,
+		showDeny: false,
+		showOption1: true,
+		showOption2: true,
+		showOption3: false,
+		confirmText: "Continue (Mesh)",
+		cancelText: "Cancel",
+		option1Text: "Decimate",
+		option2Text: "As Points",
+		onConfirm: async function() {
+			// Step 3) Continue (Mesh) button
 			createSurfaceFromPoints(points, fileName, false);
-
-			// ADD SURFACE SAVE HERE
 			try {
 				await saveSurfaceToDB(fileName || "surface_full_" + Date.now());
-				// console.log("💾 Full surface saved from decimation dialog:", fileName);
 			} catch (saveError) {
-				console.error("❌ Failed to save full surface:", saveError);
+				console.error("Failed to save full surface:", saveError);
 			}
-		} else if (result.dismiss === Swal.DismissReason.cancel) {
-			const decimatedPoints = decimatePointCloud(points, 5000);
+		},
+		onOption1: async function() {
+			// Step 4) Decimate button
+			var decimatedPoints = decimatePointCloud(points, 5000);
 			createSurfaceFromPoints(decimatedPoints, fileName, false);
-
-			// ADD DECIMATED SURFACE SAVE HERE
 			try {
 				await saveSurfaceToDB(fileName ? fileName + "_decimated" : "surface_decimated_" + Date.now());
-				// console.log("🧊 Decimated surface saved from decimation dialog:", fileName);
 			} catch (saveError) {
-				console.error("❌ Failed to save decimated surface:", saveError);
+				console.error("Failed to save decimated surface:", saveError);
 			}
+		},
+		onOption2: function() {
+			// Step 5) As Points button
+			createKADPointsFromPointCloud(points, fileName);
+		},
+		onCancel: function() {
+			// Step 6) Cancel button - just close
+			console.log("Point cloud import cancelled");
 		}
 	});
+
+	// Step 7) Show dialog
+	dialog.show();
 }
 
 function decimatePointCloud(points, targetCount) {
 	if (points.length <= targetCount) return points;
 
-	const step = Math.floor(points.length / targetCount);
-	const decimatedPoints = [];
+	var step = Math.floor(points.length / targetCount);
+	var decimatedPoints = [];
 
-	for (let i = 0; i < points.length; i += step) {
+	for (var i = 0; i < points.length; i += step) {
 		decimatedPoints.push(points[i]);
 	}
 
 	return decimatedPoints;
+}
+
+// Create KAD Points from Point Cloud with colors
+function createKADPointsFromPointCloud(points, fileName) {
+	// Step 1) Generate unique entity name
+	var uid = Date.now();
+	var entityName = "Cloud_" + uid;
+	var entityType = "point";
+
+	// Step 2) Create entity in allKADDrawingsMap if it doesn't exist
+	if (!window.allKADDrawingsMap) {
+		window.allKADDrawingsMap = new Map();
+	}
+
+	if (!allKADDrawingsMap.has(entityName)) {
+		allKADDrawingsMap.set(entityName, {
+			entityName: entityName,
+			entityType: entityType,
+			data: [],
+			visible: true
+		});
+	}
+
+	// Step 3) Convert point cloud points to KAD point format
+	var kadPoints = [];
+	var pointIDCounter = 1;
+
+	for (var i = 0; i < points.length; i++) {
+		var pt = points[i];
+
+		// Step 4) Extract coordinates
+		var x = pt.x || 0;
+		var y = pt.y || 0;
+		var z = pt.z || 0;
+
+		// Step 5) Extract or generate color
+		var color = "#808080"; // Default gray
+
+		if (pt.r !== undefined && pt.g !== undefined && pt.b !== undefined) {
+			// Step 6) Convert RGB to hex color
+			var r = Math.max(0, Math.min(255, Math.floor(pt.r)));
+			var g = Math.max(0, Math.min(255, Math.floor(pt.g)));
+			var b = Math.max(0, Math.min(255, Math.floor(pt.b)));
+
+			color = "#" +
+				r.toString(16).padStart(2, "0") +
+				g.toString(16).padStart(2, "0") +
+				b.toString(16).padStart(2, "0");
+		} else if (pt.color) {
+			// Step 7) Use existing color if available
+			color = pt.color;
+		}
+
+		// Step 8) Create KAD point object with proper structure
+		var kadPoint = {
+			entityName: entityName,
+			entityType: entityType,
+			pointID: pointIDCounter++,
+			pointXLocation: x,
+			pointYLocation: y,
+			pointZLocation: z,
+			lineWidth: 1,
+			color: color,
+			connected: false,
+			closed: false,
+			visible: true
+		};
+
+		kadPoints.push(kadPoint);
+	}
+
+	// Step 9) Add all points to the entity's data array
+	var entity = allKADDrawingsMap.get(entityName);
+	for (var i = 0; i < kadPoints.length; i++) {
+		entity.data.push(kadPoints[i]);
+	}
+
+	// Step 10) Redraw canvas
+	drawData(allBlastHoles, selectedHole);
+
+	// Step 11) Update TreeView to show new entity
+	if (typeof updateTreeView === "function") {
+		updateTreeView();
+	} else if (typeof debouncedUpdateTreeView === "function") {
+		debouncedUpdateTreeView();
+	}
+
+	// Step 12) Save to KAD file
+	if (typeof debouncedSaveKAD === "function") {
+		debouncedSaveKAD();
+	}
+
+	// Step 13) Show success message
+	showModalMessage(
+		"Point Cloud Imported",
+		"Imported " + kadPoints.length + " points as KAD Points\n\nEntity: " + entityName,
+		"success"
+	);
+
+	console.log("Imported " + kadPoints.length + " points as KAD Points to entity:", entityName);
 }
 // Add this simple canvasToWorld function (without snapping)
 function canvasToWorld(canvasX, canvasY) {

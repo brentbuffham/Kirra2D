@@ -9,12 +9,20 @@
 import fileManager from "./FileManager.js";
 import BlastHoleCSVParser from "./TextIO/BlastHoleCSVParser.js";
 import BlastHoleCSVWriter from "./TextIO/BlastHoleCSVWriter.js";
+import CustomBlastHoleTextParser from "./TextIO/CustomBlastHoleTextParser.js";
+import CustomBlastHoleTextWriter from "./TextIO/CustomBlastHoleTextWriter.js";
+import GeofenceParser from "./TextIO/GeofenceParser.js";
+import GeofenceWriter from "./TextIO/GeofenceWriter.js";
 import KADParser from "./KirraIO/KADParser.js";
 import KADWriter from "./KirraIO/KADWriter.js";
 import DXFParser from "./AutoCadIO/DXFParser.js";
 import DXFHOLESWriter from "./AutoCadIO/DXFHOLESWriter.js";
+import DXFVulcanWriter from "./AutoCadIO/DXFVulcanWriter.js";
 import OBJParser from "./ThreeJSMeshIO/OBJParser.js";
+import OBJWriter from "./ThreeJSMeshIO/OBJWriter.js";
+import PLYParser from "./ThreeJSMeshIO/PLYParser.js";
 import PointCloudParser from "./PointCloudIO/PointCloudParser.js";
+import PointCloudWriter from "./PointCloudIO/PointCloudWriter.js";
 import AQMWriter from "./MinestarIO/AQMWriter.js";
 
 // Step 4) Initialize FileManager with all parsers and writers
@@ -53,6 +61,40 @@ export function initializeFileManager() {
 		category: "blasting"
 	});
 
+	fileManager.registerWriter("blasthole-csv-allcolumns", BlastHoleCSVWriter, {
+		extensions: ["csv"],
+		description: "Blast Hole CSV all columns (dynamic)",
+		category: "blasting"
+	});
+
+	// Step 6a) Register Custom CSV parser
+	fileManager.registerParser("custom-csv", CustomBlastHoleTextParser, {
+		extensions: ["csv", "txt"],
+		description: "Custom CSV with field mapping and smart row detection",
+		category: "blasting"
+	});
+
+	// Step 6b) Register Custom CSV writer
+	fileManager.registerWriter("custom-csv", CustomBlastHoleTextWriter, {
+		extensions: ["csv"],
+		description: "Custom CSV with user-defined column order",
+		category: "blasting"
+	});
+
+	// Step 6c) Register Geofence/Hazard/Sockets parser (Y,X format)
+	fileManager.registerParser("geofence", GeofenceParser, {
+		extensions: ["geofence", "hazard", "sockets", "txt"],
+		description: "Geofence/Hazard/Sockets Y,X coordinate files",
+		category: "geometry"
+	});
+
+	// Step 6d) Register Geofence/Hazard/Sockets writer (Y,X format)
+	fileManager.registerWriter("geofence", GeofenceWriter, {
+		extensions: ["geofence", "hazard", "sockets", "txt"],
+		description: "Geofence/Hazard/Sockets Y,X coordinate files",
+		category: "geometry"
+	});
+
 	// Step 7) Register KAD parser
 	fileManager.registerParser("kad", KADParser, {
 		extensions: ["kad", "txt"],
@@ -81,6 +123,13 @@ export function initializeFileManager() {
 		category: "cad"
 	});
 
+	// Step 10a) Register DXF Vulcan writer (3D POLYLINE with Vulcan XData)
+	fileManager.registerWriter("dxf-vulcan", DXFVulcanWriter, {
+		extensions: ["dxf"],
+		description: "DXF Vulcan (3D POLYLINE with Vulcan XData tags)",
+		category: "cad"
+	});
+
 	// Step 11) Register OBJ parser
 	fileManager.registerParser("obj", OBJParser, {
 		extensions: ["obj"],
@@ -88,10 +137,31 @@ export function initializeFileManager() {
 		category: "3d-mesh"
 	});
 
+	// Step 11a) Register PLY parser
+	fileManager.registerParser("ply", PLYParser, {
+		extensions: ["ply"],
+		description: "PLY file parser (ASCII and Binary formats, vertices, faces, normals, colors)",
+		category: "3d-mesh"
+	});
+
+	// Step 11b) Register OBJ writer
+	fileManager.registerWriter("obj", OBJWriter, {
+		extensions: ["obj"],
+		description: "Wavefront OBJ file writer (vertices, faces, normals, UVs)",
+		category: "3d-mesh"
+	});
+
 	// Step 12) Register Point Cloud CSV parser
 	fileManager.registerParser("pointcloud-csv", PointCloudParser, {
 		extensions: ["csv", "xyz", "txt"],
 		description: "Point Cloud CSV (x,y,z format with optional header)",
+		category: "point-cloud"
+	});
+
+	// Step 12a) Register Point Cloud writer
+	fileManager.registerWriter("pointcloud-xyz", PointCloudWriter, {
+		extensions: ["xyz", "txt", "csv"],
+		description: "Point Cloud XYZ format (X,Y,Z or X,Y,Z,R,G,B)",
 		category: "point-cloud"
 	});
 

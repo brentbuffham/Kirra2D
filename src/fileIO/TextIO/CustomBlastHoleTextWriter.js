@@ -1,0 +1,219 @@
+// src/fileIO/TextIO/CustomBlastHoleTextWriter.js
+//=============================================================
+// CUSTOM BLAST HOLE TEXT WRITER
+//=============================================================
+// Step 1) Writes blast hole data to CSV files with user-defined column ordering
+// Step 2) Created: 2026-01-04
+// Step 3) Supports custom field selection, unit conversions, and angle conventions
+// Step 4) Companion to CustomBlastHoleTextParser.js
+
+import BaseWriter from "../BaseWriter.js";
+
+// Step 5) CustomBlastHoleTextWriter class
+class CustomBlastHoleTextWriter extends BaseWriter {
+	constructor(options = {}) {
+		super(options);
+
+		// Step 6) Writer configuration
+		this.columnOrder = options.columnOrder || ["holeID", "startXLocation", "startYLocation", "startZLocation"]; // Array of field names
+		this.angleConvention = options.angleConvention || "angle"; // "angle" or "dip"
+		this.diameterUnit = options.diameterUnit || "mm"; // "mm", "m", "in"
+		this.includeHeaders = options.includeHeaders !== false; // Default true
+		this.decimalPlaces = options.decimalPlaces || 4;
+
+		// Step 7) Get field mapping from parser (shared schema)
+		this.HOLE_FIELD_MAPPING = options.fieldMapping || this.getDefaultFieldMapping();
+	}
+
+	// Step 8) Get default field mapping (minimal version - full version in parser)
+	getDefaultFieldMapping() {
+		return {
+			entityName: { property: "entityName", type: "string", default: "Imported_Blast" },
+			holeID: { property: "holeID", type: "string", default: "" },
+			startXLocation: { property: "startXLocation", type: "number", default: 0 },
+			startYLocation: { property: "startYLocation", type: "number", default: 0 },
+			startZLocation: { property: "startZLocation", type: "number", default: 0 },
+			endXLocation: { property: "endXLocation", type: "number", default: 0 },
+			endYLocation: { property: "endYLocation", type: "number", default: 0 },
+			endZLocation: { property: "endZLocation", type: "number", default: 0 },
+			gradeXLocation: { property: "gradeXLocation", type: "number", default: 0 },
+			gradeYLocation: { property: "gradeYLocation", type: "number", default: 0 },
+			gradeZLocation: { property: "gradeZLocation", type: "number", default: 0 },
+			holeAngle: { property: "holeAngle", type: "number", default: 0 },
+			holeBearing: { property: "holeBearing", type: "number", default: 0 },
+			holeLengthCalculated: { property: "holeLengthCalculated", type: "number", default: 0 },
+			holeDiameter: { property: "holeDiameter", type: "number", default: 0 },
+			holeType: { property: "holeType", type: "string", default: "Production" },
+			subdrillAmount: { property: "subdrillAmount", type: "number", default: 0 },
+			benchHeight: { property: "benchHeight", type: "number", default: 10 },
+			fromHoleID: { property: "fromHoleID", type: "string", default: "" },
+			timingDelayMilliseconds: { property: "timingDelayMilliseconds", type: "number", default: 0 },
+			initiationTime: { property: "initiationTime", type: "number", default: 0 },
+			colorHexDecimal: { property: "colorHexDecimal", type: "string", default: "red" },
+			rowID: { property: "rowID", type: "string", default: "" },
+			posID: { property: "posID", type: "string", default: "" },
+			burden: { property: "burden", type: "number", default: 0 },
+			spacing: { property: "spacing", type: "number", default: 0 },
+			measuredLength: { property: "measuredLength", type: "number", default: 0 },
+			measuredMass: { property: "measuredMass", type: "number", default: 0 },
+			measuredComment: { property: "measuredComment", type: "string", default: "None" }
+		};
+	}
+
+	// Step 9) Main write method
+	async write(data) {
+		// Step 10) Validate input data
+		if (!data || !Array.isArray(data.holes)) {
+			throw new Error("Invalid data: holes array required");
+		}
+
+		// Step 11) Filter visible holes using base class helper
+		var visibleHoles = this.filterVisibleHoles(data.holes);
+
+		if (visibleHoles.length === 0) {
+			throw new Error("No visible holes to export");
+		}
+
+		// Step 12) Generate CSV content
+		var csv = "";
+
+		// Step 13) Generate header row if enabled
+		if (this.includeHeaders) {
+			csv += this.generateHeaders();
+		}
+
+		// Step 14) Generate data rows
+		for (var i = 0; i < visibleHoles.length; i++) {
+			csv += this.generateRow(visibleHoles[i]);
+		}
+
+		// Step 15) Create and return blob
+		return this.createBlob(csv, "text/csv");
+	}
+
+	// Step 16) Generate header row from column order
+	generateHeaders() {
+		var headers = [];
+
+		// Step 17) Add each column name to header array
+		for (var i = 0; i < this.columnOrder.length; i++) {
+			headers.push(this.columnOrder[i]);
+		}
+
+		// Step 18) Join with commas and add newline
+		return headers.join(",") + "\n";
+	}
+
+	// Step 19) Generate single data row for a hole
+	generateRow(hole) {
+		var values = [];
+
+		// Step 20) Extract each field value in column order
+		for (var i = 0; i < this.columnOrder.length; i++) {
+			var fieldName = this.columnOrder[i];
+			var value = this.extractFieldValue(hole, fieldName);
+			values.push(this.formatValue(value, fieldName));
+		}
+
+		// Step 21) Join with commas and add newline
+		return values.join(",") + "\n";
+	}
+
+	// Step 22) Extract field value from hole object
+	extractFieldValue(hole, fieldName) {
+		// Step 23) Get field mapping
+		var mapping = this.HOLE_FIELD_MAPPING[fieldName];
+		if (!mapping) {
+			console.warn("CustomCSVWriter: Unknown field " + fieldName);
+			return "";
+		}
+
+		// Step 24) Get value from hole object using property name
+		var value = hole[mapping.property];
+
+		// Step 25) Return value or default
+		if (value === null || value === undefined) {
+			return mapping.default || "";
+		}
+
+		return value;
+	}
+
+	// Step 26) Format value for CSV output with unit conversions
+	formatValue(value, fieldName) {
+		// Step 27) Handle diameter unit conversions
+		if (fieldName === "holeDiameter") {
+			return this.convertDiameter(value);
+		}
+
+		// Step 28) Handle angle convention conversions
+		if (fieldName === "holeAngle") {
+			return this.convertAngle(value);
+		}
+
+		// Step 29) Handle numeric values
+		if (typeof value === "number") {
+			// Step 30) Check for NaN
+			if (isNaN(value)) {
+				return "0." + "0".repeat(this.decimalPlaces);
+			}
+			// Step 31) Format with decimal places
+			return value.toFixed(this.decimalPlaces);
+		}
+
+		// Step 32) Handle string escaping for CSV
+		if (typeof value === "string") {
+			// Step 33) Check if string contains special characters
+			if (value.indexOf(",") !== -1 || value.indexOf('"') !== -1 || value.indexOf("\n") !== -1) {
+				// Step 34) Escape quotes and wrap in quotes
+				var escapedValue = value.replace(/"/g, '""');
+				return '"' + escapedValue + '"';
+			}
+		}
+
+		// Step 35) Return value as-is
+		return value;
+	}
+
+	// Step 36) Convert diameter from mm to target unit
+	convertDiameter(value) {
+		// Step 37) Parse to number
+		var num = parseFloat(value);
+		if (isNaN(num)) {
+			return "0." + "0".repeat(this.decimalPlaces);
+		}
+
+		// Step 38) Convert based on target unit
+		if (this.diameterUnit === "m") {
+			// Step 39) Convert mm to meters
+			return (num / 1000).toFixed(this.decimalPlaces);
+		}
+		if (this.diameterUnit === "in") {
+			// Step 40) Convert mm to inches
+			return (num / 25.4).toFixed(this.decimalPlaces);
+		}
+
+		// Step 41) Default: keep as mm
+		return num.toFixed(this.decimalPlaces);
+	}
+
+	// Step 42) Convert angle based on convention
+	convertAngle(value) {
+		// Step 43) Parse to number
+		var num = parseFloat(value);
+		if (isNaN(num)) {
+			return "0." + "0".repeat(this.decimalPlaces);
+		}
+
+		// Step 44) Convert angle to dip if needed
+		if (this.angleConvention === "dip") {
+			// Step 45) Dip = 90 - Angle
+			return (90 - num).toFixed(this.decimalPlaces);
+		}
+
+		// Step 46) Default: keep as angle
+		return num.toFixed(this.decimalPlaces);
+	}
+}
+
+export default CustomBlastHoleTextWriter;
