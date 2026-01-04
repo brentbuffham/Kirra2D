@@ -358,6 +358,7 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
 
             if (developerModeEnabled) {
                 console.log("🎨 [3D HIGHLIGHT] Drawing " + entityType + " with " + numSegments + " segments, isClosedShape:", isClosedShape);
+                console.log("🎨 [3D HIGHLIGHT] First point:", points[0]);
             }
 
             // Step 4c.1) Collect all segments into arrays for batched rendering
@@ -369,16 +370,39 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                 const point1 = points[i];
                 const point2 = isClosedShape ? points[(i + 1) % points.length] : points[i + 1];
 
+                // Step 4c.2a) Validate points have coordinates
+                if (!point1 || point1.pointXLocation === undefined || point1.pointYLocation === undefined) continue;
+                if (!point2 || point2.pointXLocation === undefined || point2.pointYLocation === undefined) continue;
+
                 const local1 = worldToThreeLocal(point1.pointXLocation, point1.pointYLocation);
                 const local2 = worldToThreeLocal(point2.pointXLocation, point2.pointYLocation);
+
+                // Step 4c.2b) Validate conversion results
+                if (!local1 || local1.x === undefined || local1.y === undefined) continue;
+                if (!local2 || local2.x === undefined || local2.y === undefined) continue;
 
                 const z1 = point1.pointZLocation || dataCentroidZ || 0;
                 const z2 = point2.pointZLocation || dataCentroidZ || 0;
 
-                greenSegments.push({
-                    x1: local1.x, y1: local1.y, z1: z1,
-                    x2: local2.x, y2: local2.y, z2: z2
-                });
+                // Step 4c.2c) Final NaN check before adding to array
+                if (!isNaN(local1.x) && !isNaN(local1.y) && !isNaN(z1) &&
+                    !isNaN(local2.x) && !isNaN(local2.y) && !isNaN(z2)) {
+                    greenSegments.push({
+                        x1: local1.x, y1: local1.y, z1: z1,
+                        x2: local2.x, y2: local2.y, z2: z2
+                    });
+                } else {
+                    console.warn("🎨 [3D HIGHLIGHT] Skipping segment with NaN values:", {
+                        point1Index: i,
+                        point1: point1,
+                        point2Index: isClosedShape ? (i + 1) % points.length : i + 1,
+                        point2: point2,
+                        local1: local1,
+                        local2: local2,
+                        z1: z1,
+                        z2: z2
+                    });
+                }
             }
 
             // Step 4c.3) Collect selected segment for magenta highlighting
@@ -388,19 +412,43 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
                     const point1 = points[segmentIndex];
                     const point2 = isClosedShape ? points[(segmentIndex + 1) % points.length] : points[segmentIndex + 1];
 
-                    const local1 = worldToThreeLocal(point1.pointXLocation, point1.pointYLocation);
-                    const local2 = worldToThreeLocal(point2.pointXLocation, point2.pointYLocation);
+                    // Step 4c.3a) Validate points have coordinates
+                    if (point1 && point1.pointXLocation !== undefined && point1.pointYLocation !== undefined &&
+                        point2 && point2.pointXLocation !== undefined && point2.pointYLocation !== undefined) {
 
-                    const z1 = point1.pointZLocation || dataCentroidZ || 0;
-                    const z2 = point2.pointZLocation || dataCentroidZ || 0;
+                        const local1 = worldToThreeLocal(point1.pointXLocation, point1.pointYLocation);
+                        const local2 = worldToThreeLocal(point2.pointXLocation, point2.pointYLocation);
 
-                    magentaSegments.push({
-                        x1: local1.x, y1: local1.y, z1: z1,
-                        x2: local2.x, y2: local2.y, z2: z2
-                    });
+                        // Step 4c.3b) Validate conversion results
+                        if (local1 && local1.x !== undefined && local1.y !== undefined &&
+                            local2 && local2.x !== undefined && local2.y !== undefined) {
 
-                    if (developerModeEnabled) {
-                        console.log("🎨 [3D HIGHLIGHT] Drawing selected segment " + segmentIndex + " in magenta for " + kadObject.entityType);
+                            const z1 = point1.pointZLocation || dataCentroidZ || 0;
+                            const z2 = point2.pointZLocation || dataCentroidZ || 0;
+
+                            // Step 4c.3c) Final NaN check before adding to array
+                            if (!isNaN(local1.x) && !isNaN(local1.y) && !isNaN(z1) &&
+                                !isNaN(local2.x) && !isNaN(local2.y) && !isNaN(z2)) {
+                                magentaSegments.push({
+                                    x1: local1.x, y1: local1.y, z1: z1,
+                                    x2: local2.x, y2: local2.y, z2: z2
+                                });
+
+                                if (developerModeEnabled) {
+                                    console.log("🎨 [3D HIGHLIGHT] Drawing selected segment " + segmentIndex + " in magenta for " + kadObject.entityType);
+                                }
+                            } else {
+                                console.warn("🎨 [3D HIGHLIGHT] Skipping selected segment with NaN values:", {
+                                    segmentIndex: segmentIndex,
+                                    point1: point1,
+                                    point2: point2,
+                                    local1: local1,
+                                    local2: local2,
+                                    z1: z1,
+                                    z2: z2
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -421,8 +469,25 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
             // Step 4c.5) Draw vertices for all points using billboard points - SKIP if large selection
             if (!skipVertices) {
                 points.forEach((point, index) => {
+                    // Step 4c.5.0) Validate point has coordinates
+                    if (!point || point.pointXLocation === undefined || point.pointYLocation === undefined) {
+                        console.warn("🎨 [3D HIGHLIGHT] Skipping vertex " + index + " - invalid coordinates");
+                        return;
+                    }
+
                     const local = worldToThreeLocal(point.pointXLocation, point.pointYLocation);
                     const z = point.pointZLocation || dataCentroidZ || 0;
+
+                    // Step 4c.5.1) Validate conversion result and check for NaN
+                    if (!local || local.x === undefined || local.y === undefined ||
+                        isNaN(local.x) || isNaN(local.y) || isNaN(z)) {
+                        console.warn("🎨 [3D HIGHLIGHT] Skipping vertex " + index + " - NaN in converted coordinates:", {
+                            point: point,
+                            local: local,
+                            z: z
+                        });
+                        return;
+                    }
 
                     // Step 4c.5a) If this is the start vertex of the selected segment, draw it in magenta
                     const isSelectedSegmentVertex = kadObject.selectionType === "segment" && kadObject.segmentIndex === index;

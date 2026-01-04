@@ -139,22 +139,25 @@ src/fileIO/
 │
 ├── AutoCadIO/
 │   ├── DXFParser.js            # FROM: parseDXFtoKadMaps() ~500 lines
-│   ├── DXFWriter.js            # Compact Simple DXF (2 layers: HOLES, HOLE_TEXT)
-│   └── VulcanDXFWriter.js      # Vulcan-compatible with XData (REF: HoleToVulcanDXF-VBA.bas)
+│   ├── DXFHOLESWriter.js       # Compact Simple DXF (2 layers: HOLES, HOLE_TEXT) 
+|   ├── DXFKADWriter.js         # FROM: exportKADDXF() Also add ability to write 3DFaces to the DXF for Surface sharing
+│   └── VulcanDXFHOLESWriter.js      # Vulcan-compatible with XData (REF: HoleToVulcanDXF-VBA.bas)
 │
 ├── KirraIO/
 │   ├── KADParser.js            # FROM: parseKADFile() ~330 lines
 │   └── KADWriter.js            # FROM: exportKADFile() ~100 lines
 │
 ├── SurpacIO/
-│   ├── SurpacSTRParser.js      # REF: BRENTBUFFHAM_FileToSurpac.pm
-│   ├── SurpacSTRWriter.js      # REF: BRENTBUFFHAM_BlastToSurpac.pm
-│   ├── SurpacDTMParser.js      # NEW: DTM surface format
-│   └── SurpacDTMWriter.js      # NEW: DTM export
+│   ├── SurpacSTRParser.js      # REF: [KAD - BRENTBUFFHAM_FileToSurpac.pm] - [HOLES - BRENTBUFFHAM_BlastToSurpac.pm]
+│   ├── SurpacSTRWriter.js      # REF: 406 windrow pickup.str 
+│   ├── SurpacDTMParser.js      # NEW: DTM surface REF: 251228_s4_226_406_topo.dtm & 251228_s4_226_406_topo.str
+│   └── SurpacDTMWriter.js      # NEW: DTM export Needs two files a DTM and a STR for a surpac Surface.
 │
 ├── ImageIO/
 │   ├── GeoTIFFParser.js        # FROM: loadGeoTIFF() ~150 lines
 │   ├── GeoTIFFWriter.js        # NEW: GeoTIFF export
+│   ├── GeoTIFFSurfaceWriter.js # NEW: TIFF encoded with elevations.
+│   ├── GeoTIFFSurfaceParser.js # NEW: TIFF encoded with elevations.
 │   ├── JPGParser.js            # NEW: JPEG import
 │   └── JPGWriter.js            # NEW: JPEG export
 │
@@ -167,8 +170,8 @@ src/fileIO/
 │   └── PLYWriter.js            # NEW: PLY export
 │
 ├── PointCloudIO/
-│   ├── PointCloudParser.js     # FROM: parseCSVPointCloud() + XYZ/ASC/TXT
-│   └── PointCloudWriter.js     # NEW: Point cloud export
+│   ├── PointCloudParser.js     # FROM: parseCSVPointCloud() + XYZ/ASC/TXT - option to parse points into KADPoints as a single object
+│   └── PointCloudWriter.js     # NEW: Point cloud export - Write Surfaces or KADPoints,Lines,Poly Vertices.
 │
 ├── MinestarIO/
 │   ├── AQMParser.js            # NEW: AQM import
@@ -189,7 +192,7 @@ src/fileIO/
 │   └── CBLASTWriter.js         # REF: CBLASTExport.bas
 │
 ├── GoogleMapsIO/
-│   ├── KMLKMZParser.js         # REF: KMLexample.kml.txt
+│   ├── KMLKMZParser.js         # REF: [HOLES - KMLexample.kml.txt] and KADPoints, Lines, Polys, Text (Not circles).
 │   └── KMLKMZWriter.js         # NEW: KML/KMZ export
 │
 ├── EsriIO/

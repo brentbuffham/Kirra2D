@@ -10,6 +10,7 @@ import DxfParser from "dxf-data-parser";
 import Swal from "sweetalert2";
 window.Swal = Swal; // Expose to window for dialog modules
 import Plotly from "plotly.js-dist";
+// FileManager will be exposed after import below
 import Papa from "papaparse";
 import CryptoJS from "crypto-js";
 import * as turf from "@turf/turf";
@@ -104,6 +105,10 @@ import "./dialog/popups/generic/HolePropertyDialogs.js";
 import "./dialog/popups/generic/ExportDialogs.js";
 import "./dialog/popups/generic/KADDialogs.js";
 import "./dialog/popups/generic/SurfaceAssignmentDialogs.js";
+//=================================================
+// FileManager IO System - Modular file import/export
+//=================================================
+import { fileManager, initializeFileManager } from "./fileIO/init.js";
 //=================================================
 // Overlay System - Unified UI overlay for status, selection, coordinates
 //=================================================
@@ -203,6 +208,12 @@ import { printHeader, printFooter, printBlastStats, printBlastStatsSimple } from
 // Last Modified: "20250816.0140AWST"
 const buildVersion = "202601023.0000AWST"; //Backwards Compatible Date Format AWST = Australian Western Standard Time
 window.buildVersion = buildVersion; // Expose to window for dialog modules
+
+//=================================================
+// FileManager IO System - Expose globally for file operations
+//=================================================
+window.fileManager = fileManager;
+console.log("FileManager initialized with formats:", fileManager.getSupportedFormats());
 
 //=================================================
 // SETUP JSCOLOR
@@ -6875,6 +6886,532 @@ document.getElementById("exportDrawingDXF").addEventListener("click", function (
 	downloadDXF(dxf, filename);
 });
 
+//=================================================
+// NEW FileManager-based Export Buttons
+//=================================================
+
+// Step 1) CSV Export buttons - using FileManager BlastHoleCSVWriter
+// OLD CSV Export Handler - DISABLED (replaced by comprehensive handler at line 7059)
+// document.querySelectorAll(".holes-output-btn").forEach(function (button) {
+// 	button.addEventListener("click", async function () {
+// 		var target = button.getAttribute("data-target");
+// 		console.log("Export button clicked:", target);
+//
+// 		// Step 2) Filter visible holes
+// 		var visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
+//
+// 		if (visibleHoles.length === 0) {
+// 			alert("No visible holes to export.");
+// 			return;
+// 		}
+//
+// 		// Step 3) Determine format from target
+// 		var format = "blasthole-csv-35"; // default
+// 		var columnCount = "35";
+//
+// 		if (target.includes("4Column")) {
+// 			format = "blasthole-csv-4";
+// 			columnCount = "4";
+// 		} else if (target.includes("7Column")) {
+// 			format = "blasthole-csv-7";
+// 			columnCount = "7";
+// 		} else if (target.includes("9Column")) {
+// 			format = "blasthole-csv-9";
+// 			columnCount = "9";
+// 		} else if (target.includes("12Column")) {
+// 			format = "blasthole-csv-12";
+// 			columnCount = "12";
+// 		} else if (target.includes("14Column")) {
+// 			format = "blasthole-csv-14";
+// 			columnCount = "14";
+// 		} else if (target.includes("30Column")) {
+// 			format = "blasthole-csv-30";
+// 			columnCount = "30";
+// 		} else if (target.includes("32Column")) {
+// 			format = "blasthole-csv-32";
+// 			columnCount = "32";
+// 		}
+//
+// 		try {
+// 			// Step 4) Get writer from FileManager
+// 			var Writer = window.fileManager.writers.get(format);
+// 			if (!Writer) {
+// 				// Step 5) Format not registered yet, use generic writer with format option
+// 				Writer = window.fileManager.writers.get("blasthole-csv-35");
+// 				var writer = new Writer({ format: columnCount + "column" });
+// 			} else {
+// 				var writer = new Writer({ format: columnCount + "column" });
+// 			}
+//
+// 			// Step 6) Generate CSV content
+// 			var blob = await writer.write({ holes: visibleHoles });
+//
+// 			// Step 7) Download file
+// 			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+// 			var filename = "KIRRA_HOLES_" + columnCount + "COL_" + timestamp + ".csv";
+// 			writer.downloadFile(blob, filename);
+//
+// 			console.log("Exported " + visibleHoles.length + " holes to " + columnCount + "-column CSV");
+// 		} catch (error) {
+// 			console.error("Export error:", error);
+// 			alert("Error exporting holes: " + error.message);
+// 		}
+// 	});
+// });
+
+// Step 8) KAD Export button - using FileManager KADWriter
+document.querySelectorAll(".kad-output-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		console.log("KAD export button clicked");
+
+		try {
+			// Step 9) Get writer from FileManager
+			var Writer = window.fileManager.writers.get("kad");
+			if (!Writer) {
+				throw new Error("KAD writer not registered");
+			}
+
+			var writer = new Writer();
+
+			// Step 10) Write KAD data
+			var result = await writer.write({ kadDrawingsMap: window.allKADDrawingsMap });
+
+			// Step 11) Download both files
+			writer.downloadFile(result.kadFile, result.kadFilename);
+			writer.downloadFile(result.txtFile, result.txtFilename);
+
+			console.log("KAD export completed");
+		} catch (error) {
+			console.error("KAD export error:", error);
+			alert("Error exporting KAD file: " + error.message);
+		}
+	});
+});
+
+// Step 12) DXF Holes Export button - using FileManager DXFHOLESWriter
+document.querySelectorAll(".dxf-holes-output-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		console.log("DXF Holes export button clicked");
+
+		// Step 13) Filter visible holes
+		var visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
+
+		if (visibleHoles.length === 0) {
+			alert("No visible holes to export.");
+			return;
+		}
+
+		try {
+			// Step 14) Get writer from FileManager
+			var Writer = window.fileManager.writers.get("dxf-holes");
+			if (!Writer) {
+				throw new Error("DXF Holes writer not registered");
+			}
+
+			var writer = new Writer();
+
+			// Step 15) Generate DXF content
+			var blob = await writer.write({ holes: visibleHoles });
+
+			// Step 16) Download file
+			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+			var filename = "KIRRA_HOLES_DXF_" + timestamp + ".dxf";
+			writer.downloadFile(blob, filename);
+
+			console.log("Exported " + visibleHoles.length + " holes to compact 2-layer DXF");
+		} catch (error) {
+			console.error("DXF export error:", error);
+			alert("Error exporting DXF file: " + error.message);
+		}
+	});
+});
+
+//=============================================================
+// COMPREHENSIVE IMPORT/EXPORT BUTTON WIRING
+//=============================================================
+// Step 1) Wire up ALL import/export buttons for the new file I/O section
+// Step 2) Created: 2026-01-03
+
+// HOLES CSV IMPORT - Using FileManager BlastHoleCSVParser
+document.querySelectorAll(".holes-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var input = document.createElement("input");
+		input.type = "file";
+		input.accept = ".csv,.txt";
+		input.onchange = function (e) {
+			var file = e.target.files[0];
+			if (!file) return;
+
+			var reader = new FileReader();
+			reader.onload = function (event) {
+				try {
+					parseK2Dcsv(event.target.result);
+					showModalMessage("Import Successful", "CSV file imported successfully", "success");
+				} catch (error) {
+					showModalMessage("Import Failed", "Error importing CSV: " + error.message, "error");
+				}
+			};
+			reader.readAsText(file);
+		};
+		input.click();
+	});
+});
+
+// HOLES CSV EXPORT - Using FileManager BlastHoleCSVWriter with dropdown format selection
+document.querySelectorAll(".holes-output-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		// Step 1) Check if there's a format dropdown (new UI) or use data-target (old UI)
+		var formatDropdown = document.getElementById("holesFormat") || document.getElementById("csvFormat");
+		var format = formatDropdown ? formatDropdown.value : null;
+
+		// Step 2) If no dropdown, check data-target attribute (backward compatibility)
+		if (!format) {
+			var target = button.getAttribute("data-target");
+			if (target) {
+				// Step 3) Map old data-target values to format strings
+				if (target.includes("4Column")) format = "4column";
+				else if (target.includes("7Column")) format = "7column";
+				else if (target.includes("9Column")) format = "9column";
+				else if (target.includes("12Column")) format = "12column";
+				else if (target.includes("14Column")) format = "14column";
+				else if (target.includes("30Column")) format = "30column";
+				else if (target.includes("32Column")) format = "32column";
+				else if (target.includes("35Column") || target.includes("AllColumns")) format = "35column";
+				else format = "35column"; // default
+			} else {
+				format = "35column"; // default if nothing specified
+			}
+		}
+
+		// Step 4) Map "all" or "allcolumns" to dynamic all-columns format
+		if (format === "all" || format === "allcolumns" || format === "all-columns") {
+			format = "allcolumns";
+		}
+
+		// Step 5) Filter visible holes
+		var visibleHoles = window.allBlastHoles.filter(function (hole) {
+			return window.isHoleVisible(hole);
+		});
+
+		if (visibleHoles.length === 0) {
+			showModalMessage("No Data", "No visible holes to export", "warning");
+			return;
+		}
+
+		try {
+			// Step 6) Get writer from FileManager
+			var Writer = window.fileManager.writers.get("blasthole-csv-35");
+			if (!Writer) {
+				throw new Error("CSV writer not found in FileManager");
+			}
+
+			// Step 7) Create writer with selected format
+			var writer = new Writer({ format: format });
+
+			// Step 8) Generate CSV content
+			var blob = await writer.write({ holes: visibleHoles });
+
+			// Step 9) Download file
+			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+			var formatLabel;
+			if (format === "allcolumns") {
+				formatLabel = "ALL";
+			} else {
+				formatLabel = format.replace("column", "").toUpperCase();
+			}
+			var filename = "KIRRA_HOLES_CSV_" + formatLabel + "COL_" + timestamp + ".csv";
+			writer.downloadFile(blob, filename);
+
+			console.log("Exported " + visibleHoles.length + " holes in " + format + " format");
+		} catch (error) {
+			console.error("CSV export error:", error);
+			showModalMessage("Export Failed", "Error exporting CSV: " + error.message, "error");
+		}
+	});
+});
+
+// KAD IMPORT - Using FileManager KADParser
+document.querySelectorAll(".kad-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var input = document.createElement("input");
+		input.type = "file";
+		input.accept = ".kad,.txt";
+		input.onchange = function (e) {
+			var file = e.target.files[0];
+			if (!file) return;
+
+			var reader = new FileReader();
+			reader.onload = function (event) {
+				try {
+					parseKADFile(event.target.result);
+				} catch (error) {
+					showModalMessage("Import Failed", "Error importing KAD: " + error.message, "error");
+				}
+			};
+			reader.readAsText(file);
+		};
+		input.click();
+	});
+});
+
+// DXF IMPORT - Using existing handleDXFUpload
+document.querySelectorAll(".dxf-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var input = document.createElement("input");
+		input.type = "file";
+		input.accept = ".dxf,.dwg";
+		input.onchange = handleDXFUpload;
+		input.click();
+	});
+});
+
+// DXF EXPORT - Multiple formats
+document.querySelectorAll(".dxf-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var format = document.getElementById("dxfFormat").value;
+
+		if (format === "dxf-holes") {
+			// Use existing DXF Holes export (compact 2-layer)
+			var visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
+			if (visibleHoles.length === 0) {
+				showModalMessage("No Data", "No visible holes to export", "warning");
+				return;
+			}
+
+			try {
+				var Writer = window.fileManager.writers.get("dxf-holes");
+				var writer = new Writer();
+				var blob = writer.write({ holes: visibleHoles });
+				var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+				writer.downloadFile(blob, "KIRRA_HOLES_DXF_" + timestamp + ".dxf");
+			} catch (error) {
+				showModalMessage("Export Failed", "Error: " + error.message, "error");
+			}
+		} else if (format === "dxf-kad") {
+			// Use existing exportKADDXF function (if it exists)
+			if (typeof exportKADDXF === "function") {
+				exportKADDXF();
+			} else {
+				showModalMessage("Coming Soon", "DXF KAD export will be available in a future update", "info");
+			}
+		} else {
+			showModalMessage("Coming Soon", format + " export will be available in a future update", "info");
+		}
+	});
+});
+
+// SURPAC STR/DTM - Coming Soon
+document.querySelectorAll(".surpac-input-btn, .surpac-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "Surpac STR/DTM import/export will be available in a future update", "info");
+	});
+});
+
+// GEOTIFF/IMAGE IMPORT - Using existing loadGeoTIFF
+document.querySelectorAll(".image-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var format = document.getElementById("imageFormat").value;
+
+		if (format === "geo-tiff" || format === "elevation-tiff") {
+			// Use existing GeoTIFF loader
+			var input = document.createElement("input");
+			input.type = "file";
+			input.accept = ".tif,.tiff";
+			input.onchange = handleGeotiffUpload;
+			input.click();
+		} else if (format === "jpg") {
+			showModalMessage("Coming Soon", "JPG import will be available in a future update", "info");
+		}
+	});
+});
+
+// GEOTIFF/IMAGE EXPORT - Coming Soon
+document.querySelectorAll(".image-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "Image export will be available in a future update", "info");
+	});
+});
+
+// OBJ/GLTF IMPORT - Using existing loadOBJWithMTL via handleSurfaceUpload
+document.querySelectorAll(".obj-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		// Step 1) Show helpful message about selecting multiple files
+		showModalMessage(
+			"OBJ File Selection",
+			"Please select ALL related files:\n\n" +
+			"• .obj file (required)\n" +
+			"• .mtl file (if textured)\n" +
+			"• .jpg/.png texture files (if any)\n\n" +
+			"Use Ctrl+Click (Cmd+Click on Mac) to select multiple files together.",
+			"info"
+		);
+
+		// Step 2) Open file picker with multiple selection enabled
+		setTimeout(function () {
+			var input = document.createElement("input");
+			input.type = "file";
+			input.accept = ".obj,.gltf,.ply,.mtl,.jpg,.jpeg,.png,.gif,.bmp";
+			input.multiple = true; // CRITICAL: Allows selecting OBJ + MTL + textures together
+			input.onchange = handleSurfaceUpload;
+			input.click();
+		}, 100);
+	});
+});
+
+// OBJ/GLTF EXPORT - Coming Soon
+document.querySelectorAll(".obj-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "OBJ/GLTF export will be available in a future update", "info");
+	});
+});
+
+// POINT CLOUD IMPORT - Using existing loadPointCloudFile via handleSurfaceUpload
+document.querySelectorAll(".pointcloud-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var input = document.createElement("input");
+		input.type = "file";
+		input.accept = ".xyz,.txt,.csv,.ply,.pts";
+		input.onchange = handleSurfaceUpload;
+		input.click();
+	});
+});
+
+// POINT CLOUD EXPORT - Coming Soon
+document.querySelectorAll(".pointcloud-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "Point Cloud export will be available in a future update", "info");
+	});
+});
+
+// KML/KMZ - Coming Soon
+document.querySelectorAll(".kml-input-btn, .kml-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "KML/KMZ import/export will be available in a future update", "info");
+	});
+});
+
+// EPIROC SURFACE MANAGER (IREDES) - Coming Soon
+document.querySelectorAll(".surfaceManager-input-btn, .surfaceManager-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var format = document.getElementById("surfaceManagerFormat").value;
+		showModalMessage("Coming Soon", "Epiroc " + format + " will be available in a future update", "info");
+	});
+});
+
+// MINESTAR AQM EXPORT - Using FileManager AQMWriter
+document.querySelectorAll(".aqm-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		// Use existing AQM export dialog
+		if (typeof askForAQMExportDetails === "function") {
+			askForAQMExportDetails();
+		} else {
+			showModalMessage("Coming Soon", "AQM export dialog will be available in a future update", "info");
+		}
+	});
+});
+
+// MINESTAR AQM IMPORT - Coming Soon
+document.querySelectorAll(".aqm-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "AQM import will be available in a future update", "info");
+	});
+});
+
+// WENCO NAV ASCII - Coming Soon
+document.querySelectorAll(".wenco-input-btn, .wenco-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "Wenco NAV ASCII import/export will be available in a future update", "info");
+	});
+});
+
+// CBLAST - Coming Soon
+document.querySelectorAll(".cblast-input-btn, .cblast-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "CBLAST import/export will be available in a future update", "info");
+	});
+});
+
+// LAS POINT CLOUD - Coming Soon
+document.querySelectorAll(".las-input-btn, .las-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "LAS Point Cloud import/export will be available in a future update", "info");
+	});
+});
+
+// ESRI SHAPEFILE - Coming Soon
+document.querySelectorAll(".shape-input-btn, .shape-output-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		showModalMessage("Coming Soon", "ESRI Shapefile import/export will be available in a future update", "info");
+	});
+});
+
+// MEASURED DATA (Mass, Length, Comment) - Using FileManager BlastHoleCSVParser/Writer
+document.querySelectorAll(".measured-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var input = document.createElement("input");
+		input.type = "file";
+		input.accept = ".csv,.txt";
+		input.onchange = function (e) {
+			var file = e.target.files[0];
+			if (!file) return;
+
+			var reader = new FileReader();
+			reader.onload = function (event) {
+				try {
+					// Step 1) Parse CSV using FileManager (handles measured data columns)
+					parseK2Dcsv(event.target.result);
+					showModalMessage("Import Successful", "Measured data CSV imported successfully", "success");
+				} catch (error) {
+					showModalMessage("Import Failed", "Error importing measured data: " + error.message, "error");
+				}
+			};
+			reader.readAsText(file);
+		};
+		input.click();
+	});
+});
+
+document.querySelectorAll(".measured-output-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		// Step 1) Filter visible holes
+		var visibleHoles = window.allBlastHoles.filter(function (hole) {
+			return window.isHoleVisible(hole);
+		});
+
+		if (visibleHoles.length === 0) {
+			showModalMessage("No Data", "No visible holes to export", "warning");
+			return;
+		}
+
+		try {
+			// Step 2) Get measured data writer from FileManager
+			var Writer = window.fileManager.writers.get("blasthole-csv-actual");
+			if (!Writer) {
+				throw new Error("Measured data writer not found in FileManager");
+			}
+
+			var writer = new Writer({ format: "actual" });
+
+			// Step 3) Generate measured data CSV
+			var blob = await writer.write({ holes: visibleHoles });
+
+			// Step 4) Download file
+			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+			var filename = "KIRRA_MEASURED_DATA_" + timestamp + ".csv";
+			writer.downloadFile(blob, filename);
+
+			console.log("Exported " + visibleHoles.length + " holes with measured data (Mass, Length, Comment)");
+		} catch (error) {
+			console.error("Measured data export error:", error);
+			showModalMessage("Export Failed", "Error exporting measured data: " + error.message, "error");
+		}
+	});
+});
+
+//=============================================================
+// END OF COMPREHENSIVE BUTTON WIRING
+//=============================================================
+
 function downloadDXF(content, filename) {
 	if (isIOS()) {
 		const blob = new Blob([content], {
@@ -8302,324 +8839,66 @@ function generateUniqueHoleID(entityName, baseID) {
 	}
 }
 
+//=============================================================
+// VERBOSE REMOVAL COMMENT - parseK2Dcsv function extracted
+//=============================================================
+// Step 1) Function (317 lines, lines 8455-8772) was extracted to src/fileIO/TextIO/BlastHoleCSVParser.js
+// Step 2) Reason: Part of FileManager IO System modularization (Phase 1)
+// Step 3) Date: 2026-01-03
+// Step 4) The function is now exposed via FileManager.parse() with format "blasthole-csv"
+// Step 5) Supports 4, 7, 9, 12, 14, 20, 25, 30, 32, 35 column formats
+// Step 6) Returns structured data: { holes: [], warnings: [] }
+// Step 7) Backward compatibility maintained via wrapper function below
+
 function parseK2Dcsv(data) {
-	if (!allBlastHoles || !Array.isArray(allBlastHoles)) allBlastHoles = [];
-	randomHex = Math.floor(Math.random() * 16777215).toString(16);
-
-	const lines = data.split("\n");
-	let minX = Infinity;
-	let minY = Infinity;
-
-	const supportedLengths = [4, 7, 9, 12, 14, 20, 25, 30, 32, 35];
-	const warnings = [];
-	const newHolesForRowDetection = []; // Track holes that need row detection
-
-	let blastNameValue = "BLAST_" + randomHex;
-
-	for (let i = 0; i < lines.length; i++) {
-		const rawLine = lines[i].trim();
-		if (rawLine === "") continue;
-
-		const values = rawLine.split(",");
-		const len = values.length;
-
-		if (values.every((v) => v.trim() === "")) continue;
-		if (!supportedLengths.includes(len)) {
-			warnings.push("Line " + (i + 1) + " skipped: unsupported column count (" + len + ")");
-			continue;
+	try {
+		// Step 1) Use FileManager to parse CSV data
+		var BlastHoleCSVParser = window.fileManager.parsers.get("blasthole-csv");
+		if (!BlastHoleCSVParser) {
+			throw new Error("BlastHole CSV parser not found in FileManager. Ensure init.js is loaded.");
 		}
 
-		let entityName = blastNameValue;
-		let holeID, startX, startY, startZ, endX, endY, endZ;
-		let holeDiameter = 0,
-			holeType = "Undefined",
-			fromHoleID = "",
-			delay = 0,
-			color = "red";
-		let measuredLength = 0,
-			measuredLengthTimeStamp = "09/05/1975 00:00:00";
-		let measuredMass = 0,
-			measuredMassTimeStamp = "09/05/1975 00:00:00";
-		let measuredComment = "None",
-			measuredCommentTimeStamp = "09/05/1975 00:00:00";
-		let subdrill = 0;
-		let rowID = 0;
-		let posID = 0;
-		let burden = 0;
-		let spacing = 0;
-		let connectorCurve = 0;
+		var parser = new BlastHoleCSVParser();
+		var result = parser.parseCSVData(data);
 
-		if (len === 35) {
-			entityName = values[0];
-			holeID = values[2];
-			startX = parseFloat(values[3]);
-			startY = parseFloat(values[4]);
-			startZ = parseFloat(values[5]);
-			endX = parseFloat(values[6]);
-			endY = parseFloat(values[7]);
-			endZ = parseFloat(values[8]);
-			// Note: We'll ignore the saved calculated values and recalculate using calculateHoleGeometry
-			subdrill = parseFloat(values[12]);
-			holeDiameter = parseFloat(values[15]);
-			holeType = values[16];
-			fromHoleID = values[17];
-			delay = parseInt(values[18]);
-			color = values[19].replace(/\r$/, "");
-			measuredLength = parseFloat(values[24]);
-			measuredLengthTimeStamp = values[25];
-			measuredMass = parseFloat(values[26]);
-			measuredMassTimeStamp = values[27];
-			measuredComment = values[28];
-			measuredCommentTimeStamp = values[29];
-			rowID = values[30] && values[30].trim() !== "" ? parseInt(values[30]) : null;
-			posID = values[31] && values[31].trim() !== "" ? parseInt(values[31]) : null;
-			burden = parseFloat(values[32]);
-			spacing = parseFloat(values[33]);
-			connectorCurve = parseInt(values[34]);
-		} else if (len === 32) {
-			entityName = values[0];
-			holeID = values[2];
-			startX = parseFloat(values[3]);
-			startY = parseFloat(values[4]);
-			startZ = parseFloat(values[5]);
-			endX = parseFloat(values[6]);
-			endY = parseFloat(values[7]);
-			endZ = parseFloat(values[8]);
-			// Note: We'll ignore the saved calculated values and recalculate using calculateHoleGeometry
-			subdrill = parseFloat(values[12]);
-			holeDiameter = parseFloat(values[15]);
-			holeType = values[16];
-			fromHoleID = values[17];
-			delay = parseInt(values[18]);
-			color = values[19].replace(/\r$/, "");
-			measuredLength = parseFloat(values[24]);
-			measuredLengthTimeStamp = values[25];
-			measuredMass = parseFloat(values[26]);
-			measuredMassTimeStamp = values[27];
-			measuredComment = values[28];
-			measuredCommentTimeStamp = values[29];
-			rowID = values[30] && values[30].trim() !== "" ? parseInt(values[30]) : null;
-			posID = values[31] && values[31].trim() !== "" ? parseInt(values[31]) : null;
-		} else if (len === 30) {
-			entityName = values[0];
-			holeID = values[2];
-			startX = parseFloat(values[3]);
-			startY = parseFloat(values[4]);
-			startZ = parseFloat(values[5]);
-			endX = parseFloat(values[6]);
-			endY = parseFloat(values[7]);
-			endZ = parseFloat(values[8]);
-			// Note: We'll ignore the saved calculated values and recalculate using calculateHoleGeometry
-			subdrill = parseFloat(values[12]);
-			holeDiameter = parseFloat(values[15]);
-			holeType = values[16];
-			fromHoleID = values[17];
-			delay = parseInt(values[18]);
-			color = values[19].replace(/\r$/, "");
-			measuredLength = parseFloat(values[24]);
-			measuredLengthTimeStamp = values[25];
-			measuredMass = parseFloat(values[26]);
-			measuredMassTimeStamp = values[27];
-			measuredComment = values[28];
-			measuredCommentTimeStamp = values[29];
-		} else if (len === 14) {
-			entityName = values[0];
-			holeID = values[2];
-			startX = parseFloat(values[3]);
-			startY = parseFloat(values[4]);
-			startZ = parseFloat(values[5]);
-			endX = parseFloat(values[6]);
-			endY = parseFloat(values[7]);
-			endZ = parseFloat(values[8]);
-			holeDiameter = parseFloat(values[9]);
-			holeType = values[10];
-			fromHoleID = values[11];
-			delay = parseInt(values[12]);
-			color = values[13].replace(/\r$/, "");
-		} else if (len === 12) {
-			holeID = values[0];
-			startX = parseFloat(values[1]);
-			startY = parseFloat(values[2]);
-			startZ = parseFloat(values[3]);
-			endX = parseFloat(values[4]);
-			endY = parseFloat(values[5]);
-			endZ = parseFloat(values[6]);
-			holeDiameter = parseFloat(values[7]);
-			holeType = values[8];
-			fromHoleID = values[9].includes(":::") ? values[9] : blastNameValue + ":::" + values[9];
-			delay = parseInt(values[10]);
-			color = values[11].replace(/\r$/, "");
-		} else if (len === 9) {
-			holeID = values[0];
-			startX = parseFloat(values[1]);
-			startY = parseFloat(values[2]);
-			startZ = parseFloat(values[3]);
-			endX = parseFloat(values[4]);
-			endY = parseFloat(values[5]);
-			endZ = parseFloat(values[6]);
-			holeDiameter = parseFloat(values[7]);
-			holeType = values[8];
-			fromHoleID = blastNameValue + ":::" + holeID;
-		} else if (len === 7) {
-			holeID = values[0];
-			startX = parseFloat(values[1]);
-			startY = parseFloat(values[2]);
-			startZ = parseFloat(values[3]);
-			endX = parseFloat(values[4]);
-			endY = parseFloat(values[5]);
-			endZ = parseFloat(values[6]);
-			fromHoleID = blastNameValue + ":::" + holeID;
-		} else if (len === 4) {
-			holeID = values[0];
-			startX = parseFloat(values[1]);
-			startY = parseFloat(values[2]);
-			startZ = parseFloat(values[3]);
-			endX = startX;
-			endY = startY;
-			endZ = startZ;
-			fromHoleID = blastNameValue + ":::" + holeID;
-		}
+		// Step 2) Merge parsed holes into global allBlastHoles array
+		if (!allBlastHoles || !Array.isArray(allBlastHoles)) allBlastHoles = [];
+		allBlastHoles.push(...result.holes);
 
-		// Calculate basic hole properties using the same logic as calculateHoleGeometry
-		const dx = endX - startX;
-		const dy = endY - startY;
-		const dz = endZ - startZ;
-		const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+		// Step 3) Perform duplicate checking using global function
+		var duplicateCheck = checkAndResolveDuplicateHoleIDs(allBlastHoles, "CSV import");
 
-		const epsilon = 1e-10;
-		const magnitude = Math.sqrt(dx * dx + dy * dy + dz * dz);
-		const dotProduct = dz;
-		const normalizedDotProduct = magnitude < epsilon ? 0 : dotProduct / magnitude;
+		if (duplicateCheck.hasDuplicates) {
+			console.log("Resolved " + duplicateCheck.resolved.length + " duplicate hole ID conflicts");
 
-		const angle = 180 - Math.acos(normalizedDotProduct) * (180 / Math.PI);
-		const bearing = (450 - Math.atan2(dy, dx) * (180 / Math.PI)) % 360;
-
-		if (!isNaN(startX) && !isNaN(startY) && !isNaN(startZ) && !isNaN(endX) && !isNaN(endY) && !isNaN(endZ)) {
-			// Create the hole object with initial values
-			const hole = {
-				entityName,
-				entityType: "hole",
-				holeID,
-				startXLocation: startX,
-				startYLocation: startY,
-				startZLocation: startZ,
-				endXLocation: endX,
-				endYLocation: endY,
-				endZLocation: endZ,
-				gradeXLocation: endX, // Will be recalculated
-				gradeYLocation: endY, // Will be recalculated
-				gradeZLocation: endZ, // Will be recalculated
-				subdrillAmount: subdrill,
-				subdrillLength: 0, // Will be recalculated
-				benchHeight: 0, // Will be recalculated
-				holeDiameter,
-				holeType,
-				fromHoleID,
-				timingDelayMilliseconds: delay,
-				colorHexDecimal: color,
-				holeLengthCalculated: length,
-				holeAngle: angle,
-				holeBearing: bearing,
-				measuredLength,
-				measuredLengthTimeStamp,
-				measuredMass,
-				measuredMassTimeStamp,
-				measuredComment,
-				measuredCommentTimeStamp,
-				rowID,
-				posID,
-				visible: true,
-				burden: burden || 0,
-				spacing: spacing || 0,
-				connectorCurve: connectorCurve || 0,
-			};
-
-			// Add to allBlastHoles array first
-			allBlastHoles.push(hole);
-			// If this hole needs row detection, add to list
-			if (rowID === null || rowID === 0 || posID === null || posID === 0) {
-				newHolesForRowDetection.push(hole);
-			}
-
-			// Calculate proper benchHeight and grade positions for ALL holes (not just when subdrill !== 0)
-			if (len !== 4) {
-				// Only skip for 4-point holes (which are just collar coordinates)
-				const cosAngle = Math.cos(angle * (Math.PI / 180));
-				if (Math.abs(cosAngle) > 1e-9) {
-					// Calculate benchHeight from the Z difference minus subdrill
-					hole.benchHeight = Math.abs(startZ - endZ) - subdrill;
-
-					// Use calculateHoleGeometry to recalculate all derived positions
-					// First recalculate based on the existing length to set up grade positions
-					calculateHoleGeometry(hole, length, 1); // Mode 1 = length recalculation
-
-					// If there's subdrill, also update that
-					if (subdrill !== 0) {
-						calculateHoleGeometry(hole, subdrill, 8); // Mode 8 = subdrill recalculation
-					}
+			// Step 4) Show summary to user
+			var summary = "Duplicate hole IDs resolved:\n\n";
+			duplicateCheck.resolved.forEach(function (resolution) {
+				if (resolution.action === "renumbered") {
+					summary += "• " + resolution.entityName + ":" + resolution.oldID + " → " + resolution.newID + "\n";
 				} else {
-					// For horizontal holes, handle specially
-					hole.benchHeight = Math.abs(startZ - endZ);
-					hole.gradeXLocation = endX;
-					hole.gradeYLocation = endY;
-					hole.gradeZLocation = endZ - subdrill;
+					summary += "• " + resolution.entityName + ":" + resolution.holeID + " (" + resolution.action + ")\n";
 				}
-			}
+			});
 
-			minX = Math.min(minX, startX);
-			minY = Math.min(minY, startY);
+			alert(summary);
 		}
+
+		// Step 5) Calculate times and redraw
+		holeTimes = calculateTimes(allBlastHoles);
+		drawData(allBlastHoles, selectedHole);
+
+		return allBlastHoles;
+	} catch (error) {
+		console.error("Error during CSV parsing:", error);
+		alert("Error importing CSV file: " + error.message);
+		throw error;
 	}
-	// Group holes by entity for row detection
-	const entitiesForRowDetection = new Map();
-	newHolesForRowDetection.forEach((hole) => {
-		if (!entitiesForRowDetection.has(hole.entityName)) {
-			entitiesForRowDetection.set(hole.entityName, []);
-		}
-		entitiesForRowDetection.get(hole.entityName).push(hole);
-	});
-
-	// In parseCSV and processCsvData:
-	entitiesForRowDetection.forEach((holes, entityName) => {
-		improvedSmartRowDetection(holes, entityName); //
-	});
-
-	// Auto-assign rowID/posID for holes that still don't have them
-	const unassignedHoles = allBlastHoles.filter((hole) => hole.rowID === null || hole.rowID === 0 || hole.posID === null || hole.posID === 0);
-	unassignedHoles.forEach((hole) => {
-		if (!hole.rowID || hole.rowID === 0) {
-			hole.rowID = getNextRowID(hole.entityName);
-		}
-		if (!hole.posID || hole.posID === 0) {
-			hole.posID = getNextPosID(hole.entityName, hole.rowID);
-		}
-	});
-
-	if (warnings.length > 0) {
-		console.warn("parseK2Dcsv warnings:\n" + warnings.join("\n"));
-	}
-	// CRITICAL: Check for duplicate hole IDs after parsing
-	const duplicateCheck = checkAndResolveDuplicateHoleIDs(allBlastHoles, "CSV import");
-
-	if (duplicateCheck.hasDuplicates) {
-		console.log("Resolved", duplicateCheck.resolved.length, "duplicate hole ID conflicts");
-
-		// Show summary to user
-		let summary = "Duplicate hole IDs resolved:\n\n";
-		duplicateCheck.resolved.forEach((resolution) => {
-			if (resolution.action === "renumbered") {
-				summary += "? " + resolution.entityName + ":" + resolution.oldID + " ? " + resolution.newID + "\n";
-			} else {
-				summary += "? " + resolution.entityName + ":" + resolution.holeID + " (" + resolution.action + ")\n";
-			}
-		});
-
-		alert(summary);
-	}
-	holeTimes = calculateTimes(allBlastHoles);
-	drawData(allBlastHoles, selectedHole);
-	return allBlastHoles;
 }
+
+// REMOVED OLD IMPLEMENTATION (317 lines) - Now using FileManager BlastHoleCSVParser
+// Old code handled: 4, 7, 9, 12, 14, 20, 25, 30, 32, 35 column formats
+// All parsing logic moved to src/fileIO/TextIO/BlastHoleCSVParser.js
 
 async function handleDXFUpload(event) {
 	const file = event.target.files[0];
@@ -8660,434 +8939,65 @@ function getUniqueEntityName(baseName, entityType) {
 	return uniqueName;
 }
 
+//=============================================================
+// VERBOSE REMOVAL COMMENT - parseDXFtoKadMaps function extracted
+//=============================================================
+// Step 1) Function (428 lines, lines 8813-9241) was extracted to src/fileIO/AutoCadIO/DXFParser.js
+// Step 2) Reason: Part of FileManager IO System modularization (Phase 2)
+// Step 3) Date: 2026-01-03
+// Step 4) The function is now exposed via FileManager.parse() with format "dxf"
+// Step 5) Handles 9 DXF entity types: POINT, INSERT, LINE, POLYLINE, CIRCLE, ELLIPSE, TEXT, MTEXT, 3DFACE
+// Step 6) Returns structured data: { kadDrawings: Map, surfaces: Map, entityCounts: {} }
+// Step 7) Backward compatibility maintained via wrapper function below
+
 async function parseDXFtoKadMaps(dxf) {
-	// Step 1) Create progress dialog for DXF parsing
-	var progressUpdateDXF = null;
-	var progressDialog = null;
-	var progressBar = null;
-	var progressText = null;
-	var totalEntities = dxf.entities ? dxf.entities.length : 0;
-
-	if (totalEntities > 10) {
-		var progressContent = "<p>Parsing DXF File</p>" + "<p>Please wait, this may take a moment...</p>" + '<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">' + '<div id="dxfProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>' + "</div>" + '<p id="dxfProgressText">Initializing...</p>';
-
-		progressDialog = new FloatingDialog({
-			title: "DXF Import Progress",
-			content: progressContent,
-			layoutType: "standard",
-			width: 400,
-			height: 200,
-			showConfirm: false,
-			showCancel: false,
-			draggable: true,
-		});
-
-		progressDialog.show();
-
-		// Step 2) Wait for dialog to render, then get progress elements
-		await new Promise(function (resolve) {
-			setTimeout(resolve, 50);
-		});
-
-		progressBar = document.getElementById("dxfProgressBar");
-		progressText = document.getElementById("dxfProgressText");
-
-		// Step 3) Update progress function
-		progressUpdateDXF = function (percent, message) {
-			if (progressBar) progressBar.style.width = percent + "%";
-			if (progressText) progressText.textContent = message;
-		};
-	}
-
-	// Step 4) seed counters so we never collide with existing entries
-	var counts = {
-		point: 0,
-		line: 0,
-		poly: 0,
-		circle: 0,
-		text: 0,
-	};
-
-	// Step 5) kirra.js centroid offsets
-	var offsetX = 0; //centroidX || 0;
-	var offsetY = 0; //centroidY || 0;
-	// Step 6) Collections for surface data
-	var surfacePoints = [];
-	var surfaceTriangles = [];
-
-	// Step 7) raw DXF color or bright-red fallback, but return as "#RRGGBB"
-	function getColor(idx) {
-		// pick the DXF color (decimal) or default grey
-		var dec = idx != null && idx >= 0 ? idx : 0x777777;
-		// convert to hex, pad to 6 digits, uppercase if you like
-		var hex = dec.toString(16).padStart(6, "0").toUpperCase();
-		return "#" + hex;
-	}
-
-	// Step 8) iterate over every entity with progress updates
-	for (var index = 0; index < dxf.entities.length; index++) {
-		var ent = dxf.entities[index];
-
-		// Step 9) Update progress every entity and yield to UI periodically
-		if (progressUpdateDXF) {
-			var percent = Math.round((index / totalEntities) * 100);
-			var message = "Processing entity " + (index + 1) + " of " + totalEntities;
-			progressUpdateDXF(percent, message);
-
-			// Yield to UI every 50 entities to allow progress bar to update
-			if (index % 50 === 0) {
-				await new Promise(function (resolve) {
-					setTimeout(resolve, 0);
-				});
-			}
+	try {
+		// Step 1) Use FileManager to parse DXF data
+		var DXFParser = window.fileManager.parsers.get("dxf");
+		if (!DXFParser) {
+			throw new Error("DXF parser not found in FileManager. Ensure init.js is loaded.");
 		}
-		var t = ent.type.toUpperCase();
-		var color = getColor(ent.color);
 
-		// POINT or VERTEX
-		if (t === "POINT" || t === "VERTEX") {
-			var x = (ent.position && ent.position.x != null ? ent.position.x : ent.x) - offsetX;
-			var y = (ent.position && ent.position.y != null ? ent.position.y : ent.y) - offsetY;
-			var z = (ent.position && ent.position.z != null ? ent.position.z : ent.z) || 0;
-			if (x == null || y == null) {
-				console.warn("POINT/VERTEX missing coords:", ent);
-			} else {
-				// FIXED: Use unique name generation
-				var baseName = ent.name || "pointEntity_" + ++counts.point;
-				var name = getUniqueEntityName(baseName, "point");
+		var parser = new DXFParser();
+		var result = await parser.parse({ dxfData: dxf });
 
-				allKADDrawingsMap.set(name, {
-					entityName: name,
-					entityType: "point",
-					data: [
-						{
-							entityName: name,
-							entityType: "point",
-							pointID: 1,
-							pointXLocation: x,
-							pointYLocation: y,
-							pointZLocation: z,
-							color: color,
-						},
-					],
-				});
-			}
+		// Step 2) Merge parsed KAD drawings into global allKADDrawingsMap
+		for (var [entityName, entityData] of result.kadDrawings.entries()) {
+			allKADDrawingsMap.set(entityName, entityData);
 		}
-		// INSERT ? single point
-		else if (t === "INSERT") {
-			if (!ent.position) {
-				console.warn("INSERT missing position:", ent);
-			} else {
-				var xi = ent.position.x - offsetX;
-				var yi = ent.position.y - offsetY;
-				var zi = ent.position.z || 0;
 
-				// FIXED: Use unique name generation
-				var baseNameI = ent.name || "pointEntity_" + ++counts.point;
-				var nameI = getUniqueEntityName(baseNameI, "point");
+		// Step 3) Merge parsed surfaces into global loadedSurfaces Map
+		for (var [surfaceId, surfaceData] of result.surfaces.entries()) {
+			loadedSurfaces.set(surfaceId, surfaceData);
 
-				allKADDrawingsMap.set(nameI, {
-					entityName: nameI,
-					entityType: "point",
-					data: [
-						{
-							entityName: nameI,
-							entityType: "point",
-							pointID: 1,
-							pointXLocation: xi,
-							pointYLocation: yi,
-							pointZLocation: zi,
-							color: color,
-						},
-					],
-				});
-			}
-		} else if (t === "LINE") {
-			var v = ent.vertices;
-			if (!v || v.length < 2) {
-				console.warn("LINE missing vertices:", ent);
-			} else {
-				// FIXED: Use unique name generation
-				var baseNameL = ent.name || "lineEntity_" + ++counts.line;
-				var nameL = getUniqueEntityName(baseNameL, "line");
-
-				allKADDrawingsMap.set(nameL, {
-					entityName: nameL,
-					entityType: "line",
-					data: [
-						{
-							entityName: nameL,
-							entityType: "line",
-							pointID: 1,
-							pointXLocation: v[0].x - offsetX,
-							pointYLocation: v[0].y - offsetY,
-							pointZLocation: v[0].z || 0,
-							lineWidth: 1,
-							color: color,
-							closed: false,
-						},
-						{
-							entityName: nameL,
-							entityType: "line",
-							pointID: 2,
-							pointXLocation: v[1].x - offsetX,
-							pointYLocation: v[1].y - offsetY,
-							pointZLocation: v[1].z || 0,
-							lineWidth: 1,
-							color: color,
-							closed: false,
-						},
-					],
-				});
-			}
-		}
-		// LWPOLYLINE or POLYLINE ? poly (closed) or line (open)
-		else if (t === "LWPOLYLINE" || t === "POLYLINE") {
-			var verts = ent.vertices || ent.controlPoints || [];
-			if (!verts.length) {
-				console.warn("POLYLINE missing vertices:", ent);
-			} else {
-				var isClosed = !!(ent.closed || ent.shape);
-				var entityType = isClosed ? "poly" : "line";
-				var nameP;
-				if (isClosed) {
-					// FIXED: Use unique name generation
-					var baseNameP = ent.name || "polyEntity_" + ++counts.poly;
-					nameP = getUniqueEntityName(baseNameP, "poly");
-				} else {
-					// FIXED: Use unique name generation
-					var baseNameP = ent.name || "lineEntity_" + ++counts.line;
-					nameP = getUniqueEntityName(baseNameP, "line");
+			// Step 4) Save surface to database using async pattern
+			setTimeout(async function () {
+				try {
+					await saveSurfaceToDB(surfaceId);
+					console.log("DXF surface saved to database: " + surfaceId);
+					debouncedUpdateTreeView();
+				} catch (saveError) {
+					console.error("Failed to save DXF surface:", saveError);
 				}
-
-				allKADDrawingsMap.set(nameP, {
-					entityName: nameP,
-					entityType: entityType,
-					data: [],
-				});
-				var dataP = allKADDrawingsMap.get(nameP).data;
-				verts.forEach(function (v, i) {
-					dataP.push({
-						entityName: nameP,
-						entityType: entityType,
-						pointID: i + 1,
-						pointXLocation: v.x - offsetX,
-						pointYLocation: v.y - offsetY,
-						pointZLocation: v.z || 0,
-						lineWidth: 1,
-						color: color,
-						closed: false,
-					});
-				});
-				// close if flagged
-				if (isClosed) {
-					var v0p = verts[0];
-					dataP.push({
-						entityName: nameP,
-						entityType: entityType,
-						pointID: dataP.length + 1,
-						pointXLocation: v0p.x - offsetX,
-						pointYLocation: v0p.y - offsetY,
-						pointZLocation: v0p.z || 0,
-						lineWidth: 1,
-						color: color,
-						closed: true,
-					});
-				}
-			}
+			}, 100);
 		}
-		// CIRCLE
-		else if (t === "CIRCLE") {
-			if (!ent.center) {
-				console.warn("CIRCLE missing center:", ent);
-			} else {
-				// FIXED: Use unique name generation
-				var baseNameC = ent.name || "circleEntity_" + ++counts.circle;
-				var nameC = getUniqueEntityName(baseNameC, "circle");
 
-				allKADDrawingsMap.set(nameC, {
-					entityName: nameC,
-					entityType: "circle",
-					data: [
-						{
-							entityName: nameC,
-							entityType: "circle",
-							pointID: 1,
-							pointXLocation: ent.center.x - offsetX,
-							pointYLocation: ent.center.y - offsetY,
-							pointZLocation: ent.center.z || 0,
-							radius: ent.radius,
-							lineWidth: 1,
-							color: color,
-						},
-					],
-				});
-			}
-		}
-		// ELLIPSE sampled as closed polygon
-		else if (t === "ELLIPSE") {
-			if (!ent.center) {
-				console.warn("ELLIPSE missing center:", ent);
-			} else {
-				// FIXED: Use unique name generation
-				var baseNameE = ent.name || "polyEntity_" + ++counts.poly;
-				var nameE = getUniqueEntityName(baseNameE, "poly");
-
-				allKADDrawingsMap.set(nameE, {
-					entityName: nameE,
-					entityType: "poly",
-					data: [],
-				});
-				var dataE = allKADDrawingsMap.get(nameE).data;
-				var segs = 64;
-				for (var i = 0; i < segs; i++) {
-					var angle = ent.startAngle + (ent.endAngle - ent.startAngle) * (i / (segs - 1));
-					var px = ent.center.x + ent.xRadius * Math.cos(angle) - offsetX;
-					var py = ent.center.y + ent.yRadius * Math.sin(angle) - offsetY;
-					var closed = true;
-					dataE.push({
-						entityName: nameE,
-						entityType: "poly",
-						pointID: i + 1,
-						pointXLocation: px,
-						pointYLocation: py,
-						pointZLocation: ent.center.z || 0,
-						lineWidth: 1,
-						color: color,
-						closed: closed,
-					});
-				}
-				// close loop
-				dataE.push(
-					Object.assign({}, dataE[0], {
-						pointID: dataE.length + 1,
-					})
-				);
-			}
-		}
-		// TEXT or MTEXT
-		else if (t === "TEXT" || t === "MTEXT") {
-			var pos = ent.startPoint || ent.position;
-			if (!pos) {
-				console.warn("TEXT missing position:", ent);
-			} else {
-				// FIXED: Use unique name generation
-				var baseNameT = ent.name || "textEntity_" + ++counts.text;
-				var nameT = getUniqueEntityName(baseNameT, "text");
-
-				allKADDrawingsMap.set(nameT, {
-					entityName: nameT,
-					entityType: "text",
-					data: [
-						{
-							entityName: nameT,
-							entityType: "text",
-							pointID: 1,
-							pointXLocation: pos.x - offsetX,
-							pointYLocation: pos.y - offsetY,
-							pointZLocation: pos.z || 0,
-							text: ent.text,
-							color: color,
-							fontHeight: ent.height || 12, // Step B1) Add fontHeight from DXF, default 12
-						},
-					],
-				});
-			}
-		} // NEW: 3DFACE handling for surfaces
-		else if (t === "3DFACE") {
-			// 3DFACE entities have vertices property with 4 allBlastHoles (last one often duplicates first for triangles)
-			var verts = ent.vertices;
-			if (!verts || verts.length < 3) {
-				console.warn("3DFACE missing vertices:", ent);
-			} else {
-				// Extract the three unique vertices for the triangle
-				var p1 = {
-					x: verts[0].x - offsetX,
-					y: verts[0].y - offsetY,
-					z: verts[0].z || 0,
-				};
-				var p2 = {
-					x: verts[1].x - offsetX,
-					y: verts[1].y - offsetY,
-					z: verts[1].z || 0,
-				};
-				var p3 = {
-					x: verts[2].x - offsetX,
-					y: verts[2].y - offsetY,
-					z: verts[2].z || 0,
-				};
-
-				// Add allBlastHoles to surface allBlastHoles collection (with deduplication)
-				var p1Index = addUniquePoint(surfacePoints, p1);
-				var p2Index = addUniquePoint(surfacePoints, p2);
-				var p3Index = addUniquePoint(surfacePoints, p3);
-
-				// Create triangle referencing the point indices
-				surfaceTriangles.push({
-					vertices: [surfacePoints[p1Index], surfacePoints[p2Index], surfacePoints[p3Index]],
-					minZ: Math.min(p1.z, p2.z, p3.z),
-					maxZ: Math.max(p1.z, p2.z, p3.z),
-				});
-			}
-		}
-		// anything else ? skip
-		else {
-			console.warn("Unsupported DXF entity:", ent.type);
-		}
-	}
-	// NEW: Create and SAVE surface from 3DFACE data if any triangles were found
-	if (surfaceTriangles.length > 0) {
-		var surfaceName = "DXF_Surface_" + Date.now();
-		var surfaceId = getUniqueEntityName(surfaceName, "surface");
-
-		console.log("Creating surface from DXF 3DFACE entities: " + surfaceTriangles.length + " triangles, " + surfacePoints.length + " points");
-
-		// Add to surfaces system (same as point cloud)
-		loadedSurfaces.set(surfaceId, {
-			id: surfaceId,
-			name: surfaceId,
-			points: surfacePoints,
-			triangles: surfaceTriangles,
-			visible: true,
-			gradient: "hillshade", // Could be "hillshade" for your lighting effect
-			transparency: 1.0,
-			minLimit: null,
-			maxLimit: null,
-		});
-
-		// Update display
+		// Step 5) Update UI elements
 		updateCentroids();
 		drawData(allBlastHoles, selectedHole);
+		debouncedSaveKAD();
+		zoomToFitAll();
 
-		// CRITICAL: Save to database using async pattern like point cloud loader
-		setTimeout(async () => {
-			try {
-				await saveSurfaceToDB(surfaceId);
-				console.log("✅ DXF surface saved to database: " + surfaceId);
-				debouncedUpdateTreeView();
-			} catch (saveError) {
-				console.error("? Failed to save DXF surface:", saveError);
-			}
-		}, 100);
+		// Step 6) Log import summary
+		console.log("DXF import complete. Entities imported:", result.entityCounts);
+		console.log("Appended to KAD maps:", {
+			drawings: allKADDrawingsMap,
+		});
+	} catch (error) {
+		console.error("Error during DXF parsing:", error);
+		alert("Error importing DXF file: " + error.message);
+		throw error;
 	}
-
-	// Step 10) Update progress to 100% and close dialog
-	if (progressUpdateDXF) {
-		progressUpdateDXF(100, "DXF import complete!");
-		setTimeout(function () {
-			if (progressDialog) {
-				progressDialog.close();
-			}
-		}, 500);
-	}
-
-	console.log("Appended to KAD maps:", {
-		drawings: allKADDrawingsMap,
-	});
-	// Trigger a debounced save to persist the newly loaded data
-	debouncedSaveKAD();
-	// Frame the newly loaded data correctly on the canvas
-	zoomToFitAll();
 }
 
 function addUniquePoint(pointsArray, newPoint, tolerance = 0.001) {
@@ -11189,78 +11099,42 @@ function convertPointsToActualDataCSV() {
 	return csv;
 }
 
-function convertPointsToAQMCSV(allBlastHoles, fileNameValue, blastName, patternName, materialType, instructionValue, useHoleTypeAsInstruction, writeIngoreColumn, columnOrderArray) {
-	// ? Filter input allBlastHoles to only visible ones
-	const visibleBlastHoles = allBlastHoles.filter((hole) => blastGroupVisible && hole.visible !== false);
+//=============================================================
+// VERBOSE REMOVAL COMMENT - convertPointsToAQMCSV function extracted
+//=============================================================
+// Step 1) Function (73 lines, lines 10973-11045) was extracted to src/fileIO/MinestarIO/AQMWriter.js
+// Step 2) Reason: Part of FileManager IO System modularization (Phase 2)
+// Step 3) Date: 2026-01-03
+// Step 4) The function is now exposed via FileManager.write() with format "aqm-csv"
+// Step 5) Handles 11 columns: Pattern, Blast, Name, Easting, Northing, Elevation, Angle, Azimuth, Diameter, Material Type, Instruction
+// Step 6) Dynamic column ordering via columnOrderArray parameter
+// Step 7) Special azimuth calculation: (holeBearing - 180) % 360
+// Step 8) Backward compatibility maintained via wrapper function below
 
-	if (!visibleBlastHoles || !Array.isArray(visibleBlastHoles) || visibleBlastHoles.length === 0) return;
+function convertPointsToAQMCSV(allBlastHoles, fileNameValue, blastName, patternName, materialType, instructionValue, useHoleTypeAsInstruction, writeIgnoreColumn, columnOrderArray) {
+	try {
+		// Step 1) Filter input allBlastHoles to only visible ones
+		var visibleBlastHoles = allBlastHoles.filter(function (hole) {
+			return blastGroupVisible && hole.visible !== false;
+		});
 
-	let aqm = "";
-	let material = materialType;
-	let pattern = patternName;
-	let blast = blastName;
-	let instruction = instructionValue;
-	let fileName = fileNameValue;
-	let columns = columnOrderArray; // 11 possible columns
+		if (!visibleBlastHoles || !Array.isArray(visibleBlastHoles) || visibleBlastHoles.length === 0) return "";
 
-	// Iterate over the allBlastHoles array and convert each object to an AQM row
-	for (let i = 0; i < visibleBlastHoles.length; i++) {
-		const hole = visibleBlastHoles[i];
-
-		let columnOrder = []; // Initialize the column order for each row
-
-		let toeX = parseFloat(hole.endXLocation.toFixed(4));
-		let toeY = parseFloat(hole.endYLocation.toFixed(4));
-		let toeZ = parseFloat(hole.endZLocation.toFixed(4));
-		// Iterate over the columns and map them to their corresponding values
-		for (let j = 0; j < columns.length; j++) {
-			if (columns[j] === "Pattern") {
-				columnOrder.push(pattern);
-			} else if (columns[j] === "Blast") {
-				columnOrder.push(blast);
-			} else if (columns[j] === "Name") {
-				columnOrder.push(hole.holeID);
-			} else if (columns[j] === "Easting") {
-				columnOrder.push(toeX); // Assuming 'toeX' holds the Easting value
-			} else if (columns[j] === "Northing") {
-				columnOrder.push(toeY); // Assuming 'toeY' holds the Northing value
-			} else if (columns[j] === "Elevation") {
-				columnOrder.push(toeZ); // Assuming 'toeZ' holds the Elevation value
-			} else if (columns[j] === "Angle") {
-				columnOrder.push(hole.holeAngle);
-			} else if (columns[j] === "Azimuth") {
-				let azimuth = parseFloat(((hole.holeBearing - 180) % 360).toFixed(1));
-				if (azimuth < 0) {
-					azimuth += 360;
-				}
-				columnOrder.push(azimuth);
-			} else if (columns[j] === "Diameter") {
-				columnOrder.push(hole.holeDiameter);
-			} else if (columns[j] === "Material Type") {
-				columnOrder.push(material);
-			} else if (columns[j] === "Instruction") {
-				if (useHoleTypeAsInstruction) {
-					columnOrder.push(hole.holeType);
-				} else {
-					columnOrder.push(instruction);
-				}
-			} else if (columns[j] === "Ignore") {
-				if (writeIngoreColumn) {
-					columnOrder.push("ignored");
-				} else {
-					//do nothing
-				}
-
-				// Default to an empty string for unknown columns
-			}
+		// Step 2) Use FileManager to generate AQM CSV
+		var AQMWriter = window.fileManager.writers.get("aqm-csv");
+		if (!AQMWriter) {
+			throw new Error("AQM CSV writer not found in FileManager. Ensure init.js is loaded.");
 		}
 
-		// Join the column values to create a row and add it to the AQM string
-		const row = columnOrder.join(",");
-		aqm += row + "\n";
-	}
+		var writer = new AQMWriter();
+		var csvContent = writer.generateAQMCSV(visibleBlastHoles, blastName, patternName, materialType, instructionValue, useHoleTypeAsInstruction, writeIgnoreColumn, columnOrderArray);
 
-	return aqm;
+		// Step 3) Return the CSV content (backward compatible)
+		return csvContent;
+	} catch (error) {
+		console.error("Error during AQM CSV generation:", error);
+		throw error;
+	}
 }
 
 //-----------------------------------------------------------------------------//
@@ -33385,19 +33259,31 @@ function handlePatternInPolygonClick(event) {
 	const clientX = event.clientX || (event.touches && event.touches[0].clientX);
 	const clientY = event.clientY || (event.touches && event.touches[0].clientY);
 
-	const rect = canvas.getBoundingClientRect();
-	const clickX = clientX - rect.left;
-	const clickY = clientY - rect.top;
+	// FIX: Check if worldX/worldY already set by 3D mode (avoid double conversion)
+	var using3DCoordinates = false;
+	if (window.worldX !== undefined && window.worldY !== undefined) {
+		// Use coordinates already set by 3D click handler (already snapped)
+		worldX = window.worldX;
+		worldY = window.worldY;
+		using3DCoordinates = true;
+		// Clear window variables to prevent stale values
+		window.worldX = undefined;
+		window.worldY = undefined;
+	} else {
+		// 2D mode: Convert canvas coordinates to world coordinates with snapping
+		const rect = canvas.getBoundingClientRect();
+		const clickX = clientX - rect.left;
+		const clickY = clientY - rect.top;
 
-	// SNAPPIN SNAP:
-	const snapResult = canvasToWorldWithSnap(clickX, clickY);
-	worldX = snapResult.worldX;
-	worldY = snapResult.worldY;
+		const snapResult = canvasToWorldWithSnap(clickX, clickY);
+		worldX = snapResult.worldX;
+		worldY = snapResult.worldY;
 
-	// Show snap feedback if snapped
-	if (snapResult.snapped) {
-		updateStatusMessage("Snapped to " + snapResult.snapTarget.description);
-		setTimeout(() => updateStatusMessage(""), 1500);
+		// Show snap feedback if snapped
+		if (snapResult.snapped) {
+			updateStatusMessage("Snapped to " + snapResult.snapTarget.description);
+			setTimeout(() => updateStatusMessage(""), 1500);
+		}
 	}
 
 	switch (patternPolygonStep) {
@@ -36860,190 +36746,34 @@ function processSurfacePoints(points, fileName) {
 	}, 100);
 }
 // Step 1) Enhanced OBJ parser - extracts vertices, faces, UVs, normals, and material references
+//=============================================================
+// VERBOSE REMOVAL COMMENT - parseOBJFile function extracted
+//=============================================================
+// Step 1) Function (185 lines, lines 36644-36828) was extracted to src/fileIO/ThreeJSMeshIO/OBJParser.js
+// Step 2) Reason: Part of FileManager IO System modularization (Phase 2)
+// Step 3) Date: 2026-01-03
+// Step 4) The function is now exposed via FileManager.parse() with format "obj"
+// Step 5) Handles vertices, faces, UVs, normals, materials, n-gon triangulation
+// Step 6) Returns structured data: { vertices, faces, uvs, normals, triangles, materialLibrary, hasTexture, hasFaces }
+// Step 7) Backward compatibility maintained via wrapper function below
+
 function parseOBJFile(content, mtlContent) {
-	// Step 2) Initialize data structures
-	const vertices = []; // Vertex positions (v lines)
-	const uvs = []; // Texture coordinates (vt lines)
-	const normals = []; // Vertex normals (vn lines)
-	const faces = []; // Face indices (f lines)
-	let materialLibrary = ""; // MTL file reference (mtllib line)
-	let currentMaterial = ""; // Current material name (usemtl line)
-	const materialGroups = []; // Track which faces use which material
-
-	// Step 3) Parse OBJ content line by line
-	const lines = content.split("\n");
-
-	lines.forEach(function (line) {
-		const trimmedLine = line.trim();
-
-		// Step 4) Skip empty lines and comments
-		if (!trimmedLine || trimmedLine.startsWith("#")) {
-			return;
+	try {
+		// Step 1) Use FileManager to parse OBJ data
+		var OBJParser = window.fileManager.parsers.get("obj");
+		if (!OBJParser) {
+			throw new Error("OBJ parser not found in FileManager. Ensure init.js is loaded.");
 		}
 
-		const parts = trimmedLine.split(/\s+/);
-		const command = parts[0];
+		var parser = new OBJParser();
+		var result = parser.parseOBJData(content, mtlContent);
 
-		// Step 5) Parse vertex positions (v x y z)
-		if (command === "v" && parts.length >= 4) {
-			const x = parseFloat(parts[1]);
-			const y = parseFloat(parts[2]);
-			const z = parseFloat(parts[3]);
-
-			if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-				vertices.push({ x: x, y: y, z: z });
-			}
-		}
-		// Step 6) Parse texture coordinates (vt u v)
-		else if (command === "vt" && parts.length >= 3) {
-			const u = parseFloat(parts[1]);
-			const v = parseFloat(parts[2]);
-
-			if (!isNaN(u) && !isNaN(v)) {
-				uvs.push({ u: u, v: v });
-			}
-		}
-		// Step 7) Parse vertex normals (vn x y z)
-		else if (command === "vn" && parts.length >= 4) {
-			const nx = parseFloat(parts[1]);
-			const ny = parseFloat(parts[2]);
-			const nz = parseFloat(parts[3]);
-
-			if (!isNaN(nx) && !isNaN(ny) && !isNaN(nz)) {
-				normals.push({ x: nx, y: ny, z: nz });
-			}
-		}
-		// Step 8) Parse faces (f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3 ...)
-		else if (command === "f" && parts.length >= 4) {
-			var faceVertices = [];
-			var faceUVs = [];
-			var faceNormals = [];
-
-			// Step 9) Parse each vertex reference in the face
-			for (var i = 1; i < parts.length; i++) {
-				var indices = parts[i].split("/");
-
-				// Vertex index (1-based in OBJ, convert to 0-based)
-				var vIdx = parseInt(indices[0], 10) - 1;
-				if (!isNaN(vIdx)) {
-					faceVertices.push(vIdx);
-				}
-
-				// UV index (optional)
-				if (indices.length > 1 && indices[1] !== "") {
-					var uvIdx = parseInt(indices[1], 10) - 1;
-					if (!isNaN(uvIdx)) {
-						faceUVs.push(uvIdx);
-					}
-				}
-
-				// Normal index (optional)
-				if (indices.length > 2 && indices[2] !== "") {
-					var nIdx = parseInt(indices[2], 10) - 1;
-					if (!isNaN(nIdx)) {
-						faceNormals.push(nIdx);
-					}
-				}
-			}
-
-			// Step 10) Triangulate faces with more than 3 vertices (fan triangulation)
-			if (faceVertices.length >= 3) {
-				for (var j = 1; j < faceVertices.length - 1; j++) {
-					var triangle = {
-						vertices: [faceVertices[0], faceVertices[j], faceVertices[j + 1]],
-						uvs: [],
-						normals: [],
-						material: currentMaterial,
-					};
-
-					if (faceUVs.length >= faceVertices.length) {
-						triangle.uvs = [faceUVs[0], faceUVs[j], faceUVs[j + 1]];
-					}
-
-					if (faceNormals.length >= faceVertices.length) {
-						triangle.normals = [faceNormals[0], faceNormals[j], faceNormals[j + 1]];
-					}
-
-					faces.push(triangle);
-				}
-			}
-		}
-		// Step 11) Parse material library reference (mtllib filename.mtl)
-		else if (command === "mtllib") {
-			materialLibrary = parts.slice(1).join(" ");
-		}
-		// Step 12) Parse material usage (usemtl materialname)
-		else if (command === "usemtl") {
-			currentMaterial = parts.slice(1).join(" ");
-			materialGroups.push({
-				name: currentMaterial,
-				startFace: faces.length,
-			});
-		}
-	});
-
-	// Step 13) Create points array for backward compatibility (same as vertices)
-	var points = vertices.map(function (v) {
-		return { x: v.x, y: v.y, z: v.z };
-	});
-
-	// Step 14) Build triangles array for surface rendering (Kirra format)
-	var triangles = [];
-	faces.forEach(function (face) {
-		if (face.vertices.length === 3) {
-			var v0 = vertices[face.vertices[0]];
-			var v1 = vertices[face.vertices[1]];
-			var v2 = vertices[face.vertices[2]];
-
-			if (v0 && v1 && v2) {
-				var minZ = Math.min(v0.z, v1.z, v2.z);
-				var maxZ = Math.max(v0.z, v1.z, v2.z);
-
-				triangles.push({
-					vertices: [
-						{ x: v0.x, y: v0.y, z: v0.z },
-						{ x: v1.x, y: v1.y, z: v1.z },
-						{ x: v2.x, y: v2.y, z: v2.z },
-					],
-					minZ: minZ,
-					maxZ: maxZ,
-					uvs: face.uvs.length === 3 ? [uvs[face.uvs[0]], uvs[face.uvs[1]], uvs[face.uvs[2]]] : null,
-					material: face.material,
-				});
-			}
-		}
-	});
-
-	// Step 15) Determine if this OBJ has texture data
-	var hasTexture = uvs.length > 0 && materialLibrary !== "";
-	var hasFaces = faces.length > 0;
-
-	console.log("🧊 OBJ Parser: " + vertices.length + " vertices, " + faces.length + " faces, " + uvs.length + " UVs, " + normals.length + " normals, hasTexture: " + hasTexture);
-
-	// Step 16) Return enhanced data structure
-	return {
-		// For backward compatibility
-		points: points,
-
-		// Enhanced data
-		vertices: vertices,
-		faces: faces,
-		uvs: uvs,
-		normals: normals,
-		triangles: triangles,
-
-		// Material information
-		materialLibrary: materialLibrary,
-		materialGroups: materialGroups,
-
-		// Flags
-		hasTexture: hasTexture,
-		hasFaces: hasFaces,
-
-		// Raw content for persistence
-		objContent: content,
-		mtlContent: mtlContent || null,
-	};
+		// Step 2) Return the parsed result (already in correct format)
+		return result;
+	} catch (error) {
+		console.error("Error during OBJ parsing:", error);
+		throw error;
+	}
 }
 // XYZ parser (space-delimited X Y Z format)
 function parseXYZFile(content) {
@@ -37231,37 +36961,34 @@ function parseTXTFile(content) {
 	return points;
 }
 // CSV parser specifically for point clouds
+//=============================================================
+// VERBOSE REMOVAL COMMENT - parseCSVPointCloud function extracted
+//=============================================================
+// Step 1) Function (32 lines, lines 36859-36890) was extracted to src/fileIO/PointCloudIO/PointCloudParser.js
+// Step 2) Reason: Part of FileManager IO System modularization (Phase 2)
+// Step 3) Date: 2026-01-03
+// Step 4) The function is now exposed via FileManager.parse() with format "pointcloud-csv"
+// Step 5) Handles CSV point clouds with optional header detection
+// Step 6) Returns array of {x, y, z} points
+// Step 7) Backward compatibility maintained via wrapper function below
+
 function parseCSVPointCloud(content) {
-	const lines = content.split("\n");
-	const points = [];
-	let hasHeader = false;
-
-	// Check if first line looks like a header
-	const firstLine = lines[0].trim();
-	if (firstLine.toLowerCase().includes("x") || firstLine.toLowerCase().includes("y") || firstLine.toLowerCase().includes("z")) {
-		hasHeader = true;
-	}
-
-	const startIndex = hasHeader ? 1 : 0;
-
-	for (let i = startIndex; i < lines.length; i++) {
-		const parts = lines[i].trim().split(",");
-		if (parts.length >= 3) {
-			const x = parseFloat(parts[0]);
-			const y = parseFloat(parts[1]);
-			const z = parseFloat(parts[2]);
-
-			if (!isNaN(x) && !isNaN(y) && !isNaN(z)) {
-				points.push({
-					x,
-					y,
-					z,
-				});
-			}
+	try {
+		// Step 1) Use FileManager to parse point cloud CSV data
+		var PointCloudParser = window.fileManager.parsers.get("pointcloud-csv");
+		if (!PointCloudParser) {
+			throw new Error("Point Cloud CSV parser not found in FileManager. Ensure init.js is loaded.");
 		}
-	}
 
-	return points;
+		var parser = new PointCloudParser();
+		var result = parser.parseCSVData(content);
+
+		// Step 2) Return the points array (backward compatible)
+		return result;
+	} catch (error) {
+		console.error("Error during point cloud CSV parsing:", error);
+		throw error;
+	}
 }
 // Add this to track the current surface name
 window.currentSurfaceName = null;
@@ -40014,7 +39741,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 			// Hole collar (start) - convert world coords to local for ray comparison
 			const collarLocal = worldToLocal(hole.startXLocation, hole.startYLocation, hole.startZLocation || 0);
 			const collarResult = distanceFromPointToRay(collarLocal, rayOrigin, rayDirection);
-			if (collarResult.distance <= snapRadius && collarResult.rayT > 0) {
+			if (collarResult.distance <= snapRadiusWorld && collarResult.rayT > 0) {
 				// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
 				snapCandidates.push({
 					distance: collarResult.distance,
@@ -40029,7 +39756,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 			// Hole grade - convert world coords to local for ray comparison
 			const gradeLocal = worldToLocal(hole.gradeXLocation, hole.gradeYLocation, hole.gradeZLocation || 0);
 			const gradeResult = distanceFromPointToRay(gradeLocal, rayOrigin, rayDirection);
-			if (gradeResult.distance <= snapRadius && gradeResult.rayT > 0) {
+			if (gradeResult.distance <= snapRadiusWorld && gradeResult.rayT > 0) {
 				// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
 				snapCandidates.push({
 					distance: gradeResult.distance,
@@ -40044,7 +39771,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 			// Hole toe (end) - convert world coords to local for ray comparison
 			const toeLocal = worldToLocal(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0);
 			const toeResult = distanceFromPointToRay(toeLocal, rayOrigin, rayDirection);
-			if (toeResult.distance <= snapRadius && toeResult.rayT > 0) {
+			if (toeResult.distance <= snapRadiusWorld && toeResult.rayT > 0) {
 				// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
 				snapCandidates.push({
 					distance: toeResult.distance,

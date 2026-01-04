@@ -1637,10 +1637,11 @@
 				<br>
 				<br>
 				<button class="accordion" id="openOrImportAcc">
-					<span>Open or Import files</span>
+					<span>File Management</span>
 				</button>
 
 				<div class="panel">
+					OLD - Input Methods (Keep until File Manager is implemented)
 					<!-- Hidden file inputs -->
 					<input type="file" name="fileInput" id="fileInput" accept=".csv,.kad,.txt" class="hidden-file-input" placeholder="fileInput" title="File Holes and KAD Input">
 					<input type="file" name="fileInputCustomCSV" id="fileInputCustomCSV" accept=".csv,.txt" class="hidden-file-input" placeholder="fileInputCustomCSV" title="Custom CSV Import">
@@ -1669,25 +1670,267 @@
 						<label class="icon-button file-import-btn" data-target="fileInputGeotiff" title="File Geotiff Input">
 							<img src="icons/TIF-image.png" alt="Load Geotiff">
 						</label>
-						<!-- Print buttons -->
-						<label class="icon-button file-import-btn" id="printToPDFBtn" title="Print to PDF">
-							<img src="icons/print-to-PDF.png" alt="Print to PDF">
-						</label>
-						<!-- <label class="icon-button file-import-btn" onclick="printCanvas()" title="Print Canvas">
-							<img src="icons/print-to-printer.png" alt="Print Canvas">
-						</label>
-						<label class="icon-button file-import-btn" onclick="printToFile()" title="Print to File">
-							<img src="icons/print-to-file.png" alt="Print to File">
-						</label> -->
+
+					</div><br>
+					<!-- Icon buttons grid -->
+					<hr>
+					Files (Import / Export)
+					<div class="file-io-grid">
+
+						<!-- Holes CSV/TXT -->
+						<div class="label2" id="label_holesCSV" style="display: flex; align-items: center;">Holes CSV/TXT
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<select id="holesColumnFormat" title="Select column format">
+									<option value="custom-csv">Custom CSV</option>
+									<option value="4">4 Column</option>
+									<option value="7">7 Column</option>
+									<option value="9">9 Column</option>
+									<option value="12">12 Column</option>
+									<option value="14" selected>14 Column</option>
+									<option value="30">30 Column</option>
+									<option value="32">32 Column</option>
+									<option value="35">35 Column</option>
+									<option value="all">All Columns</option>
+								</select>
+								<label class="icon-button holes-input-btn" id="fileInputHolesColumn" title="Import Holes CSV">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button holes-output-btn" id="fileOutputHolesColumn" title="Export Holes CSV">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+						<!-- Measured Mass, Length, Comment import/export -->
+						<div class="label2" id="label_Measured" style="display: flex; align-items: center;">Measured Mass, Length, Comment
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<label class="icon-button measured-input-btn" data-target="fileInputMeasured" title="Import Measured">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button measured-output-btn" data-target="fileOutputMeasured" title="Export Measured">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+						<!-- KAD Drawings -->
+						<div class="label2" id="label_KAD" style="display: flex; align-items: center;">KAD Drawings
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<label class="icon-button kad-input-btn" data-target="fileInputKAD" title="Import KAD">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button kad-output-btn" data-target="fileOutputKAD" title="Export KAD">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<hr>
+
+						<!-- DXF/DWG -->
+						<div class="label2" id="label_DXF" style="display: flex; align-items: center;">DXF/DWG
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<select id="dxfFormat" title="Select DXF/DWG format">
+									<option value="dxf-holes">DXF (Holes)</option>
+									<option value="dxf-kad" selected>DXF (KAD)</option>
+									<option value="dxf-3dfaces">DXF (3DFaces)</option>
+									<option value="vulcan-tagged">Vulcan (Holes)</option>
+									<option value="dwg-kad">DWG (KAD)</option>
+									<option value="dwg-holes">DWG (Holes)</option>
+									<option value="dwg-3dfaces">DWG (3DFaces)</option>
+								</select>
+								<label class="icon-button dxf-input-btn" data-target="fileInputDXF" title="Import DXF/DWG">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button dxf-output-btn" data-target="fileOutputDXF" title="Export DXF/DWG">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- Surpac STR/DTM -->
+						<div class="label2" id="label_Surpac" style="display: flex; align-items: center;">Surpac STR/DTM
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<select id="surpacFormat" title="Select Surpac format">
+									<option value="kad-string">KAD String</option>
+									<option value="holes-string" selected>Holes String</option>
+									<option value="surfaces-dtm">Surfaces DTM</option>
+								</select>
+								<label class="icon-button surpac-input-btn" data-target="fileInputSurpac" title="Import Surpac">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button surpac-output-btn" data-target="fileOutputSurpac" title="Export Surpac">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- GeoTIFF/Image -->
+						<div class="label2" id="label_Image" style="display: flex; align-items: center;">GeoTIFF/Image
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<select id="imageFormat" title="Select Image format">
+									<option value="geo-tiff" selected>GeoTIFF</option>
+									<option value="elevation-tiff">Elevation TIFF</option>
+									<option value="jpg">JPG</option>
+								</select>
+								<label class="icon-button image-input-btn" data-target="fileInputImage" title="Import Image">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button image-output-btn" data-target="fileOutputImage" title="Export Image">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- OBJ/GLTF -->
+						<div class="label2" id="label_OBJ" style="display: flex; align-items: center;">OBJ/GLTF
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<select id="meshFormat" title="Select Mesh format">
+									<option value="obj" selected>OBJ</option>
+									<option value="gltf">GLTF</option>
+									<option value="ply">PLY</option>
+								</select>
+								<label class="icon-button obj-input-btn" data-target="fileInputOBJ" title="Import Mesh">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button obj-output-btn" data-target="fileOutputOBJ" title="Export Mesh">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- Point Cloud -->
+						<div class="label2" id="label_PointCloud" style="display: flex; align-items: center;">Point Cloud
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<select id="pointCloudFormat" title="Select Point Cloud format">
+									<option value="xyz">XYZ</option>
+									<option value="txt">TXT</option>
+									<option value="csv" selected>CSV</option>
+									<option value="ply">PLY</option>
+									<option value="pts">PTS</option>
+								</select>
+								<label class="icon-button pointcloud-input-btn" data-target="fileInputPointCloud" title="Import Point Cloud">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button pointcloud-output-btn" data-target="fileOutputPointCloud" title="Export Point Cloud">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- KML/KMZ -->
+						<div class="label2" id="label_KML" style="display: flex; align-items: center;">KML/KMZ
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<select id="kmlFormat" title="Select KML/KMZ format">
+									<option value="kml-holes" selected>KML (Holes)</option>
+									<option value="kmz-holes">KMZ (Holes)</option>
+									<option value="kml-kad">KML (KAD)</option>
+									<option value="kmz-kad">KMZ (KAD)</option>
+								</select>
+								<label class="icon-button kml-input-btn" data-target="fileInputKML" title="Import KML/KMZ">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button kml-output-btn" data-target="fileOutputKML" title="Export KML/KMZ">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<hr>
+
+						<!-- Epiroc Surface Manager -->
+						<div class="label2" id="label_SurfaceManager" style="display: flex; align-items: center;">Epiroc Surface Manager
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<select id="surfaceManagerFormat" title="Select Surface Manager format">
+									<option value="iredes" selected>IREDES Drill Plan</option>
+									<option value="geofence">Geofence</option>
+									<option value="hazard">Hazard</option>
+									<option value="socket">Socket</option>
+								</select>
+								<label class="icon-button surfaceManager-input-btn" data-target="fileInputSurfaceManager" title="Import">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button surfaceManager-output-btn" data-target="fileOutputSurfaceManager" title="Export">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- Minestar AQM -->
+						<div class="label2" id="label_AQM" style="display: flex; align-items: center;">Minestar AQM
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<label class="icon-button aqm-input-btn" data-target="fileInputAQM" title="Import AQM">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button aqm-output-btn" data-target="fileOutputAQM" title="Export AQM">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- Wenco NAV ASCII -->
+						<div class="label2" id="label_Wenco" style="display: flex; align-items: center;">Wenco NAV ASCII
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<label class="icon-button wenco-input-btn" data-target="fileInputWenco" title="Import NAV">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button wenco-output-btn" data-target="fileOutputWenco" title="Export NAV">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- CBLAST -->
+						<div class="label2" id="label_CBLAST" style="display: flex; align-items: center;">CBLAST
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<label class="icon-button cblast-input-btn" data-target="fileInputCBLAST" title="Import CBLAST">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button cblast-output-btn" data-target="fileOutputCBLAST" title="Export CBLAST">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- LAS Point Cloud -->
+						<div class="label2" id="label_LAS" style="display: flex; align-items: center;">LAS Point Cloud
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<label class="icon-button las-input-btn" data-target="fileInputLAS" title="Import LAS">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button las-output-btn" data-target="fileOutputLAS" title="Export LAS">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
+						<!-- ESRI Shapefile -->
+						<div class="label2" id="label_SHAPE" style="display: flex; align-items: center;">ESRI Shapefile
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<label class="icon-button shape-input-btn" data-target="fileInputSHAPE" title="Import Shapefile">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<label class="icon-button shape-output-btn" data-target="fileOutputSHAPE" title="Export Shapefile">
+									<img src="icons/file-export.png" alt="Export">
+								</label>
+							</span>
+						</div>
+
 					</div>
 					<hr>
+					Print Files
 					<div class="switch-container">
 						<label for="addPrintPreviewToggle" id="addPrintPreviewLabel">Print Preview Mode:</label>
 						<label class="switch">
 							<input type="checkbox" id="addPrintPreviewToggle" placeholder="Add Print Preview Toggle">
 							<span class="slider round"></span>
 						</label>
+						<!-- Print buttons -->
+						<span style="margin-left: auto; display: flex; align-items: center;">
+							<label class="icon-button file-import-btn" id="printToPDFBtn" title="Print to PDF">
+								<img src="icons/print-to-PDF.png" alt="Print to PDF">
+							</label>
+						</span>
 					</div>
+					<br>
 					<div class="switch-container">
 						<label for="paperSize" id="paperSizeLabel">Paper Size:</label>
 						<select id="paperSize">
@@ -1894,6 +2137,7 @@
 				<button class="accordion" id="outputfilesAcc">
 					<span>Output Files</span></button>
 				<div class="panel">
+
 
 					<!-- Save Holes CSV -->
 					<div class="label2" id="label_saveHoles">Save Holes to a File (importable)</div>
