@@ -43,30 +43,17 @@ export function handle2DContextMenu(event) {
     const snapRadius = window.getSnapToleranceInWorldUnits();
     const worldCoords = window.canvasToWorld(clickX, clickY);
 
-    // Step 2e) For multiple KAD objects selected
+    // Step 2e) PRIORITY: For multiple KAD objects selected (match 3D behavior)
+    // Show multi-edit panel regardless of where you right-click
     if (window.selectedMultipleKADObjects && window.selectedMultipleKADObjects.length > 1) {
-        // Check if we clicked on one of the selected objects
-        let clickedOnSelected = false;
-
-        for (const kadObj of window.selectedMultipleKADObjects) {
-            const entity = window.allKADDrawingsMap.get(kadObj.entityName);
-            if (entity) {
-                for (const point of entity.data) {
-                    const distance = Math.sqrt(Math.pow(point.pointXLocation - worldCoords[0], 2) + Math.pow(point.pointYLocation - worldCoords[1], 2));
-                    if (distance <= snapRadius) {
-                        clickedOnSelected = true;
-                        break;
-                    }
-                }
-            }
-            if (clickedOnSelected) break;
-        }
-
-        if (clickedOnSelected) {
+        console.log("📋 [2D CONTEXT] Multiple KAD objects selected (" + window.selectedMultipleKADObjects.length + "), showing multi-editor");
+        if (typeof window.showMultipleKADPropertyEditor === "function") {
             window.showMultipleKADPropertyEditor(window.selectedMultipleKADObjects);
-            window.debouncedUpdateTreeView();
-            return;
         }
+        if (typeof window.debouncedUpdateTreeView === "function") {
+            window.debouncedUpdateTreeView();
+        }
+        return;
     }
 
     // Step 2f) For holes: Check multiple selection first, then single hole

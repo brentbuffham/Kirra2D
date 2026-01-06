@@ -26,8 +26,8 @@ export class ThreeRenderer {
 		const aspect = width / height;
 		const frustumSize = 1000;
 		this.camera = new THREE.OrthographicCamera(
-			(-frustumSize * aspect) / 2, // left
-			(frustumSize * aspect) / 2, // right
+			-frustumSize * aspect / 2, // left
+			frustumSize * aspect / 2, // right
 			frustumSize / 2, // top
 			-frustumSize / 2, // bottom
 			-50000, // near (large range for mining elevations)
@@ -43,11 +43,44 @@ export class ThreeRenderer {
 		this.renderer = new THREE.WebGLRenderer({
 			antialias: true,
 			alpha: true,
-			preserveDrawingBuffer: true, // Needed for screenshots/printing
+			preserveDrawingBuffer: true // Needed for screenshots/printing
 		});
 		this.renderer.setSize(width, height);
 		this.renderer.setPixelRatio(window.devicePixelRatio);
 		this.renderer.setClearColor(0x000000, 0); // Transparent
+
+		// Step 5a) Handle WebGL context loss (prevents crashes and enables recovery)
+		var self = this;
+		this.renderer.domElement.addEventListener(
+			"webglcontextlost",
+			function(event) {
+				event.preventDefault();
+				console.error("⚠️ WebGL context lost! GPU memory may be exhausted.");
+				console.error("   Possible causes:");
+				console.error("   - Too many textures/geometries in memory");
+				console.error("   - Browser tab was backgrounded for too long");
+				console.error("   - GPU driver issue or system resource pressure");
+				self.contextLost = true;
+				// Stop render loop to prevent errors
+				self.stopRenderLoop();
+			},
+			false
+		);
+
+		this.renderer.domElement.addEventListener(
+			"webglcontextrestored",
+			function() {
+				console.log("✅ WebGL context restored - reinitializing scene");
+				self.contextLost = false;
+				// Restart render loop
+				self.startRenderLoop();
+				// Force a re-render
+				self.needsRender = true;
+			},
+			false
+		);
+
+		this.contextLost = false;
 
 		// Step 6) Add lighting
 		this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
@@ -90,12 +123,12 @@ export class ThreeRenderer {
 
 		// Step 8a) Instanced rendering for holes (optional optimization)
 		// These are only populated when useInstancedHoles is enabled
-		this.instancedCollars = null;      // InstancedMesh for collar circles
-		this.instancedGrades = null;       // InstancedMesh for grade circles
-		this.instancedToes = null;         // InstancedMesh for toe markers
+		this.instancedCollars = null; // InstancedMesh for collar circles
+		this.instancedGrades = null; // InstancedMesh for grade circles
+		this.instancedToes = null; // InstancedMesh for toe markers
 		this.instanceIdToHole = new Map(); // instanceId -> hole data object
 		this.holeToInstanceId = new Map(); // holeId string -> instanceId number
-		this.instancedHolesCount = 0;      // Current count of instanced holes
+		this.instancedHolesCount = 0; // Current count of instanced holes
 
 		// Step 9) Raycaster for selection
 		this.raycaster = new THREE.Raycaster();
@@ -108,7 +141,7 @@ export class ThreeRenderer {
 			scale: 1,
 			rotation: 0,
 			orbitX: 0,
-			orbitY: 0,
+			orbitY: 0
 		};
 
 		// Step 11) Animation control
@@ -291,29 +324,29 @@ export class ThreeRenderer {
 			this.camera.rotation.z = rotation;
 		}
 
-	// Step 15) Update orthographic camera using SAME approach as 2D canvas
-	// CRITICAL: Match 2D transformation exactly: worldToCanvas(x,y) = [(x - centroidX) * scale + canvas.width/2, ...]
-	// 2D: (1) Translate by centroid, (2) Scale, (3) Add canvas offset
-	// 3D: (1) Geometry already translated via worldToThreeLocal() [DONE], (2) Apply zoom via camera.zoom property [DO THIS], (3) Camera positioned at centroid [DONE]
-	
-	// Step 15a) Use FIXED frustum size matching canvas dimensions (no scale factor!)
-	// This creates 1:1 mapping where 1 world unit = 1 pixel at zoom=1
-	const frustumWidth = this.width;
-	const frustumHeight = this.height;
+		// Step 15) Update orthographic camera using SAME approach as 2D canvas
+		// CRITICAL: Match 2D transformation exactly: worldToCanvas(x,y) = [(x - centroidX) * scale + canvas.width/2, ...]
+		// 2D: (1) Translate by centroid, (2) Scale, (3) Add canvas offset
+		// 3D: (1) Geometry already translated via worldToThreeLocal() [DONE], (2) Apply zoom via camera.zoom property [DO THIS], (3) Camera positioned at centroid [DONE]
 
-	this.camera.left = -frustumWidth / 2;
-	this.camera.right = frustumWidth / 2;
-	this.camera.top = frustumHeight / 2;
-	this.camera.bottom = -frustumHeight / 2;
+		// Step 15a) Use FIXED frustum size matching canvas dimensions (no scale factor!)
+		// This creates 1:1 mapping where 1 world unit = 1 pixel at zoom=1
+		const frustumWidth = this.width;
+		const frustumHeight = this.height;
 
-	// Step 15b) Apply zoom using camera.zoom property (matches 2D scale behavior)
-	// zoom=1: 1 world unit = 1 pixel (baseline)
-	// zoom=2: 1 world unit = 2 pixels (zoomed in 2x)
-	// zoom=0.5: 1 world unit = 0.5 pixels (zoomed out 2x)
-	// This is equivalent to scaling the projection matrix without touching geometry
-	this.camera.zoom = scale;
+		this.camera.left = -frustumWidth / 2;
+		this.camera.right = frustumWidth / 2;
+		this.camera.top = frustumHeight / 2;
+		this.camera.bottom = -frustumHeight / 2;
 
-	this.camera.updateProjectionMatrix();
+		// Step 15b) Apply zoom using camera.zoom property (matches 2D scale behavior)
+		// zoom=1: 1 world unit = 1 pixel (baseline)
+		// zoom=2: 1 world unit = 2 pixels (zoomed in 2x)
+		// zoom=0.5: 1 world unit = 0.5 pixels (zoomed out 2x)
+		// This is equivalent to scaling the projection matrix without touching geometry
+		this.camera.zoom = scale;
+
+		this.camera.updateProjectionMatrix();
 
 		// Step 15a) Update directional light to be above camera (on camera side)
 		if (this.directionalLight) {
@@ -354,8 +387,8 @@ export class ThreeRenderer {
 		// Step 16a1) Convert bearing and elevation to radians
 		// Bearing: 0° = North, 90° = West, 180° = South, 270° = East
 		// Elevation: 0° = horizontal, 90° = vertical
-		const bearingRad = (bearingDeg * Math.PI) / 180;
-		const elevationRad = (elevationDeg * Math.PI) / 180;
+		const bearingRad = bearingDeg * Math.PI / 180;
+		const elevationRad = elevationDeg * Math.PI / 180;
 
 		// Step 16a2) Calculate light direction vector
 		// X = East/West (positive = East)
@@ -549,7 +582,7 @@ export class ThreeRenderer {
 				// Step 16g.1a) Ensure grid is visible
 				this.gridHelper.visible = true;
 				if (developerModeEnabled) {
-						console.log("📐 Grid visibility set to ON");
+					console.log("📐 Grid visibility set to ON");
 				}
 			} else {
 				// Step 16g.2) Grid doesn't exist - recreate it with current settings
@@ -599,7 +632,7 @@ export class ThreeRenderer {
 				if (this.gridHelper.material) {
 					// Step 16g.3a) Handle both single material and material array
 					if (Array.isArray(this.gridHelper.material)) {
-						this.gridHelper.material.forEach(function (mat) {
+						this.gridHelper.material.forEach(function(mat) {
 							if (mat) mat.dispose();
 						});
 					} else {
@@ -628,7 +661,7 @@ export class ThreeRenderer {
 		// Step 16h.2) Only update if grid exists
 		if (!this.gridHelper) {
 			if (developerModeEnabled) {
-					console.log("📐 Grid size stored:", size, "(grid not created yet)");
+				console.log("📐 Grid size stored:", size, "(grid not created yet)");
 			}
 			return;
 		}
@@ -786,7 +819,7 @@ export class ThreeRenderer {
 		this.camera.right = frustumWidth / 2;
 		this.camera.top = frustumHeight / 2;
 		this.camera.bottom = -frustumHeight / 2;
-		
+
 		// Step 17b) camera.zoom already set in updateCamera(), just update projection matrix
 		this.camera.updateProjectionMatrix();
 
@@ -827,7 +860,7 @@ export class ThreeRenderer {
 		// Step 19c) Dispose material(s)
 		if (object.material) {
 			if (Array.isArray(object.material)) {
-				object.material.forEach((material) => {
+				object.material.forEach(material => {
 					if (material.map) material.map.dispose();
 					if (material.lightMap) material.lightMap.dispose();
 					if (material.bumpMap) material.bumpMap.dispose();
@@ -857,7 +890,7 @@ export class ThreeRenderer {
 	disposeGroup(group) {
 		// Step 20a) Traverse and remove objects (but preserve cached text)
 		const toRemove = [];
-		group.traverse((object) => {
+		group.traverse(object => {
 			if (object !== group) {
 				// Step 20a.1) Check if this is a cached text object
 				if (object.userData && object.userData.isCachedText) {
@@ -872,7 +905,7 @@ export class ThreeRenderer {
 		});
 
 		// Step 20b) Remove all objects from group
-		toRemove.forEach((obj) => {
+		toRemove.forEach(obj => {
 			group.remove(obj);
 		});
 	}
@@ -910,13 +943,13 @@ export class ThreeRenderer {
 	disposeAxisHelper() {
 		if (this.axisHelper) {
 			// Traverse and dispose all geometries and materials
-			this.axisHelper.traverse((child) => {
+			this.axisHelper.traverse(child => {
 				if (child.geometry) {
 					child.geometry.dispose();
 				}
 				if (child.material) {
 					if (Array.isArray(child.material)) {
-						child.material.forEach((mat) => mat.dispose());
+						child.material.forEach(mat => mat.dispose());
 					} else {
 						child.material.dispose();
 					}
@@ -974,7 +1007,7 @@ export class ThreeRenderer {
 			if (this.instancedCollars.material) this.instancedCollars.material.dispose();
 			this.instancedCollars = null;
 		}
-		
+
 		// Step 22a.2) Dispose grade circle instances
 		if (this.instancedGrades) {
 			this.holesGroup.remove(this.instancedGrades);
@@ -982,7 +1015,7 @@ export class ThreeRenderer {
 			if (this.instancedGrades.material) this.instancedGrades.material.dispose();
 			this.instancedGrades = null;
 		}
-		
+
 		// Step 22a.3) Dispose toe instances
 		if (this.instancedToes) {
 			this.holesGroup.remove(this.instancedToes);
@@ -990,12 +1023,12 @@ export class ThreeRenderer {
 			if (this.instancedToes.material) this.instancedToes.material.dispose();
 			this.instancedToes = null;
 		}
-		
+
 		// Step 22a.4) Clear mapping tables
 		this.instanceIdToHole.clear();
 		this.holeToInstanceId.clear();
 		this.instancedHolesCount = 0;
-		
+
 		this.needsRender = true;
 	}
 
@@ -1013,26 +1046,26 @@ export class ThreeRenderer {
 			}
 			return;
 		}
-		
+
 		// Step 22b.2) Convert world coordinates to local Three.js coordinates
 		var local = window.worldToThreeLocal(newWorldX, newWorldY);
-		
+
 		// Step 22b.3) Create transformation matrix for new position
 		var matrix = new THREE.Matrix4();
 		matrix.setPosition(local.x, local.y, newWorldZ);
-		
+
 		// Step 22b.4) Update collar instance position
 		if (this.instancedCollars) {
 			this.instancedCollars.setMatrixAt(instanceId, matrix);
 			this.instancedCollars.instanceMatrix.needsUpdate = true;
 		}
-		
+
 		// Step 22b.5) Update grade circle instance position
 		if (this.instancedGrades) {
 			this.instancedGrades.setMatrixAt(instanceId, matrix);
 			this.instancedGrades.instanceMatrix.needsUpdate = true;
 		}
-		
+
 		// Step 22b.6) Update toe instance position (if applicable)
 		if (this.instancedToes) {
 			// Toe position calculation would need the hole's geometry data
@@ -1040,7 +1073,7 @@ export class ThreeRenderer {
 			this.instancedToes.setMatrixAt(instanceId, matrix);
 			this.instancedToes.instanceMatrix.needsUpdate = true;
 		}
-		
+
 		this.needsRender = true;
 	}
 
@@ -1057,6 +1090,12 @@ export class ThreeRenderer {
 	// Step 23) Render the scene
 
 	render() {
+		// Step 23a.0) Early return if WebGL context was lost
+		if (this.contextLost) {
+			console.warn("⚠️ Skipping render - WebGL context lost");
+			return;
+		}
+
 		// // Step 23a) Update billboard text rotation ONLY if camera rotated
 		// // Skip during pure zoom/pan for performance with thousands of labels
 		// const keepTextFlatOnXZPlane = false;
@@ -1086,7 +1125,7 @@ export class ThreeRenderer {
 		frustum.setFromProjectionMatrix(projScreenMatrix);
 
 		const updateGroup = (group, shouldBillboard) => {
-			group.traverse((object) => {
+			group.traverse(object => {
 				// Check if this is a troika text object and billboarding is enabled for this type
 				if (object.userData && object.userData.isTroikaText && shouldBillboard) {
 					// Make text face camera (billboard effect)
@@ -1100,7 +1139,7 @@ export class ThreeRenderer {
 						object.userData.textMesh.quaternion.copy(this.camera.quaternion);
 					}
 					// Rotate background too if it exists
-					object.traverse((child) => {
+					object.traverse(child => {
 						if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
 							if (frustum.containsPoint(child.position)) {
 								child.quaternion.copy(this.camera.quaternion);
@@ -1122,7 +1161,7 @@ export class ThreeRenderer {
 		// For non-billboarded text, ensure it lies flat on XY plane (not XZ)
 		const fixOrientation = (group, shouldBillboard) => {
 			if (!shouldBillboard) {
-				group.traverse((object) => {
+				group.traverse(object => {
 					if (object.userData && object.userData.isTroikaText) {
 						// Reset orientation to lie flat on XY plane (horizontal)
 						object.quaternion.set(0, 0, 0, 1);
@@ -1130,7 +1169,7 @@ export class ThreeRenderer {
 					if (object.userData && object.userData.textMesh) {
 						object.userData.textMesh.quaternion.set(0, 0, 0, 1);
 						// Also fix background orientation
-						object.traverse((child) => {
+						object.traverse(child => {
 							if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
 								child.quaternion.set(0, 0, 0, 1);
 							}
@@ -1157,7 +1196,7 @@ export class ThreeRenderer {
 	// Step 23c) Update billboarded objects (mouse torus, etc.) to face camera
 	updateBillboardedObjects() {
 		// Step 23c.1) Update connectors group (contains mouse indicator)
-		this.connectorsGroup.traverse((object) => {
+		this.connectorsGroup.traverse(object => {
 			if (object.userData && object.userData.billboard) {
 				// Rotate object to face camera
 				object.quaternion.copy(this.camera.quaternion);
@@ -1240,7 +1279,7 @@ export class ThreeRenderer {
 	raycast(mouseX, mouseY) {
 		// Convert mouse coordinates to normalized device coordinates (-1 to +1)
 		const mouse = new THREE.Vector2();
-		mouse.x = (mouseX / this.width) * 2 - 1;
+		mouse.x = mouseX / this.width * 2 - 1;
 		mouse.y = -(mouseY / this.height) * 2 + 1;
 
 		this.raycaster.setFromCamera(mouse, this.camera);
@@ -1257,8 +1296,45 @@ export class ThreeRenderer {
 			surfaces: this.surfaceMeshMap.size,
 			kad: this.kadMeshMap.size,
 			triangles: this.renderer.info.render.triangles,
-			calls: this.renderer.info.render.calls,
+			calls: this.renderer.info.render.calls
 		};
+	}
+
+	// Step 30a) Get detailed memory statistics for debugging GPU memory leaks
+	getMemoryStats() {
+		var memory = this.renderer.info.memory;
+		var render = this.renderer.info.render;
+		return {
+			geometries: memory.geometries,
+			textures: memory.textures,
+			triangles: render.triangles,
+			drawCalls: render.calls,
+			holesGroupChildren: this.holesGroup.children.length,
+			kadGroupChildren: this.kadGroup.children.length,
+			surfacesGroupChildren: this.surfacesGroup.children.length,
+			contoursGroupChildren: this.contoursGroup.children.length,
+			imagesGroupChildren: this.imagesGroup.children.length,
+			connectorsGroupChildren: this.connectorsGroup.children.length,
+			contextLost: this.contextLost
+		};
+	}
+
+	// Step 30b) Log memory stats to console (call for debugging)
+	logMemoryStats() {
+		var stats = this.getMemoryStats();
+		console.log("📊 Three.js Memory Stats:");
+		console.log("   Geometries:", stats.geometries);
+		console.log("   Textures:", stats.textures);
+		console.log("   Triangles:", stats.triangles);
+		console.log("   Draw Calls:", stats.drawCalls);
+		console.log("   Holes Group:", stats.holesGroupChildren);
+		console.log("   KAD Group:", stats.kadGroupChildren);
+		console.log("   Surfaces Group:", stats.surfacesGroupChildren);
+		console.log("   Contours Group:", stats.contoursGroupChildren);
+		console.log("   Images Group:", stats.imagesGroupChildren);
+		console.log("   Connectors Group:", stats.connectorsGroupChildren);
+		console.log("   Context Lost:", stats.contextLost);
+		return stats;
 	}
 
 	// Step 31) Cleanup
@@ -1266,13 +1342,13 @@ export class ThreeRenderer {
 		this.stopRenderLoop();
 
 		// Dispose all geometries and materials
-		this.scene.traverse((object) => {
+		this.scene.traverse(object => {
 			if (object.geometry) {
 				object.geometry.dispose();
 			}
 			if (object.material) {
 				if (Array.isArray(object.material)) {
-					object.material.forEach((material) => material.dispose());
+					object.material.forEach(material => material.dispose());
 				} else {
 					object.material.dispose();
 				}

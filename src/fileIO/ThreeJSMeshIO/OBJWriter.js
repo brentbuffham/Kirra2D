@@ -104,39 +104,39 @@ class OBJWriter extends BaseWriter {
 			obj += "\n";
 		}
 
-		// Step 18) Write faces if available
-		if (data.faces && data.faces.length > 0) {
-			obj += "# Faces\n";
-			for (var i = 0; i < data.faces.length; i++) {
-				var face = data.faces[i];
-				var indices = face.indices || face;
-
-				// Step 19) Face format: f v1/vt1/vn1 v2/vt2/vn2 v3/vt3/vn3
-				obj += "f";
-
-				for (var j = 0; j < indices.length; j++) {
-					var vertexIndex = indices[j] + 1; // OBJ indices are 1-based
-
-					obj += " " + vertexIndex;
-
-					// Step 20) Add texture coordinate index if available
-					if (this.includeUVs && data.uvs && data.uvs.length > 0) {
-						obj += "/" + vertexIndex;
-					}
-
-					// Step 21) Add normal index if available
-					if (this.includeNormals && data.normals && data.normals.length > 0) {
-						if (!this.includeUVs || !data.uvs || data.uvs.length === 0) {
-							obj += "/"; // Empty texture coordinate slot
-						}
-						obj += "/" + vertexIndex;
-					}
-				}
-
-				obj += "\n";
+	// Step 18) Write faces if available
+	if (data.faces && data.faces.length > 0) {
+		obj += "# Faces\n";
+		for (var i = 0; i < data.faces.length; i++) {
+			var face = data.faces[i];
+			
+			// Face should have indices array
+			if (!face.indices || !Array.isArray(face.indices)) {
+				console.warn("OBJWriter: Face " + i + " has no indices array, skipping");
+				continue;
 			}
+
+			// Step 19) Face format: f v1//vn1 v2//vn2 v3//vn3 (using face normals)
+			obj += "f";
+
+			// Check if face has a single normal for all vertices (flat shading)
+			var hasNormal = face.normalIndex !== undefined && data.normals && data.normals.length > 0;
+
+			for (var j = 0; j < face.indices.length; j++) {
+				var vertexIndex = face.indices[j] + 1; // OBJ indices are 1-based
+
+				obj += " " + vertexIndex;
+
+				// Step 20) Add normal index (same normal for all vertices in flat shading)
+				if (hasNormal) {
+					obj += "//" + (face.normalIndex + 1); // OBJ indices are 1-based
+				}
+			}
+
 			obj += "\n";
 		}
+		obj += "\n";
+	}
 
 		// Step 22) Add end comment
 		obj += "# End of file\n";

@@ -3,7 +3,6 @@
 	<!--
     Description: This file contains the main UI for the Kirra App
 	Author: Brent Buffham
-	Last Modified: "20250816.0140AWST"
 -->
 
 	<head>
@@ -1733,9 +1732,11 @@
 									<option value="dxf-kad" selected>DXF (KAD)</option>
 									<option value="dxf-3dfaces">DXF (3DFaces)</option>
 									<option value="vulcan-tagged">Vulcan (Holes)</option>
-									<option value="dwg-kad">DWG (KAD)</option>
+									<!-- DWG export is not supported yet-->
+									<!-- <option value="dwg-kad">DWG (KAD)</option>
 									<option value="dwg-holes">DWG (Holes)</option>
 									<option value="dwg-3dfaces">DWG (3DFaces)</option>
+								-->
 								</select>
 								<label class="icon-button dxf-input-btn" data-target="fileInputDXF" title="Import DXF/DWG">
 									<img src="icons/file-import.png" alt="Import">
@@ -1747,12 +1748,18 @@
 						</div>
 
 						<!-- Surpac STR/DTM -->
-						<div class="label2" id="label_Surpac" style="display: flex; align-items: center;">Surpac STR/DTM
+						<div class="label2" id="label_Surpac" style="display: flex; align-items: center;">Surpac (Text Only)
 							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
 								<select id="surpacFormat" title="Select Surpac format">
-									<option value="kad-string">KAD String</option>
-									<option value="holes-string" selected>Holes String</option>
-									<option value="surfaces-dtm">Surfaces DTM</option>
+									<option value="str-blastholes">STR holes</option>
+									<option value="str-kad-text">STR</option>
+									<option value="dtm-text">DTM & STR</option>
+									<!-- BINARY PARSING Has been disabled for now as it is not supported by the parser too difficult at the moment-->
+									<!--
+									<option value="str-kad">STR holes (binary)</option>
+									<option value="str-kad-binary">STR (binary)</option>
+									<option value="dtm-binary">DTM (binary)</option>
+									-->
 								</select>
 								<label class="icon-button surpac-input-btn" data-target="fileInputSurpac" title="Import Surpac">
 									<img src="icons/file-import.png" alt="Import">
@@ -2214,6 +2221,9 @@
 				<div class="panel" id="aboutPanel">
 					<!-- add a developer mode button-->
 					<input type="checkbox" id="developerMode"> <label for="developerMode">Developer Mode</label>
+					<br>
+					<!-- add a 3D screen space Snapping on/off mode button-->
+					<input type="checkbox" id="screenSpaceSnapping" checked> <label for="screenSpaceSnapping">Screen Space Snapping</label>
 					<br>
 					<input type="checkbox" id="rowAndPosDisplay"> <label for="rowAndPosDisplay">Row and Position
 						Display</label>

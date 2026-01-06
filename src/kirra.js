@@ -218,40 +218,52 @@ console.log("FileManager initialized with formats:", fileManager.getSupportedFor
 //=================================================
 // SETUP JSCOLOR
 // Set up jscolor configuration
+//Position 1 for STR files String #1,33,65...
+//Position 2 for STR files String #2,34,66
+//Position 3 for STR files String #3,35
+//Position 4 for STR files String #4,36
+//Position 5 for STR files String #5,37
+//Position 6 for STR files String #6,38
+//Position 7 for STR files String #7,39
+//Position 8 for STR files String #8,40
+//Position 9 for STR files String #9,41
+//Position 10 for STR files String #10,42
+//...	
+//Position 32 for STR files String #32,64
 jscolor.presets = jscolor.presets || {};
 jscolor.presets.default = {
 	format: "rgb",
 	palette: [
-		"#770000",
-		"#FF0000",
-		"#FF9900",
-		"#FFFF00",
-		"#00ff00",
-		"#009900",
-		"#00ffFF",
-		"#0099ff",
-		"#0000FF",
-		"#FF00FF", //10 per row
-		"#550000",
-		"#AA0000",
-		"#883300",
-		"#bbbb00",
-		"#33AA00",
-		"#006600",
-		"#007F7F",
-		"#002288",
-		"#000099",
-		"#7F007F", //10 per row
-		"#010101",
-		"#222222",
-		"#333333",
-		"#444444",
-		"#555555",
-		"#777777",
-		"#888888",
+		"#770000", 
+		"#FF0000", 
+		"#FF9900", 
+		"#FFFF00", 
+		"#00ff00", 
+		"#009900", 
+		"#00ffFF", 
+		"#0099ff", 
+		"#0000FF", 
+		"#FF00FF", 
+		"#550000", 
+		"#AA0000", 
+		"#883300", 
+		"#bbbb00", 
+		"#33AA00", 
+		"#006600", 
+		"#007F7F", 
+		"#002288", 
+		"#000099", 
+		"#7F007F", 
+		"#010101", 
+		"#222222", 
+		"#333333", 
+		"#444444", 
+		"#555555", 
+		"#777777", 
+		"#888888", 
 		"#AAAAAA",
 		"#cccccc",
-		"#FEFEFE",
+		"#FEFEFE", 
 	],
 };
 
@@ -970,7 +982,8 @@ function syncCameraToThreeJS() {
 						buttons: 0,
 					});
 
-					document.dispatchEvent(syntheticEvent);
+					// Synthetic Events is killing the GPU and destroying performance.  
+					// document.dispatchEvent(syntheticEvent);
 				}
 			}, 50); // Small delay to ensure camera state is fully updated
 		}
@@ -2391,6 +2404,13 @@ function handle3DClick(event) {
 
 // Step 13) Handle 3D mouse move - hover effects and stadium zone tracking
 function handle3DMouseMove(event) {
+	// PERFORMANCE FIX: Throttle mouse move handling to max 30fps
+	var now = performance.now();
+	if (window._lastMouseMoveTime && (now - window._lastMouseMoveTime) < 33) {
+		return; // Skip if less than 33ms since last call (~30fps max)
+	}
+	window._lastMouseMoveTime = now;
+	
 	// Step 13a) Only handle if in 3D mode
 	if (!onlyShowThreeJS) return;
 
@@ -2561,7 +2581,11 @@ function handle3DMouseMove(event) {
 		worldZ: mouseWorldPos ? mouseWorldPos.z : currentMouseWorldZ,
 	};
 
-	if (snapEnabled && interactionManager && interactionManager.raycaster) {
+	// Step 13f.4) Screen Space Snapping - only if checkbox is enabled
+	var screenSpaceSnappingCheckbox = document.getElementById("screenSpaceSnapping");
+	var screenSpaceSnappingEnabled = screenSpaceSnappingCheckbox && screenSpaceSnappingCheckbox.checked;
+	
+	if (snapEnabled && screenSpaceSnappingEnabled && interactionManager && interactionManager.raycaster) {
 		// Step 13f.4a) Calculate snap radius in pixels (NOT world units - use screen space!)
 		const snapRadiusPixels = window.snapRadiusPixels || 15; // 15 pixels on screen
 
@@ -3078,7 +3102,8 @@ document.addEventListener("DOMContentLoaded", function () {
 							buttons: 0,
 						});
 
-						document.dispatchEvent(syntheticEvent);
+						// Synthetic Events is killing the GPU and destroying performance.  
+						// document.dispatchEvent(syntheticEvent);
 					}
 				}, 100);
 			}
@@ -3105,15 +3130,6 @@ document.addEventListener("DOMContentLoaded", function () {
 					cameraControls.resetPanState();
 				}
 				console.log("🧊 3D-ONLY Mode: ON (cube icon active, 2D canvas hidden)");
-				
-				// Step 1cc.0) CRITICAL FIX: Call resetZoom() - this is EXACTLY what fixes it
-				// resetZoom() does: reset scale/rotation, updateCentroids(), syncCamera, drawData(), zoomToFitAll()
-				if ((allBlastHoles && allBlastHoles.length > 0) || 
-					(allKADDrawingsMap && allKADDrawingsMap.size > 0) || 
-					(loadedSurfaces && loadedSurfaces.size > 0)) {
-					resetZoom();
-					console.log("🔄 resetZoom() called on 3D mode switch");
-				}
 
 				// Step 1cc.0b) Clear text cache to ensure text renders at correct scale
 				clearTextCache();
@@ -3204,7 +3220,6 @@ document.addEventListener("DOMContentLoaded", function () {
 					}
 					// Step 1cd.2) Now draw the data with populated contours/arrows
 					// Step 1cd.2a) Store Three.js initialization state BEFORE drawData()
-					var wasThreeInitialized = threeInitialized;
 					drawData(allBlastHoles, selectedHole);
 					
 					// Step 1cd.3) CRITICAL FIX: Complete 3D setup AFTER drawData() initializes Three.js
@@ -3223,7 +3238,6 @@ document.addEventListener("DOMContentLoaded", function () {
 						// Step 1cd.3b) Sync camera with proper state
 						syncCameraToThreeJS();
 						console.log("📷 Camera synced after Three.js initialization on 3D mode switch");
-						
 						// Step 1cd.3c) Force a mouse move event to initialize the torus indicator
 						requestAnimationFrame(function() {
 							if (threeRenderer) {
@@ -3240,8 +3254,9 @@ document.addEventListener("DOMContentLoaded", function () {
 										button: 0,
 										buttons: 0
 									});
-									document.dispatchEvent(syntheticEvent);
-									console.log("🖱️ Synthetic mouse move dispatched to initialize cursor");
+									// Synthetic Events is killing the GPU and destroying performance.  
+									// document.dispatchEvent(syntheticEvent);
+									// console.log("🖱️ Synthetic mouse move dispatched to initialize cursor");
 								}
 							}
 						});
@@ -6596,56 +6611,62 @@ window.addEventListener("resize", handleThreeJSResize);
 window.addEventListener("resize", handleBaseCanvasResize);
 
 // Step A5) Reusable function to update LineMaterial resolution for all fat lines
-// This traverses the ENTIRE scene to catch pattern tool fat lines, not just kadGroup
+// This traverses the ENTIRE scene ONCE to catch all fat lines (kadGroup, pattern tools, etc.)
 // CRITICAL: Must use canvas dimensions, NOT window dimensions, for LineMaterial resolution
+// PERFORMANCE FIX: Removed console.log inside loops - was freezing browser with large DXFs
 function updateAllLineMaterialResolution() {
 	if (!window.threeRenderer) return;
 	
 	// Step A5.0) Use window dimensions for LineMaterial resolution
 	// LineMaterial expects CSS pixel dimensions matching the DOM viewport
 	var res = new THREE.Vector2(window.innerWidth, window.innerHeight);
+	var updateCount = 0;
 	
-	console.log("🔧 Updating LineMaterial resolution to:", window.innerWidth, "x", window.innerHeight);
-	
-	// Step A5.1) Traverse kadGroup if it exists
-	if (window.threeRenderer.kadGroup) {
-		window.threeRenderer.kadGroup.traverse(function (child) {
-			if (child.material && child.material.isLineMaterial) {
-				child.material.resolution.copy(res);
-			}
-		});
+	// Step A5.0a) Log only in developer mode (avoid spam on every resize)
+	if (developerModeEnabled) {
+		console.log("🔧 Updating LineMaterial resolution to:", window.innerWidth, "x", window.innerHeight);
 	}
 	
-	// Step A5.2) Traverse entire scene for pattern tool fat lines
+	// Step A5.1) Traverse entire scene ONCE (includes kadGroup, surfacesGroup, etc.)
+	// No need to traverse kadGroup separately since it's part of the scene
 	if (window.threeRenderer.scene) {
-		window.threeRenderer.scene.traverse(function (child) {
+		window.threeRenderer.scene.traverse(function(child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
+				updateCount++;
 			}
 		});
 	}
 	
-	// Step A5.3) Also update any pattern tool 3D groups
+	// Step A5.2) Also update any pattern tool 3D groups (these may not be in scene)
 	if (window.patternTool3DGroup) {
-		window.patternTool3DGroup.traverse(function (child) {
+		window.patternTool3DGroup.traverse(function(child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
+				updateCount++;
 			}
 		});
 	}
 	if (window.holesAlongLine3DGroup) {
-		window.holesAlongLine3DGroup.traverse(function (child) {
+		window.holesAlongLine3DGroup.traverse(function(child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
+				updateCount++;
 			}
 		});
 	}
 	if (window.holesAlongPolyline3DGroup) {
-		window.holesAlongPolyline3DGroup.traverse(function (child) {
+		window.holesAlongPolyline3DGroup.traverse(function(child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
+				updateCount++;
 			}
 		});
+	}
+	
+	// Step A5.3) Single summary log (only if developerModeEnabled or updateCount > 0)
+	if (updateCount > 0 && developerModeEnabled) {
+		console.log("🔧 Updated " + updateCount + " LineMaterial resolutions to: " + window.innerWidth + " x " + window.innerHeight);
 	}
 }
 
@@ -7251,16 +7272,553 @@ document.querySelectorAll(".dxf-output-btn").forEach(function (button) {
 			} catch (error) {
 				showModalMessage("Export Failed", "Error: " + error.message, "error");
 			}
+		} else if (format === "dxf-3dfaces") {
+			// DXF 3DFACE - Export loaded surfaces as triangles
+			if (!window.loadedSurfaces || window.loadedSurfaces.size === 0) {
+				showModalMessage("No Data", "No surfaces loaded to export. Please load a surface first.", "warning");
+				return;
+			}
+
+			try {
+				var Writer = window.fileManager.writers.get("dxf-3dface");
+				if (!Writer) {
+					throw new Error("DXF 3DFACE writer not registered");
+				}
+
+			// Step 1) Collect all triangles from visible surfaces only
+			var allTriangles = [];
+			window.loadedSurfaces.forEach(function (surface) {
+				if (surface.visible && surface.triangles && Array.isArray(surface.triangles)) {
+					allTriangles = allTriangles.concat(surface.triangles);
+				}
+			});
+
+				if (allTriangles.length === 0) {
+					showModalMessage("No Data", "No triangles found in loaded surfaces", "warning");
+					return;
+				}
+
+				// Step 2) Export to DXF 3DFACE
+				var writer = new Writer();
+				var blob = await writer.write({
+					triangles: allTriangles,
+					layerName: "SURFACE"
+				});
+
+				var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+				writer.downloadFile(blob, "KIRRA_SURFACE_3DFACE_" + timestamp + ".dxf");
+
+				console.log("DXF 3DFACE export completed: " + allTriangles.length + " triangles");
+			} catch (error) {
+				console.error("DXF 3DFACE export error:", error);
+				showModalMessage("Export Failed", "Error: " + error.message, "error");
+			}
 		} else {
 			showModalMessage("Coming Soon", format + " export will be available in a future update", "info");
 		}
 	});
 });
 
-// SURPAC STR/DTM - Coming Soon
-document.querySelectorAll(".surpac-input-btn, .surpac-output-btn").forEach(function (button) {
+// SURPAC STR/DTM - Export
+document.querySelectorAll(".surpac-output-btn").forEach(function (button) {
 	button.addEventListener("click", function () {
-		showModalMessage("Coming Soon", "Surpac STR/DTM import/export will be available in a future update", "info");
+		try {
+			// Step 1) Get format and data type selection
+			var formatSelect = document.getElementById("surpacFormat");
+			var formatValue = formatSelect ? formatSelect.value : "str";
+
+			// Step 2) Determine file format and data type
+			// Support both old format ("str", "dtm") and new format ("str-blastholes", "str-kad", etc.)
+			var fileFormat = "str";
+			var dataType = "blastholes";
+
+			if (formatValue.indexOf("-") !== -1) {
+				// New format: "str-blastholes", "str-kad", "str-surfaces", "dtm-surfaces"
+				var parts = formatValue.split("-");
+				fileFormat = parts[0];
+				dataType = parts[1] || "blastholes";
+			} else {
+				// Old format: "str" or "dtm"
+				fileFormat = formatValue;
+				// For old format, default to surfaces for DTM, blastholes for STR
+				dataType = (fileFormat === "dtm") ? "surfaces" : "blastholes";
+			}
+
+			// Step 3) Validate based on data type
+			var exportData = {};
+			var filename = "";
+			var timestamp = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/:/g, "").replace("T", "_");
+
+			if (fileFormat === "dtm") {
+			// Step 4a) DTM - Export BOTH DTM and STR files for visible surfaces only
+			if (!window.loadedSurfaces || window.loadedSurfaces.size === 0) {
+				showModalMessage("No Data", "No surfaces loaded. Please load a surface first (OBJ, DXF, PLY).", "warning");
+				return;
+			}
+
+			// Filter visible surfaces only
+			var visibleSurfaces = new Map();
+			window.loadedSurfaces.forEach(function(surface, key) {
+				if (surface.visible) {
+					visibleSurfaces.set(key, surface);
+				}
+			});
+
+			if (visibleSurfaces.size === 0) {
+				showModalMessage("No Visible Surfaces", "No visible surfaces to export. Please make some surfaces visible first.", "warning");
+				return;
+			}
+
+			exportData = {
+				surfaces: visibleSurfaces,
+				fileName: "surface"
+			};
+
+				// Step 4a.1) Export DTM file (point cloud)
+				var DTMWriter = window.fileManager.writers.get("surpac-dtm");
+				if (!DTMWriter) {
+					showModalMessage("Error", "Surpac DTM writer not found", "error");
+					return;
+				}
+
+				var dtmWriter = new DTMWriter();
+				var dtmFilename = "KIRRA_SURPAC_DTM_" + timestamp + ".dtm";
+
+				// Step 4a.2) Export STR file (triangles as strings)
+				var STRWriter = window.fileManager.writers.get("surpac-str");
+				if (!STRWriter) {
+					showModalMessage("Error", "Surpac STR writer not found", "error");
+					return;
+				}
+
+				var strWriter = new STRWriter();
+				var strFilename = "KIRRA_SURPAC_STR_" + timestamp + ".str";
+
+				// Step 4a.3) Generate and download both files
+				Promise.all([
+					dtmWriter.write(exportData),
+					strWriter.write(exportData)
+				])
+					.then(function (results) {
+						var dtmBlob = results[0];
+						var strBlob = results[1];
+
+						// Step 4a.4) Download both files
+						dtmWriter.downloadFile(dtmBlob, dtmFilename);
+						strWriter.downloadFile(strBlob, strFilename);
+
+						console.log("Surpac DTM+STR export completed: " + dtmFilename + " + " + strFilename);
+						showModalMessage("Export Complete", "Exported both " + dtmFilename + " and " + strFilename, "success");
+					})
+					.catch(function (error) {
+						console.error("Error exporting Surpac DTM+STR:", error);
+						showModalMessage("Export Error", error.message, "error");
+					});
+
+				return; // Exit early since we handled both exports
+			} else if (dataType === "blastholes") {
+				// Step 4b) STR Blastholes - Export blast holes
+				if (!allBlastHoles || allBlastHoles.length === 0) {
+					showModalMessage("No Data", "No blast holes to export. Please import or create blast holes first.", "warning");
+					return;
+				}
+
+				var visibleHoles = allBlastHoles.filter(function (hole) {
+					return hole.visible !== false;
+				});
+
+				if (visibleHoles.length === 0) {
+					showModalMessage("No Visible Holes", "No visible holes to export. Please make some holes visible first.", "warning");
+					return;
+				}
+
+				exportData = {
+					holes: visibleHoles,
+					fileName: "blastmaster"
+				};
+				filename = "KIRRA_SURPAC_STR_BLASTHOLES_" + timestamp + ".str";
+			} else if (dataType === "kad") {
+				// Step 4c) STR KAD - Export KAD drawings
+				if (!allKADDrawingsMap || allKADDrawingsMap.size === 0) {
+					showModalMessage("No Data", "No KAD drawings to export. Please create some drawings first.", "warning");
+					return;
+				}
+
+				exportData = {
+					kadDrawingsMap: allKADDrawingsMap,
+					fileName: "drawing"
+				};
+				filename = "KIRRA_SURPAC_STR_KAD_" + timestamp + ".str";
+			} else if (dataType === "surfaces") {
+				// Step 4d) STR Surfaces - This option removed, use DTM instead
+				showModalMessage("Info", "To export surfaces, please use DTM format which exports both .dtm and .str files.", "info");
+				return;
+			} else {
+				showModalMessage("Error", "Unknown data type: " + dataType, "error");
+				return;
+			}
+
+			// Step 5) Get writer
+			var writerFormat = fileFormat === "dtm" ? "surpac-dtm" : "surpac-str";
+			var Writer = window.fileManager.writers.get(writerFormat);
+
+			if (!Writer) {
+				showModalMessage("Error", "Surpac " + fileFormat.toUpperCase() + " writer not found", "error");
+				return;
+			}
+
+			// Step 6) Create writer and export
+			var writer = new Writer();
+			writer
+				.write(exportData)
+				.then(function (blob) {
+					// Step 7) Download file
+					writer.downloadFile(blob, filename);
+					console.log("Surpac " + fileFormat.toUpperCase() + " export completed: " + filename);
+				})
+				.catch(function (error) {
+					console.error("Error exporting Surpac " + fileFormat.toUpperCase() + ":", error);
+					showModalMessage("Export Error", error.message, "error");
+				});
+		} catch (error) {
+			console.error("Error in Surpac export:", error);
+			showModalMessage("Export Error", error.message, "error");
+		}
+	});
+});
+
+// SURPAC STR/DTM - Import
+document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		try {
+			// Step 1) Get format selection (str or dtm)
+			var formatSelect = document.getElementById("surpacFormat");
+			var formatValue = formatSelect ? formatSelect.value : "str-blastholes";
+
+			// Step 2) Determine file format
+			var fileFormat = "str";
+			if (formatValue.indexOf("-") !== -1) {
+				fileFormat = formatValue.split("-")[0];
+			} else {
+				fileFormat = formatValue;
+			}
+
+			// Step 3) Determine file extension and parser based on format selection
+			var extension, parserFormat, multiple;
+
+			// Determine if DTM (surfaces) or STR (holes/KAD)
+			var isDTM = fileFormat.startsWith("dtm");
+
+			if (isDTM) {
+				extension = ".dtm,.str";
+				parserFormat = "surpac-surface";
+				multiple = true; // Need both .dtm and .str files
+			} else {
+				extension = ".str";
+				parserFormat = "surpac-str";
+				multiple = false;
+			}
+
+			// Step 4) Create file input
+			var input = document.createElement("input");
+			input.type = "file";
+			input.accept = extension;
+			input.multiple = multiple;
+
+			// Step 5) Handle file selection
+			input.onchange = function (e) {
+				var files = e.target.files;
+				if (!files || files.length === 0) return;
+
+				// Step 6) Handle DTM surface (requires both .dtm and .str files)
+				if (fileFormat === "dtm" && parserFormat === "surpac-surface") {
+					// Step 6a) Check that we have both files
+					var dtmFile = null;
+					var strFile = null;
+
+					for (var i = 0; i < files.length; i++) {
+						var fileName = files[i].name.toLowerCase();
+						if (fileName.endsWith(".dtm")) {
+							dtmFile = files[i];
+						} else if (fileName.endsWith(".str")) {
+							strFile = files[i];
+						}
+					}
+
+					if (!dtmFile || !strFile) {
+						showModalMessage("Missing Files", "Please select both .dtm and .str files for surface import", "warning");
+						return;
+					}
+
+					// Step 6b) Read both files
+					var dtmReader = new FileReader();
+					var strReader = new FileReader();
+
+					var dtmContent = null;
+					var strContent = null;
+
+					dtmReader.onload = function (event) {
+						dtmContent = event.target.result;
+						// Check if both files are loaded
+						if (dtmContent && strContent) {
+							parseSurface(dtmContent, strContent, dtmFile.name);
+						}
+					};
+
+					strReader.onload = function (event) {
+						strContent = event.target.result;
+						// Check if both files are loaded
+						if (dtmContent && strContent) {
+							parseSurface(dtmContent, strContent, dtmFile.name);
+						}
+					};
+
+					// Read as ArrayBuffer to support both text and binary formats
+					dtmReader.readAsArrayBuffer(dtmFile);
+					strReader.readAsArrayBuffer(strFile);
+
+					// Step 6c) Parse surface function
+					function parseSurface(dtmContent, strContent, fileName) {
+						var Parser = window.fileManager.parsers.get("surpac-surface");
+						if (!Parser) {
+							showModalMessage("Error", "Surpac surface parser not found", "error");
+							return;
+						}
+
+						var parser = new Parser();
+						var surfaceName = fileName.replace(/\.(dtm|str)$/i, "");
+
+						parser.parse({
+							dtmContent: dtmContent,
+							strContent: strContent,
+							surfaceName: surfaceName,
+							color: "#00FF00"
+						})
+							.then(function (data) {
+								if (data.surfaces && data.surfaces.length > 0) {
+									// Add surfaces to loadedSurfaces
+									if (!window.loadedSurfaces) {
+										window.loadedSurfaces = new Map();
+									}
+
+									data.surfaces.forEach(function(surface) {
+										window.loadedSurfaces.set(surface.name, surface);
+										console.log("Imported surface: " + surface.name + " (" + surface.vertexCount + " vertices, " + surface.triangleCount + " triangles)");
+									});
+
+									showModalMessage("Import Complete", "Imported " + data.surfaces.length + " surface(s)", "success");
+
+									// Update display
+									drawData();
+
+									// Update tree view if available
+									if (typeof debouncedUpdateTreeView === "function") {
+										debouncedUpdateTreeView();
+									}
+								} else {
+									showModalMessage("No Data", "No surfaces found in files", "warning");
+								}
+							})
+							.catch(function (error) {
+								console.error("Error parsing Surpac surface:", error);
+								showModalMessage("Parse Error", error.message, "error");
+							});
+					}
+
+					return; // Exit early for surface import
+				}
+
+				// Step 7) Handle single file import (STR blast holes or DTM point cloud)
+				var file = files[0];
+				if (!file) return;
+
+				// Step 8) Read file
+				var reader = new FileReader();
+				reader.onload = function (event) {
+					var content = event.target.result;
+
+					// Step 9) Parse using FileManager
+					var Parser = window.fileManager.parsers.get(parserFormat);
+					if (!Parser) {
+						showModalMessage("Error", "Surpac " + fileFormat.toUpperCase() + " parser not found", "error");
+						return;
+					}
+
+					var parser = new Parser();
+					parser.parse(content)
+						.then(function (data) {
+							// Step 8) Process parsed data
+							if (!isDTM && data.blastHoles && data.blastHoles.length > 0) {
+								// Add blast holes
+								if (!allBlastHoles) allBlastHoles = [];
+								var importedHoles = data.blastHoles;
+								allBlastHoles.push(...importedHoles);
+
+								console.log("Imported " + importedHoles.length + " blast holes from STR");
+
+								// Add KAD entities if any
+								if (data.kadEntities && data.kadEntities.length > 0) {
+									if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
+									data.kadEntities.forEach(function(entity) {
+										allKADDrawingsMap.set(entity.entityName, entity);
+									});
+									console.log("Imported " + data.kadEntities.length + " KAD entities from STR");
+								}
+
+								// CRITICAL: Recalculate everything after import
+								var sumX = 0, sumY = 0;
+								allBlastHoles.forEach(function (hole) {
+									sumX += hole.startXLocation;
+									sumY += hole.startYLocation;
+								});
+								centroidX = sumX / allBlastHoles.length;
+								centroidY = sumY / allBlastHoles.length;
+
+								// Emit centroid to HUD overlay
+								var fullCentroid = calculateDataCentroid();
+								emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
+
+								// Auto-assign rowID/posID using improved smart detection
+								// This tries multiple methods: sequence-based, HDBSCAN, grid-based, bearing-based
+								if (typeof improvedSmartRowDetection === "function") {
+									improvedSmartRowDetection(importedHoles, importedHoles[0].entityName);
+								} else if (typeof detectRowsUsingHDBSCAN === "function") {
+									detectRowsUsingHDBSCAN(importedHoles, importedHoles[0].entityName);
+								}
+
+								// Calculate burden and spacing based on row assignments
+								calculateBurdenAndSpacingForHoles(importedHoles);
+
+								// Recalculate dependent data structures - ESSENTIAL for proper display
+								if (allBlastHoles.length > 0) {
+									var triangleResult = delaunayTriangles(allBlastHoles, maxEdgeLength);
+									holeTimes = calculateTimes(allBlastHoles);
+
+									// Recalculate contours
+									var contourResult = recalculateContours(allBlastHoles, deltaX, deltaY);
+									contourLinesArray = contourResult.contourLinesArray;
+									directionArrows = contourResult.directionArrows;
+								}
+
+								// Update time chart
+								timeChart();
+
+								// Draw the imported data
+								drawData(allBlastHoles, selectedHole);
+
+								// Save to IndexedDB
+								if (typeof debouncedSaveHoles === "function") {
+									debouncedSaveHoles();
+								}
+
+								showModalMessage("Import Complete",
+									"Imported " + importedHoles.length + " blast holes" +
+									(data.kadEntities && data.kadEntities.length > 0 ? " and " + data.kadEntities.length + " KAD entities" : ""),
+									"success");
+							} else if (isDTM && data.surfaces && data.surfaces.length > 0) {
+								// Import DTM surfaces properly to loadedSurfaces Map
+
+								data.surfaces.forEach(function(surface) {
+									// Generate unique surface ID
+									var surfaceId = surface.name || ("DTM_Surface_" + Date.now());
+
+									// Extract all unique points from triangles
+									var pointsMap = new Map();
+									surface.triangles.forEach(function(tri) {
+										tri.vertices.forEach(function(v) {
+											var key = v.x + "_" + v.y + "_" + v.z;
+											if (!pointsMap.has(key)) {
+												pointsMap.set(key, {x: v.x, y: v.y, z: v.z});
+											}
+										});
+									});
+									var points = Array.from(pointsMap.values());
+
+									// Create proper surface structure
+									var surfaceData = {
+										id: surfaceId,
+										name: surface.name,
+										points: points,
+										triangles: surface.triangles,
+										visible: surface.visible !== false, // Default to true
+										gradient: "default",
+										color: surface.color || "#00FF00",
+										transparency: 1.0
+									};
+
+									// Add to loadedSurfaces Map
+									loadedSurfaces.set(surfaceId, surfaceData);
+
+									console.log("Added surface '" + surfaceId + "' with " + points.length + " points and " + surface.triangles.length + " triangles");
+								});
+
+								console.log("Imported " + data.surfaces.length + " surfaces with " +
+									data.surfaces.reduce(function(sum, s) { return sum + s.triangles.length; }, 0) + " triangles from DTM");
+
+								// Draw the imported data
+								drawData(allBlastHoles, selectedHole);
+
+								// Update tree view if available
+								if (typeof debouncedUpdateTreeView === "function") {
+									debouncedUpdateTreeView();
+								}
+
+								showModalMessage("Import Complete",
+									"Imported " + data.surfaces.length + " surfaces from DTM/STR pair",
+									"success");
+							} else if (data.kadEntities && data.kadEntities.length > 0) {
+								// Import KAD entities only (no blast holes)
+								if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
+
+								data.kadEntities.forEach(function(entity) {
+									allKADDrawingsMap.set(entity.entityName, entity);
+								});
+
+								console.log("Imported " + data.kadEntities.length + " KAD entities from STR");
+
+								// Update UI elements (same as DXF import)
+								updateCentroids();
+								drawData(allBlastHoles, selectedHole);
+								debouncedSaveKAD();
+								zoomToFitAll();
+
+								// Update tree view if available
+								if (typeof debouncedUpdateTreeView === "function") {
+									debouncedUpdateTreeView();
+								}
+
+								showModalMessage("Import Complete",
+									"Imported " + data.kadEntities.length + " KAD entities",
+									"success");
+							} else {
+								showModalMessage("No Data", "No data found in file", "warning");
+								return;
+							}
+
+							// Step 9) Update tree view if available
+							if (typeof debouncedUpdateTreeView === "function") {
+								debouncedUpdateTreeView();
+							}
+						})
+						.catch(function (error) {
+							console.error("Error parsing Surpac " + fileFormat.toUpperCase() + ":", error);
+							showModalMessage("Parse Error", error.message, "error");
+						});
+				};
+
+				reader.onerror = function () {
+					showModalMessage("File Error", "Failed to read file", "error");
+				};
+
+				reader.readAsText(file);
+			};
+
+			// Step 11) Trigger file picker
+			input.click();
+		} catch (error) {
+			console.error("Error importing Surpac file:", error);
+			showModalMessage("Import Error", error.message, "error");
+		}
 	});
 });
 
@@ -7315,10 +7873,152 @@ document.querySelectorAll(".obj-input-btn").forEach(function (button) {
 	});
 });
 
-// OBJ/GLTF EXPORT - Coming Soon
+// OBJ EXPORT
 document.querySelectorAll(".obj-output-btn").forEach(function (button) {
-	button.addEventListener("click", function () {
-		showModalMessage("Coming Soon", "OBJ/GLTF export will be available in a future update", "info");
+	button.addEventListener("click", async function () {
+		try {
+			// Step 1) Check if surfaces are loaded
+			if (!window.loadedSurfaces || window.loadedSurfaces.size === 0) {
+				showModalMessage("No Data", "No surfaces loaded. Please load a surface first (OBJ, DXF, PLY).", "warning");
+				return;
+			}
+
+			// Step 2) Get OBJ writer
+			var Writer = window.fileManager.writers.get("obj");
+			if (!Writer) {
+				showModalMessage("Error", "OBJ writer not found", "error");
+				return;
+			}
+
+		// Step 3) Convert surfaces to OBJ format - only export visible surfaces
+		var surfaces = Array.from(window.loadedSurfaces.values()).filter(function(surface) {
+			return surface.visible;
+		});
+
+		if (surfaces.length === 0) {
+			showModalMessage("No Data", "No visible surfaces to export", "warning");
+			return;
+		}
+
+	// Step 3a) Build vertices, normals, and faces from triangles with deduplication
+		var vertices = [];
+		var normals = [];
+		var faces = [];
+		var vertexMap = new Map(); // Deduplicate vertices
+		var normalMap = new Map(); // Deduplicate normals
+
+		surfaces.forEach(function(surface) {
+			if (!surface.triangles || !Array.isArray(surface.triangles)) {
+				return;
+			}
+
+			surface.triangles.forEach(function(triangle) {
+				// Validate triangle structure
+				if (!triangle.vertices || triangle.vertices.length !== 3) {
+					return;
+				}
+
+				// Validate all 3 vertices are valid before processing
+				var allValid = true;
+				for (var v = 0; v < 3; v++) {
+					var vert = triangle.vertices[v];
+					if (!vert || vert.x === undefined || vert.y === undefined || vert.z === undefined) {
+						allValid = false;
+						break;
+					}
+				}
+
+				if (!allValid) {
+					console.warn("Skipping triangle with invalid vertices");
+					return;
+				}
+
+				// Step 3b) Calculate face normal
+				var v0 = triangle.vertices[0];
+				var v1 = triangle.vertices[1];
+				var v2 = triangle.vertices[2];
+
+				// Edge vectors
+				var e1x = v1.x - v0.x;
+				var e1y = v1.y - v0.y;
+				var e1z = v1.z - v0.z;
+				var e2x = v2.x - v0.x;
+				var e2y = v2.y - v0.y;
+				var e2z = v2.z - v0.z;
+
+				// Cross product
+				var nx = e1y * e2z - e1z * e2y;
+				var ny = e1z * e2x - e1x * e2z;
+				var nz = e1x * e2y - e1y * e2x;
+
+				// Normalize
+				var len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+				if (len > 0) {
+					nx /= len;
+					ny /= len;
+					nz /= len;
+				}
+
+				// Step 3c) Add or find normal
+				var normalKey = nx.toFixed(6) + "," + ny.toFixed(6) + "," + nz.toFixed(6);
+				var normalIndex;
+				if (normalMap.has(normalKey)) {
+					normalIndex = normalMap.get(normalKey);
+				} else {
+					normalIndex = normals.length;
+					normals.push({ x: nx, y: ny, z: nz });
+					normalMap.set(normalKey, normalIndex);
+				}
+
+				// Step 3d) Add or find vertices and build face
+				var faceIndices = [];
+				for (var v = 0; v < 3; v++) {
+					var vert = triangle.vertices[v];
+					var vertKey = vert.x.toFixed(6) + "," + vert.y.toFixed(6) + "," + vert.z.toFixed(6);
+
+					var vertexIndex;
+					if (vertexMap.has(vertKey)) {
+						vertexIndex = vertexMap.get(vertKey);
+					} else {
+						vertexIndex = vertices.length;
+						vertices.push({ x: vert.x, y: vert.y, z: vert.z });
+						vertexMap.set(vertKey, vertexIndex);
+					}
+					faceIndices.push(vertexIndex);
+				}
+
+				// Step 3e) Add face with vertex and normal indices
+				faces.push({ 
+					indices: faceIndices,
+					normalIndex: normalIndex
+				});
+			});
+		});
+
+			if (vertices.length === 0) {
+				showModalMessage("No Data", "No vertices found in surfaces", "warning");
+				return;
+			}
+
+		// Step 3f) Write OBJ with proper data structure including normals
+		var writer = new Writer();
+		var blob = await writer.write({
+			vertices: vertices,
+			normals: normals,
+			faces: faces
+		});
+		
+		// Step 4) Download file
+		var uid = Math.random().toString(36).slice(2, 6);
+		var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+		writer.downloadFile(blob, "KIRRA_OBJ_" + uid + ".obj");
+
+		console.log("OBJ export completed: " + vertices.length + " vertices, " + normals.length + " normals, " + faces.length + " faces from " + surfaces.length + " surface(s)");
+		showModalMessage("Export Complete", "Exported " + vertices.length + " vertices, " + normals.length + " normals, " + faces.length + " faces to OBJ", "success");
+		} catch (error) {
+			console.error("OBJ export error:", error);
+			showModalMessage("Export Failed", "Error: " + error.message, "error");
+		}
 	});
 });
 
@@ -7333,10 +8033,62 @@ document.querySelectorAll(".pointcloud-input-btn").forEach(function (button) {
 	});
 });
 
-// POINT CLOUD EXPORT - Coming Soon
+// POINT CLOUD EXPORT
 document.querySelectorAll(".pointcloud-output-btn").forEach(function (button) {
-	button.addEventListener("click", function () {
-		showModalMessage("Coming Soon", "Point Cloud export will be available in a future update", "info");
+	button.addEventListener("click", async function () {
+		try {
+			// Step 1) Check if surfaces are loaded
+			if (!window.loadedSurfaces || window.loadedSurfaces.size === 0) {
+				showModalMessage("No Data", "No surfaces loaded. Please load a surface first to export as point cloud.", "warning");
+				return;
+			}
+
+			// Step 2) Get Point Cloud writer
+			var Writer = window.fileManager.writers.get("pointcloud-xyz");
+			if (!Writer) {
+				showModalMessage("Error", "Point Cloud writer not found", "error");
+				return;
+			}
+
+		// Step 3) Extract all vertices from visible surfaces only as points
+		var points = [];
+		window.loadedSurfaces.forEach(function(surface) {
+			if (surface.visible && surface.triangles && Array.isArray(surface.triangles)) {
+				surface.triangles.forEach(function(triangle) {
+					if (triangle.vertices) {
+						triangle.vertices.forEach(function(vertex) {
+							points.push({
+								x: vertex.x,
+								y: vertex.y,
+								z: vertex.z || 0
+							});
+						});
+					}
+				});
+			}
+		});
+
+			if (points.length === 0) {
+				showModalMessage("No Data", "No vertices found in surfaces", "warning");
+				return;
+			}
+
+			// Step 4) Export as XYZ
+			var writer = new Writer();
+			var blob = await writer.write({
+				points: points
+			});
+
+			// Step 5) Download file
+			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+			writer.downloadFile(blob, "KIRRA_POINTCLOUD_" + timestamp + ".xyz");
+
+			console.log("Point Cloud export completed: " + points.length + " points");
+			showModalMessage("Export Complete", "Exported " + points.length + " points to XYZ", "success");
+		} catch (error) {
+			console.error("Point Cloud export error:", error);
+			showModalMessage("Export Failed", "Error: " + error.message, "error");
+		}
 	});
 });
 
@@ -8957,6 +9709,15 @@ function parseK2Dcsv(data) {
 			alert(summary);
 		}
 
+		// Step 4.5) Calculate burden and spacing for holes with missing values
+		// (Only calculate if burden/spacing are 0 or undefined - preserve existing values)
+		var holesNeedingCalculation = result.holes.filter(function(hole) {
+			return (!hole.burden || hole.burden === 0) && (!hole.spacing || hole.spacing === 0);
+		});
+		if (holesNeedingCalculation.length > 0) {
+			calculateBurdenAndSpacingForHoles(holesNeedingCalculation);
+		}
+
 		// Step 5) Calculate times and redraw
 		holeTimes = calculateTimes(allBlastHoles);
 		drawData(allBlastHoles, selectedHole);
@@ -9195,26 +9956,11 @@ async function loadOBJWithMTL(objFile, allFiles) {
 			}
 		}
 
-		// Step 4) Parse OBJ to get points/triangles for Data Explorer
-		var objData = parseOBJFile(objContent, mtlContent);
+		// Step 4) ALWAYS use Three.js OBJLoader (for both textured and non-textured)
+		// This ensures reliable triangle topology preservation
+		console.log("🔷 Loading OBJ with Three.js loader: " + objFile.name);
+		await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, null);
 
-		// Step 5) Check if this is a textured mesh (has MTL + texture files)
-		var hasTextures = mtlContent && textureFiles.length > 0;
-
-		if (hasTextures) {
-			console.log("🎨 Loading textured OBJ mesh: " + objFile.name);
-			// Step 6) Use Three.js loaders for textured mesh
-			await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, objData);
-		} else {
-			// Step 7) No textures - use existing point cloud/surface method
-			if (objData.points && objData.points.length > 0) {
-				if (objData.points.length > 10000) {
-					showDecimationWarning(objData.points, objFile.name, objData);
-				} else {
-					processSurfacePoints(objData.points, objFile.name, objData);
-				}
-			}
-		}
 	} catch (error) {
 		console.error("❌ Error loading OBJ with MTL:", error);
 		// If anything fails, use normal OBJ loading
@@ -9251,6 +9997,113 @@ async function readFileAsBlob(file) {
 }
 
 // Step 3) Load OBJ with texture using Three.js loaders
+// Step 0) Extract triangles from Three.js mesh geometry
+function extractTrianglesFromThreeJSMesh(object3D) {
+	var triangles = [];
+	var points = [];
+	var vertexMap = new Map(); // For deduplication
+	
+	object3D.traverse(function(child) {
+		if (child.isMesh && child.geometry) {
+			var geometry = child.geometry;
+			
+			// Step 0a) Get position attribute
+			var positions = geometry.attributes.position;
+			if (!positions) {
+				console.warn("Mesh has no position attribute");
+				return;
+			}
+			
+			// Step 0b) Check if indexed or non-indexed geometry
+			var indices = geometry.index;
+			var faceCount = 0;
+			
+			if (indices) {
+				// Indexed geometry
+				faceCount = indices.count / 3;
+				
+				for (var i = 0; i < faceCount; i++) {
+					var i0 = indices.array[i * 3];
+					var i1 = indices.array[i * 3 + 1];
+					var i2 = indices.array[i * 3 + 2];
+					
+					var v0 = {
+						x: positions.array[i0 * 3],
+						y: positions.array[i0 * 3 + 1],
+						z: positions.array[i0 * 3 + 2]
+					};
+					var v1 = {
+						x: positions.array[i1 * 3],
+						y: positions.array[i1 * 3 + 1],
+						z: positions.array[i1 * 3 + 2]
+					};
+					var v2 = {
+						x: positions.array[i2 * 3],
+						y: positions.array[i2 * 3 + 1],
+						z: positions.array[i2 * 3 + 2]
+					};
+					
+					// Add to points with deduplication
+					[v0, v1, v2].forEach(function(v) {
+						var key = v.x.toFixed(6) + "," + v.y.toFixed(6) + "," + v.z.toFixed(6);
+						if (!vertexMap.has(key)) {
+							vertexMap.set(key, v);
+							points.push(v);
+						}
+					});
+					
+					triangles.push({
+						vertices: [v0, v1, v2],
+						uvs: [],
+						normals: [],
+						material: null
+					});
+				}
+			} else {
+				// Non-indexed geometry (each 3 vertices = 1 triangle)
+				faceCount = positions.count / 3;
+				
+				for (var i = 0; i < faceCount; i++) {
+					var v0 = {
+						x: positions.array[i * 9],
+						y: positions.array[i * 9 + 1],
+						z: positions.array[i * 9 + 2]
+					};
+					var v1 = {
+						x: positions.array[i * 9 + 3],
+						y: positions.array[i * 9 + 4],
+						z: positions.array[i * 9 + 5]
+					};
+					var v2 = {
+						x: positions.array[i * 9 + 6],
+						y: positions.array[i * 9 + 7],
+						z: positions.array[i * 9 + 8]
+					};
+					
+					// Add to points with deduplication
+					[v0, v1, v2].forEach(function(v) {
+						var key = v.x.toFixed(6) + "," + v.y.toFixed(6) + "," + v.z.toFixed(6);
+						if (!vertexMap.has(key)) {
+							vertexMap.set(key, v);
+							points.push(v);
+						}
+					});
+					
+					triangles.push({
+						vertices: [v0, v1, v2],
+						uvs: [],
+						normals: [],
+						material: null
+					});
+				}
+			}
+		}
+	});
+	
+	console.log("🔷 Extracted " + triangles.length + " triangles, " + points.length + " unique points from Three.js mesh");
+	return { triangles: triangles, points: points };
+}
+
 async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textureBlobs, objData) {
 	// Step 1) Create progress dialog
 	const progressContent = document.createElement("div");
@@ -9275,7 +10128,12 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 
 	return new Promise(function (resolve, reject) {
 		try {
-			// Step 3) Create texture URLs from blobs
+			// Step 2) Check if we have textures
+			var hasTextures = textureBlobs && Object.keys(textureBlobs).length > 0;
+			
+			// Step 3) Handle textured OBJ (with MTL and textures)
+			if (hasTextures && mtlContent) {
+			// Step 3a) Create texture URLs from blobs
 			var textureURLs = {};
 			var blobURLs = []; // Track for cleanup
 			text.textContent = "Creating texture URLs...";
@@ -9508,6 +10366,81 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 
 				resolve(object3D);
 			});
+			} else {
+				// Step 20) No textures - parse OBJ without materials and create regular surface
+				console.log("🔷 No textures - loading as regular surface");
+				text.textContent = "Parsing OBJ geometry...";
+				bar.style.width = "50%";
+				
+				var objLoader = new OBJLoader();
+				var object3D = objLoader.parse(objContent);
+				object3D.name = fileName;
+				
+				// Step 21) Extract triangles from Three.js mesh
+				text.textContent = "Extracting triangles...";
+				bar.style.width = "75%";
+				
+				var extracted = extractTrianglesFromThreeJSMesh(object3D);
+				var triangles = extracted.triangles;
+				var points = extracted.points;
+				
+				console.log("🔷 Extracted from Three.js: " + points.length + " points, " + triangles.length + " triangles");
+				
+				// Step 22) Calculate bounds
+				var minX = Infinity, maxX = -Infinity;
+				var minY = Infinity, maxY = -Infinity;
+				var minZ = Infinity, maxZ = -Infinity;
+				for (var i = 0; i < points.length; i++) {
+					var pt = points[i];
+					if (pt.x < minX) minX = pt.x;
+					if (pt.x > maxX) maxX = pt.x;
+					if (pt.y < minY) minY = pt.y;
+					if (pt.y > maxY) maxY = pt.y;
+					if (pt.z < minZ) minZ = pt.z;
+					if (pt.z > maxZ) maxZ = pt.z;
+				}
+				var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
+				
+				// Step 23) Store as regular surface
+				var surfaceId = fileName;
+				loadedSurfaces.set(surfaceId, {
+					id: surfaceId,
+					name: fileName,
+					points: points,
+					triangles: triangles,
+					visible: true,
+					gradient: "default",
+					transparency: 1.0,
+					isTexturedMesh: false,
+					meshBounds: meshBounds,
+				});
+				
+				console.log("✅ OBJ loaded (non-textured): " + fileName + " (" + points.length + " points, " + triangles.length + " triangles)");
+				
+				// Step 24) Save to database
+				saveSurfaceToDB(surfaceId)
+					.then(function () {
+						console.log("💾 Surface saved to database: " + surfaceId);
+					})
+					.catch(function (err) {
+						console.error("❌ Failed to save surface:", err);
+					});
+				
+				// Step 25) Update UI
+				updateCentroids();
+				drawData(allBlastHoles, selectedHole);
+				debouncedUpdateTreeView();
+				updateStatusMessage("Loaded OBJ surface: " + fileName + " (" + triangles.length + " triangles)");
+				
+				// Step 26) Close progress dialog
+				text.textContent = "Complete!";
+				bar.style.width = "100%";
+				setTimeout(function () {
+					progressDialog.close();
+				}, 500);
+				
+				resolve(object3D);
+			}
 		} catch (error) {
 			console.error("❌ Error in loadOBJWithTextureThreeJS:", error);
 			// Close progress dialog on error
@@ -10912,7 +11845,6 @@ function getColorInteger(hex) {
 	// For other colors, approximate to 8-255 (never 0 or 256)
 	const gray = Math.round((r + g + b) / 3);
 	const index = Math.max(8, Math.min(255, Math.round((gray / 255) * 247) + 8));
-	console.log("Color index:", index);
 	return index;
 }
 
@@ -10938,6 +11870,14 @@ function getColorInteger(hex) {
  * @returns {void}
  */
 function exportKADDXF() {
+	// DEBUG: Check if data is duplicating
+	console.log("exportKADDXF: allKADDrawingsMap.size =", allKADDrawingsMap.size);
+	var totalPoints = 0;
+	allKADDrawingsMap.forEach(function(entity) {
+		totalPoints += entity.data ? entity.data.length : 0;
+	});
+	console.log("exportKADDXF: Total points across all entities =", totalPoints);
+	
 	let dxf = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
 	dxf += "0\nSECTION\n2\nTABLES\n0\nENDSEC\n";
 	dxf += "0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n";
@@ -14937,8 +15877,8 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 
 			// Calculate perpendicular vector (rotated 90 degrees) for horizontal offset
 			// Positive dy and negative dx gives us the left-hand perpendicular (positive = outward)
-			let perpX1 = (dy / length) * horizontalOffset;
-			let perpY1 = (-dx / length) * horizontalOffset;
+			let perpX1 = (-dy / length) * horizontalOffset;
+			let perpY1 = (dx / length) * horizontalOffset;
 			let perpX2 = perpX1;
 			let perpY2 = perpY1;
 
@@ -22048,6 +22988,7 @@ function drawMouseCrossHairs(mouseX, mouseY, snapRadiusPixels, showSnapRadius = 
 
 // Main draw function
 function drawData(allBlastHoles, selectedHole) {
+
 	// Expose globals to window for canvas3DDrawing.js module
 	exposeGlobalsToWindow();
 
@@ -22076,7 +23017,8 @@ function drawData(allBlastHoles, selectedHole) {
 				});
 
 				// Dispatch on document (same as the real mousemove handler)
-				document.dispatchEvent(syntheticEvent);
+				// Synthetic Events is killing the GPU and destroying performance.  
+				// document.dispatchEvent(syntheticEvent);
 			}
 		});
 	}
@@ -22122,7 +23064,6 @@ function drawData(allBlastHoles, selectedHole) {
 	// Step 1) Clear Three.js geometry for rebuild
 	// Note: Super-batch optimization (ONE draw call for all lines) makes this fast even for large DXFs
 	clearThreeJS();
-
 	// Step 1a) Clear 2D canvas always (to remove old content)
 	if (ctx) {
 		clearCanvas();
@@ -23611,6 +24552,7 @@ function drawData(allBlastHoles, selectedHole) {
 
 		// Step 3) Draw KAD entities in Three.js
 		if (drawingsGroupVisible) {
+
 			// Step 3.1) SUPER-BATCH: For large DXF files, merge ALL lines/polys into ONE geometry
 			// This reduces 3799 draw calls to just 1 - massive performance improvement!
 			var linePolyEntities = [];
@@ -28981,232 +29923,6 @@ function isKADObjectSelected(clickedObject) {
 // ENHANCED: Unified KAD Property Editor with FloatingDialog and hide functionality
 // MOVED TO KADContextMenu.js - These functions are now loaded from external module
 // showKADPropertyEditorPopup, showMultipleKADPropertyEditor, convertLinePolyType, updateKADObjectProperties
-/*
-// Step 1) Function removed - now implemented in src/dialog/contextMenu/KADContextMenu.js
-// Step 2) Original implementation: 209 lines (28276-28485) - had template literals and no Delete button
-// Step 3) New implementation in src/dialog/contextMenu/KADContextMenu.js (line 7-309) has:
-//         - Delete button with auto-renumbering
-//         - Proper segment endpoint handling
-//         - No template literal violations
-//         - Better edge case handling
-// Step 4) KADContextMenu.js exposes it globally as: window.showKADPropertyEditorPopup = showKADPropertyEditorPopup
-// Step 5) All calls to showKADPropertyEditorPopup() in kirra.js (lines 1997, 40745) automatically use the global version
-// Step 6) No wrapper needed - function is already globally available
-
-// New function to show property editor for multiple KAD objects
-function showMultipleKADPropertyEditor(kadObjects) {
-	if (!kadObjects || kadObjects.length === 0) return;
-
-	// Create form content
-	const formContent = document.createElement("div");
-
-	// Common properties that can be edited for all polygons
-	const fields = [
-		{
-			label: "Color",
-			name: "editKADColor",
-			type: "color",
-			value: kadObjects[0].data?.[0]?.color || "#FF0000",
-		},
-		{
-			label: "Line Width",
-			name: "editLineWidth",
-			type: "number",
-			value: kadObjects[0].data?.[0]?.lineWidth || "2",
-			step: "0.5",
-			min: "0.5",
-			max: "10",
-		},
-		{
-			label: "Z Elevation",
-			name: "editZLocation",
-			type: "number",
-			value: "0",
-			step: "0.1",
-		},
-	];
-
-	// Create form fields
-	fields.forEach((field) => {
-		const fieldDiv = document.createElement("div");
-		fieldDiv.className = "form-field";
-		fieldDiv.style.marginBottom = "10px";
-
-		const label = document.createElement("label");
-		label.textContent = field.label + ":";
-		label.style.display = "inline-block";
-		label.style.width = "100px";
-		fieldDiv.appendChild(label);
-
-		const input = document.createElement("input");
-		input.type = field.type;
-		input.name = field.name;
-		input.value = field.value;
-
-		if (field.type === "number") {
-			input.step = field.step || "1";
-			if (field.min) input.min = field.min;
-			if (field.max) input.max = field.max;
-		}
-
-		if (field.type === "color") {
-			input.className = "jscolor";
-			input.setAttribute("data-jscolor", "{}");
-		}
-
-		fieldDiv.appendChild(input);
-		formContent.appendChild(fieldDiv);
-	});
-
-	// Add note about multiple selection
-	const noteDiv = document.createElement("div");
-	noteDiv.style.marginTop = "15px";
-	noteDiv.style.fontSize = "12px";
-	noteDiv.style.color = "#666";
-	noteDiv.innerHTML = "Editing " + kadObjects.length + " polygon(s)";
-	formContent.appendChild(noteDiv);
-
-	// Create dialog
-	const dialog = new FloatingDialog({
-		title: "Edit Multiple Polygons",
-		content: formContent,
-		layoutType: "default",
-		width: 350,
-		height: 250,
-		showConfirm: true,
-		showCancel: true,
-		confirmText: "Apply",
-		cancelText: "Cancel",
-		onConfirm: () => {
-			// Get form values
-			const formData = getFormData(formContent);
-
-			// Apply changes to all selected polygons
-			kadObjects.forEach((kadObj) => {
-				const entity = allKADDrawingsMap.get(kadObj.entityName);
-				if (entity) {
-					// Update all points in the polygon
-					entity.data.forEach((point) => {
-						if (formData.editKADColor) {
-							point.color = formData.editKADColor;
-						}
-						if (formData.editLineWidth) {
-							point.lineWidth = parseFloat(formData.editLineWidth);
-						}
-						if (formData.editZLocation) {
-							point.pointZLocation = parseFloat(formData.editZLocation);
-						}
-					});
-				}
-			});
-
-			// Save and redraw
-			debouncedSaveKAD();
-			clearAllSelectionState();
-			drawData(allBlastHoles, selectedHole);
-			updateStatusMessage("Updated " + kadObjects.length + " polygon(s)");
-			setTimeout(() => updateStatusMessage(""), 2000);
-		},
-		onCancel: () => {
-			// Just close
-			clearAllSelectionState();
-			drawData(allBlastHoles, selectedHole);
-		},
-	});
-
-	dialog.show();
-
-	// Initialize color picker if present
-	if (typeof jscolor !== "undefined") {
-		jscolor.install();
-	}
-}
-
-// NEW: Function to convert between line and poly
-function convertLinePolyType(kadObject, newType) {
-	const entity = getEntityFromKADObject(kadObject);
-	if (!entity) return;
-
-	// Update entity type
-	entity.entityType = newType;
-
-	// Update all data points to reflect the new type
-	entity.data.forEach((point) => {
-		point.entityType = newType;
-		if (newType === "poly") {
-			point.closed = true;
-		} else {
-			point.closed = false;
-		}
-	});
-
-	updateStatusMessage(`Converted ${kadObject.entityName} to ${newType}`);
-	debouncedUpdateTreeView(); // ? ADDED: Update tree view swatches
-	setTimeout(() => updateStatusMessage(""), 2000);
-}
-
-function updateKADObjectProperties(kadObject, newProperties, scope = "all") {
-	const map = allKADDrawingsMap;
-	const entity = map.get(kadObject.entityName);
-
-	if (entity) {
-		const onlyZ = newProperties.onlyZ;
-		if (scope === "element") {
-			// Only this point
-			const elementIndex = kadObject.elementIndex;
-			if (elementIndex !== undefined && elementIndex < entity.data.length) {
-				const item = entity.data[elementIndex];
-				if (newProperties.color) item.color = newProperties.color;
-				if (newProperties.lineWidth) item.lineWidth = parseFloat(newProperties.lineWidth);
-				if (newProperties.radius) item.radius = parseFloat(newProperties.radius);
-				if (newProperties.text) item.text = newProperties.text;
-
-				if (onlyZ) {
-					if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
-				} else {
-					if (newProperties.pointXLocation !== undefined) item.pointXLocation = parseFloat(newProperties.pointXLocation);
-					if (newProperties.pointYLocation !== undefined) item.pointYLocation = parseFloat(newProperties.pointYLocation);
-					if (newProperties.pointZLocation !== undefined) item.pointZLocation = parseFloat(newProperties.pointZLocation);
-				}
-				updateStatusMessage("Updated element " + (elementIndex + 1) + " of " + kadObject.entityType + " " + kadObject.entityName);
-			}
-		} else {
-			// All points
-			const elementIndex = kadObject.elementIndex;
-			const item = entity.data[elementIndex];
-			let dx = 0,
-				dy = 0,
-				dz = 0;
-			if (!onlyZ && item) {
-				if (newProperties.pointXLocation !== undefined) dx = parseFloat(newProperties.pointXLocation) - item.pointXLocation;
-				if (newProperties.pointYLocation !== undefined) dy = parseFloat(newProperties.pointYLocation) - item.pointYLocation;
-				if (newProperties.pointZLocation !== undefined) dz = parseFloat(newProperties.pointZLocation) - item.pointZLocation;
-			}
-			entity.data.forEach((pt) => {
-				if (newProperties.color) pt.color = newProperties.color;
-				if (newProperties.lineWidth) pt.lineWidth = parseFloat(newProperties.lineWidth);
-				if (newProperties.radius) pt.radius = parseFloat(newProperties.radius);
-				if (newProperties.text) pt.text = newProperties.text;
-				if (newProperties.pointDiameter) pt.pointDiameter = parseFloat(newProperties.pointDiameter);
-
-				if (onlyZ) {
-					if (newProperties.pointZLocation !== undefined) pt.pointZLocation = parseFloat(newProperties.pointZLocation);
-				} else {
-					if (newProperties.pointXLocation !== undefined) pt.pointXLocation += dx;
-					if (newProperties.pointYLocation !== undefined) pt.pointYLocation += dy;
-					if (newProperties.pointZLocation !== undefined) pt.pointZLocation += dz;
-				}
-			});
-			updateStatusMessage("Updated all elements in " + kadObject.entityType + " " + kadObject.entityName);
-		}
-		drawData(allBlastHoles, selectedHole);
-		debouncedUpdateTreeView();
-		setTimeout(() => updateStatusMessage(""), 2000);
-	} else {
-		console.error("Entity not found:", kadObject.entityName, "in unified map");
-	}
-}
-*/
 // END OF MOVED FUNCTIONS - KAD functions now loaded from KADContextMenu.js
 
 // Helper to update KAD object in map
@@ -29225,283 +29941,6 @@ function updateKADObjectInMap(kadObject) {
 }
 
 // MOVED TO SurfacesContextMenu.js - This function is now loaded from external module
-/*
-// Step 1) Surface Context Menu using FloatingDialog for consistent styling
-function showSurfaceContextMenu(x, y, surfaceId = null) {
-	// Step 2) Get the specific surface if ID provided, otherwise first visible surface
-	var surface = surfaceId
-		? loadedSurfaces.get(surfaceId)
-		: Array.from(loadedSurfaces.values()).find(function (s) {
-				return s.visible;
-		  });
-	if (!surface) return;
-
-	// Step 3) Store reference for dialog callbacks
-	var currentSurface = surface;
-	var dialogInstance = null;
-
-	// Step 4) Define gradient options - include texture option for textured meshes
-	var gradientOptions = [
-		{ value: "default", text: "Default" },
-		{ value: "hillshade", text: "Hillshade" },
-		{ value: "viridis", text: "Viridis" },
-		{ value: "turbo", text: "Turbo" },
-		{ value: "parula", text: "Parula" },
-		{ value: "cividis", text: "Cividis" },
-		{ value: "terrain", text: "Terrain" },
-	];
-
-	// Step 4a) Add texture option if this is a textured mesh
-	if (currentSurface.isTexturedMesh) {
-		gradientOptions.unshift({ value: "texture", text: "Texture (Original)" });
-	}
-
-	// Step 5) Create content builder function
-	var contentBuilder = function (dialog) {
-		var container = document.createElement("div");
-		container.style.display = "flex";
-		container.style.flexDirection = "column";
-		container.style.gap = "12px";
-		container.style.padding = "12px";
-
-		// Step 6) Create action buttons section with full-width buttons
-		var buttonsSection = document.createElement("div");
-		buttonsSection.style.display = "flex";
-		buttonsSection.style.flexDirection = "column";
-		buttonsSection.style.gap = "8px";
-		buttonsSection.style.marginBottom = "16px";
-
-		// Step 6a) Helper function to create styled full-width button
-		var createActionButton = function (text, onClick) {
-			var btn = document.createElement("button");
-			btn.className = "floating-dialog-btn";
-			btn.textContent = text;
-			btn.style.width = "100%";
-			btn.style.padding = "10px 16px";
-			btn.style.fontSize = "13px";
-			btn.style.cursor = "pointer";
-			btn.style.borderRadius = "4px";
-			btn.style.border = "1px solid #ccc";
-			btn.style.backgroundColor = "#f5f5f5";
-			btn.style.color = "#333";
-			btn.style.transition = "background-color 0.2s";
-			btn.onmouseover = function () {
-				btn.style.backgroundColor = "#e0e0e0";
-			};
-			btn.onmouseout = function () {
-				btn.style.backgroundColor = "#f5f5f5";
-			};
-			btn.onclick = onClick;
-			return btn;
-		};
-
-		// Step 7) Toggle visibility button
-		buttonsSection.appendChild(
-			createActionButton(currentSurface.visible ? "Hide Surface" : "Show Surface", function () {
-				setSurfaceVisibility(currentSurface.id, !currentSurface.visible);
-				drawData(allBlastHoles, selectedHole);
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
-
-		// Step 8) Remove surface button
-		buttonsSection.appendChild(
-			createActionButton("Remove Surface", function () {
-				deleteSurfaceFromDB(currentSurface.id)
-					.then(function () {
-						loadedSurfaces.delete(currentSurface.id);
-						drawData(allBlastHoles, selectedHole);
-						debouncedUpdateTreeView();
-						console.log("Surface removed from both memory and database");
-					})
-					.catch(function (error) {
-						console.error("Error removing surface:", error);
-						loadedSurfaces.delete(currentSurface.id);
-						drawData(allBlastHoles, selectedHole);
-					});
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
-
-		// Step 9) Delete all surfaces button
-		buttonsSection.appendChild(
-			createActionButton("Delete All Surfaces", function () {
-				deleteAllSurfacesFromDB()
-					.then(function () {
-						loadedSurfaces.clear();
-						drawData(allBlastHoles, selectedHole);
-						console.log("All surfaces deleted from database and memory");
-					})
-					.catch(function (error) {
-						console.error("Error deleting all surfaces:", error);
-					});
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
-
-		container.appendChild(buttonsSection);
-
-		// Step 10) Create transparency slider section with proper styling
-		var sliderSection = document.createElement("div");
-		sliderSection.style.marginBottom = "12px";
-
-		var sliderLabel = document.createElement("div");
-		sliderLabel.textContent = "Transparency:";
-		sliderLabel.style.fontSize = "13px";
-		sliderLabel.style.marginBottom = "8px";
-		sliderLabel.style.color = "#333";
-		sliderSection.appendChild(sliderLabel);
-
-		// Step 10a) Create styled range slider matching app theme
-		var sliderContainer = document.createElement("div");
-		sliderContainer.style.display = "flex";
-		sliderContainer.style.alignItems = "center";
-		sliderContainer.style.gap = "12px";
-
-		var slider = document.createElement("input");
-		slider.type = "range";
-		slider.min = "0";
-		slider.max = "100";
-		slider.value = Math.round((currentSurface.transparency || 1.0) * 100);
-		slider.style.flex = "1";
-		slider.style.height = "6px";
-		slider.style.cursor = "pointer";
-		slider.style.appearance = "none";
-		slider.style.webkitAppearance = "none";
-		slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + slider.value + "%, #ddd " + slider.value + "%, #ddd 100%)";
-		slider.style.borderRadius = "3px";
-		slider.style.outline = "none";
-
-		var sliderValue = document.createElement("span");
-		sliderValue.textContent = slider.value + "%";
-		sliderValue.style.minWidth = "45px";
-		sliderValue.style.fontSize = "12px";
-		sliderValue.style.color = "#666";
-		sliderValue.style.textAlign = "right";
-
-		// Step 10b) Update slider appearance and value on input
-		slider.oninput = function () {
-			var val = parseInt(slider.value);
-			sliderValue.textContent = val + "%";
-			slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
-			var newTransparency = val / 100;
-			currentSurface.transparency = newTransparency;
-			saveSurfaceToDB(currentSurface.id).catch(function (err) {
-				console.error("Failed to save surface transparency:", err);
-			});
-			drawData(allBlastHoles, selectedHole);
-		};
-
-		sliderContainer.appendChild(slider);
-		sliderContainer.appendChild(sliderValue);
-		sliderSection.appendChild(sliderContainer);
-		container.appendChild(sliderSection);
-
-		// Step 11) Create gradient select section
-		var gradientSection = document.createElement("div");
-		gradientSection.style.marginBottom = "12px";
-
-		var gradientLabel = document.createElement("div");
-		gradientLabel.textContent = "Color Gradient:";
-		gradientLabel.style.fontSize = "13px";
-		gradientLabel.style.marginBottom = "8px";
-		gradientLabel.style.color = "#333";
-		gradientSection.appendChild(gradientLabel);
-
-		var gradientSelect = document.createElement("select");
-		gradientSelect.style.width = "100%";
-		gradientSelect.style.padding = "8px 12px";
-		gradientSelect.style.fontSize = "13px";
-		gradientSelect.style.borderRadius = "4px";
-		gradientSelect.style.border = "1px solid #ccc";
-		gradientSelect.style.backgroundColor = "#fff";
-		gradientSelect.style.cursor = "pointer";
-
-		gradientOptions.forEach(function (opt) {
-			var option = document.createElement("option");
-			option.value = opt.value;
-			option.textContent = opt.text;
-			if (opt.value === (currentSurface.gradient || "default")) {
-				option.selected = true;
-			}
-			gradientSelect.appendChild(option);
-		});
-
-		gradientSelect.onchange = function () {
-			currentSurface.gradient = gradientSelect.value;
-			saveSurfaceToDB(currentSurface.id).catch(function (err) {
-				console.error("Failed to save surface gradient:", err);
-			});
-			console.log("Updated gradient for surface '" + (currentSurface.name || currentSurface.id) + "' to: " + gradientSelect.value);
-			drawData(allBlastHoles, selectedHole);
-		};
-
-		gradientSection.appendChild(gradientSelect);
-		container.appendChild(gradientSection);
-
-		// Step 12) Create legend checkbox section
-		var legendSection = document.createElement("div");
-		legendSection.style.display = "flex";
-		legendSection.style.alignItems = "center";
-		legendSection.style.gap = "8px";
-
-		var legendCheckbox = document.createElement("input");
-		legendCheckbox.type = "checkbox";
-		legendCheckbox.checked = showSurfaceLegend;
-		legendCheckbox.style.width = "16px";
-		legendCheckbox.style.height = "16px";
-		legendCheckbox.style.cursor = "pointer";
-
-		var legendLabel = document.createElement("label");
-		legendLabel.textContent = "Show Legend";
-		legendLabel.style.fontSize = "13px";
-		legendLabel.style.color = "#333";
-		legendLabel.style.cursor = "pointer";
-		legendLabel.onclick = function () {
-			legendCheckbox.click();
-		};
-
-		legendCheckbox.onchange = function () {
-			showSurfaceLegend = legendCheckbox.checked;
-			drawData(allBlastHoles, selectedHole);
-		};
-
-		legendSection.appendChild(legendCheckbox);
-		legendSection.appendChild(legendLabel);
-		container.appendChild(legendSection);
-
-		return container;
-	};
-
-	// Step 13) Create and show the FloatingDialog
-	dialogInstance = new FloatingDialog({
-		title: currentSurface.name || "Surface Properties",
-		content: contentBuilder,
-		width: 340,
-		height: 420,
-		showConfirm: false,
-		showCancel: false,
-		draggable: true,
-		resizable: false,
-		closeOnOutsideClick: true,
-		layoutType: "compact",
-	});
-
-	dialogInstance.show();
-
-	// Step 14) Position dialog near click location (adjusted for viewport bounds)
-	if (dialogInstance.element) {
-		var dialogWidth = 340;
-		var dialogHeight = 420;
-		var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
-		var posY = Math.min(y, window.innerHeight - dialogHeight - 20);
-		posX = Math.max(10, posX);
-		posY = Math.max(10, posY);
-		dialogInstance.element.style.left = posX + "px";
-		dialogInstance.element.style.top = posY + "px";
-	}
-}
-*/
 // END OF MOVED FUNCTION - showSurfaceContextMenu now loaded from SurfacesContextMenu.js
 
 // Add this helper function near your other menu functions
@@ -32040,6 +32479,198 @@ function distancePointToLine(point, lineStart, lineEnd) {
 // has been extracted to FileManager modules. See comment at line 29779 for details.
 // This code is retained for backward compatibility during transition period.
 // ============================================================================
+
+/**
+ * CALCULATE BURDEN AND SPACING FOR HOLES
+ *
+ * Calculates burden and spacing for holes based on their row assignments:
+ * - Spacing: Distance to next hole in the same row (along row direction)
+ * - Burden: PERPENDICULAR distance between rows (not hypotenuse)
+ */
+function calculateBurdenAndSpacingForHoles(holes) {
+	if (!holes || holes.length === 0) return;
+
+	// Group holes by entity name
+	var entitiesByName = new Map();
+	holes.forEach(function(hole) {
+		if (!entitiesByName.has(hole.entityName)) {
+			entitiesByName.set(hole.entityName, []);
+		}
+		entitiesByName.get(hole.entityName).push(hole);
+	});
+
+	// Calculate burden and spacing for each entity
+	entitiesByName.forEach(function(entityHoles, entityName) {
+		// Group holes by row
+		var rowMap = new Map();
+		entityHoles.forEach(function(hole) {
+			var rowKey = hole.rowID || 0;
+			if (!rowMap.has(rowKey)) {
+				rowMap.set(rowKey, []);
+			}
+			rowMap.get(rowKey).push(hole);
+		});
+
+		// Sort holes within each row by posID
+		rowMap.forEach(function(rowHoles) {
+			rowHoles.sort(function(a, b) {
+				return (a.posID || 0) - (b.posID || 0);
+			});
+		});
+
+		// Calculate spacing (distance to next hole in same row)
+		rowMap.forEach(function(rowHoles) {
+			for (var i = 0; i < rowHoles.length; i++) {
+				var hole = rowHoles[i];
+				if (i < rowHoles.length - 1) {
+					var nextHole = rowHoles[i + 1];
+					var dx = nextHole.startXLocation - hole.startXLocation;
+					var dy = nextHole.startYLocation - hole.startYLocation;
+					hole.spacing = Math.round(Math.sqrt(dx * dx + dy * dy) * 1000) / 1000; // Round to 3 decimal places
+				} else {
+					// Last hole in row - use average spacing of row
+					if (rowHoles.length > 1) {
+						var totalSpacing = 0;
+						for (var j = 0; j < rowHoles.length - 1; j++) {
+							totalSpacing += rowHoles[j].spacing;
+						}
+						hole.spacing = Math.round((totalSpacing / (rowHoles.length - 1)) * 1000) / 1000; // Round to 3 decimal places
+					} else {
+						hole.spacing = 0;
+					}
+				}
+			}
+		});
+
+		// Determine row orientation (direction along rows)
+		var rowOrientation = estimateRowOrientation(entityHoles);
+		console.log("Row orientation for " + entityName + ": " + rowOrientation.toFixed(2) + "°");
+
+		// Convert compass bearing to radians
+		var rowBearingRadians = ((90 - rowOrientation) * Math.PI) / 180;
+		var burdenBearingRadians = rowBearingRadians - Math.PI / 2; // Perpendicular to row
+
+		// Project all holes onto burden axis (perpendicular to rows)
+		entityHoles.forEach(function(hole) {
+			hole.burdenProjection =
+				hole.startXLocation * Math.cos(burdenBearingRadians) +
+				hole.startYLocation * Math.sin(burdenBearingRadians);
+		});
+
+		// Calculate burden as perpendicular distance between rows
+		var sortedRows = Array.from(rowMap.keys()).sort(function(a, b) { return a - b; });
+
+		sortedRows.forEach(function(rowID, rowIndex) {
+			var rowHoles = rowMap.get(rowID);
+
+			// Calculate average burden projection for this row
+			var avgBurdenProj = 0;
+			rowHoles.forEach(function(hole) {
+				avgBurdenProj += hole.burdenProjection;
+			});
+			avgBurdenProj /= rowHoles.length;
+
+			// Find burden to adjacent rows
+			var burdenToNext = 0;
+			var burdenToPrev = 0;
+
+			if (rowIndex < sortedRows.length - 1) {
+				var nextRowID = sortedRows[rowIndex + 1];
+				var nextRowHoles = rowMap.get(nextRowID);
+				var nextAvgProj = 0;
+				nextRowHoles.forEach(function(hole) {
+					nextAvgProj += hole.burdenProjection;
+				});
+				nextAvgProj /= nextRowHoles.length;
+				burdenToNext = Math.abs(nextAvgProj - avgBurdenProj);
+			}
+
+			if (rowIndex > 0) {
+				var prevRowID = sortedRows[rowIndex - 1];
+				var prevRowHoles = rowMap.get(prevRowID);
+				var prevAvgProj = 0;
+				prevRowHoles.forEach(function(hole) {
+					prevAvgProj += hole.burdenProjection;
+				});
+				prevAvgProj /= prevRowHoles.length;
+				burdenToPrev = Math.abs(avgBurdenProj - prevAvgProj);
+			}
+
+			// Assign burden to each hole in row (rounded to 3 decimal places)
+			rowHoles.forEach(function(hole) {
+				if (rowIndex === 0) {
+					// First row - use burden to next row
+					hole.burden = Math.round((burdenToNext || 0) * 1000) / 1000;
+				} else if (rowIndex === sortedRows.length - 1) {
+					// Last row - use burden to previous row
+					hole.burden = Math.round((burdenToPrev || 0) * 1000) / 1000;
+				} else {
+					// Middle rows - use average of both
+					hole.burden = Math.round(((burdenToPrev + burdenToNext) / 2) * 1000) / 1000;
+				}
+			});
+		});
+
+		// Clean up temporary projection properties
+		entityHoles.forEach(function(hole) {
+			delete hole.burdenProjection;
+		});
+
+		console.log("Calculated burden and spacing for " + entityHoles.length + " holes in entity: " + entityName);
+	});
+}
+
+/**
+ * ESTIMATE ROW ORIENTATION
+ *
+ * Determines the dominant direction along which holes are aligned in rows.
+ * Returns compass bearing in degrees (0° = North, 90° = East)
+ */
+function estimateRowOrientation(holes) {
+	if (!holes || holes.length < 2) return 0;
+
+	// Use PCA (Principal Component Analysis) to find dominant direction
+	var meanX = 0;
+	var meanY = 0;
+	holes.forEach(function(hole) {
+		meanX += hole.startXLocation;
+		meanY += hole.startYLocation;
+	});
+	meanX /= holes.length;
+	meanY /= holes.length;
+
+	var covarXX = 0;
+	var covarXY = 0;
+	var covarYY = 0;
+
+	holes.forEach(function(hole) {
+		var dx = hole.startXLocation - meanX;
+		var dy = hole.startYLocation - meanY;
+		covarXX += dx * dx;
+		covarXY += dx * dy;
+		covarYY += dy * dy;
+	});
+
+	// Calculate principal direction (eigenvector of covariance matrix)
+	var trace = covarXX + covarYY;
+	var det = covarXX * covarYY - covarXY * covarXY;
+	var eigenvalue1 = (trace + Math.sqrt(trace * trace - 4 * det)) / 2;
+
+	// Principal direction angle
+	var angle;
+	if (Math.abs(covarXY) > 1e-10) {
+		angle = Math.atan2(eigenvalue1 - covarXX, covarXY);
+	} else {
+		angle = covarXX > covarYY ? 0 : Math.PI / 2;
+	}
+
+	// Convert to compass bearing (0° = North, 90° = East)
+	var bearing = 90 - (angle * 180) / Math.PI;
+	if (bearing < 0) bearing += 360;
+	if (bearing >= 360) bearing -= 360;
+
+	return bearing;
+}
 
 /**
  * HDBSCAN-BASED ROW DETECTION (RECOMMENDED APPROACH)
@@ -36655,7 +37286,7 @@ function loadPointCloudFile(file) {
 	reader.readAsText(file);
 }
 
-// Step 1) Auto-discover companion MTL/texture files for OBJ
+	// Step 1) Auto-discover companion MTL/texture files for OBJ
 async function loadOBJWithAutoDiscovery(objFile) {
 	try {
 		updateStatusMessage("Loading OBJ: " + objFile.name + " (searching for MTL/textures...)");
@@ -36663,7 +37294,7 @@ async function loadOBJWithAutoDiscovery(objFile) {
 		var objContent = await readFileAsText(objFile);
 		var baseName = objFile.name.replace(/\.obj$/i, "");
 
-		// Step 2) Parse OBJ to check for material library reference
+		// Step 2) Parse OBJ to check for material library reference and extract points
 		var objData = parseOBJFile(objContent, null);
 
 		// Step 3) Try to auto-discover companion files using File System Access API
@@ -36698,47 +37329,19 @@ async function loadOBJWithAutoDiscovery(objFile) {
 			}
 		}
 
-		// Step 6) If companion files found, use textured mesh loader
-		if (companionFilesFound && mtlContent && Object.keys(textureBlobs).length > 0) {
-			console.log("🔎 Found companion files - loading as textured mesh");
-			updateStatusMessage("Found MTL and textures - loading textured mesh...");
+		// Step 6) ALWAYS use Three.js OBJLoader for reliable triangle parsing
+		// This ensures consistent topology whether the OBJ has textures or not
+		console.log("🔎 Using Three.js OBJLoader for reliable mesh parsing");
+		updateStatusMessage("Loading OBJ with Three.js loader...");
 
-			// Update objData with mtlContent
+		// Update objData with mtlContent if found
+		if (mtlContent) {
 			objData.mtlContent = mtlContent;
-
-			await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, objData);
 		}
-		// Step 7) If MTL found but no textures, still try textured loading
-		else if (companionFilesFound && mtlContent) {
-			console.log("🔎 Found MTL file - loading with materials (no textures)");
-			updateStatusMessage("Found MTL - loading with materials...");
 
-			objData.mtlContent = mtlContent;
-			await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, objData);
-		}
-		// Step 8) No companion files - check if OBJ has faces, use appropriate method
-		else if (objData.hasFaces && objData.triangles.length > 0) {
-			console.log("🧊 OBJ has faces - loading as surface with original topology");
-			updateStatusMessage("Loading OBJ surface: " + objFile.name);
+		// Step 7) Use Three.js loader (works with or without MTL/textures)
+		await loadOBJWithTextureThreeJS(objFile.name, objContent, mtlContent, textureBlobs, objData);
 
-			// Use the parsed triangles directly (preserves original mesh topology)
-			createSurfaceFromOBJData(objData, objFile.name);
-		}
-		// Step 9) Fallback - no faces, use as point cloud
-		else {
-			console.log("🧊 OBJ has no faces - loading as point cloud");
-			updateStatusMessage("Loading OBJ as point cloud: " + objFile.name);
-
-			if (objData.points && objData.points.length > 0) {
-				if (objData.points.length > 10000) {
-					showDecimationWarning(objData.points, objFile.name, objData);
-				} else {
-					processSurfacePoints(objData.points, objFile.name, objData);
-				}
-			} else {
-				updateStatusMessage("No valid points found in: " + objFile.name);
-			}
-		}
 	} catch (error) {
 		console.error("❌ Error in loadOBJWithAutoDiscovery:", error);
 		updateStatusMessage("Error loading OBJ: " + error.message);
@@ -40145,6 +40748,15 @@ function calculateTValue(p1, p2, point) {
 // 3D Cylindrical Snap: Snap to anything in the "shadow" along the view ray
 // Uses screen-space distance for segments (pixels), ray distance for points
 // CRITICAL: Segments use 2D screen projection, points use 3D ray distance
+// PERFORMANCE: Limited to prevent freeze with large DXFs
+// worldToScreen() is VERY expensive (creates Vector3 + projects for EACH point)
+// With 500 entities × 100 points = 50,000 projections PER MOUSE MOVE = FREEZE
+var lastSnapTime = 0;
+var SNAP_THROTTLE_MS = 50; // 20fps max for snap calculations (was 16ms, too fast)
+var MAX_SNAP_ENTITIES = 500; // Max KAD entities checked for snap (raycaster pre-filters to visible only)
+var MAX_SNAP_POINTS_PER_ENTITY = 200; // Max points per entity checked (raycaster pre-filters to visible only)
+var MAX_SNAP_SEGMENTS_PER_ENTITY = 20; // NEW: Max segments per entity checked
+
 function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mouseScreenX, mouseScreenY) {
 	if (!snapEnabled) {
 		return {
@@ -40153,10 +40765,83 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		};
 	}
 
+	// Step 0) Throttle snap calculations to prevent freeze on fast mouse moves
+	var now = performance.now();
+	if (now - lastSnapTime < SNAP_THROTTLE_MS) {
+		// Return cached result or empty result
+		return window.lastSnapResult || { snapped: false, snapTarget: null };
+	}
+	lastSnapTime = now;
+
 	// Convert pixel radius to world units for point snapping (ray-based)
 	const snapRadiusWorld = snapRadiusPixels * 0.0441; // Approximate conversion based on current zoom
 
 	const snapCandidates = [];
+
+	// Step 0.5) PERFORMANCE OPTIMIZATION: Use Three.js GPU-accelerated raycaster to get visible objects first
+	// This dramatically reduces the number of entities we need to check (same approach as click handler)
+	// The raycaster automatically handles frustum culling and only returns visible objects
+	var visibleEntityNames = new Set();
+	var visibleHoleIDs = new Set();
+	
+	// Step 0.5a) Get interactionManager and threeRenderer (try window globals if not in scope)
+	var im = interactionManager || window.interactionManager;
+	var tr = threeRenderer || window.threeRenderer;
+	
+	// Step 0.5b) Use InteractionManager's raycast method (same as click handler) - GPU-accelerated!
+	// This method handles mouse position, camera setup, and returns only visible intersecting objects
+	if (im && typeof im.raycast === "function" && tr && tr.camera && tr.scene) {
+		try {
+			const intersects = im.raycast();
+			
+			// Step 0.5c) Extract entity names and hole IDs from raycast results
+			// These are the objects that Three.js says are visible and intersecting the ray
+			intersects.forEach(function(intersect) {
+				var object = intersect.object;
+				var depth = 0;
+				// Traverse up the object hierarchy to find KAD entities or holes
+				while (object && depth < 10) {
+					if (object.userData) {
+						// Check for KAD entities
+						if (object.userData.kadId) {
+							visibleEntityNames.add(object.userData.kadId);
+						}
+						// Check for holes
+						if (object.userData.holeID) {
+							visibleHoleIDs.add(object.userData.holeID);
+						}
+					}
+					object = object.parent;
+					depth++;
+				}
+			});
+		} catch (e) {
+			// Fallback if raycast fails - will use frustum culling instead
+			if (developerModeEnabled) {
+				console.log("⚠️ [3D SNAP] Raycast failed, using frustum culling:", e);
+			}
+		}
+	}
+
+	// Step 0.6) PERFORMANCE OPTIMIZATION: Screen-space frustum check helper
+	// Only check objects that are within screen bounds (with padding for snap radius)
+	var canvas = tr ? tr.getCanvas() : null;
+	var camera = tr ? tr.camera : null;
+	const isPointInFrustum = function(worldX, worldY, worldZ) {
+		if (!camera || !canvas) return true; // If no camera, check everything (fallback)
+		
+		// Convert world to screen coordinates
+		const screenPos = worldToScreen(worldX, worldY, worldZ);
+		if (!screenPos) return true; // Fallback if conversion fails
+		
+		// Check if point is within screen bounds (with padding for snap radius)
+		const padding = snapRadiusPixels * 2; // Extra padding for objects near screen edge
+		const rect = canvas.getBoundingClientRect();
+		return screenPos.x >= -padding && 
+		       screenPos.x <= rect.width + padding &&
+		       screenPos.y >= -padding && 
+		       screenPos.y <= rect.height + padding;
+	};
 
 	// Step 1) Convert helper function: World coordinates to Three.js local coordinates
 	const worldToLocal = function (worldX, worldY, worldZ) {
@@ -40178,11 +40863,20 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		return { x: localX, y: localY, z: localZ || 0 };
 	};
 
-	// Step 3) Search holes (collar, grade, toe) - convert to local coords for comparison
+	// Step 3) Search holes (collar, grade, toe) - OPTIMIZED: Only check visible holes or holes in frustum
 	if (allBlastHoles && allBlastHoles.length > 0) {
 		allBlastHoles.forEach((hole) => {
 			// Skip hidden holes - check both group visibility and individual hole visibility
 			if (!isHoleVisible(hole)) return;
+			
+			// PERFORMANCE: Skip holes not in frustum (unless they were hit by raycast)
+			const holeInFrustum = isPointInFrustum(hole.startXLocation, hole.startYLocation, hole.startZLocation || 0) ||
+			                      isPointInFrustum(hole.gradeXLocation, hole.gradeYLocation, hole.gradeZLocation || 0) ||
+			                      isPointInFrustum(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0);
+			const holeVisible = visibleHoleIDs.has(hole.holeID);
+			
+			// Only check if hole is visible via raycast OR in frustum
+			if (!holeVisible && !holeInFrustum) return;
 
 			// Hole collar (start) - convert world coords to local for ray comparison
 			const collarLocal = worldToLocal(hole.startXLocation, hole.startYLocation, hole.startZLocation || 0);
@@ -40231,16 +40925,63 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		});
 	}
 
-	// Step 4) Search ALL KAD Objects in unified map - convert to local coords for comparison
+	// Step 4) Search KAD Objects - OPTIMIZED: Only check visible entities or entities in frustum
+	// PERFORMANCE: Limited to MAX_SNAP_ENTITIES to prevent freeze with large DXFs
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-		allKADDrawingsMap.forEach((entity, entityName) => {
+		var entityCount = 0;
+		for (var [entityName, entity] of allKADDrawingsMap) {
+			// Performance limit - skip remaining entities if we've checked enough
+			if (entityCount >= MAX_SNAP_ENTITIES) break;
+			
 			// Skip hidden KAD entities
-			if (!isEntityVisible(entityName)) return;
+			if (!isEntityVisible(entityName)) continue;
+			
+			// PERFORMANCE: Skip entities not visible via raycast AND not in frustum
+			const entityVisible = visibleEntityNames.has(entityName);
+			// Smart frustum check: for lines/polygons, check more points or all points if entity is small
+			var entityInFrustum = false;
+			if (!entityVisible && entity.data && entity.data.length > 0) {
+				// For lines and polygons, check more points since they can cross the screen
+				const pointsToCheck = (entity.entityType === "line" || entity.entityType === "poly" || entity.entityType === "polygon") 
+					? Math.min(10, entity.data.length)  // Check up to 10 points for lines/polys
+					: Math.min(3, entity.data.length);   // Only 3 points for other types
+				
+				for (var i = 0; i < pointsToCheck; i++) {
+					var point = entity.data[i];
+					if (isPointInFrustum(point.pointXLocation, point.pointYLocation, point.pointZLocation || window.dataCentroidZ || 0)) {
+						entityInFrustum = true;
+						break;
+					}
+				}
+			}
+			
+			// Only check if entity is visible via raycast OR in frustum
+			if (!entityVisible && !entityInFrustum) continue;
+			
+			entityCount++;
 
 			// Check vertices (points, line endpoints, polygon vertices, etc.)
-			entity.data.forEach((dataPoint) => {
+			// PERFORMANCE: Limit points per entity
+			var pointCount = 0;
+			for (var dataPoint of entity.data) {
+				if (pointCount >= MAX_SNAP_POINTS_PER_ENTITY) break;
+				
 				// Use SCREEN-SPACE distance for vertices (same as segments)
 				const screenPos = worldToScreen(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || window.dataCentroidZ || 0);
+				if (!screenPos) continue; // Skip if worldToScreen fails
+				
+				// PERFORMANCE: Skip points far outside screen (but keep a generous margin for snap radius)
+				const margin = snapRadiusPixels * 3; // Generous margin
+				const canvas = tr ? tr.getCanvas() : null;
+				if (canvas) {
+					const rect = canvas.getBoundingClientRect();
+					if (screenPos.x < -margin || screenPos.x > rect.width + margin ||
+					    screenPos.y < -margin || screenPos.y > rect.height + margin) {
+						continue;
+					}
+				}
+				
+				pointCount++;
 				const dx = mouseScreenX - screenPos.x;
 				const dy = mouseScreenY - screenPos.y;
 				const screenDist = Math.sqrt(dx * dx + dy * dy);
@@ -40277,13 +41018,16 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 						description: entity.entityType + " " + (dataPoint.pointID || "item"),
 					});
 				}
-			});
+			}
 
 			// Check segments for lines and polygons
+			// PERFORMANCE: Limit segments checked per entity
 			if (entity.entityType === "line" || entity.entityType === "poly" || entity.entityType === "polygon") {
 				const points = entity.data;
 				if (points.length >= 2) {
-					const numSegments = (entity.entityType === "poly" || entity.entityType === "polygon") ? points.length : points.length - 1;
+					var numSegments = (entity.entityType === "poly" || entity.entityType === "polygon") ? points.length : points.length - 1;
+					// Limit segments per entity for performance
+					if (numSegments > MAX_SNAP_POINTS_PER_ENTITY) numSegments = MAX_SNAP_POINTS_PER_ENTITY;
 
 					for (let i = 0; i < numSegments; i++) {
 						const p1 = points[i];
@@ -40293,6 +41037,21 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 						// This matches the selection behavior and avoids coordinate system issues
 						const screen1 = worldToScreen(p1.pointXLocation, p1.pointYLocation, p1.pointZLocation || window.dataCentroidZ || 0);
 						const screen2 = worldToScreen(p2.pointXLocation, p2.pointYLocation, p2.pointZLocation || window.dataCentroidZ || 0);
+						
+						// Skip if projection fails
+						if (!screen1 || !screen2) continue;
+						
+						// PERFORMANCE: Skip segments where both endpoints are far outside screen
+						const margin = snapRadiusPixels * 3; // Generous margin
+						const canvas = tr ? tr.getCanvas() : null;
+						if (canvas) {
+							const rect = canvas.getBoundingClientRect();
+							const p1OutOfBounds = screen1.x < -margin || screen1.x > rect.width + margin ||
+							                      screen1.y < -margin || screen1.y > rect.height + margin;
+							const p2OutOfBounds = screen2.x < -margin || screen2.x > rect.width + margin ||
+							                      screen2.y < -margin || screen2.y > rect.height + margin;
+							if (p1OutOfBounds && p2OutOfBounds) continue;
+						}
 
 						// Calculate 2D screen distance from mouse to segment (in pixels)
 						// Inline helper - same as used in selection code
@@ -40355,33 +41114,49 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 					}
 				}
 			}
-		});
+		}
 	}
 
 	// Step 4.5) Search KAD segment intersections in XY plane (ignoring Z)
-	const intersections = findSegmentIntersectionsXY();
-	intersections.forEach((intersection) => {
-		// Convert world coords to local for ray comparison
-		const intersectionLocal = worldToLocal(intersection.x, intersection.y, intersection.z);
-		const intersectionResult = distanceFromPointToRay(intersectionLocal, rayOrigin, rayDirection);
+	// PERFORMANCE: Only check intersections if we have visible entities or small dataset
+	if (visibleEntityNames.size > 0 || (allKADDrawingsMap && allKADDrawingsMap.size < 100)) {
+		const intersections = findSegmentIntersectionsXY();
+		intersections.forEach((intersection) => {
+			// PERFORMANCE: Skip intersections not in frustum
+			if (!isPointInFrustum(intersection.x, intersection.y, intersection.z)) return;
+			
+			// Convert world coords to local for ray comparison
+			const intersectionLocal = worldToLocal(intersection.x, intersection.y, intersection.z);
+			const intersectionResult = distanceFromPointToRay(intersectionLocal, rayOrigin, rayDirection);
 
-		if (intersectionResult.distance <= snapRadiusWorld && intersectionResult.rayT > 0) {
-			snapCandidates.push({
-				distance: intersectionResult.distance,
-				rayT: intersectionResult.rayT,
-				point: { x: intersection.x, y: intersection.y, z: intersection.z },
-				type: "KAD_SEGMENT_INTERSECT_XY",
-				priority: SNAP_PRIORITIES.KAD_SEGMENT_INTERSECT_XY,
-				description: "Intersection of " + intersection.entity1 + " and " + intersection.entity2,
-			});
-		}
-	});
+			if (intersectionResult.distance <= snapRadiusWorld && intersectionResult.rayT > 0) {
+				snapCandidates.push({
+					distance: intersectionResult.distance,
+					rayT: intersectionResult.rayT,
+					point: { x: intersection.x, y: intersection.y, z: intersection.z },
+					type: "KAD_SEGMENT_INTERSECT_XY",
+					priority: SNAP_PRIORITIES.KAD_SEGMENT_INTERSECT_XY,
+					description: "Intersection of " + intersection.entity1 + " and " + intersection.entity2,
+				});
+			}
+		});
+	}
 
-	// Step 5) Search Surface Points (if surfaces are loaded) - convert to local coords for comparison
+	// Step 5) Search Surface Points (if surfaces are loaded) - OPTIMIZED: Only check visible surfaces
 	if (loadedSurfaces && loadedSurfaces.size > 0) {
 		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
 			if (surface.visible && surface.points && surface.points.length > 0) {
+				// PERFORMANCE: Limit surface points checked
+				var surfacePointCount = 0;
+				const MAX_SURFACE_POINTS = 100; // Limit surface points for performance
+				
 				surface.points.forEach((surfacePoint, index) => {
+					if (surfacePointCount >= MAX_SURFACE_POINTS) return;
+					surfacePointCount++;
+					
+					// PERFORMANCE: Skip surface points not in frustum
+					if (!isPointInFrustum(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0)) return;
+					
 					// Convert world coords to local for ray comparison
 					const pointLocal = worldToLocal(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0);
 					const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
@@ -40417,20 +41192,24 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		// Debug: Log snap success
 		if (developerModeEnabled) { console.log("🧲 [3D SNAP] Snapped to:", bestCandidate.type, "(" + bestCandidate.description + ") | Priority:", bestCandidate.priority, "| Distance:", bestCandidate.distance.toFixed(2)); }
 
-		return {
+		var result = {
 			worldX: bestCandidate.point.x,
 			worldY: bestCandidate.point.y,
 			worldZ: bestCandidate.point.z,
 			snapped: true,
 			snapTarget: bestCandidate,
 		};
+		window.lastSnapResult = result; // Cache result for throttled calls
+		return result;
 	}
 
 	// No snap target found
-	return {
+	var noSnapResult = {
 		snapped: false,
 		snapTarget: null,
 	};
+	window.lastSnapResult = noSnapResult; // Cache result for throttled calls
+	return noSnapResult;
 }
 
 // Enhanced global snapping function with segment support
@@ -41036,246 +41815,6 @@ function drawBackgroundImage() {
 
 // Step 1) Image Context Menu using FloatingDialog for consistent styling
 // MOVED TO ImagesContextMenu.js - This function is now loaded from external module
-/*
-function showImageContextMenu(x, y, imageId = null) {
-	// Step 2) Get the specific image if ID provided, otherwise first visible image
-	var image = imageId
-		? loadedImages.get(imageId)
-		: Array.from(loadedImages.values()).find(function (img) {
-				return img.visible;
-		  });
-	if (!image) return;
-
-	// Step 3) Store reference for dialog callbacks
-	var currentImage = image;
-	var currentImageId = imageId;
-	var dialogInstance = null;
-
-	// Step 4) Create content builder function
-	var contentBuilder = function (dialog) {
-		var container = document.createElement("div");
-		container.style.display = "flex";
-		container.style.flexDirection = "column";
-		container.style.gap = "12px";
-		container.style.padding = "12px";
-
-		// Step 5) Create action buttons section with full-width buttons
-		var buttonsSection = document.createElement("div");
-		buttonsSection.style.display = "flex";
-		buttonsSection.style.flexDirection = "column";
-		buttonsSection.style.gap = "8px";
-		buttonsSection.style.marginBottom = "16px";
-
-		// Step 5a) Helper function to create styled full-width button
-		var createActionButton = function (text, onClick) {
-			var btn = document.createElement("button");
-			btn.className = "floating-dialog-btn";
-			btn.textContent = text;
-			btn.style.width = "100%";
-			btn.style.padding = "10px 16px";
-			btn.style.fontSize = "13px";
-			btn.style.cursor = "pointer";
-			btn.style.borderRadius = "4px";
-			btn.style.border = "1px solid #ccc";
-			btn.style.backgroundColor = "#f5f5f5";
-			btn.style.color = "#333";
-			btn.style.transition = "background-color 0.2s";
-			btn.onmouseover = function () {
-				btn.style.backgroundColor = "#e0e0e0";
-			};
-			btn.onmouseout = function () {
-				btn.style.backgroundColor = "#f5f5f5";
-			};
-			btn.onclick = onClick;
-			return btn;
-		};
-
-		// Step 6) Toggle visibility button
-		buttonsSection.appendChild(
-			createActionButton(currentImage.visible ? "Hide Image" : "Show Image", function () {
-				if (currentImageId && loadedImages.has(currentImageId)) {
-					var targetImage = loadedImages.get(currentImageId);
-					if (targetImage) {
-						targetImage.visible = !targetImage.visible;
-					}
-				} else {
-					currentImage.visible = !currentImage.visible;
-				}
-				drawData(allBlastHoles, selectedHole);
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
-
-		// Step 7) Remove image button
-		buttonsSection.appendChild(
-			createActionButton("Remove Image", function () {
-				if (currentImageId && loadedImages.has(currentImageId)) {
-					deleteImageFromDB(currentImageId)
-						.then(function () {
-							loadedImages.delete(currentImageId);
-							drawData(allBlastHoles, selectedHole);
-							debouncedUpdateTreeView();
-						})
-						.catch(function (error) {
-							console.error("Error removing image:", error);
-							loadedImages.delete(currentImageId);
-							drawData(allBlastHoles, selectedHole);
-						});
-				}
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
-
-		// Step 8) Delete all images button
-		buttonsSection.appendChild(
-			createActionButton("Delete All Images", function () {
-				deleteAllImagesFromDB()
-					.then(function () {
-						loadedImages.clear();
-						debouncedUpdateTreeView();
-						drawData(allBlastHoles, selectedHole);
-					})
-					.catch(function (error) {
-						console.error("Error deleting all images:", error);
-					});
-				if (dialogInstance) dialogInstance.close();
-			})
-		);
-
-		container.appendChild(buttonsSection);
-
-		// Step 9) Create transparency slider section with proper styling
-		var sliderSection = document.createElement("div");
-		sliderSection.style.marginBottom = "12px";
-
-		var sliderLabel = document.createElement("div");
-		sliderLabel.textContent = "Transparency:";
-		sliderLabel.style.fontSize = "13px";
-		sliderLabel.style.marginBottom = "8px";
-		sliderLabel.style.color = "#333";
-		sliderSection.appendChild(sliderLabel);
-
-		// Step 9a) Create styled range slider matching app theme
-		var sliderContainer = document.createElement("div");
-		sliderContainer.style.display = "flex";
-		sliderContainer.style.alignItems = "center";
-		sliderContainer.style.gap = "12px";
-
-		var initialValue = Math.round((currentImage.transparency !== undefined ? currentImage.transparency : 1.0) * 100);
-		var slider = document.createElement("input");
-		slider.type = "range";
-		slider.min = "0";
-		slider.max = "100";
-		slider.value = initialValue;
-		slider.style.flex = "1";
-		slider.style.height = "6px";
-		slider.style.cursor = "pointer";
-		slider.style.appearance = "none";
-		slider.style.webkitAppearance = "none";
-		slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + initialValue + "%, #ddd " + initialValue + "%, #ddd 100%)";
-		slider.style.borderRadius = "3px";
-		slider.style.outline = "none";
-
-		var sliderValue = document.createElement("span");
-		sliderValue.textContent = initialValue + "%";
-		sliderValue.style.minWidth = "45px";
-		sliderValue.style.fontSize = "12px";
-		sliderValue.style.color = "#666";
-		sliderValue.style.textAlign = "right";
-
-		// Step 9b) Update slider appearance and value on input
-		slider.oninput = function () {
-			var val = parseInt(slider.value);
-			sliderValue.textContent = val + "%";
-			slider.style.background = "linear-gradient(to right, #ff0000 0%, #ff0000 " + val + "%, #ddd " + val + "%, #ddd 100%)";
-			var newTransparency = val / 100;
-
-			if (currentImageId && loadedImages.has(currentImageId)) {
-				var targetImage = loadedImages.get(currentImageId);
-				if (targetImage) {
-					targetImage.transparency = newTransparency;
-				}
-			} else {
-				currentImage.transparency = newTransparency;
-			}
-			drawData(allBlastHoles, selectedHole);
-		};
-
-		sliderContainer.appendChild(slider);
-		sliderContainer.appendChild(sliderValue);
-		sliderSection.appendChild(sliderContainer);
-		container.appendChild(sliderSection);
-
-		// Step 10) Create Z elevation section for 3D positioning
-		var zSection = document.createElement("div");
-		zSection.style.marginBottom = "12px";
-
-		var zLabel = document.createElement("div");
-		zLabel.textContent = "Z Elevation:";
-		zLabel.style.fontSize = "13px";
-		zLabel.style.marginBottom = "8px";
-		zLabel.style.color = "#333";
-		zSection.appendChild(zLabel);
-
-		var zInput = document.createElement("input");
-		zInput.type = "number";
-		zInput.value = currentImage.zElevation !== undefined ? currentImage.zElevation : window.drawingZLevel || 0;
-		zInput.style.width = "100%";
-		zInput.style.padding = "8px 12px";
-		zInput.style.fontSize = "13px";
-		zInput.style.borderRadius = "4px";
-		zInput.style.border = "1px solid #ccc";
-		zInput.style.backgroundColor = "#fff";
-		zInput.style.boxSizing = "border-box";
-
-		zInput.onchange = function () {
-			var newZ = parseFloat(zInput.value) || 0;
-			if (currentImageId && loadedImages.has(currentImageId)) {
-				var targetImage = loadedImages.get(currentImageId);
-				if (targetImage) {
-					targetImage.zElevation = newZ;
-				}
-			} else {
-				currentImage.zElevation = newZ;
-			}
-			drawData(allBlastHoles, selectedHole);
-		};
-
-		zSection.appendChild(zInput);
-		container.appendChild(zSection);
-
-		return container;
-	};
-
-	// Step 11) Create and show the FloatingDialog
-	dialogInstance = new FloatingDialog({
-		title: currentImage.name || "Image Properties",
-		content: contentBuilder,
-		width: 320,
-		height: 380,
-		showConfirm: false,
-		showCancel: false,
-		draggable: true,
-		resizable: false,
-		closeOnOutsideClick: true,
-		layoutType: "compact",
-	});
-
-	dialogInstance.show();
-
-	// Step 12) Position dialog near click location (adjusted for viewport bounds)
-	if (dialogInstance.element) {
-		var dialogWidth = 320;
-		var dialogHeight = 380;
-		var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
-		var posY = Math.min(y, window.innerHeight - dialogHeight - 20);
-		posX = Math.max(10, posX);
-		posY = Math.max(10, posY);
-		dialogInstance.element.style.left = posX + "px";
-		dialogInstance.element.style.top = posY + "px";
-	}
-}
-*/
 // END OF MOVED FUNCTION - showImageContextMenu now loaded from ImagesContextMenu.js
 
 // REPLACE this function to accept image parameter:
@@ -43248,553 +43787,6 @@ function updateGizmoDisplay() {
 //CONTEXT DIALOG FOR HOLE MODIFICATION
 // MOVED TO HolesContextMenu.js - These functions are now loaded from external module
 // showHolePropertyEditor, processHolePropertyUpdates
-/*
-function showHolePropertyEditor(hole) {
-	// ? CHECK VISIBILITY FIRST - Filter out hidden holes
-	const visibleHoles = allBlastHoles.filter((hole) => isHoleVisible(hole));
-
-	if (visibleHoles.length === 0) {
-		console.log("❌ No visible holes to edit");
-		return;
-	}
-
-	if (visibleHoles.length !== allBlastHoles.length) {
-		console.log("⚠️ Some holes are hidden and will not be edited");
-	}
-
-	// Determine if we're dealing with single hole or multiple holes
-	let candidateHoles;
-	if (Array.isArray(hole)) {
-		candidateHoles = hole;
-	} else if (selectedMultipleHoles && selectedMultipleHoles.length > 1) {
-		candidateHoles = selectedMultipleHoles;
-	} else {
-		candidateHoles = [hole];
-	}
-	// ? Filter candidate holes to only include visible ones
-	const holes = candidateHoles.filter((h) => isHoleVisible(h));
-
-	const isMultiple = holes.length > 1;
-	const isArrayInput = Array.isArray(hole);
-
-	if (holes.length === 0) return;
-
-	// Calculate current values and averages with proper fallbacks
-	let delaySum = 0,
-		diameterSum = 0,
-		bearingSum = 0,
-		angleSum = 0,
-		subdrillSum = 0;
-	let collarZSum = 0,
-		gradeZSum = 0;
-	let uniqueDelays = new Set(),
-		uniqueDelayColors = new Set(),
-		uniqueHoleTypes = new Set();
-	let uniqueRowIDs = new Set(),
-		uniquePosIDs = new Set();
-	let typeCounts = {};
-	let connectorCurveSum = 0;
-	let burdenSum = 0;
-	let spacingSum = 0;
-
-	holes.forEach((h) => {
-		// Basic properties
-		const currentDelay = h.holeDelay !== undefined ? h.holeDelay : h.timingDelayMilliseconds || 0;
-		const currentColor = h.holeDelayColor || h.colorHexDecimal || "#FF0000";
-		const currentType = h.holeType || "Production";
-
-		// Geometry properties
-		const diameter = h.holeDiameter || 0;
-		const bearing = h.holeBearing || 0;
-		const angle = h.holeAngle || 0;
-		const subdrill = h.subdrillAmount || 0;
-		const collarZ = h.startZLocation || 0;
-		const gradeZ = h.gradeZLocation || h.endZLocation || 0;
-		const rowID = h.rowID || "";
-		const posID = h.posID || "";
-
-		// Step 1) Add connectorCurve calculation
-		const connectorCurve = h.connectorCurve || 0;
-		const burden = h.burden || 0;
-		const spacing = h.spacing || 0;
-
-		// Sum for averages
-		delaySum += parseFloat(currentDelay);
-		diameterSum += parseFloat(diameter);
-		bearingSum += parseFloat(bearing);
-		angleSum += parseFloat(angle);
-		subdrillSum += parseFloat(subdrill);
-		collarZSum += parseFloat(collarZ);
-		gradeZSum += parseFloat(gradeZ);
-
-		// Step 2) Add new sums
-
-		connectorCurveSum += parseFloat(connectorCurve);
-		burdenSum += parseFloat(burden);
-		spacingSum += parseFloat(spacing);
-
-		// Track unique values
-		uniqueDelays.add(currentDelay);
-		uniqueDelayColors.add(currentColor);
-		uniqueHoleTypes.add(currentType);
-		uniqueRowIDs.add(rowID);
-		uniquePosIDs.add(posID);
-
-		// Count hole types for most common
-		typeCounts[currentType] = (typeCounts[currentType] || 0) + 1;
-	});
-
-	// Calculate averages
-	const count = holes.length;
-	const avgDelay = delaySum / count;
-	const avgDiameter = diameterSum / count;
-	const avgBearing = bearingSum / count;
-	const avgAngle = angleSum / count;
-	const avgSubdrill = subdrillSum / count;
-	const avgCollarZ = collarZSum / count;
-	const avgGradeZ = gradeZSum / count;
-
-	// Find most common values
-	const firstDelayColor = Array.from(uniqueDelayColors)[0];
-	const firstRowID = Array.from(uniqueRowIDs)[0];
-	const firstPosID = Array.from(uniquePosIDs)[0];
-
-	// Find most common hole type
-	let mostCommonType = "Production";
-	let maxCount = 0;
-	for (const [type, typeCount] of Object.entries(typeCounts)) {
-		if (typeCount > maxCount) {
-			maxCount = typeCount;
-			mostCommonType = type;
-		}
-	}
-
-	// Create combined hole types list (standard + any custom types from selection)
-	const standardHoleTypes = ["Angled", "Batter", "Buffer", "Infill", "Production", "Stab", "Toe", "Trim"];
-	const customTypesFromSelection = Array.from(uniqueHoleTypes).filter((type) => !standardHoleTypes.includes(type));
-	const allHoleTypes = [...standardHoleTypes, ...customTypesFromSelection].sort();
-	// Calculate averages (add after existing averages around line 37240)
-	const avgConnectorCurve = connectorCurveSum / count;
-	const avgBurden = burdenSum / count;
-	const avgSpacing = spacingSum / count;
-
-	// Add to originalValues object around line 37275
-	const originalValues = {
-		delay: avgDelay.toFixed(1),
-		diameter: avgDiameter.toFixed(0),
-		bearing: avgBearing.toFixed(1),
-		angle: avgAngle.toFixed(0),
-		subdrill: avgSubdrill.toFixed(1),
-		collarZ: avgCollarZ.toFixed(2),
-		gradeZ: avgGradeZ.toFixed(2),
-		holeType: mostCommonType,
-		delayColor: firstDelayColor,
-		rowID: firstRowID,
-		posID: firstPosID,
-		// Step 3) Add new original values
-		connectorCurve: avgConnectorCurve.toFixed(0),
-		burden: avgBurden.toFixed(2),
-		spacing: avgSpacing.toFixed(2),
-	};
-
-	// Add display values around line 37285
-	const displayConnectorCurve = isMultiple && new Set(holes.map((h) => h.connectorCurve || 0)).size > 1 ? "varies (avg: " + avgConnectorCurve.toFixed(0) + "?)" : avgConnectorCurve.toFixed(0) + "?";
-	const displayBurden = isMultiple && new Set(holes.map((h) => h.burden || 0)).size > 1 ? "varies (avg: " + avgBurden.toFixed(2) + ")" : avgBurden.toFixed(2);
-	const displaySpacing = isMultiple && new Set(holes.map((h) => h.spacing || 0)).size > 1 ? "varies (avg: " + avgSpacing.toFixed(2) + ")" : avgSpacing.toFixed(2);
-
-	// Create display values with indicators for varying values
-	const displayDelay = isMultiple && uniqueDelays.size > 1 ? "varies (avg: " + avgDelay.toFixed(1) + ")" : avgDelay.toFixed(1);
-	const displayDiameter = isMultiple && new Set(holes.map((h) => h.holeDiameter)).size > 1 ? "varies (avg: " + avgDiameter.toFixed(0) + ")" : avgDiameter.toFixed(0);
-	const displayBearing = isMultiple && new Set(holes.map((h) => h.holeBearing)).size > 1 ? "varies (avg: " + avgBearing.toFixed(1) + ")" : avgBearing.toFixed(1);
-	const displayAngle = isMultiple && new Set(holes.map((h) => h.holeAngle)).size > 1 ? "varies (avg: " + avgAngle.toFixed(0) + ")" : avgAngle.toFixed(0);
-	const displaySubdrill = isMultiple && new Set(holes.map((h) => h.subdrillAmount)).size > 1 ? "varies (avg: " + avgSubdrill.toFixed(1) + ")" : avgSubdrill.toFixed(1);
-	const displayCollarZ = isMultiple && new Set(holes.map((h) => h.startZLocation)).size > 1 ? "varies (avg: " + avgCollarZ.toFixed(2) + ")" : avgCollarZ.toFixed(2);
-	const displayGradeZ = isMultiple && new Set(holes.map((h) => h.gradeZLocation || h.endZLocation)).size > 1 ? "varies (avg: " + avgGradeZ.toFixed(2) + ")" : avgGradeZ.toFixed(2);
-
-	// Create notes for multiple values
-	const delayNote = isMultiple && uniqueDelays.size > 1 ? " (varying)" : "";
-	const colorNote = isMultiple && uniqueDelayColors.size > 1 ? " (multiple)" : "";
-	const typeNote = isMultiple && uniqueHoleTypes.size > 1 ? " (most common: " + mostCommonType + ")" : "";
-
-	const title = isMultiple ? "Edit Multiple Holes (" + holes.length + " selected)" : "Edit Hole " + holes[0].holeID;
-
-	// Define form fields
-	const fields = [
-		{
-			label: "Delay" + delayNote,
-			name: "delay",
-			type: "text",
-			value: originalValues.delay,
-			placeholder: displayDelay,
-		},
-		{
-			label: "Delay Color" + colorNote,
-			name: "delayColor",
-			type: "color",
-			value: firstDelayColor,
-		},
-		{
-			label: "Connector Curve (?)",
-			name: "connectorCurve",
-			type: "number",
-			value: originalValues.connectorCurve,
-			placeholder: displayConnectorCurve,
-		},
-		{
-			label: "Hole Type",
-			name: "holeType",
-			type: "select",
-			value: mostCommonType,
-			options: [
-				{
-					value: "",
-					text: "-- No Change --",
-				},
-				...allHoleTypes.map((type) => ({
-					value: type,
-					text: type,
-				})),
-				{
-					value: "__CUSTOM__",
-					text: "Other (custom)...",
-				},
-			],
-		},
-		{
-			label: "Custom Type",
-			name: "customType",
-			type: "text",
-			placeholder: "Enter custom hole type",
-			disabled: true,
-		},
-		{
-			label: "Diameter (mm)",
-			name: "diameter",
-			type: "text",
-			value: originalValues.diameter,
-			placeholder: displayDiameter,
-		},
-		{
-			label: "Bearing (?)",
-			name: "bearing",
-			type: "text",
-			value: originalValues.bearing,
-			placeholder: displayBearing,
-		},
-		{
-			label: "Dip/Angle (?)",
-			name: "angle",
-			type: "text",
-			value: originalValues.angle,
-			placeholder: displayAngle,
-		},
-		{
-			label: "Subdrill (m)",
-			name: "subdrill",
-			type: "text",
-			value: originalValues.subdrill,
-			placeholder: displaySubdrill,
-		},
-		{
-			label: "Collar Z RL (m)",
-			name: "collarZ",
-			type: "text",
-			value: originalValues.collarZ,
-			placeholder: displayCollarZ,
-		},
-		{
-			label: "Grade Z RL (m)",
-			name: "gradeZ",
-			type: "text",
-			value: originalValues.gradeZ,
-			placeholder: displayGradeZ,
-		},
-		{
-			label: "Burden (m)",
-			name: "burden",
-			type: "text",
-			value: originalValues.burden,
-			placeholder: displayBurden,
-		},
-		{
-			label: "Spacing (m)",
-			name: "spacing",
-			type: "text",
-			value: originalValues.spacing,
-			placeholder: displaySpacing,
-		},
-	];
-
-	// Add Row ID and Pos ID fields only for single hole edits
-	if (!isMultiple) {
-		fields.push(
-			{
-				label: "Row ID",
-				name: "rowID",
-				type: "text",
-				value: firstRowID,
-				placeholder: "Row identifier",
-			},
-			{
-				label: "Pos ID",
-				name: "posID",
-				type: "text",
-				value: firstPosID,
-				placeholder: "Position identifier",
-			}
-		);
-	}
-
-	// Create enhanced form content with special handling
-	const formContent = createEnhancedFormContent(fields, isMultiple);
-
-	// Add note at the bottom
-	const noteDiv = document.createElement("div");
-	noteDiv.style.gridColumn = "1 / -1";
-	noteDiv.style.marginTop = "10px";
-	noteDiv.style.fontSize = "10px";
-	noteDiv.style.color = "#888";
-	noteDiv.textContent = isMultiple ? "Note: Use +/- for relative changes (e.g., +0.3, -0.2). Only changed values will be applied." : "Note: Use +/- for relative changes (e.g., +0.3, -0.2). Select hole type from dropdown or choose 'Other' for custom. Curved connectors are made by seting connector curve to (45? to 120?, -45? to -120?) Straight connctors are 0?";
-	formContent.appendChild(noteDiv);
-
-	const dialog = new FloatingDialog({
-		title: title,
-		content: formContent,
-		layoutType: "compact",
-		showConfirm: true,
-		showCancel: true,
-		showOption1: true, // Add hide button
-		confirmText: "Apply",
-		cancelText: "Cancel",
-		option1Text: "Hide",
-		width: 350,
-		height: 600,
-		onConfirm: () => {
-			// Get form values
-			const formData = getFormData(formContent);
-
-			// Process the form data and update holes
-			processHolePropertyUpdates(holes, formData, originalValues, isMultiple);
-
-			// Clear any dragging states when dialog closes
-			isDragging = false;
-			clearTimeout(longPressTimeout);
-		},
-		onCancel: () => {
-			// Clear any dragging states when dialog closes
-			isDragging = false;
-			clearTimeout(longPressTimeout);
-		},
-		onOption1: () => {
-			// Hide holes - just set visible flag
-			holes.forEach((hole) => {
-				hole.visible = false;
-			});
-			drawData(allBlastHoles, selectedHole);
-		},
-	});
-
-	dialog.show();
-}
-
-// Process hole property updates (extracted from original logic)
-function processHolePropertyUpdates(holes, formData, originalValues, isMultiple) {
-	// Helper function to handle relative/absolute value changes
-	function processNumericValue(inputValue, originalValue, currentHoleValue) {
-		if (inputValue === "" || inputValue === originalValue) {
-			return null; // No change
-		}
-
-		if (inputValue.startsWith("+") || inputValue.startsWith("-")) {
-			// Relative adjustment
-			const delta = parseFloat(inputValue);
-			if (!isNaN(delta)) {
-				return currentHoleValue + delta;
-			}
-		} else {
-			// Absolute value
-			const absoluteValue = parseFloat(inputValue);
-			if (!isNaN(absoluteValue)) {
-				return absoluteValue;
-			}
-		}
-		return null; // Invalid input
-	}
-
-	// ? NEW: Track which fields were actually modified by the user
-	const modifiedFields = new Set();
-
-	// Check each field to see if it was actually changed from the original average
-	if (formData.delay !== originalValues.delay) modifiedFields.add("delay");
-	if (formData.delayColor !== originalValues.delayColor) modifiedFields.add("delayColor");
-	if (formData.holeType !== originalValues.holeType) modifiedFields.add("holeType");
-	if (formData.diameter !== originalValues.diameter) modifiedFields.add("diameter");
-	if (formData.bearing !== originalValues.bearing) modifiedFields.add("bearing");
-	if (formData.angle !== originalValues.angle) modifiedFields.add("angle");
-	if (formData.subdrill !== originalValues.subdrill) modifiedFields.add("subdrill");
-	if (formData.collarZ !== originalValues.collarZ) modifiedFields.add("collarZ");
-	if (formData.gradeZ !== originalValues.gradeZ) modifiedFields.add("gradeZ");
-	if (formData.connectorCurve !== originalValues.connectorCurve) modifiedFields.add("connectorCurve");
-	if (formData.burden !== originalValues.burden) modifiedFields.add("burden");
-	if (formData.spacing !== originalValues.spacing) modifiedFields.add("spacing");
-
-	// For single hole edits, also check Row ID and Pos ID
-	if (!isMultiple) {
-		if (formData.rowID !== originalValues.rowID) modifiedFields.add("rowID");
-		if (formData.posID !== originalValues.posID) modifiedFields.add("posID");
-	}
-
-	// Handle hole type: check if custom or standard
-	let newHoleType = formData.holeType;
-	if (newHoleType === "__CUSTOM__") {
-		newHoleType = formData.customType.trim();
-		if (newHoleType !== originalValues.holeType) modifiedFields.add("holeType");
-	}
-
-	// Track if any timing-related properties were changed
-	let timingChanged = false;
-	let geometryChanged = false;
-
-	holes.forEach((h) => {
-		// ? ONLY process fields that were actually modified
-		if (modifiedFields.has("delay")) {
-			const processedDelay = processNumericValue(formData.delay, originalValues.delay, h.holeDelay !== undefined ? h.holeDelay : h.timingDelayMilliseconds || 0);
-			if (processedDelay !== null) {
-				h.holeDelay = processedDelay;
-				if (h.timingDelayMilliseconds !== undefined) {
-					h.timingDelayMilliseconds = processedDelay;
-				}
-				timingChanged = true;
-			}
-		}
-
-		if (modifiedFields.has("delayColor")) {
-			h.holeDelayColor = formData.delayColor;
-			if (h.colorHexDecimal !== undefined) {
-				h.colorHexDecimal = formData.delayColor;
-			}
-			timingChanged = true;
-		}
-
-		if (modifiedFields.has("holeType")) {
-			h.holeType = newHoleType;
-		}
-
-		// Update geometry properties only if modified
-		if (modifiedFields.has("diameter")) {
-			const processedDiameter = processNumericValue(formData.diameter, originalValues.diameter, h.holeDiameter || 0);
-			if (processedDiameter !== null) {
-				calculateHoleGeometry(h, processedDiameter, 7);
-				geometryChanged = true;
-			}
-		}
-
-		if (modifiedFields.has("bearing")) {
-			const processedBearing = processNumericValue(formData.bearing, originalValues.bearing, h.holeBearing || 0);
-			if (processedBearing !== null) {
-				calculateHoleGeometry(h, processedBearing, 3);
-				geometryChanged = true;
-			}
-		}
-
-		if (modifiedFields.has("angle")) {
-			const processedAngle = processNumericValue(formData.angle, originalValues.angle, h.holeAngle || 0);
-			if (processedAngle !== null) {
-				calculateHoleGeometry(h, processedAngle, 2);
-				geometryChanged = true;
-			}
-		}
-
-		if (modifiedFields.has("subdrill")) {
-			const processedSubdrill = processNumericValue(formData.subdrill, originalValues.subdrill, h.subdrillAmount || 0);
-			if (processedSubdrill !== null) {
-				calculateHoleGeometry(h, processedSubdrill, 8);
-				geometryChanged = true;
-			}
-		}
-
-		if (modifiedFields.has("collarZ")) {
-			const processedCollarZ = processNumericValue(formData.collarZ, originalValues.collarZ, h.startZLocation || 0);
-			if (processedCollarZ !== null) {
-				h.startZLocation = processedCollarZ;
-				geometryChanged = true;
-			}
-		}
-
-		if (modifiedFields.has("gradeZ")) {
-			const processedGradeZ = processNumericValue(formData.gradeZ, originalValues.gradeZ, h.gradeZLocation || h.endZLocation || 0);
-			if (processedGradeZ !== null) {
-				h.gradeZLocation = processedGradeZ;
-				h.endZLocation = processedGradeZ;
-				geometryChanged = true;
-			}
-		}
-
-		if (modifiedFields.has("connectorCurve")) {
-			// Step 1) Treat connectorCurve as absolute value only (no relative adjustments)
-			const curveValue = parseFloat(formData.connectorCurve);
-			if (!isNaN(curveValue)) {
-				h.connectorCurve = curveValue;
-				timingChanged = true; // Since this affects visual display
-			}
-		}
-
-		if (modifiedFields.has("burden")) {
-			const processedBurden = processNumericValue(formData.burden, originalValues.burden, h.burden || 0);
-			if (processedBurden !== null) {
-				h.burden = processedBurden;
-			}
-		}
-
-		if (modifiedFields.has("spacing")) {
-			const processedSpacing = processNumericValue(formData.spacing, originalValues.spacing, h.spacing || 0);
-			if (processedSpacing !== null) {
-				h.spacing = processedSpacing;
-			}
-		}
-
-		// Only update Row ID and Pos ID for single hole edits and if modified
-		if (!isMultiple) {
-			if (modifiedFields.has("rowID")) {
-				h.rowID = formData.rowID;
-			}
-
-			if (modifiedFields.has("posID")) {
-				h.posID = formData.posID;
-			}
-		}
-	});
-
-	// ** RECALCULATE TIMING AND CONTOURS **
-	if (timingChanged || geometryChanged) {
-		// Always recalculate timing calculations after changes
-		holeTimes = calculateTimes(allBlastHoles);
-
-		// Update timing chart display
-		timeChart();
-
-		// Recalculate contours if they're being displayed
-		const result = recalculateContours(allBlastHoles, 0, 0);
-		if (result) {
-			contourLinesArray = result.contourLinesArray;
-			directionArrows = result.directionArrows;
-		}
-	}
-
-	// Update selection averages and sliders
-	if (isMultiple) {
-		updateSelectionAveragesAndSliders(holes);
-	} else if (selectedHole === holes[0]) {
-		updateSelectionAveragesAndSliders([holes[0]]);
-	}
-
-	drawData(allBlastHoles, selectedHole); // Redraw
-
-	const statusMessage = isMultiple ? "Updated " + holes.length + " holes" + (timingChanged ? " - Timings recalculated" : "") : "Hole " + holes[0].holeID + " updated" + (timingChanged ? " - Timings recalculated" : "");
-	updateStatusMessage(statusMessage);
-	setTimeout(() => updateStatusMessage(""), 3000);
-}
-*/
 // END OF MOVED FUNCTIONS - Holes functions now loaded from HolesContextMenu.js
 
 //For Kad entities

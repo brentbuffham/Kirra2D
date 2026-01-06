@@ -22,35 +22,41 @@ import { GeometryFactory } from "../three/GeometryFactory.js";
 function hexToThreeColor(hexColor) {
 	// Step 0a) Default to grey if no color provided
 	if (!hexColor) {
-		console.log("🎨 [hexToThreeColor] No color provided, using grey");
+		if (developerModeEnabled) {
+			console.log("🎨 [hexToThreeColor] No color provided, using grey");
+		}
 		return { r: 0.5, g: 0.5, b: 0.5 };
 	}
-	
+
 	// Step 0b) Handle various formats
 	var hex = String(hexColor).trim();
-	
+
 	// Step 0c) Remove # prefix if present
 	if (hex.charAt(0) === "#") {
 		hex = hex.substring(1);
 	}
-	
+
 	// Step 0d) Handle 3-digit hex (e.g., "F0F" -> "FF00FF")
 	if (hex.length === 3) {
 		hex = hex.charAt(0) + hex.charAt(0) + hex.charAt(1) + hex.charAt(1) + hex.charAt(2) + hex.charAt(2);
 	}
-	
+
 	// Step 0e) Parse hex values
 	var r = parseInt(hex.substring(0, 2), 16) / 255;
 	var g = parseInt(hex.substring(2, 4), 16) / 255;
 	var b = parseInt(hex.substring(4, 6), 16) / 255;
-	
+
 	// Step 0f) Validate parsed values
 	if (isNaN(r) || isNaN(g) || isNaN(b)) {
-		console.log("🎨 [hexToThreeColor] Failed to parse color: " + hexColor + ", using grey");
+		if (developerModeEnabled) {
+			console.log("🎨 [hexToThreeColor] Failed to parse color: " + hexColor + ", using grey");
+		}
 		return { r: 0.5, g: 0.5, b: 0.5 }; // Default grey
 	}
-	
-	console.log("🎨 [hexToThreeColor] Parsed " + hexColor + " -> rgb(" + Math.round(r * 255) + ", " + Math.round(g * 255) + ", " + Math.round(b * 255) + ")");
+
+	if (developerModeEnabled) {
+		console.log("🎨 [hexToThreeColor] Parsed " + hexColor + " -> rgb(" + Math.round(r * 255) + ", " + Math.round(g * 255) + ", " + Math.round(b * 255) + ")");
+	}
 	return { r: r, g: g, b: b };
 }
 
@@ -131,11 +137,11 @@ export function drawHoleThreeJS(hole) {
 		holeId: uniqueHoleId, // Unique identifier for selection (entityName:::holeID)
 		entityName: hole.entityName, // Pattern/entity name
 		holeID: hole.holeID, // Display name (hole number)
-		holeData: hole, // Full hole data for tooltips/info
+		holeData: hole // Full hole data for tooltips/info
 	};
 
 	// Step 4a) Also set userData on all child meshes for raycasting
-	holeGroup.traverse((child) => {
+	holeGroup.traverse(child => {
 		if (child.isMesh || child.isLine || child.isPoints) {
 			// Copy userData to children so raycast hits work
 			child.userData = Object.assign({}, holeGroup.userData, child.userData);
@@ -165,7 +171,7 @@ export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId
 	// Step 4c) Add metadata for selection
 	toeMesh.userData = {
 		type: "holeToe",
-		holeId: holeId,
+		holeId: holeId
 	};
 
 	window.threeRenderer.holesGroup.add(toeMesh);
@@ -197,7 +203,7 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	const [toeCanvasX, toeCanvasY] = window.worldToCanvas(hole.endXLocation, hole.endYLocation);
 
 	// Step 0a) Calculate text offsets EXACTLY like 2D (in pixels)
-	const textOffset = parseInt((hole.holeDiameter / 1000) * window.holeScale * window.currentScale);
+	const textOffset = parseInt(hole.holeDiameter / 1000 * window.holeScale * window.currentScale);
 
 	// Step 0b) Calculate canvas positions EXACTLY like 2D (matching kirra.js lines 21424-21434)
 	const leftSideToe = parseInt(toeCanvasX) - textOffset;
@@ -389,20 +395,20 @@ export function drawKADPolygonSegmentThreeJS(startX, startY, startZ, endX, endY,
 export function drawKADBatchedPolylineThreeJS(pointsArray, lineWidth, color, kadId, isPolygon) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!pointsArray || pointsArray.length < 2) return;
-	
+
 	// Step 9b.1) Create batched polyline (ONE object for entire entity!)
 	var batchedLine = GeometryFactory.createBatchedPolyline(pointsArray, lineWidth, color, isPolygon);
 	if (!batchedLine) return; // Handle null return for invalid data
-	
+
 	// Step 9b.2) Add metadata for selection
 	if (kadId) {
-		batchedLine.userData = { 
-			type: isPolygon ? "kadPolygon" : "kadLine", 
+		batchedLine.userData = {
+			type: isPolygon ? "kadPolygon" : "kadLine",
 			kadId: kadId,
 			isBatched: true // Flag to indicate this is a batched object
 		};
 	}
-	
+
 	window.threeRenderer.kadGroup.add(batchedLine);
 }
 
@@ -411,14 +417,14 @@ export function drawKADBatchedPolylineThreeJS(pointsArray, lineWidth, color, kad
 export function drawKADSuperBatchedPointsThreeJS(allPointEntities, worldToThreeLocal) {
 	if (!window.threeInitialized || !window.threeRenderer) return null;
 	if (!allPointEntities || allPointEntities.length === 0) return null;
-	
+
 	// Step 9c.1) Create super-batched points (ONE object for ALL points!)
 	var result = GeometryFactory.createSuperBatchedPoints(allPointEntities, worldToThreeLocal);
 	if (!result || !result.points) return null;
-	
+
 	// Step 9c.2) Add to KAD group
 	window.threeRenderer.kadGroup.add(result.points);
-	
+
 	return result;
 }
 
@@ -427,14 +433,14 @@ export function drawKADSuperBatchedPointsThreeJS(allPointEntities, worldToThreeL
 export function drawKADSuperBatchedCirclesThreeJS(allCircleEntities, worldToThreeLocal) {
 	if (!window.threeInitialized || !window.threeRenderer) return null;
 	if (!allCircleEntities || allCircleEntities.length === 0) return null;
-	
+
 	// Step 9d.1) Create super-batched circles (ONE object for ALL circles!)
 	var result = GeometryFactory.createSuperBatchedCircles(allCircleEntities, worldToThreeLocal);
 	if (!result || !result.lineSegments) return null;
-	
+
 	// Step 9d.2) Add to KAD group
 	window.threeRenderer.kadGroup.add(result.lineSegments);
-	
+
 	return result;
 }
 
@@ -502,10 +508,10 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	// Check if mesh actually has textures
 	var hasTexture = false;
 	if (surfaceData && surfaceData.threeJSMesh) {
-		surfaceData.threeJSMesh.traverse(function (child) {
+		surfaceData.threeJSMesh.traverse(function(child) {
 			if (child.isMesh && child.material) {
 				if (Array.isArray(child.material)) {
-					hasTexture = child.material.some(function (mat) {
+					hasTexture = child.material.some(function(mat) {
 						return mat.map !== null && mat.map !== undefined;
 					});
 				} else {
@@ -551,7 +557,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 		// Step 12c.0) DIAGNOSTIC: Check original vertex positions BEFORE any transformation
 		var firstVertexOriginal = null;
-		texturedMesh.traverse(function (child) {
+		texturedMesh.traverse(function(child) {
 			if (!firstVertexOriginal && child.isMesh && child.geometry && child.geometry.attributes && child.geometry.attributes.position) {
 				var pos = child.geometry.attributes.position.array;
 				firstVertexOriginal = { x: pos[0], y: pos[1], z: pos[2] };
@@ -587,12 +593,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		texturedMesh.position.set(meshCenterLocalX, meshCenterLocalY, 0);
 
 		// Step 12c.2) Deep clone materials and preserve textures
-		texturedMesh.traverse(function (child) {
+		texturedMesh.traverse(function(child) {
 			if (child.isMesh) {
 				// Clone materials and preserve textures
 				if (child.material) {
 					if (Array.isArray(child.material)) {
-						child.material = child.material.map(function (mat) {
+						child.material = child.material.map(function(mat) {
 							var clonedMat = mat.clone();
 							if (mat.map) {
 								clonedMat.map = mat.map;
@@ -621,15 +627,11 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		// No additional transformation needed
 
 		// Step 12e) Set userData for selection
-		texturedMesh.userData = {
-			type: "surface",
-			surfaceId: surfaceId,
-			isTexturedMesh: true,
-		};
+		texturedMesh.userData = { type: "surface", surfaceId: surfaceId, isTexturedMesh: true };
 
 		// Step 12f) Apply transparency if specified
 		if (transparency < 1.0) {
-			texturedMesh.traverse(function (child) {
+			texturedMesh.traverse(function(child) {
 				if (child.isMesh && child.material) {
 					child.material.transparent = true;
 					child.material.opacity = transparency;
@@ -664,16 +666,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	// This allows textured OBJs to use elevation-based color gradients
 
 	// Step 9a) Standard surface rendering - Convert triangle vertices from world coordinates to local Three.js coordinates
-	var localTriangles = triangles.map(function (triangle) {
+	var localTriangles = triangles.map(function(triangle) {
 		if (!triangle.vertices || triangle.vertices.length !== 3) return triangle;
 
-		var localVertices = triangle.vertices.map(function (v) {
+		var localVertices = triangle.vertices.map(function(v) {
 			var local = window.worldToThreeLocal(v.x, v.y);
-			return {
-				x: local.x,
-				y: local.y,
-				z: v.z, // Keep elevation as-is
-			};
+			return { x: local.x, y: local.y, z: v.z }; // Keep elevation as-is
 		});
 
 		return Object.assign({}, triangle, { vertices: localVertices });
@@ -681,23 +679,25 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 	// Step 10) Create color function for this surface
 	var colorFunction;
-	
+
 	// Step 10a) Get custom min/max limits from surface data if available
-	var surfaceMinLimit = (surfaceData && surfaceData.minLimit !== null && surfaceData.minLimit !== undefined) ? surfaceData.minLimit : null;
-	var surfaceMaxLimit = (surfaceData && surfaceData.maxLimit !== null && surfaceData.maxLimit !== undefined) ? surfaceData.maxLimit : null;
-	
+	var surfaceMinLimit = surfaceData && surfaceData.minLimit !== null && surfaceData.minLimit !== undefined ? surfaceData.minLimit : null;
+	var surfaceMaxLimit = surfaceData && surfaceData.maxLimit !== null && surfaceData.maxLimit !== undefined ? surfaceData.maxLimit : null;
+
 	// Step 10b) Handle hillshade - use solid color instead of elevation gradient
 	if (gradient === "hillshade") {
-		var hillshadeHex = (surfaceData && surfaceData.hillshadeColor) ? surfaceData.hillshadeColor : "#808080";
-		console.log("🎨 [drawSurfaceThreeJS] Hillshade mode - surfaceId: " + surfaceId + ", hillshadeColor from data: " + (surfaceData ? surfaceData.hillshadeColor : "N/A") + ", using: " + hillshadeHex);
+		var hillshadeHex = surfaceData && surfaceData.hillshadeColor ? surfaceData.hillshadeColor : "#808080";
+		if (developerModeEnabled) {
+			console.log("🎨 [drawSurfaceThreeJS] Hillshade mode - surfaceId: " + surfaceId + ", hillshadeColor from data: " + (surfaceData ? surfaceData.hillshadeColor : "N/A") + ", using: " + hillshadeHex);
+		}
 		// Step 10b-1) Convert hex color to Three.js RGB format
 		var fixedColor = hexToThreeColor(hillshadeHex);
-		colorFunction = function (z) {
+		colorFunction = function(z) {
 			return fixedColor;
 		};
 	} else {
 		// Step 10c) Regular elevation-based color gradient with custom limits support
-		colorFunction = function (z) {
+		colorFunction = function(z) {
 			var rgbString = window.elevationToColor(z, minZ, maxZ, gradient, surfaceMinLimit, surfaceMaxLimit);
 			return window.rgbStringToThreeColor(rgbString);
 		};
@@ -705,10 +705,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 	// Step 11) Create mesh with vertex colors (using local coordinates)
 	var surfaceMesh = GeometryFactory.createSurface(localTriangles, colorFunction, transparency);
-	surfaceMesh.userData = {
-		type: "surface",
-		surfaceId: surfaceId,
-	};
+	surfaceMesh.userData = { type: "surface", surfaceId: surfaceId };
 
 	window.threeRenderer.surfacesGroup.add(surfaceMesh);
 	window.threeRenderer.surfaceMeshMap.set(surfaceId, surfaceMesh);
@@ -736,7 +733,7 @@ export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
 
 		// Step 13c) Add labels at 1/3 and 2/3 marks of this contour level
 		const oneThirdMark = Math.floor(totalLines / 3);
-		const twoThirdsMark = Math.floor((totalLines * 2) / 3);
+		const twoThirdsMark = Math.floor(totalLines * 2 / 3);
 
 		for (let i = 0; i < contourLevel.length; i++) {
 			if (i === oneThirdMark || i === twoThirdsMark) {
@@ -804,7 +801,7 @@ export function drawBackgroundImageThreeJS(imageId, imageCanvas, bbox, transpare
 	const imageMesh = GeometryFactory.createImagePlane(imageCanvas, localBbox, transparency, zElevation);
 	imageMesh.userData = {
 		type: "image",
-		imageId: imageId,
+		imageId: imageId
 	};
 
 	window.threeRenderer.imagesGroup.add(imageMesh);
@@ -845,7 +842,7 @@ export function drawConnectorThreeJS(fromHole, toHole, color, curve, delayText, 
 	connectorGroup.userData = {
 		type: "connector",
 		fromHoleId: fromHole.entityName + ":::" + fromHole.holeID,
-		toHoleId: toHole.entityName + ":::" + toHole.holeID,
+		toHoleId: toHole.entityName + ":::" + toHole.holeID
 	};
 
 	window.threeRenderer.connectorsGroup.add(connectorGroup);
@@ -964,7 +961,7 @@ export function highlightSelectedHoleThreeJS(hole, highlightType) {
 	highlightGroup.userData = {
 		type: "selectionHighlight",
 		holeId: hole.entityName + ":::" + hole.holeID,
-		highlightType: highlightType,
+		highlightType: highlightType
 	};
 
 	window.threeRenderer.holesGroup.add(highlightGroup);
@@ -1004,7 +1001,7 @@ export function highlightSelectedKADPointThreeJS(kadObject, highlightType) {
 	highlightMesh.userData = {
 		type: "kadHighlight",
 		kadId: kadId,
-		highlightType: highlightType,
+		highlightType: highlightType
 	};
 
 	window.threeRenderer.kadGroup.add(highlightMesh);
@@ -1020,7 +1017,7 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 		console.warn("drawConnectStadiumZoneThreeJS: Invalid inputs", {
 			fromHole: fromHole ? { x: fromHole.startXLocation, y: fromHole.startYLocation, z: fromHole.startZLocation } : null,
 			toMousePos: toMousePos,
-			connectAmount: connectAmount,
+			connectAmount: connectAmount
 		});
 		return;
 	}
@@ -1052,7 +1049,7 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 	// Step 19e) Add metadata
 	stadiumGroup.userData = {
 		type: "stadiumZone",
-		fromHoleId: fromHole.entityName + ":::" + fromHole.holeID,
+		fromHoleId: fromHole.entityName + ":::" + fromHole.holeID
 	};
 
 	window.threeRenderer.connectorsGroup.add(stadiumGroup);
@@ -1084,28 +1081,28 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// Step 19.5b) Remove existing mouse indicator if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach((child) => {
+	connectorsGroup.children.forEach(child => {
 		if (child.userData && child.userData.type === "mouseIndicator") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach((obj) => {
+	toRemove.forEach(obj => {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) {
 			if (Array.isArray(obj.material)) {
-				obj.material.forEach((mat) => mat.dispose());
+				obj.material.forEach(mat => mat.dispose());
 			} else {
 				obj.material.dispose();
 			}
 		}
 		// Dispose children if it's a group
 		if (obj.isGroup) {
-			obj.traverse((child) => {
+			obj.traverse(child => {
 				if (child.geometry) child.geometry.dispose();
 				if (child.material) {
 					if (Array.isArray(child.material)) {
-						child.material.forEach((mat) => mat.dispose());
+						child.material.forEach(mat => mat.dispose());
 					} else {
 						child.material.dispose();
 					}
@@ -1139,7 +1136,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 
 	// Step 19.5d) Add metadata
 	indicatorGroup.userData = {
-		type: "mouseIndicator",
+		type: "mouseIndicator"
 	};
 
 	// No billboarding markup needed - sphere looks the same from all angles
@@ -1162,12 +1159,12 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 	// Step 19.6b) Remove existing leading line if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1182,7 +1179,7 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 		color: new THREE.Color(lineColor),
 		dashSize: 0.5,
 		gapSize: 0.25,
-		linewidth: 2,
+		linewidth: 2
 	});
 
 	const line = new THREE.Line(geometry, material);
@@ -1190,7 +1187,7 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 
 	// Step 19.6d) Add metadata
 	line.userData = {
-		type: "kadLeadingLine",
+		type: "kadLeadingLine"
 	};
 
 	connectorsGroup.add(line);
@@ -1202,12 +1199,12 @@ export function clearKADLeadingLineThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1233,12 +1230,12 @@ export function drawRulerThreeJS(startWorldX, startWorldY, startWorldZ, endWorld
 	// Step 19.8b) Remove existing ruler line if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "rulerLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1251,7 +1248,7 @@ export function drawRulerThreeJS(startWorldX, startWorldY, startWorldZ, endWorld
 	const geometry = new THREE.BufferGeometry().setFromPoints(points);
 	const material = new THREE.LineBasicMaterial({
 		color: lineColor,
-		linewidth: 2,
+		linewidth: 2
 	});
 
 	const line = new THREE.Line(geometry, material);
@@ -1266,19 +1263,13 @@ export function drawRulerThreeJS(startWorldX, startWorldY, startWorldZ, endWorld
 		const perpY = dx / len * tickSize;
 
 		// Start tick
-		const startTick = new THREE.BufferGeometry().setFromPoints([
-			new THREE.Vector3(startLocal.x - perpX, startLocal.y - perpY, startZ),
-			new THREE.Vector3(startLocal.x + perpX, startLocal.y + perpY, startZ)
-		]);
+		const startTick = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(startLocal.x - perpX, startLocal.y - perpY, startZ), new THREE.Vector3(startLocal.x + perpX, startLocal.y + perpY, startZ)]);
 		const startTickLine = new THREE.Line(startTick, material.clone());
 		startTickLine.userData = { type: "rulerLine" };
 		connectorsGroup.add(startTickLine);
 
 		// End tick
-		const endTick = new THREE.BufferGeometry().setFromPoints([
-			new THREE.Vector3(endLocal.x - perpX, endLocal.y - perpY, endZ),
-			new THREE.Vector3(endLocal.x + perpX, endLocal.y + perpY, endZ)
-		]);
+		const endTick = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(endLocal.x - perpX, endLocal.y - perpY, endZ), new THREE.Vector3(endLocal.x + perpX, endLocal.y + perpY, endZ)]);
 		const endTickLine = new THREE.Line(endTick, material.clone());
 		endTickLine.userData = { type: "rulerLine" };
 		connectorsGroup.add(endTickLine);
@@ -1286,7 +1277,7 @@ export function drawRulerThreeJS(startWorldX, startWorldY, startWorldZ, endWorld
 
 	// Step 19.8e) Add metadata
 	line.userData = {
-		type: "rulerLine",
+		type: "rulerLine"
 	};
 
 	connectorsGroup.add(line);
@@ -1298,12 +1289,12 @@ export function clearRulerThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "rulerLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1322,12 +1313,12 @@ export function drawProtractorThreeJS(centerWorldX, centerWorldY, centerWorldZ, 
 	// Step 19.10b) Remove existing protractor lines if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "protractorLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1378,7 +1369,7 @@ export function drawProtractorThreeJS(centerWorldX, centerWorldY, centerWorldZ, 
 			var startAngle = angle1;
 			var endAngle = angle2;
 			var angleDiff = endAngle - startAngle;
-			
+
 			// Normalize to [-PI, PI]
 			while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
 			while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
@@ -1388,11 +1379,7 @@ export function drawProtractorThreeJS(centerWorldX, centerWorldY, centerWorldZ, 
 			for (var i = 0; i <= numSegments; i++) {
 				var t = i / numSegments;
 				var angle = startAngle + t * angleDiff;
-				arcPoints.push(new THREE.Vector3(
-					centerLocal.x + arcRadius * Math.cos(angle),
-					centerLocal.y + arcRadius * Math.sin(angle),
-					centerZ
-				));
+				arcPoints.push(new THREE.Vector3(centerLocal.x + arcRadius * Math.cos(angle), centerLocal.y + arcRadius * Math.sin(angle), centerZ));
 			}
 
 			if (arcPoints.length > 1) {
@@ -1412,12 +1399,12 @@ export function clearProtractorThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "protractorLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1434,7 +1421,7 @@ export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
 
 	// Step 20b) Add metadata
 	slopeMesh.userData = {
-		type: "slopeMap",
+		type: "slopeMap"
 	};
 
 	window.threeRenderer.surfacesGroup.add(slopeMesh);
@@ -1452,11 +1439,7 @@ export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
 		const centroidZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
 
 		// Step 20c.3) Calculate slope angle using GeometryFactory helper
-		const triangleForSlope = [
-			[triangle[0][0], triangle[0][1], triangle[0][2] || centroidZ],
-			[triangle[1][0], triangle[1][1], triangle[1][2] || centroidZ],
-			[triangle[2][0], triangle[2][1], triangle[2][2] || centroidZ],
-		];
+		const triangleForSlope = [[triangle[0][0], triangle[0][1], triangle[0][2] || centroidZ], [triangle[1][0], triangle[1][1], triangle[1][2] || centroidZ], [triangle[2][0], triangle[2][1], triangle[2][2] || centroidZ]];
 		const slopeAngle = GeometryFactory.getDipAngle(triangleForSlope);
 
 		// Step 20c.4) Convert to local coordinates
@@ -1492,7 +1475,7 @@ export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
 
 	// Step 21b) Add metadata
 	reliefMesh.userData = {
-		type: "burdenReliefMap",
+		type: "burdenReliefMap"
 	};
 
 	window.threeRenderer.surfacesGroup.add(reliefMesh);
@@ -1554,7 +1537,7 @@ export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlast
 
 	// Step 22c) Add metadata
 	voronoiGroup.userData = {
-		type: "voronoiCells",
+		type: "voronoiCells"
 	};
 
 	window.threeRenderer.surfacesGroup.add(voronoiGroup);

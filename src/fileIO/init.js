@@ -18,12 +18,20 @@ import KADWriter from "./KirraIO/KADWriter.js";
 import DXFParser from "./AutoCadIO/DXFParser.js";
 import DXFHOLESWriter from "./AutoCadIO/DXFHOLESWriter.js";
 import DXFVulcanWriter from "./AutoCadIO/DXFVulcanWriter.js";
+import DXF3DFACEWriter from "./AutoCadIO/DXF3DFACEWriter.js";
 import OBJParser from "./ThreeJSMeshIO/OBJParser.js";
 import OBJWriter from "./ThreeJSMeshIO/OBJWriter.js";
 import PLYParser from "./ThreeJSMeshIO/PLYParser.js";
 import PointCloudParser from "./PointCloudIO/PointCloudParser.js";
 import PointCloudWriter from "./PointCloudIO/PointCloudWriter.js";
 import AQMWriter from "./MinestarIO/AQMWriter.js";
+import SurpacSTRParser from "./SurpacIO/SurpacSTRParser.js";
+import SurpacSTRWriter from "./SurpacIO/SurpacSTRWriter.js";
+import SurpacDTMParser from "./SurpacIO/SurpacDTMParser.js";
+import SurpacDTMWriter from "./SurpacIO/SurpacDTMWriter.js";
+import SurpacBinarySTRParser from "./SurpacIO/SurpacBinarySTRParser.js";
+import SurpacBinaryDTMParser from "./SurpacIO/SurpacBinaryDTMParser.js";
+import SurpacSurfaceParser from "./SurpacIO/SurpacSurfaceParser.js";
 
 // Step 4) Initialize FileManager with all parsers and writers
 export function initializeFileManager() {
@@ -130,6 +138,13 @@ export function initializeFileManager() {
 		category: "cad"
 	});
 
+	// Step 10b) Register DXF 3DFACE writer (surface triangles)
+	fileManager.registerWriter("dxf-3dface", DXF3DFACEWriter, {
+		extensions: ["dxf"],
+		description: "DXF 3DFACE (surface triangles)",
+		category: "cad"
+	});
+
 	// Step 11) Register OBJ parser
 	fileManager.registerParser("obj", OBJParser, {
 		extensions: ["obj"],
@@ -169,6 +184,41 @@ export function initializeFileManager() {
 	fileManager.registerWriter("aqm-csv", AQMWriter, {
 		extensions: ["csv"],
 		description: "MineStar AQM CSV format (dynamic column ordering)",
+		category: "mining"
+	});
+
+	// Step 14) Register Surpac STR parser
+	fileManager.registerParser("surpac-str", SurpacSTRParser, {
+		extensions: ["str"],
+		description: "Surpac STR (String) format - blast holes and KAD entities",
+		category: "mining"
+	});
+
+	// Step 15) Register Surpac STR writer
+	fileManager.registerWriter("surpac-str", SurpacSTRWriter, {
+		extensions: ["str"],
+		description: "Surpac STR (String) format",
+		category: "mining"
+	});
+
+	// Step 16) Register Surpac DTM parser
+	fileManager.registerParser("surpac-dtm", SurpacDTMParser, {
+		extensions: ["dtm"],
+		description: "Surpac DTM (Digital Terrain Model) format - point cloud",
+		category: "mining"
+	});
+
+	// Step 17) Register Surpac DTM writer
+	fileManager.registerWriter("surpac-dtm", SurpacDTMWriter, {
+		extensions: ["dtm"],
+		description: "Surpac DTM (Digital Terrain Model) format",
+		category: "mining"
+	});
+
+	// Step 18) Register Surpac Surface parser (DTM + STR pair)
+	fileManager.registerParser("surpac-surface", SurpacSurfaceParser, {
+		extensions: ["dtm", "str"],
+		description: "Surpac Surface (DTM + STR pair) - triangulated surface",
 		category: "mining"
 	});
 

@@ -14,7 +14,46 @@ import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 const textCache = new Map(); // key: "x,y,z,text,fontSize,color"
 
 // Step 0a) Clear text cache (call when clearing scene)
+// CRITICAL FIX: Must dispose Troika text objects to prevent GPU memory leaks
 export function clearTextCache() {
+	// Step 0a.1) Dispose all cached text objects before clearing
+	textCache.forEach(function(cachedItem) {
+		if (cachedItem) {
+			// Step 0a.1a) Troika Text objects have their own dispose method
+			if (typeof cachedItem.dispose === "function") {
+				cachedItem.dispose();
+			}
+			// Step 0a.1b) Also dispose geometry if it exists
+			if (cachedItem.geometry) {
+				cachedItem.geometry.dispose();
+			}
+			// Step 0a.1c) Dispose material and textures
+			if (cachedItem.material) {
+				if (cachedItem.material.map) {
+					cachedItem.material.map.dispose();
+				}
+				cachedItem.material.dispose();
+			}
+			// Step 0a.1d) Handle groups (text with background) - dispose children
+			if (cachedItem.isGroup && cachedItem.children) {
+				cachedItem.children.forEach(function(child) {
+					if (typeof child.dispose === "function") {
+						child.dispose();
+					}
+					if (child.geometry) {
+						child.geometry.dispose();
+					}
+					if (child.material) {
+						if (child.material.map) {
+							child.material.map.dispose();
+						}
+						child.material.dispose();
+					}
+				});
+			}
+		}
+	});
+	// Step 0a.2) Now clear the cache
 	textCache.clear();
 }
 
