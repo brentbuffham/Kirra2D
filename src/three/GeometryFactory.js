@@ -470,7 +470,71 @@ export class GeometryFactory {
 		return points;
 	}
 
+	// Step 9a) Split large polyline into manageable chunks to prevent GPU exhaustion
+	// For polylines with >maxVerticesPerChunk vertices, split into multiple smaller geometries
+	// This prevents WebGL context loss from oversized buffers (72k vertices causes crashes)
+	static splitPolylineIntoChunks(pointsArray, maxVerticesPerChunk) {
+		if (!pointsArray || pointsArray.length <= maxVerticesPerChunk) {
+			// Step 9a.1) Small enough - return as single chunk
+			return [pointsArray];
+		}
+		
+		// Step 9a.2) Split into overlapping chunks (overlap by 1 vertex to maintain continuity)
+		var chunks = [];
+		var startIdx = 0;
+		
+		while (startIdx < pointsArray.length) {
+			// Step 9a.3) Calculate chunk end (ensure we don't exceed array bounds)
+			var endIdx = Math.min(startIdx + maxVerticesPerChunk, pointsArray.length);
+			
+			// Step 9a.4) Extract chunk
+			var chunk = pointsArray.slice(startIdx, endIdx);
+			chunks.push(chunk);
+			
+			// Step 9a.5) Move to next chunk with 1-vertex overlap for continuity
+			// If this was the last chunk, break
+			if (endIdx >= pointsArray.length) break;
+			
+			// Overlap by 1 vertex so lines connect visually
+			startIdx = endIdx - 1;
+		}
+		
+		console.log("✂️ Split large polyline (" + pointsArray.length + " vertices) into " + chunks.length + " chunks to prevent GPU exhaustion");
+		return chunks;
+	}
+
+	// Step 9a.5) Shared material cache to reduce GPU memory
+	// Instead of creating new material for each polyline, reuse materials with same properties
+	static _lineMaterialCache = new Map();
+
+	static getSharedLineMaterial(lineWidth, resolution) {
+		// Step 9a.5a) Create cache key based on material properties
+		var cacheKey = "lw" + lineWidth + "_res" + resolution.width + "x" + resolution.height;
+		
+		// Step 9a.5b) Return cached material if exists
+		if (this._lineMaterialCache.has(cacheKey)) {
+			return this._lineMaterialCache.get(cacheKey);
+		}
+		
+		// Step 9a.5c) Create new material and cache it
+		var material = new LineMaterial({
+			color: 0xffffff,
+			linewidth: lineWidth,
+			vertexColors: true,
+			resolution: resolution,
+			dashed: false,
+			alphaToCoverage: true
+		});
+		material.depthTest = true;
+		material.depthWrite = true;
+		
+		this._lineMaterialCache.set(cacheKey, material);
+		console.log("📦 Created new LineMaterial (cache size: " + this._lineMaterialCache.size + ")");
+		return material;
+	}
+
 	// Step 9b) FAST: Create batched polyline - OPTIMIZED for large DXF files
+	// HYBRID: Thin lines use LineBasicMaterial, thick lines use LineMaterial
 	// Key optimizations: pre-allocated typed arrays, inline hex parsing, no THREE.Color overhead
 	static createBatchedPolyline(pointsArray, lineWidth, defaultColor, isPolygon = false) {
 		var len = pointsArray.length;
@@ -485,53 +549,54 @@ export class GeometryFactory {
 			defB = (hex & 255) / 255;
 		}
 
-		// Step 1) ALWAYS USE FAT LINES: LineMaterial/LineSegments2 supports variable thickness
-		// LineBasicMaterial does not support linewidth in WebGL (deprecated property)
-		if (true) {  // Always use fat lines for proper thickness support
-			// Convert polyline to line segments format for LineSegmentsGeometry
-			var numSegments = isPolygon ? len : len - 1;
-			var segPositions = new Float32Array(numSegments * 6); // 2 points per segment, 3 floats per point
-			var segColors = new Float32Array(numSegments * 6);
+		// Step 1) Build segment arrays (same format for both thin and thick lines)
+		var numSegments = isPolygon ? len : len - 1;
+		var positions = new Float32Array(numSegments * 6); // 2 points per segment, 3 floats per point
+		var colors = new Float32Array(numSegments * 6);
+		
+		var posIdx = 0;
+		var colIdx = 0;
+		
+		for (var i = 0; i < numSegments; i++) {
+			var p1 = pointsArray[i];
+			var p2 = pointsArray[(i + 1) % len]; // Wrap around for polygon
 			
-			var posIdx = 0;
-			var colIdx = 0;
+			// Start point
+			positions[posIdx++] = p1.x;
+			positions[posIdx++] = p1.y;
+			positions[posIdx++] = p1.z || 0;
+			// End point
+			positions[posIdx++] = p2.x;
+			positions[posIdx++] = p2.y;
+			positions[posIdx++] = p2.z || 0;
 			
-			for (var i = 0; i < numSegments; i++) {
-				var p1 = pointsArray[i];
-				var p2 = pointsArray[(i + 1) % len]; // Wrap around for polygon
-				
-				// Start point
-				segPositions[posIdx++] = p1.x;
-				segPositions[posIdx++] = p1.y;
-				segPositions[posIdx++] = p1.z || 0;
-				// End point
-				segPositions[posIdx++] = p2.x;
-				segPositions[posIdx++] = p2.y;
-				segPositions[posIdx++] = p2.z || 0;
-				
-				// Parse color for this segment (use p2's color - segment TO the point uses that point's color)
-				var col = p2.color; 
-				var r = defR, g = defG, b = defB;
-				if (col && col.charAt(0) === "#" && col.length >= 7) {
-					var hex = parseInt(col.slice(1, 7), 16);
-					r = ((hex >> 16) & 255) / 255;
-					g = ((hex >> 8) & 255) / 255;
-					b = (hex & 255) / 255;
-				}
-				// Both vertices of segment get same color
-				segColors[colIdx++] = r; segColors[colIdx++] = g; segColors[colIdx++] = b;
-				segColors[colIdx++] = r; segColors[colIdx++] = g; segColors[colIdx++] = b;
+			// Parse color for this segment (use p2's color - segment TO the point uses that point's color)
+			var col = p2.color; 
+			var r = defR, g = defG, b = defB;
+			if (col && col.charAt(0) === "#" && col.length >= 7) {
+				var hex = parseInt(col.slice(1, 7), 16);
+				r = ((hex >> 16) & 255) / 255;
+				g = ((hex >> 8) & 255) / 255;
+				b = (hex & 255) / 255;
 			}
-			
-			// Create LineSegmentsGeometry (fat line compatible)
+			// Both vertices of segment get same color
+			colors[colIdx++] = r; colors[colIdx++] = g; colors[colIdx++] = b;
+			colors[colIdx++] = r; colors[colIdx++] = g; colors[colIdx++] = b;
+		}
+		
+		// Step 2) Choose rendering path based on lineWidth
+		var effectiveLineWidth = lineWidth || 1;
+		
+		if (effectiveLineWidth > 1) {
+			// Step 2a) THICK LINES: Use LineMaterial + LineSegments2 (supports variable width)
 			var geometry = new LineSegmentsGeometry();
-			geometry.setPositions(segPositions);
-			geometry.setColors(segColors);
+			geometry.setPositions(positions);
+			geometry.setColors(colors);
 			
-			// Create LineMaterial with screen-space linewidth
+			// Step 2b) Create NEW LineMaterial for each chunk (no sharing to avoid shader issues)
 			var material = new LineMaterial({
 				color: 0xffffff,
-				linewidth: lineWidth,
+				linewidth: effectiveLineWidth,
 				vertexColors: true,
 				resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
 				dashed: false,
@@ -540,11 +605,29 @@ export class GeometryFactory {
 			material.depthTest = true;
 			material.depthWrite = true;
 			
-			// Create LineSegments2
-			var fatLine = new LineSegments2(geometry, material);
-			fatLine.computeLineDistances();
-			fatLine.name = isPolygon ? "kad-polygon-fat" : "kad-line-fat";
-			return fatLine;
+			// Step 2c) Create LineSegments2
+			var lineSegments = new LineSegments2(geometry, material);
+			lineSegments.computeLineDistances();
+			lineSegments.name = isPolygon ? "kad-polygon-fat" : "kad-line-fat";
+			
+			return lineSegments;
+		} else {
+			// Step 2d) THIN LINES: Use LineBasicMaterial (simple, fast, no shader complexity)
+			var geometry = new THREE.BufferGeometry();
+			geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+			geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+			
+			var material = new THREE.LineBasicMaterial({
+				vertexColors: true,
+				linewidth: 1,
+				depthTest: true,
+				depthWrite: true
+			});
+			
+			var lineSegments = new THREE.LineSegments(geometry, material);
+			lineSegments.name = isPolygon ? "kad-polygon-thin" : "kad-line-thin";
+			
+			return lineSegments;
 		}
 	}
 

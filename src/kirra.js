@@ -76,6 +76,7 @@ import {
 	clearRulerThreeJS,
 	drawProtractorThreeJS,
 	clearProtractorThreeJS,
+	disposeKADThreeJS,
 } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
@@ -624,17 +625,21 @@ function calculateDataCentroid() {
 	// Step 4b) Add surface XYZ values if available
 	if (typeof loadedSurfaces !== "undefined" && loadedSurfaces && loadedSurfaces.size > 0) {
 		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
-			if (surface && surface.triangles && Array.isArray(surface.triangles) && surface.triangles.length > 0) {
-				// Step 4b.1) Standard surface with triangles - Z only
-				for (const tri of surface.triangles) {
-					if (tri) {
-						sumZ += parseFloat(tri.minZ) || 0;
-						sumZ += parseFloat(tri.maxZ) || 0;
-						countZ += 2;
+			if (surface && surface.points && Array.isArray(surface.points) && surface.points.length > 0) {
+				// Step 4b.1) Surface with points array - use points for XYZ
+				for (const point of surface.points) {
+					if (point && typeof point === "object") {
+						sumX += parseFloat(point.x) || 0;
+						sumY += parseFloat(point.y) || 0;
+						countXY++;
+						if (point.z !== undefined) {
+							sumZ += parseFloat(point.z) || 0;
+							countZ++;
+						}
 					}
 				}
-			} else if (surface && surface.isTexturedMesh && surface.meshBounds) {
-				// Step 4b.2) Textured mesh (OBJ) - use mesh center for XY, bounds for Z
+			} else if (surface && surface.meshBounds) {
+				// Step 4b.2) Surface with meshBounds - use bounds for XYZ
 				sumX += (parseFloat(surface.meshBounds.minX) || 0) + (parseFloat(surface.meshBounds.maxX) || 0);
 				sumY += (parseFloat(surface.meshBounds.minY) || 0) + (parseFloat(surface.meshBounds.maxY) || 0);
 				countXY += 2;
@@ -4628,6 +4633,20 @@ document.addEventListener("DOMContentLoaded", function () {
 document.getElementById("deletePatternButton").addEventListener("click", deleteSelectedPattern);
 document.getElementById("deleteAllPatternsButton").addEventListener("click", deleteSelectedAllPatterns);
 
+// Step 5a) GPU Memory Management button
+var freeGPUMemoryButton = document.getElementById("freeGPUMemoryButton");
+if (freeGPUMemoryButton) {
+	freeGPUMemoryButton.addEventListener("click", function() {
+		console.log("🗑️ User requested GPU memory cleanup");
+		if (window.threeInitialized) {
+			disposeKADThreeJS();
+			showModalMessage("GPU Memory Freed", "CAD drawing GPU memory has been freed.\n\nNote: Drawings will be redrawn on next render.", "success");
+		} else {
+			showModalMessage("3D Not Initialized", "3D rendering is not active. GPU cleanup not needed.", "info");
+		}
+	});
+}
+
 const displayHoleId = document.getElementById("display1"); //holeID
 const displayHoleLength = document.getElementById("display2"); //holeLength
 const displayHoleDiameter = document.getElementById("display2A"); //holeDiameter
@@ -7085,6 +7104,10 @@ document.querySelectorAll(".holes-input-btn").forEach(function (button) {
 				try {
 					parseK2Dcsv(event.target.result);
 					showModalMessage("Import Successful", "CSV file imported successfully", "success");
+					// Update TreeView to show imported data
+					if (typeof debouncedUpdateTreeView === "function") {
+						debouncedUpdateTreeView();
+					}
 				} catch (error) {
 					showModalMessage("Import Failed", "Error importing CSV: " + error.message, "error");
 				}
@@ -7205,6 +7228,10 @@ document.querySelectorAll(".kad-input-btn").forEach(function (button) {
 			reader.onload = function (event) {
 				try {
 					parseKADFile(event.target.result);
+					// Update TreeView to show imported KAD entities
+					if (typeof debouncedUpdateTreeView === "function") {
+						debouncedUpdateTreeView();
+					}
 				} catch (error) {
 					showModalMessage("Import Failed", "Error importing KAD: " + error.message, "error");
 				}
@@ -7602,8 +7629,43 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									}
 
 									data.surfaces.forEach(function(surface) {
-										window.loadedSurfaces.set(surface.name, surface);
-										console.log("Imported surface: " + surface.name + " (" + surface.vertexCount + " vertices, " + surface.triangleCount + " triangles)");
+										// Step 6c) Create a proper surface record with id and points for TreeView/DB
+										var surfaceId = surface.name || ("DTM_Surface_" + Date.now());
+
+										// Ensure points exist; if not, derive unique points from triangles
+										var points = surface.points;
+										if (!points || !Array.isArray(points) || points.length === 0) {
+											var pointsMap = new Map();
+											if (surface.triangles && Array.isArray(surface.triangles)) {
+												surface.triangles.forEach(function(tri) {
+													if (tri.vertices && Array.isArray(tri.vertices)) {
+														tri.vertices.forEach(function(v) {
+															if (v && typeof v.x === "number" && typeof v.y === "number" && typeof v.z === "number") {
+																var key = v.x + "_" + v.y + "_" + v.z;
+																if (!pointsMap.has(key)) {
+																	pointsMap.set(key, { x: v.x, y: v.y, z: v.z });
+																}
+															}
+														});
+													}
+												});
+											}
+											points = Array.from(pointsMap.values());
+										}
+
+										var surfaceData = {
+											id: surfaceId,
+											name: surface.name,
+											points: points,
+											triangles: surface.triangles || [],
+											visible: surface.visible !== false,
+											gradient: "default",
+											color: surface.color || "#00FF00",
+											transparency: 1.0
+										};
+
+										window.loadedSurfaces.set(surfaceId, surfaceData);
+										console.log("Imported surface: " + surfaceId + " (" + surfaceData.points.length + " points, " + surfaceData.triangles.length + " triangles)");
 									});
 
 									showModalMessage("Import Complete", "Imported " + data.surfaces.length + " surface(s)", "success");
@@ -7656,37 +7718,120 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 
 								console.log("Imported " + importedHoles.length + " blast holes from STR");
 
-								// Add KAD entities if any
-								if (data.kadEntities && data.kadEntities.length > 0) {
-									if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
-									data.kadEntities.forEach(function(entity) {
-										allKADDrawingsMap.set(entity.entityName, entity);
-									});
-									console.log("Imported " + data.kadEntities.length + " KAD entities from STR");
+							// Add KAD entities if any
+							if (data.kadEntities && data.kadEntities.length > 0) {
+								if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
+								
+							// Step 6a) Chunk large polylines/lines BEFORE storing in database
+							// This prevents GPU exhaustion and database bloat
+							// CRITICAL: This is about SINGLE entity size, not total file size!
+							// GPU has limits on single buffer allocation (~10k-20k vertices depending on GPU)
+							var MAX_VERTICES_PER_ENTITY = 10000; // Reduced from 15k for better compatibility
+							var chunkedCount = 0;
+							var totalOriginalVertices = 0;
+							
+							data.kadEntities.forEach(function(entity) {
+								// Step 6a.1) Check if entity needs chunking (lines/polys with >10k vertices)
+								if ((entity.entityType === "line" || entity.entityType === "poly") && 
+								    entity.data && entity.data.length > MAX_VERTICES_PER_ENTITY) {
+									
+									totalOriginalVertices += entity.data.length;
+									
+									// Step 6a.2) Split into chunks
+									var numChunks = Math.ceil(entity.data.length / MAX_VERTICES_PER_ENTITY);
+									console.warn("⚠️ Large entity detected: " + entity.entityName + " (" + entity.data.length.toLocaleString() + " vertices)");
+									console.warn("   → Splitting into " + numChunks + " chunks of ~" + Math.ceil(entity.data.length / numChunks).toLocaleString() + " vertices each");
+									console.warn("   → Why: GPU single-buffer limit (~10k vertices), not file size limit");
+									
+									for (var chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+										var startIdx = chunkIdx * MAX_VERTICES_PER_ENTITY;
+										var endIdx = Math.min(startIdx + MAX_VERTICES_PER_ENTITY + 1, entity.data.length); // +1 for overlap
+										var chunkData = entity.data.slice(startIdx, endIdx);
+										
+										// Step 6a.3) Create unique name for chunk (check for collisions with existing entities)
+										var baseChunkName = entity.entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
+										var chunkName = getUniqueEntityName(baseChunkName, entity.entityType);
+										
+										// Step 6a.4) Store chunk as separate entity
+										allKADDrawingsMap.set(chunkName, {
+											entityName: chunkName,
+											entityType: entity.entityType,
+											data: chunkData,
+											isChunk: true,
+											originalEntity: entity.entityName,
+											chunkIndex: chunkIdx,
+											totalChunks: numChunks
+										});
+										chunkedCount++;
+									}
+								} else {
+									// Step 6a.5) Normal-sized entity - check for name collision before storing
+									var uniqueName = getUniqueEntityName(entity.entityName, entity.entityType);
+									if (uniqueName !== entity.entityName) {
+										// Name collision detected - update entity's internal name
+										entity.entityName = uniqueName;
+									}
+									allKADDrawingsMap.set(uniqueName, entity);
 								}
+							});
+							
+						if (chunkedCount > 0) {
+							console.log("✂️ Chunked " + chunkedCount + " large entities at storage level");
+							console.log("   📊 Total vertices chunked: " + totalOriginalVertices.toLocaleString());
+							console.log("   💾 Database now has " + allKADDrawingsMap.size + " entities (prevents GPU single-buffer exhaustion)");
+							
+							// Step 6a.6) Store chunking info for dialog message
+							window.lastKadImportInfo = {
+								originalCount: data.kadEntities.length,
+								chunkedEntities: chunkedCount,
+								finalCount: allKADDrawingsMap.size,
+								totalVertices: totalOriginalVertices
+							};
+						} else {
+							window.lastKadImportInfo = null; // No chunking
+						}
+						console.log("Imported " + data.kadEntities.length + " KAD entities from STR (" + allKADDrawingsMap.size + " entities after chunking)");
+						
+						// Step 6a.7) Store for dialog
+						if (chunkedCount > 0) {
+							window.lastKadImportInfo = {
+								originalCount: data.kadEntities.length,
+								chunkedEntities: chunkedCount,
+								finalCount: allKADDrawingsMap.size,
+								totalVertices: totalOriginalVertices
+							};
+						} else {
+							window.lastKadImportInfo = null;
+						}
+					}
 
-								// CRITICAL: Recalculate everything after import
-								var sumX = 0, sumY = 0;
-								allBlastHoles.forEach(function (hole) {
-									sumX += hole.startXLocation;
-									sumY += hole.startYLocation;
-								});
-								centroidX = sumX / allBlastHoles.length;
-								centroidY = sumY / allBlastHoles.length;
+							// Step 6a.8) Update TreeView to show new KAD entities
+							if (typeof debouncedUpdateTreeView === "function") {
+								debouncedUpdateTreeView();
+							}
 
-								// Emit centroid to HUD overlay
-								var fullCentroid = calculateDataCentroid();
-								emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
+							// CRITICAL: Recalculate everything after import
+							var sumX = 0, sumY = 0;
+							allBlastHoles.forEach(function (hole) {
+								sumX += hole.startXLocation;
+								sumY += hole.startYLocation;
+							});
+							centroidX = sumX / allBlastHoles.length;
+							centroidY = sumY / allBlastHoles.length;
 
-								// Auto-assign rowID/posID using improved smart detection
-								// This tries multiple methods: sequence-based, HDBSCAN, grid-based, bearing-based
-								if (typeof improvedSmartRowDetection === "function") {
-									improvedSmartRowDetection(importedHoles, importedHoles[0].entityName);
-								} else if (typeof detectRowsUsingHDBSCAN === "function") {
-									detectRowsUsingHDBSCAN(importedHoles, importedHoles[0].entityName);
-								}
+							// Emit centroid to HUD overlay
+							var fullCentroid = calculateDataCentroid();
+							emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
 
-								// Calculate burden and spacing based on row assignments
+							// Auto-assign rowID/posID using improved smart detection
+							// This tries multiple methods: sequence-based, HDBSCAN, grid-based, bearing-based
+							if (typeof improvedSmartRowDetection === "function") {
+								improvedSmartRowDetection(importedHoles, importedHoles[0].entityName);
+							} else if (typeof detectRowsUsingHDBSCAN === "function") {
+								detectRowsUsingHDBSCAN(importedHoles, importedHoles[0].entityName);
+							}
+
+							// Calculate burden and spacing based on row assignments
 								calculateBurdenAndSpacingForHoles(importedHoles);
 
 								// Recalculate dependent data structures - ESSENTIAL for proper display
@@ -7711,10 +7856,21 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									debouncedSaveHoles();
 								}
 
-								showModalMessage("Import Complete",
-									"Imported " + importedHoles.length + " blast holes" +
-									(data.kadEntities && data.kadEntities.length > 0 ? " and " + data.kadEntities.length + " KAD entities" : ""),
-									"success");
+								// Save KAD entities to IndexedDB
+								if (typeof debouncedSaveKAD === "function") {
+									debouncedSaveKAD();
+								}
+
+						showModalMessage("Import Complete",
+							"Imported " + importedHoles.length + " blast holes" +
+							(data.kadEntities && data.kadEntities.length > 0 ? 
+								(window.lastKadImportInfo && window.lastKadImportInfo.chunkedEntities > 0 ?
+									" and " + data.kadEntities.length + " KAD entit" + (data.kadEntities.length === 1 ? "y" : "ies") + 
+									" (split into " + window.lastKadImportInfo.chunkedEntities + " chunks, " + 
+									window.lastKadImportInfo.totalVertices.toLocaleString() + " vertices total)" :
+									" and " + data.kadEntities.length + " KAD entit" + (data.kadEntities.length === 1 ? "y" : "ies")) : 
+								""),
+							"success");
 							} else if (isDTM && data.surfaces && data.surfaces.length > 0) {
 								// Import DTM surfaces properly to loadedSurfaces Map
 
@@ -7770,11 +7926,62 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 								// Import KAD entities only (no blast holes)
 								if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
 
-								data.kadEntities.forEach(function(entity) {
-									allKADDrawingsMap.set(entity.entityName, entity);
-								});
-
-								console.log("Imported " + data.kadEntities.length + " KAD entities from STR");
+							// Step 6b) Chunk large polylines/lines BEFORE storing in database
+							// This prevents GPU exhaustion and database bloat
+							// CRITICAL: GPU has limits on single buffer size, not total file size
+							var MAX_VERTICES_PER_ENTITY = 10000; // Single buffer limit
+							var chunkedCount = 0;
+							var totalOriginalVertices = 0;
+							
+							data.kadEntities.forEach(function(entity) {
+								// Step 6b.1) Check if entity needs chunking (lines/polys with >10k vertices)
+								if ((entity.entityType === "line" || entity.entityType === "poly") && 
+								    entity.data && entity.data.length > MAX_VERTICES_PER_ENTITY) {
+									
+									totalOriginalVertices += entity.data.length;
+									
+									// Step 6b.2) Split into chunks
+									var numChunks = Math.ceil(entity.data.length / MAX_VERTICES_PER_ENTITY);
+									console.warn("⚠️ Large entity detected: " + entity.entityName + " (" + entity.data.length.toLocaleString() + " vertices)");
+									console.warn("   → Splitting into " + numChunks + " chunks of ~" + Math.ceil(entity.data.length / numChunks).toLocaleString() + " vertices each");
+									
+									for (var chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+										var startIdx = chunkIdx * MAX_VERTICES_PER_ENTITY;
+										var endIdx = Math.min(startIdx + MAX_VERTICES_PER_ENTITY + 1, entity.data.length); // +1 for overlap
+										var chunkData = entity.data.slice(startIdx, endIdx);
+										
+										// Step 6b.3) Create unique name for chunk (check for collisions with existing entities)
+										var baseChunkName = entity.entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
+										var chunkName = getUniqueEntityName(baseChunkName, entity.entityType);
+										
+										// Step 6b.4) Store chunk as separate entity
+										allKADDrawingsMap.set(chunkName, {
+											entityName: chunkName,
+											entityType: entity.entityType,
+											data: chunkData,
+											isChunk: true,
+											originalEntity: entity.entityName,
+											chunkIndex: chunkIdx,
+											totalChunks: numChunks
+										});
+										chunkedCount++;
+									}
+								} else {
+									// Step 6b.5) Normal-sized entity - check for name collision before storing
+									var uniqueName = getUniqueEntityName(entity.entityName, entity.entityType);
+									if (uniqueName !== entity.entityName) {
+										// Name collision detected - update entity's internal name
+										entity.entityName = uniqueName;
+									}
+									allKADDrawingsMap.set(uniqueName, entity);
+								}
+							});
+							
+							if (chunkedCount > 0) {
+								console.log("✂️ Chunked " + chunkedCount + " large entities at storage level");
+								console.log("   📊 Total vertices chunked: " + totalOriginalVertices.toLocaleString());
+							}
+								console.log("Imported " + data.kadEntities.length + " KAD entities from STR (" + allKADDrawingsMap.size + " entities after chunking)");
 
 								// Update UI elements (same as DXF import)
 								updateCentroids();
@@ -7787,9 +7994,12 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									debouncedUpdateTreeView();
 								}
 
-								showModalMessage("Import Complete",
-									"Imported " + data.kadEntities.length + " KAD entities",
-									"success");
+						showModalMessage("Import Complete",
+							"Imported " + data.kadEntities.length + " KAD entit" + (data.kadEntities.length === 1 ? "y" : "ies") +
+							(window.lastKadImportInfo && window.lastKadImportInfo.chunkedEntities > 0 ?
+								" (split into " + window.lastKadImportInfo.chunkedEntities + " chunks, " + 
+								window.lastKadImportInfo.totalVertices.toLocaleString() + " vertices total)" : ""),
+							"success");
 							} else {
 								showModalMessage("No Data", "No data found in file", "warning");
 								return;
@@ -9793,12 +10003,61 @@ async function parseDXFtoKadMaps(dxf) {
 		}
 
 		var parser = new DXFParser();
-		var result = await parser.parse({ dxfData: dxf });
+	var result = await parser.parse({ dxfData: dxf });
 
-		// Step 2) Merge parsed KAD drawings into global allKADDrawingsMap
-		for (var [entityName, entityData] of result.kadDrawings.entries()) {
-			allKADDrawingsMap.set(entityName, entityData);
+	// Step 2) Merge parsed KAD drawings into global allKADDrawingsMap with chunking
+	var MAX_VERTICES_PER_ENTITY = 10000; // GPU single buffer limit
+	var chunkedCount = 0;
+	var totalOriginalVertices = 0;
+	
+	for (var [entityName, entityData] of result.kadDrawings.entries()) {
+		// Step 2a) Check if entity needs chunking (lines/polys with >10k vertices)
+		if ((entityData.entityType === "line" || entityData.entityType === "poly") && 
+		    entityData.data && entityData.data.length > MAX_VERTICES_PER_ENTITY) {
+			
+			totalOriginalVertices += entityData.data.length;
+			
+			// Step 2b) Split into chunks
+			var numChunks = Math.ceil(entityData.data.length / MAX_VERTICES_PER_ENTITY);
+			console.warn("⚠️ Large DXF entity detected: " + entityName + " (" + entityData.data.length.toLocaleString() + " vertices)");
+			console.warn("   → Splitting into " + numChunks + " chunks of ~" + Math.ceil(entityData.data.length / numChunks).toLocaleString() + " vertices each");
+			
+			for (var chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+				var startIdx = chunkIdx * MAX_VERTICES_PER_ENTITY;
+				var endIdx = Math.min(startIdx + MAX_VERTICES_PER_ENTITY + 1, entityData.data.length); // +1 for overlap
+				var chunkData = entityData.data.slice(startIdx, endIdx);
+				
+				// Step 2c) Create unique name for chunk (check for collisions with existing entities)
+				var baseChunkName = entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
+				var chunkName = getUniqueEntityName(baseChunkName, entityData.entityType);
+				
+				// Step 2d) Store chunk as separate entity
+				allKADDrawingsMap.set(chunkName, {
+					entityName: chunkName,
+					entityType: entityData.entityType,
+					data: chunkData,
+					isChunk: true,
+					originalEntity: entityName,
+					chunkIndex: chunkIdx,
+					totalChunks: numChunks
+				});
+				chunkedCount++;
+			}
+		} else {
+			// Step 2e) Normal-sized entity - check for name collision before storing
+			var uniqueName = getUniqueEntityName(entityName, entityData.entityType);
+			if (uniqueName !== entityName) {
+				// Name collision detected - update entity's internal name
+				entityData.entityName = uniqueName;
+			}
+			allKADDrawingsMap.set(uniqueName, entityData);
 		}
+	}
+	
+	if (chunkedCount > 0) {
+		console.log("✂️ Chunked " + chunkedCount + " large DXF entities at storage level");
+		console.log("   📊 Total vertices chunked: " + totalOriginalVertices.toLocaleString());
+	}
 
 		// Step 3) Merge parsed surfaces into global loadedSurfaces Map
 		for (var [surfaceId, surfaceData] of result.surfaces.entries()) {
@@ -9821,6 +10080,11 @@ async function parseDXFtoKadMaps(dxf) {
 		drawData(allBlastHoles, selectedHole);
 		debouncedSaveKAD();
 		zoomToFitAll();
+
+		// Step 5a) Update TreeView to show new KAD entities
+		if (typeof debouncedUpdateTreeView === "function") {
+			debouncedUpdateTreeView();
+		}
 
 		// Step 6) Log import summary
 		console.log("DXF import complete. Entities imported:", result.entityCounts);
@@ -10266,53 +10530,42 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					}
 				});
 
-				// Step 12) Calculate mesh bounds for georeferencing
-				// CRITICAL: Use objData.points (UTM world coordinates) NOT object3D (object-local coordinates)
-				// OBJ vertices are in UTM world coordinates, but object3D is in object-local space
-				var meshBounds = null;
-				if (objData && objData.points && objData.points.length > 0) {
-					// Calculate bounds from UTM world coordinates (objData.points)
-					var minX = Infinity,
-						maxX = -Infinity;
-					var minY = Infinity,
-						maxY = -Infinity;
-					var minZ = Infinity,
-						maxZ = -Infinity;
-					for (var i = 0; i < objData.points.length; i++) {
-						var pt = objData.points[i];
-						if (pt.x < minX) minX = pt.x;
-						if (pt.x > maxX) maxX = pt.x;
-						if (pt.y < minY) minY = pt.y;
-						if (pt.y > maxY) maxY = pt.y;
-						if (pt.z < minZ) minZ = pt.z;
-						if (pt.z > maxZ) maxZ = pt.z;
-					}
-					meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
-					console.log("📐 Calculated meshBounds from UTM points: " + minX.toFixed(2) + " " + maxX.toFixed(2) + " " + minY.toFixed(2) + " " + maxY.toFixed(2));
-				} else {
-					// Fallback: use object3D bounds (object-local) if points not available
-					var bounds = new THREE.Box3().setFromObject(object3D);
-					meshBounds = {
-						minX: bounds.min.x,
-						maxX: bounds.max.x,
-						minY: bounds.min.y,
-						maxY: bounds.max.y,
-						minZ: bounds.min.z,
-						maxZ: bounds.max.z,
-					};
-					console.warn("🚨 Using object-local bounds (fallback) - meshBounds may be incorrect!");
+				// Step 12) Extract points and triangles from Three.js mesh (reliable topology)
+				text.textContent = "Extracting mesh data...";
+				bar.style.width = "90%";
+				
+				var extracted = extractTrianglesFromThreeJSMesh(object3D);
+				var triangles = extracted.triangles;
+				var points = extracted.points;
+				
+				console.log("🔷 Extracted from Three.js: " + points.length + " points, " + triangles.length + " triangles");
+				
+				// Step 13) Calculate mesh bounds from extracted points
+				var minX = Infinity, maxX = -Infinity;
+				var minY = Infinity, maxY = -Infinity;
+				var minZ = Infinity, maxZ = -Infinity;
+				for (var i = 0; i < points.length; i++) {
+					var pt = points[i];
+					if (pt.x < minX) minX = pt.x;
+					if (pt.x > maxX) maxX = pt.x;
+					if (pt.y < minY) minY = pt.y;
+					if (pt.y > maxY) maxY = pt.y;
+					if (pt.z < minZ) minZ = pt.z;
+					if (pt.z > maxZ) maxZ = pt.z;
 				}
+				var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
+				console.log("📐 Calculated meshBounds: " + minX.toFixed(2) + " " + maxX.toFixed(2) + " " + minY.toFixed(2) + " " + maxY.toFixed(2));
 
-				// Step 13) Create surface ID
+				// Step 14) Create surface ID
 				var surfaceId = fileName;
 
-				// Step 14) Store in loadedSurfaces with all necessary data
+				// Step 15) Store in loadedSurfaces with all necessary data
 				loadedSurfaces.set(surfaceId, {
 					// Standard surface fields for Data Explorer
 					id: surfaceId,
 					name: fileName,
-					points: objData.points,
-					triangles: objData.triangles,
+					points: points,
+					triangles: triangles,
 					visible: true,
 					gradient: "texture", // Default to "texture" to show JPG texture if available
 					transparency: 1.0,
@@ -10329,7 +10582,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					materialProperties: finalMaterialProperties, // Store serializable material properties
 				});
 
-				console.log("🎨 Textured OBJ loaded: " + fileName + " (" + objData.points.length + " points, " + objData.triangles.length + " triangles)");
+				console.log("🎨 Textured OBJ loaded: " + fileName + " (" + points.length + " points, " + triangles.length + " triangles)");
 
 				// Step 15) Create flattened 2D image for canvas rendering
 				// This is now called AFTER textures are loaded
@@ -24076,6 +24329,12 @@ function drawData(allBlastHoles, selectedHole) {
 		if (imagesGroupVisible) {
 			//console.log("🖼️ [3D IMAGE] Processing images for 3D display. Total images:", loadedImages.size);
 			loadedImages.forEach((image, imageKey) => {
+				// Step 2.3a) Skip flattened OBJ images in 3D mode (textured mesh is rendered instead)
+				if (image.sourceType === "flattened_obj") {
+					console.log("🖼️ [3D IMAGE] Skipping flattened image in 3D mode (textured mesh used instead):", imageKey);
+					return;
+				}
+				
 				console.log("🖼️ [3D IMAGE] Checking image:", imageKey, {
 					visible: image.visible,
 					hasCanvas: !!image.canvas,
@@ -25800,6 +26059,13 @@ async function saveSurfaceToDB(surfaceId) {
 			if (!db) {
 				console.error("❌ Database not initialized");
 				reject(new Error("Database not initialized"));
+				return;
+			}
+
+			// Step 0) Validate surfaceId before lookups
+			if (!surfaceId) {
+				console.error("❌ Surface id is missing for saveSurfaceToDB");
+				reject(new Error("Surface id is missing"));
 				return;
 			}
 
@@ -37639,6 +37905,11 @@ function processSurfacePoints(points, fileName) {
 			}
 
 			updateStatusMessage("Surface loaded: " + fileName + " (" + points.length.toLocaleString() + " points)");
+			
+			// Update TreeView to show new surface
+			if (typeof debouncedUpdateTreeView === "function") {
+				debouncedUpdateTreeView();
+			}
 		} catch (error) {
 			console.error("Error creating surface:", error);
 			updateStatusMessage("Error creating surface: " + error.message);
@@ -37966,6 +38237,11 @@ function createSurfaceFromPoints(points, surfaceName = null, autoSave = true) {
 
 	updateCentroids();
 	drawData(allBlastHoles, selectedHole);
+
+	// Step #) Ensure TreeView reflects newly created surface from point cloud
+	if (typeof debouncedUpdateTreeView === "function") {
+		debouncedUpdateTreeView();
+	}
 
 	if (autoSave) {
 		saveSurfaceToDB(surfaceId).catch((err) => console.error("Failed to save surface:", err));

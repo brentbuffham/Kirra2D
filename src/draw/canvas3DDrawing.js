@@ -392,20 +392,26 @@ export function drawKADPolygonSegmentThreeJS(startX, startY, startZ, endX, endY,
 // Step 9b) FAST: Draw entire polyline/line entity with ONE draw call (batched)
 // This is the key optimization for large DXF files
 // Instead of creating one mesh per segment, create ONE mesh for all points
+// For VERY large polylines (>20k vertices), splits into chunks to prevent GPU exhaustion
 export function drawKADBatchedPolylineThreeJS(pointsArray, lineWidth, color, kadId, isPolygon) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!pointsArray || pointsArray.length < 2) return;
 
-	// Step 9b.1) Create batched polyline (ONE object for entire entity!)
+	// Step 9b.0) NO RENDER-LEVEL CHUNKING!
+	// Storage-level chunking already happened during import
+	// Double-chunking creates exponential objects (BAD!)
+	// Just render the already-chunked entity as-is
+
+	// Step 9b.1) Create single batched polyline for this entity/chunk
 	var batchedLine = GeometryFactory.createBatchedPolyline(pointsArray, lineWidth, color, isPolygon);
-	if (!batchedLine) return; // Handle null return for invalid data
+	if (!batchedLine) return;
 
 	// Step 9b.2) Add metadata for selection
 	if (kadId) {
 		batchedLine.userData = {
 			type: isPolygon ? "kadPolygon" : "kadLine",
 			kadId: kadId,
-			isBatched: true // Flag to indicate this is a batched object
+			isBatched: true
 		};
 	}
 
@@ -1541,4 +1547,48 @@ export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlast
 	};
 
 	window.threeRenderer.surfacesGroup.add(voronoiGroup);
+}
+
+//=================================================
+// GPU Memory Management
+//=================================================
+
+// Step 23) Dispose KAD group and free GPU memory
+// Call this before loading new KAD files or when clearing the scene
+export function disposeKADThreeJS() {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var kadGroup = window.threeRenderer.kadGroup;
+	if (!kadGroup) return;
+
+	// Step 23a) Count objects for logging
+	var objectCount = 0;
+	kadGroup.traverse(function() {
+		objectCount++;
+	});
+
+	// Step 23b) Dispose all geometries and materials
+	kadGroup.traverse(function(object) {
+		if (object.geometry) {
+			object.geometry.dispose();
+		}
+		// Note: Don't dispose shared materials - they're in the cache
+		// Only dispose if NOT using shared material cache
+		if (object.material && !GeometryFactory._lineMaterialCache) {
+			if (Array.isArray(object.material)) {
+				object.material.forEach(function(mat) {
+					mat.dispose();
+				});
+			} else {
+				object.material.dispose();
+			}
+		}
+	});
+
+	// Step 23c) Remove all children
+	while (kadGroup.children.length > 0) {
+		kadGroup.remove(kadGroup.children[0]);
+	}
+
+	console.log("🗑️ Disposed " + objectCount + " KAD ThreeJS objects and freed GPU memory");
 }

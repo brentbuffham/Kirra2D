@@ -39,15 +39,18 @@ export class ThreeRenderer {
 		this.camera.lookAt(0, 0, 0);
 		this.camera.up.set(0, 0, 1); // Z-up orientation
 
-		// Step 5) Create WebGL renderer with transparency
-		this.renderer = new THREE.WebGLRenderer({
-			antialias: true,
-			alpha: true,
-			preserveDrawingBuffer: true // Needed for screenshots/printing
-		});
-		this.renderer.setSize(width, height);
-		this.renderer.setPixelRatio(window.devicePixelRatio);
-		this.renderer.setClearColor(0x000000, 0); // Transparent
+	// Step 5) Create WebGL renderer with transparency
+	// CRITICAL MEMORY OPTIMIZATION: 
+	// - preserveDrawingBuffer: false saves 20-50MB GPU memory (only enable for screenshots)
+	// - antialias: false saves ~25% GPU memory (can enable via settings if needed)
+	this.renderer = new THREE.WebGLRenderer({
+		antialias: false, // ← Disabled for memory savings (enable in settings if GPU allows)
+		alpha: true,
+		preserveDrawingBuffer: false // ← CRITICAL: Set to false to save GPU memory!
+	});
+	this.renderer.setSize(width, height);
+	this.renderer.setPixelRatio(window.devicePixelRatio);
+	this.renderer.setClearColor(0x000000, 0); // Transparent
 
 		// Step 5a) Handle WebGL context loss (prevents crashes and enables recovery)
 		var self = this;
@@ -61,8 +64,67 @@ export class ThreeRenderer {
 				console.error("   - Browser tab was backgrounded for too long");
 				console.error("   - GPU driver issue or system resource pressure");
 				self.contextLost = true;
+				
 				// Stop render loop to prevent errors
 				self.stopRenderLoop();
+				
+				// Step 5a.1) Show user-friendly dialog
+				// IMPORTANT: Use setTimeout to ensure dialog renders after context loss
+				setTimeout(function() {
+					// Try to use FloatingDialog if available
+					var FloatingDialog = window.FloatingDialog;
+					if (FloatingDialog) {
+						try {
+							var dialog = new FloatingDialog({
+								title: "GPU Memory Exhausted",
+								content: "<div style='padding: 10px;'>" +
+								         "<p><strong>WebGL context lost!</strong></p>" +
+								         "<p>The 3D rendering system has run out of GPU memory, likely due to:</p>" +
+								         "<ul>" +
+								         "<li>Very large CAD files with complex geometry (>50k vertices)</li>" +
+								         "<li>Too many textures or surfaces loaded simultaneously</li>" +
+								         "<li>System resource pressure or GPU driver issues</li>" +
+								         "</ul>" +
+								         "<p>Click OK to reload the application and free GPU memory.</p>" +
+								         "</div>",
+								width: 500,
+								height: 320,
+								buttons: [
+									{
+										text: "OK - Reload App",
+										callback: function() {
+											// Attempt cleanup before reload
+											try {
+												if (self.scene) {
+													self.scene.clear();
+												}
+												if (self.renderer) {
+													self.renderer.dispose();
+												}
+											} catch (e) {
+												console.error("Error during cleanup:", e);
+											}
+											// Reload page
+											location.reload();
+										}
+									}
+								]
+							});
+							dialog.show();
+						} catch (e) {
+							console.error("Error showing FloatingDialog:", e);
+							// Fallback to alert
+							if (confirm("GPU context lost due to memory exhaustion.\n\nClick OK to reload the application.")) {
+								location.reload();
+							}
+						}
+					} else {
+						// Fallback to confirm dialog if FloatingDialog not available
+						if (confirm("GPU context lost due to memory exhaustion.\n\nThe 3D rendering has exceeded GPU memory limits.\nClick OK to reload the application.")) {
+							location.reload();
+						}
+					}
+				}, 100);
 			},
 			false
 		);
@@ -822,6 +884,14 @@ export class ThreeRenderer {
 
 		// Step 17b) camera.zoom already set in updateCamera(), just update projection matrix
 		this.camera.updateProjectionMatrix();
+
+		// Step 17c) Update LineMaterial resolutions for all fat lines
+		// LineMaterial needs resolution updated on window resize for proper thickness rendering
+		this.scene.traverse(function(child) {
+			if (child.material && child.material.isLineMaterial) {
+				child.material.resolution.set(width, height);
+			}
+		});
 
 		this.needsRender = true;
 	}

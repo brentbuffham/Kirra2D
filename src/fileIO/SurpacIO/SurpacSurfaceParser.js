@@ -12,7 +12,6 @@
 
 import BaseParser from "../BaseParser.js";
 import SurpacBinarySTRParser from "./SurpacBinarySTRParser.js";
-import SurpacBinaryDTMParser from "./SurpacBinaryDTMParser.js";
 
 // Step 7) SurpacSurfaceParser class
 class SurpacSurfaceParser extends BaseParser {
@@ -37,27 +36,42 @@ class SurpacSurfaceParser extends BaseParser {
 		// Step 10) Parse vertices from STR file (may be async for binary)
 		var vertices = await this.parseVertices(strContent);
 
-		// Step 11) Binary detection disabled - only parse text format
-		// TODO: Re-enable binary detection once binary format is properly tested
-		// var dtmIsBinary = this.isBinaryContent(dtmContent);
+		// Step 11) Text-only: build triangle groups from ASCII DTM; STR only supplies vertices
+		var triangleGroups = this.parseTriangles(dtmContent, vertices);
 
-		// Step 12) Parse triangles from DTM file (text only)
-		console.log("Parsing text DTM format");
-		var triangles = this.parseTriangles(dtmContent, vertices);
+		// Step 12) Create surface objects fully in memory before exposing to UI
+		var baseName = data.surfaceName || "Surpac_Surface";
+		var surfaces = [];
 
-		// Step 12) Create surface object
-		var surface = {
-			name: data.surfaceName || "Surpac_Surface",
-			visible: true,
-			color: data.color || "#00FF00",
-			triangles: triangles,
-			vertexCount: vertices.length,
-			triangleCount: triangles.length
-		};
+		for (var gi = 0; gi < triangleGroups.length; gi++) {
+			var groupTriangles = triangleGroups[gi];
+			if (!groupTriangles || groupTriangles.length === 0) {
+				continue;
+			}
 
-		// Step 13) Return surface
+			// Step 12a) Name parts if multiple surfaces are present
+			var surfaceName = baseName;
+			if (triangleGroups.length > 1) {
+				surfaceName = baseName + "_part" + (gi + 1);
+			}
+
+			// Step 12b) Create surface object
+			var surface = {
+				name: surfaceName,
+				visible: true,
+				color: data.color || "#00FF00",
+				triangles: groupTriangles,
+				points: vertices, // Expose vertices as points for tree view and rendering
+				vertexCount: vertices.length,
+				triangleCount: groupTriangles.length
+			};
+
+			surfaces.push(surface);
+		}
+
+		// Step 13) Return surface collection
 		return {
-			surfaces: [surface]
+			surfaces: surfaces
 		};
 	}
 
@@ -146,7 +160,7 @@ class SurpacSurfaceParser extends BaseParser {
 	parseTextVertices(strContent) {
 		// Convert ArrayBuffer to string if needed
 		if (strContent instanceof ArrayBuffer) {
-			var decoder = new TextDecoder('utf-8');
+			var decoder = new TextDecoder("utf-8");
 			strContent = decoder.decode(strContent);
 		}
 
@@ -172,7 +186,9 @@ class SurpacSurfaceParser extends BaseParser {
 
 			// Step 19) Parse vertex line
 			// Format: "string_number, Y, X, Z"
-			var parts = line.split(",").map(function(p) { return p.trim(); });
+			var parts = line.split(",").map(function(p) {
+				return p.trim();
+			});
 
 			if (parts.length < 4) continue;
 
@@ -204,12 +220,13 @@ class SurpacSurfaceParser extends BaseParser {
 	parseTriangles(dtmContent, vertices) {
 		// Convert ArrayBuffer to string if needed
 		if (dtmContent instanceof ArrayBuffer) {
-			var decoder = new TextDecoder('utf-8');
+			var decoder = new TextDecoder("utf-8");
 			dtmContent = decoder.decode(dtmContent);
 		}
 
 		var lines = dtmContent.split(/\r?\n/);
-		var triangles = [];
+		var surfacesTriangles = [];
+		var currentTriangles = [];
 		var inTriangles = false;
 
 		// Step 23) Parse DTM file
@@ -219,14 +236,26 @@ class SurpacSurfaceParser extends BaseParser {
 			// Step 24) Skip empty lines
 			if (!line) continue;
 
-			// Step 25) Check for end marker
-			if (line.indexOf("END") !== -1) {
-				break;
-			}
-
 			// Step 26) Check for TRISOLATION marker (start of triangle list)
 			if (line.indexOf("TRISOLATION") !== -1) {
+				// Step 26a) If already collecting triangles, close previous surface group
+				if (inTriangles && currentTriangles.length > 0) {
+					surfacesTriangles.push(currentTriangles);
+					currentTriangles = [];
+				}
 				inTriangles = true;
+				continue;
+			}
+
+			// Step 25) Object break: "0, 0.000, 0.000, 0.000," signals a new surface group while staying in triangle mode
+			if (line.startsWith("0,")) {
+				if (inTriangles) {
+					if (currentTriangles.length > 0) {
+						surfacesTriangles.push(currentTriangles);
+					}
+					currentTriangles = [];
+				}
+				// Stay inTriangles (do not require another TRISOLATION)
 				continue;
 			}
 
@@ -235,10 +264,17 @@ class SurpacSurfaceParser extends BaseParser {
 				continue;
 			}
 
+			// Step 27a) Ignore any lines until triangles start
+			if (!inTriangles) {
+				continue;
+			}
+
 			// Step 28) Parse triangle line
 			if (inTriangles) {
 				// Format: "triangle_id, v1_index, v2_index, v3_index, 0, 0, 0,"
-				var parts = line.split(",").map(function(p) { return p.trim(); });
+				var parts = line.split(",").map(function(p) {
+					return p.trim();
+				});
 
 				if (parts.length < 4) continue;
 
@@ -252,28 +288,33 @@ class SurpacSurfaceParser extends BaseParser {
 					continue;
 				}
 
-				if (v1Index < 0 || v1Index >= vertices.length ||
-					v2Index < 0 || v2Index >= vertices.length ||
-					v3Index < 0 || v3Index >= vertices.length) {
+				if (v1Index < 0 || v1Index >= vertices.length || v2Index < 0 || v2Index >= vertices.length || v3Index < 0 || v3Index >= vertices.length) {
 					console.warn("Triangle " + triangleId + " has invalid vertex index");
 					continue;
 				}
 
 				// Step 30) Create triangle
 				var triangle = {
-					vertices: [
-						vertices[v1Index],
-						vertices[v2Index],
-						vertices[v3Index]
-					]
+					vertices: [vertices[v1Index], vertices[v2Index], vertices[v3Index]]
 				};
 
-				triangles.push(triangle);
+				currentTriangles.push(triangle);
 			}
 		}
 
-		console.log("Parsed " + triangles.length + " triangles from DTM file");
-		return triangles;
+		// Step 30a) Push any remaining triangles as final surface
+		if (currentTriangles.length > 0) {
+			surfacesTriangles.push(currentTriangles);
+		}
+
+		// Step 30b) Log summary
+		var totalTriangles = 0;
+		for (var si = 0; si < surfacesTriangles.length; si++) {
+			totalTriangles += surfacesTriangles[si].length;
+		}
+		console.log("Parsed " + totalTriangles + " triangles across " + surfacesTriangles.length + " surface group" + (surfacesTriangles.length === 1 ? "" : "s") + " from DTM file");
+
+		return surfacesTriangles;
 	}
 
 	// Step 31) Parse binary DTM triangles
@@ -319,20 +360,14 @@ class SurpacSurfaceParser extends BaseParser {
 				pos += 12; // Skip 3 more integers (neighbor1, neighbor2, neighbor3)
 
 				// Step 36) Validate indices
-				if (v1Index < 0 || v1Index >= vertices.length ||
-					v2Index < 0 || v2Index >= vertices.length ||
-					v3Index < 0 || v3Index >= vertices.length) {
-					console.warn("Binary triangle " + triangleId + " has invalid vertex index: v1=" + (v1Index+1) + ", v2=" + (v2Index+1) + ", v3=" + (v3Index+1) + " (vertices.length=" + vertices.length + ")");
+				if (v1Index < 0 || v1Index >= vertices.length || v2Index < 0 || v2Index >= vertices.length || v3Index < 0 || v3Index >= vertices.length) {
+					console.warn("Binary triangle " + triangleId + " has invalid vertex index: v1=" + (v1Index + 1) + ", v2=" + (v2Index + 1) + ", v3=" + (v3Index + 1) + " (vertices.length=" + vertices.length + ")");
 					continue;
 				}
 
 				// Step 37) Create triangle
 				var triangle = {
-					vertices: [
-						vertices[v1Index],
-						vertices[v2Index],
-						vertices[v3Index]
-					]
+					vertices: [vertices[v1Index], vertices[v2Index], vertices[v3Index]]
 				};
 
 				triangles.push(triangle);
@@ -352,7 +387,7 @@ class SurpacSurfaceParser extends BaseParser {
 		// Look for double newline or first null byte sequence
 		for (var i = 0; i < Math.min(view.length, 1000); i++) {
 			// Check for \r\n pattern followed by binary data
-			if (view[i] === 0x0D && view[i + 1] === 0x0A) {
+			if (view[i] === 0x0d && view[i + 1] === 0x0a) {
 				// Check if next byte looks like binary data
 				if (i + 2 < view.length && (view[i + 2] === 0x00 || view[i + 2] < 0x20)) {
 					return i + 2;
@@ -373,7 +408,7 @@ class SurpacSurfaceParser extends BaseParser {
 		var buf = new ArrayBuffer(str.length);
 		var bufView = new Uint8Array(buf);
 		for (var i = 0; i < str.length; i++) {
-			bufView[i] = str.charCodeAt(i) & 0xFF;
+			bufView[i] = str.charCodeAt(i) & 0xff;
 		}
 		return buf;
 	}
