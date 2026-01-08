@@ -169,11 +169,29 @@ class FileManager {
 		return this.writers.has(format);
 	}
 
-	// Step 32) Get file filter string for file picker dialogs
+	// Step 32) Get parser instance for a format
+	getParser(format, options = {}) {
+		var ParserClass = this.parsers.get(format);
+		if (!ParserClass) {
+			return null;
+		}
+		return new ParserClass(options);
+	}
+
+	// Step 33) Get writer instance for a format
+	getWriter(format, options = {}) {
+		var WriterClass = this.writers.get(format);
+		if (!WriterClass) {
+			return null;
+		}
+		return new WriterClass(options);
+	}
+
+	// Step 34) Get file filter string for file picker dialogs
 	getFileFilter(category = null) {
 		var extensions = new Set();
 
-		// Step 33) Collect all extensions, optionally filtered by category
+		// Step 35) Collect all extensions, optionally filtered by category
 		for (var [format, metadata] of this.formatMetadata.entries()) {
 			if (category === null || metadata.category === category) {
 				if (metadata.extensions) {
@@ -182,20 +200,20 @@ class FileManager {
 			}
 		}
 
-		// Step 34) Convert to array and format for file picker
+		// Step 36) Convert to array and format for file picker
 		var extArray = Array.from(extensions);
 
 		if (extArray.length === 0) {
 			return "";
 		}
 
-		// Step 35) Create filter string (e.g., ".csv,.kad,.dxf")
+		// Step 37) Create filter string (e.g., ".csv,.kad,.dxf")
 		return extArray.map(ext => "." + ext).join(",");
 	}
 }
 
-// Step 36) Create singleton instance
+// Step 38) Create singleton instance
 var fileManager = new FileManager();
 
-// Step 37) Export singleton instance
+// Step 39) Export singleton instance
 export default fileManager;

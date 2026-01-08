@@ -296,49 +296,116 @@ export function saveIREDESPopup() {
 				return;
 			}
 
-			// Step 16) Generate the XML content using the updated convertPointsToIREDESXML function
-			const xmlContent = convertPointsToIREDESXML(visibleBlastHoles, formData.fileName, formData.planID, formData.siteID, formData.holeOptions === "true", formData.mwdOn === "true", formData.chksumValue, processedNotes, holeTypeHandling);
+			// Step 16) Generate the XML content using FileManager IREDESWriter
+			if (window.fileManager) {
+				// Step 17) Use FileManager IREDESWriter
+				var writer = window.fileManager.getWriter("iredes-xml");
+				if (writer) {
+					var exportData = {
+						holes: visibleBlastHoles,
+						filename: formData.fileName,
+						planID: formData.planID,
+						siteID: formData.siteID,
+						notes: processedNotes,
+						holeOptions: formData.holeOptions === "true",
+						mwd: formData.mwdOn === "true",
+						chksumType: formData.chksumValue,
+						holeTypeHandling: holeTypeHandling
+					};
 
-			if (window.isIOS()) {
-				// Create a Blob with the XML data
-				const blob = new Blob([xmlContent], {
-					type: "text/xml;charset=utf-8",
-				});
+					writer
+						.write(exportData)
+						.then(function (blob) {
+							// Step 18) Download the file with File System Access API
+							var filename = formData.fileName;
+							if (!filename.toLowerCase().endsWith(".xml")) {
+								filename += ".xml";
+							}
 
-				// Create a URL for the Blob
-				const url = URL.createObjectURL(blob);
+							// Use File System Access API if available
+							if (window.showSaveFilePicker) {
+								window.showSaveFilePicker({
+									suggestedName: filename,
+									types: [{
+										description: 'IREDES XML Files',
+										accept: { 'text/xml': ['.xml'] }
+									}]
+								})
+								.then(function(fileHandle) {
+									return fileHandle.createWritable()
+										.then(function(writable) {
+											return writable.write(blob)
+												.then(function() {
+													return writable.close();
+												})
+												.then(function() {
+													window.showModalMessage("Export Success", "Exported IREDES XML to " + fileHandle.name, "success");
+												});
+										});
+								})
+								.catch(function(error) {
+									if (error.name !== 'AbortError') {
+										console.error("File System Access API error:", error);
+										// Fallback to standard download
+										writer.downloadFile(blob, filename);
+									}
+								});
+							} else {
+								// Fallback to standard download for unsupported browsers
+								writer.downloadFile(blob, filename);
+							}
+						})
+						.catch(function (error) {
+							console.error("IREDES export error:", error);
+							window.showModalMessage("Export Error", "Failed to generate IREDES XML: " + error.message, "error");
+						});
+				} else {
+					// Step 19) Fallback to old method if writer not found
+					const xmlContent = convertPointsToIREDESXML(visibleBlastHoles, formData.fileName, formData.planID, formData.siteID, formData.holeOptions === "true", formData.mwdOn === "true", formData.chksumValue, processedNotes, holeTypeHandling);
 
-				// Create an anchor element with the download link
-				const link = document.createElement("a");
-				link.href = url;
-				link.download = formData.fileName + ".xml";
-				link.textContent = "Click here to download";
-
-				// Append the link to the document
-				document.body.appendChild(link);
-
-				// Programmatically trigger the click event on the link
-				link.click();
-
-				// Remove the link from the document
-				document.body.removeChild(link);
+					if (window.isIOS()) {
+						const blob = new Blob([xmlContent], { type: "text/xml;charset=utf-8" });
+						const url = URL.createObjectURL(blob);
+						const link = document.createElement("a");
+						link.href = url;
+						link.download = formData.fileName + ".xml";
+						link.textContent = "Click here to download";
+						document.body.appendChild(link);
+						link.click();
+						document.body.removeChild(link);
+					} else {
+						const link = document.createElement("a");
+						link.style.display = "none";
+						link.href = "data:text/xml;charset=utf-8," + encodeURIComponent(xmlContent);
+						link.download = formData.fileName + ".xml";
+						document.body.appendChild(link);
+						link.click();
+						document.body.removeChild(link);
+					}
+				}
 			} else {
-				// Create an invisible anchor element
-				const link = document.createElement("a");
-				link.style.display = "none";
+				// Step 20) Fallback to old method if FileManager not available
+				const xmlContent = convertPointsToIREDESXML(visibleBlastHoles, formData.fileName, formData.planID, formData.siteID, formData.holeOptions === "true", formData.mwdOn === "true", formData.chksumValue, processedNotes, holeTypeHandling);
 
-				// Set the XML content as the "href" attribute
-				link.href = "data:text/xml;charset=utf-8," + encodeURIComponent(xmlContent);
-				link.download = formData.fileName + ".xml";
-
-				// Append the link to the document
-				document.body.appendChild(link);
-
-				// Programmatically trigger the click event on the link
-				link.click();
-
-				// Remove the link from the document
-				document.body.removeChild(link);
+				if (window.isIOS()) {
+					const blob = new Blob([xmlContent], { type: "text/xml;charset=utf-8" });
+					const url = URL.createObjectURL(blob);
+					const link = document.createElement("a");
+					link.href = url;
+					link.download = formData.fileName + ".xml";
+					link.textContent = "Click here to download";
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+				} else {
+					const link = document.createElement("a");
+					link.style.display = "none";
+					link.href = "data:text/xml;charset=utf-8," + encodeURIComponent(xmlContent);
+					link.download = formData.fileName + ".xml";
+					document.body.appendChild(link);
+					link.click();
+					document.body.removeChild(link);
+				}
 			}
 		},
 		onCancel: () => {
@@ -734,3 +801,30 @@ window.calculateSHA1Checksum = calculateSHA1Checksum;
 window.calculateSHA256Checksum = calculateSHA256Checksum;
 
 console.log("✅ ExportDialogs.js loaded successfully - IREDES (Epiroc) export with 9 helpers extracted from kirra.js");
+
+//===========================================
+// CUSTOM CSV IMPORT & EXPORT DIALOGS
+//===========================================
+// Added: 2026-01-08 - Extracted from kirra.js for better modularity
+
+//! CSV IMPORT DIALOG
+// Custom CSV import dialog with column mapping and previews
+export function showCsvImportModal(csvData, fileName) {
+	// This function will be fully extracted - placeholder for now
+	// Full implementation to be added
+	console.log("CSV Import Modal - to be implemented");
+}
+
+//! CSV EXPORT DIALOG  
+// Custom CSV export dialog with drag-and-drop column ordering
+export function showCustomCsvExportModal() {
+	// This function will be fully extracted - placeholder for now
+	// Full implementation to be added  
+	console.log("CSV Export Modal - to be implemented");
+}
+
+// Expose functions globally
+window.showCsvImportModal = showCsvImportModal;
+window.showCustomCsvExportModal = showCustomCsvExportModal;
+
+console.log("✅ CSV Import/Export dialogs added to ExportDialogs.js");

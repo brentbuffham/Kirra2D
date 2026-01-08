@@ -198,3 +198,5 @@ The hybrid approach provides the **best of both worlds**:
 
 **Result:** Line thickness is restored, large files still work, and GPU doesn't explode! 🎉
 
+
+

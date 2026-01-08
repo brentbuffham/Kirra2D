@@ -1,17 +1,17 @@
-// src/fileIO/TextIO/GeofenceParser.js
+// src/fileIO/EpirocIO/SurfaceManagerParser.js
 //=============================================================
-// GEOFENCE/HAZARD/SOCKETS PARSER - Y,X FORMAT
+// EPIROC SURFACE MANAGER PARSER - GEOFENCE/HAZARD/SOCKETS
 //=============================================================
-// Step 1) Parses simple Y,X coordinate files
+// Step 1) Parses Epiroc Surface Manager Y,X coordinate files
 // Step 2) Supports .geofence, .hazard, .sockets file formats
 // Step 3) Format: Each line contains Y,X coordinates
-// Step 4) Created: 2026-01-04
+// Step 4) Created: 2026-01-04, Moved to EpirocIO: 2026-01-07
 // Step 5) Note: Y,X order (NOT X,Y)
 
 import BaseParser from "../BaseParser.js";
 
-// Step 6) GeofenceParser class
-class GeofenceParser extends BaseParser {
+// Step 6) SurfaceManagerParser class
+class SurfaceManagerParser extends BaseParser {
 	constructor(options = {}) {
 		super(options);
 
@@ -57,7 +57,7 @@ class GeofenceParser extends BaseParser {
 
 			// Step 16) Expect at least 2 values (Y, X)
 			if (parts.length < 2) {
-				console.warn("GeofenceParser: Line " + lineNumber + " has insufficient values: " + line);
+				console.warn("SurfaceManagerParser: Line " + lineNumber + " has insufficient values: " + line);
 				continue;
 			}
 
@@ -68,7 +68,7 @@ class GeofenceParser extends BaseParser {
 
 			// Step 18) Validate coordinates
 			if (isNaN(x) || isNaN(y)) {
-				console.warn("GeofenceParser: Line " + lineNumber + " has invalid coordinates: " + line);
+				console.warn("SurfaceManagerParser: Line " + lineNumber + " has invalid coordinates: " + line);
 				continue;
 			}
 
@@ -85,9 +85,10 @@ class GeofenceParser extends BaseParser {
 			points.push(point);
 		}
 
-		// Step 20) Return parsed points
+		// Step 20) Return parsed points (raw data - elevation will be applied by import handler)
 		return {
 			points: points,
+			entityName: this.getEntityNameFromFile(file),
 			metadata: {
 				totalLines: lines.length,
 				parsedPoints: points.length,
@@ -115,4 +116,5 @@ class GeofenceParser extends BaseParser {
 	}
 }
 
-export default GeofenceParser;
+export default SurfaceManagerParser;
+

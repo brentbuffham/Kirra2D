@@ -34,7 +34,7 @@ class FloatingDialog {
 			onOption1: null,
 			onOption2: null,
 			onOption3: null,
-			...options,
+			...options
 		};
 
 		this.element = null;
@@ -42,11 +42,11 @@ class FloatingDialog {
 		this.isResizing = false;
 		this.dragOffset = {
 			x: 0,
-			y: 0,
+			y: 0
 		};
 		this.initialSize = {
 			width: 0,
-			height: 0,
+			height: 0
 		};
 
 		// Step 2) Validate layoutType
@@ -345,7 +345,7 @@ function createFormContent(fields, centerCheckboxes = false) {
 	container.style.width = "100%";
 	container.style.marginTop = "4px";
 
-	fields.forEach((field) => {
+	fields.forEach(field => {
 		// Step 25) Create row container
 		const row = document.createElement("div");
 
@@ -490,7 +490,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 	container.style.marginTop = "2px";
 	container.style.marginBottom = "2px";
 
-	fields.forEach((field) => {
+	fields.forEach(field => {
 		const row = document.createElement("div");
 
 		if (field.type === "checkbox") {
@@ -509,7 +509,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 			if (field.type === "slider") {
 				row.style.gridTemplateColumns = "55% 45%";
 			} else {
-				row.style.gridTemplateColumns = "60% 40%";
+				row.style.gridTemplateColumns = "40% 60%";
 			}
 			row.style.columnGap = "8px";
 			row.style.rowGap = "2px";
@@ -586,7 +586,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 		} else if (field.type === "select") {
 			input = document.createElement("select");
 			input.className = "floating-dialog-select";
-			field.options.forEach((option) => {
+			field.options.forEach(option => {
 				const optionElement = document.createElement("option");
 				optionElement.value = option.value;
 				optionElement.textContent = option.text;
@@ -598,7 +598,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 
 			// Step 41) Special handling for hole type dropdown
 			if (field.name === "holeType") {
-				input.addEventListener("change", function () {
+				input.addEventListener("change", function() {
 					const customTypeRow = container.querySelector('[data-field="customType"]');
 					const customTypeInput = customTypeRow.querySelector("input");
 					const customTypeLabel = customTypeRow.querySelector("label");
@@ -626,7 +626,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 
 			// Step 40b) Create each radio button option
 			if (field.options && Array.isArray(field.options)) {
-				field.options.forEach((option) => {
+				field.options.forEach(option => {
 					const radioWrapper = document.createElement("div");
 					radioWrapper.style.display = "flex";
 					radioWrapper.style.alignItems = "center";
@@ -796,7 +796,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 			input.style.border = "1px solid #999";
 			input.style.appearance = "none";
 			input.style.boxSizing = "border-box";
-			
+
 			// Step 43a) Apply custom style if provided (overrides default width etc.)
 			if (field.style) {
 				input.style.cssText += field.style;
@@ -818,7 +818,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 
 			// Force z-index on any JSColor elements
 			const colorInputs = container.querySelectorAll("[data-jscolor]");
-			colorInputs.forEach((input) => {
+			colorInputs.forEach(input => {
 				if (input.jscolor) {
 					// Set z-index on the JSColor instance
 					input.jscolor.option("zIndex", 20000);
@@ -850,7 +850,7 @@ function getFormData(formContainer) {
 	const data = {};
 	const inputs = formContainer.querySelectorAll("input, select");
 
-	inputs.forEach((input) => {
+	inputs.forEach(input => {
 		if (input.name) {
 			if (input.type === "button" && input.jscolor) {
 				data[input.name] = input.jscolor.toHEXString();
@@ -871,12 +871,11 @@ function getFormData(formContainer) {
 function showConfirmationDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", onConfirm = null, onCancel = null) {
 	console.log("showConfirmationDialog: " + title);
 
-	return new Promise((resolve) => {
+	return new Promise(resolve => {
 		// Step 48) Create content with warning icon and message using inline styles for dark mode
 		const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
 		const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-		const content = '<div style="color: #ff9800; font-size: 18px; margin-bottom: 15px; text-align: center;">⚠️</div>' +
-			'<div style="color: ' + textColor + '; font-size: 12px; line-height: 1.1; text-align: center;">' + message + "</div>";
+		const content = '<div style="color: #ff9800; font-size: 18px; margin-bottom: 15px; text-align: center;">⚠️</div>' + '<div style="color: ' + textColor + '; font-size: 12px; line-height: 1.1; text-align: center;">' + message + "</div>";
 
 		// Step 49) Create FloatingDialog with confirm/cancel buttons
 		const dialog = new FloatingDialog({
@@ -912,7 +911,7 @@ function showConfirmationDialog(title, message, confirmText = "Confirm", cancelT
 					onCancel();
 				}
 				resolve(false);
-			},
+			}
 		});
 
 		// Step 52) Show the dialog
@@ -951,22 +950,31 @@ function showConfirmationDialogWithInput(title, message, inputLabel, inputType =
 	container.appendChild(messageDiv);
 
 	// Step 56) Add input field using createEnhancedFormContent for consistency
-	const field = [{
-		label: inputLabel,
-		name: "inputValue",
-		type: inputType,
-		value: defaultValue,
-		placeholder: defaultValue
-	}];
+	const field = [
+		{
+			label: inputLabel,
+			name: "inputValue",
+			type: inputType,
+			value: defaultValue,
+			placeholder: defaultValue
+		}
+	];
 
 	const formContent = window.createEnhancedFormContent ? window.createEnhancedFormContent(field, false) : createBasicInput(field[0]);
+
+	// Set input field width to 230px
+	const inputField = formContent.querySelector("input");
+	if (inputField) {
+		inputField.style.width = "100%";
+	}
+
 	container.appendChild(formContent);
 
 	// Step 57) Create FloatingDialog with confirm/cancel buttons
 	const dialog = new FloatingDialog({
 		title: title,
 		content: container,
-		width: 350,
+		width: 450,
 		height: 250,
 		showConfirm: true,
 		showCancel: true,
@@ -1007,7 +1015,7 @@ function showConfirmationDialogWithInput(title, message, inputLabel, inputType =
 			if (onCancel && typeof onCancel === "function") {
 				onCancel();
 			}
-		},
+		}
 	});
 
 	// Step 60) Show the dialog
@@ -1046,15 +1054,24 @@ function showConfirmationDialogWithInputAndBeforeAfter(title, message, inputLabe
 	container.appendChild(messageDiv);
 
 	// Add input field
-	const field = [{
-		label: inputLabel,
-		name: "inputValue",
-		type: inputType,
-		value: defaultValue,
-		placeholder: defaultValue
-	}];
+	const field = [
+		{
+			label: inputLabel,
+			name: "inputValue",
+			type: inputType,
+			value: defaultValue,
+			placeholder: defaultValue
+		}
+	];
 
 	const formContent = window.createEnhancedFormContent ? window.createEnhancedFormContent(field, false) : createBasicInput(field[0]);
+
+	// Set input field width to 230px
+	const inputField = formContent.querySelector("input");
+	if (inputField) {
+		inputField.style.width = "100%";
+	}
+
 	container.appendChild(formContent);
 
 	// Create FloatingDialog with Before/After/Cancel buttons
@@ -1118,7 +1135,7 @@ function showConfirmationDialogWithInputAndBeforeAfter(title, message, inputLabe
 			if (onCancel && typeof onCancel === "function") {
 				onCancel();
 			}
-		},
+		}
 	});
 
 	dialog.show();
@@ -1152,7 +1169,7 @@ function createBasicInput(field) {
 function showConfirmationThreeDialog(title, message, confirmText = "Confirm", cancelText = "Cancel", optionText = "Option", onConfirm = null, onCancel = null, onOption = null) {
 	console.log("showConfirmationThreeDialog: " + title);
 
-	return new Promise((resolve) => {
+	return new Promise(resolve => {
 		// Step 54) Create content with warning icon and message using inline styles for dark mode
 		const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
 		const textColor = darkModeEnabled ? "#ffffff" : "#000000";
@@ -1202,7 +1219,7 @@ function showConfirmationThreeDialog(title, message, confirmText = "Confirm", ca
 					onOption();
 				}
 				resolve(2); // Resolve with 2 for option button
-			},
+			}
 		});
 
 		// Step 59) Show the dialog
@@ -1256,7 +1273,7 @@ function showModalMessage(title, message, type = "info", callback = null) {
 			if (callback && typeof callback === "function") {
 				callback();
 			}
-		},
+		}
 	});
 
 	// Step 65) Show the dialog
@@ -1282,4 +1299,3 @@ window.showModalMessage = showModalMessage;
 // Step 1) Export for ES6 modules (kirra.js uses ES6 imports at line 77)
 // Step 2) Also expose via window.functionName for backward compatibility
 export { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationDialogWithInput, showConfirmationDialogWithInputAndBeforeAfter, showConfirmationThreeDialog, showModalMessage };
-

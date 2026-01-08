@@ -82,7 +82,7 @@ export default class AQMWriter extends BaseWriter {
 				} else if (columns[j] === "Elevation") {
 					columnOrder.push(toeZ);
 				} else if (columns[j] === "Angle") {
-					columnOrder.push(hole.holeAngle);
+					columnOrder.push(Math.round(hole.holeAngle));
 				} else if (columns[j] === "Azimuth") {
 					// Special azimuth calculation: (holeBearing - 180) % 360
 					var azimuth = parseFloat(((hole.holeBearing - 180) % 360).toFixed(1));

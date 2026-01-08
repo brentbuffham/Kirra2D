@@ -107,3 +107,5 @@ Both issues stemmed from the transition to Three.js OBJLoader:
 
 Both fixes are minimal, focused, and maintain backward compatibility with existing surface types.
 
+
+

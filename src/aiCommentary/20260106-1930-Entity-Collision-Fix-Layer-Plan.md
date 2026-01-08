@@ -289,3 +289,5 @@ Each entity gets a `layerId` property:
 
 **All use the same pattern:** Layer → Entities hierarchy with visibility control.
 
+
+

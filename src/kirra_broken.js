@@ -211,7 +211,7 @@ import { printHeader, printFooter, printBlastStats, printBlastStatsSimple } from
 const now = new Date();
 const pad = (n, len = 2) => n.toString().padStart(len, '0');
 const buildVersion =
-	`${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}.` +
+	`${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}.` +
 	`${pad(now.getHours())}${pad(now.getMinutes())}`;
 window.buildVersion = buildVersion; // Expose to window for dialog modules
 
@@ -8883,7 +8883,6 @@ document.querySelectorAll(".aqm-output-btn").forEach(function (button) {
 		if (typeof saveAQMPopup === "function") {
 			saveAQMPopup();
 		} else {
-			console.error("saveAQMPopup function not found!");
 			showModalMessage("Export Error", "AQM export function not loaded", "error");
 		}
 	});
@@ -21932,20 +21931,18 @@ async function addKADText() {
  * Uses FloatingDialog with drag-and-drop column ordering
  */
 function saveAQMPopup() {
-	try {
-		// Step 1) Filter visible blast holes
-		const visibleBlastHoles = allBlastHoles.filter((hole) => isHoleVisible(hole));
+	// Step 1) Filter visible blast holes
+	const visibleBlastHoles = allBlastHoles.filter((hole) => blastGroupVisible && hole.visible !== false);
+	if (visibleBlastHoles.length === 0) {
+		showModalMessage("No Visible Holes", "There are no visible holes to export.", "warning");
+		return;
+	}
 
-		if (visibleBlastHoles.length === 0) {
-			showModalMessage("No Visible Holes", "There are no visible holes to export.", "warning");
-			return;
-		}
+	// Step 2) Load saved preferences or use defaults
+	var savedPrefs = localStorage.getItem("kirra_aqm_export_prefs");
+	var blastName, patternName, materialType, instruction, useHoleTypeAsInstruction, writeIgnoreColumn, columnOrder;
 
-		// Step 2) Load saved preferences or use defaults
-		var savedPrefs = localStorage.getItem("kirra_aqm_export_prefs");
-		var blastName, patternName, materialType, instruction, useHoleTypeAsInstruction, writeIgnoreColumn, columnOrder, columnEnabled;
-
-		var entityName = visibleBlastHoles[0].entityName || "Blast";
+	var entityName = visibleBlastHoles[0].entityName || "Blast";
 
 	if (savedPrefs) {
 		try {
@@ -21957,7 +21954,6 @@ function saveAQMPopup() {
 			useHoleTypeAsInstruction = prefs.useHoleTypeAsInstruction || false;
 			writeIgnoreColumn = prefs.writeIgnoreColumn !== false; // Default true
 			columnOrder = prefs.columnOrder || ["Pattern", "Blast", "Name", "Easting", "Northing", "Elevation", "Angle", "Azimuth", "Diameter", "Instruction", "Material Type"];
-			columnEnabled = prefs.columnEnabled || {}; // Map of column name to enabled state
 		} catch (e) {
 			console.warn("Failed to parse AQM export preferences:", e);
 			blastName = entityName;
@@ -21967,7 +21963,6 @@ function saveAQMPopup() {
 			useHoleTypeAsInstruction = false;
 			writeIgnoreColumn = true;
 			columnOrder = ["Pattern", "Blast", "Name", "Easting", "Northing", "Elevation", "Angle", "Azimuth", "Diameter", "Instruction", "Material Type"];
-			columnEnabled = {}; // All enabled by default
 		}
 	} else {
 		blastName = entityName;
@@ -21977,7 +21972,6 @@ function saveAQMPopup() {
 		useHoleTypeAsInstruction = false;
 		writeIgnoreColumn = true;
 		columnOrder = ["Pattern", "Blast", "Name", "Easting", "Northing", "Elevation", "Angle", "Azimuth", "Diameter", "Instruction", "Material Type"];
-		columnEnabled = {}; // All enabled by default
 	}
 
 	// Step 3) Generate default filename with fresh timestamp
@@ -22020,9 +22014,7 @@ function saveAQMPopup() {
 	contentHTML += '</div>';
 
 	// Step 5) Create dialog
-		var dialog;
-		try {
-			dialog = new FloatingDialog({
+	var dialog = new FloatingDialog({
 		title: "Export AQM File - Column Order",
 		content: contentHTML,
 		layoutType: "default",
@@ -22034,28 +22026,13 @@ function saveAQMPopup() {
 		cancelText: "Cancel",
 		onConfirm: async function () {
 			try {
-				// Step 6) Get column order and enabled state from sortable list
+				// Step 6) Get column order from sortable list
 				var orderList = document.getElementById("aqm-column-order-list");
 				var columnOrder = [];
-				var columnEnabled = {};
-				var exportColumnOrder = []; // Column order for export (includes "Ignore")
 				var items = orderList.querySelectorAll(".aqm-column-item");
 
 				for (var i = 0; i < items.length; i++) {
-					var item = items[i];
-					var checkbox = item.querySelector(".aqm-column-checkbox");
-					var colName = item.getAttribute("data-col-name");
-
-					// Save actual column name (not "Ignore")
-					columnOrder.push(colName);
-					// Save enabled state
-					columnEnabled[colName] = checkbox && checkbox.checked;
-					// Build export order (use "Ignore" for unchecked columns)
-					if (checkbox && !checkbox.checked) {
-						exportColumnOrder.push("Ignore");
-					} else {
-						exportColumnOrder.push(colName);
-					}
+					columnOrder.push(items[i].getAttribute("data-col-name"));
 				}
 
 				if (columnOrder.length !== 11) {
@@ -22082,7 +22059,7 @@ function saveAQMPopup() {
 					filename += ".aqm";
 				}
 
-				// Step 8) Save preferences (with actual column names and enabled state)
+				// Step 8) Save preferences
 				localStorage.setItem("kirra_aqm_export_prefs", JSON.stringify({
 					blastName: blastName,
 					patternName: patternName,
@@ -22090,11 +22067,10 @@ function saveAQMPopup() {
 					instruction: instruction,
 					useHoleTypeAsInstruction: useHoleTypeAsInstruction,
 					writeIgnoreColumn: writeIgnoreColumn,
-					columnOrder: columnOrder,
-					columnEnabled: columnEnabled
+					columnOrder: columnOrder
 				}));
 
-				// Step 9) Generate AQM content using existing converter function (use exportColumnOrder with "Ignore")
+				// Step 9) Generate AQM content using existing converter function
 				var aqmContent = convertPointsToAQMCSV(
 					visibleBlastHoles,
 					filename.replace(".aqm", ""), // Remove extension for converter
@@ -22104,7 +22080,7 @@ function saveAQMPopup() {
 					instruction,
 					useHoleTypeAsInstruction,
 					writeIgnoreColumn,
-					exportColumnOrder
+					columnOrder
 				);
 
 				// Step 10) Export using File System Access API if available
@@ -22145,24 +22121,16 @@ function saveAQMPopup() {
 			}
 		},
 		onCancel: function () {
-			// Dialog cancelled
+			console.log("AQM export cancelled");
 		}
 	});
-		} catch (dialogError) {
-			console.error("Error creating FloatingDialog:", dialogError);
-			showModalMessage("Dialog Error", "Failed to create export dialog: " + dialogError.message, "error");
-			return;
-		}
-
-		// Show the dialog
-		dialog.show();
 
 	// Step 6) Initialize column order list with drag-and-drop
 	setTimeout(function () {
 		var orderList = document.getElementById("aqm-column-order-list");
 		if (!orderList) return;
 
-		// Define available AQM columns (all 11 are always present)
+		// Define available AQM columns
 		var aqmColumns = [
 			{ name: "Pattern", label: "Pattern" },
 			{ name: "Blast", label: "Blast" },
@@ -22174,10 +22142,11 @@ function saveAQMPopup() {
 			{ name: "Azimuth", label: "Azimuth" },
 			{ name: "Diameter", label: "Diameter" },
 			{ name: "Instruction", label: "Instruction" },
-			{ name: "Material Type", label: "Material Type" }
+			{ name: "Material Type", label: "Material Type" },
+			{ name: "Ignore", label: "Ignore" }
 		];
 
-		// Populate order list from saved preferences or defaults (all 11 columns always shown)
+		// Populate order list from saved preferences or defaults
 		for (var i = 0; i < columnOrder.length; i++) {
 			var colName = columnOrder[i];
 			var colData = aqmColumns.find(function(col) { return col.name === colName; });
@@ -22188,38 +22157,9 @@ function saveAQMPopup() {
 			item.setAttribute("data-col-name", colName);
 			item.setAttribute("draggable", "true");
 			item.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 8px; margin-bottom: 3px; background: var(--button-bg); border: 1px solid var(--light-mode-border); border-radius: 3px; cursor: move; user-select: none;";
-
-			// Create checkbox (unchecked = Ignore)
-			var checkbox = document.createElement("input");
-			checkbox.type = "checkbox";
-			checkbox.className = "aqm-column-checkbox";
-			// Check if this column is enabled (default true if not specified)
-			checkbox.checked = columnEnabled[colName] !== false;
-			checkbox.style.cssText = "cursor: pointer;";
-			checkbox.onclick = function(e) {
-				e.stopPropagation(); // Prevent drag when clicking checkbox
-			};
-
-			// Create drag handle
-			var handle = document.createElement("span");
-			handle.textContent = "::";
-			handle.style.cssText = "color: var(--accent-color); font-weight: bold; min-width: 30px;";
-
-			// Create column number
-			var number = document.createElement("span");
-			number.className = "aqm-column-number";
-			number.textContent = (i + 1) + ".";
-			number.style.cssText = "color: var(--text-color); font-weight: bold; min-width: 25px;";
-
-			// Create column label
-			var label = document.createElement("span");
-			label.textContent = colData.label;
-			label.style.cssText = "color: var(--text-color); flex: 1;";
-
-			item.appendChild(checkbox);
-			item.appendChild(handle);
-			item.appendChild(number);
-			item.appendChild(label);
+			item.innerHTML = '<span style="color: var(--accent-color); font-weight: bold; min-width: 30px;">::</span>' +
+				'<span style="color: var(--text-color); font-weight: bold; min-width: 25px;">' + (i + 1) + '.</span>' +
+				'<span style="color: var(--text-color); flex: 1;">' + colData.label + '</span>';
 			orderList.appendChild(item);
 		}
 
@@ -22262,17 +22202,13 @@ function saveAQMPopup() {
 		function updateColumnNumbers() {
 			var items = orderList.querySelectorAll(".aqm-column-item");
 			for (var i = 0; i < items.length; i++) {
-				var numberSpan = items[i].querySelector(".aqm-column-number");
+				var numberSpan = items[i].querySelector("span:nth-child(2)");
 				if (numberSpan) {
 					numberSpan.textContent = (i + 1) + ".";
 				}
 			}
 		}
 	}, 100);
-	} catch (error) {
-		console.error("Error in saveAQMPopup:", error);
-		showModalMessage("Export Error", "Failed to open AQM export dialog: " + error.message, "error");
-	}
 }
 
 // Helper function: Standard download for AQM files
@@ -22289,397 +22225,6 @@ function downloadAQMStandard(content, filename) {
 	URL.revokeObjectURL(url);
 	showModalMessage("Export Complete", "Downloaded AQM file: " + filename, "success");
 }
-
-//TODO use the FloatingDialog class to create this popup
-// Using SweetAlert Library Create a popup that gets input from the user.
-// Updated addHolePopup function with proper field handling
-function addHolePopup() {
-	// Moved to src/dialog/popups/generic/AddHoleDialog.js
-	window.showAddHoleDialog();
-}
-
-function handlePatternAddingClick(event) {
-	if (isAddingPattern) {
-		// Get the click/touch coordinates relative to the canvas
-		//const rect = canvas.getBoundingClientRect();
-		// Get the click/touch coordinates relative to the canvas
-		const rect = canvas.getBoundingClientRect();
-		let clickX = event.clientX - rect.left;
-		let clickY = event.clientY - rect.top;
-
-		if (isNaN(event.clientX - rect.left) || isNaN(event.clientY - rect.top)) {
-			// Handle the case when the values are NaN
-			clickX = event.changedTouches[0].clientX - rect.left;
-			clickY = event.changedTouches[0].clientY - rect.top;
-		} else {
-			// Proceed with the calculation using the valid values
-			clickX = event.clientX - rect.left;
-			clickY = event.clientY - rect.top;
-		}
-		// SNAPPIN SNAP:
-		const snapResult = canvasToWorldWithSnap(clickX, clickY);
-		worldX = snapResult.worldX;
-		worldY = snapResult.worldY;
-
-		// Show snap feedback if snapped
-		if (snapResult.snapped) {
-			updateStatusMessage("Snapped to " + snapResult.snapTarget.description);
-			setTimeout(() => updateStatusMessage(""), 1500);
-		}
-		addPatternPopup(parseFloat(worldX.toFixed(3)), parseFloat(worldY.toFixed(3)));
-		//console.log("worldX: " + worldX + " worldY: " + worldY);
-	} else {
-		worldX = null;
-		worldY = null;
-	}
-}
-//TODO use the FloatingDialog class to create this popup
-// Moved to src/dialog/popups/generic/PatternGenerationDialogs.js
-function addPatternPopup(worldX, worldY) {
-	window.showPatternDialog("add_pattern", worldX, worldY);
-}
-
-// Same Space Checker
-function checkHoleProximity(newX, newY, newDiameter, existingHoles) {
-	// Use 0.1m for dummy holes or holes with no diameter
-	const checkDiameter = newDiameter || 0.1;
-	const minDistance = checkDiameter / 1000; // Convert mm to meters, 1 diameter minimum
-
-	const proximityHoles = [];
-
-	for (let i = 0; i < existingHoles.length; i++) {
-		const existingHole = existingHoles[i];
-		const existingDiameter = existingHole.holeDiameter || 0.1;
-		const existingMinDistance = existingDiameter / 1000;
-
-		// Calculate distance between hole centers
-		const distance = Math.sqrt(Math.pow(newX - existingHole.startXLocation, 2) + Math.pow(newY - existingHole.startYLocation, 2));
-
-		// Check if holes are too close (less than 1 diameter apart)
-		const combinedMinDistance = Math.max(minDistance, existingMinDistance);
-		if (distance < combinedMinDistance) {
-			proximityHoles.push({
-				hole: existingHole,
-				distance: distance,
-				requiredDistance: combinedMinDistance,
-			});
-		}
-	}
-
-	return proximityHoles;
-}
-
-// Step 1) Function to show proximity warning and get user decision
-// Converted to FloatingDialog class - returns Promise matching Swal result format
-function showProximityWarning(proximityHoles, newHoleInfo) {
-	// Step 1a) Build hole list for display
-	const holeList = proximityHoles.map((ph) => "• " + ph.hole.entityName + ":" + ph.hole.holeID + " (" + ph.distance.toFixed(3) + "m apart, need " + ph.requiredDistance.toFixed(3) + "m)").join("\n");
-
-	// Step 1b) Create content div with proper styling
-	const contentDiv = document.createElement("div");
-	contentDiv.style.textAlign = "left";
-	contentDiv.style.maxHeight = "300px";
-	contentDiv.style.overflowY = "auto";
-	contentDiv.style.padding = "10px";
-
-	// Step 1c) Detect dark mode for text color
-	const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
-	const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-
-	// Step 1d) Create warning header
-	const warningHeader = document.createElement("p");
-	warningHeader.style.fontWeight = "bold";
-	warningHeader.style.marginBottom = "10px";
-	warningHeader.style.color = textColor;
-	warningHeader.textContent = "New hole would be too close to existing holes:";
-	contentDiv.appendChild(warningHeader);
-
-	// Step 1e) Create new hole info paragraph
-	const newHolePara = document.createElement("p");
-	newHolePara.style.marginBottom = "10px";
-	newHolePara.style.color = textColor;
-	newHolePara.textContent = "New hole: " + newHoleInfo.entityName + ":" + newHoleInfo.holeID + " at (" + newHoleInfo.x.toFixed(3) + ", " + newHoleInfo.y.toFixed(3) + ")";
-	contentDiv.appendChild(newHolePara);
-
-	// Step 1f) Create conflicting holes header
-	const conflictingHeader = document.createElement("p");
-	conflictingHeader.style.fontWeight = "bold";
-	conflictingHeader.style.marginTop = "15px";
-	conflictingHeader.style.marginBottom = "10px";
-	conflictingHeader.style.color = textColor;
-	conflictingHeader.textContent = "Conflicting holes:";
-	contentDiv.appendChild(conflictingHeader);
-
-	// Step 1g) Create pre element for hole list with red color
-	const holeListPre = document.createElement("pre");
-	holeListPre.style.fontSize = "12px";
-	holeListPre.style.color = "#ff6b6b";
-	holeListPre.style.marginBottom = "15px";
-	holeListPre.style.whiteSpace = "pre-wrap";
-	holeListPre.textContent = holeList;
-	contentDiv.appendChild(holeListPre);
-
-	// Step 1h) Create options header
-	const optionsHeader = document.createElement("p");
-	optionsHeader.style.fontWeight = "bold";
-	optionsHeader.style.marginTop = "15px";
-	optionsHeader.style.marginBottom = "10px";
-	optionsHeader.style.color = textColor;
-	optionsHeader.textContent = "Options:";
-	contentDiv.appendChild(optionsHeader);
-
-	// Step 1i) Create options list
-	const optionsList = document.createElement("ul");
-	optionsList.style.textAlign = "left";
-	optionsList.style.paddingLeft = "20px";
-	optionsList.style.marginBottom = "10px";
-	optionsList.style.color = textColor;
-
-	const skipLi = document.createElement("li");
-	skipLi.innerHTML = "<strong>Skip:</strong> Skip this hole and ask again for next conflict";
-	optionsList.appendChild(skipLi);
-
-	const skipAllLi = document.createElement("li");
-	skipAllLi.innerHTML = "<strong>Skip All:</strong> Skip all conflicting holes and import only valid holes";
-	optionsList.appendChild(skipAllLi);
-
-	const ignoreLi = document.createElement("li");
-	ignoreLi.innerHTML = "<strong>Ignore:</strong> Add this hole despite warning and continue";
-	optionsList.appendChild(ignoreLi);
-
-	const cancelLi = document.createElement("li");
-	cancelLi.innerHTML = "<strong>Cancel:</strong> Stop the entire operation without importing";
-	optionsList.appendChild(cancelLi);
-
-	contentDiv.appendChild(optionsList);
-
-	// Step 1j) Return Promise matching Swal result format
-	// Also set up theme change listener for font responsiveness
-	return new Promise((resolve) => {
-		const dialog = new window.FloatingDialog({
-			title: "Hole Proximity Warning",
-			content: contentDiv,
-			width: 450,
-			height: 380,
-			layoutType: "default",
-			draggable: true,
-			resizable: true,
-			closeOnOutsideClick: false, // Modal behavior - prevent clicks outside
-			showConfirm: true, // Skip button (green)
-			showCancel: false, // Remove Cancel button
-			showDeny: true, // Ignore button (orange)
-			showOption1: true, // Cancel button (red)
-			showOption2: true, // Skip All button (green)
-			confirmText: "Skip", // Skip this hole, ask again for next (green - safe default)
-			denyText: "Ignore", // Add this hole despite warning (orange - dangerous)
-			option1Text: "Cancel", // Stop entire operation (red - most severe)
-			option2Text: "Skip All", // Skip all conflicts automatically (green - safe)
-			onConfirm: () => {
-				// Step 1k) User chose Skip - skip this hole and ask again for next conflict
-				console.log("Proximity warning: User chose Skip");
-				cleanupThemeListener();
-				dialog.close();
-				resolve({
-					isConfirmed: false,
-					isDenied: true, // Skip this hole
-					isDismissed: false,
-					skipAll: false,
-					cancelled: false
-				});
-			},
-			onDeny: () => {
-				// Step 1l) User chose Ignore - add this hole despite warning and continue
-				console.log("Proximity warning: User chose Ignore");
-				cleanupThemeListener();
-				dialog.close();
-				resolve({
-					isConfirmed: true, // Add the hole
-					isDenied: false,
-					isDismissed: false,
-					skipAll: false,
-					cancelled: false
-				});
-			},
-			onOption1: () => {
-				// Step 1m) User chose Cancel - stop entire operation without importing
-				// CRITICAL: Set flag IMMEDIATELY (synchronously) before Promise resolves
-				console.log("Proximity warning: User chose Cancel");
-				cleanupThemeListener();
-
-				// Set cancellation flag immediately so pattern generation loops can check it
-				window.holeGenerationCancelled = true;
-
-				dialog.close();
-				resolve({
-					isConfirmed: false,
-					isDenied: false,
-					isDismissed: true,
-					cancelled: true, // Stop entire operation
-					skipAll: false
-				});
-			},
-			onOption2: () => {
-				// Step 1n) User chose Skip All - skip all conflicting holes and import only valid ones
-				console.log("Proximity warning: User chose Skip All");
-				cleanupThemeListener();
-				dialog.close();
-				resolve({
-					isConfirmed: false,
-					isDenied: false,
-					isDismissed: false,
-					cancelled: false,
-					skipAll: true // Auto-skip all future proximity warnings
-				});
-			}
-		});
-
-		// Step 1n) Function to update text colors based on theme
-		const updateTextColors = () => {
-			const darkModeEnabled = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
-			const textColor = darkModeEnabled ? "#ffffff" : "#000000";
-
-			// Update all text elements
-			const textElements = contentDiv.querySelectorAll("p, li");
-			textElements.forEach((el) => {
-				// Don't override red color for conflicting holes list
-				if (!el.textContent.includes("m apart")) {
-					el.style.color = textColor;
-				}
-			});
-		};
-
-		// Step 1o) Set up theme change listener
-		let themeListener = null;
-		if (typeof window.addEventListener !== "undefined") {
-			// Listen for custom theme change events or check periodically
-			themeListener = () => {
-				updateTextColors();
-			};
-
-			// Check if there's a theme change event we can listen to
-			// Otherwise, we'll check on a timer
-			const checkTheme = setInterval(() => {
-				updateTextColors();
-			}, 500);
-
-			// Store interval ID for cleanup
-			dialog._themeCheckInterval = checkTheme;
-		}
-
-		// Step 1p) Cleanup function
-		const cleanupThemeListener = () => {
-			if (dialog._themeCheckInterval) {
-				clearInterval(dialog._themeCheckInterval);
-				dialog._themeCheckInterval = null;
-			}
-		};
-
-		// Step 1q) Set higher z-index to ensure proximity warning appears on top of success dialogs
-		// FloatingDialog defaults to 10000, we need higher priority for warnings
-		if (dialog.element) {
-			dialog.element.style.zIndex = "15000";
-		}
-
-		// Step 1r) Show the dialog
-		dialog.show();
-
-		// Step 1s) Ensure z-index is set after show() in case element wasn't created yet
-		setTimeout(() => {
-			if (dialog.element) {
-				dialog.element.style.zIndex = "15000";
-			}
-			// Initial color update
-			updateTextColors();
-		}, 0);
-	});
-}
-
-// Function to generate the pattern of holes
-// added rowid and posid 14 july 2025
-function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrientation, x, y, z, gradeZ, diameter, type, angle, bearing, length, subdrill, burden, spacing, rows, holesPerRow) {
-	let entityType = "hole";
-	let useGradeToCalcLength = useGradeZ;
-	let startXLocation = parseFloat(x);
-	let startYLocation = parseFloat(y);
-	let startZLocation = parseFloat(z);
-	// Step 1) Calculate gradeZLocation based on mode
-	// If useGradeZ: use the user-provided gradeZ directly
-	// Otherwise: calculate from length and subdrill
-	let gradeZLocation = useGradeToCalcLength ? parseFloat(gradeZ) : parseFloat(startZLocation - (length - subdrill) * Math.cos(angle * (Math.PI / 180)));
-	// Step 2) Calculate hole length (bench height - collar to grade)
-	// BUG FIX 2025-12-28: When using gradeZ, calculate bench height as (CollarZ - GradeZ) / cos(angle)
-	// Previously was calculating total length which caused subdrill to be counted twice
-	let angleRad = parseFloat(angle) * (Math.PI / 180);
-	let cosAngle = Math.cos(angleRad);
-	// Protect against division by zero for horizontal holes
-	if (Math.abs(cosAngle) < 0.001) cosAngle = 0.001;
-	let holeLength = useGradeToCalcLength ? parseFloat((startZLocation - gradeZLocation) / cosAngle) : parseFloat(length);
-	let holeDiameter = parseFloat(diameter);
-	let holeType = type;
-	let holeAngle = parseFloat(angle);
-	let holeBearing = parseFloat(bearing);
-	let subdrillAmount = parseFloat(subdrill);
-	let patternburden = parseFloat(burden);
-	let patternspacing = parseFloat(spacing);
-	let patternrows = parseInt(rows);
-	let patternholesPerRow = parseInt(holesPerRow);
-	let patternoffset = parseFloat(offset);
-	let patternnameTypeIsNumerical = nameTypeIsNumerical;
-	let patternrowOrientation = parseFloat((90 - rowOrientation) * (Math.PI / 180));
-
-	let referenceX = startXLocation;
-	let referenceY = startYLocation;
-
-	let currentLetter = "A";
-	let globalHoleCounter = allBlastHoles.length > 0 ? Math.max(...allBlastHoles.map((h) => parseInt(h.holeID) || 0)) + 1 : 1;
-
-	// Get the starting rowID for this pattern
-	const startingRowID = getNextRowID(entityName);
-	console.log("Starting rowID for addPattern:", startingRowID);
-
-	// Initialize cancellation flag and track starting hole count for this pattern generation
-	if (typeof window.holeGenerationCancelled === "undefined") {
-		window.holeGenerationCancelled = false;
-	}
-	window.holeGenerationCancelled = false; // Reset for new pattern
-	window.holeGenerationStartCount = allBlastHoles ? allBlastHoles.length : 0; // Track starting count
-
-	for (let i = 0; i < patternrows; i++) {
-		// Check for cancellation before each row
-		if (window.holeGenerationCancelled) {
-			console.log("Pattern generation cancelled by user");
-			break;
-		}
-
-		// Each pattern row gets its own rowID
-		const currentRowID = startingRowID + i;
-
-		for (let j = 0; j < patternholesPerRow; j++) {
-			// Check for cancellation before each hole
-			if (window.holeGenerationCancelled) {
-				console.log("Pattern generation cancelled by user");
-				break;
-			}
-			const relativeX = j * patternspacing;
-			const relativeY = i * patternburden;
-
-			let offsetX = 0;
-			if (i % 2 === 1) {
-				offsetX = patternoffset * patternspacing;
-			}
-
-			const rotatedX = (relativeX + offsetX) * Math.cos(patternrowOrientation) - relativeY * Math.sin(patternrowOrientation);
-			const rotatedY = (relativeX + offsetX) * Math.sin(patternrowOrientation) + relativeY * Math.cos(patternrowOrientation);
-
-			const finalX = referenceX + rotatedX;
-			const finalY = referenceY + rotatedY;
-
-			let holeID;
-			const useCustomHoleID = true;
-
-			if (!patternnameTypeIsNumerical) {
-				holeID = currentLetter + (j + 1);
-			} else {
 				holeID = globalHoleCounter.toString();
 				globalHoleCounter++;
 			}

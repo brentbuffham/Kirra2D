@@ -1,17 +1,17 @@
-// src/fileIO/TextIO/GeofenceWriter.js
+// src/fileIO/EpirocIO/SurfaceManagerWriter.js
 //=============================================================
-// GEOFENCE/HAZARD/SOCKETS WRITER - Y,X FORMAT
+// EPIROC SURFACE MANAGER WRITER - GEOFENCE/HAZARD/SOCKETS
 //=============================================================
-// Step 1) Exports points to Y,X coordinate files
+// Step 1) Exports points to Epiroc Surface Manager Y,X coordinate files
 // Step 2) Supports .geofence, .hazard, .sockets file formats
 // Step 3) Format: Each line contains Y,X coordinates
-// Step 4) Created: 2026-01-04
+// Step 4) Created: 2026-01-04, Moved to EpirocIO: 2026-01-07
 // Step 5) Note: Y,X order (NOT X,Y)
 
 import BaseWriter from "../BaseWriter.js";
 
-// Step 6) GeofenceWriter class
-class GeofenceWriter extends BaseWriter {
+// Step 6) SurfaceManagerWriter class
+class SurfaceManagerWriter extends BaseWriter {
 	constructor(options = {}) {
 		super(options);
 
@@ -74,4 +74,5 @@ class GeofenceWriter extends BaseWriter {
 	}
 }
 
-export default GeofenceWriter;
+export default SurfaceManagerWriter;
+

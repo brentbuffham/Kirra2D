@@ -832,7 +832,14 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 		if (modifiedFields.has("collarZ")) {
 			const processedCollarZ = processNumericValue(formData.collarZ, originalValues.collarZ, h.startZLocation || 0);
 			if (processedCollarZ !== null) {
+				// Step 1) Calculate the delta (shift amount)
+				const deltaZ = processedCollarZ - h.startZLocation;
+				
+				// Step 2) Shift all Z coordinates by the same delta to maintain hole geometry
 				h.startZLocation = processedCollarZ;
+				h.gradeZLocation += deltaZ;
+				h.endZLocation += deltaZ;
+				
 				geometryChanged = true;
 			}
 		}
@@ -840,8 +847,13 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 		if (modifiedFields.has("gradeZ")) {
 			const processedGradeZ = processNumericValue(formData.gradeZ, originalValues.gradeZ, h.gradeZLocation || h.endZLocation || 0);
 			if (processedGradeZ !== null) {
-				h.gradeZLocation = processedGradeZ;
-				h.endZLocation = processedGradeZ;
+				// Step 1) Calculate new benchHeight from the new gradeZ
+				// The grade point slides along the hole vector, maintaining angle and bearing
+				const newBenchHeight = h.startZLocation - processedGradeZ;
+				
+				// Step 2) Use mode 9 (BenchHeight) to recalculate all geometry properly
+				window.calculateHoleGeometry(h, newBenchHeight, 9);
+				
 				geometryChanged = true;
 			}
 		}

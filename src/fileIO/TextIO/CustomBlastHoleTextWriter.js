@@ -4,7 +4,7 @@
 //=============================================================
 // Step 1) Writes blast hole data to CSV files with user-defined column ordering
 // Step 2) Created: 2026-01-04
-// Step 3) Supports custom field selection, unit conversions, and angle conventions
+// Step 3) Supports custom field selection, unit conversions, custom headers, and custom text fields
 // Step 4) Companion to CustomBlastHoleTextParser.js
 
 import BaseWriter from "../BaseWriter.js";
@@ -16,10 +16,12 @@ class CustomBlastHoleTextWriter extends BaseWriter {
 
 		// Step 6) Writer configuration
 		this.columnOrder = options.columnOrder || ["holeID", "startXLocation", "startYLocation", "startZLocation"]; // Array of field names
-		this.angleConvention = options.angleConvention || "angle"; // "angle" or "dip"
+		this.subdrillNegative = options.subdrillNegative || false; // Convert subdrill to negative values
 		this.diameterUnit = options.diameterUnit || "mm"; // "mm", "m", "in"
 		this.includeHeaders = options.includeHeaders !== false; // Default true
 		this.decimalPlaces = options.decimalPlaces || 4;
+		this.customHeaders = options.customHeaders || {}; // Map of column name to custom header text
+		this.customFields = options.customFields || []; // Array of {enabled, name, value}
 
 		// Step 7) Get field mapping from parser (shared schema)
 		this.HOLE_FIELD_MAPPING = options.fieldMapping || this.getDefaultFieldMapping();
@@ -95,9 +97,24 @@ class CustomBlastHoleTextWriter extends BaseWriter {
 	generateHeaders() {
 		var headers = [];
 
-		// Step 17) Add each column name to header array
+		// Step 17) Add each column name to header array (use custom header if available)
 		for (var i = 0; i < this.columnOrder.length; i++) {
-			headers.push(this.columnOrder[i]);
+			var fieldName = this.columnOrder[i];
+
+			// Step 17a) Check if this is a custom field
+			if (fieldName.startsWith("customField")) {
+				var fieldIndex = parseInt(fieldName.replace("customField", ""));
+				var customField = this.customFields[fieldIndex];
+				if (customField && customField.name) {
+					headers.push(customField.name);
+				} else {
+					headers.push(fieldName);
+				}
+			} else {
+				// Step 17b) Use custom header if provided, otherwise use field name
+				var headerName = this.customHeaders[fieldName] || fieldName;
+				headers.push(headerName);
+			}
 		}
 
 		// Step 18) Join with commas and add newline
@@ -121,17 +138,33 @@ class CustomBlastHoleTextWriter extends BaseWriter {
 
 	// Step 22) Extract field value from hole object
 	extractFieldValue(hole, fieldName) {
-		// Step 23) Get field mapping
+		// Step 23) Handle custom fields
+		if (fieldName.startsWith("customField")) {
+			var fieldIndex = parseInt(fieldName.replace("customField", ""));
+			var customField = this.customFields[fieldIndex];
+			if (customField && customField.value) {
+				return customField.value;
+			}
+			return "";
+		}
+
+		// Step 24) Handle calculated holeDip field (Dip = 90 - Angle)
+		if (fieldName === "holeDip") {
+			var holeAngle = hole.holeAngle || 0;
+			return 90 - holeAngle;
+		}
+
+		// Step 25) Get field mapping
 		var mapping = this.HOLE_FIELD_MAPPING[fieldName];
 		if (!mapping) {
 			console.warn("CustomCSVWriter: Unknown field " + fieldName);
 			return "";
 		}
 
-		// Step 24) Get value from hole object using property name
+		// Step 26) Get value from hole object using property name
 		var value = hole[mapping.property];
 
-		// Step 25) Return value or default
+		// Step 27) Return value or default
 		if (value === null || value === undefined) {
 			return mapping.default || "";
 		}
@@ -146,9 +179,13 @@ class CustomBlastHoleTextWriter extends BaseWriter {
 			return this.convertDiameter(value);
 		}
 
-		// Step 28) Handle angle convention conversions
-		if (fieldName === "holeAngle") {
-			return this.convertAngle(value);
+		// Step 28) Handle subdrill negative conversion
+		if (fieldName === "subdrillAmount" && this.subdrillNegative) {
+			var num = parseFloat(value);
+			if (isNaN(num)) {
+				return "0." + "0".repeat(this.decimalPlaces);
+			}
+			return (-num).toFixed(this.decimalPlaces);
 		}
 
 		// Step 29) Handle numeric values
@@ -194,24 +231,6 @@ class CustomBlastHoleTextWriter extends BaseWriter {
 		}
 
 		// Step 41) Default: keep as mm
-		return num.toFixed(this.decimalPlaces);
-	}
-
-	// Step 42) Convert angle based on convention
-	convertAngle(value) {
-		// Step 43) Parse to number
-		var num = parseFloat(value);
-		if (isNaN(num)) {
-			return "0." + "0".repeat(this.decimalPlaces);
-		}
-
-		// Step 44) Convert angle to dip if needed
-		if (this.angleConvention === "dip") {
-			// Step 45) Dip = 90 - Angle
-			return (90 - num).toFixed(this.decimalPlaces);
-		}
-
-		// Step 46) Default: keep as angle
 		return num.toFixed(this.decimalPlaces);
 	}
 }

@@ -237,29 +237,21 @@ class BlastHoleCSVParser extends BaseParser {
 
 			// Step 24) Validate coordinates and create hole object
 			if (!isNaN(startX) && !isNaN(startY) && !isNaN(startZ) && !isNaN(endX) && !isNaN(endY) && !isNaN(endZ)) {
-				// Step 25) Create hole object with initial values
+				// Step 25) RULE #9: Return MINIMAL hole data - addHole() will create proper geometry
+				// Calculate gradeZ: CSV has endXYZ (toe), grade = toe + subdrill (going UP)
+				var gradeZ = endZ + subdrill;
+
 				var hole = {
 					entityName: entityName,
-					entityType: "hole",
 					holeID: holeID,
 					startXLocation: startX,
 					startYLocation: startY,
 					startZLocation: startZ,
-					endXLocation: endX,
-					endYLocation: endY,
-					endZLocation: endZ,
-					gradeXLocation: endX,
-					gradeYLocation: endY,
-					gradeZLocation: endZ,
-					subdrillAmount: subdrill,
-					subdrillLength: 0,
-					benchHeight: 0,
+					gradeZLocation: gradeZ, // Grade = toe + subdrill
 					holeDiameter: holeDiameter,
 					holeType: holeType,
-					fromHoleID: fromHoleID,
-					timingDelayMilliseconds: delay,
-					colorHexDecimal: color,
 					holeLengthCalculated: length,
+					subdrillAmount: subdrill,
 					holeAngle: angle,
 					holeBearing: bearing,
 					measuredLength: measuredLength,
@@ -268,11 +260,13 @@ class BlastHoleCSVParser extends BaseParser {
 					measuredMassTimeStamp: measuredMassTimeStamp,
 					measuredComment: measuredComment,
 					measuredCommentTimeStamp: measuredCommentTimeStamp,
-					rowID: rowID,
-					posID: posID,
-					visible: true,
-					burden: burden || 0,
-					spacing: spacing || 0,
+					fromHoleID: fromHoleID,
+					timingDelayMilliseconds: delay,
+					colorHexDecimal: color,
+					rowID: rowID || null,
+					posID: posID || null,
+					burden: burden || 1,
+					spacing: spacing || 1,
 					connectorCurve: connectorCurve || 0
 				};
 
@@ -282,29 +276,6 @@ class BlastHoleCSVParser extends BaseParser {
 				// Step 27) Track holes that need row detection
 				if (rowID === null || rowID === 0 || posID === null || posID === 0) {
 					newHolesForRowDetection.push(hole);
-				}
-
-				// Step 28) Calculate proper benchHeight and grade positions
-				if (len !== 4) {
-					var cosAngle = Math.cos(angle * (Math.PI / 180));
-					if (Math.abs(cosAngle) > 1e-9) {
-						// Step 29) Calculate benchHeight from the Z difference minus subdrill
-						hole.benchHeight = Math.abs(startZ - endZ) - subdrill;
-
-						// Step 30) Recalculate geometry if global function exists
-						if (window.calculateHoleGeometry) {
-							window.calculateHoleGeometry(hole, length, 1);
-							if (subdrill !== 0) {
-								window.calculateHoleGeometry(hole, subdrill, 8);
-							}
-						}
-					} else {
-						// Step 31) For horizontal holes
-						hole.benchHeight = Math.abs(startZ - endZ);
-						hole.gradeXLocation = endX;
-						hole.gradeYLocation = endY;
-						hole.gradeZLocation = endZ - subdrill;
-					}
 				}
 
 				minX = Math.min(minX, startX);

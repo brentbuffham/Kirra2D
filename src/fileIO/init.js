@@ -11,8 +11,6 @@ import BlastHoleCSVParser from "./TextIO/BlastHoleCSVParser.js";
 import BlastHoleCSVWriter from "./TextIO/BlastHoleCSVWriter.js";
 import CustomBlastHoleTextParser from "./TextIO/CustomBlastHoleTextParser.js";
 import CustomBlastHoleTextWriter from "./TextIO/CustomBlastHoleTextWriter.js";
-import GeofenceParser from "./TextIO/GeofenceParser.js";
-import GeofenceWriter from "./TextIO/GeofenceWriter.js";
 import KADParser from "./KirraIO/KADParser.js";
 import KADWriter from "./KirraIO/KADWriter.js";
 import DXFParser from "./AutoCadIO/DXFParser.js";
@@ -32,6 +30,14 @@ import SurpacDTMWriter from "./SurpacIO/SurpacDTMWriter.js";
 import SurpacBinarySTRParser from "./SurpacIO/SurpacBinarySTRParser.js";
 import SurpacBinaryDTMParser from "./SurpacIO/SurpacBinaryDTMParser.js";
 import SurpacSurfaceParser from "./SurpacIO/SurpacSurfaceParser.js";
+import IREDESParser from "./EpirocIO/IREDESParser.js";
+import IREDESWriter from "./EpirocIO/IREDESWriter.js";
+import SurfaceManagerParser from "./EpirocIO/SurfaceManagerParser.js";
+import SurfaceManagerWriter from "./EpirocIO/SurfaceManagerWriter.js";
+import CBLASTParser from "./CBlastIO/CBLASTParser.js";
+import CBLASTWriter from "./CBlastIO/CBLASTWriter.js";
+import NAVAsciiParser from "./WencoIO/NAVAsciiParser.js";
+import NAVAsciiWriter from "./WencoIO/NAVAsciiWriter.js";
 
 // Step 4) Initialize FileManager with all parsers and writers
 export function initializeFileManager() {
@@ -89,18 +95,18 @@ export function initializeFileManager() {
 		category: "blasting"
 	});
 
-	// Step 6c) Register Geofence/Hazard/Sockets parser (Y,X format)
-	fileManager.registerParser("geofence", GeofenceParser, {
+	// Step 6c) Register Epiroc Surface Manager parser (geofence/hazard/sockets - Y,X format)
+	fileManager.registerParser("surface-manager", SurfaceManagerParser, {
 		extensions: ["geofence", "hazard", "sockets", "txt"],
-		description: "Geofence/Hazard/Sockets Y,X coordinate files",
-		category: "geometry"
+		description: "Epiroc Surface Manager Y,X coordinate files (geofence/hazard/sockets)",
+		category: "mining"
 	});
 
-	// Step 6d) Register Geofence/Hazard/Sockets writer (Y,X format)
-	fileManager.registerWriter("geofence", GeofenceWriter, {
+	// Step 6d) Register Epiroc Surface Manager writer (geofence/hazard/sockets - Y,X format)
+	fileManager.registerWriter("surface-manager", SurfaceManagerWriter, {
 		extensions: ["geofence", "hazard", "sockets", "txt"],
-		description: "Geofence/Hazard/Sockets Y,X coordinate files",
-		category: "geometry"
+		description: "Epiroc Surface Manager Y,X coordinate files (geofence/hazard/sockets)",
+		category: "mining"
 	});
 
 	// Step 7) Register KAD parser
@@ -220,6 +226,48 @@ export function initializeFileManager() {
 		extensions: ["dtm", "str"],
 		description: "Surpac Surface (DTM + STR pair) - triangulated surface",
 		category: "mining"
+	});
+
+	// Step 19) Register Epiroc IREDES parser
+	fileManager.registerParser("iredes-xml", IREDESParser, {
+		extensions: ["xml"],
+		description: "Epiroc IREDES XML drill plan import",
+		category: "mining"
+	});
+
+	// Step 20) Register Epiroc IREDES writer
+	fileManager.registerWriter("iredes-xml", IREDESWriter, {
+		extensions: ["xml"],
+		description: "Epiroc IREDES XML drill plan export",
+		category: "mining"
+	});
+
+	// Step 21) Register CBLAST parser
+	fileManager.registerParser("cblast-csv", CBLASTParser, {
+		extensions: ["csv"],
+		description: "CBLAST CSV format (4 records per hole: HOLE, PRODUCT, DETONATOR, STRATA)",
+		category: "mining"
+	});
+
+	// Step 22) Register CBLAST writer
+	fileManager.registerWriter("cblast-csv", CBLASTWriter, {
+		extensions: ["csv"],
+		description: "CBLAST CSV format export",
+		category: "mining"
+	});
+
+	// Step 23) Register Wenco NAV ASCII parser
+	fileManager.registerParser("wenco-nav", NAVAsciiParser, {
+		extensions: ["nav"],
+		description: "Wenco NAV ASCII format (TEXT, POINT, LINE entities)",
+		category: "fleet-management"
+	});
+
+	// Step 24) Register Wenco NAV ASCII writer
+	fileManager.registerWriter("wenco-nav", NAVAsciiWriter, {
+		extensions: ["nav"],
+		description: "Wenco NAV ASCII format export",
+		category: "fleet-management"
 	});
 
 	console.log("FileManager initialized successfully");

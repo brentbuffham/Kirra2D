@@ -3,7 +3,11 @@
     "allow": [
       "Bash(node:*)",
       "Bash(npx eslint:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(wc:*)",
+      "Bash(pkill:*)",
+      "Bash(cat:*)",
+      "Bash(find:*)"
     ]
   }
 }
