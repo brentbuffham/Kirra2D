@@ -9763,78 +9763,23 @@ document.querySelectorAll(".shape-input-btn, .shape-output-btn").forEach(functio
 	});
 });
 
-// MEASURED DATA (Mass, Length, Comment) - Using FileManager BlastHoleCSVParser/Writer
+// MEASURED DATA (Mass, Length, Comment) - Import measured values for existing holes
 document.querySelectorAll(".measured-input-btn").forEach(function (button) {
 	button.addEventListener("click", function () {
 		var input = document.createElement("input");
 		input.type = "file";
 		input.accept = ".csv,.txt";
-		input.onchange = function (e) {
-			var file = e.target.files[0];
-			if (!file) return;
-
-			var reader = new FileReader();
-			reader.onload = async function (event) {
-				try {
-					// Step 1) Parse CSV using FileManager (handles measured data columns)
-					var result = await parseK2Dcsv(event.target.result);
-
-					// Show conditional message based on import result
-					var message;
-					if (result.cancelled) {
-						message = "Import cancelled. Imported " + result.imported + " of " + (result.imported + result.skipped) + " holes from " + file.name;
-						showModalMessage("Measured Data Import Cancelled", message, "warning");
-					} else if (result.skipped > 0) {
-						message = "Imported " + result.imported + " holes, skipped " + result.skipped + " (proximity conflicts) from " + file.name;
-						showModalMessage("Measured Data Import Complete", message, "success");
-					} else {
-						message = "Imported " + result.imported + " holes from " + file.name;
-						showModalMessage("Measured Data Import Success", message, "success");
-					}
-				} catch (error) {
-					showModalMessage("Import Failed", "Error importing measured data: " + error.message, "error");
-				}
-			};
-			reader.readAsText(file);
+		input.onchange = async function (e) {
+			await handleMeasuredUpload(e);
+			showModalMessage("Measured Data Import", "Measured values updated successfully", "success");
 		};
 		input.click();
 	});
 });
 
 document.querySelectorAll(".measured-output-btn").forEach(function (button) {
-	button.addEventListener("click", async function () {
-		// Step 1) Filter visible holes
-		var visibleHoles = window.allBlastHoles.filter(function (hole) {
-			return window.isHoleVisible(hole);
-		});
-
-		if (visibleHoles.length === 0) {
-			showModalMessage("No Data", "No visible holes to export", "warning");
-			return;
-		}
-
-		try {
-			// Step 2) Get measured data writer from FileManager
-			var Writer = window.fileManager.writers.get("blasthole-csv-actual");
-			if (!Writer) {
-				throw new Error("Measured data writer not found in FileManager");
-			}
-
-			var writer = new Writer({ format: "actual" });
-
-			// Step 3) Generate measured data CSV
-			var blob = await writer.write({ holes: visibleHoles });
-
-			// Step 4) Download file
-			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-			var filename = "KIRRA_MEASURED_DATA_" + timestamp + ".csv";
-			writer.downloadFile(blob, filename);
-
-			console.log("Exported " + visibleHoles.length + " holes with measured data (Mass, Length, Comment)");
-		} catch (error) {
-			console.error("Measured data export error:", error);
-			showModalMessage("Export Failed", "Error exporting measured data: " + error.message, "error");
-		}
+	button.addEventListener("click", function () {
+		saveMeasuredDataPopup();
 	});
 });
 
@@ -22288,6 +22233,131 @@ function downloadAQMStandard(content, filename) {
 	document.body.removeChild(link);
 	URL.revokeObjectURL(url);
 	showModalMessage("Export Complete", "Downloaded AQM file: " + filename, "success");
+}
+
+/**
+ * Modern Measured Data Export Dialog - Export measured values (Mass, Length, Comment)
+ * Uses FloatingDialog with File System Access API
+ */
+function saveMeasuredDataPopup() {
+	try {
+		// Step 1) Filter visible blast holes
+		const visibleBlastHoles = allBlastHoles.filter((hole) => isHoleVisible(hole));
+
+		if (visibleBlastHoles.length === 0) {
+			showModalMessage("No Visible Holes", "There are no visible holes to export.", "warning");
+			return;
+		}
+
+		// Step 2) Generate default filename with fresh timestamp
+		var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+		var defaultFilename = "MLC-EXPORT-" + timestamp;
+
+		// Step 3) Create dialog content
+		var contentHTML = '<div style="padding: 20px;">';
+		contentHTML += '<div style="margin-bottom: 15px;">';
+		contentHTML += '<label class="labelWhite15" style="display: block; margin-bottom: 5px;"><strong>Filename (without .csv):</strong></label>';
+		contentHTML += '<input type="text" id="export-measured-filename" value="' + defaultFilename + '" style="width: 100%; padding: 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 14px;">';
+		contentHTML += '</div>';
+		contentHTML += '<div style="margin-bottom: 10px;">';
+		contentHTML += '<label class="labelWhite15"><strong>Holes to Export:</strong> ' + visibleBlastHoles.length + '</label>';
+		contentHTML += '</div>';
+		contentHTML += '<div style="margin-top: 15px; padding: 10px; background: var(--dark-mode-bg); border: 1px solid var(--light-mode-border); border-radius: 4px;">';
+		contentHTML += '<p class="labelWhite12" style="margin: 5px 0;"><strong>Export Format:</strong> Measured Data CSV</p>';
+		contentHTML += '<p class="labelWhite12" style="margin: 5px 0;">Contains: Entity Name, Hole ID, Measured Length, Measured Mass, Measured Comment</p>';
+		contentHTML += '<p class="labelWhite12" style="margin: 5px 0; color: var(--accent-color);">Timestamps included for all measurements</p>';
+		contentHTML += '</div>';
+		contentHTML += '</div>';
+
+		// Step 4) Create dialog
+		var dialog = new FloatingDialog({
+			title: "Export Measured Data",
+			content: contentHTML,
+			layoutType: "default",
+			width: 500,
+			height: 300,
+			showConfirm: true,
+			showCancel: true,
+			confirmText: "Export",
+			cancelText: "Cancel",
+			onConfirm: async function () {
+				try {
+					// Step 5) Get filename
+					var filename = document.getElementById("export-measured-filename").value.trim();
+					if (!filename) {
+						showModalMessage("No Filename", "Please enter a filename", "warning");
+						return;
+					}
+
+					// Ensure .csv extension
+					if (!filename.toLowerCase().endsWith(".csv")) {
+						filename += ".csv";
+					}
+
+					// Step 6) Get measured data writer from FileManager
+					var Writer = window.fileManager.writers.get("blasthole-csv-actual");
+					if (!Writer) {
+						throw new Error("Measured data writer not found in FileManager");
+					}
+
+					var writer = new Writer({ format: "actual" });
+
+					// Step 7) Generate measured data CSV
+					var blob = await writer.write({ holes: visibleBlastHoles });
+
+					// Step 8) Export using File System Access API if available
+					if (window.showSaveFilePicker) {
+						try {
+							var fileHandle = await window.showSaveFilePicker({
+								suggestedName: filename,
+								types: [{
+									description: 'CSV Files',
+									accept: { 'text/csv': ['.csv'] }
+								}]
+							});
+
+							var writable = await fileHandle.createWritable();
+							await writable.write(blob);
+							await writable.close();
+
+							showModalMessage("Export Complete", "Measured data saved to: " + filename, "success");
+						} catch (err) {
+							if (err.name !== "AbortError") {
+								console.error("File System Access API error:", err);
+								writer.downloadFile(blob, filename);
+							}
+						}
+					} else {
+						// Fallback download
+						writer.downloadFile(blob, filename);
+					}
+
+					console.log("Exported " + visibleBlastHoles.length + " holes with measured data");
+				} catch (error) {
+					console.error("Measured data export error:", error);
+					showModalMessage("Export Error", "Error: " + error.message, "error");
+				}
+			},
+			onCancel: function () {
+				// Dialog cancelled
+			}
+		});
+
+		// Step 5) Show the dialog
+		dialog.show();
+
+		// Step 6) Focus filename field
+		setTimeout(function () {
+			var filenameInput = document.getElementById("export-measured-filename");
+			if (filenameInput) {
+				filenameInput.focus();
+				filenameInput.select();
+			}
+		}, 100);
+	} catch (error) {
+		console.error("Error in saveMeasuredDataPopup:", error);
+		showModalMessage("Export Error", "Failed to open export dialog: " + error.message, "error");
+	}
 }
 
 //TODO use the FloatingDialog class to create this popup
