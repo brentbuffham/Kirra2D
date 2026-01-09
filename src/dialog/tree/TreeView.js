@@ -440,6 +440,8 @@ export class TreeView {
 		const resetConnectionsItem = menu.querySelector("[data-action=\"reset-connections\"]");
 		const propertiesItem = menu.querySelector("[data-action=\"properties\"]");
 		const deleteItem = menu.querySelector("[data-action=\"delete\"]");
+		const hideItem = menu.querySelector("[data-action=\"hide\"]");
+		const showItem = menu.querySelector("[data-action=\"show\"]");
 
 		if (resetConnectionsItem) {
 			resetConnectionsItem.style.display = hasHoles ? "flex" : "none";
@@ -447,6 +449,15 @@ export class TreeView {
 
 		if (deleteItem) {
 			deleteItem.style.display = isTopLevelParent || isSubGroup ? "none" : "flex";
+		}
+
+		// Step 4) Always show hide/show options (even for top-level nodes and subgroups)
+		if (hideItem) {
+			hideItem.style.display = "flex";
+		}
+		
+		if (showItem) {
+			showItem.style.display = "flex";
 		}
 
 		if (propertiesItem) {
@@ -569,7 +580,16 @@ export class TreeView {
 				const type = nodeId.split("⣿")[0];
 				const itemId = nodeId.split("⣿").slice(1).join("⣿");
 
-				if (typeof window.handleTreeViewVisibility === "function") {
+				// Step 1) Handle top-level nodes (hide all children)
+				if (nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images") {
+					this.hideAllChildren(nodeId);
+				}
+				// Step 2) Handle subgroup nodes
+				else if (nodeId.startsWith("drawings⣿")) {
+					this.hideAllChildren(nodeId);
+				}
+				// Step 3) Handle individual items
+				else if (typeof window.handleTreeViewVisibility === "function") {
 					window.handleTreeViewVisibility(nodeId, type, itemId, false);
 				}
 			}
@@ -591,7 +611,16 @@ export class TreeView {
 				const type = nodeId.split("⣿")[0];
 				const itemId = nodeId.split("⣿").slice(1).join("⣿");
 
-				if (typeof window.handleTreeViewVisibility === "function") {
+				// Step 1) Handle top-level nodes (show all children)
+				if (nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images") {
+					this.showAllChildren(nodeId);
+				}
+				// Step 2) Handle subgroup nodes
+				else if (nodeId.startsWith("drawings⣿")) {
+					this.showAllChildren(nodeId);
+				}
+				// Step 3) Handle individual items
+				else if (typeof window.handleTreeViewVisibility === "function") {
 					window.handleTreeViewVisibility(nodeId, type, itemId, true);
 				}
 			}
@@ -600,6 +629,261 @@ export class TreeView {
 		this.clearSelection();
 		if (typeof window.updateTreeViewVisibilityStates === "function") {
 			window.updateTreeViewVisibilityStates();
+		}
+	}
+
+	// Step 4) Add helper methods to hide/show all children recursively
+	hideAllChildren(parentNodeId) {
+		if (parentNodeId === "blast") {
+			// Hide all blast entities and holes
+			if (window.allBlastHoles) {
+				window.allBlastHoles.forEach((hole) => {
+					hole.visible = false;
+				});
+				if (typeof window.debouncedSaveHoles === "function") {
+					window.debouncedSaveHoles();
+				}
+			}
+			if (typeof window.setBlastGroupVisibility === "function") {
+				window.setBlastGroupVisibility(false);
+			}
+		} else if (parentNodeId === "drawings") {
+			// Hide all KAD entities
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					entity.visible = false;
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setDrawingsGroupVisibility === "function") {
+				window.setDrawingsGroupVisibility(false);
+			}
+		} else if (parentNodeId === "surfaces") {
+			// Hide all surfaces
+			if (window.loadedSurfaces) {
+				for (const [surfaceId, surface] of window.loadedSurfaces.entries()) {
+					surface.visible = false;
+				}
+				if (typeof window.debouncedSaveSurfaces === "function") {
+					window.debouncedSaveSurfaces();
+				}
+			}
+			if (typeof window.setSurfacesGroupVisibility === "function") {
+				window.setSurfacesGroupVisibility(false);
+			}
+		} else if (parentNodeId === "images") {
+			// Hide all images
+			if (window.loadedImages) {
+				for (const [imageId, image] of window.loadedImages.entries()) {
+					image.visible = false;
+				}
+				if (typeof window.debouncedSaveImages === "function") {
+					window.debouncedSaveImages();
+				}
+			}
+			if (typeof window.setImagesGroupVisibility === "function") {
+				window.setImagesGroupVisibility(false);
+			}
+		} else if (parentNodeId === "drawings⣿points") {
+			// Hide all point entities
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "point") {
+						entity.visible = false;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setPointsGroupVisibility === "function") {
+				window.setPointsGroupVisibility(false);
+			}
+		} else if (parentNodeId === "drawings⣿lines") {
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "line") {
+						entity.visible = false;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setLinesGroupVisibility === "function") {
+				window.setLinesGroupVisibility(false);
+			}
+		} else if (parentNodeId === "drawings⣿polygons") {
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "poly") {
+						entity.visible = false;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setPolygonsGroupVisibility === "function") {
+				window.setPolygonsGroupVisibility(false);
+			}
+		} else if (parentNodeId === "drawings⣿circles") {
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "circle") {
+						entity.visible = false;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setCirclesGroupVisibility === "function") {
+				window.setCirclesGroupVisibility(false);
+			}
+		} else if (parentNodeId === "drawings⣿texts") {
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "text") {
+						entity.visible = false;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setTextsGroupVisibility === "function") {
+				window.setTextsGroupVisibility(false);
+			}
+		}
+	}
+
+	showAllChildren(parentNodeId) {
+		if (parentNodeId === "blast") {
+			// Show all blast entities and holes
+			if (window.allBlastHoles) {
+				window.allBlastHoles.forEach((hole) => {
+					hole.visible = true;
+				});
+				if (typeof window.debouncedSaveHoles === "function") {
+					window.debouncedSaveHoles();
+				}
+			}
+			if (typeof window.setBlastGroupVisibility === "function") {
+				window.setBlastGroupVisibility(true);
+			}
+		} else if (parentNodeId === "drawings") {
+			// Show all KAD entities
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					entity.visible = true;
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setDrawingsGroupVisibility === "function") {
+				window.setDrawingsGroupVisibility(true);
+			}
+		} else if (parentNodeId === "surfaces") {
+			// Show all surfaces
+			if (window.loadedSurfaces) {
+				for (const [surfaceId, surface] of window.loadedSurfaces.entries()) {
+					surface.visible = true;
+				}
+				if (typeof window.debouncedSaveSurfaces === "function") {
+					window.debouncedSaveSurfaces();
+				}
+			}
+			if (typeof window.setSurfacesGroupVisibility === "function") {
+				window.setSurfacesGroupVisibility(true);
+			}
+		} else if (parentNodeId === "images") {
+			// Show all images
+			if (window.loadedImages) {
+				for (const [imageId, image] of window.loadedImages.entries()) {
+					image.visible = true;
+				}
+				if (typeof window.debouncedSaveImages === "function") {
+					window.debouncedSaveImages();
+				}
+			}
+			if (typeof window.setImagesGroupVisibility === "function") {
+				window.setImagesGroupVisibility(true);
+			}
+		} else if (parentNodeId === "drawings⣿points") {
+			// Show all point entities
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "point") {
+						entity.visible = true;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setPointsGroupVisibility === "function") {
+				window.setPointsGroupVisibility(true);
+			}
+		} else if (parentNodeId === "drawings⣿lines") {
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "line") {
+						entity.visible = true;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setLinesGroupVisibility === "function") {
+				window.setLinesGroupVisibility(true);
+			}
+		} else if (parentNodeId === "drawings⣿polygons") {
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "poly") {
+						entity.visible = true;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setPolygonsGroupVisibility === "function") {
+				window.setPolygonsGroupVisibility(true);
+			}
+		} else if (parentNodeId === "drawings⣿circles") {
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "circle") {
+						entity.visible = true;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setCirclesGroupVisibility === "function") {
+				window.setCirclesGroupVisibility(true);
+			}
+		} else if (parentNodeId === "drawings⣿texts") {
+			if (window.allKADDrawingsMap) {
+				for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
+					if (entity.entityType === "text") {
+						entity.visible = true;
+					}
+				}
+				if (typeof window.debouncedSaveKAD === "function") {
+					window.debouncedSaveKAD();
+				}
+			}
+			if (typeof window.setTextsGroupVisibility === "function") {
+				window.setTextsGroupVisibility(true);
+			}
 		}
 	}
 

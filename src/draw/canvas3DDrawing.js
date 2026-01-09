@@ -613,6 +613,8 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 							return clonedMat;
 						});
 					} else {
+						// DIAGNOSTIC: Check material BEFORE clone
+						console.log("🎨 [drawSurfaceThreeJS] BEFORE clone - hasMap: " + !!child.material.map + ", mapColorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
 						var clonedMat = child.material.clone();
 						if (child.material.map) {
 							clonedMat.map = child.material.map;
@@ -620,6 +622,19 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 						}
 						child.material = clonedMat;
 					}
+					// DIAGNOSTIC: Check material AFTER clone
+					console.log("🎨 [drawSurfaceThreeJS] AFTER clone - hasMap: " + !!child.material.map + ", mapColorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
+			if (child.material.map && child.material.map.image) {
+				console.log("🎨 Texture image: " + child.material.map.image.width + "x" + child.material.map.image.height);
+			}
+			// DIAGNOSTIC: Detailed material properties
+			console.log("🎨 Material type: " + child.material.type);
+			console.log("🎨 Material color: rgb(" + (child.material.color.r * 255).toFixed(0) + ", " + (child.material.color.g * 255).toFixed(0) + ", " + (child.material.color.b * 255).toFixed(0) + ")");
+			console.log("🎨 Material opacity: " + child.material.opacity + ", transparent: " + child.material.transparent);
+			console.log("🎨 Material visible: " + child.material.visible + ", side: " + child.material.side);
+			if (child.material.type === "MeshPhongMaterial") {
+				console.log("🎨 Phong shininess: " + child.material.shininess + ", specular: " + child.material.specular.getHexString());
+			}
 				}
 
 				// Clone geometry to avoid modifying original

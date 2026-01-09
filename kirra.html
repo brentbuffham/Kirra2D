@@ -1774,9 +1774,12 @@
 						<div class="label2" id="label_Image" style="display: flex; align-items: center;">GeoTIFF/Image
 							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
 								<select id="imageFormat" title="Select Image format">
-									<option value="geo-tiff" selected>GeoTIFF</option>
-									<option value="elevation-tiff">Elevation TIFF</option>
+									<option value="geo-tiff" selected>GeoTIFF</option> <!--  Export the cached canvas and stored Geotiff/Images as RGB GeoTIFF -->
+									<option value="elevation-tiff">Elev.GeoTIFF</option> <!--   Export the cached canvas and stored Surfaces as elevation GeoTIFF -->
+									<!-- JPG export is not supported yet -->
+									<!--
 									<option value="jpg">JPG</option>
+									-->
 								</select>
 								<label class="icon-button image-input-btn" data-target="fileInputImage" title="Import Image">
 									<img src="icons/file-import.png" alt="Import">

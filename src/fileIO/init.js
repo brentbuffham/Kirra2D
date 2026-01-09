@@ -38,6 +38,8 @@ import CBLASTParser from "./CBlastIO/CBLASTParser.js";
 import CBLASTWriter from "./CBlastIO/CBLASTWriter.js";
 import NAVAsciiParser from "./WencoIO/NAVAsciiParser.js";
 import NAVAsciiWriter from "./WencoIO/NAVAsciiWriter.js";
+import { IMGParser } from "./ImageIO/IMGParser.js";
+import { IMGWriter } from "./ImageIO/IMGWriter.js";
 
 // Step 4) Initialize FileManager with all parsers and writers
 export function initializeFileManager() {
@@ -268,6 +270,27 @@ export function initializeFileManager() {
 		extensions: ["nav"],
 		description: "Wenco NAV ASCII format export",
 		category: "fleet-management"
+	});
+
+	// Step 25) Register GeoTIFF parser
+	fileManager.registerParser("geotiff", IMGParser, {
+		extensions: ["tif", "tiff"],
+		description: "GeoTIFF raster image (elevation data and RGB/RGBA imagery)",
+		category: "gis"
+	});
+
+	// Step 26) Register GeoTIFF imagery writer (PNG + world file)
+	fileManager.registerWriter("geotiff-imagery", IMGWriter, {
+		extensions: ["png", "pgw"],
+		description: "GeoTIFF imagery export (PNG + world file)",
+		category: "gis"
+	});
+
+	// Step 27) Register GeoTIFF elevation writer (XYZ point cloud)
+	fileManager.registerWriter("geotiff-elevation", IMGWriter, {
+		extensions: ["xyz", "csv"],
+		description: "GeoTIFF elevation export (XYZ point cloud)",
+		category: "gis"
 	});
 
 	console.log("FileManager initialized successfully");

@@ -11966,8 +11966,6 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 							texture.wrapS = THREE.RepeatWrapping;
 							texture.wrapT = THREE.RepeatWrapping;
 							texture.flipY = true; // Standard UV convention
-							// Step 5b-1) CRITICAL: Set sRGB encoding for correct color space
-							texture.colorSpace = THREE.SRGBColorSpace;
 							texture.needsUpdate = true;
 							loadedTextures[texName] = texture;
 							loadedTextures[texName.toLowerCase()] = texture; // Also store lowercase for matching
@@ -12023,13 +12021,6 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				var finalMaterialProperties = {};
 				object3D.traverse(function (child) {
 					if (child.isMesh) {
-						// DIAGNOSTIC: Log initial material type from MTLLoader
-						console.log("🎨 INITIAL LOAD: Material type from MTLLoader: " + child.material.type);
-						console.log("🎨 INITIAL LOAD: Material color: rgb(" + (child.material.color.r * 255).toFixed(0) + ", " + (child.material.color.g * 255).toFixed(0) + ", " + (child.material.color.b * 255).toFixed(0) + ")");
-						if (child.material.type === "MeshPhongMaterial") {
-							console.log("🎨 INITIAL LOAD: Phong shininess: " + child.material.shininess + ", specular: " + child.material.specular.getHexString());
-						}
-
 						child.material.side = THREE.DoubleSide;
 
 						// Step 9a.1) Find matching texture for this material
@@ -12273,19 +12264,14 @@ function rebuildTexturedMesh(surfaceId) {
 		var blobURLs = [];
 
 		if (surface.textureBlobs) {
-			console.log("🎨 REBUILD: Found " + Object.keys(surface.textureBlobs).length + " texture blob(s) for " + surfaceId);
 			Object.keys(surface.textureBlobs).forEach(function (texName) {
 				var blob = surface.textureBlobs[texName];
 				if (blob) {
-					console.log("🎨 REBUILD: Creating URL for texture: " + texName + ", blob size: " + blob.size + " bytes");
 					var url = URL.createObjectURL(blob);
 					textureURLs[texName] = url;
 					blobURLs.push(url);
 				}
 			});
-		}
-		else {
-		console.warn("🚨 REBUILD: NO TEXTURE BLOBS found for " + surfaceId + " - mesh will have no textures!");
 		}
 
 		// Step 3) Pre-load all textures into a map (same approach as initial load)
@@ -12301,8 +12287,6 @@ function rebuildTexturedMesh(surfaceId) {
 						texture.wrapS = THREE.RepeatWrapping;
 						texture.wrapT = THREE.RepeatWrapping;
 						texture.flipY = true;
-						// CRITICAL: Set sRGB encoding for correct color space
-						texture.colorSpace = THREE.SRGBColorSpace;
 						texture.needsUpdate = true;
 						loadedTextures[texName] = texture;
 						loadedTextures[texName.toLowerCase()] = texture;
@@ -12324,13 +12308,6 @@ function rebuildTexturedMesh(surfaceId) {
 			var objLoader = new OBJLoader();
 			var object3D = objLoader.parse(surface.objContent);
 			object3D.name = surface.name;
-			// DIAGNOSTIC: Check if geometry has UV coordinates
-			object3D.traverse(function(child) {
-			if (child.isMesh && child.geometry) {
-				var hasUV = child.geometry.attributes.uv !== undefined;
-				console.log("🎨 REBUILD: Mesh geometry hasUV: " + hasUV + ", uvCount: " + (hasUV ? child.geometry.attributes.uv.count : 0));
-			}
-			});
 
 			// Step 5a) Create materials from stored properties + texture blobs
 			// This is more reliable than MTLLoader which expects file URLs
@@ -12355,7 +12332,6 @@ function rebuildTexturedMesh(surfaceId) {
 						}
 					}
 
-					console.log("🎨 REBUILD: Created " + Object.keys(materialMap).length + " material(s) from properties");
 					materialMap[matName] = createMaterialFromProperties(matProps, texture, textureName);
 					console.log("🎨 Created material '" + matName + "' with texture: " + (texture ? textureName : "none"));
 				});
@@ -12377,15 +12353,12 @@ function rebuildTexturedMesh(surfaceId) {
 					var material = materialMap[materialName] || materialMap["default"] || materialMap[Object.keys(materialMap)[0]];
 
 					if (material) {
-						// CRITICAL FIX: Don't clone - preserve texture reference
-						// Each mesh child can share the same material instance
-						child.material = material;
+						child.material = material.clone();
 						child.material.side = THREE.DoubleSide;
-						console.log("🎨 REBUILD: Applied material to mesh child, hasTexture: " + (child.material.map ? "YES" : "NO"));
 						texturesApplied++;
 					} else {
-						// Fallback: use default material (MeshPhongMaterial to match MTLLoader)
-						child.material = new THREE.MeshPhongMaterial({
+						// Fallback: use default material
+						child.material = new THREE.MeshStandardMaterial({
 							color: 0xffffff,
 							side: THREE.DoubleSide,
 						});
@@ -26049,9 +26022,11 @@ function drawData(allBlastHoles, selectedHole) {
 		if (imagesGroupVisible) {
 			//console.log("🖼️ [3D IMAGE] Processing images for 3D display. Total images:", loadedImages.size);
 			loadedImages.forEach((image, imageKey) => {
-				// Step 2.3a) REMOVED skip logic - both flattened images AND textured meshes should display in 3D
-				// This allows users to see both the 3D textured mesh and the flattened image plane simultaneously
-
+				// Step 2.3a) Skip flattened OBJ images in 3D mode (textured mesh is rendered instead)
+				if (image.sourceType === "flattened_obj") {
+					console.log("🖼️ [3D IMAGE] Skipping flattened image in 3D mode (textured mesh used instead):", imageKey);
+					return;
+				}
 				
 				console.log("🖼️ [3D IMAGE] Checking image:", imageKey, {
 					visible: image.visible,
@@ -39994,12 +39969,9 @@ function createMaterialFromProperties(materialProps, texture, textureName) {
 		};
 	}
 
-	// CRITICAL FIX: Use MeshPhongMaterial to match MTLLoader's behavior
-	// MTLLoader creates MeshPhongMaterial, not MeshStandardMaterial
-	var material = new THREE.MeshPhongMaterial({
+	var material = new THREE.MeshStandardMaterial({
 		color: new THREE.Color(materialProps.Kd[0] || 1, materialProps.Kd[1] || 1, materialProps.Kd[2] || 1),
-		specular: materialProps.Ks ? new THREE.Color(materialProps.Ks[0], materialProps.Ks[1], materialProps.Ks[2]) : new THREE.Color(0, 0, 0),
-		shininess: materialProps.Ns || 30,
+		shininess: materialProps.Ns || 0,
 		side: THREE.DoubleSide,
 		transparent: false,
 		opacity: 1.0,
@@ -40009,10 +39981,6 @@ function createMaterialFromProperties(materialProps, texture, textureName) {
 	if (texture && texture instanceof THREE.Texture) {
 		material.map = texture;
 		material.needsUpdate = true;
-		console.log("🎨 createMaterialFromProperties: Texture applied to material, colorSpace: " + texture.colorSpace + ", image: " + (texture.image ? "loaded" : "null"));
-		console.log("🎨 createMaterialFromProperties: Created MeshPhongMaterial with Kd: [" + materialProps.Kd.join(", ") + "], Ks: [" + (materialProps.Ks || [0,0,0]).join(", ") + "], Ns: " + (materialProps.Ns || 30));
-	} else {
-		console.warn("🚨 createMaterialFromProperties: No valid texture provided!");
 	}
 
 	return material;
@@ -40663,10 +40631,7 @@ function drawSurface() {
 					console.log("🎥 Rendering textured mesh in 3D: " + surfaceId);
 					drawSurfaceThreeJS(surfaceId, surface.triangles || [], surfaceMinZ, surfaceMaxZ, gradient, surface.transparency || 1.0, surface);
 				} else {
-					if (!surface._skipped3DLogShown) {
-						console.log("🧹 Skipping 3D render (2D-only mode): " + surfaceId);
-						surface._skipped3DLogShown = true;
-					}
+					console.log("🧹 Skipping 3D render (2D-only mode): " + surfaceId);
 				}
 				return; // Textured mesh with texture gradient doesn't have 2D triangle rendering
 			}

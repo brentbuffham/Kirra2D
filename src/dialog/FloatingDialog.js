@@ -215,7 +215,10 @@ class FloatingDialog {
 		// Step 17) Confirm button
 		if (this.options.showConfirm) {
 			const confirmBtn = this.createButton(this.options.confirmText, "confirm", () => {
-				if (this.options.onConfirm) this.options.onConfirm();
+				if (this.options.onConfirm) {
+					const result = this.options.onConfirm();
+					if (result === false) return; // Don't close dialog if callback returns false
+				}
 				this.close();
 			});
 			footer.appendChild(confirmBtn);

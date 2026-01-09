@@ -7,7 +7,10 @@
       "Bash(wc:*)",
       "Bash(pkill:*)",
       "Bash(cat:*)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(/bin/ps:*)"
     ]
   }
 }

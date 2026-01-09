@@ -50,6 +50,8 @@ export class ThreeRenderer {
 	});
 	this.renderer.setSize(width, height);
 	this.renderer.setPixelRatio(window.devicePixelRatio);
+	// Step 5b) CRITICAL: Set sRGB output encoding for correct color space
+	this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 	this.renderer.setClearColor(0x000000, 0); // Transparent
 
 		// Step 5a) Handle WebGL context loss (prevents crashes and enables recovery)

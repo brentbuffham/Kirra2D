@@ -3037,6 +3037,8 @@ export class GeometryFactory {
 		const texture = new THREE.CanvasTexture(imageCanvas);
 		texture.minFilter = THREE.LinearFilter;
 		texture.magFilter = THREE.LinearFilter;
+		// Step 25a) CRITICAL: Set correct color space encoding for accurate colors
+		texture.colorSpace = THREE.SRGBColorSpace;
 
 		// Step 26) Create plane geometry
 		const geometry = new THREE.PlaneGeometry(width, height);
