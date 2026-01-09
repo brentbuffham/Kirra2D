@@ -1672,7 +1672,6 @@
 
 					</div><br> -->
 					<!-- Icon buttons grid -->
-					<hr>
 					Files (Import / Export)
 					<div class="file-io-grid">
 
@@ -2121,7 +2120,7 @@
 						<div class="label2" id="connLabel">Tie Size (units): 3.0</div>
 						<input type="range" id="connSlider" min="0.001" max="15" value="3" step="0.1" placeholder="Select connector size">
 						<div class="label2" id="toeLabel">Toe Size (m): 0.5m</div>
-						<input type="range" id="toeSlider" min="0.001" max="30" value=".5" step="0.1" placeholder="Select toe circle size">
+						<input type="range" id="toeSlider" min="0.000" max="30" value="0.0" step="0.1" placeholder="Select toe circle size">
 						<div class="label2" id="holeLabel">Hole Adjust (units): 2.0</div>
 						<input type="range" id="holeSlider" min="1" max="10" value="2" step="0.1" placeholder="Select hole circle size">
 						<hr class="button-container-divider">
@@ -2147,118 +2146,83 @@
 						</select>
 					</div>
 				</div>
-				<!--
-				OUTPUT FILES
-				<button class="accordion" id="outputfilesAcc">
-					<span>Output Files</span></button>
-				<div class="panel">
-					<div class="label2" id="label_saveHoles">Save Holes to a File (importable)</div>
-					<button class="button-save1" id="saveHoles">
-						KIRRA - Outputs a 14-column *.csv file for saving blasts with names
-					</button>
-					<div class="label2" id="label_saveKAD">Save Drawing to a File (importable)</div>
-					<button class="button-save1" id="saveKAD">
-						KAD - Outputs a Kirra App Drawing *.kad file for saving drawings
-					</button>
-					<div class="label2" id="label_saveAll">Save All Hole Aspects to a File (shareable)</div>
-					<button class="button-save3" id="saveAll">
-						EXTRA - Includes Length, Dip, Angle, Bearing, and Initiation Time
-					</button>
-					<div class="label2" id="label_saveMeasures">Save Actual Values to a File (shareable)</div>
-					<button class="button-save3" id="saveMeasures">
-						EXTRA - Outputs measured depth and charge kilograms
-					</button>
-					<div class="label2" id="label_exportHolesDXF">Export Holes to DXF</div>
-					<button class="button-save2" id="exportHolesDXF">Export Holes to DXF, Collar, Track and Hole Id
-						as Text
-						Object</button>
-					<div class="label2" id="label_exportDrawingDXF">Export Drawing to DXF</div>
-					<button class="button-save2" id="exportDrawingDXF">Export Drawing to DXF, points, lines, poly,
-						circles,
-						text</button>
-					<div class="label2" id="label_saveIREDES">Export for Epiroc Surface Manager</div>
-					<button class="button-save2" id="saveIREDES">
-						EPIROC - XML - IREDES XML including diameter and hole type
-					</button>
-					<div class="label2" id="label_saveAQM">Export for MineStar AQM</div>
-					<button class="button-save2" id="saveAQM">
-						MINESTAR - AQM - Outputs up to 11 columns (Angle, Azimuth, Diameter, etc.)
-					</button>
-				</div>
-				-->
-				<!-- Output Files section commented out to hide UI, but panel/button DIVs may be referenced in JS.
-				     We keep placeholder elements to avoid breaking ID lookups in JS. -->
-				<div style="display:none">
-					<button class="accordion" id="outputfilesAcc" style="display:none">
+				<!-- OUTPUT FILES -->
+				<div style="display:none;">
+					<button class="accordion" id="outputfilesAcc">
 						<span>Output Files</span></button>
-					<div class="panel" style="display:none">
-						<div class="label2" id="label_saveHoles"></div>
-						<button class="button-save1" id="saveHoles"></button>
-						<div class="label2" id="label_saveKAD"></div>
-						<button class="button-save1" id="saveKAD"></button>
-						<div class="label2" id="label_saveAll"></div>
-						<button class="button-save3" id="saveAll"></button>
-						<div class="label2" id="label_saveMeasures"></div>
-						<button class="button-save3" id="saveMeasures"></button>
-						<div class="label2" id="label_exportHolesDXF"></div>
-						<button class="button-save2" id="exportHolesDXF"></button>
-						<div class="label2" id="label_exportDrawingDXF"></div>
-						<button class="button-save2" id="exportDrawingDXF"></button>
-						<div class="label2" id="label_saveIREDES"></div>
-						<button class="button-save2" id="saveIREDES"></button>
-						<div class="label2" id="label_saveAQM"></div>
-						<button class="button-save2" id="saveAQM"></button>
+					<div class="panel">
+						<div class="label2" id="label_saveHoles">Save Holes to a File (importable)</div>
+						<button class="button-save1" id="saveHoles">
+							KIRRA - Outputs a 14-column *.csv file for saving blasts with names
+						</button>
+						<div class="label2" id="label_saveKAD">Save Drawing to a File (importable)</div>
+						<button class="button-save1" id="saveKAD">
+							KAD - Outputs a Kirra App Drawing *.kad file for saving drawings
+						</button>
+						<div class="label2" id="label_saveAll">Save All Hole Aspects to a File (shareable)</div>
+						<button class="button-save3" id="saveAll">
+							EXTRA - Includes Length, Dip, Angle, Bearing, and Initiation Time
+						</button>
+						<div class="label2" id="label_saveMeasures">Save Actual Values to a File (shareable)</div>
+						<button class="button-save3" id="saveMeasures">
+							EXTRA - Outputs measured depth and charge kilograms
+						</button>
+						<div class="label2" id="label_exportHolesDXF">Export Holes to DXF</div>
+						<button class="button-save2" id="exportHolesDXF">Export Holes to DXF, Collar, Track and Hole Id
+							as Text
+							Object</button>
+						<div class="label2" id="label_exportDrawingDXF">Export Drawing to DXF</div>
+						<button class="button-save2" id="exportDrawingDXF">Export Drawing to DXF, points, lines, poly,
+							circles,
+							text</button>
+						<div class="label2" id="label_saveIREDES">Export for Epiroc Surface Manager</div>
+						<button class="button-save2" id="saveIREDES">
+							EPIROC - XML - IREDES XML including diameter and hole type
+						</button>
+						<div class="label2" id="label_saveAQM">Export for MineStar AQM</div>
+						<button class="button-save2" id="saveAQM">
+							MINESTAR - AQM - Outputs up to 11 columns (Angle, Azimuth, Diameter, etc.)
+						</button>
 					</div>
 				</div>
 
 				<button class="accordion" id="aboutAcc">
 					<span>About</span></button>
 				<div class="panel" id="aboutPanel">
-					<!-- add a developer mode button-->
-					<input type="checkbox" id="developerMode"> <label for="developerMode">Developer Mode</label>
-					<br>
-					<!-- add a 3D screen space Snapping on/off mode button-->
-					<input type="checkbox" id="screenSpaceSnapping" checked> <label for="screenSpaceSnapping">Screen Space Snapping</label>
-					<br>
-					<input type="checkbox" id="rowAndPosDisplay"> <label for="rowAndPosDisplay">Row and Position
-						Display</label>
-					<br>
-					<!--<input type="checkbox" id="onlyShowThreeJS"> <label for="onlyShowThreeJS">Only Show Three.js</label> -->
-					<hr>
-					Rollback Options:
-					<br>
-					<input type="checkbox" id="use3DSimplification" checked> <label for="use3DSimplification">Use 3D Simplification</label>
-					<br>
-					<input type="checkbox" id="useInstancedHoles"> <label for="useInstancedHoles">Use Instanced Holes</label> <!--unchecked by default-->
-					<br>
-					<hr>
-					GPU Memory Management:
-					<br>
-					<button class="button-norm" id="freeGPUMemoryButton" title="Free GPU memory used by CAD drawings">Free CAD GPU Memory</button>
-					<br>
-					<br>
+					<font size="1"><i>Created by Brent Buffham &#169; 2026. <br>
+					</font></i>
+
+					<button class="accordion" id="aboutAcc">
+						<span>Developer</span></button>
+					<div class="panel" id="developerPanel">
+						<!-- add a developer mode button-->
+						<input type="checkbox" id="developerMode"> <label for="developerMode">Developer Mode</label>
+						<br>
+						<!-- add a 3D screen space Snapping on/off mode button-->
+						<input type="checkbox" id="screenSpaceSnapping" checked> <label for="screenSpaceSnapping">Screen Space Snapping</label>
+						<br>
+						<input type="checkbox" id="rowAndPosDisplay"> <label for="rowAndPosDisplay">Row and Position
+							Display</label>
+						<br>
+						<!--<input type="checkbox" id="onlyShowThreeJS"> <label for="onlyShowThreeJS">Only Show Three.js</label> -->
+						<hr>
+						Rollback Options:
+						<br>
+						<input type="checkbox" id="use3DSimplification" checked> <label for="use3DSimplification">Use 3D Simplification</label>
+						<br>
+						<input type="checkbox" id="useInstancedHoles" checked> <label for="useInstancedHoles">Use Instanced Holes</label> <!--unchecked by default-->
+						<br>
+						<hr>
+						GPU Memory Management:
+						<br>
+						<button class="button-norm" id="freeGPUMemoryButton" title="Free GPU memory used by CAD drawings">
+							Free CAD GPU Memory
+						</button>
+					</div>
 					<!-- Other optional options should go here for developemnt testing and checks-->
 					<!-- These should be stored in the local storage so that they are remembered between sessions in developerOptionsStore.-->
 
-					<font size="1"><i>Created by Brent Buffham &#169; 2023. <br>
-							<hr> <br>
-							Importing a CSV files: NO HEADERS
-							<br>
-							<br>4 column (ID, X, Y, Z) = Dummy Holes or
-							<br>7 column (ID, X, Y, Z, toeX, toeY, toeZ) = Blast Holes or
-							<br>9 column (ID, X, Y, Z, toeX, ToeY, ToeZ, Hole Diameter, Hole Type) or
-							<br>12 column (ID, X, Y, Z, toeX, ToeY, ToeZ, Hole Diameter, Hole Type, FromHole, Delay, Color)
-							or
-							<br>14 column (entityName, entityType, ID, X, Y, Z, toeX, ToeY, ToeZ, Hole Diameter, Hole Type,
-							FromHole, Delay, Color,
-							Color) or
-							<br>30 column (entityName,entityType,ID ,X,Y,Z,toeX,toeY,gradeX,gradeY, gradeZ, subdrillAmount,
-							subdrillLength, benchHeight, holeDiameter, holeType, fromHoleID, timingDelayMilliseconds,
-							colorHexDecimal, holeLengthCalculated, holeAngle,holeBearing,initiationTime, measuredLength,
-							measuredLengthTimeStamp, measuredMass, measuredMassTimeStamp, measuredComment,
-							measuredCommentTimeStamp) full hole data
-							<br>
-					</font></i>
+
 				</div>
 				<div id="resizeHandleLeft" class="resize-handle-left"></div>
 			</div>

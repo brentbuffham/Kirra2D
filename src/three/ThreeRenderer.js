@@ -188,11 +188,15 @@ export class ThreeRenderer {
 		// Step 8a) Instanced rendering for holes (optional optimization)
 		// These are only populated when useInstancedHoles is enabled
 		this.instancedCollars = null; // InstancedMesh for collar circles
-		this.instancedGrades = null; // InstancedMesh for grade circles
-		this.instancedToes = null; // InstancedMesh for toe markers
+		this.instancedGradesPositive = null; // InstancedMesh for grade circles (positive subdrill, RED solid)
+		this.instancedGradesNegative = null; // InstancedMesh for grade circles (negative/zero subdrill, RED transparent)
+		this.instancedToes = null; // InstancedMesh for toe circles
 		this.instanceIdToHole = new Map(); // instanceId -> hole data object
 		this.holeToInstanceId = new Map(); // holeId string -> instanceId number
 		this.instancedHolesCount = 0; // Current count of instanced holes
+
+		// Step 8b) Instanced rendering for direction arrows (optional optimization)
+		this.instancedDirectionArrows = null; // InstancedMesh for first movement direction arrows
 
 		// Step 9) Raycaster for selection
 		this.raycaster = new THREE.Raycaster();
@@ -1080,12 +1084,20 @@ export class ThreeRenderer {
 			this.instancedCollars = null;
 		}
 
-		// Step 22a.2) Dispose grade circle instances
-		if (this.instancedGrades) {
-			this.holesGroup.remove(this.instancedGrades);
-			if (this.instancedGrades.geometry) this.instancedGrades.geometry.dispose();
-			if (this.instancedGrades.material) this.instancedGrades.material.dispose();
-			this.instancedGrades = null;
+		// Step 22a.2) Dispose positive grade circle instances
+		if (this.instancedGradesPositive) {
+			this.holesGroup.remove(this.instancedGradesPositive);
+			if (this.instancedGradesPositive.geometry) this.instancedGradesPositive.geometry.dispose();
+			if (this.instancedGradesPositive.material) this.instancedGradesPositive.material.dispose();
+			this.instancedGradesPositive = null;
+		}
+
+		// Step 22a.2b) Dispose negative grade circle instances
+		if (this.instancedGradesNegative) {
+			this.holesGroup.remove(this.instancedGradesNegative);
+			if (this.instancedGradesNegative.geometry) this.instancedGradesNegative.geometry.dispose();
+			if (this.instancedGradesNegative.material) this.instancedGradesNegative.material.dispose();
+			this.instancedGradesNegative = null;
 		}
 
 		// Step 22a.3) Dispose toe instances
@@ -1096,7 +1108,20 @@ export class ThreeRenderer {
 			this.instancedToes = null;
 		}
 
-		// Step 22a.4) Clear mapping tables
+		// Step 22a.4) Dispose direction arrow instances (Group containing shafts and heads)
+		if (this.instancedDirectionArrows) {
+			this.contoursGroup.remove(this.instancedDirectionArrows);
+			// Dispose all children (instancedShafts and instancedHeads)
+			this.instancedDirectionArrows.traverse((child) => {
+				if (child.isInstancedMesh) {
+					if (child.geometry) child.geometry.dispose();
+					if (child.material) child.material.dispose();
+				}
+			});
+			this.instancedDirectionArrows = null;
+		}
+
+		// Step 22a.5) Clear mapping tables
 		this.instanceIdToHole.clear();
 		this.holeToInstanceId.clear();
 		this.instancedHolesCount = 0;
@@ -1133,10 +1158,10 @@ export class ThreeRenderer {
 		}
 
 		// Step 22b.5) Update grade circle instance position
-		if (this.instancedGrades) {
-			this.instancedGrades.setMatrixAt(instanceId, matrix);
-			this.instancedGrades.instanceMatrix.needsUpdate = true;
-		}
+		// NOTE: With split positive/negative grade instances, we can't easily update grades
+		// because instanceId refers to collar index, but grades have separate indices
+		// For now, grades remain static - can be improved later if needed
+		// TODO: Track grade instance indices separately if dynamic grade updates are needed
 
 		// Step 22b.6) Update toe instance position (if applicable)
 		if (this.instancedToes) {

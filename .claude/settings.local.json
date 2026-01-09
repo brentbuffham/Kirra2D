@@ -10,7 +10,9 @@
       "Bash(find:*)",
       "Bash(npm run build:*)",
       "Bash(npm run dev:*)",
-      "Bash(/bin/ps:*)"
+      "Bash(/bin/ps:*)",
+      "Bash(lsof:*)",
+      "Bash(git checkout:*)"
     ]
   }
 }

@@ -12114,9 +12114,13 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 						// DIAGNOSTIC: Log initial material type from MTLLoader
 						console.log("🎨 INITIAL LOAD: Material type from MTLLoader: " + child.material.type);
 						console.log("🎨 INITIAL LOAD: Material color: rgb(" + (child.material.color.r * 255).toFixed(0) + ", " + (child.material.color.g * 255).toFixed(0) + ", " + (child.material.color.b * 255).toFixed(0) + ")");
+						console.log("🎨 INITIAL LOAD: Has map: " + !!child.material.map + ", map colorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
+						console.log("🎨 INITIAL LOAD: Has emissive: " + child.material.emissive.getHexString() + ", emissiveIntensity: " + child.material.emissiveIntensity);
 						if (child.material.type === "MeshPhongMaterial") {
 							console.log("🎨 INITIAL LOAD: Phong shininess: " + child.material.shininess + ", specular: " + child.material.specular.getHexString());
+							console.log("🎨 INITIAL LOAD: Phong emissiveMap: " + !!child.material.emissiveMap + ", lightMap: " + !!child.material.lightMap);
 						}
+						console.log("🎨 INITIAL LOAD: Material side: " + child.material.side + ", depthTest: " + child.material.depthTest + ", depthWrite: " + child.material.depthWrite);
 
 						child.material.side = THREE.DoubleSide;
 
@@ -12394,6 +12398,14 @@ function rebuildTexturedMesh(surfaceId) {
 						texture.needsUpdate = true;
 						loadedTextures[texName] = texture;
 						loadedTextures[texName.toLowerCase()] = texture;
+
+						// DIAGNOSTIC: Check if image data is valid
+						if (texture.image) {
+							console.log("🎨 REBUILD TEXTURE: Image loaded - width: " + texture.image.width + ", height: " + texture.image.height + ", complete: " + texture.image.complete);
+						} else {
+							console.error("🚨 REBUILD TEXTURE: No image data in texture!");
+						}
+
 						resolveTexture();
 					},
 					undefined,
@@ -12412,12 +12424,36 @@ function rebuildTexturedMesh(surfaceId) {
 			var objLoader = new OBJLoader();
 			var object3D = objLoader.parse(surface.objContent);
 			object3D.name = surface.name;
-			// DIAGNOSTIC: Check if geometry has UV coordinates
+
+			// Step 5a) CRITICAL FIX: Transform OBJ vertices from world coordinates to mesh-centered coordinates
+			// The OBJ file stores vertices in world coordinates (UTM)
+			// We need to center them around the mesh origin (like OBJLoader does on first load)
+			// Then the mesh group will be positioned at mesh center in local Three.js space
+			var meshCenterX = surface.meshBounds ? (surface.meshBounds.minX + surface.meshBounds.maxX) / 2 : 0;
+			var meshCenterY = surface.meshBounds ? (surface.meshBounds.minY + surface.meshBounds.maxY) / 2 : 0;
+
+			console.log("🎨 REBUILD: Centering OBJ vertices around mesh center: (" + meshCenterX.toFixed(2) + ", " + meshCenterY.toFixed(2) + ")");
+
 			object3D.traverse(function(child) {
-			if (child.isMesh && child.geometry) {
-				var hasUV = child.geometry.attributes.uv !== undefined;
-				console.log("🎨 REBUILD: Mesh geometry hasUV: " + hasUV + ", uvCount: " + (hasUV ? child.geometry.attributes.uv.count : 0));
-			}
+				if (child.isMesh && child.geometry) {
+					var positions = child.geometry.attributes.position;
+					if (positions) {
+						var posArray = positions.array;
+						// Transform each vertex: subtract mesh center from X and Y to center around origin
+						for (var i = 0; i < posArray.length; i += 3) {
+							posArray[i] -= meshCenterX;     // X coordinate
+							posArray[i + 1] -= meshCenterY;  // Y coordinate
+							// Z coordinate stays as-is (elevation)
+						}
+						positions.needsUpdate = true;
+						child.geometry.computeBoundingSphere(); // Recompute bounding sphere after transform
+						console.log("🎨 REBUILD: Centered " + (posArray.length / 3) + " vertices around mesh origin");
+					}
+
+					// DIAGNOSTIC: Check if geometry has UV coordinates
+					var hasUV = child.geometry.attributes.uv !== undefined;
+					console.log("🎨 REBUILD: Mesh geometry hasUV: " + hasUV + ", uvCount: " + (hasUV ? child.geometry.attributes.uv.count : 0));
+				}
 			});
 
 			// Step 5a) Create materials from stored properties + texture blobs
@@ -12469,7 +12505,16 @@ function rebuildTexturedMesh(surfaceId) {
 						// Each mesh child can share the same material instance
 						child.material = material;
 						child.material.side = THREE.DoubleSide;
-						console.log("🎨 REBUILD: Applied material to mesh child, hasTexture: " + (child.material.map ? "YES" : "NO"));
+						console.log("🎨 REBUILD: Applied material to mesh child");
+						console.log("🎨 REBUILD: Material type: " + child.material.type);
+						console.log("🎨 REBUILD: Material color: rgb(" + (child.material.color.r * 255).toFixed(0) + ", " + (child.material.color.g * 255).toFixed(0) + ", " + (child.material.color.b * 255).toFixed(0) + ")");
+						console.log("🎨 REBUILD: Has map: " + !!child.material.map + ", map colorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
+						console.log("🎨 REBUILD: Has emissive: " + child.material.emissive.getHexString() + ", emissiveIntensity: " + (child.material.emissiveIntensity || 1));
+						if (child.material.type === "MeshPhongMaterial") {
+							console.log("🎨 REBUILD: Phong shininess: " + child.material.shininess + ", specular: " + child.material.specular.getHexString());
+							console.log("🎨 REBUILD: Phong emissiveMap: " + !!child.material.emissiveMap + ", lightMap: " + !!child.material.lightMap);
+						}
+						console.log("🎨 REBUILD: Material side: " + child.material.side + ", depthTest: " + child.material.depthTest + ", depthWrite: " + child.material.depthWrite);
 						texturesApplied++;
 					} else {
 						// Fallback: use default material (MeshPhongMaterial to match MTLLoader)
@@ -28174,8 +28219,12 @@ function updateLoadingProgress(dialog, message, percent, isError) {
 
 async function loadAllSurfacesIntoMemory() {
 	try {
-		if (!db) return;
+		if (!db) {
+			console.error("❌ Database not initialized - cannot load surfaces");
+			return;
+		}
 
+		console.log("🔄 Loading surfaces from IndexedDB...");
 		var transaction = db.transaction([SURFACE_STORE_NAME], "readonly");
 		var store = transaction.objectStore(SURFACE_STORE_NAME);
 		var request = store.getAll();
@@ -28183,9 +28232,11 @@ async function loadAllSurfacesIntoMemory() {
 		return new Promise(function (resolve) {
 			request.onsuccess = function () {
 				var surfaces = request.result || [];
+				console.log("📊 IndexedDB returned " + surfaces.length + " surface(s)");
 				var texturedSurfaceIds = [];
 
 				surfaces.forEach(function (surfaceData, index) {
+					console.log("🔍 Processing surface " + (index + 1) + ": " + surfaceData.id + ", isTexturedMesh: " + surfaceData.isTexturedMesh);
 					// Step 1) Create base surface entry
 					var surfaceEntry = {
 						id: surfaceData.id,
@@ -28202,6 +28253,7 @@ async function loadAllSurfacesIntoMemory() {
 
 					// Step 2) Check if this is a textured mesh
 					if (surfaceData.isTexturedMesh) {
+						console.log("✅ Found textured mesh: " + surfaceData.id);
 						surfaceEntry.isTexturedMesh = true;
 						surfaceEntry.objContent = surfaceData.objContent || null;
 						surfaceEntry.mtlContent = surfaceData.mtlContent || null;
@@ -28216,6 +28268,12 @@ async function loadAllSurfacesIntoMemory() {
 							console.warn("🚨 No material properties found for textured mesh: " + surfaceData.id);
 						}
 
+						if (surfaceEntry.textureBlobs) {
+							console.log("🧊 Loaded texture blobs for surface: " + surfaceData.id + ", count: " + Object.keys(surfaceEntry.textureBlobs).length);
+						} else {
+							console.warn("🚨 No texture blobs found for textured mesh: " + surfaceData.id);
+						}
+
 						// Step 2a) Load flattened image from saved data if available
 						if (surfaceData.flattenedImageDataURL) {
 							surfaceEntry.flattenedImageDataURL = surfaceData.flattenedImageDataURL;
@@ -28226,6 +28284,7 @@ async function loadAllSurfacesIntoMemory() {
 
 						// Track for later rebuilding
 						texturedSurfaceIds.push(surfaceData.id);
+						console.log("📝 Added to rebuild list: " + surfaceData.id + ", total textured surfaces: " + texturedSurfaceIds.length);
 					}
 
 					loadedSurfaces.set(surfaceData.id, surfaceEntry);
@@ -40136,6 +40195,8 @@ function createMaterialFromProperties(materialProps, texture, textureName) {
 		transparent: false,
 		opacity: 1.0,
 	});
+
+	console.log("🎨 createMaterialFromProperties: Created material with emissive: " + material.emissive.getHexString() + ", emissiveIntensity: " + material.emissiveIntensity);
 
 	// Apply texture if available (texture is already a THREE.Texture object)
 	if (texture && texture instanceof THREE.Texture) {

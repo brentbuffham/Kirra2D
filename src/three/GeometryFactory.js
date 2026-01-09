@@ -3,6 +3,7 @@
 // GeometryFactory.js - Reusable Three.js geometry creators
 //=================================================
 import * as THREE from "three";
+import * as BufferGeometryUtils from "three/examples/jsm/utils/BufferGeometryUtils.js";
 // MeshLine removed - now using LineMaterial/LineSegments2 (fat lines) for all thick lines
 import { Text } from "troika-three-text";
 // Step A1) Fat Line imports for variable line thickness
@@ -222,20 +223,17 @@ export class GeometryFactory {
 			const collarToGradeLine = new THREE.Line(collarToGradeGeometry, collarToGradeMaterial);
 			group.add(collarToGradeLine);
 
-			// Step 4b) Draw RED dashed line from grade to toe (subdrill portion)
+			// Step 4b) Draw RED SOLID line from grade to toe (subdrill portion)
 			if (subdrillAmount > 0) {
 				const gradeToToePoints = [new THREE.Vector3(gradeX, gradeY, gradeZ), new THREE.Vector3(toeX, toeY, toeZ)];
 				const gradeToToeGeometry = new THREE.BufferGeometry().setFromPoints(gradeToToePoints);
-				const gradeToToeMaterial = new THREE.LineDashedMaterial({
+				const gradeToToeMaterial = new THREE.LineBasicMaterial({
 					color: 0xff0000,
 					linewidth: 1,
-					dashSize: 0.05,
-					gapSize: 0.025,
 					transparent: false,
 					opacity: 1.0,
 				});
 				const gradeToToeLine = new THREE.Line(gradeToToeGeometry, gradeToToeMaterial);
-				gradeToToeLine.computeLineDistances();
 				group.add(gradeToToeLine);
 			}
 		}
@@ -3075,10 +3073,14 @@ export class GeometryFactory {
 
 	// Step 28) Create instanced holes for performance optimization
 	// Returns an object containing InstancedMesh objects and mapping tables
-	static createInstancedHoles(allBlastHoles, holeScale, isDarkMode, worldToThreeLocal) {
+	static createInstancedHoles(allBlastHoles, holeScale, isDarkMode, worldToThreeLocal, toeSizeInMeters, showConnectors) {
 		if (!allBlastHoles || allBlastHoles.length === 0) {
 			return null;
 		}
+
+		// Default values
+		toeSizeInMeters = toeSizeInMeters || 1.0;
+		showConnectors = showConnectors !== undefined ? showConnectors : false;
 
 		var visibleHoles = allBlastHoles.filter(function(hole) {
 			return hole.visible !== false;
@@ -3114,65 +3116,244 @@ export class GeometryFactory {
 		var instancedCollars = new THREE.InstancedMesh(collarGeometry, collarMaterial, holeCount);
 		instancedCollars.userData = { type: "instancedHoleCollars" };
 
-		// Step 28c) Create shared geometry for grade circles (smaller than collar)
+		// Step 28c) Count holes by subdrill type (positive vs negative/zero)
+		var positiveSubdrillHoles = [];
+		var negativeSubdrillHoles = [];
+		for (var i = 0; i < visibleHoles.length; i++) {
+			var subdrill = visibleHoles[i].subdrillAmount || 0;
+			if (subdrill > 0) {
+				positiveSubdrillHoles.push(visibleHoles[i]);
+			} else {
+				negativeSubdrillHoles.push(visibleHoles[i]);
+			}
+		}
+
+		// Step 28d) Create shared geometry for grade circles (smaller than collar, RED)
 		var gradeRadiusMeters = avgRadiusMeters * 0.5;
 		var gradeGeometry = new THREE.CircleGeometry(gradeRadiusMeters, 32);
-		var gradeMaterial = new THREE.MeshBasicMaterial({
-			color: collarColor,
+
+		// Step 28d.1) Create material for POSITIVE subdrill grades (RED, solid)
+		var gradeMatPos = new THREE.MeshBasicMaterial({
+			color: 0xff0000, // RED
+			side: THREE.DoubleSide,
+			transparent: false,
+			opacity: 1.0,
+			depthTest: true,
+			depthWrite: true
+		});
+
+		// Step 28d.2) Create material for NEGATIVE/ZERO subdrill grades (RED, transparent)
+		var gradeMatNeg = new THREE.MeshBasicMaterial({
+			color: 0xff0000, // RED
 			side: THREE.DoubleSide,
 			transparent: true,
-			opacity: 0.5,
+			opacity: 0.2,
 			depthTest: true,
 			depthWrite: false
 		});
-		var instancedGrades = new THREE.InstancedMesh(gradeGeometry, gradeMaterial, holeCount);
-		instancedGrades.userData = { type: "instancedHoleGrades" };
 
-		// Step 28d) Create mapping tables
+		// Step 28e) Create InstancedMesh for positive subdrill grades (may be 0 if no positive grades)
+		var instancedGradesPositive = null;
+		if (positiveSubdrillHoles.length > 0) {
+			instancedGradesPositive = new THREE.InstancedMesh(gradeGeometry, gradeMatPos, positiveSubdrillHoles.length);
+			instancedGradesPositive.userData = { type: "instancedHoleGrades" };
+		}
+
+		// Step 28f) Create InstancedMesh for negative/zero subdrill grades
+		var instancedGradesNegative = null;
+		if (negativeSubdrillHoles.length > 0) {
+			instancedGradesNegative = new THREE.InstancedMesh(gradeGeometry.clone(), gradeMatNeg, negativeSubdrillHoles.length);
+			instancedGradesNegative.userData = { type: "instancedHoleGrades" };
+		}
+
+		// Step 28g) Create mapping tables
 		var instanceIdToHole = new Map();
 		var holeToInstanceId = new Map();
 
-		// Step 28e) Set positions for each hole instance
+		// Step 28h) Set positions for each hole instance
 		var matrix = new THREE.Matrix4();
 		var gradeMatrix = new THREE.Matrix4();
-		
+		var posIdx = 0;
+		var negIdx = 0;
+
 		for (var i = 0; i < visibleHoles.length; i++) {
 			var hole = visibleHoles[i];
 			var holeId = hole.entityName + ":::" + hole.holeID;
-			
-			// Step 28e.1) Convert world coordinates to local Three.js coordinates
+
+			// Step 28h.1) Convert world coordinates to local Three.js coordinates
 			var collarLocal = worldToThreeLocal(hole.startXLocation, hole.startYLocation);
 			var collarZ = hole.startZLocation || 0;
-			
-			// Step 28e.2) Set collar instance matrix
+
+			// Step 28h.2) Set collar instance matrix
 			matrix.identity();
 			matrix.setPosition(collarLocal.x, collarLocal.y, collarZ);
 			instancedCollars.setMatrixAt(i, matrix);
-			
-			// Step 28e.3) Set grade circle instance matrix
+
+			// Step 28h.3) Set grade circle instance matrix (in correct InstancedMesh)
 			var gradeLocal = worldToThreeLocal(hole.gradeXLocation, hole.gradeYLocation);
 			var gradeZ = hole.gradeZLocation || 0;
 			gradeMatrix.identity();
 			gradeMatrix.setPosition(gradeLocal.x, gradeLocal.y, gradeZ);
-			instancedGrades.setMatrixAt(i, gradeMatrix);
-			
-			// Step 28e.4) Store mappings
+
+			var subdrill = hole.subdrillAmount || 0;
+			if (subdrill > 0 && instancedGradesPositive) {
+				instancedGradesPositive.setMatrixAt(posIdx, gradeMatrix);
+				posIdx++;
+			} else if (instancedGradesNegative) {
+				instancedGradesNegative.setMatrixAt(negIdx, gradeMatrix);
+				negIdx++;
+			}
+
+			// Step 28h.4) Store mappings
 			instanceIdToHole.set(i, hole);
 			holeToInstanceId.set(holeId, i);
 		}
 
-		// Step 28f) Update instance matrices
+		// Step 28i) Update instance matrices
 		instancedCollars.instanceMatrix.needsUpdate = true;
-		instancedGrades.instanceMatrix.needsUpdate = true;
+		if (instancedGradesPositive) {
+			instancedGradesPositive.instanceMatrix.needsUpdate = true;
+		}
+		if (instancedGradesNegative) {
+			instancedGradesNegative.instanceMatrix.needsUpdate = true;
+		}
 
-		// Step 28g) Return all components
+		// Step 28j) Create instanced toe circles (all same size and color)
+		var toeColor = isDarkMode ? 0x5eacff : 0x26ff00; // Blue in dark mode, green in light mode
+		var toeRadiusMeters = toeSizeInMeters; // Use slider value
+
+		var toeGeometry = new THREE.CircleGeometry(toeRadiusMeters, 32);
+		var toeMaterial = new THREE.MeshBasicMaterial({
+			color: toeColor,
+			side: THREE.DoubleSide,
+			transparent: true,
+			opacity: 0.2,
+			depthTest: true,
+			depthWrite: false
+		});
+
+		var instancedToes = new THREE.InstancedMesh(toeGeometry, toeMaterial, holeCount);
+		instancedToes.userData = { type: "instancedHoleToes" };
+
+		// Set toe positions
+		var toeMatrix = new THREE.Matrix4();
+		for (var i = 0; i < visibleHoles.length; i++) {
+			var hole = visibleHoles[i];
+			var toeLocal = worldToThreeLocal(hole.endXLocation, hole.endYLocation);
+			var toeZ = hole.endZLocation || 0;
+			toeMatrix.identity();
+			toeMatrix.setPosition(toeLocal.x, toeLocal.y, toeZ);
+			instancedToes.setMatrixAt(i, toeMatrix);
+		}
+		instancedToes.instanceMatrix.needsUpdate = true;
+
+		// Step 28k) Return all components
 		return {
 			instancedCollars: instancedCollars,
-			instancedGrades: instancedGrades,
+			instancedGradesPositive: instancedGradesPositive,
+			instancedGradesNegative: instancedGradesNegative,
+			instancedToes: instancedToes,
 			instanceIdToHole: instanceIdToHole,
 			holeToInstanceId: holeToInstanceId,
 			holeCount: holeCount
 		};
+	}
+
+	// Step 28.5) Create instanced first movement direction arrows
+	// Takes directionArrows array: [startX, startY, endX, endY, fillColor, size]
+	// Returns Group containing two InstancedMeshes (shafts and heads separate for proper scaling)
+	static createInstancedDirectionArrows(directionArrows, allBlastHoles, worldToThreeLocalFn) {
+		if (!directionArrows || directionArrows.length === 0) {
+			return null;
+		}
+
+		const arrowCount = directionArrows.length;
+
+		// Step 28.5a) Extract arrow size from first arrow (all arrows same size currently)
+		const firstArrow = directionArrows[0];
+		const size = firstArrow[5]; // size parameter
+
+		// Step 28.5b) Calculate arrow dimensions (matching createDirectionArrows logic)
+		const shaftSize = size * 0.2;         // Square cross-section
+		const arrowHeadLength = size * 0.4;   // Cone length
+		const arrowHeadRadius = size * 0.35;  // Cone base radius
+
+		// Step 28.5c) Create shaft geometry (box) - unit length, will be scaled per instance
+		const shaftGeometry = new THREE.BoxGeometry(1, shaftSize, shaftSize);
+		shaftGeometry.translate(0.5, 0, 0); // Move pivot to start (left edge at origin)
+
+		// Step 28.5d) Create arrowhead geometry (cone pointing along +X)
+		const coneGeometry = new THREE.ConeGeometry(arrowHeadRadius, arrowHeadLength, 4);
+		coneGeometry.rotateZ(-Math.PI / 2); // Rotate to point along +X axis
+
+		// Step 28.5e) Create material (goldenrod for all arrows)
+		const arrowMaterial = new THREE.MeshBasicMaterial({
+			color: 0xdaa520, // goldenrod
+			side: THREE.DoubleSide
+		});
+
+		// Step 28.5f) Create InstancedMesh for shafts (scaled per instance)
+		const instancedShafts = new THREE.InstancedMesh(shaftGeometry, arrowMaterial, arrowCount);
+		instancedShafts.userData = { type: "instancedDirectionArrowShafts" };
+
+		// Step 28.5g) Create InstancedMesh for heads (positioned per instance, not scaled)
+		const instancedHeads = new THREE.InstancedMesh(coneGeometry, arrowMaterial, arrowCount);
+		instancedHeads.userData = { type: "instancedDirectionArrowHeads" };
+
+		// Step 28.5h) Set position, rotation, and scale for each arrow
+		const shaftMatrix = new THREE.Matrix4();
+		const headMatrix = new THREE.Matrix4();
+		const position = new THREE.Vector3();
+		const quaternion = new THREE.Quaternion();
+		const shaftScale = new THREE.Vector3(1, 1, 1);
+		const headScale = new THREE.Vector3(1, 1, 1);
+
+		for (let i = 0; i < arrowCount; i++) {
+			const arrow = directionArrows[i];
+			const [startX, startY, endX, endY, fillColor, arrowSize] = arrow;
+
+			// Step 28.5i) Find nearest hole for collar Z elevation
+			const nearestHole = this.findNearestHole(startX, startY, allBlastHoles);
+			const collarZ = nearestHole ? nearestHole.startZLocation || 0 : 0;
+
+			// Step 28.5j) Convert to local Three.js coordinates
+			const localStart = worldToThreeLocalFn ? worldToThreeLocalFn(startX, startY) : { x: startX, y: startY };
+			const localEnd = worldToThreeLocalFn ? worldToThreeLocalFn(endX, endY) : { x: endX, y: endY };
+
+			// Step 28.5k) Calculate arrow vector and length
+			const dx = localEnd.x - localStart.x;
+			const dy = localEnd.y - localStart.y;
+			const totalLength = Math.sqrt(dx * dx + dy * dy);
+			const angle = Math.atan2(dy, dx);
+			const shaftLength = totalLength - arrowHeadLength;
+
+			// Step 28.5l) Set shaft matrix (position at start, scale to shaft length)
+			position.set(localStart.x, localStart.y, collarZ + shaftSize / 2);
+			quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), angle);
+			shaftScale.set(shaftLength, 1, 1);
+			shaftMatrix.compose(position, quaternion, shaftScale);
+			instancedShafts.setMatrixAt(i, shaftMatrix);
+
+			// Step 28.5m) Set head matrix (position at end of shaft, same rotation, no scale)
+			// Cone center needs to be at (shaftLength + arrowHeadLength/2) from start
+			const headCenterX = localStart.x + (shaftLength + arrowHeadLength / 2) * Math.cos(angle);
+			const headCenterY = localStart.y + (shaftLength + arrowHeadLength / 2) * Math.sin(angle);
+			position.set(headCenterX, headCenterY, collarZ + shaftSize / 2);
+			headMatrix.compose(position, quaternion, headScale);
+			instancedHeads.setMatrixAt(i, headMatrix);
+		}
+
+		// Step 28.5n) Mark instance matrices as needing update
+		instancedShafts.instanceMatrix.needsUpdate = true;
+		instancedHeads.instanceMatrix.needsUpdate = true;
+
+		// Step 28.5o) Create group and add both instanced meshes
+		const arrowGroup = new THREE.Group();
+		arrowGroup.add(instancedShafts);
+		arrowGroup.add(instancedHeads);
+		arrowGroup.userData = { type: "instancedDirectionArrows" };
+
+		return arrowGroup;
 	}
 
 	// Step 29) Create batched highlight lines for multi-selection performance

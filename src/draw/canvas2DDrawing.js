@@ -136,6 +136,9 @@ export function drawTrack(lineStartX, lineStartY, lineEndX, lineEndY, gradeX, gr
 }
 
 export function drawHoleToe(x, y, fillColor, strokeColor, radius) {
+	// Don't draw toe circle if radius is 0 or less
+	if (radius <= 0) return;
+
 	window.ctx.beginPath();
 	// Use the toeSizeInMeters directly to set the radius
 	window.ctx.lineWidth = 1;

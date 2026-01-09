@@ -156,6 +156,9 @@ export function drawHoleThreeJS(hole) {
 export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
+	// Don't draw toe circle if radius is 0 or less
+	if (radius <= 0) return;
+
 	// Step 4a) Convert world coordinates to local Three.js coordinates for precision
 	const local = window.worldToThreeLocal(worldX, worldY);
 
@@ -574,9 +577,9 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			console.log("🎨 Mesh group position BEFORE transform: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
 		}
 
-		// Step 12c.1) CRITICAL FIX: OBJ vertices are already in relative coordinates (centered around their own origin)
-		// DO NOT transform vertices! Instead, position the mesh GROUP at the correct local coordinates.
-		// Calculate where the mesh center should be in local Three.js coordinates
+		// Step 12c.1) Position mesh group at mesh center in local Three.js space
+		// On first load: OBJLoader centers vertices around mesh origin, so we position the group at mesh center
+		// On reload: rebuildTexturedMesh transforms vertices to local coords, so we position the group at origin (mesh center relative to origin)
 		var originX = window.threeLocalOriginX || 0;
 		var originY = window.threeLocalOriginY || 0;
 
@@ -588,14 +591,9 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		var meshCenterLocalX = meshCenterWorldX - originX;
 		var meshCenterLocalY = meshCenterWorldY - originY;
 
-		if (developerModeEnabled) {
-			console.log("🎨 Mesh center in world coords: (" + meshCenterWorldX.toFixed(2) + ", " + meshCenterWorldY.toFixed(2) + ")");
-		}
-		if (developerModeEnabled) {
-			console.log("🎨 Positioning mesh group at local coords: (" + meshCenterLocalX.toFixed(2) + ", " + meshCenterLocalY.toFixed(2) + ")");
-		}
+		console.log("🎨 Positioning mesh group at local coords: (" + meshCenterLocalX.toFixed(2) + ", " + meshCenterLocalY.toFixed(2) + ")");
 
-		// Position the mesh group (NOT the vertices)
+		// Position the mesh group
 		texturedMesh.position.set(meshCenterLocalX, meshCenterLocalY, 0);
 
 		// Step 12c.2) Deep clone materials and preserve textures
@@ -665,15 +663,30 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		window.threeRenderer.surfaceMeshMap.set(surfaceId, texturedMesh);
 
 		// Step 12g.1) Log final mesh position and details
-		if (developerModeEnabled) {
-			console.log("🎨 Added textured mesh to 3D scene: " + surfaceId);
-		}
-		if (developerModeEnabled) {
-			console.log("🎨 Mesh position: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
-		}
-		if (developerModeEnabled) {
-			console.log("🎨 Mesh visible: " + texturedMesh.visible + ", children count: " + texturedMesh.children.length);
-		}
+		console.log("🎨 TEXTURE MESH DIAGNOSTICS for: " + surfaceId);
+		console.log("🎨 Mesh group position: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
+		console.log("🎨 Mesh visible: " + texturedMesh.visible + ", children count: " + texturedMesh.children.length);
+
+		// Check actual vertex Z range
+		var minVertexZ = Infinity, maxVertexZ = -Infinity;
+		var firstVertex = null;
+		texturedMesh.traverse(function(child) {
+			if (child.isMesh && child.geometry && child.geometry.attributes.position) {
+				var positions = child.geometry.attributes.position.array;
+				for (var i = 0; i < positions.length; i += 3) {
+					var z = positions[i + 2];
+					if (z < minVertexZ) minVertexZ = z;
+					if (z > maxVertexZ) maxVertexZ = z;
+					if (!firstVertex) {
+						firstVertex = { x: positions[i], y: positions[i+1], z: positions[i+2] };
+					}
+				}
+			}
+		});
+		console.log("🎨 OBJ vertex Z range: " + minVertexZ.toFixed(2) + " to " + maxVertexZ.toFixed(2));
+		console.log("🎨 First vertex (local coords): (" + (firstVertex ? firstVertex.x.toFixed(2) : "N/A") + ", " + (firstVertex ? firstVertex.y.toFixed(2) : "N/A") + ", " + (firstVertex ? firstVertex.z.toFixed(2) : "N/A") + ")");
+		console.log("🎨 Camera position: (" + window.threeRenderer.camera.position.x.toFixed(2) + ", " + window.threeRenderer.camera.position.y.toFixed(2) + ", " + window.threeRenderer.camera.position.z.toFixed(2) + ")");
+		console.log("🎨 Camera looking at: (" + window.threeRenderer.orbitCenterX.toFixed(2) + ", " + window.threeRenderer.orbitCenterY.toFixed(2) + ", " + window.threeRenderer.orbitCenterZ.toFixed(2) + ")");
 
 		// Step 12h) Request render
 		if (window.threeRenderer.needsRender !== undefined) {

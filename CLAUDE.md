@@ -529,3 +529,156 @@ window.drawData(window.allBlastHoles, window.selectedHole);  // Redraw
 - `src/draw/canvas3DDrawing.js` - Texture diagnostics
 
 See `IMPLEMENTATION_REVIEW_2026-01-09.md` for complete session details.
+
+
+Reducing the size of kirra.js is important.  
+Code should go in appropriate modularised folders.
+That is, helper code goes in src/helpers, tools go in src/tools, etc.
+
+Hole Details context for Kirra's Data Model:
+
+- Angle is 0 degrees vertical (horizontal is 90 degrees)
+- Dip is 90 degrees vertical (horizontal is 0 degrees - also known as Mast Angle)
+- Bearing is 0 degrees North, 180 degrees South, 90 degrees East and 270 degrees West
+- Other systems use different settings, Surpac is -90 vertical down etc. Be aware to ask if unsure.
+
+TreeView Hole Node
+Node ID format: "hole⣿entityName⣿holeID" (3 parts)
+
+TreeViewEntity Node
+Node ID format: "entityType⣿entityName⣿element⣿pointID" (4 parts)
+
+Use Factory code, do not make custom code if there is an existing function that can be reused.  
+Avoid "Code Bloat".  
+Example 1, the GeometryFactory is where all the threeJS Geometry is base code is,
+And it should be reused for UX consistency.
+Example 2, the FloatingDialog Class is what all Dialogs Popups, Menus should be constructed from FloatingDialog.js
+
+Plans should be saved in the folder called "aiPlans" with the naming convention of YYYMMDD-hhmm-PlanName.md
+
+Use Factory code, do not make custom code if there is an existing function that can be reused.  
+
+Avoid "Code Bloat".  
+Example 1, the GeometryFactory is where all the threeJS Geometry is base code is, and it should be reused for UX consistency.
+Example 2, the FloatingDialog Class is what all Dialogs Popups, Menus should be constructed from
+
+Selection in threeJS is a tunnel.
+A fat ray cast from the camera to infinity.  
+It is displayed in screen space or camera frustrum space.
+Use Frustrum culling
+
+Do not transform Z elevations.
+
+Do not scale the 3D transform.  Use the same XY transform as 2D.
+
+Data used in this application can be very large values.  It is often UTM.
+2D approach is to transform the data based on the data centroid.  
+The data centroid is 0,0,Average Z and the XY needs to be transformed.  
+Do not scale the 3D use the same 2D transform.
+
+ThreeJS Rules
+
+- Orbit in 3D should be around the Mouse Screen X Y and the Data Z centroid.
+- Zoom should zoom to the Same Mouse Screen XY and the Data Z centroid
+- The 3D entitys should mimic the 2D entitys except that the scene can orbit and Rotate.
+- Pan is the default mode
+- Selection and interaction should interact the same as the 2D selection and Interaction.
+- Generally the Data loaded will be in UTM or a cutom mine grid.  
+- 2D translates the large UTM coords to the 2D local by minusing off the centroid.  
+- Always Check the 3D is in the correct coordinate space to be drawn.
+
+Bearing moves clockwise, North is 0° bearing, 90° is west, 180°is south, 270° is East.
+
+The canvas in the Kirra App is Y up is North +ve and Y down is South -ve,
+West is X -ve and East is X +ve.  
+Kirra is a UTM styled Real World Coordinate app.
+
+Data structure for blast holes:
+ entityName = data.entityName || "";
+ entityType = data.entityType || "hole";
+ holeID = data.holeID || null;
+ startXLocation  = data.startXLocation || 0;
+ startYLocation  = data.startYLocation || 0;
+ startZLocation = data.startZLocation || 0;
+ endXLocation = data.endXLocation || 0;
+ endYLocation = data.endYLocation || 0;
+ endZLocation = data.endZLocation || 0;
+ gradeXLocation = data.gradeXLocation || 0;
+ gradeYLocation = data.gradeYLocation || 0;
+ gradeZLocation = data.gradeZLocation || 0;
+ subdrillAmount = data.subdrillAmount || 0; //deltaZ of gradeZ to toeZ -> downhole =+ve uphole =-ve
+ subdrillLength = data.subdrillLength || 0; //distance of subdrill from gradeXYZ to toeXYZ -> downhole =+ve uphole =-ve
+ benchHeight = data.benchHeight || 0; //deltaZ of collarZ to gradeZ -> always Absolute
+ holeDiameter = data.holeDiameter || 115;
+ holeType = data.holeType || "Undefined";
+ fromHoleID = data.fromHoleID || "";
+ timingDelayMilliseconds = data.timingDelayMilliseconds || 0;
+ colorHexDecimal = data.colorHexDecimal || "red";
+ holeLengthCalculated = data.holeLengthCalculated || 0; //Distance from the collarXYZ to the ToeXYZ
+ holeAngle = data.holeAngle || 0; //Angle of the blast hole from Collar to Toe --> 0° = Vertical
+ holeBearing = data.holeBearing || 0;
+ measuredLength = data.measuredLength || 0;
+ measuredLengthTimeStamp = data.measuredLengthTimeStamp || "09/05/1975 00:00:00";
+ measuredMass = data.measuredMass || 0;
+ measuredMassTimeStamp = data.measuredMassTimeStamp || "09/05/1975 00:00:00";
+ measuredComment = data.measuredComment || "None";
+ measuredCommentTimeStamp = data.measuredCommentTimeStamp || "09/05/1975 00:00:00";
+ rowID = data.rowID || null;
+ posID = data.posID || null;
+ visible = data.visible !== false;
+ burden = data.burden || 1;
+ spacing = data.spacing || 1;
+ connectorCurve = data.connectorCurve || 0;
+
+pointObject = {
+   entityName: entityName,
+   entityType: entityType,
+   pointID: pointID,
+   pointXLocation: pointXLocation,
+   pointYLocation: pointYLocation,
+   pointZLocation: pointZLocation,
+   lineWidth: lineWidth, // This is added for inter-changable types. points > lines > polys
+   color: color,
+   connected: false,
+   closed: false,
+   visible: true,
+  };
+lineObject = {
+   entityName: entityName,
+   entityType: entityType,
+   pointID: pointID,
+   pointXLocation: pointXLocation,
+   pointYLocation: pointYLocation,
+   pointZLocation: pointZLocation,
+   lineWidth: lineWidth,
+   color: color,
+   closed: false, // Added: lines are open
+   visible: true,
+  };
+polyObject = {
+   entityName: entityName,
+   entityType: entityType,
+   pointID: pointID,
+   pointXLocation: pointXLocation,
+   pointYLocation: pointYLocation,
+   pointZLocation: pointZLocation,
+   lineWidth: lineWidth,
+   color: color,
+   closed: closed, // Set to true if the polygon is closed
+   visible: true,
+  };
+
+textObject = {
+   entityName: entityName,
+   entityType: entityType,
+   pointID: pointID,
+   pointXLocation: pointXLocation,
+   pointYLocation: pointYLocation,
+   pointZLocation: pointZLocation,
+   text: text, // ? Now using the processed text
+   color: color,
+   fontHeight: 12, // Step B1) Default fontHeight for new text entities
+   connected: false,
+   closed: false,
+   visible: true,
+  };
