@@ -697,4 +697,4 @@ burden                     || 1 // Always use HDBScan to determine if not assign
 spacing                    || 1 // Always use HDBScan to determine if not assigned.
 connectorCurve             || 0 // the bend of the connector.
 ```
-![A blast hole.](src/referenceFiles/hole geometry.png)
+<img width="2002" height="1040" alt="image" src="https://github.com/user-attachments/assets/08eb1ace-4ecf-4373-8fe6-3c2273133bb5" />
