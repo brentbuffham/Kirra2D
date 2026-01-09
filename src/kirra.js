@@ -119,6 +119,7 @@ import { fileManager, initializeFileManager } from "./fileIO/init.js";
 //=================================================
 import {
 	initHUD,
+	updateSidebarState as updateHUDSidebarState,
 	OverlayEventBus,
 	OverlayEvents,
 	// Status panel
@@ -29860,6 +29861,9 @@ function openNavLeft() {
 		const toolbar = document.getElementById("toolbarPanel");
 		console.log("Toolbar classes:", toolbar.className);
 	}
+	
+	// Step #) Update HUD overlay position
+	updateHUDSidebarState(true);
 }
 function closeNavLeft() {
 	if (isMobile) {
@@ -29881,6 +29885,9 @@ function closeNavLeft() {
 	if (toolbarPanel) {
 		toolbarPanel.updateSidebarState(false);
 	}
+	
+	// Step #) Update HUD overlay position
+	updateHUDSidebarState(false);
 }
 function openNavRight() {
 	if (isMobile) {

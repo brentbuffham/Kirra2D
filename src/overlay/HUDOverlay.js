@@ -22,114 +22,128 @@ var isInitialized = false;
 
 // Step 2) Create the HUD DOM structure
 function createHUDDOM(parentContainer) {
-    // Step 2a) Create main HUD container
-    hudContainer = document.createElement("div");
-    hudContainer.id = "hud-overlay";
-    hudContainer.className = "hud-overlay";
-    
-    // Step 2b) Create panel containers
-    // Status panel - top center
-    var statusPanel = document.createElement("div");
-    statusPanel.id = "hud-status";
-    statusPanel.className = "hud-panel hud-status";
-    
-    // Legend panel - left side
-    var legendPanel = document.createElement("div");
-    legendPanel.id = "hud-legend";
-    legendPanel.className = "hud-panel hud-legend";
-    
-    // Surface legend panel - right side
-    var surfaceLegendPanel = document.createElement("div");
-    surfaceLegendPanel.id = "hud-surface-legend";
-    surfaceLegendPanel.className = "hud-panel hud-surface-legend";
-    
-    // Stats panel - bottom left
-    var statsPanel = document.createElement("div");
-    statsPanel.id = "hud-stats";
-    statsPanel.className = "hud-panel hud-stats";
-    
-    // Step 2c) Add panels to container
-    hudContainer.appendChild(statusPanel);
-    hudContainer.appendChild(legendPanel);
-    hudContainer.appendChild(surfaceLegendPanel);
-    hudContainer.appendChild(statsPanel);
-    
-    // Step 2d) Insert into parent
-    if (parentContainer) {
-        parentContainer.appendChild(hudContainer);
-    } else {
-        document.body.appendChild(hudContainer);
-    }
-    
-    console.log("[HUDOverlay] DOM structure created");
-    return hudContainer;
+	// Step 2a) Create main HUD container
+	hudContainer = document.createElement("div");
+	hudContainer.id = "hud-overlay";
+	hudContainer.className = "hud-overlay";
+
+	// Step 2b) Create panel containers
+	// Status panel - top center
+	var statusPanel = document.createElement("div");
+	statusPanel.id = "hud-status";
+	statusPanel.className = "hud-panel hud-status";
+
+	// Legend panel - left side
+	var legendPanel = document.createElement("div");
+	legendPanel.id = "hud-legend";
+	legendPanel.className = "hud-panel hud-legend";
+
+	// Surface legend panel - right side
+	var surfaceLegendPanel = document.createElement("div");
+	surfaceLegendPanel.id = "hud-surface-legend";
+	surfaceLegendPanel.className = "hud-panel hud-surface-legend";
+
+	// Stats panel - bottom left
+	var statsPanel = document.createElement("div");
+	statsPanel.id = "hud-stats";
+	statsPanel.className = "hud-panel hud-stats";
+
+	// Step 2c) Add panels to container
+	hudContainer.appendChild(statusPanel);
+	hudContainer.appendChild(legendPanel);
+	hudContainer.appendChild(surfaceLegendPanel);
+	hudContainer.appendChild(statsPanel);
+
+	// Step 2d) Insert into parent
+	if (parentContainer) {
+		parentContainer.appendChild(hudContainer);
+	} else {
+		document.body.appendChild(hudContainer);
+	}
+
+	console.log("[HUDOverlay] DOM structure created");
+	return hudContainer;
 }
 
 // Step 3) Initialize the HUD system
 export function initHUD(parentContainer, options) {
-    if (isInitialized) {
-        console.warn("[HUDOverlay] Already initialized");
-        return hudContainer;
-    }
-    
-    options = options || {};
-    
-    // Step 3a) Create DOM
-    createHUDDOM(parentContainer);
-    
-    // Step 3b) Initialize each panel
-    initStatusPanel(document.getElementById("hud-status"));
-    initStatsPanel(document.getElementById("hud-stats"));
-    initLegendPanel(document.getElementById("hud-legend"));
-    initSurfaceLegendPanel(document.getElementById("hud-surface-legend"));
-    initRulerPanel(hudContainer); // Floating panel, appended to HUD container
-    initProtractorPanel(hudContainer); // Floating protractor panel
-    initDrawingDistancePanel(hudContainer); // Floating drawing distance panel
-    initPatternToolPanel(hudContainer); // Pattern tool labels panel
-    initTooltipPanel(hudContainer); // Floating tooltip panel
-    
-    // Step 3c) Subscribe to clear event
-    OverlayEventBus.on(OverlayEvents.CLEAR, function() {
-        clearHUD();
-    });
-    
-    isInitialized = true;
-    console.log("[HUDOverlay] HUD system initialized");
-    
-    return hudContainer;
+	if (isInitialized) {
+		console.warn("[HUDOverlay] Already initialized");
+		return hudContainer;
+	}
+
+	options = options || {};
+
+	// Step 3a) Create DOM
+	createHUDDOM(parentContainer);
+
+	// Step 3b) Initialize each panel
+	initStatusPanel(document.getElementById("hud-status"));
+	initStatsPanel(document.getElementById("hud-stats"));
+	initLegendPanel(document.getElementById("hud-legend"));
+	initSurfaceLegendPanel(document.getElementById("hud-surface-legend"));
+	initRulerPanel(hudContainer); // Floating panel, appended to HUD container
+	initProtractorPanel(hudContainer); // Floating protractor panel
+	initDrawingDistancePanel(hudContainer); // Floating drawing distance panel
+	initPatternToolPanel(hudContainer); // Pattern tool labels panel
+	initTooltipPanel(hudContainer); // Floating tooltip panel
+
+	// Step 3c) Subscribe to clear event
+	OverlayEventBus.on(OverlayEvents.CLEAR, function() {
+		clearHUD();
+	});
+
+	isInitialized = true;
+	console.log("[HUDOverlay] HUD system initialized");
+
+	return hudContainer;
 }
 
 // Step 4) Clear all HUD panels
 export function clearHUD() {
-    OverlayEventBus.emit(OverlayEvents.STATUS, { message: "", type: "clear" });
-    OverlayEventBus.emit(OverlayEvents.LEGEND, { visible: false });
+	OverlayEventBus.emit(OverlayEvents.STATUS, { message: "", type: "clear" });
+	OverlayEventBus.emit(OverlayEvents.LEGEND, { visible: false });
 }
 
 // Step 5) Destroy the HUD system (cleanup)
 export function destroyHUD() {
-    if (hudContainer && hudContainer.parentNode) {
-        hudContainer.parentNode.removeChild(hudContainer);
-    }
-    hudContainer = null;
-    isInitialized = false;
-    OverlayEventBus.clear();
-    console.log("[HUDOverlay] HUD system destroyed");
+	if (hudContainer && hudContainer.parentNode) {
+		hudContainer.parentNode.removeChild(hudContainer);
+	}
+	hudContainer = null;
+	isInitialized = false;
+	OverlayEventBus.clear();
+	console.log("[HUDOverlay] HUD system destroyed");
 }
 
 // Step 6) Get HUD container reference
 export function getHUDContainer() {
-    return hudContainer;
+	return hudContainer;
 }
 
 // Step 7) Check if HUD is initialized
 export function isHUDInitialized() {
-    return isInitialized;
+	return isInitialized;
 }
 
 // Step 8) Show/hide entire HUD
 export function setHUDVisible(visible) {
-    if (hudContainer) {
-        hudContainer.style.display = visible ? "block" : "none";
-    }
+	if (hudContainer) {
+		hudContainer.style.display = visible ? "block" : "none";
+	}
 }
 
+// Step 9) Handle sidebar state changes (shift HUD panels when sidebar opens)
+export function updateSidebarState(sidebarOpen) {
+	if (!hudContainer) return;
+
+	// Step 9a) Only adjust on desktop (not mobile)
+	var isMobile = window.matchMedia("(max-width: 1024px)").matches;
+	if (!isMobile) {
+		if (sidebarOpen) {
+			hudContainer.classList.add("sidebar-open");
+		} else {
+			hudContainer.classList.remove("sidebar-open");
+		}
+	}
+}

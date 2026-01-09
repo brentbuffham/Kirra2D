@@ -569,11 +569,11 @@ body.dark-mode .menu-content a:hover {
     margin-left: 2px;
 }
 
-.dark-mode-toggle input:checked + label {
+.dark-mode-toggle input:checked+label {
     background-color: #666;
 }
 
-.dark-mode-toggle input:checked + label:after {
+.dark-mode-toggle input:checked+label:after {
     transform: translateX(24px);
 }
 
@@ -801,11 +801,11 @@ input[type="file"] {
     transition: 0.4s;
 }
 
-input:checked + .slider {
+input:checked+.slider {
     background-color: #00a91c;
 }
 
-input:checked + .slider:before {
+input:checked+.slider:before {
     -webkit-transform: translateX(26px);
     -ms-transform: translateX(26px);
     transform: translateX(26px);
@@ -1284,13 +1284,13 @@ body.dark-mode .file-import-btn:hover {
 }
 
 /* Style the selected (checked) button */
-.radio-buttons-custom input[type="radio"]:checked + .icon-button {
+.radio-buttons-custom input[type="radio"]:checked+.icon-button {
     background-color: red;
     /* Set the selected color */
 }
 
 /* Style the selected (checked) button */
-.toggle-buttons-custom input[type="checkbox"]:checked + .icon-button {
+.toggle-buttons-custom input[type="checkbox"]:checked+.icon-button {
     /* display: none; */
     background-color: red;
     border-color: red;
@@ -2459,6 +2459,7 @@ body.dark-mode .color-swatch:hover {
 /* STRICT MOBILE CONSTRAINTS */
 /* Universal mobile support */
 @media (max-width: 1024px) {
+
     html,
     body {
         margin: 0;
@@ -2656,11 +2657,11 @@ body.dark-mode .floating-dialog-btn {
     margin-top: 4px;
 }
 
-.floating-dialog .button-container-2col > *:nth-child(odd) {
+.floating-dialog .button-container-2col>*:nth-child(odd) {
     justify-self: start;
 }
 
-.floating-dialog .button-container-2col > *:nth-child(even) {
+.floating-dialog .button-container-2col>*:nth-child(even) {
     justify-self: stretch;
     width: 100%;
     margin-right: 4px;
@@ -2677,7 +2678,7 @@ body.dark-mode .floating-dialog-btn {
 }
 
 /* Ensure the second column doesn't overflow */
-.floating-dialog-compact .button-container-2col > *:nth-child(even) {
+.floating-dialog-compact .button-container-2col>*:nth-child(even) {
     margin-right: 8px !important;
     min-width: 0 !important;
     /* Allow shrinking */
@@ -2692,7 +2693,7 @@ body.dark-mode .floating-dialog-btn {
     row-gap: 6px !important;
 }
 
-.floating-dialog-wide .button-container-2col > *:nth-child(even) {
+.floating-dialog-wide .button-container-2col>*:nth-child(even) {
     margin-right: 6px !important;
 }
 
@@ -3051,8 +3052,8 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
 }
 
 /* When checkbox is checked, style the associated label */
-.toolbar-grid input[type="checkbox"]:checked + .icon-button,
-.toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom {
+.toolbar-grid input[type="checkbox"]:checked+.icon-button,
+.toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
     border-color: #ff0000 !important;
@@ -3060,8 +3061,8 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
 }
 
 /* Add hover state for checked buttons */
-.toolbar-grid input[type="checkbox"]:checked + .icon-button:hover,
-.toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom:hover {
+.toolbar-grid input[type="checkbox"]:checked+.icon-button:hover,
+.toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2x;
     border-color: #ff0000 !important;
@@ -3069,15 +3070,15 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
 }
 
 /* Dark mode checked state */
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .icon-button,
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.icon-button,
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
     border-color: #ff0000 !important;
 }
 
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .icon-button:hover,
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.icon-button:hover,
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
     border-color: #ff0000 !important;
@@ -3154,7 +3155,7 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-cu
 }
 
 /* Step 2) Radio button label styling with horizontal alignment */
-.toolbar-grid input[type="radio"] + .toggle-buttons-custom {
+.toolbar-grid input[type="radio"]+.toggle-buttons-custom {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -3174,7 +3175,7 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-cu
 }
 
 /* Step 3) Radio button checked state */
-.toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom {
+.toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     border-width: 1px;
@@ -3182,36 +3183,36 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-cu
 }
 
 /* Step 4) Radio button hover states */
-.toolbar-grid input[type="radio"] + .toggle-buttons-custom:hover {
+.toolbar-grid input[type="radio"]+.toggle-buttons-custom:hover {
     border-color: #999;
     background-color: #444;
 }
 
-.toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom:hover {
+.toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     box-shadow: 0 0 5px rgba(255, 0, 0, 0.7);
 }
 
 /* Step 5) Dark mode radio button styling */
-body.dark-mode .toolbar-grid input[type="radio"] + .toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="radio"]+.toggle-buttons-custom {
     background-color: #2a2a2a;
     border-color: #555;
     color: #ddd;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     color: #fff;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"] + .toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="radio"]+.toggle-buttons-custom:hover {
     background-color: #3a3a3a;
     border-color: #777;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     box-shadow: 0 0 5px rgba(255, 0, 0, 0.7);
@@ -3307,6 +3308,7 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
 .toolbar-panel {
     transition: left 0.5s ease, width 0.5s ease, height 0.5s ease;
 }
+
 /* Add this to your CSS file */
 #contourOverlay {
     position: absolute !important;
@@ -3338,17 +3340,54 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
     position: absolute;
     pointer-events: auto;
     color: #ffffff;
-    text-shadow: 
+    text-shadow:
         1px 1px 2px rgba(0, 0, 0, 0.9),
         -1px -1px 2px rgba(0, 0, 0, 0.9),
         1px -1px 2px rgba(0, 0, 0, 0.9),
         -1px 1px 2px rgba(0, 0, 0, 0.9);
     line-height: 1.5;
+    /* Step 2a) Add smooth transition for sidebar shifts */
+    transition: left 0.5s ease;
+}
+
+/* Step 2b) When sidebar is open, shift left-side panels to the right */
+.hud-overlay.sidebar-open .hud-stats {
+    left: 360px !important;
+    /* Shift stats panel right by sidebar width + gap */
+}
+
+.hud-overlay.sidebar-open .hud-legend {
+    left: 358px !important;
+    /* Shift legend panel right by sidebar width + gap */
+}
+
+.hud-overlay.sidebar-open .hud-surface-legend {
+    left: 358px !important;
+    /* Shift surface legend panel right by sidebar width + gap */
+}
+
+/* Step 2c) Mobile - don't shift panels when sidebar opens */
+@media (max-width: 1024px) {
+    .hud-overlay.sidebar-open .hud-stats {
+        left: 10px !important;
+        /* Keep original position on mobile */
+    }
+
+    .hud-overlay.sidebar-open .hud-legend {
+        left: 8px !important;
+        /* Keep original position on mobile */
+    }
+
+    .hud-overlay.sidebar-open .hud-surface-legend {
+        left: 8px !important;
+        /* Keep original position on mobile */
+    }
 }
 
 /* Step 3) Status panel - top center */
 .hud-status {
-    top: 6px;
+    top: 5px;
+    /* Step 3-1) Moved down to 85px to clear .top-controls (height: 80px) and view buttons */
     left: 50%;
     transform: translateX(-50%);
     text-align: center;
@@ -3392,7 +3431,8 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custo
 
 /* Step 4) Stats panel - bottom left */
 .hud-stats {
-    bottom: 10px;
+    bottom: 35px;
+    /* Step 4-1) Moved up from 10px to 35px to clear bottom toolbar buttons */
     left: 10px;
     background: transparent;
     padding: 0;
@@ -3821,7 +3861,7 @@ body:not(.dark-mode) .drawing-value {
 /* Step 7) Light mode overrides */
 body:not(.dark-mode) .hud-panel {
     color: #000000;
-    text-shadow: 
+    text-shadow:
         1px 1px 2px rgba(255, 255, 255, 0.9),
         -1px -1px 2px rgba(255, 255, 255, 0.9),
         1px -1px 2px rgba(255, 255, 255, 0.9),
@@ -3861,12 +3901,12 @@ body:not(.dark-mode) .hud-legend-surface-entry {
     .hud-overlay {
         font-size: 10pt;
     }
-    
+
     .hud-status {
         max-width: 90%;
         top: 30px;
     }
-    
+
     .hud-legend,
     .hud-surface-legend {
         max-width: 150px;
