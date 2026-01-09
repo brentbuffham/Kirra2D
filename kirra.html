@@ -1640,7 +1640,7 @@
 				</button>
 
 				<div class="panel">
-					OLD - Input Methods (Keep until File Manager is implemented)
+					<!-- OLD - Input Methods (Keep until File Manager is implemented) -->
 					<!-- Hidden file inputs -->
 					<input type="file" name="fileInput" id="fileInput" accept=".csv,.kad,.txt" class="hidden-file-input" placeholder="fileInput" title="File Holes and KAD Input">
 					<input type="file" name="fileInputCustomCSV" id="fileInputCustomCSV" accept=".csv,.txt" class="hidden-file-input" placeholder="fileInputCustomCSV" title="Custom CSV Import">
@@ -1650,7 +1650,7 @@
 					<input type="file" name="fileInputGeotiff" id="fileInputGeotiff" accept=".tif,.tiff" class="hidden-file-input" placeholder="fileInputGeotiff" title="File Geotiff Input">
 
 					<!-- Icon buttons grid -->
-					<div class="file-import-grid">
+					<!-- <div class="file-import-grid">
 						<label class="icon-button file-import-btn" data-target="fileInput" title="File Holes and KAD Input">
 							<img src="icons/k2D-file-import.png" alt="Load Holes & KAD">
 						</label>
@@ -1670,7 +1670,7 @@
 							<img src="icons/TIF-image.png" alt="Load Geotiff">
 						</label>
 
-					</div><br>
+					</div><br> -->
 					<!-- Icon buttons grid -->
 					<hr>
 					Files (Import / Export)
@@ -2147,82 +2147,70 @@
 						</select>
 					</div>
 				</div>
-				<!-- OUTPUT FILES -->
+				<!--
+				OUTPUT FILES
 				<button class="accordion" id="outputfilesAcc">
 					<span>Output Files</span></button>
 				<div class="panel">
-
-
-					<!-- Save Holes CSV -->
 					<div class="label2" id="label_saveHoles">Save Holes to a File (importable)</div>
 					<button class="button-save1" id="saveHoles">
 						KIRRA - Outputs a 14-column *.csv file for saving blasts with names
 					</button>
-
-					<!-- Save KAD Drawing -->
 					<div class="label2" id="label_saveKAD">Save Drawing to a File (importable)</div>
 					<button class="button-save1" id="saveKAD">
 						KAD - Outputs a Kirra App Drawing *.kad file for saving drawings
 					</button>
-
-					<!-- Save All Aspects -->
 					<div class="label2" id="label_saveAll">Save All Hole Aspects to a File (shareable)</div>
 					<button class="button-save3" id="saveAll">
 						EXTRA - Includes Length, Dip, Angle, Bearing, and Initiation Time
 					</button>
-
-					<!-- Save Measured Data -->
 					<div class="label2" id="label_saveMeasures">Save Actual Values to a File (shareable)</div>
 					<button class="button-save3" id="saveMeasures">
 						EXTRA - Outputs measured depth and charge kilograms
 					</button>
-
-					<!-- DXF Exports -->
 					<div class="label2" id="label_exportHolesDXF">Export Holes to DXF</div>
 					<button class="button-save2" id="exportHolesDXF">Export Holes to DXF, Collar, Track and Hole Id
 						as Text
 						Object</button>
-
 					<div class="label2" id="label_exportDrawingDXF">Export Drawing to DXF</div>
 					<button class="button-save2" id="exportDrawingDXF">Export Drawing to DXF, points, lines, poly,
 						circles,
 						text</button>
-
-					<!-- IREDES and AQM -->
 					<div class="label2" id="label_saveIREDES">Export for Epiroc Surface Manager</div>
 					<button class="button-save2" id="saveIREDES">
 						EPIROC - XML - IREDES XML including diameter and hole type
 					</button>
-
 					<div class="label2" id="label_saveAQM">Export for MineStar AQM</div>
 					<button class="button-save2" id="saveAQM">
 						MINESTAR - AQM - Outputs up to 11 columns (Angle, Azimuth, Diameter, etc.)
 					</button>
-
+				</div>
+				-->
+				<!-- Output Files section commented out to hide UI, but panel/button DIVs may be referenced in JS.
+				     We keep placeholder elements to avoid breaking ID lookups in JS. -->
+				<div style="display:none">
+					<button class="accordion" id="outputfilesAcc" style="display:none">
+						<span>Output Files</span></button>
+					<div class="panel" style="display:none">
+						<div class="label2" id="label_saveHoles"></div>
+						<button class="button-save1" id="saveHoles"></button>
+						<div class="label2" id="label_saveKAD"></div>
+						<button class="button-save1" id="saveKAD"></button>
+						<div class="label2" id="label_saveAll"></div>
+						<button class="button-save3" id="saveAll"></button>
+						<div class="label2" id="label_saveMeasures"></div>
+						<button class="button-save3" id="saveMeasures"></button>
+						<div class="label2" id="label_exportHolesDXF"></div>
+						<button class="button-save2" id="exportHolesDXF"></button>
+						<div class="label2" id="label_exportDrawingDXF"></div>
+						<button class="button-save2" id="exportDrawingDXF"></button>
+						<div class="label2" id="label_saveIREDES"></div>
+						<button class="button-save2" id="saveIREDES"></button>
+						<div class="label2" id="label_saveAQM"></div>
+						<button class="button-save2" id="saveAQM"></button>
+					</div>
 				</div>
 
-				<!--EXAMPLES FILE-->
-				<!-- <button class="accordion" id="exampleFilesAcc">
-					<span>Example and Helper Files</span></button>
-				<div class="panel">
-					<br><a href="/tieintest1.csv" id="testfile1"> Download test tie in file 1</a>
-					<br><a href="/tieintest2.csv" id="testfile2"> Download test tie in file 2</a>
-					<br><a href="/tieintest3.csv" id="testfile3" font-size="12px"> Download test tie in file 3</a>
-					<br><a href="/KAD2023_PITSHELL.kad" id="testfile4" font-size="12px"> Download KAD PITSHELL
-						drawing file</a>
-					<br><a href="/KAD2023_PITSHELL.txt" id="testfile5" font-size="12px" download="KAD2023_PITSHELL.txt">
-						Download mobile iOS PITSHELL
-						version</a>
-					<br><a href="/KAD2023_BLASTMASTER.kad" id="testfile6" font-size="12px"> Download KAD BLASTMASTER
-						drawing
-						file</a>
-					<br><a href="/KAD2023_BLASTMASTER.txt" id="testfile7" font-size="12px" download="KAD2023_BLASTMASTER.txt">
-						Download mobile iOS
-						BLASTMASTER version</a>
-					<br><a href="/blastingapps-xyz-converter.xlsx" id="testfile8" font-size="12px"> Download the
-						conversion
-						excel tool</a><br><br>
-				</div> -->
 				<button class="accordion" id="aboutAcc">
 					<span>About</span></button>
 				<div class="panel" id="aboutPanel">
