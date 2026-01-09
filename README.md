@@ -638,7 +638,7 @@ GIVEN:  StartX, StartY, StartZ, HoleLength, Angle, Bearing
 ```
 METHOD 1: Two Points + Grade
 ┌─────────────────────────────────────┐
-│  StartXYZ + ToeXYZ + GradeZ        │
+│  StartXYZ + ToeXYZ + GradeZ         │
 │  (Survey data - most accurate)      │
 └─────────────────────────────────────┘
 
@@ -656,3 +656,45 @@ METHOD 3: Toe + Vector + Depths
 │  (Reverse engineering)              │
 └─────────────────────────────────────┘
 ```
+
+# What is a blasthole?
+A blasthole consists of these fields (for it to be valid all field but be there.)
+```
+entityName                 || "" //BlastName
+entityType                 || "hole" //for future use when creating a binary KDB file (Drawings and Holes)
+holeID                     || notNull //unique hole name with in a blast, no two holes within a blast can be called the same ID
+-> Important as IREDES swaps the Easting and Northing X Y nomenclature WARNING: Ask about this isf not understood.
+startXLocation             || 0 //Collar Easting  location 
+startYLocation             || 0 //Collar Northing Location
+startZLocation             || 0 // Collar Elevation
+endXLocation               || 0 //Toe Easting
+endYLocation               || 0 //Toe Northing
+endZLocation               || 0 //Toe Elevation
+gradeXLocation             || 0 //Always Calculate,Grade Easting
+gradeYLocation             || 0 //Always Calculate,Grade Northing
+gradeZLocation             || 0 //Always Calculate,Grade Elevation
+subdrillAmount             || 0 //deltaZ of gradeZ to toeZ -> downhole =+ve uphole =-ve
+subdrillLength             || 0 //Always Calculate,distance of subdrill from gradeXYZ to toeXYZ -> downhole =+ve uphole =-ve
+benchHeight                || 0 //Always Calculate, deltaZ of collarZ to gradeZ -> always Absolute
+holeDiameter               || 115 //Always convert to millimeters
+holeType                   || "Undefined" //If not assigned always "undefined"
+fromHoleID                 || "" // the ENTITYNAME:::HOLEID (must be at least connected to itself )
+timingDelayMilliseconds    || 0 // The delay Connection amount not the holetime
+colorHexDecimal            || "red" //Color of the delay arrow
+holeLengthCalculated       || 0 // Always Calculate, Distance from the collarXYZ to the ToeXYZ
+holeAngle                  || 0; //Angle of the blast hole from Collar to Toe --> 0° = Vertical - Hole Dip is = 90-holeAngle
+holeBearing                || 0 //North is 0°
+measuredLength             || 0 //Can be Zero but not -ve
+measuredLengthTimeStamp    || "09/05/1975 00:00:00";
+measuredMass               || 0 //Can Zero but not -ve
+measuredMassTimeStamp      || "09/05/1975 00:00:00";
+measuredComment            || "None" //Any Text string
+measuredCommentTimeStamp   || "09/05/1975 00:00:00";
+rowID                      || null // Always use HDBScan to determine if not assigned.
+posID                      || null // Always use HDBScan to determine if not assigned.
+visible                    || true (default) //Boolean Value not text only visible entities can be exported.
+burden                     || 1 // Always use HDBScan to determine if not assigned.
+spacing                    || 1 // Always use HDBScan to determine if not assigned.
+connectorCurve             || 0 // the bend of the connector.
+```
+![A blast hole.](src/referenceFiles/hole geometry.png)

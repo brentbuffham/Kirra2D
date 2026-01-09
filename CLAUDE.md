@@ -2,6 +2,32 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL RULE: Always Check Documentation First
+
+**BEFORE making any changes to code, especially calculations, formulas, or data structures:**
+
+1. ✅ **READ THE README.md** - Contains comprehensive documentation including:
+   - Blast hole geometry formulas and relationships
+   - Coordinate system conventions
+   - Data structure definitions
+   - Calculation chains and validation formulas
+   - Example scenarios and test cases
+
+2. ✅ **Check for existing implementation documentation** in:
+   - `IMPLEMENTATION_*.md` files
+   - Code comments in relevant files
+   - User-provided diagrams or specifications
+
+3. ✅ **Verify assumptions against documentation** before implementing fixes
+
+**Example**: The README.md contains detailed blast hole geometry documentation (lines 318-658) including:
+- `subdrillAmount` = VERTICAL distance (deltaZ)
+- `subdrillLength` = VECTOR distance along hole
+- Complete formulas for grade calculation
+- Relationships between all hole attributes
+
+**If documentation contradicts your understanding, the documentation is correct.**
+
 ## Build Commands
 
 ```bash

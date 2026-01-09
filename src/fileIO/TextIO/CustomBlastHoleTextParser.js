@@ -228,6 +228,30 @@ const HOLE_FIELD_MAPPING = {
 			return true;
 		},
 	},
+	burden: {
+		property: "burden",
+		type: "number",
+		default: 1,
+		validation: function (value) {
+			return value === null || value === undefined || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0);
+		},
+	},
+	spacing: {
+		property: "spacing",
+		type: "number",
+		default: 1,
+		validation: function (value) {
+			return value === null || value === undefined || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0);
+		},
+	},
+	connectorCurve: {
+		property: "connectorCurve",
+		type: "number",
+		default: 0,
+		validation: function (value) {
+			return value === null || value === undefined || !isNaN(parseFloat(value));
+		},
+	},
 };
 
 // Step 6) CustomBlastHoleTextParser class
@@ -294,10 +318,7 @@ class CustomBlastHoleTextParser extends BaseParser {
 			var rowID = getValue("rowID");
 			var posID = getValue("posID");
 
-			// Step 16) Get all optional field values
-			var burden = getValue("burden");
-			var spacing = getValue("spacing");
-			var connectorCurve = getValue("connectorCurve");
+			// Step 16) Get all optional field values (NOTE: burden, spacing, connectorCurve now in HOLE_FIELD_MAPPING)
 			var measuredLength = getValue("measuredLength");
 			var measuredMass = getValue("measuredMass");
 			var measuredComment = getValue("measuredComment");
@@ -380,9 +401,7 @@ class CustomBlastHoleTextParser extends BaseParser {
 					visible: true,
 					rowID: rowID,
 					posID: posID,
-					burden: burden || 0,
-					spacing: spacing || 0,
-					connectorCurve: connectorCurve || 0,
+					// NOTE: burden, spacing, connectorCurve now handled by HOLE_FIELD_MAPPING in updateHoleFromCsvData()
 				};
 			}
 
@@ -655,18 +674,28 @@ class CustomBlastHoleTextParser extends BaseParser {
 		}
 	}
 
-	// Step 51) Calculate GradeXYZ from ToeXYZ and Subdrill
+	// Step 51) Calculate GradeXYZ from ToeXYZ and subdrillAmount (VERTICAL distance)
+	// CRITICAL: subdrillAmount is VERTICAL (deltaZ), NOT along hole vector
+	// subdrillAmount > 0: Grade ABOVE toe (downhole positive)
+	// subdrillAmount < 0: Grade BELOW toe (uphole negative)
 	calculateGradeFromSubdrill(hole) {
 		var angleRad = hole.holeAngle * (Math.PI / 180);
 		var bearingRad = hole.holeBearing * (Math.PI / 180);
-		var subdrill = hole.subdrillAmount || 0;
+		var subdrillAmount = hole.subdrillAmount || 0; // VERTICAL distance
 
-		var subdrillVertical = subdrill;
-		var subdrillHorizontal = subdrill * Math.tan(angleRad);
+		// Grade Z is simple: toeZ + vertical subdrill amount
+		hole.gradeZLocation = hole.endZLocation + subdrillAmount;
 
-		hole.gradeXLocation = hole.endXLocation - subdrillHorizontal * Math.sin(bearingRad);
-		hole.gradeYLocation = hole.endYLocation - subdrillHorizontal * Math.cos(bearingRad);
-		hole.gradeZLocation = hole.endZLocation + subdrillVertical;
+		// Horizontal offset from toe to grade (projected onto horizontal plane)
+		var horizontalOffset = subdrillAmount * Math.tan(angleRad);
+
+		// Grade XY moves horizontally back toward collar
+		hole.gradeXLocation = hole.endXLocation - horizontalOffset * Math.sin(bearingRad);
+		hole.gradeYLocation = hole.endYLocation - horizontalOffset * Math.cos(bearingRad);
+
+		// Calculate subdrillLength (3D distance along hole vector from grade to toe)
+		// subdrillLength = subdrillAmount / cos(angle)
+		hole.subdrillLength = Math.abs(hole.holeAngle) < 0.001 ? subdrillAmount : subdrillAmount / Math.cos(angleRad);
 	}
 
 	// Step 52) Calculate ToeXYZ and GradeXYZ from design parameters

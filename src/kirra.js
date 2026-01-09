@@ -8596,6 +8596,18 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 										h.burden, // 1 (default)
 										h.spacing // 1 (default)
 									);
+
+									// CRITICAL FIX: Copy IREDES-specific fields that addHole() doesn't accept
+									var createdHole = allBlastHoles.find(function(hole) {
+										return hole.entityName === entityName && hole.holeID === h.holeID;
+									});
+
+									if (createdHole) {
+										// IREDES provides measuredComment (comment field)
+										if (h.measuredComment && h.measuredComment !== "None") {
+											createdHole.measuredComment = h.measuredComment;
+										}
+									}
 								}
 
 								// Step 7) Get all holes for this entity for HDBSCAN
@@ -8620,8 +8632,15 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 									}
 								}
 
-								// Step 9) Calculate burden and spacing based on row assignments
-								calculateBurdenAndSpacingForHoles(importedHoles);
+								// Step 9) Calculate burden and spacing (only if not already set)
+								// CRITICAL: Preserve user-supplied burden/spacing values
+								var needsBurdenCalc = importedHoles.filter(function(h) {
+									return (h.burden === undefined || h.burden === null || h.burden === 1) &&
+									       (h.spacing === undefined || h.spacing === null || h.spacing === 1);
+								});
+								if (needsBurdenCalc.length > 0) {
+									calculateBurdenAndSpacingForHoles(needsBurdenCalc);
+								}
 
 								// Step 9) Recalculate dependent data structures - ESSENTIAL for proper display
 								if (allBlastHoles.length > 0) {
@@ -9316,6 +9335,25 @@ document.querySelector(".cblast-input-btn")?.addEventListener("click", function 
 								h.burden,
 								h.spacing
 							);
+
+							// CRITICAL FIX: Copy CBLAST-specific fields that addHole() doesn't accept
+							var createdHole = allBlastHoles.find(function(hole) {
+								return hole.entityName === entityName && hole.holeID === h.holeID;
+							});
+
+							if (createdHole) {
+								// CBLAST provides timeDelay (timing information)
+								if (h.timeDelay !== undefined && h.timeDelay !== null) {
+									createdHole.timingDelayMilliseconds = h.timeDelay;
+								}
+								// CBLAST provides detonator information
+								if (h.detonatorType) createdHole.detonatorType = h.detonatorType;
+								if (h.detonatorDepth !== undefined) createdHole.detonatorDepth = h.detonatorDepth;
+								// CBLAST provides charge information
+								if (h.stemHeight !== undefined) createdHole.stemHeight = h.stemHeight;
+								if (h.chargeLength !== undefined) createdHole.chargeLength = h.chargeLength;
+								if (h.products) createdHole.products = h.products;
+							}
 						}
 
 						// Step 5) Get imported holes for HDBSCAN
@@ -9342,8 +9380,15 @@ document.querySelector(".cblast-input-btn")?.addEventListener("click", function 
 							}
 						}
 
-						// Step 7) Calculate burden and spacing
-						calculateBurdenAndSpacingForHoles(importedHoles);
+						// Step 7) Calculate burden and spacing (only if not already set)
+						// CRITICAL: Preserve user-supplied burden/spacing values
+						var needsBurdenCalc = importedHoles.filter(function(h) {
+							return (h.burden === undefined || h.burden === null || h.burden === 1) &&
+							       (h.spacing === undefined || h.spacing === null || h.spacing === 1);
+						});
+						if (needsBurdenCalc.length > 0) {
+							calculateBurdenAndSpacingForHoles(needsBurdenCalc);
+						}
 
 						// Step 8) Recalculate dependent structures
 						if (allBlastHoles.length > 0) {
@@ -11312,6 +11357,46 @@ async function parseK2Dcsv(data) {
 				h.burden,
 				h.spacing
 			);
+
+			// CRITICAL FIX: Copy timing/connector fields that addHole() doesn't accept
+			// Find the hole that was just created and update it with additional fields
+			var createdHole = allBlastHoles.find(function(hole) {
+				return hole.entityName === h.entityName && hole.holeID === h.holeID;
+			});
+
+			if (createdHole) {
+				// Copy timing and connector fields from parsed data
+				if (h.fromHoleID && h.fromHoleID !== "") {
+					createdHole.fromHoleID = h.fromHoleID;
+				}
+				if (h.timingDelayMilliseconds !== undefined && h.timingDelayMilliseconds !== null) {
+					createdHole.timingDelayMilliseconds = h.timingDelayMilliseconds;
+				}
+				if (h.colorHexDecimal && h.colorHexDecimal !== "") {
+					createdHole.colorHexDecimal = h.colorHexDecimal;
+				}
+				if (h.connectorCurve !== undefined && h.connectorCurve !== null) {
+					createdHole.connectorCurve = h.connectorCurve;
+				}
+				if (h.measuredLength !== undefined && h.measuredLength !== null) {
+					createdHole.measuredLength = h.measuredLength;
+				}
+				if (h.measuredLengthTimeStamp && h.measuredLengthTimeStamp !== "") {
+					createdHole.measuredLengthTimeStamp = h.measuredLengthTimeStamp;
+				}
+				if (h.measuredMass !== undefined && h.measuredMass !== null) {
+					createdHole.measuredMass = h.measuredMass;
+				}
+				if (h.measuredMassTimeStamp && h.measuredMassTimeStamp !== "") {
+					createdHole.measuredMassTimeStamp = h.measuredMassTimeStamp;
+				}
+				if (h.measuredComment && h.measuredComment !== "") {
+					createdHole.measuredComment = h.measuredComment;
+				}
+				if (h.measuredCommentTimeStamp && h.measuredCommentTimeStamp !== "") {
+					createdHole.measuredCommentTimeStamp = h.measuredCommentTimeStamp;
+				}
+			}
 		}
 
 		// Step 5) Get all imported holes for post-processing
@@ -11333,9 +11418,11 @@ async function parseK2Dcsv(data) {
 		newEntities.forEach(function(entityName) {
 			var entityHoles = allBlastHoles.filter(function(h) { return h.entityName === entityName; });
 			if (entityHoles.length > 0) {
-				// Only calculate if not already set
+				// Only calculate if not already set (default is 1, so recalculate ONLY if exactly 1)
+				// CRITICAL: Preserve user-supplied 0 values (0 means "no burden/spacing")
 				var needsCalculation = entityHoles.filter(function(h) {
-					return (!h.burden || h.burden <= 1) && (!h.spacing || h.spacing <= 1);
+					return (h.burden === undefined || h.burden === null || h.burden === 1) &&
+					       (h.spacing === undefined || h.spacing === null || h.spacing === 1);
 				});
 				if (needsCalculation.length > 0) {
 					calculateBurdenAndSpacingForHoles(needsCalculation);
@@ -33468,6 +33555,31 @@ function showCsvImportModal(csvData, fileName) {
 						}
 					});
 
+					// Step 4) Calculate burden and spacing for holes that need it
+					// Group imported holes by entity that need burden/spacing calculation
+					const entitiesToCalculate = new Map();
+					importedHoles.forEach(function (hole) {
+						// Only recalculate if default value of 1 (preserve user-supplied values including 0)
+						const needsCalculation =
+							(hole.burden === undefined || hole.burden === null || hole.burden === 1) &&
+							(hole.spacing === undefined || hole.spacing === null || hole.spacing === 1);
+
+						if (needsCalculation) {
+							if (!entitiesToCalculate.has(hole.entityName)) {
+								entitiesToCalculate.set(hole.entityName, []);
+							}
+							entitiesToCalculate.get(hole.entityName).push(hole);
+						}
+					});
+
+					// Calculate burden/spacing for each entity
+					entitiesToCalculate.forEach(function (holes, entityName) {
+						if (holes.length > 0) {
+							console.log("Calculating burden/spacing for " + holes.length + " holes in entity: " + entityName);
+							calculateBurdenAndSpacingForHoles(holes);
+						}
+					});
+
 					// Recalculate dependent data structures - ESSENTIAL for proper display
 					if (allBlastHoles.length > 0) {
 						const triangleResult = delaunayTriangles(allBlastHoles, maxEdgeLength);
@@ -40003,10 +40115,23 @@ function createMaterialFromProperties(materialProps, texture, textureName) {
 
 	// CRITICAL FIX: Use MeshPhongMaterial to match MTLLoader's behavior
 	// MTLLoader creates MeshPhongMaterial, not MeshStandardMaterial
+	// CRITICAL FIX 2: Use ColorManagement.toWorkingColorSpace() to match MTLLoader EXACTLY
+	var diffuseColor = THREE.ColorManagement.toWorkingColorSpace(
+		new THREE.Color().fromArray(materialProps.Kd || [1, 1, 1]),
+		THREE.SRGBColorSpace
+	);
+
+	var specularColor = materialProps.Ks
+		? THREE.ColorManagement.toWorkingColorSpace(
+			new THREE.Color().fromArray(materialProps.Ks),
+			THREE.SRGBColorSpace
+		)
+		: new THREE.Color(0, 0, 0);
+
 	var material = new THREE.MeshPhongMaterial({
-		color: new THREE.Color(materialProps.Kd[0] || 1, materialProps.Kd[1] || 1, materialProps.Kd[2] || 1),
-		specular: materialProps.Ks ? new THREE.Color(materialProps.Ks[0], materialProps.Ks[1], materialProps.Ks[2]) : new THREE.Color(0, 0, 0),
-		shininess: materialProps.Ns || 30,
+		color: diffuseColor,
+		specular: specularColor,
+		shininess: materialProps.Ns !== undefined ? materialProps.Ns : 30,
 		side: THREE.DoubleSide,
 		transparent: false,
 		opacity: 1.0,

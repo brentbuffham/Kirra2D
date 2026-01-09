@@ -51,6 +51,23 @@ class BlastHoleCSVParser extends BaseParser {
 			// Step 12) Skip empty lines
 			if (values.every((v) => v.trim() === "")) continue;
 
+			// Step 12a) CRITICAL FIX: Skip header row by checking if coordinate columns contain text instead of numbers
+			// For valid hole data, columns 3,4,5 (startX, startY, startZ) must be numeric
+			// If they're NOT numeric, this is likely a header row
+			if (len >= 6 && i < 3) { // Only check first 3 lines for headers
+				var col3 = values[3] ? values[3].trim() : "";
+				var col4 = values[4] ? values[4].trim() : "";
+				var col5 = values[5] ? values[5].trim() : "";
+
+				// Check if these coordinate columns are non-numeric (header keywords)
+				var isHeader = isNaN(parseFloat(col3)) || isNaN(parseFloat(col4)) || isNaN(parseFloat(col5));
+
+				if (isHeader) {
+					console.log("📋 Skipping header row at line " + (i + 1) + ": " + values.slice(0, 5).join(","));
+					continue;
+				}
+			}
+
 			// Step 13) Validate column count
 			if (!supportedLengths.includes(len)) {
 				warnings.push("Line " + (i + 1) + " skipped: unsupported column count (" + len + ")");
@@ -237,21 +254,44 @@ class BlastHoleCSVParser extends BaseParser {
 
 			// Step 24) Validate coordinates and create hole object
 			if (!isNaN(startX) && !isNaN(startY) && !isNaN(startZ) && !isNaN(endX) && !isNaN(endY) && !isNaN(endZ)) {
-				// Step 25) RULE #9: Return MINIMAL hole data - addHole() will create proper geometry
-				// Calculate gradeZ: CSV has endXYZ (toe), grade = toe + subdrill (going UP)
+				// Step 25) CRITICAL: Calculate grade from subdrillAmount (VERTICAL distance)
+				// subdrillAmount is VERTICAL deltaZ (like benchHeight), NOT vector distance
+				// subdrillAmount > 0: Grade ABOVE toe (downhole positive)
+				// subdrillAmount < 0: Grade BELOW toe (uphole negative)
+
+				// Grade Z is simple: toeZ + vertical subdrill amount
 				var gradeZ = endZ + subdrill;
+
+				// Horizontal offset from toe to grade (projected onto horizontal plane)
+				// For vertical holes (angle=0): horizontal offset = 0
+				// For angled holes: horizontal offset = subdrillAmount * tan(angle)
+				var angleRad = angle * (Math.PI / 180);
+				var bearingRad = bearing * (Math.PI / 180);
+				var horizontalOffset = subdrill * Math.tan(angleRad);
+
+				// Grade XY moves horizontally back toward collar
+				var gradeX = endX - horizontalOffset * Math.sin(bearingRad);
+				var gradeY = endY - horizontalOffset * Math.cos(bearingRad);
+
+				// Calculate subdrillLength (3D distance along hole vector from grade to toe)
+				// subdrillLength = subdrillAmount / cos(angle)
+				var subdrillLength = Math.abs(angle) < 0.001 ? subdrill : subdrill / Math.cos(angleRad);
 
 				var hole = {
 					entityName: entityName,
+					entityType: "hole", // CRITICAL: All imported holes are type "hole"
 					holeID: holeID,
 					startXLocation: startX,
 					startYLocation: startY,
 					startZLocation: startZ,
-					gradeZLocation: gradeZ, // Grade = toe + subdrill
+					gradeXLocation: gradeX, // Grade lies on hole vector
+					gradeYLocation: gradeY,
+					gradeZLocation: gradeZ,
 					holeDiameter: holeDiameter,
 					holeType: holeType,
 					holeLengthCalculated: length,
-					subdrillAmount: subdrill,
+					subdrillAmount: subdrill, // Vertical distance (deltaZ)
+					subdrillLength: subdrillLength, // Vector distance along hole
 					holeAngle: angle,
 					holeBearing: bearing,
 					measuredLength: measuredLength,

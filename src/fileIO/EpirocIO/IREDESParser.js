@@ -272,12 +272,16 @@ export default class IREDESParser extends BaseParser {
 			// Step 35) Create hole object EXACTLY matching BlastHole class defaults
 			// CRITICAL: Must match BlastHole constructor defaults for compatibility
 			// RULE #9: Return MINIMAL hole data - addHole() will create proper geometry
+			// CRITICAL: Grade must lie on hole vector - IREDES has no subdrill so grade = toe
 			var hole = {
+				entityType: "hole", // CRITICAL: All imported holes are type "hole"
 				holeID: holeId,
 				startXLocation: parseFloat(startX.toFixed(3)),
 				startYLocation: parseFloat(startY.toFixed(3)),
 				startZLocation: parseFloat(startZ.toFixed(3)),
-				gradeZLocation: parseFloat(endZ.toFixed(3)), // IREDES: grade = toe (no subdrill)
+				gradeXLocation: parseFloat(endX.toFixed(3)), // Grade = toe (no subdrill)
+				gradeYLocation: parseFloat(endY.toFixed(3)),
+				gradeZLocation: parseFloat(endZ.toFixed(3)),
 				holeDiameter: holeDiameter,
 				holeType: holeType,
 				holeLengthCalculated: parseFloat(holeLength.toFixed(3)),

@@ -201,16 +201,30 @@ export default class CBLASTParser extends BaseParser {
 			}
 		}
 
-		// Step 32) Calculate gradeZ from depth (CBLAST doesn't separate grade/toe, assume no subdrill)
-		// gradeZ = startZ - depth * cos(angle)
-		var gradeZ = elevation - vertDist;
+		// Step 32) Calculate grade along hole vector (CBLAST doesn't separate grade/toe, assume no subdrill)
+		// CRITICAL: Grade must lie on hole vector, not just vertical drop
+		// For CBLAST: depth = hole length, subdrill = 0, so grade = toe
+		// Toe is at collar + depth along hole vector
+
+		// Calculate toe first (end of hole)
+		var toeX = easting + horizDist * Math.sin(bearingRad);
+		var toeY = northing + horizDist * Math.cos(bearingRad);
+		var toeZ = elevation - vertDist;
+
+		// Grade is at toe (CBLAST has no subdrill, grade = toe)
+		var gradeX = toeX;
+		var gradeY = toeY;
+		var gradeZ = toeZ;
 
 		// Step 33) RULE #9: Return MINIMAL hole data - addHole() will create proper geometry
 		var hole = {
+			entityType: "hole", // CRITICAL: All imported holes are type "hole"
 			holeID: holeID,
 			startXLocation: easting,
 			startYLocation: northing,
 			startZLocation: elevation,
+			gradeXLocation: gradeX, // Grade lies on hole vector
+			gradeYLocation: gradeY,
 			gradeZLocation: gradeZ,
 			holeDiameter: diameter * 1000, // Convert to mm
 			holeType: holeType,
