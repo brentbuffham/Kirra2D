@@ -3002,9 +3002,22 @@ export class GeometryFactory {
 	// zElevation parameter allows placing image at specific Z level in 3D space
 	// Default uses drawingZLevel, then dataCentroidZ, then 0
 	static createImagePlane(imageCanvas, bbox, transparency = 1.0, zElevation = null) {
+		// Step 24) Validate bbox before calculating dimensions
+		if (!bbox || bbox.length < 4 || !bbox.every(v => isFinite(v))) {
+			console.error("Invalid bbox for image plane:", bbox);
+			return null;
+		}
+
 		// Step 24) Calculate dimensions
 		const width = bbox[2] - bbox[0];
 		const height = bbox[3] - bbox[1];
+
+		// Step 24b) Validate dimensions
+		if (!isFinite(width) || !isFinite(height) || width <= 0 || height <= 0) {
+			console.error("Invalid image plane dimensions:", { width, height, bbox });
+			return null;
+		}
+
 		const centerX = (bbox[0] + bbox[2]) / 2;
 		const centerY = (bbox[1] + bbox[3]) / 2;
 

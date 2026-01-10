@@ -7860,6 +7860,16 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 
 										window.loadedSurfaces.set(surfaceId, surfaceData);
 										console.log("Imported surface: " + surfaceId + " (" + surfaceData.points.length + " points, " + surfaceData.triangles.length + " triangles)");
+
+										// Step 6c.1) Save surface to IndexedDB
+										setTimeout(async function() {
+											try {
+												await saveSurfaceToDB(surfaceId);
+												console.log("STR+DTM surface saved to database: " + surfaceId);
+											} catch (saveError) {
+												console.error("Failed to save STR+DTM surface:", saveError);
+											}
+										}, 0);
 									});
 
 									showModalMessage("Import Complete", "Imported " + data.surfaces.length + " surface(s)", "success");
@@ -8042,6 +8052,16 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									loadedSurfaces.set(surfaceId, surfaceData);
 
 									console.log("Added surface '" + surfaceId + "' with " + points.length + " points and " + surface.triangles.length + " triangles");
+
+									// Save surface to IndexedDB
+									setTimeout(async function() {
+										try {
+											await saveSurfaceToDB(surfaceId);
+											console.log("DTM surface saved to database: " + surfaceId);
+										} catch (saveError) {
+											console.error("Failed to save DTM surface:", saveError);
+										}
+									}, 0);
 								});
 
 								console.log("Imported " + data.surfaces.length + " surfaces with " +

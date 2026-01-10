@@ -813,7 +813,9 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		var meshCenterLocalX = meshCenterWorldX - originX;
 		var meshCenterLocalY = meshCenterWorldY - originY;
 
-		console.log("🎨 Positioning mesh group at local coords: (" + meshCenterLocalX.toFixed(2) + ", " + meshCenterLocalY.toFixed(2) + ")");
+		if (developerModeEnabled) {
+			console.log("🎨 Positioning mesh group at local coords: (" + meshCenterLocalX.toFixed(2) + ", " + meshCenterLocalY.toFixed(2) + ")");
+		}
 
 		// Position the mesh group
 		texturedMesh.position.set(meshCenterLocalX, meshCenterLocalY, 0);
@@ -833,8 +835,6 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 							return clonedMat;
 						});
 					} else {
-						// DIAGNOSTIC: Check material BEFORE clone
-						console.log("🎨 [drawSurfaceThreeJS] BEFORE clone - hasMap: " + !!child.material.map + ", mapColorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
 						var clonedMat = child.material.clone();
 						if (child.material.map) {
 							clonedMat.map = child.material.map;
@@ -842,19 +842,21 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 						}
 						child.material = clonedMat;
 					}
-					// DIAGNOSTIC: Check material AFTER clone
-					console.log("🎨 [drawSurfaceThreeJS] AFTER clone - hasMap: " + !!child.material.map + ", mapColorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
-			if (child.material.map && child.material.map.image) {
-				console.log("🎨 Texture image: " + child.material.map.image.width + "x" + child.material.map.image.height);
-			}
-			// DIAGNOSTIC: Detailed material properties
-			console.log("🎨 Material type: " + child.material.type);
-			console.log("🎨 Material color: rgb(" + (child.material.color.r * 255).toFixed(0) + ", " + (child.material.color.g * 255).toFixed(0) + ", " + (child.material.color.b * 255).toFixed(0) + ")");
-			console.log("🎨 Material opacity: " + child.material.opacity + ", transparent: " + child.material.transparent);
-			console.log("🎨 Material visible: " + child.material.visible + ", side: " + child.material.side);
-			if (child.material.type === "MeshPhongMaterial") {
-				console.log("🎨 Phong shininess: " + child.material.shininess + ", specular: " + child.material.specular.getHexString());
-			}
+
+					// DIAGNOSTIC: Material diagnostics (developer mode only)
+					if (developerModeEnabled) {
+						console.log("🎨 [drawSurfaceThreeJS] Material - hasMap: " + !!child.material.map + ", mapColorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
+						if (child.material.map && child.material.map.image) {
+							console.log("🎨 Texture image: " + child.material.map.image.width + "x" + child.material.map.image.height);
+						}
+						console.log("🎨 Material type: " + child.material.type);
+						console.log("🎨 Material color: rgb(" + (child.material.color.r * 255).toFixed(0) + ", " + (child.material.color.g * 255).toFixed(0) + ", " + (child.material.color.b * 255).toFixed(0) + ")");
+						console.log("🎨 Material opacity: " + child.material.opacity + ", transparent: " + child.material.transparent);
+						console.log("🎨 Material visible: " + child.material.visible + ", side: " + child.material.side);
+						if (child.material.type === "MeshPhongMaterial") {
+							console.log("🎨 Phong shininess: " + child.material.shininess + ", specular: " + child.material.specular.getHexString());
+						}
+					}
 				}
 
 				// Clone geometry to avoid modifying original
@@ -884,31 +886,33 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		window.threeRenderer.surfacesGroup.add(texturedMesh);
 		window.threeRenderer.surfaceMeshMap.set(surfaceId, texturedMesh);
 
-		// Step 12g.1) Log final mesh position and details
-		console.log("🎨 TEXTURE MESH DIAGNOSTICS for: " + surfaceId);
-		console.log("🎨 Mesh group position: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
-		console.log("🎨 Mesh visible: " + texturedMesh.visible + ", children count: " + texturedMesh.children.length);
+		// Step 12g.1) Log final mesh position and details (developer mode only)
+		if (developerModeEnabled) {
+			console.log("🎨 TEXTURE MESH DIAGNOSTICS for: " + surfaceId);
+			console.log("🎨 Mesh group position: (" + texturedMesh.position.x.toFixed(2) + ", " + texturedMesh.position.y.toFixed(2) + ", " + texturedMesh.position.z.toFixed(2) + ")");
+			console.log("🎨 Mesh visible: " + texturedMesh.visible + ", children count: " + texturedMesh.children.length);
 
-		// Check actual vertex Z range
-		var minVertexZ = Infinity, maxVertexZ = -Infinity;
-		var firstVertex = null;
-		texturedMesh.traverse(function(child) {
-			if (child.isMesh && child.geometry && child.geometry.attributes.position) {
-				var positions = child.geometry.attributes.position.array;
-				for (var i = 0; i < positions.length; i += 3) {
-					var z = positions[i + 2];
-					if (z < minVertexZ) minVertexZ = z;
-					if (z > maxVertexZ) maxVertexZ = z;
-					if (!firstVertex) {
-						firstVertex = { x: positions[i], y: positions[i+1], z: positions[i+2] };
+			// Check actual vertex Z range
+			var minVertexZ = Infinity, maxVertexZ = -Infinity;
+			var firstVertex = null;
+			texturedMesh.traverse(function(child) {
+				if (child.isMesh && child.geometry && child.geometry.attributes.position) {
+					var positions = child.geometry.attributes.position.array;
+					for (var i = 0; i < positions.length; i += 3) {
+						var z = positions[i + 2];
+						if (z < minVertexZ) minVertexZ = z;
+						if (z > maxVertexZ) maxVertexZ = z;
+						if (!firstVertex) {
+							firstVertex = { x: positions[i], y: positions[i+1], z: positions[i+2] };
+						}
 					}
 				}
-			}
-		});
-		console.log("🎨 OBJ vertex Z range: " + minVertexZ.toFixed(2) + " to " + maxVertexZ.toFixed(2));
-		console.log("🎨 First vertex (local coords): (" + (firstVertex ? firstVertex.x.toFixed(2) : "N/A") + ", " + (firstVertex ? firstVertex.y.toFixed(2) : "N/A") + ", " + (firstVertex ? firstVertex.z.toFixed(2) : "N/A") + ")");
-		console.log("🎨 Camera position: (" + window.threeRenderer.camera.position.x.toFixed(2) + ", " + window.threeRenderer.camera.position.y.toFixed(2) + ", " + window.threeRenderer.camera.position.z.toFixed(2) + ")");
-		console.log("🎨 Camera looking at: (" + window.threeRenderer.orbitCenterX.toFixed(2) + ", " + window.threeRenderer.orbitCenterY.toFixed(2) + ", " + window.threeRenderer.orbitCenterZ.toFixed(2) + ")");
+			});
+			console.log("🎨 OBJ vertex Z range: " + minVertexZ.toFixed(2) + " to " + maxVertexZ.toFixed(2));
+			console.log("🎨 First vertex (local coords): (" + (firstVertex ? firstVertex.x.toFixed(2) : "N/A") + ", " + (firstVertex ? firstVertex.y.toFixed(2) : "N/A") + ", " + (firstVertex ? firstVertex.z.toFixed(2) : "N/A") + ")");
+			console.log("🎨 Camera position: (" + window.threeRenderer.camera.position.x.toFixed(2) + ", " + window.threeRenderer.camera.position.y.toFixed(2) + ", " + window.threeRenderer.camera.position.z.toFixed(2) + ")");
+			console.log("🎨 Camera looking at: (" + window.threeRenderer.orbitCenterX.toFixed(2) + ", " + window.threeRenderer.orbitCenterY.toFixed(2) + ", " + window.threeRenderer.orbitCenterZ.toFixed(2) + ")");
+		}
 
 		// Step 12h) Request render
 		if (window.threeRenderer.needsRender !== undefined) {
@@ -1055,6 +1059,13 @@ export function drawBackgroundImageThreeJS(imageId, imageCanvas, bbox, transpare
 	}
 
 	const imageMesh = GeometryFactory.createImagePlane(imageCanvas, localBbox, transparency, zElevation);
+
+	// Check if image plane was created successfully
+	if (!imageMesh) {
+		console.warn("Failed to create image plane for imageId:", imageId);
+		return;
+	}
+
 	imageMesh.userData = {
 		type: "image",
 		imageId: imageId
