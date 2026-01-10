@@ -126,12 +126,28 @@ class IMGWriter extends BaseWriter {
 	 * @returns {Promise<ArrayBuffer>} GeoTIFF array buffer
 	 */
 	async exportImageryAsGeoTIFF(data) {
-		// Step 1) Get image data from canvas
+		// Step 1) Verify canvas is valid
+		console.log("IMGWriter received canvas: " + data.canvas.width + "x" + data.canvas.height);
+		console.log("IMGWriter data dimensions: " + data.width + "x" + data.height);
+
+		// Step 2) Get image data from canvas
 		var ctx = data.canvas.getContext("2d");
 		var imageData = ctx.getImageData(0, 0, data.width, data.height);
 		var pixels = imageData.data; // RGBA interleaved [R,G,B,A,R,G,B,A,...]
 
-		// Step 2) Check if we have alpha channel (any pixel with alpha !== 255)
+		// Step 2a) Check canvas center for debugging
+		var centerX = Math.floor(data.width / 2);
+		var centerY = Math.floor(data.height / 2);
+		var centerCheck = ctx.getImageData(centerX, centerY, 1, 1).data;
+		console.log("Canvas center pixel in IMGWriter: R=" + centerCheck[0] + " G=" + centerCheck[1] + " B=" + centerCheck[2] + " A=" + centerCheck[3]);
+
+		// Step 2b) Check the full imageData array directly
+		var centerPixelIndex = (centerY * data.width + centerX) * 4;
+		console.log("ImageData center pixel (from array): R=" + pixels[centerPixelIndex] + " G=" + pixels[centerPixelIndex + 1] + " B=" + pixels[centerPixelIndex + 2] + " A=" + pixels[centerPixelIndex + 3]);
+		console.log("ImageData first pixel: R=" + pixels[0] + " G=" + pixels[1] + " B=" + pixels[2] + " A=" + pixels[3]);
+		console.log("ImageData total length: " + pixels.length + " (expected: " + (data.width * data.height * 4) + ")");
+
+		// Step 2c) Check if we have alpha channel (any pixel with alpha !== 255)
 		var hasAlpha = false;
 		for (var i = 3; i < pixels.length; i += 4) {
 			if (pixels[i] !== 255) {
@@ -148,6 +164,9 @@ class IMGWriter extends BaseWriter {
 		var values = new Uint8Array(totalPixels * numBands);
 
 		// Step 4) Extract RGB or RGBA in interleaved format (chunky)
+		console.log("Starting extraction loop: totalPixels=" + totalPixels + ", numBands=" + numBands);
+		console.log("Values array size: " + values.length + " (expected: " + (totalPixels * numBands) + ")");
+
 		for (var i = 0; i < totalPixels; i++) {
 			var pixelIndex = i * 4; // Source is always RGBA
 			var outputIndex = i * numBands; // Output is RGB or RGBA
@@ -157,22 +176,38 @@ class IMGWriter extends BaseWriter {
 			if (hasAlpha) {
 				values[outputIndex + 3] = pixels[pixelIndex + 3]; // A
 			}
+
+			// Debug first colored pixel
+			if (i < 1000 && (pixels[pixelIndex] !== 0 || pixels[pixelIndex + 1] !== 0 || pixels[pixelIndex + 2] !== 0)) {
+				console.log("Found colored pixel at i=" + i + ": pixels[" + pixelIndex + "]=" + pixels[pixelIndex] + " → values[" + outputIndex + "]=" + values[outputIndex]);
+			}
 		}
 
+		console.log("Extraction loop complete");
+
 		// Debug: Sample interleaved data
-		console.log("Interleaved sample (first pixel): R=" + values[0] + " G=" + values[1] + " B=" + values[2]);
-		var centerIdx = Math.floor(totalPixels / 2) * numBands;
-		console.log("Interleaved sample (center pixel): R=" + values[centerIdx] + " G=" + values[centerIdx + 1] + " B=" + values[centerIdx + 2]);
+		console.log("Interleaved sample (first pixel): R=" + values[0] + " G=" + values[1] + " B=" + values[2] + " A=" + values[3]);
+		var centerPixel = Math.floor(totalPixels / 2);
+		var centerIdx = centerPixel * numBands;
+		console.log("Center pixel #" + centerPixel + " → values[" + centerIdx + "]: R=" + values[centerIdx] + " G=" + values[centerIdx + 1] + " B=" + values[centerIdx + 2] + " A=" + values[centerIdx + 3]);
+
+		// Also check what we verified earlier from pixels array
+		var centerPixelInPixels = centerPixel * 4;
+		console.log("For comparison, pixels[" + centerPixelInPixels + "]: R=" + pixels[centerPixelInPixels] + " G=" + pixels[centerPixelInPixels + 1] + " B=" + pixels[centerPixelInPixels + 2] + " A=" + pixels[centerPixelInPixels + 3]);
 
 		// Step 5) Create GeoTIFF metadata
 		var metadata = this.createGeoTIFFMetadata(data, numBands);
 
-		// Step 6) Let geotiff.js auto-detect RGB from samplesPerPixel
-		// Don't set PhotometricInterpretation - let library handle it
+		// Step 6) Set PhotometricInterpretation explicitly for RGB/RGBA
+		if (numBands >= 3) {
+			metadata.PhotometricInterpretation = 2; // RGB
+		}
 
-		// Step 7) If we have alpha channel, mark it as unassociated alpha
+		// Step 7) If we have alpha channel, mark it properly for QGIS
 		if (hasAlpha) {
 			metadata.ExtraSamples = [0]; // 0 = Unassociated alpha (straight alpha)
+			metadata.SamplesPerPixel = [4]; // Explicitly tell it we have 4 samples per pixel
+			console.log("Alpha channel enabled: 4 bands (RGBA) with unassociated alpha");
 		}
 
 		console.log("GeoTIFF metadata:", JSON.stringify(metadata, null, 2));

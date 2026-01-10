@@ -167,15 +167,14 @@ export function renderSurfaceToCanvas(surface, pixelsPerMeter, elevationToColor)
 
 		console.log("Rendering surface at " + pixelsPerMeter.toFixed(2) + " pixels/meter → " + width + "x" + height + " canvas");
 
-		// Step 5) Create canvas with alpha channel support
+		// Step 5) Create canvas with alpha channel
 		var canvas = document.createElement("canvas");
 		canvas.width = width;
 		canvas.height = height;
 		var ctx = canvas.getContext("2d", { alpha: true });
 
-		// Step 6) Clear canvas to TRANSPARENT (rgba 0,0,0,0)
+		// Step 6) Clear canvas to transparent
 		// Areas outside triangles will remain transparent (alpha = 0)
-		// Triangle areas will have opacity based on surface.transparency
 		ctx.clearRect(0, 0, width, height);
 		console.log("Canvas initialized with transparent background");
 		console.log("Surface transparency: " + (surface.transparency || 1.0));
@@ -187,6 +186,8 @@ export function renderSurfaceToCanvas(surface, pixelsPerMeter, elevationToColor)
 
 		console.log("Surface Z range: " + minZ.toFixed(2) + " to " + maxZ.toFixed(2));
 		console.log("Using gradient: " + gradient);
+		console.log("Total triangles to draw: " + surface.triangles.length);
+		console.log("elevationToColor function available: " + (typeof elevationToColor === "function"));
 
 		// Step 7) Draw each triangle
 		var triangleCount = 0;
@@ -228,6 +229,36 @@ export function renderSurfaceToCanvas(surface, pixelsPerMeter, elevationToColor)
 		});
 
 		console.log("Drew " + triangleCount + " triangles");
+
+		// Debug: Check canvas pixels at CENTER (where triangles should be)
+		var centerX = Math.floor(width / 2);
+		var centerY = Math.floor(height / 2);
+		var sampleSize = Math.min(50, width, height);
+		var imageData = ctx.getImageData(centerX - sampleSize / 2, centerY - sampleSize / 2, sampleSize, sampleSize);
+		var hasColor = false;
+		var colorCount = 0;
+		for (var i = 0; i < imageData.data.length; i += 4) {
+			var r = imageData.data[i];
+			var g = imageData.data[i + 1];
+			var b = imageData.data[i + 2];
+			var a = imageData.data[i + 3];
+			if (r !== 0 || g !== 0 || b !== 0) {
+				if (!hasColor) {
+					console.log("First colored pixel found at offset " + i + ": R=" + r + " G=" + g + " B=" + b + " A=" + a);
+					hasColor = true;
+				}
+				colorCount++;
+			}
+		}
+		console.log("Canvas center check: " + colorCount + " / " + (sampleSize * sampleSize) + " pixels have color");
+		if (!hasColor) {
+			console.error("CRITICAL ERROR: Canvas is completely black after drawing " + triangleCount + " triangles!");
+			console.error("This suggests the canvas drawing context is not working correctly.");
+		}
+
+		// Final verification
+		console.log("Returning canvas: " + width + "x" + height + ", " + canvas.width + "x" + canvas.height);
+		console.log("Canvas context valid: " + (ctx !== null));
 
 		return {
 			canvas: canvas,
