@@ -176,8 +176,13 @@ class IMGWriter extends BaseWriter {
 		// Step 8) Write GeoTIFF with geotiff.js
 		var arrayBuffer = await writeArrayBuffer(values, metadata);
 
-		// Note: GeoKey injection disabled - too risky and can corrupt TIFF
-		// The companion .prj file provides CRS information that QGIS/ArcGIS will read
+		// Step 9) Inject GeoKeys with EPSG code if provided
+		// This ensures QGIS/ArcGIS can read the CRS directly from the TIFF
+		// without relying on the companion .prj file
+		if (data.epsgCode) {
+			console.log("Injecting EPSG:" + data.epsgCode + " into TIFF");
+			arrayBuffer = this.injectGeoKeysIntoTIFF(arrayBuffer, parseInt(data.epsgCode));
+		}
 
 		return arrayBuffer;
 	}
@@ -216,8 +221,11 @@ class IMGWriter extends BaseWriter {
 		// Step 6) Write GeoTIFF
 		var arrayBuffer = await writeArrayBuffer(values, metadata);
 
-		// Note: GeoKey injection disabled - too risky and can corrupt TIFF
-		// The companion .prj file provides CRS information that QGIS/ArcGIS will read
+		// Step 7) Inject GeoKeys with EPSG code if provided
+		if (data.epsgCode) {
+			console.log("Injecting EPSG:" + data.epsgCode + " into elevation TIFF");
+			arrayBuffer = this.injectGeoKeysIntoTIFF(arrayBuffer, parseInt(data.epsgCode));
+		}
 
 		return arrayBuffer;
 	}

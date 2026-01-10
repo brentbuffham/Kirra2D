@@ -101,8 +101,8 @@ class SurpacDTMWriter extends BaseWriter {
 			var label = point.index.toString();
 			var description = point.surfaceName;
 
-			// Step 22) DTM format: Y, X, Z, label, description
-			dtm += "        " + formattedY + formattedX + formattedZ + label + "," + description + "\n";
+			// Step 22) DTM format: Y, X, Z, label, description (with commas)
+			dtm += formattedY + "," + formattedX + "," + formattedZ + "," + label + "," + description + "\n";
 		}, this);
 
 		// Step 23) Write end marker
@@ -118,12 +118,8 @@ class SurpacDTMWriter extends BaseWriter {
 			return "0.000";
 		}
 
-		// Step 43) DTM uses scientific notation for large values
-		// For now, use fixed notation with padding
-		var formatted = parseFloat(value).toFixed(this.decimalPlaces);
-
-		// Step 44) Add padding to match Surpac format (right-aligned in 20 chars)
-		return formatted.padStart(20, " ");
+		// Step 43) DTM uses simple fixed notation (no padding, no scientific notation)
+		return parseFloat(value).toFixed(this.decimalPlaces);
 	}
 
 	// Step 45) Get date string in dd-Mmm-yy format

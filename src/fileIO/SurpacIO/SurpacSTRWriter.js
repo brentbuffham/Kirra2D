@@ -243,31 +243,20 @@ class SurpacSTRWriter extends BaseWriter {
 			// Step 49) Skip invisible entities
 			if (entity.visible === false) return;
 
-			// Step 50) Get string number based on entity color
-			var stringNumber = this.colorToStringNumber(entity.color);
+			// Step 50) Get color from first data item or entity
+			var firstItem = entity.data && entity.data.length > 0 ? entity.data[0] : null;
+			var entityColor = firstItem ? firstItem.color : entity.color;
 
-			// Step 51) Export point entities
+			// Step 51) Get string number based on entity color
+			var stringNumber = this.colorToStringNumber(entityColor);
+
+			// Step 52) Export point entities
 			if (entity.entityType === "point" && entity.data && Array.isArray(entity.data)) {
 				for (var i = 0; i < entity.data.length; i++) {
 					var point = entity.data[i];
 
-					var y = this.formatNumber(point.pointYLocation || 0);
-					var x = this.formatNumber(point.pointXLocation || 0);
-					var z = this.formatNumber(point.pointZLocation || 0);
-
-					var label = point.pointID || this.defaultLabel;
-					var description = entity.entityName || this.defaultDescription;
-
-					str += stringNumber + "," + y + "," + x + "," + z + "," + label + "," + description + "\n";
-				}
-
-				// Step 52) Separator after each entity
-				str += "0, 0.000, 0.000, 0.000,\n";
-			}
-			// Step 53) Export line/polyline entities
-			else if ((entity.entityType === "line" || entity.entityType === "poly") && entity.data && Array.isArray(entity.data)) {
-				for (var i = 0; i < entity.data.length; i++) {
-					var point = entity.data[i];
+					// Skip invisible points
+					if (point.visible === false) continue;
 
 					var y = this.formatNumber(point.pointYLocation || 0);
 					var x = this.formatNumber(point.pointXLocation || 0);
@@ -276,15 +265,113 @@ class SurpacSTRWriter extends BaseWriter {
 					var label = point.pointID || i.toString();
 					var description = entity.entityName || this.defaultDescription;
 
-					str += stringNumber + "," + y + "," + x + "," + z + "," + label + "," + description + "\n";
+					// Get color from individual point or use entity color
+					var pointColor = point.color || entityColor;
+					var pointStringNumber = this.colorToStringNumber(pointColor);
+
+					str += pointStringNumber + "," + y + "," + x + "," + z + "," + label + "," + description + "\n";
+
+					// Separator after each point
+					str += "0, 0.000, 0.000, 0.000,\n";
+				}
+			}
+			// Step 53) Export text entities (as points with text in D1 field)
+			else if (entity.entityType === "text" && entity.data && Array.isArray(entity.data)) {
+				for (var i = 0; i < entity.data.length; i++) {
+					var textPoint = entity.data[i];
+
+					// Skip invisible text
+					if (textPoint.visible === false) continue;
+
+					var y = this.formatNumber(textPoint.pointYLocation || 0);
+					var x = this.formatNumber(textPoint.pointXLocation || 0);
+					var z = this.formatNumber(textPoint.pointZLocation || 0);
+
+					// Use the text value in D1 field (label)
+					var label = textPoint.text || "TEXT";
+					var description = entity.entityName || this.defaultDescription;
+
+					// Get color from individual text or use entity color
+					var textColor = textPoint.color || entityColor;
+					var textStringNumber = this.colorToStringNumber(textColor);
+
+					str += textStringNumber + "," + y + "," + x + "," + z + "," + label + "," + description + "\n";
+
+					// Separator after each text
+				str += "0, 0.000, 0.000, 0.000,\n";
+				}
+			}
+			// Step 54) Export line/polyline entities
+			else if ((entity.entityType === "line" || entity.entityType === "poly") && entity.data && Array.isArray(entity.data)) {
+				// Filter visible points
+				var visiblePoints = entity.data.filter(function(pt) {
+					return pt.visible !== false;
+				});
+
+				if (visiblePoints.length < 2) return;
+
+				for (var i = 0; i < visiblePoints.length; i++) {
+					var point = visiblePoints[i];
+
+					var y = this.formatNumber(point.pointYLocation || 0);
+					var x = this.formatNumber(point.pointXLocation || 0);
+					var z = this.formatNumber(point.pointZLocation || 0);
+
+					var label = point.pointID || i.toString();
+					var description = entity.entityName || this.defaultDescription;
+
+					// Get color from individual point or use entity color
+					var pointColor = point.color || entityColor;
+					var lineStringNumber = this.colorToStringNumber(pointColor);
+
+					str += lineStringNumber + "," + y + "," + x + "," + z + "," + label + "," + description + "\n";
 				}
 
-				// Step 54) Separator after each entity
+				// Step 55) Separator after each line/poly
 				str += "0, 0.000, 0.000, 0.000,\n";
+			}
+			// Step 56) Export circle entities as polygons (36 segments)
+			else if (entity.entityType === "circle" && entity.data && Array.isArray(entity.data)) {
+				for (var i = 0; i < entity.data.length; i++) {
+					var circle = entity.data[i];
+
+					// Skip invisible circles
+					if (circle.visible === false) continue;
+
+					var centerX = circle.pointXLocation || 0;
+					var centerY = circle.pointYLocation || 0;
+					var centerZ = circle.pointZLocation || 0;
+					var radius = circle.radius || 10;
+
+					// Get color from individual circle or use entity color
+					var circleColor = circle.color || entityColor;
+					var circleStringNumber = this.colorToStringNumber(circleColor);
+
+					// Generate 36 segments
+					var segments = 36;
+					for (var j = 0; j <= segments; j++) {
+						var angle = (j / segments) * 2 * Math.PI;
+						var x = centerX + radius * Math.cos(angle);
+						var y = centerY + radius * Math.sin(angle);
+						var z = centerZ;
+
+						var formattedY = this.formatNumber(y);
+						var formattedX = this.formatNumber(x);
+						var formattedZ = this.formatNumber(z);
+
+						var label = "C" + i + "_" + j;
+						var description = entity.entityName || this.defaultDescription;
+
+						str += circleStringNumber + "," + formattedY + "," + formattedX + "," + formattedZ + "," + label + "," + description + "\n";
+					}
+
+					// Separator after each circle
+					str += "0, 0.000, 0.000, 0.000,\n";
+				}
 			}
 		}, this);
 
-		// Step 55) Write end marker
+		// Step 57) Write end marker
 		str += "0, 0.000, 0.000, 0.000, END\n";
 
 		return str;

@@ -17,6 +17,7 @@ import DXFParser from "./AutoCadIO/DXFParser.js";
 import DXFHOLESWriter from "./AutoCadIO/DXFHOLESWriter.js";
 import DXFVulcanWriter from "./AutoCadIO/DXFVulcanWriter.js";
 import DXF3DFACEWriter from "./AutoCadIO/DXF3DFACEWriter.js";
+import DXFKADWriter from "./AutoCadIO/DXFKADWriter.js";
 import OBJParser from "./ThreeJSMeshIO/OBJParser.js";
 import OBJWriter from "./ThreeJSMeshIO/OBJWriter.js";
 import PLYParser from "./ThreeJSMeshIO/PLYParser.js";
@@ -40,6 +41,8 @@ import NAVAsciiParser from "./WencoIO/NAVAsciiParser.js";
 import NAVAsciiWriter from "./WencoIO/NAVAsciiWriter.js";
 import { IMGParser } from "./ImageIO/IMGParser.js";
 import { IMGWriter } from "./ImageIO/IMGWriter.js";
+import KMLKMZWriter from "./GoogleMapsIO/KMLKMZWriter.js";
+import KMLKMZParser from "./GoogleMapsIO/KMLKMZParser.js";
 
 // Step 4) Initialize FileManager with all parsers and writers
 export function initializeFileManager() {
@@ -139,14 +142,21 @@ export function initializeFileManager() {
 		category: "cad"
 	});
 
-	// Step 10a) Register DXF Vulcan writer (3D POLYLINE with Vulcan XData)
+	// Step 10a) Register DXF KAD writer (KAD drawings export)
+	fileManager.registerWriter("dxf-kad", DXFKADWriter, {
+		extensions: ["dxf"],
+		description: "DXF KAD drawings (points, lines, polygons, circles, text)",
+		category: "cad"
+	});
+
+	// Step 10b) Register DXF Vulcan writer (3D POLYLINE with Vulcan XData)
 	fileManager.registerWriter("dxf-vulcan", DXFVulcanWriter, {
 		extensions: ["dxf"],
 		description: "DXF Vulcan (3D POLYLINE with Vulcan XData tags)",
 		category: "cad"
 	});
 
-	// Step 10b) Register DXF 3DFACE writer (surface triangles)
+	// Step 10c) Register DXF 3DFACE writer (surface triangles)
 	fileManager.registerWriter("dxf-3dface", DXF3DFACEWriter, {
 		extensions: ["dxf"],
 		description: "DXF 3DFACE (surface triangles)",
@@ -290,6 +300,20 @@ export function initializeFileManager() {
 	fileManager.registerWriter("geotiff-elevation", IMGWriter, {
 		extensions: ["xyz", "csv"],
 		description: "GeoTIFF elevation export (XYZ point cloud)",
+		category: "gis"
+	});
+
+	// Step 28) Register KML/KMZ parser (blast holes and geometry to Google Earth)
+	fileManager.registerParser("kml-kmz", KMLKMZParser, {
+		extensions: ["kml", "kmz"],
+		description: "KML/KMZ import for Google Earth (blast holes and geometry)",
+		category: "gis"
+	});
+
+	// Step 29) Register KML/KMZ writer (blast holes and geometry to Google Earth)
+	fileManager.registerWriter("kml-kmz", KMLKMZWriter, {
+		extensions: ["kml", "kmz"],
+		description: "KML/KMZ export for Google Earth (blast holes and geometry)",
 		category: "gis"
 	});
 

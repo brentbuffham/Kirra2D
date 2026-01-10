@@ -64,7 +64,7 @@ class DXFParser extends BaseParser {
 			progressDialog.show();
 
 			// Step 13) Wait for dialog to render, then get progress elements
-			await new Promise(function (resolve) {
+			await new Promise(function(resolve) {
 				setTimeout(resolve, 50);
 			});
 
@@ -72,7 +72,7 @@ class DXFParser extends BaseParser {
 			progressText = document.getElementById("dxfProgressText");
 
 			// Step 14) Update progress function
-			progressUpdateDXF = function (percent, message) {
+			progressUpdateDXF = function(percent, message) {
 				if (progressBar) progressBar.style.width = percent + "%";
 				if (progressText) progressText.textContent = message;
 			};
@@ -102,13 +102,13 @@ class DXFParser extends BaseParser {
 
 			// Step 19) Update progress every entity and yield to UI periodically
 			if (progressUpdateDXF) {
-				var percent = Math.round((index / totalEntities) * 100);
+				var percent = Math.round(index / totalEntities * 100);
 				var message = "Processing entity " + (index + 1) + " of " + totalEntities;
 				progressUpdateDXF(percent, message);
 
 				// Step 20) Yield to UI every 50 entities to allow progress bar to update
 				if (index % 50 === 0) {
-					await new Promise(function (resolve) {
+					await new Promise(function(resolve) {
 						setTimeout(resolve, 0);
 					});
 				}
@@ -132,20 +132,21 @@ class DXFParser extends BaseParser {
 					kadDrawingsMap.set(name, {
 						entityName: name,
 						entityType: "point",
-						data: [{
-							entityName: name,
-							entityType: "point",
-							pointID: 1,
-							pointXLocation: x,
-							pointYLocation: y,
-							pointZLocation: z,
-							color: color
-						}]
+						data: [
+							{
+								entityName: name,
+								entityType: "point",
+								pointID: 1,
+								pointXLocation: x,
+								pointYLocation: y,
+								pointZLocation: z,
+								color: color
+							}
+						]
 					});
 				}
-			}
-			// Step 22) Parse INSERT entities (block inserts as points)
-			else if (t === "INSERT") {
+			} else if (t === "INSERT") {
+				// Step 22) Parse INSERT entities (block inserts as points)
 				if (!ent.position) {
 					console.warn("INSERT missing position:", ent);
 				} else {
@@ -159,20 +160,21 @@ class DXFParser extends BaseParser {
 					kadDrawingsMap.set(nameI, {
 						entityName: nameI,
 						entityType: "point",
-						data: [{
-							entityName: nameI,
-							entityType: "point",
-							pointID: 1,
-							pointXLocation: xi,
-							pointYLocation: yi,
-							pointZLocation: zi,
-							color: color
-						}]
+						data: [
+							{
+								entityName: nameI,
+								entityType: "point",
+								pointID: 1,
+								pointXLocation: xi,
+								pointYLocation: yi,
+								pointZLocation: zi,
+								color: color
+							}
+						]
 					});
 				}
-			}
-			// Step 23) Parse LINE entities
-			else if (t === "LINE") {
+			} else if (t === "LINE") {
+				// Step 23) Parse LINE entities
 				var v = ent.vertices;
 				if (!v || v.length < 2) {
 					console.warn("LINE missing vertices:", ent);
@@ -209,18 +211,47 @@ class DXFParser extends BaseParser {
 						]
 					});
 				}
-			}
-			// Step 24) Parse LWPOLYLINE or POLYLINE entities (poly if closed, line if open)
-			else if (t === "LWPOLYLINE" || t === "POLYLINE") {
+			} else if (t === "LWPOLYLINE" || t === "POLYLINE") {
+				// Step 24) Parse LWPOLYLINE or POLYLINE entities (poly if closed, line if open)
 				var verts = ent.vertices || ent.controlPoints || [];
 				if (!verts.length) {
 					console.warn("POLYLINE missing vertices:", ent);
 				} else {
+					// Step 24a) Debug: Log POLYLINE entity structure to see XDATA
+					if (index < 5) {
+						// Only log first 5 polylines to avoid spam
+						console.log("=== POLYLINE Entity Debug ===");
+						console.log("Entity type:", ent.type);
+						console.log("Has extendedData:", !!ent.extendedData);
+						if (ent.extendedData) {
+							console.log("extendedData keys:", Object.keys(ent.extendedData));
+							console.log("extendedData full:", ent.extendedData);
+							if (ent.extendedData.MAPTEK_VULCAN) {
+								console.log("MAPTEK_VULCAN data:", ent.extendedData.MAPTEK_VULCAN);
+							}
+						}
+					}
+
+					// Step 24b) Check for Vulcan XDATA
+					var vulcanName = this.extractVulcanName(ent);
+					var isVulcanEntity = vulcanName !== null;
+
+					if (vulcanName) {
+						console.log("✅ Vulcan entity detected! Name:", vulcanName);
+					} else if (ent.extendedData) {
+						console.log("⚠️ Has extendedData but no VulcanName extracted");
+					}
+
 					var isClosed = !!(ent.closed || ent.shape);
 					var entityType = isClosed ? "poly" : "line";
 					var nameP;
 
-					if (isClosed) {
+					// Step 24b) Name entity based on Vulcan XDATA or standard naming
+					if (isVulcanEntity) {
+						// Vulcan entity - use lineVN_ prefix
+						nameP = "lineVN_" + vulcanName;
+						console.log("Vulcan POLYLINE detected: " + nameP);
+					} else if (isClosed) {
 						var baseNameP = ent.name || "polyEntity_" + ++counts.poly;
 						nameP = this.getUniqueEntityName(baseNameP, "poly", kadDrawingsMap);
 					} else {
@@ -235,7 +266,7 @@ class DXFParser extends BaseParser {
 					});
 
 					var dataP = kadDrawingsMap.get(nameP).data;
-					verts.forEach(function (v, i) {
+					verts.forEach(function(v, i) {
 						dataP.push({
 							entityName: nameP,
 							entityType: entityType,
@@ -264,10 +295,35 @@ class DXFParser extends BaseParser {
 							closed: true
 						});
 					}
+
+					// Step 25a) Create text entity at collar (first vertex) for Vulcan entities
+					if (isVulcanEntity && verts.length > 0) {
+						var firstVert = verts[0];
+						var textName = "textVN_" + vulcanName;
+
+						kadDrawingsMap.set(textName, {
+							entityName: textName,
+							entityType: "text",
+							data: [
+								{
+									entityName: textName,
+									entityType: "text",
+									pointID: 1,
+									pointXLocation: firstVert.x - offsetX,
+									pointYLocation: firstVert.y - offsetY,
+									pointZLocation: firstVert.z || 0,
+									text: vulcanName,
+									color: color,
+									fontHeight: 12
+								}
+							]
+						});
+
+						console.log("Created text entity for Vulcan hole: " + textName);
+					}
 				}
-			}
-			// Step 26) Parse CIRCLE entities
-			else if (t === "CIRCLE") {
+			} else if (t === "CIRCLE") {
+				// Step 26) Parse CIRCLE entities
 				if (!ent.center) {
 					console.warn("CIRCLE missing center:", ent);
 				} else {
@@ -277,22 +333,23 @@ class DXFParser extends BaseParser {
 					kadDrawingsMap.set(nameC, {
 						entityName: nameC,
 						entityType: "circle",
-						data: [{
-							entityName: nameC,
-							entityType: "circle",
-							pointID: 1,
-							pointXLocation: ent.center.x - offsetX,
-							pointYLocation: ent.center.y - offsetY,
-							pointZLocation: ent.center.z || 0,
-							radius: ent.radius,
-							lineWidth: 1,
-							color: color
-						}]
+						data: [
+							{
+								entityName: nameC,
+								entityType: "circle",
+								pointID: 1,
+								pointXLocation: ent.center.x - offsetX,
+								pointYLocation: ent.center.y - offsetY,
+								pointZLocation: ent.center.z || 0,
+								radius: ent.radius,
+								lineWidth: 1,
+								color: color
+							}
+						]
 					});
 				}
-			}
-			// Step 27) Parse ELLIPSE entities (sampled as 64-segment closed polygon)
-			else if (t === "ELLIPSE") {
+			} else if (t === "ELLIPSE") {
+				// Step 27) Parse ELLIPSE entities (sampled as 64-segment closed polygon)
 				if (!ent.center) {
 					console.warn("ELLIPSE missing center:", ent);
 				} else {
@@ -328,13 +385,14 @@ class DXFParser extends BaseParser {
 					}
 
 					// Step 28) Close ellipse loop
-					dataE.push(Object.assign({}, dataE[0], {
-						pointID: dataE.length + 1
-					}));
+					dataE.push(
+						Object.assign({}, dataE[0], {
+							pointID: dataE.length + 1
+						})
+					);
 				}
-			}
-			// Step 29) Parse TEXT or MTEXT entities
-			else if (t === "TEXT" || t === "MTEXT") {
+			} else if (t === "TEXT" || t === "MTEXT") {
+				// Step 29) Parse TEXT or MTEXT entities
 				var pos = ent.startPoint || ent.position;
 				if (!pos) {
 					console.warn("TEXT missing position:", ent);
@@ -345,22 +403,23 @@ class DXFParser extends BaseParser {
 					kadDrawingsMap.set(nameT, {
 						entityName: nameT,
 						entityType: "text",
-						data: [{
-							entityName: nameT,
-							entityType: "text",
-							pointID: 1,
-							pointXLocation: pos.x - offsetX,
-							pointYLocation: pos.y - offsetY,
-							pointZLocation: pos.z || 0,
-							text: ent.text,
-							color: color,
-							fontHeight: ent.height || 12
-						}]
+						data: [
+							{
+								entityName: nameT,
+								entityType: "text",
+								pointID: 1,
+								pointXLocation: pos.x - offsetX,
+								pointYLocation: pos.y - offsetY,
+								pointZLocation: pos.z || 0,
+								text: ent.text,
+								color: color,
+								fontHeight: ent.height || 12
+							}
+						]
 					});
 				}
-			}
-			// Step 30) Parse 3DFACE entities (surface triangles)
-			else if (t === "3DFACE") {
+			} else if (t === "3DFACE") {
+				// Step 30) Parse 3DFACE entities (surface triangles)
 				var verts = ent.vertices;
 				if (!verts || verts.length < 3) {
 					console.warn("3DFACE missing vertices:", ent);
@@ -394,9 +453,8 @@ class DXFParser extends BaseParser {
 						maxZ: Math.max(p1.z, p2.z, p3.z)
 					});
 				}
-			}
-			// Step 34) Skip unsupported entity types
-			else {
+			} else {
+				// Step 34) Skip unsupported entity types
 				console.warn("Unsupported DXF entity:", ent.type);
 			}
 		}
@@ -425,7 +483,7 @@ class DXFParser extends BaseParser {
 		// Step 36) Update progress to 100% and close dialog
 		if (progressUpdateDXF) {
 			progressUpdateDXF(100, "DXF import complete!");
-			setTimeout(function () {
+			setTimeout(function() {
 				if (progressDialog) {
 					progressDialog.close();
 				}
@@ -487,6 +545,50 @@ class DXFParser extends BaseParser {
 		// Step 46) Point doesn't exist, add it
 		pointsArray.push(newPoint);
 		return pointsArray.length - 1;
+	}
+
+	// Step 47) Helper: Extract VulcanName from XDATA
+	extractVulcanName(entity) {
+		// Step 48) Check if entity has extendedData (XDATA)
+		if (!entity.extendedData) {
+			return null;
+		}
+
+		// Step 49) The DXF parser structures XDATA as { applicationName, customStrings }
+		// Loop through all extended data entries
+		if (Array.isArray(entity.extendedData)) {
+			for (var i = 0; i < entity.extendedData.length; i++) {
+				var xdata = entity.extendedData[i];
+
+				// Check if this is MAPTEK_VULCAN data
+				if (xdata.applicationName === "MAPTEK_VULCAN" && Array.isArray(xdata.customStrings)) {
+					// Look for VulcanName= in customStrings array
+					for (var j = 0; j < xdata.customStrings.length; j++) {
+						var str = xdata.customStrings[j];
+						if (typeof str === "string" && str.indexOf("VulcanName=") === 0) {
+							var vulcanName = str.substring(11); // Extract value after "VulcanName="
+							console.log("🎯 Found VulcanName:", vulcanName);
+							return vulcanName;
+						}
+					}
+				}
+			}
+		} else if (entity.extendedData.applicationName === "MAPTEK_VULCAN") {
+			// Single object format
+			var customStrings = entity.extendedData.customStrings;
+			if (Array.isArray(customStrings)) {
+				for (var k = 0; k < customStrings.length; k++) {
+					var str = customStrings[k];
+					if (typeof str === "string" && str.indexOf("VulcanName=") === 0) {
+						var vulcanName = str.substring(11);
+						console.log("🎯 Found VulcanName:", vulcanName);
+						return vulcanName;
+					}
+				}
+			}
+		}
+
+		return null;
 	}
 }
 

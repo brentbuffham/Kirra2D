@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>KIRRA_BLASTS_20260109-1039.kml</name>
+	<open>1</open>
+	<atom:link rel="app" href="https://www.google.com/earth/about/versions/#earth-pro" title="Google Earth Pro 7.3.6.10441"></atom:link>
+	<Style id="s_ylw-pushpin">
+		<IconStyle>
+			<scale>1.2</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle.png</href>
+			</Icon>
+		</IconStyle>
+		<ListStyle>
+		</ListStyle>
+	</Style>
+	<Style id="s_ylw-pushpin_hl">
+		<IconStyle>
+			<scale>1.2</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/shapes/placemark_circle_highlight.png</href>
+			</Icon>
+		</IconStyle>
+		<ListStyle>
+		</ListStyle>
+	</Style>
+	<StyleMap id="style1">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#s_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#s_ylw-pushpin_hl</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Folder>
+		<name>ENTITYNAME</name>
+		<open>1</open>
+		<Placemark>
+			<name>1</name>
+			<description>Origin:
+{startXLocation:30610.785, startYLocation:157573.141, startZLocation:300.000, endXLocation:30610.785, endYLocation:157573.141, endZLocation:298.200, subdrillAmount:1.0, calculatedHoleLength:1.8 diameter:89}</description>
+			<styleUrl>#style1</styleUrl>
+			<Point>
+				<coordinates>117.158741560754,-22.52724854632689,571.008</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>237</name>
+			<description>Origin
+{startXLocation:30588.136, startYLocation:157578.794, startZLocation:301.200, endXLocation:30588.136, endYLocation:157578.794, endZLocation:295.900, subdrillAmount:1.0, calculatedHoleLength:5.3m Diameter:102mm}</description>
+			<styleUrl>#style1</styleUrl>
+			<Point>
+				<coordinates>117.158521457709,-22.527197377674,568.787</coordinates>
+			</Point>
+		</Placemark>
+	</Folder>
+</Document>
+</kml>

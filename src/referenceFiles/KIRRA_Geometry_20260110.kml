@@ -1,0 +1,313 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kml xmlns="http://www.opengis.net/kml/2.2" xmlns:gx="http://www.google.com/kml/ext/2.2" xmlns:kml="http://www.opengis.net/kml/2.2" xmlns:atom="http://www.w3.org/2005/Atom">
+<Document>
+	<name>KIRRA_Geometry_20260110</name>
+	<open>1</open>
+	<atom:link rel="app" href="https://www.kirra2d.com" title="Kirra2D"></atom:link>
+	<StyleMap id="m_ylw-pushpin">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#s_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#s_ylw-pushpin_hl</styleUrl>
+		</Pair>
+	</StyleMap>
+	<StyleMap id="msn_cross-hairs">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#sn_cross-hairs</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#sh_cross-hairs_highlight</styleUrl>
+		</Pair>
+	</StyleMap>
+	<StyleMap id="msn_open-diamond">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#sn_open-diamond</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#sh_open-diamond</styleUrl>
+		</Pair>
+	</StyleMap>
+	<StyleMap id="msn_ylw-pushpin">
+		<Pair>
+			<key>normal</key>
+			<styleUrl>#sn_ylw-pushpin</styleUrl>
+		</Pair>
+		<Pair>
+			<key>highlight</key>
+			<styleUrl>#sh_ylw-pushpin</styleUrl>
+		</Pair>
+	</StyleMap>
+	<Style id="s_ylw-pushpin">
+		<IconStyle>
+			<scale>1.1</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Style id="s_ylw-pushpin_hl">
+		<IconStyle>
+			<scale>1.3</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+	</Style>
+	<Style id="sh_cross-hairs_highlight">
+		<IconStyle>
+			<scale>1.2</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/shapes/cross-hairs_highlight.png</href>
+			</Icon>
+		</IconStyle>
+		<BalloonStyle>
+		</BalloonStyle>
+		<ListStyle>
+		</ListStyle>
+	</Style>
+	<Style id="sh_open-diamond">
+		<IconStyle>
+			<scale>1.4</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/shapes/open-diamond.png</href>
+			</Icon>
+		</IconStyle>
+		<BalloonStyle>
+		</BalloonStyle>
+		<ListStyle>
+		</ListStyle>
+	</Style>
+	<Style id="sh_ylw-pushpin">
+		<IconStyle>
+			<scale>1.3</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+		<BalloonStyle>
+		</BalloonStyle>
+		<LineStyle>
+			<color>ff0880fd</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<Style id="sn_cross-hairs">
+		<IconStyle>
+			<scale>1.2</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/shapes/cross-hairs.png</href>
+			</Icon>
+		</IconStyle>
+		<BalloonStyle>
+		</BalloonStyle>
+		<ListStyle>
+		</ListStyle>
+	</Style>
+	<Style id="sn_open-diamond">
+		<IconStyle>
+			<scale>1.2</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/shapes/open-diamond.png</href>
+			</Icon>
+		</IconStyle>
+		<BalloonStyle>
+		</BalloonStyle>
+		<ListStyle>
+		</ListStyle>
+	</Style>
+	<Style id="sn_ylw-pushpin">
+		<IconStyle>
+			<scale>1.1</scale>
+			<Icon>
+				<href>http://maps.google.com/mapfiles/kml/pushpin/ylw-pushpin.png</href>
+			</Icon>
+			<hotSpot x="20" y="2" xunits="pixels" yunits="pixels"/>
+		</IconStyle>
+		<BalloonStyle>
+		</BalloonStyle>
+		<LineStyle>
+			<color>ff0880fd</color>
+			<width>2</width>
+		</LineStyle>
+		<PolyStyle>
+			<fill>0</fill>
+		</PolyStyle>
+	</Style>
+	<Folder>
+		<name>POLYGONS</name>
+		<open>1</open>
+		<Placemark>
+			<name>polyEntity_s5tf</name>
+			<styleUrl>#msn_ylw-pushpin</styleUrl>
+			<Polygon>
+				<tessellate>1</tessellate>
+				<outerBoundaryIs>
+					<LinearRing>
+						<coordinates>
+							116.7821543891612,-29.17723034131687,0 116.7822166444544,-29.17740912190542,0 116.7822423015327,-29.17748465660091,0 116.7822830823675,-29.17752444557011,0 116.7822940559311,-29.17757533165614,0 116.7822677705269,-29.17764789862822,0 116.7822272488201,-29.17774926952269,0 116.7822203981508,-29.17783654682341,0 116.7822429842896,-29.17789256727045,0 116.7822068508022,-29.17800447718662,0 116.7822066668823,-29.17800565651416,0 116.7821244458751,-29.17808633106797,0 116.7819881370179,-29.17815156928913,0 116.7818604720674,-29.17821024078764,0 116.7817376029333,-29.17820604102004,0 116.7815527734767,-29.17815914849547,0 116.781417574696,-29.17808858203242,0 116.7813356751292,-29.17806934852472,0 116.7812682818086,-29.17810426334776,0 116.7812671075156,-29.17810426333837,0 116.7811498807605,-29.17813849417975,0 116.7812161797786,-29.17818488320004,0 116.7813173857141,-29.17816346352424,0 116.7814131915855,-29.17814613345821,0 116.7815116062882,-29.17819972131436,0 116.7815965157263,-29.17822589688985,0 116.781725339912,-29.17824243904208,0 116.7818613559596,-29.17824962536114,0 116.7820039044193,-29.17823211948613,0 116.782186430107,-29.17814286514986,0 116.7822816761438,-29.1780784261728,0 116.782361207321,-29.1779627069494,0 116.7823602224571,-29.17796149928687,0 116.7823691904074,-29.17787112082965,0 116.7823600951904,-29.17777213364713,0 116.7823983253517,-29.1776663384417,0 116.7824251899147,-29.17757533044423,0 116.7823896807048,-29.17747225570994,0 116.7823436182723,-29.17734732769211,0 116.782343325225,-29.17725114539939,0 116.7824019483813,-29.17720757372648,0 116.7825436123654,-29.17714146090353,0 116.782704751379,-29.17711224945175,0 116.7826961024379,-29.17703182156901,0 116.7825248267118,-29.17705267223133,0 116.7823553861788,-29.177119592715,0 116.7822976410032,-29.17718457120483,0 116.7822284131835,-29.17714689900743,0 116.7821543891612,-29.17723034131687,0 
+						</coordinates>
+					</LinearRing>
+				</outerBoundaryIs>
+			</Polygon>
+		</Placemark>
+	</Folder>
+	<Folder>
+		<name>POINTS</name>
+		<open>1</open>
+		<Placemark>
+			<name>pointEntity_gfb3_00001</name>
+			<description>pointObject = {
+   entityName: entityName,
+   entityType: entityType,
+   pointID: pointID,
+   pointXLocation: pointXLocation,
+   pointYLocation: pointYLocation,
+   pointZLocation: pointZLocation,
+   lineWidth: lineWidth, // This is added for inter-changable types. points &gt; lines &gt; polys
+   color: color,
+   connected: false,
+   closed: false,
+   visible: true,
+  };</description>
+			<LookAt>
+				<longitude>116.7816458230428</longitude>
+				<latitude>-29.17780592866752</latitude>
+				<altitude>0</altitude>
+				<heading>2.388645460446288e-05</heading>
+				<tilt>32.09710765712058</tilt>
+				<range>224.5279371168054</range>
+				<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+			</LookAt>
+			<styleUrl>#msn_cross-hairs</styleUrl>
+			<Point>
+				<gx:drawOrder>1</gx:drawOrder>
+				<coordinates>116.7812807287245,-29.17732909853108,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>pointEntity_gfb3_00002</name>
+			<open>1</open>
+			<description>pointObject = {
+   entityName: entityName,
+   entityType: entityType,
+   pointID: pointID,
+   pointXLocation: pointXLocation,
+   pointYLocation: pointYLocation,
+   pointZLocation: pointZLocation,
+   lineWidth: lineWidth, // This is added for inter-changable types. points &gt; lines &gt; polys
+   color: color,
+   connected: false,
+   closed: false,
+   visible: true,
+  };</description>
+			<LookAt>
+				<longitude>116.7816458230428</longitude>
+				<latitude>-29.17780592866752</latitude>
+				<altitude>0</altitude>
+				<heading>2.388645460446288e-05</heading>
+				<tilt>32.09710765712058</tilt>
+				<range>224.5279371168054</range>
+				<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+			</LookAt>
+			<styleUrl>#msn_cross-hairs</styleUrl>
+			<Point>
+				<gx:drawOrder>1</gx:drawOrder>
+				<coordinates>116.7809242668163,-29.17803488508213,0</coordinates>
+			</Point>
+		</Placemark>
+		<Placemark>
+			<name>pointEntity_gfb3_00003</name>
+			<open>1</open>
+			<description>pointObject = {
+   entityName: entityName,
+   entityType: entityType,
+   pointID: pointID,
+   pointXLocation: pointXLocation,
+   pointYLocation: pointYLocation,
+   pointZLocation: pointZLocation,
+   lineWidth: lineWidth, // This is added for inter-changable types. points &gt; lines &gt; polys
+   color: color,
+   connected: false,
+   closed: false,
+   visible: true,
+  };</description>
+			<LookAt>
+				<longitude>116.7816458230428</longitude>
+				<latitude>-29.17780592866752</latitude>
+				<altitude>0</altitude>
+				<heading>2.388645460446288e-05</heading>
+				<tilt>32.09710765712058</tilt>
+				<range>224.5279371168054</range>
+				<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+			</LookAt>
+			<styleUrl>#msn_cross-hairs</styleUrl>
+			<Point>
+				<gx:drawOrder>1</gx:drawOrder>
+				<coordinates>116.7811203847948,-29.17776140546676,0</coordinates>
+			</Point>
+		</Placemark>
+	</Folder>
+	<Folder>
+		<name>LINES</name>
+		<open>1</open>
+		<Placemark>
+			<name>line_Entity_we3q</name>
+			<styleUrl>#m_ylw-pushpin</styleUrl>
+			<LineString>
+				<tessellate>1</tessellate>
+				<coordinates>
+					116.7820761410769,-29.17718990275862,0 116.7813446171117,-29.1773800760515,0 116.7813342245665,-29.17748620060942,0 116.7813497961598,-29.17760321843476,0 116.7813167669585,-29.17773569045543,0 116.7812319421225,-29.17783783696236,0 116.7810896453686,-29.17796511751177,0 116.7809932566925,-29.17806478918894,0 116.7810770676974,-29.17813411414762,0 
+				</coordinates>
+			</LineString>
+		</Placemark>
+	</Folder>
+	<Folder>
+		<name>TEXT</name>
+		<open>1</open>
+		<Placemark>
+			<name>VALUE_textEntity_dk2m_00001</name>
+			<description>textObject = {
+   entityName: entityName,
+   entityType: entityType,
+   pointID: pointID,
+   pointXLocation: pointXLocation,
+   pointYLocation: pointYLocation,
+   pointZLocation: pointZLocation,
+   text: text, // ? Now using the processed text
+   color: color,
+   fontHeight: 12, // Step B1) Default fontHeight for new text entities
+   connected: false,
+   closed: false,
+   visible: true,
+  }</description>
+			<LookAt>
+				<longitude>116.7816458230428</longitude>
+				<latitude>-29.17780592866752</latitude>
+				<altitude>0</altitude>
+				<heading>2.388645460446288e-05</heading>
+				<tilt>32.09710765712058</tilt>
+				<range>224.5279371168054</range>
+				<gx:altitudeMode>relativeToSeaFloor</gx:altitudeMode>
+			</LookAt>
+			<styleUrl>#msn_open-diamond</styleUrl>
+			<Point>
+				<gx:drawOrder>1</gx:drawOrder>
+				<coordinates>116.7815032991449,-29.17729216993689,0</coordinates>
+			</Point>
+		</Placemark>
+	</Folder>
+</Document>
+</kml>

@@ -141,16 +141,7 @@ async function loadEPSGCode(epsgCode) {
 export function isLikelyWGS84(bbox) {
 	// WGS84 coordinates typically range from -180 to 180 for longitude
 	// and -90 to 90 for latitude
-	return (
-		bbox[0] >= -180 &&
-		bbox[0] <= 180 &&
-		bbox[2] >= -180 &&
-		bbox[2] <= 180 &&
-		bbox[1] >= -90 &&
-		bbox[1] <= 90 &&
-		bbox[3] >= -90 &&
-		bbox[3] <= 90
-	);
+	return bbox[0] >= -180 && bbox[0] <= 180 && bbox[2] >= -180 && bbox[2] <= 180 && bbox[1] >= -90 && bbox[1] <= 90 && bbox[3] >= -90 && bbox[3] <= 90;
 }
 
 /**
@@ -159,7 +150,7 @@ export function isLikelyWGS84(bbox) {
  * @returns {Promise<Object>} Result object with transformed coordinates
  */
 export async function promptForProjection(bbox) {
-	return new Promise((resolve) => {
+	return new Promise(resolve => {
 		// Step 1) Create dialog content HTML
 		var contentHTML = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">';
 
@@ -168,9 +159,9 @@ export async function promptForProjection(bbox) {
 		contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">The GeoTIFF appears to use WGS84 (latitude/longitude) coordinates:</p>';
 		contentHTML += '<pre style="background: var(--dark-mode-bg); padding: 8px; border-radius: 4px; border: 1px solid var(--light-mode-border); color: var(--text-color); font-size: 11px; margin: 0 0 10px 0; overflow-x: auto;">';
 		contentHTML += bbox[0].toFixed(6) + ", " + bbox[1].toFixed(6) + " to\\n" + bbox[2].toFixed(6) + ", " + bbox[3].toFixed(6);
-		contentHTML += '</pre>';
+		contentHTML += "</pre>";
 		contentHTML += '<p class="labelWhite15" style="margin: 0;">Kirra2D uses meters East(X)/North(Y). Please select a target coordinate system:</p>';
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Step 3) EPSG dropdown
 		contentHTML += '<div class="button-container-2col" style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
@@ -180,22 +171,22 @@ export async function promptForProjection(bbox) {
 
 		// Add all EPSG codes to dropdown
 		top100EPSGCodes.forEach(function(item) {
-			contentHTML += '<option value="' + item.code + '">' + item.code + ' - ' + item.name + '</option>';
+			contentHTML += '<option value="' + item.code + '">' + item.code + " - " + item.name + "</option>";
 		});
 
-		contentHTML += '</select>';
-		contentHTML += '</div>';
+		contentHTML += "</select>";
+		contentHTML += "</div>";
 
 		// Step 4) Custom Proj4 textarea
 		contentHTML += '<div class="button-container-2col" style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: start;">';
 		contentHTML += '<label class="labelWhite15" style="padding-top: 4px;">Or Custom Proj4:</label>';
 		contentHTML += '<textarea id="proj-custom-proj4" placeholder="+proj=utm +zone=50 +south +datum=WGS84 +units=m +no_defs" style="height: 60px; padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>';
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Step 5) Error message area (hidden by default)
 		contentHTML += '<div id="proj-error-message" style="display: none; padding: 8px; background: #f44336; color: white; border-radius: 4px; font-size: 11px;"></div>';
 
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Step 6) Create FloatingDialog
 		var dialog = new FloatingDialog({
@@ -208,7 +199,7 @@ export async function promptForProjection(bbox) {
 			showCancel: true,
 			confirmText: "Transform",
 			cancelText: "Cancel",
-			onConfirm: async function () {
+			onConfirm: async function() {
 				try {
 					// Step 7) Get form values
 					var epsgCode = document.getElementById("proj-epsg-code").value.trim();
@@ -261,7 +252,7 @@ export async function promptForProjection(bbox) {
 					// Don't close dialog - let user fix the error
 				}
 			},
-			onCancel: function () {
+			onCancel: function() {
 				// Step 13) User cancelled transformation
 				dialog.close();
 				resolve({
@@ -281,7 +272,7 @@ export async function promptForProjection(bbox) {
  * @returns {Promise<Object>} Result object with EPSG code, resolution mode, and custom values
  */
 export async function promptForExportProjection(bbox) {
-	return new Promise((resolve) => {
+	return new Promise(resolve => {
 		// Step 1) Create dialog content HTML
 		var contentHTML = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">';
 
@@ -289,10 +280,10 @@ export async function promptForExportProjection(bbox) {
 		contentHTML += '<div style="text-align: left;">';
 		contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">Configure export settings for GeoTIFF:</p>';
 		contentHTML += '<pre style="background: var(--dark-mode-bg); padding: 8px; border-radius: 4px; border: 1px solid var(--light-mode-border); color: var(--text-color); font-size: 11px; margin: 0 0 10px 0; overflow-x: auto;">';
-		contentHTML += 'Bounds: ' + bbox[0].toFixed(2) + ', ' + bbox[1].toFixed(2) + ' to\\n';
-		contentHTML += '        ' + bbox[2].toFixed(2) + ', ' + bbox[3].toFixed(2);
-		contentHTML += '</pre>';
-		contentHTML += '</div>';
+		contentHTML += "Bounds: " + bbox[0].toFixed(2) + ", " + bbox[1].toFixed(2) + " to\\n";
+		contentHTML += "        " + bbox[2].toFixed(2) + ", " + bbox[3].toFixed(2);
+		contentHTML += "</pre>";
+		contentHTML += "</div>";
 
 		// Step 3) Resolution mode selection
 		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
@@ -302,7 +293,7 @@ export async function promptForExportProjection(bbox) {
 		contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
 		contentHTML += '<input type="radio" id="res-screen" name="resolution-mode" value="screen" checked style="margin: 0;">';
 		contentHTML += '<label for="res-screen" class="labelWhite15" style="margin: 0; cursor: pointer;">Screen Zoom Resolution (current view)</label>';
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Radio option 2: DPI
 		contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
@@ -310,7 +301,7 @@ export async function promptForExportProjection(bbox) {
 		contentHTML += '<label for="res-dpi" class="labelWhite15" style="margin: 0; cursor: pointer;">DPI:</label>';
 		contentHTML += '<input type="number" id="dpi-value" value="300" min="72" max="600" step="1" style="width: 80px; padding: 2px 6px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;" onfocus="document.getElementById(\'res-dpi\').checked = true;">';
 		contentHTML += '<span class="labelWhite15" style="margin: 0;">dpi</span>';
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Radio option 3: Resolution (pixels per meter)
 		contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
@@ -318,15 +309,15 @@ export async function promptForExportProjection(bbox) {
 		contentHTML += '<label for="res-ppm" class="labelWhite15" style="margin: 0; cursor: pointer;">Resolution:</label>';
 		contentHTML += '<input type="number" id="ppm-value" value="10" min="1" max="1000" step="0.1" style="width: 80px; padding: 2px 6px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;" onfocus="document.getElementById(\'res-ppm\').checked = true;">';
 		contentHTML += '<span class="labelWhite15" style="margin: 0;">pixels/meter</span>';
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Radio option 4: Full Resolution
 		contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
 		contentHTML += '<input type="radio" id="res-full" name="resolution-mode" value="full" style="margin: 0;">';
 		contentHTML += '<label for="res-full" class="labelWhite15" style="margin: 0; cursor: pointer;">Full Resolution (1 pixel = 0.1 meters)</label>';
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Step 4) EPSG dropdown (REQUIRED)
 		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
@@ -338,31 +329,31 @@ export async function promptForExportProjection(bbox) {
 
 		// Add all EPSG codes to dropdown
 		top100EPSGCodes.forEach(function(item) {
-			contentHTML += '<option value="' + item.code + '">' + item.code + ' - ' + item.name + '</option>';
+			contentHTML += '<option value="' + item.code + '">' + item.code + " - " + item.name + "</option>";
 		});
 
-		contentHTML += '</select>';
-		contentHTML += '</div>';
+		contentHTML += "</select>";
+		contentHTML += "</div>";
 
 		// Error message for missing EPSG
 		contentHTML += '<div id="epsg-error-message" style="display: none; margin-top: 8px; padding: 6px; background: #f44336; color: white; border-radius: 3px; font-size: 11px;">EPSG code is required for GeoTIFF export</div>';
 
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Step 5) Information about export process
 		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
 		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; line-height: 1.4; word-wrap: break-word; white-space: normal;"><strong>Export Information:</strong></p>';
 		contentHTML += '<ul class="labelWhite15" style="margin: 0; padding-left: 20px; font-size: 11px; line-height: 1.4; word-wrap: break-word; white-space: normal;">';
-		contentHTML += '<li>You will be prompted <strong>twice</strong>: once for the <strong>.tif</strong> file, then for the <strong>.prj</strong> file</li>';
+		contentHTML += "<li>You will be prompted <strong>twice</strong>: once for the <strong>.tif</strong> file, then for the <strong>.prj</strong> file</li>";
 		contentHTML += '<li><strong>IMPORTANT:</strong> Save both files in the <strong>same folder</strong> with the <strong>same base name</strong> (e.g., "test.tif" and "test.prj")</li>';
-		contentHTML += '<li>The .prj file contains CRS/projection data - QGIS/ArcGIS will only recognize it if it\'s in the same folder with matching filename</li>';
-		contentHTML += '<li>Files are <strong>uncompressed</strong> and may be very large</li>';
-		contentHTML += '</ul>';
+		contentHTML += "<li>The .prj file contains CRS/projection data - QGIS/ArcGIS will only recognize it if it's in the same folder with matching filename</li>";
+		contentHTML += "<li>Files are <strong>uncompressed</strong> and may be very large</li>";
+		contentHTML += "</ul>";
 		contentHTML += '<p class="labelWhite15" style="margin: 8px 0 0 0; font-size: 11px; line-height: 1.4; word-wrap: break-word; white-space: normal;"><strong>Technical Note:</strong> GeoKey injection into TIFF files is disabled due to file corruption risks. The beta <code>writeArrayBuffer</code> API from geotiff.js does not reliably write GeoTIFF tags. The .prj file provides a proven, industry-standard alternative that all major GIS software supports.</p>';
 		contentHTML += '<p class="labelWhite15" style="margin: 8px 0 0 0; font-size: 11px; line-height: 1.4; word-wrap: break-word; white-space: normal;">For more information: <a href="https://geotiffjs.github.io/geotiff.js/" target="_blank" style="color: #4CAF50; text-decoration: underline;">https://geotiffjs.github.io/geotiff.js/</a></p>';
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
-		contentHTML += '</div>';
+		contentHTML += "</div>";
 
 		// Step 5) Create FloatingDialog
 		var dialog = new FloatingDialog({
@@ -375,7 +366,7 @@ export async function promptForExportProjection(bbox) {
 			showCancel: true,
 			confirmText: "Export",
 			cancelText: "Cancel",
-			onConfirm: function () {
+			onConfirm: function() {
 				// Step 6) Get form values
 				var epsgCode = document.getElementById("export-proj-epsg-code").value.trim();
 				var errorDiv = document.getElementById("epsg-error-message");
@@ -403,7 +394,7 @@ export async function promptForExportProjection(bbox) {
 					pixelsPerMeter: ppmValue
 				});
 			},
-			onCancel: function () {
+			onCancel: function() {
 				// Step 8) User cancelled export
 				dialog.close();
 				resolve({
@@ -417,8 +408,156 @@ export async function promptForExportProjection(bbox) {
 		dialog.show();
 	});
 }
+/**
+ * Show projection selection dialog for KML/KMZ exports
+ * @param {string} exportType - "blastholes" or "geometry"
+ * @returns {Promise<Object>} Result object with projection config
+ */
+export async function promptForKMLExportProjection(exportType) {
+	return new Promise(function(resolve) {
+		// Step 1) Create dialog content HTML
+		var contentHTML = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">';
+
+		// Step 2) Information section
+		contentHTML += '<div style="text-align: left;">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">KML/KMZ files use WGS84 coordinates (latitude/longitude).</p>';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">Please specify your current coordinate system so Kirra2D can transform the data:</p>';
+		contentHTML += "</div>";
+
+		// Step 3) Export type selection
+		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Export Type:</p>';
+
+		// Radio option 1: Blast Holes
+		contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
+		contentHTML += '<input type="radio" id="export-blastholes" name="export-type" value="blastholes" ' + (exportType === "blastholes" ? "checked" : "") + ' style="margin: 0;">';
+		contentHTML += '<label for="export-blastholes" class="labelWhite15" style="margin: 0; cursor: pointer;">Blast Holes (collar points with metadata)</label>';
+		contentHTML += "</div>";
+
+		// Radio option 2: Geometry
+		contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
+		contentHTML += '<input type="radio" id="export-geometry" name="export-type" value="geometry" ' + (exportType === "geometry" ? "checked" : "") + ' style="margin: 0;">';
+		contentHTML += '<label for="export-geometry" class="labelWhite15" style="margin: 0; cursor: pointer;">Geometry (KAD entities - points, lines, polygons)</label>';
+		contentHTML += "</div>";
+
+		contentHTML += "</div>";
+
+		// Step 4) File format selection
+		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">File Format:</p>';
+
+		contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
+		contentHTML += '<input type="radio" id="format-kml" name="file-format" value="kml" checked style="margin: 0;">';
+		contentHTML += '<label for="format-kml" class="labelWhite15" style="margin: 0; cursor: pointer;">KML (XML text file)</label>';
+		contentHTML += "</div>";
+
+		contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
+		contentHTML += '<input type="radio" id="format-kmz" name="file-format" value="kmz" style="margin: 0;">';
+		contentHTML += '<label for="format-kmz" class="labelWhite15" style="margin: 0; cursor: pointer;">KMZ (compressed zip file)</label>';
+		contentHTML += "</div>";
+
+		contentHTML += "</div>";
+
+		// Step 5) EPSG dropdown
+		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Source Coordinate System:</p>';
+		contentHTML += '<div class="button-container-2col" style="display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: center;">';
+		contentHTML += '<label class="labelWhite15">EPSG Code:</label>';
+		contentHTML += '<select id="kml-proj-epsg-code" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+		contentHTML += '<option value="">-- Select EPSG Code --</option>';
+
+		// Add all EPSG codes to dropdown
+		top100EPSGCodes.forEach(function(item) {
+			contentHTML += '<option value="' + item.code + '">' + item.code + " - " + item.name + "</option>";
+		});
+
+		contentHTML += "</select>";
+		contentHTML += "</div>";
+
+		// Step 6) Custom Proj4 textarea
+		contentHTML += '<div class="button-container-2col" style="display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: start; margin-top: 8px;">';
+		contentHTML += '<label class="labelWhite15" style="padding-top: 4px;">Or Custom Proj4:</label>';
+		contentHTML += '<textarea id="kml-proj-custom-proj4" placeholder="+proj=utm +zone=50 +south +datum=WGS84 +units=m +no_defs" style="height: 60px; padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>';
+		contentHTML += "</div>";
+
+		// Error message
+		contentHTML += '<div id="kml-proj-error-message" style="display: none; margin-top: 8px; padding: 6px; background: #f44336; color: white; border-radius: 3px; font-size: 11px;"></div>';
+
+		contentHTML += "</div>";
+
+		contentHTML += "</div>";
+
+		// Step 7) Create FloatingDialog
+		var dialog = new FloatingDialog({
+			title: "Export KML/KMZ",
+			content: contentHTML,
+			layoutType: "default",
+			width: 650,
+			height: 600,
+			showConfirm: true,
+			showCancel: true,
+			confirmText: "Export",
+			cancelText: "Cancel",
+			onConfirm: async function() {
+				try {
+					// Step 8) Get form values
+					var selectedExportType = document.querySelector('input[name="export-type"]:checked').value;
+					var selectedFormat = document.querySelector('input[name="file-format"]:checked').value;
+					var epsgCode = document.getElementById("kml-proj-epsg-code").value.trim();
+					var customProj4 = document.getElementById("kml-proj-custom-proj4").value.trim();
+					var errorDiv = document.getElementById("kml-proj-error-message");
+
+					// Step 9) Validate input
+					if (!epsgCode && !customProj4) {
+						errorDiv.textContent = "Please select an EPSG code or provide a custom Proj4 definition";
+						errorDiv.style.display = "block";
+						return; // Don't close dialog
+					}
+
+					errorDiv.style.display = "none";
+
+					// Step 10) Load EPSG definition if needed
+					if (epsgCode) {
+						await loadEPSGCode(epsgCode);
+					}
+
+					// Step 11) Close dialog and resolve with result
+					dialog.close();
+					resolve({
+						cancelled: false,
+						exportType: selectedExportType,
+						format: selectedFormat,
+						compressed: selectedFormat === "kmz",
+						epsgCode: epsgCode || null,
+						proj4Source: customProj4 || null
+					});
+				} catch (error) {
+					// Step 12) Show error message
+					var errorDiv = document.getElementById("kml-proj-error-message");
+					if (errorDiv) {
+						errorDiv.textContent = "Configuration error: " + error.message;
+						errorDiv.style.display = "block";
+					}
+					console.error("KML export configuration error:", error);
+				}
+			},
+			onCancel: function() {
+				// Step 13) User cancelled
+				dialog.close();
+				resolve({
+					cancelled: true
+				});
+			}
+		});
+
+		// Step 14) Show the dialog
+		dialog.show();
+	});
+}
 
 // Export for use in kirra.js
 window.promptForProjection = promptForProjection;
 window.isLikelyWGS84 = isLikelyWGS84;
 window.promptForExportProjection = promptForExportProjection;
+window.promptForKMLExportProjection = promptForKMLExportProjection;
+window.loadEPSGCode = loadEPSGCode;

@@ -114,7 +114,7 @@ class DXFVulcanWriter extends BaseWriter {
 
 		// Step 28) Create layer for each blast name
 		for (var blastName in blastNames) {
-			var layerName = blastName + "_" + this.coordinateSystem;
+			var layerName = blastName; //+ "_" + this.coordinateSystem; think the coordinate system is a future feature
 			dxf += "0\nLAYER\n";
 			dxf += "2\n" + layerName + "\n"; // Layer name
 			dxf += "70\n0\n"; // Standard flags

@@ -1726,13 +1726,14 @@
 						<!-- DXF/DWG -->
 						<div class="label2" id="label_DXF" style="display: flex; align-items: center;">DXF/DWG
 							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
-								<select id="dxfFormat" title="Select DXF/DWG format">
+								<!-- Moved options to a Dialog Box instead of a dropdown -->
+								<!--<select id="dxfFormat" title="Select DXF/DWG format">
 									<option value="dxf-holes">DXF (Holes)</option>
 									<option value="dxf-kad" selected>DXF (KAD)</option>
 									<option value="dxf-3dfaces">DXF (3DFaces)</option>
-									<option value="vulcan-tagged">Vulcan (Holes)</option>
-									<!-- DWG export is not supported yet-->
-									<!-- <option value="dwg-kad">DWG (KAD)</option>
+									<option value="vulcan-tagged">Vulcan (Holes)</option>-->
+								<!-- DWG export is not supported yet-->
+								<!-- <option value="dwg-kad">DWG (KAD)</option>
 									<option value="dwg-holes">DWG (Holes)</option>
 									<option value="dwg-3dfaces">DWG (3DFaces)</option>
 								-->
@@ -1828,12 +1829,12 @@
 						<!-- KML/KMZ -->
 						<div class="label2" id="label_KML" style="display: flex; align-items: center;">KML/KMZ
 							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
-								<select id="kmlFormat" title="Select KML/KMZ format">
+								<!-- <select id="kmlFormat" title="Select KML/KMZ format">
 									<option value="kml-holes" selected>KML (Holes)</option>
 									<option value="kmz-holes">KMZ (Holes)</option>
 									<option value="kml-kad">KML (KAD)</option>
 									<option value="kmz-kad">KMZ (KAD)</option>
-								</select>
+								</select> -->
 								<label class="icon-button kml-input-btn" data-target="fileInputKML" title="Import KML/KMZ">
 									<img src="icons/file-import.png" alt="Import">
 								</label>

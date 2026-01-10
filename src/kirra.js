@@ -88,6 +88,8 @@ import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormDa
 import { promptForProjection, isLikelyWGS84 } from "./dialog/popups/generic/ProjectionDialog.js";
 // TreeView Module
 import { TreeView, initializeTreeView } from "./dialog/tree/TreeView.js";
+// DXF Export Dialog Module
+import "./dialog/popups/export/DXFExportDialog.js";
 // Helper Modules
 import { exportImagesAsGeoTIFF, exportSurfacesAsElevationGeoTIFF } from "./helpers/GeoTIFFExporter.js";
 //=================================================
@@ -6973,14 +6975,14 @@ document.getElementById("exportHolesDXF").addEventListener("click", function () 
 
 document.getElementById("exportDrawingDXF").addEventListener("click", function () {
 	// Step 1) Check if there are drawings to export
-	if (!allKADDrawingsMap || allKADDrawingsMap.size === 0) {
+	if (!window.allKADDrawingsMap || window.allKADDrawingsMap.size === 0) {
 		showModalMessage("No Data", "No drawings to export. Please create some drawings first.", "warning");
 		return;
 	}
 
-	// Step 2) Generate timestamp and default filename (no layer system yet, so use generic name)
+	// Step 2) Generate timestamp and default filename
 	var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-	var defaultFilename = "DXF_Drawings_" + timestamp + ".dxf";
+	var defaultFilename = "KIRRA_DXF_Drawings_" + timestamp + ".dxf";
 
 	// Step 3) Show filename dialog
 	showConfirmationDialogWithInput(
@@ -6991,7 +6993,7 @@ document.getElementById("exportDrawingDXF").addEventListener("click", function (
 		defaultFilename,
 		"Export",
 		"Cancel",
-		function(filename) {
+		async function(filename) {
 			// User confirmed
 			if (!filename || filename.trim() === "") {
 				showModalMessage("Export Cancelled", "No filename provided", "warning");
@@ -7002,16 +7004,60 @@ document.getElementById("exportDrawingDXF").addEventListener("click", function (
 				filename += ".dxf";
 			}
 
-			// Step 4) Generate DXF content
-			const dxf = exportKADDXF();
+			try {
+				// Step 4) Get DXF KAD writer from FileManager
+				var Writer = window.fileManager.writers.get("dxf-kad");
+				if (!Writer) {
+					throw new Error("DXF KAD writer not found in FileManager");
+				}
 
-			// Step 5) Check if File System Access API is available
-			if (window.showSaveFilePicker) {
-				// Use File System Access API for save location browsing
-				exportDXFWithFilePicker(dxf, filename);
-			} else {
-				// Fallback to standard download
-				downloadDXF(dxf, filename);
+				// Step 5) Filter visible KAD entities
+				var visibleKADMap = new Map();
+				window.allKADDrawingsMap.forEach(function(entity, entityName) {
+					if (window.isEntityVisible && !window.isEntityVisible(entityName)) {
+						return; // Skip hidden entities
+					}
+					visibleKADMap.set(entityName, entity);
+				});
+
+				if (visibleKADMap.size === 0) {
+					showModalMessage("No Visible Data", "No visible drawings to export", "warning");
+					return;
+				}
+
+				// Step 6) Generate DXF content
+				var writer = new Writer();
+				var blob = await writer.write({ kadDrawingsMap: visibleKADMap });
+
+				// Step 7) Use File System Access API if available
+				if (window.showSaveFilePicker) {
+					try {
+						var handle = await window.showSaveFilePicker({
+							suggestedName: filename,
+							types: [{
+								description: "DXF Files",
+								accept: { "application/dxf": [".dxf"] }
+							}]
+						});
+						var writable = await handle.createWritable();
+						await writable.write(blob);
+						await writable.close();
+						showModalMessage("Export Success", "Exported " + visibleKADMap.size + " drawings to " + filename, "success");
+					} catch (err) {
+						if (err.name !== "AbortError") {
+							throw err;
+						}
+					}
+				} else {
+					// Fallback to standard download
+					writer.downloadFile(blob, filename);
+					showModalMessage("Export Success", "Exported " + visibleKADMap.size + " drawings to " + filename, "success");
+				}
+
+				console.log("Exported " + visibleKADMap.size + " KAD entities to DXF");
+			} catch (error) {
+				console.error("DXF KAD export error:", error);
+				showModalMessage("Export Failed", error.message, "error");
 			}
 		},
 		function() {
@@ -7025,74 +7071,7 @@ document.getElementById("exportDrawingDXF").addEventListener("click", function (
 // NEW FileManager-based Export Buttons
 //=================================================
 
-// Step 1) CSV Export buttons - using FileManager BlastHoleCSVWriter
-// OLD CSV Export Handler - DISABLED (replaced by comprehensive handler at line 7059)
-// document.querySelectorAll(".holes-output-btn").forEach(function (button) {
-// 	button.addEventListener("click", async function () {
-// 		var target = button.getAttribute("data-target");
-// 		console.log("Export button clicked:", target);
-//
-// 		// Step 2) Filter visible holes
-// 		var visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
-//
-// 		if (visibleHoles.length === 0) {
-// 			alert("No visible holes to export.");
-// 			return;
-// 		}
-//
-// 		// Step 3) Determine format from target
-// 		var format = "blasthole-csv-35"; // default
-// 		var columnCount = "35";
-//
-// 		if (target.includes("4Column")) {
-// 			format = "blasthole-csv-4";
-// 			columnCount = "4";
-// 		} else if (target.includes("7Column")) {
-// 			format = "blasthole-csv-7";
-// 			columnCount = "7";
-// 		} else if (target.includes("9Column")) {
-// 			format = "blasthole-csv-9";
-// 			columnCount = "9";
-// 		} else if (target.includes("12Column")) {
-// 			format = "blasthole-csv-12";
-// 			columnCount = "12";
-// 		} else if (target.includes("14Column")) {
-// 			format = "blasthole-csv-14";
-// 			columnCount = "14";
-// 		} else if (target.includes("30Column")) {
-// 			format = "blasthole-csv-30";
-// 			columnCount = "30";
-// 		} else if (target.includes("32Column")) {
-// 			format = "blasthole-csv-32";
-// 			columnCount = "32";
-// 		}
-//
-// 		try {
-// 			// Step 4) Get writer from FileManager
-// 			var Writer = window.fileManager.writers.get(format);
-// 			if (!Writer) {
-// 				// Step 5) Format not registered yet, use generic writer with format option
-// 				Writer = window.fileManager.writers.get("blasthole-csv-35");
-// 				var writer = new Writer({ format: columnCount + "column" });
-// 			} else {
-// 				var writer = new Writer({ format: columnCount + "column" });
-// 			}
-//
-// 			// Step 6) Generate CSV content
-// 			var blob = await writer.write({ holes: visibleHoles });
-//
-// 			// Step 7) Download file
-// 			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-// 			var filename = "KIRRA_HOLES_" + columnCount + "COL_" + timestamp + ".csv";
-// 			writer.downloadFile(blob, filename);
-//
-// 			console.log("Exported " + visibleHoles.length + " holes to " + columnCount + "-column CSV");
-// 		} catch (error) {
-// 			console.error("Export error:", error);
-// 			alert("Error exporting holes: " + error.message);
-// 		}
-// 	});
-// });
+
 
 // Step 8) KAD Export button - using FileManager KADWriter
 document.querySelectorAll(".kad-output-btn").forEach(function (button) {
@@ -7132,32 +7111,81 @@ document.querySelectorAll(".dxf-holes-output-btn").forEach(function (button) {
 		var visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
 
 		if (visibleHoles.length === 0) {
-			alert("No visible holes to export.");
+			showModalMessage("No Data", "No visible holes to export", "warning");
 			return;
 		}
 
-		try {
-			// Step 14) Get writer from FileManager
-			var Writer = window.fileManager.writers.get("dxf-holes");
-			if (!Writer) {
-				throw new Error("DXF Holes writer not registered");
+		// Step 14) Generate default filename
+		var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+		var entityName = visibleHoles.length > 0 && visibleHoles[0].entityName ? visibleHoles[0].entityName : "Holes";
+		var defaultFilename = "KIRRA_" + entityName + "_DXF_" + timestamp + ".dxf";
+
+		// Step 15) Show filename dialog
+		showConfirmationDialogWithInput(
+			"Export DXF Holes",
+			"Enter filename for DXF export",
+			"Filename:",
+			"text",
+			defaultFilename,
+			"Export",
+			"Cancel",
+			async function(filename) {
+				if (!filename || filename.trim() === "") {
+					showModalMessage("Export Cancelled", "No filename provided", "warning");
+					return;
+				}
+
+				if (!filename.toLowerCase().endsWith(".dxf")) {
+					filename += ".dxf";
+				}
+
+				try {
+					// Step 16) Get writer from FileManager
+					var Writer = window.fileManager.writers.get("dxf-holes");
+					if (!Writer) {
+						throw new Error("DXF Holes writer not registered");
+					}
+
+					var writer = new Writer();
+
+					// Step 17) Generate DXF content
+					var blob = await writer.write({ holes: visibleHoles });
+
+					// Step 18) Use File System Access API if available
+					if (window.showSaveFilePicker) {
+						try {
+							var handle = await window.showSaveFilePicker({
+								suggestedName: filename,
+								types: [{
+									description: "DXF Files",
+									accept: { "application/dxf": [".dxf"] }
+								}]
+							});
+							var writable = await handle.createWritable();
+							await writable.write(blob);
+							await writable.close();
+							showModalMessage("Export Success", "Exported " + visibleHoles.length + " holes to " + filename, "success");
+						} catch (err) {
+							if (err.name !== "AbortError") {
+								throw err;
+							}
+						}
+					} else {
+						// Fallback to standard download
+						writer.downloadFile(blob, filename);
+						showModalMessage("Export Success", "Exported " + visibleHoles.length + " holes to " + filename, "success");
+					}
+
+					console.log("Exported " + visibleHoles.length + " holes to compact 2-layer DXF");
+				} catch (error) {
+					console.error("DXF export error:", error);
+					showModalMessage("Export Failed", error.message, "error");
+				}
+			},
+			function() {
+				console.log("DXF Holes export cancelled by user");
 			}
-
-			var writer = new Writer();
-
-			// Step 15) Generate DXF content
-			var blob = await writer.write({ holes: visibleHoles });
-
-			// Step 16) Download file
-			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-			var filename = "KIRRA_HOLES_DXF_" + timestamp + ".dxf";
-			writer.downloadFile(blob, filename);
-
-			console.log("Exported " + visibleHoles.length + " holes to compact 2-layer DXF");
-		} catch (error) {
-			console.error("DXF export error:", error);
-			alert("Error exporting DXF file: " + error.message);
-		}
+		);
 	});
 });
 
@@ -7401,96 +7429,11 @@ document.querySelectorAll(".dxf-input-btn").forEach(function (button) {
 	});
 });
 
-// DXF EXPORT - Multiple formats
+// DXF EXPORT - Unified dialog with radio buttons
+// Dialog and export handlers now in src/dialog/popups/export/DXFExportDialog.js
 document.querySelectorAll(".dxf-output-btn").forEach(function (button) {
-	button.addEventListener("click", async function () {
-		var format = document.getElementById("dxfFormat").value;
-
-		if (format === "dxf-holes") {
-			// Use existing DXF Holes export (compact 2-layer)
-			var visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
-			if (visibleHoles.length === 0) {
-				showModalMessage("No Data", "No visible holes to export", "warning");
-				return;
-			}
-
-			try {
-				var Writer = window.fileManager.writers.get("dxf-holes");
-				var writer = new Writer();
-				var blob = await writer.write({ holes: visibleHoles });
-				var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-				writer.downloadFile(blob, "KIRRA_HOLES_DXF_" + timestamp + ".dxf");
-			} catch (error) {
-				showModalMessage("Export Failed", "Error: " + error.message, "error");
-			}
-		} else if (format === "dxf-kad") {
-			// Use existing exportKADDXF function
-			exportKADDXF();
-		} else if (format === "vulcan-tagged") {
-			// Vulcan Tagged DXF - 3D POLYLINE with Vulcan XData
-			var visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
-			if (visibleHoles.length === 0) {
-				showModalMessage("No Data", "No visible holes to export", "warning");
-				return;
-			}
-
-			try {
-				var Writer = window.fileManager.writers.get("dxf-vulcan");
-				if (!Writer) {
-					throw new Error("DXF Vulcan writer not registered");
-				}
-
-				var writer = new Writer();
-				var blob = await writer.write({ holes: visibleHoles });
-				var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-				writer.downloadFile(blob, "KIRRA_VULCAN_DXF_" + timestamp + ".dxf");
-			} catch (error) {
-				showModalMessage("Export Failed", "Error: " + error.message, "error");
-			}
-		} else if (format === "dxf-3dfaces") {
-			// DXF 3DFACE - Export loaded surfaces as triangles
-			if (!window.loadedSurfaces || window.loadedSurfaces.size === 0) {
-				showModalMessage("No Data", "No surfaces loaded to export. Please load a surface first.", "warning");
-				return;
-			}
-
-			try {
-				var Writer = window.fileManager.writers.get("dxf-3dface");
-				if (!Writer) {
-					throw new Error("DXF 3DFACE writer not registered");
-				}
-
-			// Step 1) Collect all triangles from visible surfaces only
-			var allTriangles = [];
-			window.loadedSurfaces.forEach(function (surface) {
-				if (surface.visible && surface.triangles && Array.isArray(surface.triangles)) {
-					allTriangles = allTriangles.concat(surface.triangles);
-				}
-			});
-
-				if (allTriangles.length === 0) {
-					showModalMessage("No Data", "No triangles found in loaded surfaces", "warning");
-					return;
-				}
-
-				// Step 2) Export to DXF 3DFACE
-				var writer = new Writer();
-				var blob = await writer.write({
-					triangles: allTriangles,
-					layerName: "SURFACE"
-				});
-
-				var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-				writer.downloadFile(blob, "KIRRA_SURFACE_3DFACE_" + timestamp + ".dxf");
-
-				console.log("DXF 3DFACE export completed: " + allTriangles.length + " triangles");
-			} catch (error) {
-				console.error("DXF 3DFACE export error:", error);
-				showModalMessage("Export Failed", "Error: " + error.message, "error");
-			}
-		} else {
-			showModalMessage("Coming Soon", format + " export will be available in a future update", "info");
-		}
+	button.addEventListener("click", function () {
+		window.showDXFExportDialog();
 	});
 });
 
@@ -8522,10 +8465,297 @@ document.querySelectorAll(".pointcloud-output-btn").forEach(function (button) {
 	});
 });
 
-// KML/KMZ - Coming Soon
-document.querySelectorAll(".kml-input-btn, .kml-output-btn").forEach(function (button) {
-	button.addEventListener("click", function () {
-		showModalMessage("Coming Soon", "KML/KMZ import/export will be available in a future update", "info");
+// KML/KMZ IMPORT - Import blast holes or geometry from Google Earth
+document.querySelectorAll(".kml-input-btn").forEach(function(button) {
+	button.addEventListener("click", async function() {
+		try {
+			// Step 1) Create file input for KML/KMZ files
+			var input = document.createElement("input");
+			input.type = "file";
+			input.accept = ".kml,.kmz";
+			input.multiple = false;
+
+			input.onchange = async function(e) {
+				var file = e.target.files[0];
+				if (!file) return;
+
+				try {
+					// Step 2) Use FileManager to parse KML/KMZ
+					if (window.fileManager) {
+						var parser = window.fileManager.getParser("kml-kmz");
+						if (!parser) {
+							throw new Error("KML/KMZ parser not found in FileManager");
+						}
+
+						// Step 3) Show progress message
+						showStatusMessage("Importing " + file.name + "...");
+
+						// Step 4) Parse the file
+						var result = await parser.parse(file);
+
+						if (!result || result.cancelled) {
+							showModalMessage("Import Cancelled", "KML/KMZ import was cancelled", "info");
+							return;
+						}
+
+						if (!result.success) {
+							throw new Error(result.message || "Failed to parse KML/KMZ file");
+						}
+
+						// Step 5) Handle the imported data based on type
+						if (result.dataType === "blastholes") {
+							// Step 6) Import blast holes
+							if (result.holes && result.holes.length > 0) {
+								// Add holes to allBlastHoles array
+								for (var i = 0; i < result.holes.length; i++) {
+									window.allBlastHoles.push(result.holes[i]);
+								}
+
+								// Step 7) Update UI and redraw
+								window.drawData(window.allBlastHoles, window.selectedHole);
+								
+								// Update tree view if available
+								if (window.debouncedUpdateTreeView) {
+									window.debouncedUpdateTreeView();
+								}
+
+								// Show success message
+								showModalMessage(
+									"Import Successful",
+									"Imported " + result.holes.length + " blast holes from " + file.name,
+									"success"
+								);
+
+								console.log("KML/KMZ import: Added " + result.holes.length + " blast holes");
+							} else {
+								showModalMessage("No Data", "No blast holes found in file", "warning");
+							}
+						} else if (result.dataType === "geometry") {
+							// Step 8) Import geometry (KAD entities)
+							if (result.kadEntities && result.kadEntities.size > 0) {
+								// Add entities to allKADDrawingsMap
+								for (var [entityName, entityData] of result.kadEntities.entries()) {
+									window.allKADDrawingsMap.set(entityName, entityData);
+								}
+
+								// Step 9) Update UI and redraw
+								window.drawData(window.allBlastHoles, window.selectedHole);
+								
+								// Update tree view if available
+								if (window.debouncedUpdateTreeView) {
+									window.debouncedUpdateTreeView();
+								}
+
+								// Show success message
+								showModalMessage(
+									"Import Successful",
+									"Imported " + result.kadEntities.size + " geometry entities from " + file.name,
+									"success"
+								);
+
+								console.log("KML/KMZ import: Added " + result.kadEntities.size + " KAD entities");
+							} else {
+								showModalMessage("No Data", "No geometry found in file", "warning");
+							}
+						}
+
+						// Clear status message
+						clearStatus();
+
+					} else {
+						throw new Error("FileManager not initialized");
+					}
+				} catch (error) {
+					console.error("KML/KMZ import error:", error);
+					showModalMessage("Import Failed", error.message, "error");
+					clearStatus();
+				}
+			};
+
+			// Step 10) Trigger file picker
+			input.click();
+
+		} catch (error) {
+			console.error("KML/KMZ import error:", error);
+			showModalMessage("Import Failed", error.message, "error");
+		}
+	});
+});
+
+// KML/KMZ EXPORT - Export visible blast holes or geometry to Google Earth
+document.querySelectorAll(".kml-output-btn").forEach(function(button) {
+	button.addEventListener("click", async function() {
+		try {
+			// Step 1) Show projection configuration dialog
+			var config = await window.promptForKMLExportProjection("blastholes");
+			
+			if (config.cancelled) {
+				return;
+			}
+
+			// Step 2) Prepare data based on export type
+			var data = {};
+			var entityName = "Export";
+			
+			if (config.exportType === "blastholes") {
+				// Step 3) Filter visible holes
+				var visibleHoles = window.allBlastHoles.filter(function(hole) {
+					return window.isHoleVisible(hole);
+				});
+
+				if (visibleHoles.length === 0) {
+					showModalMessage("No Data", "No visible holes to export", "warning");
+					return;
+				}
+
+				data.holes = visibleHoles;
+				entityName = visibleHoles.length > 0 && visibleHoles[0].entityName ? visibleHoles[0].entityName : "Blast";
+			} else if (config.exportType === "geometry") {
+				// Step 4) Get visible KAD entities from kadDrawingsMap
+				var visibleEntities = [];
+				
+				if (window.allKADDrawingsMap && window.allKADDrawingsMap.size > 0) {
+					for (var [entityName, entityData] of window.allKADDrawingsMap.entries()) {
+						// Check visibility
+						if (window.isEntityVisible && !window.isEntityVisible(entityName)) {
+							continue;
+						}
+						
+						// Convert KAD format to entities array for KML export
+						if (entityData && entityData.data && Array.isArray(entityData.data)) {
+							// Create entity object compatible with KML writer
+							var entity = {
+								name: entityName,
+								entityName: entityName,
+								type: entityData.entityType,
+								entityType: entityData.entityType,
+								// Use first item's properties as defaults for entity level
+								color: entityData.data.length > 0 ? entityData.data[0].color : "#FFFFFF",
+								lineWidth: entityData.data.length > 0 ? (entityData.data[0].lineWidth || 1) : 1,
+								coordinates: []
+							};
+							
+							// Map coordinates based on entity type
+							// IMPORTANT: Each coordinate carries its own color and lineWidth (and text/radius where applicable)
+							for (var i = 0; i < entityData.data.length; i++) {
+								var item = entityData.data[i];
+								var coord = {
+									x: item.pointXLocation || 0,
+									y: item.pointYLocation || 0,
+									z: item.pointZLocation || 0,
+									id: item.pointID,
+									color: item.color || entity.color,  // Each coord has its own color!
+									lineWidth: item.lineWidth || entity.lineWidth  // Each coord has its own lineWidth!
+								};
+								
+								// Add text property only for text entities
+								if (entityData.entityType === "text" && item.text !== undefined) {
+									coord.text = item.text;
+								}
+								
+								// Add radius property only for circle entities
+								if (entityData.entityType === "circle" && item.radius !== undefined) {
+									coord.radius = item.radius;
+								}
+								
+								entity.coordinates.push(coord);
+							}
+							
+							// Add entity-level properties for circles and text
+							if (entityData.entityType === "circle" && entityData.data.length > 0) {
+								entity.radius = entityData.data[0].radius || 10;
+							}
+							if (entityData.entityType === "text" && entityData.data.length > 0) {
+								entity.text = entityData.data[0].text || "";
+								entity.fontHeight = entityData.data[0].fontHeight || 12;
+							}
+							
+							visibleEntities.push(entity);
+						}
+					}
+				}
+				
+				if (visibleEntities.length === 0) {
+					showModalMessage("No Data", "No visible geometry to export", "warning");
+					return;
+				}
+
+				data.entities = visibleEntities;
+				entityName = "Geometry";
+			}
+
+			// Step 5) Generate default filename
+			var timestamp = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+			var extension = config.compressed ? ".kmz" : ".kml";
+			var defaultFilename = "KIRRA_" + entityName + "_" + timestamp + extension;
+
+			// Step 6) Show filename dialog
+			showConfirmationDialogWithInput(
+				"Export " + (config.compressed ? "KMZ" : "KML"),
+				"Enter filename for export",
+				"Filename:",
+				"text",
+				defaultFilename,
+				"Export",
+				"Cancel",
+				async function(filename) {
+					// User confirmed
+					if (!filename || filename.trim() === "") {
+						showModalMessage("Export Cancelled", "No filename provided", "warning");
+						return;
+					}
+
+					// Ensure correct extension
+					var ext = config.compressed ? ".kmz" : ".kml";
+					if (!filename.toLowerCase().endsWith(ext)) {
+						filename += ext;
+					}
+
+					try {
+						// Step 7) Get writer from FileManager
+						var Writer = window.fileManager.writers.get("kml-kmz");
+						if (!Writer) {
+							throw new Error("KML/KMZ writer not found in FileManager");
+						}
+
+						// Step 8) Create writer instance with configuration
+						var writer = new Writer({
+							exportType: config.exportType,
+							compressed: config.compressed,
+							epsgCode: config.epsgCode,
+							proj4Source: config.proj4Source
+						});
+
+						// Step 9) Add document name to data
+						data.documentName = filename.replace(ext, "");
+
+						// Step 10) Generate file
+						var blob = await writer.write(data);
+
+						// Step 11) Download file
+						writer.downloadFile(blob, filename);
+
+						// Step 12) Show success message
+						showModalMessage(
+							"Export Successful", 
+							"Exported " + (config.exportType === "blastholes" ? visibleHoles.length + " holes" : visibleEntities.length + " entities") + " to " + filename,
+							"success"
+						);
+					} catch (error) {
+						console.error("KML/KMZ export error:", error);
+						showModalMessage("Export Failed", error.message, "error");
+					}
+				},
+				function() {
+					// User cancelled
+					console.log("KML/KMZ export cancelled by user");
+				}
+			);
+
+		} catch (error) {
+			console.error("KML/KMZ export error:", error);
+			showModalMessage("Export Failed", error.message, "error");
+		}
 	});
 });
 
