@@ -5348,7 +5348,7 @@ document.getElementById("buttonGoBack").addEventListener("click", function () {
 		"Stay",
 		() => {
 			// Step 3) Handle leave confirmation
-			window.location.href = "index.html";
+			window.location.href = "https://blastingapps.com/index.html";
 		},
 		() => {
 			// Step 4) Handle stay (cancel) - nothing needed
