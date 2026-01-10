@@ -75,8 +75,10 @@ class SurpacSTRWriter extends BaseWriter {
 			// Step 18) Export KAD drawings as strings
 			str = this.generateSTRFromKAD(data.kadDrawingsMap, data.fileName || "drawing");
 		} else if (data.surfaces && data.surfaces.size > 0) {
-			// Step 19) Export surfaces as strings (triangles as polylines)
-			str = this.generateSTRFromSurfaces(data.surfaces, data.fileName || "surface");
+			// Step 19) Export surfaces as unique vertices (for DTM pairing)
+			// Use baseFileName if provided (for DTM/STR pairing), otherwise fileName
+			var baseFileName = data.baseFileName || data.fileName || "surface";
+			str = this.generateSTRFromSurfaces(data.surfaces, baseFileName);
 		} else {
 			throw new Error("Invalid data: holes, kadDrawingsMap, or surfaces required");
 		}
@@ -162,64 +164,64 @@ class SurpacSTRWriter extends BaseWriter {
 		return idStr;
 	}
 
-	// Step 32) Generate STR from surfaces (triangles as polylines)
+	// Step 32) Generate STR from surfaces (unique vertices only - for DTM pairing)
 	generateSTRFromSurfaces(surfaces, fileName) {
 		var str = "";
 
 		// Step 33) Get current date
 		var dateString = this.getDateString();
 
-		// Step 34) Write header line
-		str += fileName + "," + dateString + ",0.000,0.000\n";
+		// Step 34) Write header line (4 fields: name, date, empty, description/ssi)
+		str += fileName + ", " + dateString + ",,\n";
 
-		// Step 35) Write second line (all zeros)
-		str += "0, 0.000, 0.000, 0.000,\n";
+		// Step 35) Write second line (7 zeros with spacing)
+		str += "0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000\n";
 
-		// Step 36) Iterate through surfaces
-		var surfaceIndex = 0;
+		// Step 36) Collect all unique vertices from all surfaces
+		var uniqueVertices = [];
+		var vertexMap = new Map();
+
 		surfaces.forEach(function(surface) {
 			// Step 37) Skip invisible surfaces
 			if (surface.visible === false) return;
 
-			// Step 38) Get string number based on surface color
-			var stringNumber = this.colorToStringNumber(surface.color);
-
-			// Step 39) Export triangles as closed polylines (3 vertices)
+			// Step 38) Process all triangles to extract unique vertices
 			if (surface.triangles && Array.isArray(surface.triangles)) {
 				for (var i = 0; i < surface.triangles.length; i++) {
 					var triangle = surface.triangles[i];
-
 					if (!triangle.vertices || triangle.vertices.length < 3) continue;
 
-					// Step 40) Write triangle vertices as a closed string
-					for (var j = 0; j < 3; j++) {
+					// Step 39) Process each vertex
+					for (var j = 0; j < triangle.vertices.length; j++) {
 						var vertex = triangle.vertices[j];
-						var y = this.formatNumber(vertex.y);
-						var x = this.formatNumber(vertex.x);
-						var z = this.formatNumber(vertex.z || 0);
 
-						var label = surface.name || ("Surface_" + surfaceIndex);
-						var description = "Triangle_" + i;
+						// Step 40) Create key with formatted coordinates (3 decimal places)
+						var key = this.formatNumber(vertex.x, 3) + "_" + 
+								 this.formatNumber(vertex.y, 3) + "_" + 
+								 this.formatNumber(vertex.z || 0, 3);
 
-						str += stringNumber + "," + y + "," + x + "," + z + "," + label + "," + description + "\n";
+						// Step 41) Add to map if not already present
+						if (!vertexMap.has(key)) {
+							vertexMap.set(key, uniqueVertices.length + 1); // 1-based index
+							uniqueVertices.push(vertex);
+						}
 					}
-
-					// Step 41) Close the triangle by adding first vertex again
-					var firstVertex = triangle.vertices[0];
-					var y = this.formatNumber(firstVertex.y);
-					var x = this.formatNumber(firstVertex.x);
-					var z = this.formatNumber(firstVertex.z || 0);
-					str += stringNumber + "," + y + "," + x + "," + z + "," + (surface.name || ("Surface_" + surfaceIndex)) + ",Triangle_" + i + "\n";
-
-					// Step 42) Write separator after each triangle
-					str += "0, 0.000, 0.000, 0.000,\n";
 				}
 			}
-
-			surfaceIndex++;
 		}, this);
 
-		// Step 43) Write end marker
+		// Step 42) Write unique vertices (string number 32000 for surfaces, no label/description)
+		for (var i = 0; i < uniqueVertices.length; i++) {
+			var vertex = uniqueVertices[i];
+			var y = this.formatNumber(vertex.y);
+			var x = this.formatNumber(vertex.x);
+			var z = this.formatNumber(vertex.z || 0);
+
+			// Step 43) STR format for surfaces: 32000, Y, X, Z, 
+			str += "32000, " + y + ", " + x + ", " + z + ", \n";
+		}
+
+		// Step 44) Write end marker
 		str += "0, 0.000, 0.000, 0.000, END\n";
 
 		return str;

@@ -34,8 +34,10 @@ class SurpacDTMWriter extends BaseWriter {
 		var dtm = "";
 
 		if (data.surfaces && data.surfaces.size > 0) {
-			// Step 11) Export surfaces as DTM points (triangle vertices)
-			dtm = this.generateDTMFromSurfaces(data.surfaces, data.fileName || "surface");
+			// Step 11) Export surfaces as DTM (TRISOLATION format)
+			// Use baseFileName if provided (for DTM/STR pairing), otherwise fileName
+			var baseFileName = data.baseFileName || data.fileName || "surface";
+			dtm = this.generateDTMFromSurfaces(data.surfaces, baseFileName);
 		} else {
 			throw new Error("Invalid data: surfaces required for DTM export");
 		}
@@ -44,69 +46,89 @@ class SurpacDTMWriter extends BaseWriter {
 		return this.createBlob(dtm, "text/plain");
 	}
 
-	// Step 13) Generate DTM from surfaces (triangle vertices as points)
+	// Step 13) Generate DTM from surfaces (TRISOLATION format)
 	generateDTMFromSurfaces(surfaces, fileName) {
 		var dtm = "";
 
-		// Step 14) Get current date in dd-Mmm-yy format
-		var dateString = this.getDateString();
+		// Step 14) Write header line - references the STR filename
+		var strFileName = fileName + ".str";
+		dtm += strFileName + ",\n";
 
-		// Step 15) Write header line
-		dtm += fileName + "," + dateString + ",,ssi_styles:" + this.ssiStyle + "\n";
+		// Step 15) Write second line (simple END marker)
+		dtm += "0, 0.000, 0.000, 0.000, END\n";
 
-		// Step 16) Write second line (all zeros)
-		dtm += "0,           0.000,           0.000,           0.000,           0.000,           0.000,           0.000\n";
+		// Step 16) Write TRISOLATION section header
+		dtm += "OBJECT, 1,\n";
+		dtm += "TRISOLATION, 1, neighbours=no,validated=true,closed=no\n";
 
-		// Step 17) Collect all unique vertices from all surfaces
-		var uniquePoints = new Map();
-		var pointIndex = 0;
+		// Step 17) Build vertex index map from all surfaces
+		// This must match EXACTLY the order written in STR file
+		var vertexMap = new Map();
+		var vertexIndex = 1; // Surpac vertices start at 1
 
 		surfaces.forEach(function(surface) {
-			// Step 18) Skip invisible surfaces
 			if (surface.visible === false) return;
 
-			// Step 19) Extract points from triangles
 			if (surface.triangles && Array.isArray(surface.triangles)) {
 				for (var i = 0; i < surface.triangles.length; i++) {
 					var triangle = surface.triangles[i];
-
 					if (!triangle.vertices || triangle.vertices.length < 3) continue;
 
-					// Step 20) Add each vertex as a unique point
+					// Step 18) Add each vertex to map if not already present
 					for (var j = 0; j < triangle.vertices.length; j++) {
 						var vertex = triangle.vertices[j];
-						var key = vertex.x + "_" + vertex.y + "_" + (vertex.z || 0);
+						
+						// Step 19) Use same key format as STR writer (3 decimal places)
+						var key = this.formatNumber(vertex.x, 3) + "_" + 
+								 this.formatNumber(vertex.y, 3) + "_" + 
+								 this.formatNumber(vertex.z || 0, 3);
 
-						if (!uniquePoints.has(key)) {
-							uniquePoints.set(key, {
-								x: vertex.x,
-								y: vertex.y,
-								z: vertex.z || 0,
-								surfaceName: surface.name || "Surface",
-								index: pointIndex
-							});
-							pointIndex++;
+						if (!vertexMap.has(key)) {
+							vertexMap.set(key, vertexIndex);
+							vertexIndex++;
 						}
 					}
 				}
 			}
-		});
+		}, this);
 
-		// Step 21) Write unique points to DTM
-		uniquePoints.forEach(function(point) {
-			var formattedY = this.formatNumber(point.y);
-			var formattedX = this.formatNumber(point.x);
-			var formattedZ = this.formatNumber(point.z);
+		// Step 20) Write triangle definitions (vertex indices only, no neighbor info)
+		var triangleId = 1;
+		surfaces.forEach(function(surface) {
+			if (surface.visible === false) return;
 
-			var label = point.index.toString();
-			var description = point.surfaceName;
+			if (surface.triangles && Array.isArray(surface.triangles)) {
+				for (var i = 0; i < surface.triangles.length; i++) {
+					var triangle = surface.triangles[i];
+					if (!triangle.vertices || triangle.vertices.length < 3) continue;
 
-			// Step 22) DTM format: Y, X, Z, label, description (with commas)
-			dtm += formattedY + "," + formattedX + "," + formattedZ + "," + label + "," + description + "\n";
+					// Step 21) Get vertex indices for this triangle
+					var indices = [];
+					for (var j = 0; j < 3; j++) {
+						var vertex = triangle.vertices[j];
+						var key = this.formatNumber(vertex.x, 3) + "_" + 
+								 this.formatNumber(vertex.y, 3) + "_" + 
+								 this.formatNumber(vertex.z || 0, 3);
+
+						var index = vertexMap.get(key);
+						if (index !== undefined) {
+							indices.push(index);
+						}
+					}
+
+					// Step 22) Write triangle line: id, v1, v2, v3, neighbor1, neighbor2, neighbor3, 0,
+					// Neighbors all set to 0 (no neighbor info calculated)
+					if (indices.length === 3) {
+						dtm += triangleId + ", " + indices[0] + ", " + indices[1] + ", " + 
+							   indices[2] + ", 0, 0, 0,\n";
+						triangleId++;
+					}
+				}
+			}
 		}, this);
 
 		// Step 23) Write end marker
-		dtm += "0, 0.000, 0.000, 0.000, END\n";
+		dtm += "END\n";
 
 		return dtm;
 	}

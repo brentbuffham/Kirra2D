@@ -7530,6 +7530,9 @@ document.querySelectorAll(".surpac-output-btn").forEach(function (button) {
 						var finalDtmFilename = baseFilename + ".dtm";
 						var finalStrFilename = baseFilename + ".str";
 
+						// Step 4a.4) CRITICAL: Pass baseFileName to both writers for cross-referencing
+						exportData.baseFileName = baseFilename;
+
 						var dtmWriter = new DTMWriter();
 						var strWriter = new STRWriter();
 
@@ -8169,10 +8172,10 @@ document.querySelectorAll(".image-output-btn").forEach(function (button) {
 			// Step 1) Get selected format from dropdown
 			var format = document.getElementById("imageFormat").value;
 
-			if (format === "geo-tiff") {
-				// Export cached canvases and loaded images as RGB GeoTIFF
-				await exportImagesAsGeoTIFF(surface2DCache, loadedSurfaces, loadedImages, window.fileManager, showModalMessage);
-			} else if (format === "elevation-tiff") {
+		if (format === "geo-tiff") {
+			// Export cached canvases and loaded images as RGB GeoTIFF
+			await exportImagesAsGeoTIFF(surface2DCache, loadedSurfaces, loadedImages, window.fileManager, showModalMessage);
+		} else if (format === "elevation-tiff") {
 				// Export surfaces as elevation GeoTIFF
 				await exportSurfacesAsElevationGeoTIFF(loadedSurfaces, window.fileManager, showModalMessage);
 			}

@@ -144,40 +144,63 @@ export async function exportImagesAsGeoTIFF(surface2DCache, loadedSurfaces, load
 			return;
 		}
 
-		// Step 4) Get common bounding box for projection dialog
-		var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+		// Step 4) Get common bounding box FIRST (before any prompts)
+	var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
-		exportSurfaces.forEach(function(item) {
-			item.surface.points.forEach(function(point) {
-				minX = Math.min(minX, point.x);
-				maxX = Math.max(maxX, point.x);
-				minY = Math.min(minY, point.y);
-				maxY = Math.max(maxY, point.y);
-			});
+	exportSurfaces.forEach(function(item) {
+		item.surface.points.forEach(function(point) {
+			minX = Math.min(minX, point.x);
+			maxX = Math.max(maxX, point.x);
+			minY = Math.min(minY, point.y);
+			maxY = Math.max(maxY, point.y);
 		});
+	});
 
-		exportImages.forEach(function(item) {
-			if (item.bbox && item.bbox.length === 4) {
-				minX = Math.min(minX, item.bbox[0]);
-				minY = Math.min(minY, item.bbox[1]);
-				maxX = Math.max(maxX, item.bbox[2]);
-				maxY = Math.max(maxY, item.bbox[3]);
-			}
-		});
-
-		var commonBbox = [minX, minY, maxX, maxY];
-
-		// Step 5) Show projection and resolution dialog
-		var exportSettings = await promptForExportProjection(commonBbox);
-		if (exportSettings.cancelled) {
-			console.log("Export cancelled by user");
-			return;
+	exportImages.forEach(function(item) {
+		if (item.bbox && item.bbox.length === 4) {
+			minX = Math.min(minX, item.bbox[0]);
+			minY = Math.min(minY, item.bbox[1]);
+			maxX = Math.max(maxX, item.bbox[2]);
+			maxY = Math.max(maxY, item.bbox[3]);
 		}
+	});
 
-		// Step 6) Show progress dialog immediately
+	var commonBbox = [minX, minY, maxX, maxY];
+
+	// Step 5) Show projection and resolution dialog (NO filename)
+	// IMPORTANT: We do NOT transform coordinates! The EPSG code is just a TAG.
+	// The user selects which CRS their data is ALREADY IN (e.g., UTM Zone 50S).
+	// The .prj file tells GIS software "these coords are in EPSG:32750" - no transformation occurs.
+	var exportSettings = await promptForExportProjection(commonBbox);
+	if (exportSettings.cancelled) {
+		console.log("Export cancelled by user");
+		return;
+	}
+
+	// Step 5b) Show directory picker ONCE for all exports
+	var directoryHandle = null;
+	if (window.showDirectoryPicker) {
+		try {
+			directoryHandle = await window.showDirectoryPicker({
+				mode: 'readwrite'
+			});
+			console.log("Selected directory:", directoryHandle.name);
+		} catch (error) {
+			if (error.name === 'AbortError') {
+				console.log("Directory picker cancelled by user");
+				return;
+			}
+			throw error;
+		}
+	} else {
+		showModalMessage("Unsupported Browser", "Your browser doesn't support directory picker. Files will download to Downloads folder.", "info");
+		// Continue without directory picker - files will auto-download
+	}
+
+		// Step 6) Show progress dialog
 		var totalItems = exportSurfaces.length + exportImages.length;
 		var progressDialog = showExportProgressDialog();
-		updateExportProgress(progressDialog, "Initializing export...", 0);
+		updateExportProgress(progressDialog, "Preparing export...", 0);
 
 		// Step 7) Yield to UI to show progress dialog
 		await new Promise(resolve => setTimeout(resolve, 50));
@@ -225,64 +248,168 @@ export async function exportImagesAsGeoTIFF(surface2DCache, loadedSurfaces, load
 
 		var exportedCount = 0;
 
-		for (var i = 0; i < exportSurfaces.length; i++) {
-			var surfaceItem = exportSurfaces[i];
+	for (var i = 0; i < exportSurfaces.length; i++) {
+		var surfaceItem = exportSurfaces[i];
 
-			// Update progress
-			exportedCount++;
-			var percent = Math.floor((exportedCount / totalItems) * 100);
-			updateExportProgress(progressDialog, "Rendering " + exportedCount + " / " + totalItems + ": " + surfaceItem.name, percent);
+		// Update progress
+		exportedCount++;
+		var percent = Math.floor((exportedCount / totalItems) * 100);
+		updateExportProgress(progressDialog, "Rendering " + exportedCount + " / " + totalItems + ": " + surfaceItem.name, percent);
 
-			// Yield to UI to update progress
-			await new Promise(resolve => setTimeout(resolve, 0));
+		// Yield to UI to update progress
+		await new Promise(resolve => setTimeout(resolve, 0));
 
-			// Re-render at specified resolution
-			var renderResult = renderSurfaceToCanvas(surfaceItem.surface, pixelsPerMeter, elevationToColor);
-			if (!renderResult) {
-				console.warn("Skipping " + surfaceItem.name + " - rendering failed");
-				continue;
-			}
-
-			await writer.write({
-				canvas: renderResult.canvas,
-				bbox: renderResult.bbox,
-				width: renderResult.width,
-				height: renderResult.height,
-				filename: surfaceItem.name,
-				epsgCode: exportSettings.epsgCode
-			});
+		// Re-render at specified resolution
+		var renderResult = renderSurfaceToCanvas(surfaceItem.surface, pixelsPerMeter, elevationToColor);
+		if (!renderResult) {
+			console.warn("Skipping " + surfaceItem.name + " - rendering failed");
+			continue;
 		}
 
-		// Step 10) Export loaded images
-		for (var i = 0; i < exportImages.length; i++) {
-			var imageItem = exportImages[i];
+		// Prompt for filename (matching KML export pattern)
+		var timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
+		var defaultFilename = "GeoTIFF_" + timestamp + "_" + surfaceItem.name.replace(/\.(dtm|str|tif|tiff|obj)$/i, "") + ".tif";
 
-			exportedCount++;
-			var percent = Math.floor((exportedCount / totalItems) * 100);
-			updateExportProgress(progressDialog, "Scaling " + exportedCount + " / " + totalItems + ": " + imageItem.name, percent);
+		// Close progress dialog temporarily to show filename dialog
+		progressDialog.close();
 
-			// Yield to UI to update progress
-			await new Promise(resolve => setTimeout(resolve, 0));
+		var filename = await new Promise((resolve) => {
+			window.showConfirmationDialogWithInput(
+				"Export GeoTIFF",
+				"Enter filename for: " + surfaceItem.name,
+				"Filename:",
+				"text",
+				defaultFilename,
+				"Save",
+				"Skip",
+				function(enteredFilename) {
+					// User confirmed
+					if (!enteredFilename || enteredFilename.trim() === "") {
+						resolve(null); // Skip this surface
+						return;
+					}
+					// Ensure .tif extension
+					if (!enteredFilename.toLowerCase().endsWith(".tif")) {
+						enteredFilename += ".tif";
+					}
+					// Remove .tif extension for internal use (writer adds it back)
+					resolve(enteredFilename.replace(/\.tif$/i, ""));
+				},
+				function() {
+					// User cancelled/skipped
+					resolve(null);
+				}
+			);
+		});
 
-			// Scale image to target resolution
-			var scaledImage = scaleImageToResolution(imageItem.canvas, imageItem.bbox, pixelsPerMeter);
+		// Reopen progress dialog
+		progressDialog = showExportProgressDialog();
+		updateExportProgress(progressDialog, "Exporting " + exportedCount + " / " + totalItems + ": " + surfaceItem.name, percent);
 
-			await writer.write({
-				canvas: scaledImage.canvas,
-				bbox: scaledImage.bbox,
-				width: scaledImage.width,
-				height: scaledImage.height,
-				filename: imageItem.name,
-				epsgCode: exportSettings.epsgCode
-			});
+		if (!filename) {
+			console.log("Skipped " + surfaceItem.name);
+			continue;
 		}
 
-		// Step 11) Complete
-		updateExportProgress(progressDialog, "Export complete! Exported " + totalItems + " file(s)", 100);
-		setTimeout(function() {
-			if (progressDialog) progressDialog.close();
-			showModalMessage("Export Complete", "Exported " + totalItems + " image(s) as GeoTIFF", "success");
-		}, 800);
+		await writer.write({
+			canvas: renderResult.canvas,
+			bbox: renderResult.bbox,
+			width: renderResult.width,
+			height: renderResult.height,
+			filename: filename,
+			epsgCode: exportSettings.epsgCode,
+			directoryHandle: directoryHandle // Pass directory handle to writer
+		});
+	}
+
+	// Step 10) Export loaded images
+	for (var i = 0; i < exportImages.length; i++) {
+		var imageItem = exportImages[i];
+
+		exportedCount++;
+		var percent = Math.floor((exportedCount / totalItems) * 100);
+		updateExportProgress(progressDialog, "Scaling " + exportedCount + " / " + totalItems + ": " + imageItem.name, percent);
+
+		// Yield to UI to update progress
+		await new Promise(resolve => setTimeout(resolve, 0));
+
+		// Scale image to target resolution
+		var scaledImage = scaleImageToResolution(imageItem.canvas, imageItem.bbox, pixelsPerMeter);
+
+		// Prompt for filename (matching KML export pattern)
+		var timestamp = new Date().toISOString().replace(/[:.]/g, "-").substring(0, 19);
+		var defaultFilename = "GeoTIFF_" + timestamp + "_" + imageItem.name.replace(/\.(tif|tiff|png|jpg)$/i, "") + ".tif";
+
+		// Close progress dialog temporarily to show filename dialog
+		progressDialog.close();
+
+		var filename = await new Promise((resolve) => {
+			window.showConfirmationDialogWithInput(
+				"Export GeoTIFF",
+				"Enter filename for: " + imageItem.name,
+				"Filename:",
+				"text",
+				defaultFilename,
+				"Save",
+				"Skip",
+				function(enteredFilename) {
+					// User confirmed
+					if (!enteredFilename || enteredFilename.trim() === "") {
+						resolve(null); // Skip this image
+						return;
+					}
+					// Ensure .tif extension
+					if (!enteredFilename.toLowerCase().endsWith(".tif")) {
+						enteredFilename += ".tif";
+					}
+					// Remove .tif extension for internal use (writer adds it back)
+					resolve(enteredFilename.replace(/\.tif$/i, ""));
+				},
+				function() {
+					// User cancelled/skipped
+					resolve(null);
+				}
+			);
+		});
+
+		// Reopen progress dialog
+		progressDialog = showExportProgressDialog();
+		updateExportProgress(progressDialog, "Exporting " + exportedCount + " / " + totalItems + ": " + imageItem.name, percent);
+
+		if (!filename) {
+			console.log("Skipped " + imageItem.name);
+			continue;
+		}
+
+		await writer.write({
+			canvas: scaledImage.canvas,
+			bbox: scaledImage.bbox,
+			width: scaledImage.width,
+			height: scaledImage.height,
+			filename: filename,
+			epsgCode: exportSettings.epsgCode,
+			directoryHandle: directoryHandle // Pass directory handle to writer
+		});
+	}
+
+	// Step 11) Complete
+	updateExportProgress(progressDialog, "Export complete! Exported " + exportedCount + " file(s)", 100);
+	setTimeout(function() {
+		if (progressDialog) progressDialog.close();
+		
+		showModalMessage(
+			"Export Complete", 
+			"Exported " + exportedCount + " surface(s) as GeoTIFF\n\n" +
+			"Files saved (.tif + .prj with same base name)\n\n" +
+			"IMPORTANT: Coordinates are preserved in their original projection.\n" +
+			"The EPSG:" + exportSettings.epsgCode + " tag tells GIS software what projection they're in.\n\n" +
+			"To open in QGIS:\n" +
+			"1. Keep .tif and .prj files together\n" +
+			"2. Drag the .tif file into QGIS\n" +
+			"3. CRS will auto-detect from .prj file", 
+			"success"
+		);
+	}, 800);
 	} catch (error) {
 		// Close progress dialog
 		if (progressDialog) progressDialog.close();

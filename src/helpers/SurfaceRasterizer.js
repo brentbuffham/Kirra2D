@@ -167,15 +167,18 @@ export function renderSurfaceToCanvas(surface, pixelsPerMeter, elevationToColor)
 
 		console.log("Rendering surface at " + pixelsPerMeter.toFixed(2) + " pixels/meter → " + width + "x" + height + " canvas");
 
-		// Step 4) Create canvas
+		// Step 5) Create canvas with alpha channel support
 		var canvas = document.createElement("canvas");
 		canvas.width = width;
 		canvas.height = height;
-		var ctx = canvas.getContext("2d");
+		var ctx = canvas.getContext("2d", { alpha: true });
 
-		// Step 5) Clear canvas to white (no transparent padding)
-		ctx.fillStyle = "white";
-		ctx.fillRect(0, 0, width, height);
+		// Step 6) Clear canvas to TRANSPARENT (rgba 0,0,0,0)
+		// Areas outside triangles will remain transparent (alpha = 0)
+		// Triangle areas will have opacity based on surface.transparency
+		ctx.clearRect(0, 0, width, height);
+		console.log("Canvas initialized with transparent background");
+		console.log("Surface transparency: " + (surface.transparency || 1.0));
 
 		// Step 6) Get surface rendering settings
 		var gradient = surface.gradient || "default";

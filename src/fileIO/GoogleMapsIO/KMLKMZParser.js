@@ -66,6 +66,7 @@
 import BaseParser from "../BaseParser.js";
 import JSZip from "jszip";
 import proj4 from "proj4";
+import { top100EPSGCodes } from "../../dialog/popups/generic/ProjectionDialog.js";
 
 // Step 5) KMLKMZParser class
 class KMLKMZParser extends BaseParser {
@@ -222,12 +223,11 @@ class KMLKMZParser extends BaseParser {
 				contentHTML += '<select id="kml-import-epsg-code" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
 				contentHTML += '<option value="">-- Select EPSG Code --</option>';
 
-				// Add common EPSG codes (you'll need to import or define top100EPSGCodes here)
-				// For now, adding some common ones
-				var commonEPSG = [{ code: "32750", name: "WGS 84 / UTM zone 50S" }, { code: "32755", name: "WGS 84 / UTM zone 55S" }, { code: "28350", name: "GDA94 / MGA zone 50" }, { code: "28355", name: "GDA94 / MGA zone 55" }, { code: "7850", name: "GDA2020 / MGA zone 50" }, { code: "7855", name: "GDA2020 / MGA zone 55" }];
+				// Use top 100 EPSG codes from ProjectionDialog
+				var epsgCodes = top100EPSGCodes;
 
-				for (var i = 0; i < commonEPSG.length; i++) {
-					contentHTML += '<option value="' + commonEPSG[i].code + '">' + commonEPSG[i].code + " - " + commonEPSG[i].name + "</option>";
+				for (var i = 0; i < epsgCodes.length; i++) {
+					contentHTML += '<option value="' + epsgCodes[i].code + '">' + epsgCodes[i].code + " - " + epsgCodes[i].name + "</option>"; '<option value="' + commonEPSG[i].code + '">' + commonEPSG[i].code + " - " + commonEPSG[i].name + "</option>";
 				}
 
 				contentHTML += "</select>";

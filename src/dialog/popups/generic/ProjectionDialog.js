@@ -12,8 +12,9 @@ import proj4 from "proj4";
 /**
  * Top 100 most commonly used EPSG codes worldwide
  * Used for GeoTIFF coordinate system conversion dropdown
+ * Exported for use in other dialogs (KML import, etc.)
  */
-const top100EPSGCodes = [
+export const top100EPSGCodes = [
 	{ code: "4326", name: "WGS 84" },
 	{ code: "3857", name: "WGS 84 / Pseudo-Mercator" },
 	{ code: "4269", name: "NAD83" },
@@ -344,13 +345,10 @@ export async function promptForExportProjection(bbox) {
 		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
 		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; line-height: 1.4; word-wrap: break-word; white-space: normal;"><strong>Export Information:</strong></p>';
 		contentHTML += '<ul class="labelWhite15" style="margin: 0; padding-left: 20px; font-size: 11px; line-height: 1.4; word-wrap: break-word; white-space: normal;">';
-		contentHTML += "<li>You will be prompted <strong>twice</strong>: once for the <strong>.tif</strong> file, then for the <strong>.prj</strong> file</li>";
-		contentHTML += '<li><strong>IMPORTANT:</strong> Save both files in the <strong>same folder</strong> with the <strong>same base name</strong> (e.g., "test.tif" and "test.prj")</li>';
-		contentHTML += "<li>The .prj file contains CRS/projection data - QGIS/ArcGIS will only recognize it if it's in the same folder with matching filename</li>";
-		contentHTML += "<li>Files are <strong>uncompressed</strong> and may be very large</li>";
+		contentHTML += "<li>You will first select a <strong>directory</strong> for all exports</li>";
+		contentHTML += "<li>Then you will be prompted for a filename for <strong>each surface</strong></li>";
+		contentHTML += "<li>Both <strong>.tif</strong> and <strong>.prj</strong> files will be saved to the selected directory</li>";
 		contentHTML += "</ul>";
-		contentHTML += '<p class="labelWhite15" style="margin: 8px 0 0 0; font-size: 11px; line-height: 1.4; word-wrap: break-word; white-space: normal;"><strong>Technical Note:</strong> GeoKey injection into TIFF files is disabled due to file corruption risks. The beta <code>writeArrayBuffer</code> API from geotiff.js does not reliably write GeoTIFF tags. The .prj file provides a proven, industry-standard alternative that all major GIS software supports.</p>';
-		contentHTML += '<p class="labelWhite15" style="margin: 8px 0 0 0; font-size: 11px; line-height: 1.4; word-wrap: break-word; white-space: normal;">For more information: <a href="https://geotiffjs.github.io/geotiff.js/" target="_blank" style="color: #4CAF50; text-decoration: underline;">https://geotiffjs.github.io/geotiff.js/</a></p>';
 		contentHTML += "</div>";
 
 		contentHTML += "</div>";
@@ -371,8 +369,11 @@ export async function promptForExportProjection(bbox) {
 				var epsgCode = document.getElementById("export-proj-epsg-code").value.trim();
 				var errorDiv = document.getElementById("epsg-error-message");
 
+				console.log("Export dialog - EPSG code selected: '" + epsgCode + "'");
+
 				// Validate EPSG code is required
 				if (!epsgCode) {
+					errorDiv.textContent = "EPSG code is required";
 					errorDiv.style.display = "block";
 					return false; // Prevent dialog from closing
 				}
