@@ -46,6 +46,7 @@ import {
 	clearThreeJS,
 	renderThreeJS,
 	drawHoleThreeJS,
+	drawHoleThreeJS_Instanced,
 	drawHoleToeThreeJS,
 	drawHoleTextThreeJS,
 	drawHoleTextsAndConnectorsThreeJS,
@@ -5557,18 +5558,38 @@ function setMultipleSelectionModeToFalse() {
 }
 
 //Resizing the Navbar on the right
-resizeRight.addEventListener("mousedown", function () {
+resizeRight.addEventListener("mousedown", function (e) {
 	isResizingRight = true;
+	e.preventDefault(); // Prevent text selection during drag
+
+	// Define cleanup function
+	const cleanupResize = function() {
+		isResizingRight = false;
+		document.removeEventListener("mousemove", handleMouseMove);
+		document.removeEventListener("mouseup", cleanupResize);
+		document.removeEventListener("mouseleave", cleanupResize);
+	};
 
 	document.addEventListener("mousemove", handleMouseMove);
-	document.addEventListener("mouseup", handleMouseUp);
+	document.addEventListener("mouseup", cleanupResize);
+	document.addEventListener("mouseleave", cleanupResize); // Handle mouse leaving window
 });
 //Resizing the Navbar on the left
-resizeLeft.addEventListener("mousedown", function () {
+resizeLeft.addEventListener("mousedown", function (e) {
 	isResizingLeft = true;
+	e.preventDefault(); // Prevent text selection during drag
+
+	// Define cleanup function
+	const cleanupResize = function() {
+		isResizingLeft = false;
+		document.removeEventListener("mousemove", handleMouseMove);
+		document.removeEventListener("mouseup", cleanupResize);
+		document.removeEventListener("mouseleave", cleanupResize);
+	};
 
 	document.addEventListener("mousemove", handleMouseMove);
-	document.addEventListener("mouseup", handleMouseUp);
+	document.addEventListener("mouseup", cleanupResize);
+	document.addEventListener("mouseleave", cleanupResize); // Handle mouse leaving window
 });
 renumberHoles.addEventListener("click", function () {
 	isRenumberingHoles = this.checked;
@@ -10382,7 +10403,7 @@ function addConnectDistanceMarkers() {
 }
 const timeSlider = document.getElementById("timeRange");
 timeSlider.addEventListener("input", function () {
-	timeRange = document.getElementById("timeRange").value;
+	const timeRange = document.getElementById("timeRange").value;
 	timeRangeLabel.textContent = "Time window :" + timeRange + "ms";
 	timeChart();
 	Plotly.relayout("timeChart", {
@@ -10396,7 +10417,7 @@ timeSlider.addEventListener("input", function () {
 // Access the slider element and add an event listener to track changes
 const timeOffsetSlider = document.getElementById("timeOffset");
 timeOffsetSlider.addEventListener("input", function () {
-	timeOffset = document.getElementById("timeOffset").value;
+	const timeOffset = document.getElementById("timeOffset").value;
 	timeOffsetLabel.textContent = "Time Offset : " + timeOffset + "ms";
 	timeChart();
 	Plotly.relayout("timeChart", {
@@ -10853,17 +10874,7 @@ function handleMouseUp(event) {
 		canvas.style.cursor = "default";
 	}
 
-	// Stop resizing
-	if (isResizingRight) {
-		isResizingRight = false;
-		document.removeEventListener("mousemove", handleMouseMove);
-		document.removeEventListener("mouseup", handleMouseUp);
-	}
-	if (isResizingLeft) {
-		isResizingLeft = false;
-		document.removeEventListener("mousemove", handleMouseMove);
-		document.removeEventListener("mouseup", handleMouseUp);
-	}
+	// Stop resizing (cleanup now handled by dedicated cleanup functions in mousedown handlers)
 
 	clearTimeout(longPressTimeout); // Clear the long press timeout
 	// Step 2) Clear selectPointer pan timeout if it exists
@@ -10908,13 +10919,7 @@ function handleMouseUp(event) {
 		// Log the values of worldX and worldY
 	}
 	drawData(allBlastHoles, selectedHole);
-	// Remove the Side Nav Accorian resize Listeners.
-	isResizingRight = false;
-	document.removeEventListener("mousemove", handleMouseMove);
-	document.removeEventListener("mouseup", handleMouseUp);
-	isResizingLeft = false;
-	document.removeEventListener("mousemove", handleMouseMove);
-	document.removeEventListener("mouseup", handleMouseUp);
+	// Note: Sidebar resize cleanup now handled by dedicated cleanup functions in mousedown handlers
 }
 
 // Rest of the code for touch events is unchanged
@@ -24142,7 +24147,7 @@ function handleSelection(event) {
 			showSelectionMessage("Editing " + selectedMultipleHoles.length + " Holes: {" + displayIDs + "}\nEscape key to clear Selection");
 			console.log("Selected Multiple Holes:", selectedMultipleHoles);
 		} else if (selectedHole) {
-			showSelectionMessage("Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + "\nEscape key to clear Selection");
+			showSelectionMessage(buildHoleSelectionMessage(selectedHole));
 		} else if (selectedMultipleKADObjects.length > 0) {
 			showSelectionMessage("Editing " + selectedMultipleKADObjects.length + " KAD objects\nEscape key to clear Selection");
 			console.log("Selected Multiple KAD Objects:", selectedMultipleKADObjects);
@@ -25128,18 +25133,21 @@ playButton.addEventListener("click", () => {
 	// Step 1) Update play speed
 	updatePlaySpeed();
 
-	// Step 2) Calculate max time safely
+	// Step 2) Ensure timing is calculated before animation
+	holeTimes = calculateTimes(allBlastHoles);
+
+	// Step 3) Calculate max time safely
 	let maxTime = 0;
 	if (holeTimes && holeTimes.length > 0) {
 		const times = holeTimes.map((time) => time[1]).filter((t) => !isNaN(t) && isFinite(t));
 		maxTime = times.length > 0 ? Math.max(...times) : 0;
 	}
-	console.log("Calculated maxTime:", maxTime);
+	console.log("Calculated maxTime:", maxTime, "from", holeTimes.length, "holes");
 
-	// Step 3) Set animation state
+	// Step 4) Set animation state
 	isPlaying = true;
 
-	// Step 4) Clear any existing animation
+	// Step 5) Clear any existing animation
 	if (animationInterval) {
 		clearInterval(animationInterval);
 		animationInterval = null;
@@ -25148,11 +25156,14 @@ playButton.addEventListener("click", () => {
 		cancelAnimationFrame(animationFrameId);
 	}
 
-	// Step 5) Initialize animation variables
+	// Step 6) Initialize animation variables
 	let currentTime = 0;
 	let lastFrameTime = performance.now();
+	let lastRenderTime = 0;
+	const targetFPS = 60; // Target 60fps for smooth animation
+	const frameInterval = 1000 / targetFPS;
 
-	// Step 6) Define the animation loop using requestAnimationFrame
+	// Step 7) Define the animation loop using requestAnimationFrame
 	function animationLoop() {
 		if (!isPlaying) return; // Exit if stopped
 
@@ -25163,20 +25174,30 @@ playButton.addEventListener("click", () => {
 		currentTime += blastTimeToAdvance;
 		lastFrameTime = now;
 
-		// Step 7) Update and render if within time bounds
-		if (currentTime <= maxTime + playSpeed * 100) {
-			timingWindowHolesSelected = allBlastHoles.filter((hole) => hole.holeTime <= currentTime);
-			drawData(allBlastHoles, timingWindowHolesSelected);
+		// Step 8) Update and render if within time bounds
+		// Scale buffer with playSpeed - faster speeds need MORE buffer time
+		// At 0.5x: 250ms, at 1x: 500ms, at 2x: 1000ms, at 10x: 5000ms
+		const bufferTime = 500 * Math.max(playSpeed, 0.1);
+		if (currentTime <= maxTime + bufferTime) {
+			// PERFORMANCE: Only render if enough time has elapsed (target 60fps)
+			const timeSinceRender = now - lastRenderTime;
+			if (timeSinceRender >= frameInterval) {
+				timingWindowHolesSelected = allBlastHoles.filter((hole) => hole.holeTime <= currentTime);
+				drawData(allBlastHoles, timingWindowHolesSelected);
+				lastRenderTime = now - (timeSinceRender % frameInterval); // Account for drift
+			}
 
-			// Step 8) Request next frame
+			// Step 9) Request next frame
 			animationFrameId = requestAnimationFrame(animationLoop);
 		} else {
-			// Step 9) Animation complete
+			// Step 10) Animation complete - ensure final frame is rendered
+			timingWindowHolesSelected = allBlastHoles.filter((hole) => hole.holeTime <= currentTime);
+			drawData(allBlastHoles, timingWindowHolesSelected);
 			stopButton.click();
 		}
 	}
 
-	// Step 10) Start the animation loop
+	// Step 11) Start the animation loop
 	animationFrameId = requestAnimationFrame(animationLoop);
 });
 
@@ -26730,93 +26751,29 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 
 		// Draw holes - ONLY rebuild geometry when data changes
-		var toeSizeInMeters3D = document.getElementById("toeSlider") ? document.getElementById("toeSlider").value : 1;
+		var toeSizeInMeters3D = document.getElementById("toeSlider") ? parseFloat(document.getElementById("toeSlider").value) : 1;
 		if (blastGroupVisible && allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
-			// Step 3.1) Check if instanced rendering is enabled
-			var usingInstancedHoles = useInstancedHoles && allBlastHoles.length > 10; // Only use instancing for >10 holes
+			// Step 3.1) NEW INSTANCED RENDERING: Use InstancedMeshManager for 10-50x performance improvement
+			// Automatically groups holes by diameter/type and batches rendering
+			// Draws collar/grade/toe circles as instances, hole body lines as individual objects
+			for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
+				var hole = allBlastHoles[holeIdx];
+				if (hole.visible === false) continue;
 
-			// Step 3.1a) Create hole geometry
-			if (usingInstancedHoles && threeRenderer) {
-				// Step 3.2) Use instanced rendering for hole collars/grades (performance optimization)
-				var instanceData = GeometryFactory.createInstancedHoles(
-					allBlastHoles,
-					holeScale,
-					darkModeEnabled,
-					worldToThreeLocal
-				);
+				// Use instanced rendering (includes collar, grade, toe automatically)
+				// Pass toe slider radius so all toes use the same size
+				drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
 
-				if (instanceData) {
-					// Step 3.2a) Store instanced meshes in renderer
-					threeRenderer.instancedCollars = instanceData.instancedCollars;
-					threeRenderer.instancedGrades = instanceData.instancedGrades;
-					threeRenderer.instanceIdToHole = instanceData.instanceIdToHole;
-					threeRenderer.holeToInstanceId = instanceData.holeToInstanceId;
-					threeRenderer.instancedHolesCount = instanceData.holeCount;
-
-					// Step 3.2b) Add instanced meshes to scene
-					threeRenderer.holesGroup.add(instanceData.instancedCollars);
-					threeRenderer.holesGroup.add(instanceData.instancedGrades);
-
-					// Step 3.2c) CRITICAL: Instanced collars only draw circles, NOT tracks/toes/text!
-					// We still need to draw the tracks, toe markers, and text labels individually
-					for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
-						var hole = allBlastHoles[holeIdx];
-						if (hole.visible === false) continue;
-
-						// Step 3.2c.1) Draw track lines (collar->grade->toe) - NOT instanced!
-						// These vary in length/angle so can't be efficiently instanced
-						var holeLength = parseFloat(hole.holeLengthCalculated);
-						if (holeLength > 0 && !isNaN(holeLength)) {
-							// Draw track from collar to toe using individual geometry
-							var collarLocal = worldToThreeLocal(hole.startXLocation, hole.startYLocation);
-							var gradeLocal = worldToThreeLocal(hole.gradeXLocation, hole.gradeYLocation);
-							var toeLocal = worldToThreeLocal(hole.endXLocation, hole.endYLocation);
-							var trackGroup = GeometryFactory.createHoleTrack(
-								collarLocal.x, collarLocal.y, hole.startZLocation || 0,
-								gradeLocal.x, gradeLocal.y, hole.gradeZLocation || 0,
-								toeLocal.x, toeLocal.y, hole.endZLocation || 0,
-								hole.holeDiameter, hole.holeColor || "#FF0000", holeScale, hole.subdrillAmount || 0, darkModeEnabled
-							);
-							if (trackGroup) {
-								threeRenderer.holesGroup.add(trackGroup);
-							}
-
-							// Step 3.2c.2) Draw toe circle in Three.js
-							var toeRadiusWorld = parseFloat(toeSizeInMeters3D);
-							var toeColor = strokeColor;
-							var toeHoleId = hole.entityName + ":::" + hole.holeID;
-							drawHoleToeThreeJS(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0, toeRadiusWorld, toeColor, toeHoleId);
-						}
-
-						// Step 3.2c.3) Draw hole text labels
-						if (threeInitialized) {
-							drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
-						}
-					}
-
-					if (developerModeEnabled) {
-						console.log("🚀 Instanced holes: " + instanceData.holeCount + " collars/grades + individual tracks/toes/text");
-					}
+				// Draw hole text labels (labels are still individual sprites for flexibility)
+				if (threeInitialized) {
+					drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
 				}
-			} else {
-				// Step 3.2c) Non-instanced: draw individual hole geometry
-				for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
-					var hole = allBlastHoles[holeIdx];
-					if (hole.visible === false) continue;
-					drawHoleThreeJS(hole);
+			}
 
-					// Draw toe circle in Three.js (if hole has length)
-					if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
-						var toeRadiusWorld = parseFloat(toeSizeInMeters3D);
-						var toeColor = strokeColor;
-						var toeHoleId = hole.entityName + ":::" + hole.holeID;
-						drawHoleToeThreeJS(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0, toeRadiusWorld, toeColor, toeHoleId);
-					}
-
-					// Draw hole text labels
-					if (threeInitialized) {
-						drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
-					}
+			if (developerModeEnabled) {
+				console.log("🚀 Instanced rendering active: " + allBlastHoles.length + " holes");
+				if (threeRenderer && threeRenderer.instancedMeshManager) {
+					console.log("📊 Instance stats:", threeRenderer.instancedMeshManager.getStats());
 				}
 			}
 
@@ -26856,20 +26813,23 @@ function drawData(allBlastHoles, selectedHole) {
 							if (isAddingMultiConnector && currentMouseWorldX !== undefined && currentMouseWorldY !== undefined) {
 								drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY, z: hole.startZLocation || window.dataCentroidZ || 0 }, connectAmount);
 							}
-							drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
+							// HUD: Show connector mode message (replaces 3D text)
+							showStatusMessage("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)", 0);
 						} else if (firstSelectedHole && firstSelectedHole.entityName === hole.entityName && firstSelectedHole.holeID === hole.holeID) {
 							highlightSelectedHoleThreeJS(hole, "first");
-							drawToolPromptThreeJS("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName, { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(0, 190, 0, .8)");
+							// HUD: Show connector mode message (replaces 3D text)
+							showStatusMessage("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName, 0);
 						} else if (secondSelectedHole && secondSelectedHole === hole) {
 							highlightSelectedHoleThreeJS(hole, "second");
-							drawToolPromptThreeJS("2nd Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Click to connect)", { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation }, "rgba(255, 200, 0, .8)");
+							// HUD: Show connector mode message (replaces 3D text)
+							showStatusMessage("2nd Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Click to connect)", 0);
 						}
 					}
 					// Regular selection highlighting
 					else if (selectedHole && selectedHole === hole) {
 						highlightSelectedHoleThreeJS(hole, "selected");
-						// HUD: Show selection message (replaces drawToolPromptThreeJS)
-						showSelectionMessage("Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + "\nEscape key to clear Selection");
+						// HUD: Show selection message with connection info (replaces drawToolPromptThreeJS)
+						showSelectionMessage(buildHoleSelectionMessage(selectedHole));
 					}
 					// Multiple selection highlighting
 					else if (selectedMultipleHoles && selectedMultipleHoles.find((h) => h.entityName === hole.entityName && h.holeID === hole.holeID)) {
@@ -27377,6 +27337,27 @@ function drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj) {
 	}
 }
 
+// === Helper: Build selection message with connection info ===
+function buildHoleSelectionMessage(hole) {
+	let message = "Editing Selected Hole: " + hole.holeID + " in: " + hole.entityName;
+
+	// Add connection information if hole has a fromHoleID
+	if (hole.fromHoleID && hole.fromHoleID !== "") {
+		const [fromEntity, fromHoleID] = hole.fromHoleID.split(":::");
+		message += "\nConnected from: " + fromHoleID;
+		if (fromEntity && fromEntity !== hole.entityName) {
+			message += " (" + fromEntity + ")";
+		}
+		// Add delay value if available
+		if (hole.timingDelayMilliseconds !== undefined && hole.timingDelayMilliseconds !== null) {
+			message += " | Delay: " + hole.timingDelayMilliseconds + "ms";
+		}
+	}
+
+	message += "\nEscape key to clear Selection";
+	return message;
+}
+
 // === Helper: Draw hole labels in Three.js for 3D mode ===
 // Note: drawHoleTextsAndConnectorsThreeJS moved to src/draw/canvas3DDrawing.js
 
@@ -27485,8 +27466,8 @@ function drawHoleMainShape(hole, x, y, selectedHole) {
 		highlightColor1 = "rgba(255, 0, 150, 0.2)";
 		highlightColor2 = "rgba(255, 0, 150, .8)";
 		highlightText = "";  // Don't draw ctx text anymore
-		// HUD: Show selection message
-		showSelectionMessage("Editing Selected Hole: " + selectedHole.holeID + " in: " + selectedHole.entityName + "\nEscape key to clear Selection");
+		// HUD: Show selection message with connection info
+		showSelectionMessage(buildHoleSelectionMessage(selectedHole));
 	}
 	// Multiple selection highlighting
 	else if (selectedMultipleHoles != null && selectedMultipleHoles.find((p) => p.entityName === hole.entityName && p.holeID === hole.holeID)) {

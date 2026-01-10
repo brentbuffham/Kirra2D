@@ -2203,8 +2203,8 @@ export class GeometryFactory {
 						resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
 						dashed: true,
 						dashScale: 1,
-						dashSize: 3,
-						gapSize: 3,
+						dashSize: 1,
+						gapSize: 1,
 						alphaToCoverage: true,
 						transparent: true,
 						opacity: 1.0
@@ -2223,9 +2223,9 @@ export class GeometryFactory {
 						resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
 						dashed: true,
 						dashScale: 1,
-						dashSize: 3,
-						gapSize: 3,
-						dashOffset: 3, // Offset by dash size to fill the gaps
+						dashSize: 1,
+						gapSize: 1,
+						dashOffset: 1, // Offset by dash size to fill the gaps
 						alphaToCoverage: true,
 						transparent: true,
 						opacity: 1.0
@@ -2487,16 +2487,8 @@ export class GeometryFactory {
 			group.add(arrowMesh);
 		}
 
-		// Step 20.5i) Add delay text if provided
-		// Use window.currentFontSize for consistency with 2D (default to 8 if not available)
-		if (delayText !== null && delayText !== undefined && delayText !== "") {
-			const midX = (fromX + toX) / 2;
-			const midY = (fromY + toY) / 2;
-			const midZ = (fromZ + toZ) / 2;
-			const delayFontSize = (window.currentFontSize || 12) / 1.5; // Match hole text scaling
-			const textSprite = this.createKADText(midX, midY, midZ, String(delayText), delayFontSize, color, null);
-			group.add(textSprite);
-		}
+		// Step 20.5i) Delay text moved to HUD overlay (see StatusPanel)
+		// No longer rendered in 3D scene to reduce visual clutter
 
 		return group;
 	}

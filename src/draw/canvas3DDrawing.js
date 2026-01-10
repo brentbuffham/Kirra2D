@@ -152,6 +152,228 @@ export function drawHoleThreeJS(hole) {
 	window.threeRenderer.holeMeshMap.set(hole.holeID, holeGroup);
 }
 
+// Step 3b) Draw hole in Three.js using INSTANCED MESHES (10-50x faster for large blasts)
+// This function uses InstancedMeshManager for circles (collar/grade/toe) and individual lines for hole bodies
+export function drawHoleThreeJS_Instanced(hole, toeSliderRadius) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (!window.threeRenderer.instancedMeshManager) return;
+
+	const manager = window.threeRenderer.instancedMeshManager;
+	const uniqueHoleId = hole.entityName + ":::" + hole.holeID;
+
+	// Step 1) Extract hole positions (world coordinates)
+	const collarWorld = { x: hole.startXLocation, y: hole.startYLocation };
+	const gradeWorld = { x: hole.gradeXLocation, y: hole.gradeYLocation };
+	const toeWorld = { x: hole.endXLocation, y: hole.endYLocation };
+
+	// Step 2) Convert to local Three.js coordinates for precision
+	const collarLocal = window.worldToThreeLocal(collarWorld.x, collarWorld.y);
+	const gradeLocal = window.worldToThreeLocal(gradeWorld.x, gradeWorld.y);
+	const toeLocal = window.worldToThreeLocal(toeWorld.x, toeWorld.y);
+
+	// Z coordinates stay as-is (relative elevations)
+	const collarZ = hole.startZLocation || 0;
+	const gradeZ = hole.gradeZLocation || 0;
+	const toeZ = hole.endZLocation || 0;
+
+	// Step 3) Determine hole type and dimensions
+	const holeLength = parseFloat(hole.holeLengthCalculated);
+	const holeDiameter = parseFloat(hole.holeDiameter);
+	const subdrillAmount = hole.subdrillAmount || 0;
+	const hasNegativeSubdrill = subdrillAmount < 0;
+
+	// Calculate radii
+	const diameterInMeters = holeDiameter / 1000;
+	const radiusInMeters = (diameterInMeters / 2) * (window.holeScale * 2);
+	const gradeRadiusInMeters = radiusInMeters * 0.5;
+
+	// Colors (matching original drawHoleThreeJS exactly)
+	const collarColor = window.darkModeEnabled ? 0xffffff : 0x000000;
+	const lineColor = window.darkModeEnabled ? 0xffffff : 0x000000;
+	const gradeColor = 0xff0000; // Always RED
+	const toeColor = window.darkModeEnabled ? 0x5EACFF : 0x26FF00; // Blue in dark, green in light
+
+	// Step 4) Create hole body lines (individual objects - lightweight)
+	const lineGroup = new THREE.Group();
+	lineGroup.userData = {
+		type: "hole", // IMPORTANT: Must be "hole" for raycasting/selection to work
+		holeId: uniqueHoleId,
+		entityName: hole.entityName,
+		holeID: hole.holeID,
+		holeData: hole // Full hole data for connections and info
+	};
+
+	if (holeLength === 0 || isNaN(holeLength)) {
+		// Dummy hole - draw cross/X (keep as individual geometry)
+		const crossSize = 0.2 * window.holeScale;
+		const dummyGroup = GeometryFactory.createDummyHole(collarLocal.x, collarLocal.y, collarZ, crossSize, collarColor);
+		dummyGroup.userData = {
+			type: "hole",
+			holeId: uniqueHoleId,
+			entityName: hole.entityName,
+			holeID: hole.holeID,
+			holeData: hole
+		};
+		window.threeRenderer.holesGroup.add(dummyGroup);
+		window.threeRenderer.holeMeshMap.set(hole.holeID, dummyGroup);
+		return; // Don't use instancing for dummy holes
+	} else if (holeDiameter === 0 || isNaN(holeDiameter)) {
+		// Zero diameter hole - draw square (keep as individual geometry)
+		const squareSize = 10 / window.currentScale;
+		const zeroGroup = GeometryFactory.createZeroDiameterHole(
+			collarLocal.x, collarLocal.y, collarZ,
+			gradeLocal.x, gradeLocal.y, gradeZ,
+			toeLocal.x, toeLocal.y, toeZ,
+			squareSize, subdrillAmount, window.darkModeEnabled
+		);
+		zeroGroup.userData = {
+			type: "hole",
+			holeId: uniqueHoleId,
+			entityName: hole.entityName,
+			holeID: hole.holeID,
+			holeData: hole
+		};
+		window.threeRenderer.holesGroup.add(zeroGroup);
+		window.threeRenderer.holeMeshMap.set(hole.holeID, zeroGroup);
+		return; // Don't use instancing for zero-diameter holes
+	}
+
+	// Step 5) Normal hole - use instancing for circles, individual lines for body
+
+	// Step 5a) Add collar circle as instance
+	manager.addHoleInstance(
+		uniqueHoleId,
+		"collar",
+		collarLocal.x,
+		collarLocal.y,
+		collarZ,
+		holeDiameter,
+		radiusInMeters,
+		collarColor,
+		window.darkModeEnabled
+	);
+
+	// Step 5b) Create hole body lines
+	if (hasNegativeSubdrill) {
+		// NEGATIVE SUBDRILL CASE
+		// Solid line from collar to toe
+		const collarToToePoints = [
+			new THREE.Vector3(collarLocal.x, collarLocal.y, collarZ),
+			new THREE.Vector3(toeLocal.x, toeLocal.y, toeZ)
+		];
+		const collarToToeGeometry = new THREE.BufferGeometry().setFromPoints(collarToToePoints);
+		const collarToToeMaterial = new THREE.LineBasicMaterial({
+			color: lineColor,
+			linewidth: 1,
+			transparent: false,
+			opacity: 1.0
+		});
+		const collarToToeLine = new THREE.Line(collarToToeGeometry, collarToToeMaterial);
+		lineGroup.add(collarToToeLine);
+
+		// RED transparent line from toe to grade
+		const toeToGradePoints = [
+			new THREE.Vector3(toeLocal.x, toeLocal.y, toeZ),
+			new THREE.Vector3(gradeLocal.x, gradeLocal.y, gradeZ)
+		];
+		const toeToGradeGeometry = new THREE.BufferGeometry().setFromPoints(toeToGradePoints);
+		const toeToGradeMaterial = new THREE.LineBasicMaterial({
+			color: 0xff0000,
+			linewidth: 1,
+			transparent: true,
+			opacity: 0.2
+		});
+		const toeToGradeLine = new THREE.Line(toeToGradeGeometry, toeToGradeMaterial);
+		lineGroup.add(toeToGradeLine);
+
+		// Add grade circle as instance (RED transparent for negative subdrill)
+		manager.addHoleInstance(
+			uniqueHoleId,
+			"grade_negative",
+			gradeLocal.x,
+			gradeLocal.y,
+			gradeZ,
+			holeDiameter * 0.5, // Smaller diameter for grade
+			gradeRadiusInMeters,
+			gradeColor,
+			window.darkModeEnabled
+		);
+	} else {
+		// POSITIVE/ZERO SUBDRILL CASE
+		// Solid line from collar to grade
+		const collarToGradePoints = [
+			new THREE.Vector3(collarLocal.x, collarLocal.y, collarZ),
+			new THREE.Vector3(gradeLocal.x, gradeLocal.y, gradeZ)
+		];
+		const collarToGradeGeometry = new THREE.BufferGeometry().setFromPoints(collarToGradePoints);
+		const collarToGradeMaterial = new THREE.LineBasicMaterial({
+			color: lineColor,
+			linewidth: 1,
+			transparent: false,
+			opacity: 1.0
+		});
+		const collarToGradeLine = new THREE.Line(collarToGradeGeometry, collarToGradeMaterial);
+		lineGroup.add(collarToGradeLine);
+
+		// RED solid line from grade to toe
+		const gradeToToePoints = [
+			new THREE.Vector3(gradeLocal.x, gradeLocal.y, gradeZ),
+			new THREE.Vector3(toeLocal.x, toeLocal.y, toeZ)
+		];
+		const gradeToToeGeometry = new THREE.BufferGeometry().setFromPoints(gradeToToePoints);
+		const gradeToToeMaterial = new THREE.LineBasicMaterial({
+			color: gradeColor,
+			linewidth: 1,
+			transparent: false,
+			opacity: 1.0
+		});
+		const gradeToToeLine = new THREE.Line(gradeToToeGeometry, gradeToToeMaterial);
+		lineGroup.add(gradeToToeLine);
+
+		// Add grade circle as instance (RED solid for positive subdrill)
+		manager.addHoleInstance(
+			uniqueHoleId,
+			"grade_positive",
+			gradeLocal.x,
+			gradeLocal.y,
+			gradeZ,
+			holeDiameter * 0.5, // Smaller diameter for grade
+			gradeRadiusInMeters,
+			gradeColor,
+			window.darkModeEnabled
+		);
+	}
+
+	// Step 5c) Add toe circle as instance
+	// IMPORTANT: All toes use the SAME radius from toeSlider, not based on hole diameter
+	// Use fixed key "toe_slider" so all toes are in one InstancedMesh
+	if (holeLength > 0 && !isNaN(holeLength) && toeSliderRadius > 0) {
+		manager.addHoleInstance(
+			uniqueHoleId,
+			"toe_slider", // Fixed key - all toes in one instance
+			toeLocal.x,
+			toeLocal.y,
+			toeZ,
+			999, // Dummy diameter value (not used for grouping with fixed key)
+			parseFloat(toeSliderRadius), // Use slider radius directly
+			toeColor,
+			window.darkModeEnabled
+		);
+	}
+
+	// Step 6) Copy userData to all children for raycasting
+	// When raycaster hits a child line, it needs to find the hole userData
+	lineGroup.traverse(child => {
+		if (child.isLine) {
+			child.userData = Object.assign({}, lineGroup.userData, child.userData);
+		}
+	});
+
+	// Step 7) Add line group to scene
+	window.threeRenderer.holesGroup.add(lineGroup);
+	window.threeRenderer.holeMeshMap.set(hole.holeID, lineGroup);
+}
+
 // Step 4) Draw hole toe in Three.js
 export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;

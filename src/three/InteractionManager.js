@@ -83,13 +83,30 @@ export class InteractionManager {
 			// Step 5a.1) NEW: Check for instanced mesh hit (from InstancedMesh)
 			// InstancedMesh raycasts return instanceId in the intersect object
 			if (intersect.instanceId !== undefined && userData) {
-				// Step 5a.2) Check if this is an instanced hole collar or grade
-				if (userData.type === "instancedHoleCollars" || userData.type === "instancedHoleGrades") {
-					// Step 5a.3) Get hole data from ThreeRenderer's mapping
-					var holeData = this.threeRenderer.getHoleByInstanceId(intersect.instanceId);
+				// Step 5a.2) Check if this is our new InstancedMeshManager system
+				if (userData.type === "instancedHoles" && userData.instanceToHoleMap) {
+					// Step 5a.3) Get holeId from the instance map
+					var holeId = userData.instanceToHoleMap.get(intersect.instanceId);
+					if (holeId) {
+						// Step 5a.4) Find the hole in allBlastHoles
+						for (var j = 0; j < allBlastHoles.length; j++) {
+							var h = allBlastHoles[j];
+							if (h.entityName + ":::" + h.holeID === holeId) {
+								if (developerModeEnabled) {
+									console.log("🎯 Clicked instanced hole:", h.holeID, "in", h.entityName, "instanceId:", intersect.instanceId);
+								}
+								return h;
+							}
+						}
+					}
+				}
+				// Step 5a.5) OLD SYSTEM: Check for old instanced hole types (for backwards compatibility)
+				else if (userData.type === "instancedHoleCollars" || userData.type === "instancedHoleGrades") {
+					// Step 5a.6) Get hole data from ThreeRenderer's old mapping
+					var holeData = this.threeRenderer.getHoleByInstanceId ? this.threeRenderer.getHoleByInstanceId(intersect.instanceId) : null;
 					if (holeData) {
 						if (developerModeEnabled) {
-							console.log("🎯 Clicked instanced hole:", holeData.holeID, "in", holeData.entityName, "instanceId:", intersect.instanceId);
+							console.log("🎯 Clicked instanced hole (old system):", holeData.holeID, "in", holeData.entityName, "instanceId:", intersect.instanceId);
 						}
 						return holeData;
 					}

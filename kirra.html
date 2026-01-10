@@ -2120,15 +2120,15 @@
 						<hr class="button-container-divider">
 						<div class="label2" id="connLabel">Tie Size (units): 3.0</div>
 						<input type="range" id="connSlider" min="0.001" max="15" value="3" step="0.1" placeholder="Select connector size">
-						<div class="label2" id="toeLabel">Toe Size (m): 0.5m</div>
+						<div class="label2" id="toeLabel">Toe Size (m): 0.0m</div>
 						<input type="range" id="toeSlider" min="0.000" max="30" value="0.0" step="0.1" placeholder="Select toe circle size">
 						<div class="label2" id="holeLabel">Hole Adjust (units): 2.0</div>
-						<input type="range" id="holeSlider" min="1" max="10" value="2" step="0.1" placeholder="Select hole circle size">
+						<input type="range" id="holeSlider" min="1" max="10" value="2" step="0.5" placeholder="Select hole circle size">
 						<hr class="button-container-divider">
 						<div class="label2" id="intervalLabel">Interval (ms): 100ms</div>
 						<input type="range" id="intervalSlider" min="5" max="1000" value="100" step="5" placeholder="Adjust the Interval">
 						<div class="label2" id="firstMovementLabel">First Movement Size (units): 2.0</div>
-						<input type="range" id="firstMovementSlider" min="0" max="5" value="2" step="0.1" placeholder="Adjust the First Movement">
+						<input type="range" id="firstMovementSlider" min="0" max="10" value="2" step="0.5" placeholder="Adjust the First Movement">
 						<hr class="button-container-divider">
 						<div class="label2" id="snapToleranceLabel">Snap Tolerance (px): 15px </div>
 						<input type="range" id="snapToleranceSlider" min="0" max="100" value="15" step="1" placeholder="Adjust the Snap Tolerance">
@@ -2280,7 +2280,7 @@
 				<div class="panel">
 					<div class="chart-container" id="timeChart"></div>
 					<a class="label2" id="timeRangeLabel">Time window : 8 ms</a>
-					<input type="range" min="1" max="100" value="8" id="timeRange" placeholder="Select time window size">
+					<input type="range" min="1" max="250" value="8" step="1" id="timeRange" placeholder="Select time window size">
 					<a class="label2" id="timeOffsetLabel">Time Offset : 0 ms</a>
 					<input type="range" min="0" max="50" value="0" id="timeOffset" placeholder="Select time offset">
 					<div class="radio-button-bar">
