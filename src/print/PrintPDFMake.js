@@ -468,10 +468,13 @@ export function generatePDFWithPDFMake(context, userInput, mode) {
         mode = context.is3DMode ? "3D" : "2D";
     }
 
-    // Check for data
-    if ((!allBlastHoles || allBlastHoles.length === 0) &&
-        (!context.allKADDrawingsMap || context.allKADDrawingsMap.size === 0) &&
-        (!context.allAvailableSurfaces || context.allAvailableSurfaces.length === 0)) {
+    // Check for data - allow printing if surfaces or images are loaded
+    var hasSurfaces = (context.loadedSurfaces && context.loadedSurfaces.size > 0) || (context.allAvailableSurfaces && context.allAvailableSurfaces.length > 0);
+    var hasImages = context.loadedImages && context.loadedImages.size > 0;
+    var hasBlastHoles = allBlastHoles && allBlastHoles.length > 0;
+    var hasKAD = context.allKADDrawingsMap && context.allKADDrawingsMap.size > 0;
+
+    if (!hasBlastHoles && !hasKAD && !hasSurfaces && !hasImages) {
         showModalMessage("No Data", "No data available for printing", "warning");
         return;
     }

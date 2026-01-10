@@ -513,10 +513,15 @@ export function printCanvasHiRes(context) {
     var userInput = context.userInput || { blastName: "Untitled Blast", designer: "" };
     var mode = context.mode || "2D";
 
-    // Step 11a) Check for data
-    if ((!allBlastHoles || allBlastHoles.length === 0) && 
-        (!allKADDrawingsMap || allKADDrawingsMap.size === 0) && 
-        (!allAvailableSurfaces || allAvailableSurfaces.length === 0)) {
+    // Step 11a) Check for data - allow printing if surfaces or images are loaded
+    var loadedSurfaces = context.loadedSurfaces;
+    var loadedImages = context.loadedImages;
+    var hasSurfaces = (loadedSurfaces && loadedSurfaces.size > 0) || (allAvailableSurfaces && allAvailableSurfaces.length > 0);
+    var hasImages = loadedImages && loadedImages.size > 0;
+    var hasBlastHoles = allBlastHoles && allBlastHoles.length > 0;
+    var hasKAD = allKADDrawingsMap && allKADDrawingsMap.size > 0;
+
+    if (!hasBlastHoles && !hasKAD && !hasSurfaces && !hasImages) {
         showModalMessage("No Data", "No data available for printing", "warning");
 		return;
 	}

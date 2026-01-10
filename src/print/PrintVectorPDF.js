@@ -263,10 +263,13 @@ export function generateTrueVectorPDF(context, userInput, mode) {
     var getDisplayOptions = context.getDisplayOptions;
     var simplifyByPxDist = context.simplifyByPxDist;
 
-    // Step 9) Check for data
-    if ((!allBlastHoles || allBlastHoles.length === 0) &&
-        (!allKADDrawingsMap || allKADDrawingsMap.size === 0) &&
-        (!allAvailableSurfaces || allAvailableSurfaces.length === 0)) {
+    // Step 9) Check for data - allow printing if surfaces or images are loaded
+    var hasSurfaces = (loadedSurfaces && loadedSurfaces.size > 0) || (allAvailableSurfaces && allAvailableSurfaces.length > 0);
+    var hasImages = loadedImages && loadedImages.size > 0;
+    var hasBlastHoles = allBlastHoles && allBlastHoles.length > 0;
+    var hasKAD = allKADDrawingsMap && allKADDrawingsMap.size > 0;
+
+    if (!hasBlastHoles && !hasKAD && !hasSurfaces && !hasImages) {
         showModalMessage("No Data", "No data available for printing", "warning");
         return;
     }
