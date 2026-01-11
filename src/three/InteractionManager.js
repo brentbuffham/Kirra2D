@@ -344,14 +344,16 @@ export class InteractionManager {
 		currentCamera.getWorldDirection(viewDirection);
 
 		// Step 7.4b.3) Determine the center point the plane passes through
-		// Use orbit center if available, or provided centerPoint, or data centroid
+		// CRITICAL: Use 3D orbit center (local coordinates), NOT camera centroid (2D pan coordinates)
 		let planeCenter = new THREE.Vector3();
 		if (centerPoint && isFinite(centerPoint.x) && isFinite(centerPoint.y) && isFinite(centerPoint.z)) {
 			planeCenter.set(centerPoint.x, centerPoint.y, centerPoint.z);
-		} else if (window.cameraControls) {
-			const state = window.cameraControls.getCameraState();
+		} else if (this.threeRenderer) {
+			// Use renderer's orbit center (3D local coordinates where camera orbits around)
+			const orbitCenterX = this.threeRenderer.orbitCenterX || 0;
+			const orbitCenterY = this.threeRenderer.orbitCenterY || 0;
 			const orbitCenterZ = this.threeRenderer.orbitCenterZ || 0;
-			planeCenter.set(state.centroidX, state.centroidY, orbitCenterZ);
+			planeCenter.set(orbitCenterX, orbitCenterY, orbitCenterZ);
 		} else {
 			const fallbackZ = window.dataCentroidZ || 0;
 			planeCenter.set(0, 0, fallbackZ);

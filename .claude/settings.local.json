@@ -12,7 +12,8 @@
       "Bash(npm run dev:*)",
       "Bash(/bin/ps:*)",
       "Bash(lsof:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(grep:*)"
     ]
   }
 }

@@ -222,10 +222,10 @@ export class ThreeRenderer {
 
 		// Step 12) Create XYZ axis helper (hidden by default)
 		// Size is in world units but will be scaled to maintain fixed screen size
-		this.axisHelper = this.createAxisHelper(50); // Base size for calculations
+		this.axisHelper = this.createAxisHelper(77); // Base size for calculations
 		this.axisHelper.visible = false;
 		this.scene.add(this.axisHelper);
-		this.axisHelperBaseSize = 50; // Store base size for screen-space scaling
+		this.axisHelperBaseSize = 77; // Store base size for screen-space scaling
 
 		// Step 13) Create grid helper (default 10m divisions, 50 divisions = 500m total)
 		// Step 13a) Grid is created but hidden by default - visibility controlled by settings
@@ -329,7 +329,7 @@ export class ThreeRenderer {
 			this.axisHelper.position.set(centroidX, centroidY, this.orbitCenterZ);
 
 			// Maintain fixed screen size
-			const desiredScreenPixels = 50;
+			const desiredScreenPixels = 77;
 			const worldUnitsForFixedScreenSize = desiredScreenPixels / scale;
 			const scaleFactor = worldUnitsForFixedScreenSize / this.axisHelperBaseSize;
 			this.axisHelper.scale.set(scaleFactor, scaleFactor, scaleFactor);

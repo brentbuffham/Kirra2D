@@ -25,10 +25,22 @@ import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { evaluate } from "mathjs";
 //=================================================
+// Three.js Renderer Selection (MUST BE EARLY!)
+//=================================================
+// CRITICAL: Load renderer preference from localStorage IMMEDIATELY
+// This must happen BEFORE initializeThreeJS() is called
+const storedRendererPref = localStorage.getItem("useExperimental3DRenderer");
+window.useExperimental3DRenderer = storedRendererPref === "true";
+console.log("🎯 Renderer preference loaded from localStorage:", storedRendererPref);
+console.log("🎯 window.useExperimental3DRenderer =", window.useExperimental3DRenderer);
+console.log("🎯 Will use renderer:", window.useExperimental3DRenderer ? "V2 (Experimental)" : "V1 (Stable)");
+
+//=================================================
 // Three.js Rendering System
 //=================================================
 import * as THREE from "three";
 import { ThreeRenderer } from "./three/ThreeRenderer.js";
+import { ThreeRendererV2 } from "./three/ThreeRendererV2.js";
 import { CameraControls } from "./three/CameraControls.js";
 import { GeometryFactory, clearTextCache } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
@@ -722,7 +734,16 @@ function initializeThreeJS() {
 			console.error("❌ Canvas container not found");
 			return;
 		}
-		threeRenderer = new ThreeRenderer(canvasContainer, canvas.clientWidth, canvas.clientHeight);
+
+		// Choose renderer based on user preference (V1 or V2)
+		const RendererClass = window.useExperimental3DRenderer ? ThreeRendererV2 : ThreeRenderer;
+		const rendererVersion = window.useExperimental3DRenderer ? "V2 (Experimental)" : "V1 (Stable)";
+		console.log("🎨 About to instantiate renderer:", rendererVersion);
+		console.log("🎨 RendererClass =", RendererClass.name);
+
+		threeRenderer = new RendererClass(canvasContainer, canvas.clientWidth, canvas.clientHeight);
+
+		console.log("✅ Renderer created successfully:", threeRenderer.constructor.name);
 
 		// Step 2a) Optimize Troika font rendering for optimal performance (one-time, shared by all text)
 		// This configures optimal SDF settings and preloads all glyphs into Troika's shared atlas.
@@ -2458,23 +2479,58 @@ function handle3DMouseMove(event) {
 	}
 
 	// Step 13d.1) PERFORMANCE OPTIMIZATION: Quick cursor update path
-	// Always update cursor position (60fps) but throttle expensive operations (30fps)
+	// Always update cursor position (60fps) but throttle expensive operations (10fps = 100ms)
 	// This gives smooth cursor tracking while maintaining performance
 	var now = performance.now();
-	var shouldThrottle = window._lastMouseMoveTime && (now - window._lastMouseMoveTime) < 33;
+	var shouldThrottle = window._lastMouseMoveTime && (now - window._lastMouseMoveTime) < 100;
 
 	if (shouldThrottle) {
 		// Fast path: Just update cursor position without raycasting/snapping
 		if (interactionManager && typeof interactionManager.getMouseWorldPositionOnViewPlane === "function") {
 			const torusWorldPos = interactionManager.getMouseWorldPositionOnViewPlane();
 			if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
-				// DEBUG: Log fast path cursor position
-				console.log("🟢 FAST PATH cursor:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
+				// DEBUG: Disabled excessive logging on mouse move
+				// console.log("🟢 FAST PATH cursor:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
 				// Draw cursor with default grey color (no snap indication)
 				drawMousePositionIndicatorThreeJS(torusWorldPos.x, torusWorldPos.y, torusWorldPos.z, "rgba(128, 128, 128, 0.4)");
+
+				// FAST PATH: Update stadium zone at 60fps for smooth tracking
+				const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
+				if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
+					// Remove old stadium zones
+					const toRemove = [];
+					threeRenderer.connectorsGroup.children.forEach((child) => {
+						if (child.userData && child.userData.type === "stadiumZone") {
+							toRemove.push(child);
+						}
+					});
+					toRemove.forEach((obj) => {
+						threeRenderer.connectorsGroup.remove(obj);
+						if (obj.geometry) obj.geometry.dispose();
+						if (obj.material) {
+							if (Array.isArray(obj.material)) {
+								obj.material.forEach((mat) => mat.dispose());
+							} else {
+								obj.material.dispose();
+							}
+						}
+					});
+
+					// Draw new stadium zone at cursor position
+					// DIAGNOSTIC: Log first 5 to verify coordinates
+					if (!window._fastPathStadiumLogCount || window._fastPathStadiumLogCount < 5) {
+						console.log("🏟️ [FAST PATH] Stadium Zone:",
+							"fromHole[" + fromHoleStore.startXLocation.toFixed(1) + ", " + fromHoleStore.startYLocation.toFixed(1) + ", " + fromHoleStore.startZLocation.toFixed(1) + "]",
+							"mouse[" + torusWorldPos.x.toFixed(1) + ", " + torusWorldPos.y.toFixed(1) + ", " + torusWorldPos.z.toFixed(1) + "]",
+							"radius:" + connectAmount,
+							"origin[" + (window.threeLocalOriginX || 0).toFixed(1) + ", " + (window.threeLocalOriginY || 0).toFixed(1) + "]");
+						window._fastPathStadiumLogCount = (window._fastPathStadiumLogCount || 0) + 1;
+					}
+					drawConnectStadiumZoneThreeJS(fromHoleStore, torusWorldPos, connectAmount);
+				}
 			}
 		}
-		return; // Skip expensive operations (raycasting, snapping) until next 30fps tick
+		return; // Skip expensive operations (raycasting, snapping) until next 10fps tick (100ms)
 	}
 	window._lastMouseMoveTime = now;
 
@@ -2523,9 +2579,10 @@ function handle3DMouseMove(event) {
 	let torusWorldPos = null;
 	if (interactionManager && typeof interactionManager.getMouseWorldPositionOnViewPlane === "function") {
 		torusWorldPos = interactionManager.getMouseWorldPositionOnViewPlane();
-		if (torusWorldPos) {
-			console.log("📐 torusWorldPos calculated:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
-		}
+		// DEBUG: Disabled excessive logging on mouse move
+		// if (torusWorldPos && developerModeEnabled) {
+		// 	console.log("📐 torusWorldPos calculated:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
+		// }
 	}
 
 	// Step 13f.3) Final fallback to camera projection if plane intersection fails
@@ -2628,10 +2685,10 @@ function handle3DMouseMove(event) {
 		worldZ: mouseWorldPos ? mouseWorldPos.z : currentMouseWorldZ,
 	};
 
-	// Step 13f.4) Screen Space Snapping - only if checkbox is enabled
+	// Step 13f.4) Screen Space Snapping - RE-ENABLED for connector tool
 	var screenSpaceSnappingCheckbox = document.getElementById("screenSpaceSnapping");
-	var screenSpaceSnappingEnabled = screenSpaceSnappingCheckbox && screenSpaceSnappingCheckbox.checked;
-	
+	var screenSpaceSnappingEnabled = screenSpaceSnappingCheckbox ? screenSpaceSnappingCheckbox.checked : false;
+
 	if (snapEnabled && screenSpaceSnappingEnabled && interactionManager && interactionManager.raycaster) {
 		// Step 13f.4a) Calculate snap radius in pixels (NOT world units - use screen space!)
 		const snapRadiusPixels = window.snapRadiusPixels || 15; // 15 pixels on screen
@@ -2702,33 +2759,42 @@ function handle3DMouseMove(event) {
 			isCurrentlySnapped
 		);
 
-		// Step 13f.6) Draw stadium zone if in multi-connector mode
-		// Check fromHoleStore by entityName and holeID to ensure it matches
-		const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
-		if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
-			const toRemove = [];
-			threeRenderer.connectorsGroup.children.forEach((child) => {
-				if (child.userData && child.userData.type === "stadiumZone") {
-					toRemove.push(child);
-				}
-			});
-			toRemove.forEach((obj) => {
-				threeRenderer.connectorsGroup.remove(obj);
-				if (obj.geometry) obj.geometry.dispose();
-				if (obj.material) {
-					if (Array.isArray(obj.material)) {
-						obj.material.forEach((mat) => mat.dispose());
-					} else {
-						obj.material.dispose();
-					}
-				}
-			});
-
-			// Only draw stadium zone if we have valid mouse position
-			if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
-				drawConnectStadiumZoneThreeJS(fromHoleStore, mouseWorldPos, connectAmount);
-			}
-		}
+		// Step 13f.6) DISABLED - Stadium zone now drawn in FAST PATH (60fps) above at line ~2497
+		// Slow path (10fps) stadium zone drawing caused jerky movement
+		// const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
+		// if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
+		// 	const toRemove = [];
+		// 	threeRenderer.connectorsGroup.children.forEach((child) => {
+		// 		if (child.userData && child.userData.type === "stadiumZone") {
+		// 			toRemove.push(child);
+		// 		}
+		// 	});
+		// 	toRemove.forEach((obj) => {
+		// 		threeRenderer.connectorsGroup.remove(obj);
+		// 		if (obj.geometry) obj.geometry.dispose();
+		// 		if (obj.material) {
+		// 			if (Array.isArray(obj.material)) {
+		// 				obj.material.forEach((mat) => mat.dispose());
+		// 			} else {
+		// 				obj.material.dispose();
+		// 			}
+		// 		}
+		// 	});
+		//
+		// 	// Only draw stadium zone if we have valid mouse position
+		// 	if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+		// 		// DIAGNOSTIC: Log stadium zone coordinates to debug why it's stuck at data centroid
+		// 		if (!window._stadiumZoneLogCount || window._stadiumZoneLogCount < 5) {
+		// 			console.log("🏟️ Stadium Zone:", {
+		// 				fromHole: {x: fromHoleStore.startXLocation, y: fromHoleStore.startYLocation, z: fromHoleStore.startZLocation},
+		// 				mouseWorld: {x: mouseWorldPos.x, y: mouseWorldPos.y, z: mouseWorldPos.z},
+		// 				connectAmount: connectAmount
+		// 			});
+		// 			window._stadiumZoneLogCount = (window._stadiumZoneLogCount || 0) + 1;
+		// 		}
+		// 		drawConnectStadiumZoneThreeJS(fromHoleStore, mouseWorldPos, connectAmount);
+		// 	}
+		// }
 	}
 
 	// Step 13f.7) Always draw mouse position indicator on view plane (so it's always visible)
@@ -2745,7 +2811,8 @@ function handle3DMouseMove(event) {
 			y: snapResult.worldY,
 			z: snapResult.worldZ,
 		};
-		console.log("  ➜ Branch 1: SNAP TARGET", indicatorPos.z.toFixed(2));
+		// DEBUG: Disabled excessive logging on mouse move
+		// console.log("  ➜ Branch 1: SNAP TARGET", indicatorPos.z.toFixed(2));
 	} else {
 		// Step 13f.7b) Check if orbit mode is active via CameraControls
 		const isOrbitingNow = window.cameraControls && window.cameraControls.isOrbiting;
@@ -2762,14 +2829,16 @@ function handle3DMouseMove(event) {
 					y: cameraState.centroidY + originY,
 					z: orbitZ,
 				};
-				console.log("  ➜ Branch 2: ORBITING (lock to orbit center)", indicatorPos.z.toFixed(2));
+				// DEBUG: Disabled excessive logging on mouse move
+				// console.log("  ➜ Branch 2: ORBITING (lock to orbit center)", indicatorPos.z.toFixed(2));
 			}
 		} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
 			// Step 13f.7d) Use view plane position (ALWAYS - ensures screen-space cursor tracking)
 			// REMOVED: Hit object branch - it caused cursor to jump to surface elevations
 			// Screen-space cursor should track view plane, not surface intersections
 			indicatorPos = torusWorldPos;
-			console.log("  ➜ Branch 3: VIEW PLANE (screen-space)", indicatorPos.z.toFixed(2));
+			// DEBUG: Disabled excessive logging on mouse move
+			// console.log("  ➜ Branch 3: VIEW PLANE (screen-space)", indicatorPos.z.toFixed(2));
 		} else {
 			// Step 13f.7e) Fallback: camera centroid if view plane calc failed
 			const fallbackZ = window.dataCentroidZ || 0;
@@ -2782,22 +2851,27 @@ function handle3DMouseMove(event) {
 					y: cameraState.centroidY + originY,
 					z: fallbackZ,
 				};
-				console.log("  ➜ Branch 4: FALLBACK (camera centroid)", indicatorPos.z.toFixed(2));
+				// DEBUG: Disabled excessive logging on mouse move
+				// console.log("  ➜ Branch 4: FALLBACK (camera centroid)", indicatorPos.z.toFixed(2));
 			} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
 				indicatorPos = {
 					x: centroidX,
 					y: centroidY,
 					z: fallbackZ,
 				};
-				console.log("  ➜ Branch 5: FALLBACK (global centroid)", indicatorPos.z.toFixed(2));
+				// DEBUG: Disabled excessive logging on mouse move
+				// console.log("  ➜ Branch 5: FALLBACK (global centroid)", indicatorPos.z.toFixed(2));
 			}
 		}
 	}
 
 	if (indicatorPos && isFinite(indicatorPos.x) && isFinite(indicatorPos.y)) {
-		// DEBUG: Store for console inspection
-		window._debugIndicatorPos = indicatorPos;
-		console.log("🔴 SLOW PATH cursor:", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+		// DEBUG: Store for console inspection (only if developer mode enabled)
+		if (developerModeEnabled) {
+			window._debugIndicatorPos = indicatorPos;
+		}
+		// DEBUG: Disabled excessive logging on mouse move
+		// console.log("🔴 SLOW PATH cursor:", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
 
 		// Step 13f.7e) Determine cursor color based on active tool or snap state
 		var torusColor = "rgba(128, 128, 128, 0.4)"; // Default grey
@@ -3817,6 +3891,33 @@ if (useInstancedHolesCheckbox) {
 		}
 	});
 }
+
+// Step 5) Experimental 3D Renderer (V2) toggle
+// NOTE: window.useExperimental3DRenderer is already set from localStorage at top of file
+// This code just syncs the checkbox with the flag
+const useExperimental3DRendererCheckbox = document.getElementById("useExperimental3DRenderer");
+if (useExperimental3DRendererCheckbox) {
+	// Sync checkbox with flag that was already loaded from localStorage
+	useExperimental3DRendererCheckbox.checked = window.useExperimental3DRenderer || false;
+}
+
+// Add event listener to handle toggle
+if (useExperimental3DRendererCheckbox) {
+	useExperimental3DRendererCheckbox.addEventListener("change", function () {
+		// Update flag and save to localStorage
+		window.useExperimental3DRenderer = this.checked;
+		localStorage.setItem("useExperimental3DRenderer", String(this.checked));
+
+		console.log("🔄 Experimental 3D Renderer " + (this.checked ? "enabled" : "disabled"));
+		console.log("⚠️ Reload page to switch renderers");
+
+		// Show user prompt to reload
+		if (confirm("Switch 3D renderer? This requires reloading the page.\n\nClick OK to reload now, Cancel to reload later.")) {
+			location.reload();
+		}
+	});
+}
+
 ///////////////////////////
 
 //Switches
@@ -26507,20 +26608,21 @@ function drawData(allBlastHoles, selectedHole) {
 				// Step 2.3a) REMOVED skip logic - both flattened images AND textured meshes should display in 3D
 				// This allows users to see both the 3D textured mesh and the flattened image plane simultaneously
 
-				
-				console.log("🖼️ [3D IMAGE] Checking image:", imageKey, {
-					visible: image.visible,
-					hasCanvas: !!image.canvas,
-					hasBbox: !!image.bbox,
-					bbox: image.bbox,
-					zElevation: image.zElevation,
-				});
+
+				// DEBUG: Disabled excessive logging on render
+				// console.log("🖼️ [3D IMAGE] Checking image:", imageKey, {
+				// 	visible: image.visible,
+				// 	hasCanvas: !!image.canvas,
+				// 	hasBbox: !!image.bbox,
+				// 	bbox: image.bbox,
+				// 	zElevation: image.zElevation,
+				// });
 
 				if (image.visible && image.canvas && image.bbox) {
 					const imageId = image.id || image.name || "image_" + Date.now();
 					const imageTransparency = image.transparency !== undefined && image.transparency !== null ? image.transparency : 1.0;
 					const imageZElevation = image.zElevation !== undefined ? image.zElevation : null;
-					console.log("🖼️[3D IMAGE] Drawing image in 3D:", imageId, "transparency:", imageTransparency, "zElevation:", imageZElevation);
+					// console.log("🖼️[3D IMAGE] Drawing image in 3D:", imageId, "transparency:", imageTransparency, "zElevation:", imageZElevation); // DISABLED - repeats on every render
 					drawBackgroundImageThreeJS(imageId, image.canvas, image.bbox, imageTransparency, imageZElevation);
 				}
 			});
@@ -27221,41 +27323,44 @@ function drawData(allBlastHoles, selectedHole) {
 	// Step 2) Render Three.js scene ONLY when in Three.js-only mode
 	// CRITICAL: DO NOT check isIn3DMode - use ONLY onlyShowThreeJS flag
 	if (onlyShowThreeJS) {
-		// Step 2a) Ensure mouse indicator is always visible in 3D mode
-		// Draw it at current mouse position or camera center if no mouse position yet
-		if (onlyShowThreeJS && threeInitialized && threeRenderer && interactionManager) {
-			// Use current mouse world position if available, otherwise use camera centroid
-			let indicatorPos = null;
-			if (currentMouseWorldX !== undefined && currentMouseWorldY !== undefined && isFinite(currentMouseWorldX) && isFinite(currentMouseWorldY)) {
-				indicatorPos = {
-					x: currentMouseWorldX,
-					y: currentMouseWorldY,
-					z: window.dataCentroidZ || 0,
-				};
-			} else {
-				// Fallback to camera centroid
-				const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
-				if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
-					const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
-					const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
-					indicatorPos = {
-						x: cameraState.centroidX + originX,
-						y: cameraState.centroidY + originY,
-						z: window.dataCentroidZ || 0,
-					};
-				} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
-					indicatorPos = {
-						x: centroidX,
-						y: centroidY,
-						z: window.dataCentroidZ || 0,
-					};
-				}
-			}
-
-			if (indicatorPos && isFinite(indicatorPos.x) && isFinite(indicatorPos.y)) {
-				drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z);
-			}
-		}
+		// ═══════════════════════════════════════════════════════════════════════════════
+		// ⛔ DO NOT USE THIS CODE - EVER!!! ⛔
+		// ═══════════════════════════════════════════════════════════════════════════════
+		// Step 2a) DISABLED - Cursor is now drawn in handle3DMouseMove() with proper view plane Z
+		// This old code was using flat dataCentroidZ which caused cursor to be in wrong position
+		// if (onlyShowThreeJS && threeInitialized && threeRenderer && interactionManager) {
+		// 	// Use current mouse world position if available, otherwise use camera centroid
+		// 	let indicatorPos = null;
+		// 	if (currentMouseWorldX !== undefined && currentMouseWorldY !== undefined && isFinite(currentMouseWorldX) && isFinite(currentMouseWorldY)) {
+		// 		indicatorPos = {
+		// 			x: currentMouseWorldX,
+		// 			y: currentMouseWorldY,
+		// 			z: window.dataCentroidZ || 0, // WRONG! Should use view plane Z
+		// 		};
+		// 	} else {
+		// 		// Fallback to camera centroid
+		// 		const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
+		// 		if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
+		// 			const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
+		// 			const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
+		// 			indicatorPos = {
+		// 				x: cameraState.centroidX + originX,
+		// 				y: cameraState.centroidY + originY,
+		// 				z: window.dataCentroidZ || 0,
+		// 			};
+		// 		} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
+		// 			indicatorPos = {
+		// 				x: centroidX,
+		// 				y: centroidY,
+		// 				z: window.dataCentroidZ || 0,
+		// 			};
+		// 		}
+		// 	}
+		//
+		// 	if (indicatorPos && isFinite(indicatorPos.x) && isFinite(indicatorPos.y)) {
+		// 		drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z);
+		// 	}
+		// }
 
 		// Step B) Draw 3D visuals for pattern tools (MUST be in 3D block to actually render!)
 		// These were incorrectly placed in the 2D block where onlyShowThreeJS is always false
@@ -41135,7 +41240,8 @@ function drawSurface() {
 
 				// Draw in Three.js ONLY if in 3D rendering mode
 				if (should3DRender) {
-					console.log("🎥 Rendering textured mesh in 3D: " + surfaceId);
+					// DEBUG: Disabled excessive logging on render
+					// console.log("🎥 Rendering textured mesh in 3D: " + surfaceId);
 					drawSurfaceThreeJS(surfaceId, surface.triangles || [], surfaceMinZ, surfaceMaxZ, gradient, surface.transparency || 1.0, surface);
 				} else {
 					if (!surface._skipped3DLogShown) {
