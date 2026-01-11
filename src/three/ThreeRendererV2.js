@@ -82,9 +82,9 @@ export class ThreeRendererV2 {
 	 */
 	_createRenderer() {
 		this.renderer = new THREE.WebGLRenderer({
-			antialias: false,              // Save ~25% GPU memory
-			alpha: true,                   // Transparency support
-			preserveDrawingBuffer: false,  // Save 20-50MB GPU memory
+			antialias: false, // Save ~25% GPU memory
+			alpha: true, // Transparency support
+			preserveDrawingBuffer: false, // Save 20-50MB GPU memory
 			powerPreference: "high-performance"
 		});
 
@@ -123,12 +123,12 @@ export class ThreeRendererV2 {
 		const frustumSize = 1000; // Base frustum size (will be overridden by updateCamera)
 
 		this.camera = new THREE.OrthographicCamera(
-			-frustumSize * aspect / 2,  // left
-			frustumSize * aspect / 2,   // right
-			frustumSize / 2,            // top
-			-frustumSize / 2,           // bottom
-			-50000,                     // near (large for mining depths)
-			50000                       // far (large for mining elevations)
+			-frustumSize * aspect / 2, // left
+			frustumSize * aspect / 2, // right
+			frustumSize / 2, // top
+			-frustumSize / 2, // bottom
+			-50000, // near (large for mining depths)
+			50000 // far (large for mining elevations)
 		);
 
 		// CRITICAL: Z-up camera setup
@@ -220,9 +220,9 @@ export class ThreeRendererV2 {
 	 */
 	_initializeMaps() {
 		// Store mesh references for selection and updates
-		this.holeMeshMap = new Map();     // holeId -> mesh
-		this.surfaceMeshMap = new Map();  // surfaceId -> mesh
-		this.kadMeshMap = new Map();      // kadId -> mesh
+		this.holeMeshMap = new Map(); // holeId -> mesh
+		this.surfaceMeshMap = new Map(); // surfaceId -> mesh
+		this.kadMeshMap = new Map(); // kadId -> mesh
 
 		// Legacy instanced hole tracking (V1 compatibility)
 		this.instancedCollars = null;
@@ -286,10 +286,10 @@ export class ThreeRendererV2 {
 		this.gridPlane = "XY"; // Default plane
 
 		// Axis helper (hidden by default)
-		this.axisHelper = this._createAxisHelper(50); // Base size
+		this.axisHelper = this._createAxisHelper(111); // Base size
 		this.axisHelper.visible = false;
 		this.scene.add(this.axisHelper);
-		this.axisHelperBaseSize = 50; // Base size for scaling calculations
+		this.axisHelperBaseSize = 111;
 	}
 
 	/**
@@ -314,11 +314,7 @@ export class ThreeRendererV2 {
 						try {
 							const dialog = new FloatingDialog({
 								title: "GPU Memory Exhausted",
-								content: "<div style='padding: 10px;'>" +
-									"<p><strong>WebGL context lost!</strong></p>" +
-									"<p>The 3D rendering system has run out of GPU memory.</p>" +
-									"<p>Click OK to reload the application.</p>" +
-									"</div>",
+								content: "<div style='padding: 10px;'>" + "<p><strong>WebGL context lost!</strong></p>" + "<p>The 3D rendering system has run out of GPU memory.</p>" + "<p>Click OK to reload the application.</p>" + "</div>",
 								width: 500,
 								height: 250,
 								buttons: [
@@ -384,28 +380,19 @@ export class ThreeRendererV2 {
 		group.name = "AxisHelper";
 
 		// X-axis (Red) - East
-		const xGeometry = new THREE.BufferGeometry().setFromPoints([
-			new THREE.Vector3(0, 0, 0),
-			new THREE.Vector3(size, 0, 0)
-		]);
+		const xGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(size, 0, 0)]);
 		const xMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
 		const xLine = new THREE.Line(xGeometry, xMaterial);
 		group.add(xLine);
 
 		// Y-axis (Green) - North
-		const yGeometry = new THREE.BufferGeometry().setFromPoints([
-			new THREE.Vector3(0, 0, 0),
-			new THREE.Vector3(0, size, 0)
-		]);
+		const yGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, size, 0)]);
 		const yMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 });
 		const yLine = new THREE.Line(yGeometry, yMaterial);
 		group.add(yLine);
 
 		// Z-axis (Blue) - Up
-		const zGeometry = new THREE.BufferGeometry().setFromPoints([
-			new THREE.Vector3(0, 0, 0),
-			new THREE.Vector3(0, 0, size)
-		]);
+		const zGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, size)]);
 		const zMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 3 });
 		const zLine = new THREE.Line(zGeometry, zMaterial);
 		group.add(zLine);
@@ -635,8 +622,8 @@ export class ThreeRendererV2 {
 		if (this.axisHelper && this.axisHelper.visible) {
 			this.axisHelper.position.set(centroidX, centroidY, this.orbitCenterZ || 0);
 
-			// Maintain fixed screen size (111px to distinguish from V1's 77px)
-			const desiredScreenPixels = 111;
+			// Maintain fixed screen size
+			const desiredScreenPixels = 50;
 			const worldUnitsForFixedScreenSize = desiredScreenPixels / scale;
 			const scaleFactor = worldUnitsForFixedScreenSize / this.axisHelperBaseSize;
 			this.axisHelper.scale.set(scaleFactor, scaleFactor, scaleFactor);
@@ -652,11 +639,7 @@ export class ThreeRendererV2 {
 			const z = cameraDistance * Math.cos(orbitX);
 
 			// Position camera relative to orbit center
-			this.camera.position.set(
-				centroidX + x,
-				centroidY + y,
-				this.orbitCenterZ + z
-			);
+			this.camera.position.set(centroidX + x, centroidY + y, this.orbitCenterZ + z);
 
 			// Look at orbit center
 			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
@@ -697,11 +680,7 @@ export class ThreeRendererV2 {
 		// Update directional light position
 		if (this.directionalLight) {
 			const lightOffset = 1000;
-			this.directionalLight.position.set(
-				this.camera.position.x,
-				this.camera.position.y + lightOffset,
-				this.camera.position.z
-			);
+			this.directionalLight.position.set(this.camera.position.x, this.camera.position.y + lightOffset, this.camera.position.z);
 			this.directionalLight.target.position.set(centroidX, centroidY, this.orbitCenterZ);
 			this.directionalLight.target.updateMatrixWorld();
 		}
@@ -712,10 +691,7 @@ export class ThreeRendererV2 {
 		}
 
 		// Track rotation changes for billboard optimization
-		const rotationChanged =
-			this.lastRotation !== rotation ||
-			this.lastOrbitX !== orbitX ||
-			this.lastOrbitY !== orbitY;
+		const rotationChanged = this.lastRotation !== rotation || this.lastOrbitX !== orbitX || this.lastOrbitY !== orbitY;
 
 		if (rotationChanged) {
 			this.cameraRotationChanged = true;
@@ -774,11 +750,7 @@ export class ThreeRendererV2 {
 			const cameraPos = this.camera.position;
 			const lightOffsetY = 1000;
 
-			this.directionalLight.position.set(
-				cameraPos.x + x * 0.1,
-				cameraPos.y + lightOffsetY,
-				cameraPos.z + z * 0.1
-			);
+			this.directionalLight.position.set(cameraPos.x + x * 0.1, cameraPos.y + lightOffsetY, cameraPos.z + z * 0.1);
 
 			this.directionalLight.target.position.set(targetX, targetY, targetZ);
 			this.directionalLight.target.updateMatrixWorld();
@@ -840,11 +812,7 @@ export class ThreeRendererV2 {
 				this.gridHelper.visible = true;
 
 				this._applyGridPlaneOrientation(this.gridPlane || "XY");
-				this.gridHelper.position.set(
-					this.orbitCenterX || 0,
-					this.orbitCenterY || 0,
-					this.orbitCenterZ || 0
-				);
+				this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
 
 				const opacity = this.gridOpacity !== undefined ? this.gridOpacity : 0.3;
 				this.gridHelper.material.opacity = opacity;
@@ -892,11 +860,7 @@ export class ThreeRendererV2 {
 
 		this.gridHelper = new THREE.GridHelper(gridSize, divisions, gridColor, gridColor);
 		this._applyGridPlaneOrientation(this.gridPlane || "XY");
-		this.gridHelper.position.set(
-			this.orbitCenterX || 0,
-			this.orbitCenterY || 0,
-			this.orbitCenterZ || 0
-		);
+		this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
 
 		const opacity = this.gridOpacity !== undefined ? this.gridOpacity : 0.3;
 		this.gridHelper.material.opacity = opacity;
@@ -932,11 +896,7 @@ export class ThreeRendererV2 {
 
 		if (this.gridHelper) {
 			this._applyGridPlaneOrientation(plane);
-			this.gridHelper.position.set(
-				this.orbitCenterX || 0,
-				this.orbitCenterY || 0,
-				this.orbitCenterZ || 0
-			);
+			this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
 			this.requestRender();
 		}
 	}
@@ -994,13 +954,11 @@ export class ThreeRendererV2 {
 				// Skip cached text objects (will be reused)
 				if (object.userData && object.userData.isCachedText) {
 					toRemove.push(object);
-				}
-				// Skip instanced meshes (handled separately)
-				else if (object.userData && object.userData.type === "instancedHoles") {
+				} else if (object.userData && object.userData.type === "instancedHoles") {
+					// Skip instanced meshes (handled separately)
 					toRemove.push(object);
-				}
-				// Normal objects - dispose
-				else {
+				} else {
+					// Normal objects - dispose
 					this._disposeObject(object);
 					toRemove.push(object);
 				}
@@ -1267,7 +1225,7 @@ export class ThreeRendererV2 {
 			if (show) {
 				this.axisHelper.position.set(positionX, positionY, this.orbitCenterZ || 0);
 
-				// Scale to maintain fixed screen size (111px to distinguish from V1's 77px)
+				// Scale to maintain fixed screen size
 				const desiredScreenPixels = 111;
 				const worldUnitsForFixedScreenSize = desiredScreenPixels / scale;
 				const scaleFactor = worldUnitsForFixedScreenSize / this.axisHelperBaseSize;

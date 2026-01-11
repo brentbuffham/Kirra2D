@@ -2470,7 +2470,7 @@ function handle3DMouseMove(event) {
 	const threeCanvas = threeRenderer.getCanvas();
 	if (!threeCanvas) return;
 
-	// Step 13d) ALWAYS update mouse position for raycasting (needed for cursor)
+	// Step 13d) ALWAYS update mouse position for raycasting (needed for cursor and stadium zone)
 	interactionManager.updateMousePosition(event, threeCanvas);
 
 	// Step 13d.0) COORDINATE DEBUGGING: Trace transforms when debugger is enabled
@@ -2485,9 +2485,14 @@ function handle3DMouseMove(event) {
 	var shouldThrottle = window._lastMouseMoveTime && (now - window._lastMouseMoveTime) < 100;
 
 	if (shouldThrottle) {
-		// Fast path: Just update cursor position without raycasting/snapping
-		if (interactionManager && typeof interactionManager.getMouseWorldPositionOnViewPlane === "function") {
-			const torusWorldPos = interactionManager.getMouseWorldPositionOnViewPlane();
+		// Fast path: Just update cursor and stadium zone without expensive raycasting/snapping
+		// CRITICAL: Use horizontal plane intersection (same as click detection)
+		if (interactionManager && typeof interactionManager.getMouseWorldPositionOnPlane === "function") {
+			// Use horizontal plane at orbit center Z (same as click detection)
+			const planeZ = threeRenderer.orbitCenterZ || window.dataCentroidZ || 0;
+			// Mouse position already updated above, so raycaster is current
+			const torusWorldPos = interactionManager.getMouseWorldPositionOnPlane(planeZ);
+
 			if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
 				// DEBUG: Disabled excessive logging on mouse move
 				// console.log("🟢 FAST PATH cursor:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
@@ -2517,15 +2522,11 @@ function handle3DMouseMove(event) {
 					});
 
 					// Draw new stadium zone at cursor position
-					// DIAGNOSTIC: Log first 5 to verify coordinates
-					if (!window._fastPathStadiumLogCount || window._fastPathStadiumLogCount < 5) {
-						console.log("🏟️ [FAST PATH] Stadium Zone:",
-							"fromHole[" + fromHoleStore.startXLocation.toFixed(1) + ", " + fromHoleStore.startYLocation.toFixed(1) + ", " + fromHoleStore.startZLocation.toFixed(1) + "]",
-							"mouse[" + torusWorldPos.x.toFixed(1) + ", " + torusWorldPos.y.toFixed(1) + ", " + torusWorldPos.z.toFixed(1) + "]",
-							"radius:" + connectAmount,
-							"origin[" + (window.threeLocalOriginX || 0).toFixed(1) + ", " + (window.threeLocalOriginY || 0).toFixed(1) + "]");
-						window._fastPathStadiumLogCount = (window._fastPathStadiumLogCount || 0) + 1;
-					}
+					// DIAGNOSTIC: Log ALL mouse moves to see if coordinates change
+					console.log("🏟️ [FAST PATH] Stadium:",
+						"from[" + fromHoleStore.startXLocation.toFixed(0) + "," + fromHoleStore.startYLocation.toFixed(0) + "]",
+						"mouse[" + torusWorldPos.x.toFixed(0) + "," + torusWorldPos.y.toFixed(0) + "]",
+						"planeZ:" + planeZ.toFixed(1));
 					drawConnectStadiumZoneThreeJS(fromHoleStore, torusWorldPos, connectAmount);
 				}
 			}
