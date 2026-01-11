@@ -562,10 +562,7 @@ Avoid "Code Bloat".
 Example 1, the GeometryFactory is where all the threeJS Geometry is base code is, and it should be reused for UX consistency.
 Example 2, the FloatingDialog Class is what all Dialogs Popups, Menus should be constructed from
 
-Selection in threeJS is a tunnel.
-A fat ray cast from the camera to infinity.  
-It is displayed in screen space or camera frustrum space.
-Use Frustrum culling
+
 
 Do not transform Z elevations.
 
@@ -586,6 +583,16 @@ ThreeJS Rules
 - Generally the Data loaded will be in UTM or a cutom mine grid.  
 - 2D translates the large UTM coords to the 2D local by minusing off the centroid.  
 - Always Check the 3D is in the correct coordinate space to be drawn.
+
+Selection in threeJS is a tunnel.
+  - A fat ray cast from the camera to infinity.  
+  - It is displayed in screen space or camera frustrum space.
+  - Use Frustrum culling
+- Fat Ray is CORRECT for 3D Snapping and selection:
+  - Cast a cylinder from camera through mouse
+  - Find all targets within cylinder radius
+  - Priority determines which one (COLLAR > GRADE > TOE, etc.)
+  - Cursor should JUMP to the snap target (including Z depth)
 
 Bearing moves clockwise, North is 0° bearing, 90° is west, 180°is south, 270° is East.
 

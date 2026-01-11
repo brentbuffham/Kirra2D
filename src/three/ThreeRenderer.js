@@ -40,20 +40,20 @@ export class ThreeRenderer {
 		this.camera.lookAt(0, 0, 0);
 		this.camera.up.set(0, 0, 1); // Z-up orientation
 
-	// Step 5) Create WebGL renderer with transparency
-	// CRITICAL MEMORY OPTIMIZATION: 
-	// - preserveDrawingBuffer: false saves 20-50MB GPU memory (only enable for screenshots)
-	// - antialias: false saves ~25% GPU memory (can enable via settings if needed)
-	this.renderer = new THREE.WebGLRenderer({
-		antialias: false, // ← Disabled for memory savings (enable in settings if GPU allows)
-		alpha: true,
-		preserveDrawingBuffer: false // ← CRITICAL: Set to false to save GPU memory!
-	});
-	this.renderer.setSize(width, height);
-	this.renderer.setPixelRatio(window.devicePixelRatio);
-	// Step 5b) CRITICAL: Set sRGB output encoding for correct color space
-	this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-	this.renderer.setClearColor(0x000000, 0); // Transparent
+		// Step 5) Create WebGL renderer with transparency
+		// CRITICAL MEMORY OPTIMIZATION:
+		// - preserveDrawingBuffer: false saves 20-50MB GPU memory (only enable for screenshots)
+		// - antialias: false saves ~25% GPU memory (can enable via settings if needed)
+		this.renderer = new THREE.WebGLRenderer({
+			antialias: false, // ← Disabled for memory savings (enable in settings if GPU allows)
+			alpha: true,
+			preserveDrawingBuffer: false // ← CRITICAL: Set to false to save GPU memory!
+		});
+		this.renderer.setSize(width, height);
+		this.renderer.setPixelRatio(window.devicePixelRatio);
+		// Step 5b) CRITICAL: Set sRGB output encoding for correct color space
+		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+		this.renderer.setClearColor(0x000000, 0); // Transparent
 
 		// Step 5a) Handle WebGL context loss (prevents crashes and enables recovery)
 		var self = this;
@@ -67,10 +67,10 @@ export class ThreeRenderer {
 				console.error("   - Browser tab was backgrounded for too long");
 				console.error("   - GPU driver issue or system resource pressure");
 				self.contextLost = true;
-				
+
 				// Stop render loop to prevent errors
 				self.stopRenderLoop();
-				
+
 				// Step 5a.1) Show user-friendly dialog
 				// IMPORTANT: Use setTimeout to ensure dialog renders after context loss
 				setTimeout(function() {
@@ -80,16 +80,7 @@ export class ThreeRenderer {
 						try {
 							var dialog = new FloatingDialog({
 								title: "GPU Memory Exhausted",
-								content: "<div style='padding: 10px;'>" +
-								         "<p><strong>WebGL context lost!</strong></p>" +
-								         "<p>The 3D rendering system has run out of GPU memory, likely due to:</p>" +
-								         "<ul>" +
-								         "<li>Very large CAD files with complex geometry (>50k vertices)</li>" +
-								         "<li>Too many textures or surfaces loaded simultaneously</li>" +
-								         "<li>System resource pressure or GPU driver issues</li>" +
-								         "</ul>" +
-								         "<p>Click OK to reload the application and free GPU memory.</p>" +
-								         "</div>",
+								content: "<div style='padding: 10px;'>" + "<p><strong>WebGL context lost!</strong></p>" + "<p>The 3D rendering system has run out of GPU memory, likely due to:</p>" + "<ul>" + "<li>Very large CAD files with complex geometry (>50k vertices)</li>" + "<li>Too many textures or surfaces loaded simultaneously</li>" + "<li>System resource pressure or GPU driver issues</li>" + "</ul>" + "<p>Click OK to reload the application and free GPU memory.</p>" + "</div>",
 								width: 500,
 								height: 320,
 								buttons: [
@@ -222,6 +213,12 @@ export class ThreeRenderer {
 		// Step 11) Animation control
 		this.needsRender = true;
 		this.animationFrameId = null;
+
+		// Step 11a) Track rotation changes for conditional billboard updates
+		this.cameraRotationChanged = false;
+		this.lastRotation = 0;
+		this.lastOrbitX = 0;
+		this.lastOrbitY = 0;
 
 		// Step 12) Create XYZ axis helper (hidden by default)
 		// Size is in world units but will be scaled to maintain fixed screen size
@@ -971,13 +968,18 @@ export class ThreeRenderer {
 
 	// Step 20) Dispose group and all children
 	disposeGroup(group) {
-		// Step 20a) Traverse and remove objects (but preserve cached text)
+		// Step 20a) Traverse and remove objects (but preserve cached text and instanced meshes)
 		const toRemove = [];
 		group.traverse(object => {
 			if (object !== group) {
 				// Step 20a.1) Check if this is a cached text object
 				if (object.userData && object.userData.isCachedText) {
 					// Don't dispose - just remove from group (will be reused)
+					toRemove.push(object);
+				} else if (object.userData && object.userData.type === "instancedHoles") {
+					// Step 20a.2) Check if this is an InstancedMesh from InstancedMeshManager
+					// These are already disposed by clearInstancedHoles() to prevent double-disposal
+					// Skip disposal - already handled by InstancedMeshManager
 					toRemove.push(object);
 				} else {
 					// Normal objects - dispose normally
@@ -995,6 +997,10 @@ export class ThreeRenderer {
 
 	// Step 21) Clear all geometry from scene
 	clearAllGeometry() {
+		// Step 21a.0) CRITICAL: Clear instanced meshes BEFORE disposing groups
+		// This prevents double-disposal and memory leaks
+		this.clearInstancedHoles();
+
 		// Step 21a) Dispose all groups to prevent memory leaks
 		this.disposeGroup(this.holesGroup);
 		this.disposeGroup(this.surfacesGroup);
@@ -1007,9 +1013,6 @@ export class ThreeRenderer {
 		this.holeMeshMap.clear();
 		this.surfaceMeshMap.clear();
 		this.kadMeshMap.clear();
-
-		// Step 21b.1) Clear instanced holes if they exist
-		this.clearInstancedHoles();
 
 		// Step 21c) Dispose axis helper if it exists
 		if (this.axisHelper) {
@@ -1056,9 +1059,9 @@ export class ThreeRenderer {
 	clearGroup(groupName) {
 		switch (groupName) {
 			case "holes":
+				this.clearInstancedHoles(); // Clear BEFORE disposing group
 				this.disposeGroup(this.holesGroup);
 				this.holeMeshMap.clear();
-				this.clearInstancedHoles(); // Also clear instanced holes
 				break;
 			case "surfaces":
 				this.disposeGroup(this.surfacesGroup);
@@ -1119,7 +1122,7 @@ export class ThreeRenderer {
 		if (this.instancedDirectionArrows) {
 			this.contoursGroup.remove(this.instancedDirectionArrows);
 			// Dispose all children (instancedShafts and instancedHeads)
-			this.instancedDirectionArrows.traverse((child) => {
+			this.instancedDirectionArrows.traverse(child => {
 				if (child.isInstancedMesh) {
 					if (child.geometry) child.geometry.dispose();
 					if (child.material) child.material.dispose();
@@ -1205,20 +1208,17 @@ export class ThreeRenderer {
 			return;
 		}
 
-		// // Step 23a) Update billboard text rotation ONLY if camera rotated
-		// // Skip during pure zoom/pan for performance with thousands of labels
-		// const keepTextFlatOnXZPlane = false;
-		// if (this.cameraRotationChanged && !keepTextFlatOnXZPlane) {
-		// 	this.updateTextBillboards();
-		// 	this.updateBillboardedObjects();
-		// 	this.cameraRotationChanged = false;
-		// } // Didn't work well enough.
-
-		// Allways update Billboards.
-		this.updateTextBillboards();
-		this.updateBillboardedObjects();
+		// Step 23a) PERFORMANCE FIX: Only update billboards when camera rotation changed
+		// Billboard updates are VERY expensive (traverse entire scene, update quaternions)
+		// Pan/zoom don't need billboard updates - only orbit/rotate does
+		if (this.cameraRotationChanged) {
+			this.updateTextBillboards();
+			this.updateBillboardedObjects();
+			this.cameraRotationChanged = false;
+		}
 
 		this.renderer.render(this.scene, this.camera);
+
 		this.needsRender = false;
 	}
 
@@ -1349,7 +1349,7 @@ export class ThreeRenderer {
 		this.needsRender = true;
 	}
 
-	// Step 28) Show/hide axis helper with fixed screen size (50 pixels)
+	// Step 28) Show/hide axis helper with fixed screen size (77 pixels)
 	showAxisHelper(show, positionX = 0, positionY = 0, scale = 1) {
 		// Step 28a) Check if gizmo display mode is "never" - if so, always hide
 		// This check should be done by the caller, but we add a safety check here
@@ -1366,12 +1366,13 @@ export class ThreeRenderer {
 		if (this.axisHelper) {
 			this.axisHelper.visible = show;
 			if (show) {
-				this.axisHelper.position.set(positionX, positionY, 0);
+				// Position at orbit center (XY from camera controls, Z from orbit center)
+				this.axisHelper.position.set(positionX, positionY, this.orbitCenterZ || 0);
 
-				// Step 28c) Scale to maintain fixed screen size (50 pixels)
+				// Step 28c) Scale to maintain fixed screen size (77 pixels)
 				// Screen size (pixels) = world size * scale
 				// To get 50 pixels: world size = 50 / scale
-				const desiredScreenPixels = 50;
+				const desiredScreenPixels = 77;
 				const worldUnitsForFixedScreenSize = desiredScreenPixels / scale;
 				const scaleFactor = worldUnitsForFixedScreenSize / this.axisHelperBaseSize;
 				this.axisHelper.scale.set(scaleFactor, scaleFactor, scaleFactor);

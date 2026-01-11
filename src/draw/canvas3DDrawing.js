@@ -1329,6 +1329,11 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (worldX === undefined || worldY === undefined || worldZ === undefined) return;
 
+	// DEBUG: Log what we receive
+	if (window.developerModeEnabled) {
+		console.log("📍 drawMouseIndicator called with world:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
+	}
+
 	// Step 19.5a) Convert world coordinates to local Three.js coordinates
 	const local = window.worldToThreeLocal(worldX, worldY);
 	const z = worldZ || 0;

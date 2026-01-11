@@ -151,6 +151,26 @@ export class CameraControls {
 		container.addEventListener("touchmove", this.handleTouchMove, { passive: false });
 		container.addEventListener("touchend", this.handleTouchEnd);
 
+		// Step 8e) START ANIMATION LOOP IMMEDIATELY for smooth 3D rendering
+		// This ensures the scene renders continuously even without user interaction
+		// Fixes QUIRK 1: Jerkiness on startup until user drags 2D then returns to 3D
+		// Critical: Must restart loop here because resetPanState() stops it during mode switching
+		if (this.animationFrameId === null) {
+			this.animationFrameId = requestAnimationFrame(this.animate);
+			console.log("✅ Started CameraControls animation loop for smooth 3D rendering");
+		}
+
+		// Step 8f) CRITICAL FIX: Force initial render when controls attach
+		// Without this, the scene won't render until user creates velocity (moves camera)
+		// The animate() loop only calls updateCamera() when there's velocity
+		// This ensures the scene renders immediately on 3D mode switch
+		this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY);
+		console.log("🎬 Forced initial camera update and render on attach");
+
+		// Step 8g) Update gizmo display after attaching controls
+		// Ensures gizmo is visible/hidden based on current display mode
+		this.updateGizmoDisplayForControls();
+
 		console.log("🎮 Unified orthographic camera controls attached");
 	}
 
@@ -820,6 +840,7 @@ export class CameraControls {
 		// Step 22e1) Always respect "never" mode first
 		if (this.gizmoDisplayMode === "never") {
 			this.threeRenderer.showAxisHelper(false);
+			this.threeRenderer.requestRender(); // Force render to hide gizmo
 			return;
 		}
 
@@ -827,17 +848,21 @@ export class CameraControls {
 			// Keep gizmo visible if mode is "always"
 			const currentState = this.getCameraState();
 			this.threeRenderer.showAxisHelper(true, currentState.centroidX, currentState.centroidY, currentState.scale);
+			this.threeRenderer.requestRender(); // Force render to show gizmo
 		} else if (this.gizmoDisplayMode === "only_when_orbit_or_rotate") {
 			// Show only when actively orbiting or rotating
 			if (this.isOrbiting || this.isRotating) {
 				const currentState = this.getCameraState();
 				this.threeRenderer.showAxisHelper(true, currentState.centroidX, currentState.centroidY, currentState.scale);
+				this.threeRenderer.requestRender(); // Force render to show gizmo during orbit
 			} else {
 				this.threeRenderer.showAxisHelper(false);
+				this.threeRenderer.requestRender(); // Force render to hide gizmo
 			}
 		} else {
 			// Default to never show if mode is unknown
 			this.threeRenderer.showAxisHelper(false);
+			this.threeRenderer.requestRender(); // Force render
 		}
 	}
 
@@ -1058,8 +1083,8 @@ export class CameraControls {
 	//     this.animationFrameId = requestAnimationFrame(this.animate);
 	// }
 	// Step 32) Animation loop for smooth momentum/damping
-	// NOTE: This loop must ALWAYS continue running to keep 3D scene responsive.
-	// DO NOT add early returns that stop the loop - it causes gizmo/cursor glitches on startup.
+	// NOTE: This loop must ALWAYS continue running for responsive 3D camera controls
+	// Combined with conditional billboard updates in ThreeRenderer, this is efficient
 	animate() {
 		// Step 32a) Apply damping to velocities
 		this.velocityX *= this.damping;
@@ -1071,7 +1096,7 @@ export class CameraControls {
 		// Step 32b) Check if velocities are below threshold
 		const hasVelocity = Math.abs(this.velocityX) > this.minVelocity || Math.abs(this.velocityY) > this.minVelocity || Math.abs(this.velocityOrbitX) > this.minVelocity || Math.abs(this.velocityOrbitY) > this.minVelocity || Math.abs(this.velocityRotation) > this.minVelocity;
 
-		// Step 32c) Only update camera if there's actual velocity (but DON'T stop the loop!)
+		// Step 32c) Only update camera if there's actual velocity
 		if (hasVelocity) {
 			// Apply velocities to camera state
 			if (Math.abs(this.velocityX) > this.minVelocity || Math.abs(this.velocityY) > this.minVelocity) {
@@ -1097,7 +1122,7 @@ export class CameraControls {
 			}
 		} else {
 			// Step 32e) Reset velocities to zero to prevent float accumulation
-			// but DO NOT exit the loop - keep it running for responsiveness
+			// but KEEP LOOP RUNNING for responsive camera controls
 			this.velocityX = 0;
 			this.velocityY = 0;
 			this.velocityOrbitX = 0;
@@ -1105,9 +1130,9 @@ export class CameraControls {
 			this.velocityRotation = 0;
 		}
 
-		// Step 32f) ALWAYS continue animation loop - never exit!
-		// This keeps the 3D scene responsive even without user interaction.
-		// Exiting early causes gizmo, cursor sphere, and other 3D glitches on startup.
+		// Step 32f) ALWAYS continue animation loop - never stop
+		// This ensures instant camera response to user input
+		// Performance is maintained via conditional billboard updates in ThreeRenderer
 		this.animationFrameId = requestAnimationFrame(this.animate);
 	}
 	// Step 33) Dispose method to cleanup all resources and prevent memory leaks

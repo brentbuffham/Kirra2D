@@ -93,6 +93,7 @@ import { TreeView, initializeTreeView } from "./dialog/tree/TreeView.js";
 import "./dialog/popups/export/DXFExportDialog.js";
 // Helper Modules
 import { exportImagesAsGeoTIFF, exportSurfacesAsElevationGeoTIFF } from "./helpers/GeoTIFFExporter.js";
+import { CoordinateDebugger } from "./helpers/CoordinateDebugger.js";
 //=================================================
 // Dialog Modules - Converted to ES Modules for Vite bundling 2025-12-26
 // These are imported as side-effect imports - the modules set window globals
@@ -382,6 +383,7 @@ let isResizingLeft = false;
 let threeRenderer = null;
 let cameraControls = null;
 let interactionManager = null; // 3D raycasting and interaction manager
+let coordinateDebugger = null; // Coordinate transform debugging tool
 let threeInitialized = false;
 let threeInitializationFailed = false; // Step 0a) Prevent retry storm if initialization fails
 let onlyShowThreeJS = false; // Toggle to show only Three.js rendering
@@ -866,6 +868,11 @@ function initializeThreeJS() {
 		// Step 6a) Create interaction manager for 3D raycasting
 		interactionManager = new InteractionManager(threeRenderer, threeRenderer.camera);
 		window.interactionManager = interactionManager; // Expose globally
+
+		// Step 6a.1) Create coordinate debugger for troubleshooting transform issues
+		coordinateDebugger = new CoordinateDebugger(threeRenderer, interactionManager);
+		window.coordinateDebugger = coordinateDebugger; // Expose globally for console access
+		console.log("🔍 CoordinateDebugger created - use window.coordinateDebugger.enable() to activate");
 
 		// Step 6b) Expose globals to window immediately after initialization
 		// This ensures mouse tracking works from the start
@@ -2422,13 +2429,6 @@ function handle3DClick(event) {
 
 // Step 13) Handle 3D mouse move - hover effects and stadium zone tracking
 function handle3DMouseMove(event) {
-	// PERFORMANCE FIX: Throttle mouse move handling to max 30fps
-	var now = performance.now();
-	if (window._lastMouseMoveTime && (now - window._lastMouseMoveTime) < 33) {
-		return; // Skip if less than 33ms since last call (~30fps max)
-	}
-	window._lastMouseMoveTime = now;
-	
 	// Step 13a) Only handle if in 3D mode
 	if (!onlyShowThreeJS) return;
 
@@ -2449,8 +2449,34 @@ function handle3DMouseMove(event) {
 	const threeCanvas = threeRenderer.getCanvas();
 	if (!threeCanvas) return;
 
-	// Step 13d) Update mouse position for raycasting
+	// Step 13d) ALWAYS update mouse position for raycasting (needed for cursor)
 	interactionManager.updateMousePosition(event, threeCanvas);
+
+	// Step 13d.0) COORDINATE DEBUGGING: Trace transforms when debugger is enabled
+	if (coordinateDebugger && coordinateDebugger.enabled) {
+		coordinateDebugger.traceMousePosition(event);
+	}
+
+	// Step 13d.1) PERFORMANCE OPTIMIZATION: Quick cursor update path
+	// Always update cursor position (60fps) but throttle expensive operations (30fps)
+	// This gives smooth cursor tracking while maintaining performance
+	var now = performance.now();
+	var shouldThrottle = window._lastMouseMoveTime && (now - window._lastMouseMoveTime) < 33;
+
+	if (shouldThrottle) {
+		// Fast path: Just update cursor position without raycasting/snapping
+		if (interactionManager && typeof interactionManager.getMouseWorldPositionOnViewPlane === "function") {
+			const torusWorldPos = interactionManager.getMouseWorldPositionOnViewPlane();
+			if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
+				// DEBUG: Log fast path cursor position
+				console.log("🟢 FAST PATH cursor:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
+				// Draw cursor with default grey color (no snap indication)
+				drawMousePositionIndicatorThreeJS(torusWorldPos.x, torusWorldPos.y, torusWorldPos.z, "rgba(128, 128, 128, 0.4)");
+			}
+		}
+		return; // Skip expensive operations (raycasting, snapping) until next 30fps tick
+	}
+	window._lastMouseMoveTime = now;
 
 	// Step 13e) Update hover state and get raytrace intersection for 3D tracking
 	// Always raycast to get 3D position (even if no blast holes, we might hit surfaces/other objects)
@@ -2497,6 +2523,9 @@ function handle3DMouseMove(event) {
 	let torusWorldPos = null;
 	if (interactionManager && typeof interactionManager.getMouseWorldPositionOnViewPlane === "function") {
 		torusWorldPos = interactionManager.getMouseWorldPositionOnViewPlane();
+		if (torusWorldPos) {
+			console.log("📐 torusWorldPos calculated:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
+		}
 	}
 
 	// Step 13f.3) Final fallback to camera projection if plane intersection fails
@@ -2704,8 +2733,8 @@ function handle3DMouseMove(event) {
 
 	// Step 13f.7) Always draw mouse position indicator on view plane (so it's always visible)
 	// Special case: During orbit mode, lock torus to orbit focal point to prevent jumping
-	// Use view plane position for torus, ground plane position for interactions
-	// Priority: 1) Orbit focal point (if orbiting), 2) Snapped position (if snapping), 3) Hit object, 4) View plane, 5) Camera centroid
+	// CRITICAL FIX: Use view plane position for screen-space cursor tracking (not surface intersections)
+	// Priority: 1) Snapped position (if snapping), 2) Orbit center (if orbiting), 3) View plane (screen-space), 4) Camera centroid
 	let indicatorPos = null;
 
 	// Step 13f.7a) Check if we have a snap target - highest priority for cursor display
@@ -2716,6 +2745,7 @@ function handle3DMouseMove(event) {
 			y: snapResult.worldY,
 			z: snapResult.worldZ,
 		};
+		console.log("  ➜ Branch 1: SNAP TARGET", indicatorPos.z.toFixed(2));
 	} else {
 		// Step 13f.7b) Check if orbit mode is active via CameraControls
 		const isOrbitingNow = window.cameraControls && window.cameraControls.isOrbiting;
@@ -2732,15 +2762,16 @@ function handle3DMouseMove(event) {
 					y: cameraState.centroidY + originY,
 					z: orbitZ,
 				};
+				console.log("  ➜ Branch 2: ORBITING (lock to orbit center)", indicatorPos.z.toFixed(2));
 			}
-		} else if (intersects && intersects.length > 0 && mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
-			// Step 13f.7d) If we hit an object, use that position
-			indicatorPos = mouseWorldPos;
 		} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
-			// Step 13f.7e) Otherwise use view plane position (always visible at cursor)
+			// Step 13f.7d) Use view plane position (ALWAYS - ensures screen-space cursor tracking)
+			// REMOVED: Hit object branch - it caused cursor to jump to surface elevations
+			// Screen-space cursor should track view plane, not surface intersections
 			indicatorPos = torusWorldPos;
+			console.log("  ➜ Branch 3: VIEW PLANE (screen-space)", indicatorPos.z.toFixed(2));
 		} else {
-			// Step 13f.7f) Fallback: camera centroid if view plane calc failed
+			// Step 13f.7e) Fallback: camera centroid if view plane calc failed
 			const fallbackZ = window.dataCentroidZ || 0;
 			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
 			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
@@ -2751,21 +2782,27 @@ function handle3DMouseMove(event) {
 					y: cameraState.centroidY + originY,
 					z: fallbackZ,
 				};
+				console.log("  ➜ Branch 4: FALLBACK (camera centroid)", indicatorPos.z.toFixed(2));
 			} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
 				indicatorPos = {
 					x: centroidX,
 					y: centroidY,
 					z: fallbackZ,
 				};
+				console.log("  ➜ Branch 5: FALLBACK (global centroid)", indicatorPos.z.toFixed(2));
 			}
 		}
 	}
 
 	if (indicatorPos && isFinite(indicatorPos.x) && isFinite(indicatorPos.y)) {
-		// Step 13f.7g) Determine torus color based on active tool or snap state
+		// DEBUG: Store for console inspection
+		window._debugIndicatorPos = indicatorPos;
+		console.log("🔴 SLOW PATH cursor:", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+
+		// Step 13f.7e) Determine cursor color based on active tool or snap state
 		var torusColor = "rgba(128, 128, 128, 0.4)"; // Default grey
 
-		// Step 13f.7h) If snapped, change color to indicate snap (bright green)
+		// Step 13f.7f) If snapped, change color to indicate snap (bright green)
 		// MUST use rgba() format - parseRGBA only handles rgba/rgb, not hex colors!
 		if (snapResult && snapResult.snapped && snapResult.snapTarget) {
 			// Different alpha for vertices vs segments
@@ -25433,12 +25470,23 @@ function drawData(allBlastHoles, selectedHole) {
 
 		if (hasHoles || hasSurfaces || hasKADDrawings) {
 			updateThreeLocalOrigin();
+
+			// Step 0b.1a) If 2D centroid is still at origin, calculate from all data sources
+			// This ensures camera positioning works with surfaces/images even without blast holes
+			if (centroidX === 0 && centroidY === 0) {
+				const fullCentroid = calculateDataCentroid();
+				centroidX = fullCentroid.x;
+				centroidY = fullCentroid.y;
+				centroidZ = fullCentroid.z;
+				console.log("📍 2D/3D centroid calculated from data:", centroidX.toFixed(2), centroidY.toFixed(2), centroidZ.toFixed(2));
+			}
+
 			// Step 0b.1) Sync camera to view the data after setting origin
 			syncCameraToThreeJS();
 		}
 	}
 
-	// Step 0c) Calculate Z centroid for orbit center
+	// Step 0c) Calculate Z centroid for orbit center (always recalculate for dynamic data)
 	dataCentroidZ = calculateDataZCentroid();
 
 	// Step 1) Clear Three.js geometry for rebuild
@@ -42866,8 +42914,22 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 		};
 	}
 
-	// Convert pixel radius to world units for point snapping (ray-based)
-	const snapRadiusWorld = snapRadiusPixels * 0.0441; // Approximate conversion based on current zoom
+	// Convert pixel radius to world units for point snapping (ray-based fat ray)
+	// Use actual camera scale to convert screen pixels to world units
+	const camera = tr ? tr.camera : null;
+	const canvas = tr ? tr.getCanvas() : null;
+	let snapRadiusWorld = snapRadiusPixels; // Fallback
+
+	if (camera && camera.isOrthographicCamera && canvas) {
+		// For orthographic camera: screen pixels to world units conversion
+		// Camera frustum width in world units = (right - left) / zoom
+		// Screen width in pixels = canvas.width
+		// Therefore: 1 pixel = frustumWidth / canvasWidth world units
+		const rect = canvas.getBoundingClientRect();
+		const frustumWidth = (camera.right - camera.left) / camera.zoom;
+		const pixelsToWorld = frustumWidth / rect.width;
+		snapRadiusWorld = snapRadiusPixels * pixelsToWorld;
+	}
 
 	const snapCandidates = [];
 
@@ -43662,9 +43724,6 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 	}
 	lastSnapTime = now;
 
-	// Convert pixel radius to world units for point snapping (ray-based)
-	const snapRadiusWorld = snapRadiusPixels * 0.0441; // Approximate conversion based on current zoom
-
 	const snapCandidates = [];
 
 	// Step 0.5) PERFORMANCE OPTIMIZATION: Use Three.js GPU-accelerated raycaster to get visible objects first
@@ -43672,10 +43731,27 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 	// The raycaster automatically handles frustum culling and only returns visible objects
 	var visibleEntityNames = new Set();
 	var visibleHoleIDs = new Set();
-	
+
 	// Step 0.5a) Get interactionManager and threeRenderer (try window globals if not in scope)
 	var im = interactionManager || window.interactionManager;
 	var tr = threeRenderer || window.threeRenderer;
+
+	// Convert pixel radius to world units for point snapping (ray-based fat ray)
+	// Use actual camera scale to convert screen pixels to world units
+	const camera = tr ? tr.camera : null;
+	const canvas = tr ? tr.getCanvas() : null;
+	let snapRadiusWorld = snapRadiusPixels; // Fallback
+
+	if (camera && camera.isOrthographicCamera && canvas) {
+		// For orthographic camera: screen pixels to world units conversion
+		// Camera frustum width in world units = (right - left) / zoom
+		// Screen width in pixels = canvas.width
+		// Therefore: 1 pixel = frustumWidth / canvasWidth world units
+		const rect = canvas.getBoundingClientRect();
+		const frustumWidth = (camera.right - camera.left) / camera.zoom;
+		const pixelsToWorld = frustumWidth / rect.width;
+		snapRadiusWorld = snapRadiusPixels * pixelsToWorld;
+	}
 	
 	// Step 0.5b) Use InteractionManager's raycast method (same as click handler) - GPU-accelerated!
 	// This method handles mouse position, camera setup, and returns only visible intersecting objects
@@ -43714,8 +43790,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 
 	// Step 0.6) PERFORMANCE OPTIMIZATION: Screen-space frustum check helper
 	// Only check objects that are within screen bounds (with padding for snap radius)
-	var canvas = tr ? tr.getCanvas() : null;
-	var camera = tr ? tr.camera : null;
+	// Note: canvas and camera already declared at top of function
 	const isPointInFrustum = function(worldX, worldY, worldZ) {
 		if (!camera || !canvas) return true; // If no camera, check everything (fallback)
 		
@@ -43767,11 +43842,13 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 			// Only check if hole is visible via raycast OR in frustum
 			if (!holeVisible && !holeInFrustum) return;
 
-			// Hole collar (start) - convert world coords to local for ray comparison
+			// FAT RAY snapping for holes: Cast cylinder from camera through mouse
+			// Check cylindrical distance from ray (zoom-aware conversion at top of function)
+
+			// Hole collar (start) - FAT RAY: check cylindrical distance from ray
 			const collarLocal = worldToLocal(hole.startXLocation, hole.startYLocation, hole.startZLocation || 0);
 			const collarResult = distanceFromPointToRay(collarLocal, rayOrigin, rayDirection);
 			if (collarResult.distance <= snapRadiusWorld && collarResult.rayT > 0) {
-				// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
 				snapCandidates.push({
 					distance: collarResult.distance,
 					rayT: collarResult.rayT,
@@ -43782,11 +43859,10 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 				});
 			}
 
-			// Hole grade - convert world coords to local for ray comparison
+			// Hole grade - FAT RAY: check cylindrical distance from ray
 			const gradeLocal = worldToLocal(hole.gradeXLocation, hole.gradeYLocation, hole.gradeZLocation || 0);
 			const gradeResult = distanceFromPointToRay(gradeLocal, rayOrigin, rayDirection);
 			if (gradeResult.distance <= snapRadiusWorld && gradeResult.rayT > 0) {
-				// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
 				snapCandidates.push({
 					distance: gradeResult.distance,
 					rayT: gradeResult.rayT,
@@ -43797,11 +43873,10 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 				});
 			}
 
-			// Hole toe (end) - convert world coords to local for ray comparison
+			// Hole toe (end) - FAT RAY: check cylindrical distance from ray
 			const toeLocal = worldToLocal(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0);
 			const toeResult = distanceFromPointToRay(toeLocal, rayOrigin, rayDirection);
 			if (toeResult.distance <= snapRadiusWorld && toeResult.rayT > 0) {
-				// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
 				snapCandidates.push({
 					distance: toeResult.distance,
 					rayT: toeResult.rayT,

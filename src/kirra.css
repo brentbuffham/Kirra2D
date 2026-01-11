@@ -2732,6 +2732,43 @@ body.dark-mode .floating-dialog .labelWhite12 {
     color: var(--dark-mode-text) !important;
 }
 
+.floating-dialog .labelWhite18 {
+    font-size: 18px;
+    font-family: var(--default-font);
+    color: var(--light-mode-text) !important;
+    line-height: 1.2;
+    margin: 0;
+    text-align: left;
+    position: relative;
+}
+
+body.dark-mode .floating-dialog .labelWhite18 {
+    color: var(--dark-mode-text) !important;
+}
+
+.floating-dialog .labelWhite12c {
+    font-size: 12px;
+    font-family: var(--default-font);
+    color: var(--light-mode-text) !important;
+    line-height: 1.2;
+    margin: 0;
+    text-align: left;
+    position: relative;
+}
+
+body.dark-mode .floating-dialog .labelWhite12c {
+    color: var(--dark-mode-text) !important;
+}
+
+/* SVG logo in update popup */
+.floating-dialog .update-popup-logo {
+    stroke: var(--light-mode-text);
+}
+
+body.dark-mode .floating-dialog .update-popup-logo {
+    stroke: var(--dark-mode-text);
+}
+
 /* Input styles for all layouts */
 .floating-dialog input[type="text"],
 .floating-dialog input[type="number"],

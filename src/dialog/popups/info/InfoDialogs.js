@@ -30,10 +30,10 @@ export function showSuccessDialog(title, content) {
 export function updatePopup() {
 	console.log("function updatePopup()");
 
-	// Step 6a) Build the content HTML
+	// Step 6a) Build the content HTML with theme-aware styling using CSS classes and variables
 	const content =
 		'<div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px;">' +
-		'<svg version="1.1" baseProfile="basic" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="70" height="70" viewBox="-40 0 200 200" stroke-width="3" stroke="white" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
+		'<svg class="update-popup-logo" version="1.1" baseProfile="basic" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="70" height="70" viewBox="-40 0 200 200" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
 		'<path d="M7.53,64.77c-0.36-1.36-0.38-3.99,0.08-5.34c-0.98-2.51-2.88-8.13-2.22-10.9c1.77-5.81-0.07-16.1-0.95-24.92C3.55,18.78,6.31,4.11,7.61,2.26c6.24-5.37,24.76,22.67,29.81,29.81c1.57-0.17,1.91,1.72,1.78,2.93c1.87,2.82,3.54,4.3,7.03,4.17c2.71,0.61,9.25,1.73,11.56,3.31c3.57-1.82,10.55,1.6,12.57-3.03c1.23-0.82,4.4-3.07,3.94-4.96c2.19-1.04,4.21-5.39,5.03-7.5c1.7-4.14,5.96-7.51,8.29-11.14c5.21-6.14,15.78-27.02,20.71-8.09c2.32,9.62,3.98,22.54,1.38,32.15c0.51,1.33,0.58,4.5,0.59,5.92c0.89,1.69,0.82,4.84,0.2,6.61c0.38,2.52-0.66,5.62-2.47,7.4c0.17,1.03,0.2,2.67-0.49,3.55c0,0,3.21,2.42,4.04,4.54c0.84,2.12-0.59,9.51-1.18,12.53c1.32,1.57,2.75,4.67,2.17,6.81c3.3,5.31-0.68,4.27,1.38,8.48c0.69,2.34-0.51,4.65,1.09,6.71c-0.28,1.05-1.39,3.81-1.58,4.93c0.84,2.71-1.41,6.85-2.96,8.97c0,0,0.39,3.85,0.39,3.85c-4.86,1.62-1.02,2.56-4.83,5.13c-3.52,19.49-28.37,34.55-46.94,37.28c-9.52,0.18-23.4-3.44-29-11.64c-3.47-1.2-9.42-2.81-11.05-6.51c-0.68-1.05-4.4-2.51-3.75-4.24c-1.39,0.33-2.04-1.83-2.47-2.76c-3.42,0.24-3.99-8.32-3.55-10.75c0,0-1.68-3.16-1.68-3.16c0.5-1.06,0.12-1.99-0.69-2.66c0.66-1.83,0.58-1.44-1.18-1.87c-0.19-1.23,0.33-2.6-0.69-3.45c0.13-1.01-0.33-2.69-0.8-3.55c-1.65-1.36-1.5-5.44-2.56-7.3c-3.32-1.31-2.49-3.65,0.2-5.23c0.49-1.42-0.47-3.32-1.38-4.34c2.56-1.71-0.74-3.32,1.48-6.41c0.99-2.71,2.11-0.41-0.3-3.85c0.28-2.86,2.84-3.43,3.06-6.9c0.46-1.74-0.61-4.26-1.78-5.52c3.46-0.9,1.88-1.16,1.28-3.65l2.81-3" />' +
 		'<path d="M60.64,124.58c1.69,0.63,4,0.19,5.21-1.41c-1.74,0.78-4.01,1.14-4.83-0.99c3.43-2.98-6.5-3.52,1.55,1.73" />' +
 		'<path d="M51.44,124.77c-1.56,0.79-4.74,0.05-5.89-2.37c1.6,1.38,3.9,2.71,4.71-0.18c-3.32-3.58,5.44-3.26,2.3,1.74" />' +
@@ -64,12 +64,12 @@ export function updatePopup() {
 		'<path d="M78.23,77.22c2.21,0,4.01,1.79,4.01,4.01c0,2.21-1.79,4.01-4.01,4.01c-2.21,0-4.01-1.79-4.01-4.01" />' +
 		'<path d="M65.76,119.94c0,0-0.8-2.02-2.61-2.63c-1.81-0.61-4.99-0.91-6.88-0.92s-3.11,0.63-4.16,0c-1.05-0.63-1.66-1.39-1.66-1.39" />' +
 		"</svg>" +
-		'<label class="labelWhite18">Welcome to Kirra</label>' +
-		'<i><label class="labelWhite15">Version: Build ' +
+		'<label class="labelWhite18" style="text-align: center; font-weight: bold;">Welcome to Kirra</label>' +
+		'<i><label class="labelWhite15" style="text-align: center;">Version: Build ' +
 		window.buildVersion +
 		"</i></label>" +
-		'<div style="max-height: 350px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; text-align: center; width: 100%;">' +
-		'<label class="labelWhite18">⭐ ⭐ September 2025 - January 2026 ⭐ ⭐</label>' +
+		'<div style="max-height: 350px; overflow-y: auto; border: 1px solid var(--light-mode-border); padding: 10px; text-align: center; width: 100%;">' +
+		'<label class="labelWhite18" style="text-align: center; font-weight: bold;">⭐ ⭐ September 2025 - January 2026 ⭐ ⭐</label>' +
 		"<br>" +
 		'<label class="labelWhite12c">' +
 		"<br>" +
@@ -215,7 +215,7 @@ export function updatePopup() {
 		"</label>" +
 		'<label class="labelWhite12c" style="margin-top:8px;">' +
 		"<hr>" +
-		'<br><label class="labelWhite15">New & Existing Issues & Resolved</label>' +
+		'<br><label class="labelWhite15" style="font-weight: bold;">New & Existing Issues & Resolved</label>' +
 		'<br><label class="labelWhite12c">🐞 Voronoi Display Lag with large blasts      ⚠️ in progress ⚠️</label>' +
 		'<br><label class="labelWhite12c">🐞 Volume for blasts not working in treeView  ❌ unresolved ❌</label>' +
 		'<br><label class="labelWhite12c">🐞 Some Tools won\'t release state properly   ❌ unresolved ❌</label>' +
@@ -228,7 +228,7 @@ export function updatePopup() {
 		"<br>" +
 		"</div>";
 
-	// Step 6b) Create FloatingDialog
+	// Step 6c) Create FloatingDialog
 	const dialog = new window.FloatingDialog({
 		title: "Kirra - Version " + window.buildVersion,
 		content: content,
@@ -249,7 +249,7 @@ export function updatePopup() {
 		layoutType: "default",
 
 		onDeny: function() {
-			// Step 6c) Call checkAndPromptForStoredData after user clicks OK
+			// Step 6d) Call checkAndPromptForStoredData after user clicks OK
 			if (window.checkAndPromptForStoredData) {
 				window.checkAndPromptForStoredData();
 			}
@@ -257,28 +257,28 @@ export function updatePopup() {
 			sendBugEmail();
 		},
 		onOption1: function() {
-			// Step 6c) Call checkAndPromptForStoredData after user clicks OK
+			// Step 6d) Call checkAndPromptForStoredData after user clicks OK
 			if (window.checkAndPromptForStoredData) {
 				window.checkAndPromptForStoredData();
 			}
 			sendFeatureEmail();
 		},
 		onOption2: function() {
-			// Step 6c) Call checkAndPromptForStoredData after user clicks OK
+			// Step 6d) Call checkAndPromptForStoredData after user clicks OK
 			if (window.checkAndPromptForStoredData) {
 				window.checkAndPromptForStoredData();
 			}
 			window.open("https://www.youtube.com/@redundantlyuseful3366", "_blank", "noopener");
 		},
 		onConfirm: function() {
-			// Step 6c) Call checkAndPromptForStoredData after user clicks OK
+			// Step 6d) Call checkAndPromptForStoredData after user clicks OK
 			if (window.checkAndPromptForStoredData) {
 				window.checkAndPromptForStoredData();
 			}
 		}
 	});
 
-	// Step 6d) Show the dialog
+	// Step 6e) Show the dialog
 	dialog.show();
 }
 
