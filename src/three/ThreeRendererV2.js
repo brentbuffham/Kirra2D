@@ -1208,10 +1208,10 @@ export class ThreeRendererV2 {
 	 */
 	showAxisHelper(show, positionX = 0, positionY = 0, scale = 1) {
 		if (!this.axisHelper) {
-			this.axisHelper = this._createAxisHelper(50);
+			this.axisHelper = this._createAxisHelper(111);
 			this.axisHelper.visible = false;
 			this.scene.add(this.axisHelper);
-			this.axisHelperBaseSize = 50;
+			this.axisHelperBaseSize = 111;
 		}
 
 		if (this.axisHelper) {

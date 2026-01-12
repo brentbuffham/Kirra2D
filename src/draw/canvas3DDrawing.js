@@ -1344,6 +1344,11 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// Step 19.5a) Convert world coordinates to local Three.js coordinates
 	const local = window.worldToThreeLocal(worldX, worldY);
 	const z = worldZ || 0;
+	
+	// DEBUG: Log local coordinates
+	if (window.developerModeEnabled) {
+		console.log("📍 drawMouseIndicator local coords:", local.x.toFixed(2), local.y.toFixed(2), z.toFixed(2));
+	}
 
 	// Step 19.5a.1) Use provided color or apply cursor opacity setting
 	const cursorOpacity = 0.2;
