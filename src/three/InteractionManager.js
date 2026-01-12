@@ -391,6 +391,15 @@ export class InteractionManager {
 		const worldX = intersectionPoint.x + originX;
 		const worldY = intersectionPoint.y + originY;
 		const worldZ = intersectionPoint.z;
+		
+		// DEBUG: Log the conversion
+		if (window.developerModeEnabled) {
+			console.log("🎯 getMouseWorldPositionOnViewPlane:", {
+				intersectionPoint: {x: intersectionPoint.x.toFixed(2), y: intersectionPoint.y.toFixed(2), z: intersectionPoint.z.toFixed(2)},
+				origin: {x: originX.toFixed(2), y: originY.toFixed(2)},
+				world: {x: worldX.toFixed(2), y: worldY.toFixed(2), z: worldZ.toFixed(2)}
+			});
+		}
 
 		return { x: worldX, y: worldY, z: worldZ };
 	}

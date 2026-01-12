@@ -39,8 +39,11 @@ console.log("🎯 Will use renderer:", window.useExperimental3DRenderer ? "V2 (E
 // Three.js Rendering System
 //=================================================
 import * as THREE from "three";
-import { ThreeRenderer } from "./three/ThreeRenderer.js";
+// DIAGNOSTIC: Temporarily commented out to test if V1 renderer is causing conflicts
+// import { ThreeRenderer } from "./three/ThreeRenderer.js";
 import { ThreeRendererV2 } from "./three/ThreeRendererV2.js";
+// Force V2 renderer for diagnostic purposes
+const ThreeRenderer = ThreeRendererV2;
 import { CameraControls } from "./three/CameraControls.js";
 import { GeometryFactory, clearTextCache } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
@@ -2470,70 +2473,13 @@ function handle3DMouseMove(event) {
 	const threeCanvas = threeRenderer.getCanvas();
 	if (!threeCanvas) return;
 
-	// Step 13d) ALWAYS update mouse position for raycasting (needed for cursor and stadium zone)
+	// Step 13d) ALWAYS update mouse position for raycasting (needed for cursor and snapping)
 	interactionManager.updateMousePosition(event, threeCanvas);
 
 	// Step 13d.0) COORDINATE DEBUGGING: Trace transforms when debugger is enabled
 	if (coordinateDebugger && coordinateDebugger.enabled) {
 		coordinateDebugger.traceMousePosition(event);
 	}
-
-	// Step 13d.1) PERFORMANCE OPTIMIZATION: Quick cursor update path
-	// Always update cursor position (60fps) but throttle expensive operations (10fps = 100ms)
-	// This gives smooth cursor tracking while maintaining performance
-	var now = performance.now();
-	var shouldThrottle = window._lastMouseMoveTime && (now - window._lastMouseMoveTime) < 100;
-
-	if (shouldThrottle) {
-		// Fast path: Just update cursor and stadium zone without expensive raycasting/snapping
-		// CRITICAL: Use horizontal plane intersection (same as click detection)
-		if (interactionManager && typeof interactionManager.getMouseWorldPositionOnPlane === "function") {
-			// Use horizontal plane at orbit center Z (same as click detection)
-			const planeZ = threeRenderer.orbitCenterZ || window.dataCentroidZ || 0;
-			// Mouse position already updated above, so raycaster is current
-			const torusWorldPos = interactionManager.getMouseWorldPositionOnPlane(planeZ);
-
-			if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
-				// DEBUG: Disabled excessive logging on mouse move
-				// console.log("🟢 FAST PATH cursor:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
-				// Draw cursor with default grey color (no snap indication)
-				drawMousePositionIndicatorThreeJS(torusWorldPos.x, torusWorldPos.y, torusWorldPos.z, "rgba(128, 128, 128, 0.4)");
-
-				// FAST PATH: Update stadium zone at 60fps for smooth tracking
-				const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
-				if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
-					// Remove old stadium zones
-					const toRemove = [];
-					threeRenderer.connectorsGroup.children.forEach((child) => {
-						if (child.userData && child.userData.type === "stadiumZone") {
-							toRemove.push(child);
-						}
-					});
-					toRemove.forEach((obj) => {
-						threeRenderer.connectorsGroup.remove(obj);
-						if (obj.geometry) obj.geometry.dispose();
-						if (obj.material) {
-							if (Array.isArray(obj.material)) {
-								obj.material.forEach((mat) => mat.dispose());
-							} else {
-								obj.material.dispose();
-							}
-						}
-					});
-
-					// Draw new stadium zone at cursor position
-					// DIAGNOSTIC: Log ALL mouse moves to see if coordinates change
-					console.log("🏟️ [FAST PATH] Stadium:",
-						"from[" + fromHoleStore.startXLocation.toFixed(0) + "," + fromHoleStore.startYLocation.toFixed(0) + "]",
-						"mouse[" + torusWorldPos.x.toFixed(0) + "," + torusWorldPos.y.toFixed(0) + "]",
-						"planeZ:" + planeZ.toFixed(1));
-					drawConnectStadiumZoneThreeJS(fromHoleStore, torusWorldPos, connectAmount);
-				}
-			}
-		}
-		return; // Skip expensive operations (raycasting, snapping) until next 10fps tick (100ms)
-	}
-	window._lastMouseMoveTime = now;
 
 	// Step 13e) Update hover state and get raytrace intersection for 3D tracking
 	// Always raycast to get 3D position (even if no blast holes, we might hit surfaces/other objects)
@@ -2580,10 +2526,18 @@ function handle3DMouseMove(event) {
 	let torusWorldPos = null;
 	if (interactionManager && typeof interactionManager.getMouseWorldPositionOnViewPlane === "function") {
 		torusWorldPos = interactionManager.getMouseWorldPositionOnViewPlane();
-		// DEBUG: Disabled excessive logging on mouse move
-		// if (torusWorldPos && developerModeEnabled) {
-		// 	console.log("📐 torusWorldPos calculated:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
-		// }
+		// DEBUG: Log view plane position
+		if (torusWorldPos && developerModeEnabled) {
+			console.log("📐 torusWorldPos (view plane):", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
+		}
+	}
+	
+	// DEBUG: Compare mouseWorldPos vs torusWorldPos
+	if (developerModeEnabled && mouseWorldPos && torusWorldPos) {
+		console.log("🎯 Coordinate comparison:");
+		console.log("  mouseWorldPos (raycast/plane):", mouseWorldPos.x.toFixed(2), mouseWorldPos.y.toFixed(2), mouseWorldPos.z.toFixed(2));
+		console.log("  torusWorldPos (view plane):", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
+		console.log("  Difference XY:", Math.abs(mouseWorldPos.x - torusWorldPos.x).toFixed(2), Math.abs(mouseWorldPos.y - torusWorldPos.y).toFixed(2));
 	}
 
 	// Step 13f.3) Final fallback to camera projection if plane intersection fails
@@ -2760,48 +2714,38 @@ function handle3DMouseMove(event) {
 			isCurrentlySnapped
 		);
 
-		// Step 13f.6) DISABLED - Stadium zone now drawn in FAST PATH (60fps) above at line ~2497
-		// Slow path (10fps) stadium zone drawing caused jerky movement
-		// const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
-		// if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
-		// 	const toRemove = [];
-		// 	threeRenderer.connectorsGroup.children.forEach((child) => {
-		// 		if (child.userData && child.userData.type === "stadiumZone") {
-		// 			toRemove.push(child);
-		// 		}
-		// 	});
-		// 	toRemove.forEach((obj) => {
-		// 		threeRenderer.connectorsGroup.remove(obj);
-		// 		if (obj.geometry) obj.geometry.dispose();
-		// 		if (obj.material) {
-		// 			if (Array.isArray(obj.material)) {
-		// 				obj.material.forEach((mat) => mat.dispose());
-		// 			} else {
-		// 				obj.material.dispose();
-		// 			}
-		// 		}
-		// 	});
-		//
-		// 	// Only draw stadium zone if we have valid mouse position
-		// 	if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
-		// 		// DIAGNOSTIC: Log stadium zone coordinates to debug why it's stuck at data centroid
-		// 		if (!window._stadiumZoneLogCount || window._stadiumZoneLogCount < 5) {
-		// 			console.log("🏟️ Stadium Zone:", {
-		// 				fromHole: {x: fromHoleStore.startXLocation, y: fromHoleStore.startYLocation, z: fromHoleStore.startZLocation},
-		// 				mouseWorld: {x: mouseWorldPos.x, y: mouseWorldPos.y, z: mouseWorldPos.z},
-		// 				connectAmount: connectAmount
-		// 			});
-		// 			window._stadiumZoneLogCount = (window._stadiumZoneLogCount || 0) + 1;
-		// 		}
-		// 		drawConnectStadiumZoneThreeJS(fromHoleStore, mouseWorldPos, connectAmount);
-		// 	}
-		// }
+		// Step 13f.6) Draw stadium zone if connector tool is active
+		const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
+		if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
+			const toRemove = [];
+			threeRenderer.connectorsGroup.children.forEach((child) => {
+				if (child.userData && child.userData.type === "stadiumZone") {
+					toRemove.push(child);
+				}
+			});
+			toRemove.forEach((obj) => {
+				threeRenderer.connectorsGroup.remove(obj);
+				if (obj.geometry) obj.geometry.dispose();
+				if (obj.material) {
+					if (Array.isArray(obj.material)) {
+						obj.material.forEach((mat) => mat.dispose());
+					} else {
+						obj.material.dispose();
+					}
+				}
+			});
+
+			// Only draw stadium zone if we have valid mouse position
+			if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+				drawConnectStadiumZoneThreeJS(fromHoleStore, mouseWorldPos, connectAmount);
+			}
+		}
 	}
 
-	// Step 13f.7) Always draw mouse position indicator on view plane (so it's always visible)
+	// Step 13f.7) Always draw mouse position indicator at mouse position
 	// Special case: During orbit mode, lock torus to orbit focal point to prevent jumping
-	// CRITICAL FIX: Use view plane position for screen-space cursor tracking (not surface intersections)
-	// Priority: 1) Snapped position (if snapping), 2) Orbit center (if orbiting), 3) View plane (screen-space), 4) Camera centroid
+	// CRITICAL: Must use torusWorldPos (view plane) for screen-space tracking, NOT mouseWorldPos
+	// Priority: 1) Snapped position (if snapping), 2) Orbit center (if orbiting), 3) torusWorldPos (view plane), 4) mouseWorldPos, 5) Camera centroid
 	let indicatorPos = null;
 
 	// Step 13f.7a) Check if we have a snap target - highest priority for cursor display
@@ -2812,8 +2756,9 @@ function handle3DMouseMove(event) {
 			y: snapResult.worldY,
 			z: snapResult.worldZ,
 		};
-		// DEBUG: Disabled excessive logging on mouse move
-		// console.log("  ➜ Branch 1: SNAP TARGET", indicatorPos.z.toFixed(2));
+		if (developerModeEnabled) {
+			console.log("  ➜ Indicator Branch 1: SNAP TARGET", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+		}
 	} else {
 		// Step 13f.7b) Check if orbit mode is active via CameraControls
 		const isOrbitingNow = window.cameraControls && window.cameraControls.isOrbiting;
@@ -2830,18 +2775,25 @@ function handle3DMouseMove(event) {
 					y: cameraState.centroidY + originY,
 					z: orbitZ,
 				};
-				// DEBUG: Disabled excessive logging on mouse move
-				// console.log("  ➜ Branch 2: ORBITING (lock to orbit center)", indicatorPos.z.toFixed(2));
+				if (developerModeEnabled) {
+					console.log("  ➜ Indicator Branch 2: ORBITING", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+				}
 			}
-		} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
-			// Step 13f.7d) Use view plane position (ALWAYS - ensures screen-space cursor tracking)
-			// REMOVED: Hit object branch - it caused cursor to jump to surface elevations
-			// Screen-space cursor should track view plane, not surface intersections
+		} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y) && isFinite(torusWorldPos.z)) {
+			// Step 13f.7d) Use torusWorldPos (view plane) - ensures screen-space cursor tracking
+			// This is CRITICAL for cursor to follow mouse in 3D regardless of camera angle
 			indicatorPos = torusWorldPos;
-			// DEBUG: Disabled excessive logging on mouse move
-			// console.log("  ➜ Branch 3: VIEW PLANE (screen-space)", indicatorPos.z.toFixed(2));
+			if (developerModeEnabled) {
+				console.log("  ➜ Indicator Branch 3: VIEW PLANE (torusWorldPos)", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+			}
+		} else if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+			// Step 13f.7e) Fallback to mouseWorldPos if view plane not available
+			indicatorPos = mouseWorldPos;
+			if (developerModeEnabled) {
+				console.log("  ➜ Indicator Branch 4: MOUSE WORLD POS (fallback)", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+			}
 		} else {
-			// Step 13f.7e) Fallback: camera centroid if view plane calc failed
+			// Step 13f.7f) Final fallback: camera centroid
 			const fallbackZ = window.dataCentroidZ || 0;
 			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
 			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
@@ -2852,16 +2804,18 @@ function handle3DMouseMove(event) {
 					y: cameraState.centroidY + originY,
 					z: fallbackZ,
 				};
-				// DEBUG: Disabled excessive logging on mouse move
-				// console.log("  ➜ Branch 4: FALLBACK (camera centroid)", indicatorPos.z.toFixed(2));
+				if (developerModeEnabled) {
+					console.log("  ➜ Indicator Branch 5: CAMERA CENTROID", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+				}
 			} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
 				indicatorPos = {
 					x: centroidX,
 					y: centroidY,
 					z: fallbackZ,
 				};
-				// DEBUG: Disabled excessive logging on mouse move
-				// console.log("  ➜ Branch 5: FALLBACK (global centroid)", indicatorPos.z.toFixed(2));
+				if (developerModeEnabled) {
+					console.log("  ➜ Indicator Branch 6: GLOBAL CENTROID", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+				}
 			}
 		}
 	}

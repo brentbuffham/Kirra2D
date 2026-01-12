@@ -1320,6 +1320,13 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 	};
 
 	window.threeRenderer.connectorsGroup.add(stadiumGroup);
+	
+	// Request render to display the stadium zone
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
 }
 
 // Step 19.5) Draw mouse position indicator (crosshairs) in Three.js
@@ -1337,6 +1344,11 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// Step 19.5a) Convert world coordinates to local Three.js coordinates
 	const local = window.worldToThreeLocal(worldX, worldY);
 	const z = worldZ || 0;
+	
+	// DEBUG: Log local coordinates
+	if (window.developerModeEnabled) {
+		console.log("📍 drawMouseIndicator local coords:", local.x.toFixed(2), local.y.toFixed(2), z.toFixed(2));
+	}
 
 	// Step 19.5a.1) Use provided color or apply cursor opacity setting
 	const cursorOpacity = 0.2;
@@ -1384,10 +1396,11 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	});
 
 	// Step 19.5c) Create mouse position indicator sphere
-	// Size based on snap radius - properly scaled for current 3D view
+	// Size matches snap tolerance slider - fixed pixel size on screen
 	const snapRadiusPixels = window.snapRadiusPixels !== undefined ? window.snapRadiusPixels : 15; // Default 15px
 
-	// Use 3D-aware conversion that accounts for camera frustum
+	// Convert snap radius pixels to world units at cursor position
+	// This ensures the sphere appears as a constant screen-space size
 	let snapRadiusWorld;
 	if (typeof window.getSnapRadiusInWorldUnits3D === "function") {
 		snapRadiusWorld = window.getSnapRadiusInWorldUnits3D(snapRadiusPixels);
@@ -1396,7 +1409,16 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 		snapRadiusWorld = snapRadiusPixels / (window.currentScale || 1.0);
 	}
 
-	const indicatorSize = snapRadiusWorld;
+	// CRITICAL: Ensure sphere is always visible with minimum size
+	// User reports sphere not visible even with previous attempts
+	// Use direct pixel-to-world conversion with enforced minimum of 1.0m radius
+	const indicatorSize = Math.max(snapRadiusWorld, 1.0);
+	
+	// DEBUG: Log indicator size with more detail
+	if (window.developerModeEnabled) {
+		console.log("📍 Indicator size: snapRadiusPixels=" + snapRadiusPixels + "px, snapRadiusWorld=" + snapRadiusWorld.toFixed(4) + "m, indicatorSize=" + indicatorSize.toFixed(2) + "m");
+		console.log("📍 Camera distance check - threeRenderer.camera.position.z:", window.threeRenderer ? window.threeRenderer.camera.position.z.toFixed(2) : "N/A");
+	}
 	const indicatorGroup = GeometryFactory.createMousePositionIndicator(
 		local.x,
 		local.y,
@@ -1414,6 +1436,13 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// No billboarding markup needed - sphere looks the same from all angles
 
 	connectorsGroup.add(indicatorGroup);
+	
+	// Request render to display the mouse indicator
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
 }
 
 // Step 19.6) Draw KAD leading line preview in Three.js
@@ -1463,6 +1492,13 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 	};
 
 	connectorsGroup.add(line);
+	
+	// Request render to display the leading line
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
 }
 
 // Step 19.7) Clear KAD leading line preview in Three.js

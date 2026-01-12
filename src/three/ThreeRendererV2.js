@@ -529,34 +529,28 @@ export class ThreeRendererV2 {
 
 	/**
 	 * Update text billboards to face camera
+	 * PERFORMANCE: Direct quaternion copy (4 float copies) is faster than frustum culling
 	 */
 	_updateTextBillboards() {
 		// Get billboard setting
 		const billboardSetting = window.load3DSettings ? window.load3DSettings().textBillboarding : "all";
 
-		// Create frustum for culling
-		const frustum = new THREE.Frustum();
-		const projScreenMatrix = new THREE.Matrix4();
-		projScreenMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
-		frustum.setFromProjectionMatrix(projScreenMatrix);
+		// Cache camera quaternion (single reference, copied to all billboards)
+		const cameraQuat = this.camera.quaternion;
 
 		const updateGroup = (group, shouldBillboard) => {
+			if (!shouldBillboard) return;
+			
 			group.traverse(object => {
-				if (object.userData && object.userData.isTroikaText && shouldBillboard) {
-					if (frustum.containsPoint(object.position)) {
-						object.quaternion.copy(this.camera.quaternion);
-					}
+				if (object.userData && object.userData.isTroikaText) {
+					object.quaternion.copy(cameraQuat);
 				}
-				if (object.userData && object.userData.textMesh && shouldBillboard) {
-					if (frustum.containsPoint(object.position)) {
-						object.userData.textMesh.quaternion.copy(this.camera.quaternion);
-					}
+				if (object.userData && object.userData.textMesh) {
+					object.userData.textMesh.quaternion.copy(cameraQuat);
 					// Rotate background
 					object.traverse(child => {
 						if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
-							if (frustum.containsPoint(child.position)) {
-								child.quaternion.copy(this.camera.quaternion);
-							}
+							child.quaternion.copy(cameraQuat);
 						}
 					});
 				}
@@ -1214,10 +1208,10 @@ export class ThreeRendererV2 {
 	 */
 	showAxisHelper(show, positionX = 0, positionY = 0, scale = 1) {
 		if (!this.axisHelper) {
-			this.axisHelper = this._createAxisHelper(50);
+			this.axisHelper = this._createAxisHelper(111);
 			this.axisHelper.visible = false;
 			this.scene.add(this.axisHelper);
-			this.axisHelperBaseSize = 50;
+			this.axisHelperBaseSize = 111;
 		}
 
 		if (this.axisHelper) {
