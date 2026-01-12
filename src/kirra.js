@@ -2470,70 +2470,13 @@ function handle3DMouseMove(event) {
 	const threeCanvas = threeRenderer.getCanvas();
 	if (!threeCanvas) return;
 
-	// Step 13d) ALWAYS update mouse position for raycasting (needed for cursor and stadium zone)
+	// Step 13d) ALWAYS update mouse position for raycasting (needed for cursor and snapping)
 	interactionManager.updateMousePosition(event, threeCanvas);
 
 	// Step 13d.0) COORDINATE DEBUGGING: Trace transforms when debugger is enabled
 	if (coordinateDebugger && coordinateDebugger.enabled) {
 		coordinateDebugger.traceMousePosition(event);
 	}
-
-	// Step 13d.1) PERFORMANCE OPTIMIZATION: Quick cursor update path
-	// Always update cursor position (60fps) but throttle expensive operations (10fps = 100ms)
-	// This gives smooth cursor tracking while maintaining performance
-	var now = performance.now();
-	var shouldThrottle = window._lastMouseMoveTime && (now - window._lastMouseMoveTime) < 100;
-
-	if (shouldThrottle) {
-		// Fast path: Just update cursor and stadium zone without expensive raycasting/snapping
-		// CRITICAL: Use horizontal plane intersection (same as click detection)
-		if (interactionManager && typeof interactionManager.getMouseWorldPositionOnPlane === "function") {
-			// Use horizontal plane at orbit center Z (same as click detection)
-			const planeZ = threeRenderer.orbitCenterZ || window.dataCentroidZ || 0;
-			// Mouse position already updated above, so raycaster is current
-			const torusWorldPos = interactionManager.getMouseWorldPositionOnPlane(planeZ);
-
-			if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
-				// DEBUG: Disabled excessive logging on mouse move
-				// console.log("🟢 FAST PATH cursor:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
-				// Draw cursor with default grey color (no snap indication)
-				drawMousePositionIndicatorThreeJS(torusWorldPos.x, torusWorldPos.y, torusWorldPos.z, "rgba(128, 128, 128, 0.4)");
-
-				// FAST PATH: Update stadium zone at 60fps for smooth tracking
-				const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
-				if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
-					// Remove old stadium zones
-					const toRemove = [];
-					threeRenderer.connectorsGroup.children.forEach((child) => {
-						if (child.userData && child.userData.type === "stadiumZone") {
-							toRemove.push(child);
-						}
-					});
-					toRemove.forEach((obj) => {
-						threeRenderer.connectorsGroup.remove(obj);
-						if (obj.geometry) obj.geometry.dispose();
-						if (obj.material) {
-							if (Array.isArray(obj.material)) {
-								obj.material.forEach((mat) => mat.dispose());
-							} else {
-								obj.material.dispose();
-							}
-						}
-					});
-
-					// Draw new stadium zone at cursor position
-					// DIAGNOSTIC: Log ALL mouse moves to see if coordinates change
-					console.log("🏟️ [FAST PATH] Stadium:",
-						"from[" + fromHoleStore.startXLocation.toFixed(0) + "," + fromHoleStore.startYLocation.toFixed(0) + "]",
-						"mouse[" + torusWorldPos.x.toFixed(0) + "," + torusWorldPos.y.toFixed(0) + "]",
-						"planeZ:" + planeZ.toFixed(1));
-					drawConnectStadiumZoneThreeJS(fromHoleStore, torusWorldPos, connectAmount);
-				}
-			}
-		}
-		return; // Skip expensive operations (raycasting, snapping) until next 10fps tick (100ms)
-	}
-	window._lastMouseMoveTime = now;
 
 	// Step 13e) Update hover state and get raytrace intersection for 3D tracking
 	// Always raycast to get 3D position (even if no blast holes, we might hit surfaces/other objects)
@@ -2760,42 +2703,32 @@ function handle3DMouseMove(event) {
 			isCurrentlySnapped
 		);
 
-		// Step 13f.6) DISABLED - Stadium zone now drawn in FAST PATH (60fps) above at line ~2497
-		// Slow path (10fps) stadium zone drawing caused jerky movement
-		// const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
-		// if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
-		// 	const toRemove = [];
-		// 	threeRenderer.connectorsGroup.children.forEach((child) => {
-		// 		if (child.userData && child.userData.type === "stadiumZone") {
-		// 			toRemove.push(child);
-		// 		}
-		// 	});
-		// 	toRemove.forEach((obj) => {
-		// 		threeRenderer.connectorsGroup.remove(obj);
-		// 		if (obj.geometry) obj.geometry.dispose();
-		// 		if (obj.material) {
-		// 			if (Array.isArray(obj.material)) {
-		// 				obj.material.forEach((mat) => mat.dispose());
-		// 			} else {
-		// 				obj.material.dispose();
-		// 			}
-		// 		}
-		// 	});
-		//
-		// 	// Only draw stadium zone if we have valid mouse position
-		// 	if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
-		// 		// DIAGNOSTIC: Log stadium zone coordinates to debug why it's stuck at data centroid
-		// 		if (!window._stadiumZoneLogCount || window._stadiumZoneLogCount < 5) {
-		// 			console.log("🏟️ Stadium Zone:", {
-		// 				fromHole: {x: fromHoleStore.startXLocation, y: fromHoleStore.startYLocation, z: fromHoleStore.startZLocation},
-		// 				mouseWorld: {x: mouseWorldPos.x, y: mouseWorldPos.y, z: mouseWorldPos.z},
-		// 				connectAmount: connectAmount
-		// 			});
-		// 			window._stadiumZoneLogCount = (window._stadiumZoneLogCount || 0) + 1;
-		// 		}
-		// 		drawConnectStadiumZoneThreeJS(fromHoleStore, mouseWorldPos, connectAmount);
-		// 	}
-		// }
+		// Step 13f.6) Draw stadium zone if connector tool is active
+		const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
+		if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
+			const toRemove = [];
+			threeRenderer.connectorsGroup.children.forEach((child) => {
+				if (child.userData && child.userData.type === "stadiumZone") {
+					toRemove.push(child);
+				}
+			});
+			toRemove.forEach((obj) => {
+				threeRenderer.connectorsGroup.remove(obj);
+				if (obj.geometry) obj.geometry.dispose();
+				if (obj.material) {
+					if (Array.isArray(obj.material)) {
+						obj.material.forEach((mat) => mat.dispose());
+					} else {
+						obj.material.dispose();
+					}
+				}
+			});
+
+			// Only draw stadium zone if we have valid mouse position
+			if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+				drawConnectStadiumZoneThreeJS(fromHoleStore, mouseWorldPos, connectAmount);
+			}
+		}
 	}
 
 	// Step 13f.7) Always draw mouse position indicator on view plane (so it's always visible)
