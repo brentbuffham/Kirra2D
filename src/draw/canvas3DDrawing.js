@@ -1396,10 +1396,11 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	});
 
 	// Step 19.5c) Create mouse position indicator sphere
-	// Size based on snap radius - properly scaled for current 3D view
+	// Size matches snap tolerance slider - fixed pixel size on screen
 	const snapRadiusPixels = window.snapRadiusPixels !== undefined ? window.snapRadiusPixels : 15; // Default 15px
 
-	// Use 3D-aware conversion that accounts for camera frustum
+	// Convert snap radius pixels to world units at cursor position
+	// This ensures the sphere appears as a constant screen-space size
 	let snapRadiusWorld;
 	if (typeof window.getSnapRadiusInWorldUnits3D === "function") {
 		snapRadiusWorld = window.getSnapRadiusInWorldUnits3D(snapRadiusPixels);
@@ -1408,12 +1409,15 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 		snapRadiusWorld = snapRadiusPixels / (window.currentScale || 1.0);
 	}
 
-	// Make indicator sphere larger and more visible (3x snap radius for visibility)
-	const indicatorSize = Math.max(snapRadiusWorld * 3.0, 0.5); // Minimum 0.5m radius for visibility
+	// CRITICAL: Ensure sphere is always visible with minimum size
+	// User reports sphere not visible even with previous attempts
+	// Use direct pixel-to-world conversion with enforced minimum of 1.0m radius
+	const indicatorSize = Math.max(snapRadiusWorld, 1.0);
 	
-	// DEBUG: Log indicator size
+	// DEBUG: Log indicator size with more detail
 	if (window.developerModeEnabled) {
-		console.log("📍 Indicator size: snapRadiusPixels=" + snapRadiusPixels + "px, snapRadiusWorld=" + snapRadiusWorld.toFixed(2) + "m, indicatorSize=" + indicatorSize.toFixed(2) + "m");
+		console.log("📍 Indicator size: snapRadiusPixels=" + snapRadiusPixels + "px, snapRadiusWorld=" + snapRadiusWorld.toFixed(4) + "m, indicatorSize=" + indicatorSize.toFixed(2) + "m");
+		console.log("📍 Camera distance check - threeRenderer.camera.position.z:", window.threeRenderer ? window.threeRenderer.camera.position.z.toFixed(2) : "N/A");
 	}
 	const indicatorGroup = GeometryFactory.createMousePositionIndicator(
 		local.x,
