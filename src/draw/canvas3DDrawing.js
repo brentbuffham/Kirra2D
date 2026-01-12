@@ -1408,7 +1408,13 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 		snapRadiusWorld = snapRadiusPixels / (window.currentScale || 1.0);
 	}
 
-	const indicatorSize = snapRadiusWorld;
+	// Make indicator sphere larger and more visible (3x snap radius for visibility)
+	const indicatorSize = Math.max(snapRadiusWorld * 3.0, 0.5); // Minimum 0.5m radius for visibility
+	
+	// DEBUG: Log indicator size
+	if (window.developerModeEnabled) {
+		console.log("📍 Indicator size: snapRadiusPixels=" + snapRadiusPixels + "px, snapRadiusWorld=" + snapRadiusWorld.toFixed(2) + "m, indicatorSize=" + indicatorSize.toFixed(2) + "m");
+	}
 	const indicatorGroup = GeometryFactory.createMousePositionIndicator(
 		local.x,
 		local.y,
