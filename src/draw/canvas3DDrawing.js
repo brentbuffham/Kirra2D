@@ -1320,6 +1320,13 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 	};
 
 	window.threeRenderer.connectorsGroup.add(stadiumGroup);
+	
+	// Request render to display the stadium zone
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
 }
 
 // Step 19.5) Draw mouse position indicator (crosshairs) in Three.js
@@ -1414,6 +1421,13 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// No billboarding markup needed - sphere looks the same from all angles
 
 	connectorsGroup.add(indicatorGroup);
+	
+	// Request render to display the mouse indicator
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
 }
 
 // Step 19.6) Draw KAD leading line preview in Three.js
@@ -1463,6 +1477,13 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 	};
 
 	connectorsGroup.add(line);
+	
+	// Request render to display the leading line
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
 }
 
 // Step 19.7) Clear KAD leading line preview in Three.js
