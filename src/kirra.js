@@ -39,8 +39,11 @@ console.log("🎯 Will use renderer:", window.useExperimental3DRenderer ? "V2 (E
 // Three.js Rendering System
 //=================================================
 import * as THREE from "three";
-import { ThreeRenderer } from "./three/ThreeRenderer.js";
+// DIAGNOSTIC: Temporarily commented out to test if V1 renderer is causing conflicts
+// import { ThreeRenderer } from "./three/ThreeRenderer.js";
 import { ThreeRendererV2 } from "./three/ThreeRendererV2.js";
+// Force V2 renderer for diagnostic purposes
+const ThreeRenderer = ThreeRendererV2;
 import { CameraControls } from "./three/CameraControls.js";
 import { GeometryFactory, clearTextCache } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
