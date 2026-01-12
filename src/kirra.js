@@ -2526,10 +2526,18 @@ function handle3DMouseMove(event) {
 	let torusWorldPos = null;
 	if (interactionManager && typeof interactionManager.getMouseWorldPositionOnViewPlane === "function") {
 		torusWorldPos = interactionManager.getMouseWorldPositionOnViewPlane();
-		// DEBUG: Disabled excessive logging on mouse move
-		// if (torusWorldPos && developerModeEnabled) {
-		// 	console.log("📐 torusWorldPos calculated:", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
-		// }
+		// DEBUG: Log view plane position
+		if (torusWorldPos && developerModeEnabled) {
+			console.log("📐 torusWorldPos (view plane):", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
+		}
+	}
+	
+	// DEBUG: Compare mouseWorldPos vs torusWorldPos
+	if (developerModeEnabled && mouseWorldPos && torusWorldPos) {
+		console.log("🎯 Coordinate comparison:");
+		console.log("  mouseWorldPos (raycast/plane):", mouseWorldPos.x.toFixed(2), mouseWorldPos.y.toFixed(2), mouseWorldPos.z.toFixed(2));
+		console.log("  torusWorldPos (view plane):", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
+		console.log("  Difference XY:", Math.abs(mouseWorldPos.x - torusWorldPos.x).toFixed(2), Math.abs(mouseWorldPos.y - torusWorldPos.y).toFixed(2));
 	}
 
 	// Step 13f.3) Final fallback to camera projection if plane intersection fails
@@ -2734,10 +2742,10 @@ function handle3DMouseMove(event) {
 		}
 	}
 
-	// Step 13f.7) Always draw mouse position indicator on view plane (so it's always visible)
+	// Step 13f.7) Always draw mouse position indicator at mouse position
 	// Special case: During orbit mode, lock torus to orbit focal point to prevent jumping
-	// CRITICAL FIX: Use view plane position for screen-space cursor tracking (not surface intersections)
-	// Priority: 1) Snapped position (if snapping), 2) Orbit center (if orbiting), 3) View plane (screen-space), 4) Camera centroid
+	// CRITICAL: Must use torusWorldPos (view plane) for screen-space tracking, NOT mouseWorldPos
+	// Priority: 1) Snapped position (if snapping), 2) Orbit center (if orbiting), 3) torusWorldPos (view plane), 4) mouseWorldPos, 5) Camera centroid
 	let indicatorPos = null;
 
 	// Step 13f.7a) Check if we have a snap target - highest priority for cursor display
@@ -2748,8 +2756,9 @@ function handle3DMouseMove(event) {
 			y: snapResult.worldY,
 			z: snapResult.worldZ,
 		};
-		// DEBUG: Disabled excessive logging on mouse move
-		// console.log("  ➜ Branch 1: SNAP TARGET", indicatorPos.z.toFixed(2));
+		if (developerModeEnabled) {
+			console.log("  ➜ Indicator Branch 1: SNAP TARGET", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+		}
 	} else {
 		// Step 13f.7b) Check if orbit mode is active via CameraControls
 		const isOrbitingNow = window.cameraControls && window.cameraControls.isOrbiting;
@@ -2766,18 +2775,25 @@ function handle3DMouseMove(event) {
 					y: cameraState.centroidY + originY,
 					z: orbitZ,
 				};
-				// DEBUG: Disabled excessive logging on mouse move
-				// console.log("  ➜ Branch 2: ORBITING (lock to orbit center)", indicatorPos.z.toFixed(2));
+				if (developerModeEnabled) {
+					console.log("  ➜ Indicator Branch 2: ORBITING", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+				}
 			}
-		} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
-			// Step 13f.7d) Use view plane position (ALWAYS - ensures screen-space cursor tracking)
-			// REMOVED: Hit object branch - it caused cursor to jump to surface elevations
-			// Screen-space cursor should track view plane, not surface intersections
+		} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y) && isFinite(torusWorldPos.z)) {
+			// Step 13f.7d) Use torusWorldPos (view plane) - ensures screen-space cursor tracking
+			// This is CRITICAL for cursor to follow mouse in 3D regardless of camera angle
 			indicatorPos = torusWorldPos;
-			// DEBUG: Disabled excessive logging on mouse move
-			// console.log("  ➜ Branch 3: VIEW PLANE (screen-space)", indicatorPos.z.toFixed(2));
+			if (developerModeEnabled) {
+				console.log("  ➜ Indicator Branch 3: VIEW PLANE (torusWorldPos)", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+			}
+		} else if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+			// Step 13f.7e) Fallback to mouseWorldPos if view plane not available
+			indicatorPos = mouseWorldPos;
+			if (developerModeEnabled) {
+				console.log("  ➜ Indicator Branch 4: MOUSE WORLD POS (fallback)", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+			}
 		} else {
-			// Step 13f.7e) Fallback: camera centroid if view plane calc failed
+			// Step 13f.7f) Final fallback: camera centroid
 			const fallbackZ = window.dataCentroidZ || 0;
 			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
 			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
@@ -2788,16 +2804,18 @@ function handle3DMouseMove(event) {
 					y: cameraState.centroidY + originY,
 					z: fallbackZ,
 				};
-				// DEBUG: Disabled excessive logging on mouse move
-				// console.log("  ➜ Branch 4: FALLBACK (camera centroid)", indicatorPos.z.toFixed(2));
+				if (developerModeEnabled) {
+					console.log("  ➜ Indicator Branch 5: CAMERA CENTROID", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+				}
 			} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
 				indicatorPos = {
 					x: centroidX,
 					y: centroidY,
 					z: fallbackZ,
 				};
-				// DEBUG: Disabled excessive logging on mouse move
-				// console.log("  ➜ Branch 5: FALLBACK (global centroid)", indicatorPos.z.toFixed(2));
+				if (developerModeEnabled) {
+					console.log("  ➜ Indicator Branch 6: GLOBAL CENTROID", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+				}
 			}
 		}
 	}
