@@ -264,36 +264,36 @@ jscolor.presets = jscolor.presets || {};
 jscolor.presets.default = {
 	format: "rgb",
 	palette: [
-		"#770000", 
-		"#FF0000", 
-		"#FF9900", 
-		"#FFFF00", 
-		"#00ff00", 
-		"#009900", 
-		"#00ffFF", 
-		"#0099ff", 
-		"#0000FF", 
-		"#FF00FF", 
-		"#550000", 
-		"#AA0000", 
-		"#883300", 
-		"#bbbb00", 
-		"#33AA00", 
-		"#006600", 
-		"#007F7F", 
-		"#002288", 
-		"#000099", 
-		"#7F007F", 
-		"#010101", 
-		"#222222", 
-		"#333333", 
-		"#444444", 
-		"#555555", 
-		"#777777", 
-		"#888888", 
+		"#770000",
+		"#FF0000",
+		"#FF9900",
+		"#FFFF00",
+		"#00ff00",
+		"#009900",
+		"#00ffFF",
+		"#0099ff",
+		"#0000FF",
+		"#FF00FF",
+		"#550000",
+		"#AA0000",
+		"#883300",
+		"#bbbb00",
+		"#33AA00",
+		"#006600",
+		"#007F7F",
+		"#002288",
+		"#000099",
+		"#7F007F",
+		"#010101",
+		"#222222",
+		"#333333",
+		"#444444",
+		"#555555",
+		"#777777",
+		"#888888",
 		"#AAAAAA",
 		"#cccccc",
-		"#FEFEFE", 
+		"#FEFEFE",
 	],
 };
 
@@ -877,7 +877,7 @@ function initializeThreeJS() {
 		cameraControls.attachEvents();
 
 		// Step 6d) Set callback for camera changes to update pattern tool labels
-		cameraControls.onCameraChange = function() {
+		cameraControls.onCameraChange = function () {
 			if (isPatternInPolygonActive) {
 				drawPatternInPolygon3DVisual(); // Updates HUD label positions via worldToScreen()
 			}
@@ -1301,7 +1301,7 @@ function handle3DClick(event) {
 		} else if (isPatternInPolygonActive) {
 			// Step 12c.1c.3) Handle Pattern in Polygon tool in 3D mode
 			console.log("⬇️ [3D CLICK] Pattern in Polygon click at:", worldX, worldY, worldZ);
-			
+
 			// Step 12c.1c.3a) For polygon selection (step 0), use 3D raycast to find KAD polygon
 			if (patternPolygonStep === 0) {
 				// Perform raycast to find KAD objects
@@ -1312,12 +1312,12 @@ function handle3DClick(event) {
 				}
 				interactionManager.updateMousePosition(event, threeCanvas);
 				const intersects = interactionManager.raycast();
-				
+
 				let clickedKADObject = null;
 				// Search intersects for KAD polygon objects
 				for (const intersect of intersects) {
 					let object = intersect.object;
-					
+
 					// Skip selection highlights
 					let isHighlight = false;
 					let checkObj = object;
@@ -1331,7 +1331,7 @@ function handle3DClick(event) {
 						depth++;
 					}
 					if (isHighlight) continue;
-					
+
 					// Traverse up to find KAD polygon
 					depth = 0;
 					while (object && depth < 10) {
@@ -1352,7 +1352,7 @@ function handle3DClick(event) {
 					}
 					if (clickedKADObject) break;
 				}
-				
+
 				// If polygon found, set selection state
 				if (clickedKADObject) {
 					selectedPolygon = clickedKADObject.entity;
@@ -2531,7 +2531,7 @@ function handle3DMouseMove(event) {
 			console.log("📐 torusWorldPos (view plane):", torusWorldPos.x.toFixed(2), torusWorldPos.y.toFixed(2), torusWorldPos.z.toFixed(2));
 		}
 	}
-	
+
 	// DEBUG: Compare mouseWorldPos vs torusWorldPos
 	if (developerModeEnabled && mouseWorldPos && torusWorldPos) {
 		console.log("🎯 Coordinate comparison:");
@@ -2973,7 +2973,7 @@ function handle3DMouseMove(event) {
 			: snapToNearestPoint(currentMouseWorldX, currentMouseWorldY);
 		var snappedMouseX = patternSnapResult.worldX;
 		var snappedMouseY = patternSnapResult.worldY;
-		
+
 		// Step 13f.9.5b) Reuse existing drawKADLeadingLineThreeJS for cheap dashed line
 		var startZ = patternStartPoint.z || dataCentroidZ || 0;
 		var mouseZ = currentMouseWorldZ || startZ;
@@ -2994,7 +2994,7 @@ function handle3DMouseMove(event) {
 			: snapToNearestPoint(currentMouseWorldX, currentMouseWorldY);
 		var snappedMouseX = holesLineSnapResult.worldX;
 		var snappedMouseY = holesLineSnapResult.worldY;
-		
+
 		var startZ = lineStartPoint.z || dataCentroidZ || 0;
 		var mouseZ = currentMouseWorldZ || startZ;
 		drawKADLeadingLineThreeJS(
@@ -3305,25 +3305,25 @@ document.addEventListener("DOMContentLoaded", function () {
 					// Step 1cd.2) Now draw the data with populated contours/arrows
 					// Step 1cd.2a) Store Three.js initialization state BEFORE drawData()
 					drawData(allBlastHoles, selectedHole);
-					
+
 					// Step 1cd.3) CRITICAL FIX: Complete 3D setup AFTER drawData() initializes Three.js
 					// This ensures threeRenderer and cameraControls exist
 					if (threeInitialized) {
 						// Three.js was just initialized during drawData()
 						console.log("📷 Three.js just initialized - completing 3D mode setup");
-						
+
 						// Step 1cd.3a) Now set the orbit center (threeRenderer now exists)
 						if (threeRenderer && typeof threeRenderer.setOrbitCenter === "function") {
 							var fullCentroid = calculateDataCentroid();
 							threeRenderer.setOrbitCenter(fullCentroid.x, fullCentroid.y, fullCentroid.z);
 							console.log("🎯 Orbit center set after init: X=" + fullCentroid.x.toFixed(2) + " Y=" + fullCentroid.y.toFixed(2) + " Z=" + fullCentroid.z.toFixed(2));
 						}
-						
+
 						// Step 1cd.3b) Sync camera with proper state
 						syncCameraToThreeJS();
 						console.log("📷 Camera synced after Three.js initialization on 3D mode switch");
 						// Step 1cd.3c) Force a mouse move event to initialize the torus indicator
-						requestAnimationFrame(function() {
+						requestAnimationFrame(function () {
 							if (threeRenderer) {
 								var threeCanvas = threeRenderer.getCanvas();
 								if (threeCanvas) {
@@ -3609,7 +3609,7 @@ let contourOverlayCtx = null;
 let debouncedUpdateTreeView;
 
 // Function to update TreeView when holes are added
-window.updateTreeFromBlastHoles = function() {
+window.updateTreeFromBlastHoles = function () {
 	if (typeof debouncedUpdateTreeView === "function") {
 		debouncedUpdateTreeView();
 	}
@@ -4242,7 +4242,7 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("touchstart", handleHolesAlongPolyLineClick);
 		isHolesAlongPolyLineActive = false;
 	}
-	
+
 	// Hide pattern tool HUD labels when any pattern tool is deactivated
 	if (!excluding.includes("patternInPolygonTool") || !excluding.includes("holesAlongLineTool") || !excluding.includes("holesAlongPolyLineTool")) {
 		hidePatternToolLabels();
@@ -4742,7 +4742,7 @@ document.getElementById("deleteAllPatternsButton").addEventListener("click", del
 // Step 5a) GPU Memory Management button
 var freeGPUMemoryButton = document.getElementById("freeGPUMemoryButton");
 if (freeGPUMemoryButton) {
-	freeGPUMemoryButton.addEventListener("click", function() {
+	freeGPUMemoryButton.addEventListener("click", function () {
 		console.log("🗑️ User requested GPU memory cleanup");
 		if (window.threeInitialized) {
 			disposeKADThreeJS();
@@ -5656,7 +5656,7 @@ resizeRight.addEventListener("mousedown", function (e) {
 	e.preventDefault(); // Prevent text selection during drag
 
 	// Define cleanup function
-	const cleanupResize = function() {
+	const cleanupResize = function () {
 		isResizingRight = false;
 		document.removeEventListener("mousemove", handleMouseMove);
 		document.removeEventListener("mouseup", cleanupResize);
@@ -5673,7 +5673,7 @@ resizeLeft.addEventListener("mousedown", function (e) {
 	e.preventDefault(); // Prevent text selection during drag
 
 	// Define cleanup function
-	const cleanupResize = function() {
+	const cleanupResize = function () {
 		isResizingLeft = false;
 		document.removeEventListener("mousemove", handleMouseMove);
 		document.removeEventListener("mouseup", cleanupResize);
@@ -6761,31 +6761,31 @@ window.addEventListener("resize", handleBaseCanvasResize);
 // PERFORMANCE FIX: Removed console.log inside loops - was freezing browser with large DXFs
 function updateAllLineMaterialResolution() {
 	if (!window.threeRenderer) return;
-	
+
 	// Step A5.0) Use window dimensions for LineMaterial resolution
 	// LineMaterial expects CSS pixel dimensions matching the DOM viewport
 	var res = new THREE.Vector2(window.innerWidth, window.innerHeight);
 	var updateCount = 0;
-	
+
 	// Step A5.0a) Log only in developer mode (avoid spam on every resize)
 	if (developerModeEnabled) {
 		console.log("🔧 Updating LineMaterial resolution to:", window.innerWidth, "x", window.innerHeight);
 	}
-	
+
 	// Step A5.1) Traverse entire scene ONCE (includes kadGroup, surfacesGroup, etc.)
 	// No need to traverse kadGroup separately since it's part of the scene
 	if (window.threeRenderer.scene) {
-		window.threeRenderer.scene.traverse(function(child) {
+		window.threeRenderer.scene.traverse(function (child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
 				updateCount++;
 			}
 		});
 	}
-	
+
 	// Step A5.2) Also update any pattern tool 3D groups (these may not be in scene)
 	if (window.patternTool3DGroup) {
-		window.patternTool3DGroup.traverse(function(child) {
+		window.patternTool3DGroup.traverse(function (child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
 				updateCount++;
@@ -6793,7 +6793,7 @@ function updateAllLineMaterialResolution() {
 		});
 	}
 	if (window.holesAlongLine3DGroup) {
-		window.holesAlongLine3DGroup.traverse(function(child) {
+		window.holesAlongLine3DGroup.traverse(function (child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
 				updateCount++;
@@ -6801,14 +6801,14 @@ function updateAllLineMaterialResolution() {
 		});
 	}
 	if (window.holesAlongPolyline3DGroup) {
-		window.holesAlongPolyline3DGroup.traverse(function(child) {
+		window.holesAlongPolyline3DGroup.traverse(function (child) {
 			if (child.material && child.material.isLineMaterial) {
 				child.material.resolution.copy(res);
 				updateCount++;
 			}
 		});
 	}
-	
+
 	// Step A5.3) Single summary log (only if developerModeEnabled or updateCount > 0)
 	if (updateCount > 0 && developerModeEnabled) {
 		console.log("🔧 Updated " + updateCount + " LineMaterial resolutions to: " + window.innerWidth + " x " + window.innerHeight);
@@ -7057,7 +7057,7 @@ document.getElementById("exportHolesDXF").addEventListener("click", function () 
 		defaultFilename,
 		"Export",
 		"Cancel",
-		function(filename) {
+		function (filename) {
 			// User confirmed
 			if (!filename || filename.trim() === "") {
 				showModalMessage("Export Cancelled", "No filename provided", "warning");
@@ -7080,7 +7080,7 @@ document.getElementById("exportHolesDXF").addEventListener("click", function () 
 				downloadDXF(dxf, filename);
 			}
 		},
-		function() {
+		function () {
 			// User cancelled
 			console.log("DXF holes export cancelled by user");
 		}
@@ -7107,7 +7107,7 @@ document.getElementById("exportDrawingDXF").addEventListener("click", function (
 		defaultFilename,
 		"Export",
 		"Cancel",
-		async function(filename) {
+		async function (filename) {
 			// User confirmed
 			if (!filename || filename.trim() === "") {
 				showModalMessage("Export Cancelled", "No filename provided", "warning");
@@ -7127,7 +7127,7 @@ document.getElementById("exportDrawingDXF").addEventListener("click", function (
 
 				// Step 5) Filter visible KAD entities
 				var visibleKADMap = new Map();
-				window.allKADDrawingsMap.forEach(function(entity, entityName) {
+				window.allKADDrawingsMap.forEach(function (entity, entityName) {
 					if (window.isEntityVisible && !window.isEntityVisible(entityName)) {
 						return; // Skip hidden entities
 					}
@@ -7174,7 +7174,7 @@ document.getElementById("exportDrawingDXF").addEventListener("click", function (
 				showModalMessage("Export Failed", error.message, "error");
 			}
 		},
-		function() {
+		function () {
 			// User cancelled
 			console.log("DXF drawings export cancelled by user");
 		}
@@ -7243,7 +7243,7 @@ document.querySelectorAll(".dxf-holes-output-btn").forEach(function (button) {
 			defaultFilename,
 			"Export",
 			"Cancel",
-			async function(filename) {
+			async function (filename) {
 				if (!filename || filename.trim() === "") {
 					showModalMessage("Export Cancelled", "No filename provided", "warning");
 					return;
@@ -7296,7 +7296,7 @@ document.querySelectorAll(".dxf-holes-output-btn").forEach(function (button) {
 					showModalMessage("Export Failed", error.message, "error");
 				}
 			},
-			function() {
+			function () {
 				console.log("DXF Holes export cancelled by user");
 			}
 		);
@@ -7459,7 +7459,7 @@ document.querySelectorAll(".holes-output-btn").forEach(function (button) {
 				defaultFilename,
 				"Export",
 				"Cancel",
-				async function(filename) {
+				async function (filename) {
 					// User confirmed
 					if (!filename || filename.trim() === "") {
 						showModalMessage("Export Cancelled", "No filename provided", "warning");
@@ -7492,7 +7492,7 @@ document.querySelectorAll(".holes-output-btn").forEach(function (button) {
 						showModalMessage("Export Failed", "Error exporting CSV: " + error.message, "error");
 					}
 				},
-				function() {
+				function () {
 					// User cancelled
 					console.log("CSV export cancelled by user");
 				}
@@ -7582,29 +7582,29 @@ document.querySelectorAll(".surpac-output-btn").forEach(function (button) {
 			var timestamp = new Date().toISOString().slice(0, 19).replace(/-/g, "").replace(/:/g, "").replace("T", "_");
 
 			if (fileFormat === "dtm") {
-			// Step 4a) DTM - Export BOTH DTM and STR files for visible surfaces only
-			if (!window.loadedSurfaces || window.loadedSurfaces.size === 0) {
-				showModalMessage("No Data", "No surfaces loaded. Please load a surface first (OBJ, DXF, PLY).", "warning");
-				return;
-			}
-
-			// Filter visible surfaces only
-			var visibleSurfaces = new Map();
-			window.loadedSurfaces.forEach(function(surface, key) {
-				if (surface.visible) {
-					visibleSurfaces.set(key, surface);
+				// Step 4a) DTM - Export BOTH DTM and STR files for visible surfaces only
+				if (!window.loadedSurfaces || window.loadedSurfaces.size === 0) {
+					showModalMessage("No Data", "No surfaces loaded. Please load a surface first (OBJ, DXF, PLY).", "warning");
+					return;
 				}
-			});
 
-			if (visibleSurfaces.size === 0) {
-				showModalMessage("No Visible Surfaces", "No visible surfaces to export. Please make some surfaces visible first.", "warning");
-				return;
-			}
+				// Filter visible surfaces only
+				var visibleSurfaces = new Map();
+				window.loadedSurfaces.forEach(function (surface, key) {
+					if (surface.visible) {
+						visibleSurfaces.set(key, surface);
+					}
+				});
 
-			exportData = {
-				surfaces: visibleSurfaces,
-				fileName: "surface"
-			};
+				if (visibleSurfaces.size === 0) {
+					showModalMessage("No Visible Surfaces", "No visible surfaces to export. Please make some surfaces visible first.", "warning");
+					return;
+				}
+
+				exportData = {
+					surfaces: visibleSurfaces,
+					fileName: "surface"
+				};
 
 				// Step 4a.1) Get writers
 				var DTMWriter = window.fileManager.writers.get("surpac-dtm");
@@ -7632,7 +7632,7 @@ document.querySelectorAll(".surpac-output-btn").forEach(function (button) {
 					"SURPAC_Surface_" + timestamp,
 					"Export",
 					"Cancel",
-					function(baseFilename) {
+					function (baseFilename) {
 						if (!baseFilename || baseFilename.trim() === "") {
 							showModalMessage("Export Cancelled", "No filename provided", "warning");
 							return;
@@ -7655,28 +7655,28 @@ document.querySelectorAll(".surpac-output-btn").forEach(function (button) {
 							dtmWriter.write(exportData),
 							strWriter.write(exportData)
 						])
-						.then(function (results) {
-							var dtmBlob = results[0];
-							var strBlob = results[1];
+							.then(function (results) {
+								var dtmBlob = results[0];
+								var strBlob = results[1];
 
-							// Export both files with File System Access API
-							if (window.showSaveFilePicker) {
-								exportSurpacWithFilePicker(dtmBlob, finalDtmFilename, strBlob, finalStrFilename);
-							} else {
-								// Fallback to standard download
-								dtmWriter.downloadFile(dtmBlob, finalDtmFilename);
-								strWriter.downloadFile(strBlob, finalStrFilename);
-								showModalMessage("Export Complete", "Exported both " + finalDtmFilename + " and " + finalStrFilename, "success");
-							}
+								// Export both files with File System Access API
+								if (window.showSaveFilePicker) {
+									exportSurpacWithFilePicker(dtmBlob, finalDtmFilename, strBlob, finalStrFilename);
+								} else {
+									// Fallback to standard download
+									dtmWriter.downloadFile(dtmBlob, finalDtmFilename);
+									strWriter.downloadFile(strBlob, finalStrFilename);
+									showModalMessage("Export Complete", "Exported both " + finalDtmFilename + " and " + finalStrFilename, "success");
+								}
 
-							console.log("Surpac DTM+STR export completed: " + finalDtmFilename + " + " + finalStrFilename);
-						})
-						.catch(function (error) {
-							console.error("Error exporting Surpac DTM+STR:", error);
-							showModalMessage("Export Error", error.message, "error");
-						});
+								console.log("Surpac DTM+STR export completed: " + finalDtmFilename + " + " + finalStrFilename);
+							})
+							.catch(function (error) {
+								console.error("Error exporting Surpac DTM+STR:", error);
+								showModalMessage("Export Error", error.message, "error");
+							});
 					},
-					function() {
+					function () {
 						console.log("Surpac DTM+STR export cancelled by user");
 					}
 				);
@@ -7724,7 +7724,7 @@ document.querySelectorAll(".surpac-output-btn").forEach(function (button) {
 
 				// Convert back to Map for writer
 				var visibleKADMap = new Map();
-				visibleKADEntities.forEach(function(entity) {
+				visibleKADEntities.forEach(function (entity) {
 					if (entity.entityName) {
 						visibleKADMap.set(entity.entityName, entity);
 					}
@@ -7762,7 +7762,7 @@ document.querySelectorAll(".surpac-output-btn").forEach(function (button) {
 				filename,
 				"Export",
 				"Cancel",
-				function(userFilename) {
+				function (userFilename) {
 					if (!userFilename || userFilename.trim() === "") {
 						showModalMessage("Export Cancelled", "No filename provided", "warning");
 						return;
@@ -7790,7 +7790,7 @@ document.querySelectorAll(".surpac-output-btn").forEach(function (button) {
 							showModalMessage("Export Error", error.message, "error");
 						});
 				},
-				function() {
+				function () {
 					console.log("Surpac export cancelled by user");
 				}
 			);
@@ -7915,7 +7915,7 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 										window.loadedSurfaces = new Map();
 									}
 
-									data.surfaces.forEach(function(surface) {
+									data.surfaces.forEach(function (surface) {
 										// Step 6c) Create a proper surface record with id and points for TreeView/DB
 										var surfaceId = surface.name || ("DTM_Surface_" + Date.now());
 
@@ -7924,9 +7924,9 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 										if (!points || !Array.isArray(points) || points.length === 0) {
 											var pointsMap = new Map();
 											if (surface.triangles && Array.isArray(surface.triangles)) {
-												surface.triangles.forEach(function(tri) {
+												surface.triangles.forEach(function (tri) {
 													if (tri.vertices && Array.isArray(tri.vertices)) {
-														tri.vertices.forEach(function(v) {
+														tri.vertices.forEach(function (v) {
 															if (v && typeof v.x === "number" && typeof v.y === "number" && typeof v.z === "number") {
 																var key = v.x + "_" + v.y + "_" + v.z;
 																if (!pointsMap.has(key)) {
@@ -7955,7 +7955,7 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 										console.log("Imported surface: " + surfaceId + " (" + surfaceData.points.length + " points, " + surfaceData.triangles.length + " triangles)");
 
 										// Step 6c.1) Save surface to IndexedDB
-										setTimeout(async function() {
+										setTimeout(async function () {
 											try {
 												await saveSurfaceToDB(surfaceId);
 												console.log("STR+DTM surface saved to database: " + surfaceId);
@@ -8113,17 +8113,17 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 							} else if (isDTM && data.surfaces && data.surfaces.length > 0) {
 								// Import DTM surfaces properly to loadedSurfaces Map
 
-								data.surfaces.forEach(function(surface) {
+								data.surfaces.forEach(function (surface) {
 									// Generate unique surface ID
 									var surfaceId = surface.name || ("DTM_Surface_" + Date.now());
 
 									// Extract all unique points from triangles
 									var pointsMap = new Map();
-									surface.triangles.forEach(function(tri) {
-										tri.vertices.forEach(function(v) {
+									surface.triangles.forEach(function (tri) {
+										tri.vertices.forEach(function (v) {
 											var key = v.x + "_" + v.y + "_" + v.z;
 											if (!pointsMap.has(key)) {
-												pointsMap.set(key, {x: v.x, y: v.y, z: v.z});
+												pointsMap.set(key, { x: v.x, y: v.y, z: v.z });
 											}
 										});
 									});
@@ -8147,7 +8147,7 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									console.log("Added surface '" + surfaceId + "' with " + points.length + " points and " + surface.triangles.length + " triangles");
 
 									// Save surface to IndexedDB
-									setTimeout(async function() {
+									setTimeout(async function () {
 										try {
 											await saveSurfaceToDB(surfaceId);
 											console.log("DTM surface saved to database: " + surfaceId);
@@ -8158,7 +8158,7 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 								});
 
 								console.log("Imported " + data.surfaces.length + " surfaces with " +
-									data.surfaces.reduce(function(sum, s) { return sum + s.triangles.length; }, 0) + " triangles from DTM");
+									data.surfaces.reduce(function (sum, s) { return sum + s.triangles.length; }, 0) + " triangles from DTM");
 
 								// Draw the imported data
 								drawData(allBlastHoles, selectedHole);
@@ -8175,61 +8175,61 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 								// Import KAD entities only (no blast holes)
 								if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
 
-							// Step 6b) Chunk large polylines/lines BEFORE storing in database
-							// This prevents GPU exhaustion and database bloat
-							// CRITICAL: GPU has limits on single buffer size, not total file size
-							var MAX_VERTICES_PER_ENTITY = 10000; // Single buffer limit
-							var chunkedCount = 0;
-							var totalOriginalVertices = 0;
-							
-							data.kadEntities.forEach(function(entity) {
-								// Step 6b.1) Check if entity needs chunking (lines/polys with >10k vertices)
-								if ((entity.entityType === "line" || entity.entityType === "poly") && 
-								    entity.data && entity.data.length > MAX_VERTICES_PER_ENTITY) {
-									
-									totalOriginalVertices += entity.data.length;
-									
-									// Step 6b.2) Split into chunks
-									var numChunks = Math.ceil(entity.data.length / MAX_VERTICES_PER_ENTITY);
-									console.warn("⚠️ Large entity detected: " + entity.entityName + " (" + entity.data.length.toLocaleString() + " vertices)");
-									console.warn("   → Splitting into " + numChunks + " chunks of ~" + Math.ceil(entity.data.length / numChunks).toLocaleString() + " vertices each");
-									
-									for (var chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
-										var startIdx = chunkIdx * MAX_VERTICES_PER_ENTITY;
-										var endIdx = Math.min(startIdx + MAX_VERTICES_PER_ENTITY + 1, entity.data.length); // +1 for overlap
-										var chunkData = entity.data.slice(startIdx, endIdx);
-										
-										// Step 6b.3) Create unique name for chunk (check for collisions with existing entities)
-										var baseChunkName = entity.entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
-										var chunkName = getUniqueEntityName(baseChunkName, entity.entityType);
-										
-										// Step 6b.4) Store chunk as separate entity
-										allKADDrawingsMap.set(chunkName, {
-											entityName: chunkName,
-											entityType: entity.entityType,
-											data: chunkData,
-											isChunk: true,
-											originalEntity: entity.entityName,
-											chunkIndex: chunkIdx,
-											totalChunks: numChunks
-										});
-										chunkedCount++;
+								// Step 6b) Chunk large polylines/lines BEFORE storing in database
+								// This prevents GPU exhaustion and database bloat
+								// CRITICAL: GPU has limits on single buffer size, not total file size
+								var MAX_VERTICES_PER_ENTITY = 10000; // Single buffer limit
+								var chunkedCount = 0;
+								var totalOriginalVertices = 0;
+
+								data.kadEntities.forEach(function (entity) {
+									// Step 6b.1) Check if entity needs chunking (lines/polys with >10k vertices)
+									if ((entity.entityType === "line" || entity.entityType === "poly") &&
+										entity.data && entity.data.length > MAX_VERTICES_PER_ENTITY) {
+
+										totalOriginalVertices += entity.data.length;
+
+										// Step 6b.2) Split into chunks
+										var numChunks = Math.ceil(entity.data.length / MAX_VERTICES_PER_ENTITY);
+										console.warn("⚠️ Large entity detected: " + entity.entityName + " (" + entity.data.length.toLocaleString() + " vertices)");
+										console.warn("   → Splitting into " + numChunks + " chunks of ~" + Math.ceil(entity.data.length / numChunks).toLocaleString() + " vertices each");
+
+										for (var chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+											var startIdx = chunkIdx * MAX_VERTICES_PER_ENTITY;
+											var endIdx = Math.min(startIdx + MAX_VERTICES_PER_ENTITY + 1, entity.data.length); // +1 for overlap
+											var chunkData = entity.data.slice(startIdx, endIdx);
+
+											// Step 6b.3) Create unique name for chunk (check for collisions with existing entities)
+											var baseChunkName = entity.entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
+											var chunkName = getUniqueEntityName(baseChunkName, entity.entityType);
+
+											// Step 6b.4) Store chunk as separate entity
+											allKADDrawingsMap.set(chunkName, {
+												entityName: chunkName,
+												entityType: entity.entityType,
+												data: chunkData,
+												isChunk: true,
+												originalEntity: entity.entityName,
+												chunkIndex: chunkIdx,
+												totalChunks: numChunks
+											});
+											chunkedCount++;
+										}
+									} else {
+										// Step 6b.5) Normal-sized entity - check for name collision before storing
+										var uniqueName = getUniqueEntityName(entity.entityName, entity.entityType);
+										if (uniqueName !== entity.entityName) {
+											// Name collision detected - update entity's internal name
+											entity.entityName = uniqueName;
+										}
+										allKADDrawingsMap.set(uniqueName, entity);
 									}
-								} else {
-									// Step 6b.5) Normal-sized entity - check for name collision before storing
-									var uniqueName = getUniqueEntityName(entity.entityName, entity.entityType);
-									if (uniqueName !== entity.entityName) {
-										// Name collision detected - update entity's internal name
-										entity.entityName = uniqueName;
-									}
-									allKADDrawingsMap.set(uniqueName, entity);
+								});
+
+								if (chunkedCount > 0) {
+									console.log("✂️ Chunked " + chunkedCount + " large entities at storage level");
+									console.log("   📊 Total vertices chunked: " + totalOriginalVertices.toLocaleString());
 								}
-							});
-							
-							if (chunkedCount > 0) {
-								console.log("✂️ Chunked " + chunkedCount + " large entities at storage level");
-								console.log("   📊 Total vertices chunked: " + totalOriginalVertices.toLocaleString());
-							}
 								console.log("Imported " + data.kadEntities.length + " KAD entities from STR (" + allKADDrawingsMap.size + " entities after chunking)");
 
 								// Update UI elements (same as DXF import)
@@ -8243,12 +8243,12 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									debouncedUpdateTreeView();
 								}
 
-						showModalMessage("Import Complete",
-							"Imported " + data.kadEntities.length + " KAD entit" + (data.kadEntities.length === 1 ? "y" : "ies") +
-							(window.lastKadImportInfo && window.lastKadImportInfo.chunkedEntities > 0 ?
-								" (split into " + window.lastKadImportInfo.chunkedEntities + " chunks, " + 
-								window.lastKadImportInfo.totalVertices.toLocaleString() + " vertices total)" : ""),
-							"success");
+								showModalMessage("Import Complete",
+									"Imported " + data.kadEntities.length + " KAD entit" + (data.kadEntities.length === 1 ? "y" : "ies") +
+									(window.lastKadImportInfo && window.lastKadImportInfo.chunkedEntities > 0 ?
+										" (split into " + window.lastKadImportInfo.chunkedEntities + " chunks, " +
+										window.lastKadImportInfo.totalVertices.toLocaleString() + " vertices total)" : ""),
+									"success");
 							} else {
 								showModalMessage("No Data", "No data found in file", "warning");
 								return;
@@ -8306,10 +8306,10 @@ document.querySelectorAll(".image-output-btn").forEach(function (button) {
 			// Step 1) Get selected format from dropdown
 			var format = document.getElementById("imageFormat").value;
 
-		if (format === "geo-tiff") {
-			// Export cached canvases and loaded images as RGB GeoTIFF
-			await exportImagesAsGeoTIFF(surface2DCache, loadedSurfaces, loadedImages, window.fileManager, showModalMessage);
-		} else if (format === "elevation-tiff") {
+			if (format === "geo-tiff") {
+				// Export cached canvases and loaded images as RGB GeoTIFF
+				await exportImagesAsGeoTIFF(surface2DCache, loadedSurfaces, loadedImages, window.fileManager, showModalMessage);
+			} else if (format === "elevation-tiff") {
 				// Export surfaces as elevation GeoTIFF
 				await exportSurfacesAsElevationGeoTIFF(loadedSurfaces, window.fileManager, showModalMessage);
 			}
@@ -8363,131 +8363,131 @@ document.querySelectorAll(".obj-output-btn").forEach(function (button) {
 				return;
 			}
 
-		// Step 3) Convert surfaces to OBJ format - only export visible surfaces
-		var surfaces = Array.from(window.loadedSurfaces.values()).filter(function(surface) {
-			return surface.visible;
-		});
+			// Step 3) Convert surfaces to OBJ format - only export visible surfaces
+			var surfaces = Array.from(window.loadedSurfaces.values()).filter(function (surface) {
+				return surface.visible;
+			});
 
-		if (surfaces.length === 0) {
-			showModalMessage("No Data", "No visible surfaces to export", "warning");
-			return;
-		}
-
-	// Step 3a) Build vertices, normals, and faces from triangles with deduplication
-		var vertices = [];
-		var normals = [];
-		var faces = [];
-		var vertexMap = new Map(); // Deduplicate vertices
-		var normalMap = new Map(); // Deduplicate normals
-
-		surfaces.forEach(function(surface) {
-			if (!surface.triangles || !Array.isArray(surface.triangles)) {
+			if (surfaces.length === 0) {
+				showModalMessage("No Data", "No visible surfaces to export", "warning");
 				return;
 			}
 
-			surface.triangles.forEach(function(triangle) {
-				// Validate triangle structure
-				if (!triangle.vertices || triangle.vertices.length !== 3) {
+			// Step 3a) Build vertices, normals, and faces from triangles with deduplication
+			var vertices = [];
+			var normals = [];
+			var faces = [];
+			var vertexMap = new Map(); // Deduplicate vertices
+			var normalMap = new Map(); // Deduplicate normals
+
+			surfaces.forEach(function (surface) {
+				if (!surface.triangles || !Array.isArray(surface.triangles)) {
 					return;
 				}
 
-				// Validate all 3 vertices are valid before processing
-				var allValid = true;
-				for (var v = 0; v < 3; v++) {
-					var vert = triangle.vertices[v];
-					if (!vert || vert.x === undefined || vert.y === undefined || vert.z === undefined) {
-						allValid = false;
-						break;
+				surface.triangles.forEach(function (triangle) {
+					// Validate triangle structure
+					if (!triangle.vertices || triangle.vertices.length !== 3) {
+						return;
 					}
-				}
 
-				if (!allValid) {
-					console.warn("Skipping triangle with invalid vertices");
-					return;
-				}
+					// Validate all 3 vertices are valid before processing
+					var allValid = true;
+					for (var v = 0; v < 3; v++) {
+						var vert = triangle.vertices[v];
+						if (!vert || vert.x === undefined || vert.y === undefined || vert.z === undefined) {
+							allValid = false;
+							break;
+						}
+					}
 
-				// Step 3b) Calculate face normal
-				var v0 = triangle.vertices[0];
-				var v1 = triangle.vertices[1];
-				var v2 = triangle.vertices[2];
+					if (!allValid) {
+						console.warn("Skipping triangle with invalid vertices");
+						return;
+					}
 
-				// Edge vectors
-				var e1x = v1.x - v0.x;
-				var e1y = v1.y - v0.y;
-				var e1z = v1.z - v0.z;
-				var e2x = v2.x - v0.x;
-				var e2y = v2.y - v0.y;
-				var e2z = v2.z - v0.z;
+					// Step 3b) Calculate face normal
+					var v0 = triangle.vertices[0];
+					var v1 = triangle.vertices[1];
+					var v2 = triangle.vertices[2];
 
-				// Cross product
-				var nx = e1y * e2z - e1z * e2y;
-				var ny = e1z * e2x - e1x * e2z;
-				var nz = e1x * e2y - e1y * e2x;
+					// Edge vectors
+					var e1x = v1.x - v0.x;
+					var e1y = v1.y - v0.y;
+					var e1z = v1.z - v0.z;
+					var e2x = v2.x - v0.x;
+					var e2y = v2.y - v0.y;
+					var e2z = v2.z - v0.z;
 
-				// Normalize
-				var len = Math.sqrt(nx * nx + ny * ny + nz * nz);
-				if (len > 0) {
-					nx /= len;
-					ny /= len;
-					nz /= len;
-				}
+					// Cross product
+					var nx = e1y * e2z - e1z * e2y;
+					var ny = e1z * e2x - e1x * e2z;
+					var nz = e1x * e2y - e1y * e2x;
 
-				// Step 3c) Add or find normal
-				var normalKey = nx.toFixed(6) + "," + ny.toFixed(6) + "," + nz.toFixed(6);
-				var normalIndex;
-				if (normalMap.has(normalKey)) {
-					normalIndex = normalMap.get(normalKey);
-				} else {
-					normalIndex = normals.length;
-					normals.push({ x: nx, y: ny, z: nz });
-					normalMap.set(normalKey, normalIndex);
-				}
+					// Normalize
+					var len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+					if (len > 0) {
+						nx /= len;
+						ny /= len;
+						nz /= len;
+					}
 
-				// Step 3d) Add or find vertices and build face
-				var faceIndices = [];
-				for (var v = 0; v < 3; v++) {
-					var vert = triangle.vertices[v];
-					var vertKey = vert.x.toFixed(6) + "," + vert.y.toFixed(6) + "," + vert.z.toFixed(6);
-
-					var vertexIndex;
-					if (vertexMap.has(vertKey)) {
-						vertexIndex = vertexMap.get(vertKey);
+					// Step 3c) Add or find normal
+					var normalKey = nx.toFixed(6) + "," + ny.toFixed(6) + "," + nz.toFixed(6);
+					var normalIndex;
+					if (normalMap.has(normalKey)) {
+						normalIndex = normalMap.get(normalKey);
 					} else {
-						vertexIndex = vertices.length;
-						vertices.push({ x: vert.x, y: vert.y, z: vert.z });
-						vertexMap.set(vertKey, vertexIndex);
+						normalIndex = normals.length;
+						normals.push({ x: nx, y: ny, z: nz });
+						normalMap.set(normalKey, normalIndex);
 					}
-					faceIndices.push(vertexIndex);
-				}
 
-				// Step 3e) Add face with vertex and normal indices
-				faces.push({ 
-					indices: faceIndices,
-					normalIndex: normalIndex
+					// Step 3d) Add or find vertices and build face
+					var faceIndices = [];
+					for (var v = 0; v < 3; v++) {
+						var vert = triangle.vertices[v];
+						var vertKey = vert.x.toFixed(6) + "," + vert.y.toFixed(6) + "," + vert.z.toFixed(6);
+
+						var vertexIndex;
+						if (vertexMap.has(vertKey)) {
+							vertexIndex = vertexMap.get(vertKey);
+						} else {
+							vertexIndex = vertices.length;
+							vertices.push({ x: vert.x, y: vert.y, z: vert.z });
+							vertexMap.set(vertKey, vertexIndex);
+						}
+						faceIndices.push(vertexIndex);
+					}
+
+					// Step 3e) Add face with vertex and normal indices
+					faces.push({
+						indices: faceIndices,
+						normalIndex: normalIndex
+					});
 				});
 			});
-		});
 
 			if (vertices.length === 0) {
 				showModalMessage("No Data", "No vertices found in surfaces", "warning");
 				return;
 			}
 
-		// Step 3f) Write OBJ with proper data structure including normals
-		var writer = new Writer();
-		var blob = await writer.write({
-			vertices: vertices,
-			normals: normals,
-			faces: faces
-		});
-		
-		// Step 4) Download file
-		var uid = Math.random().toString(36).slice(2, 6);
-		var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-		writer.downloadFile(blob, "KIRRA_OBJ_" + uid + ".obj");
+			// Step 3f) Write OBJ with proper data structure including normals
+			var writer = new Writer();
+			var blob = await writer.write({
+				vertices: vertices,
+				normals: normals,
+				faces: faces
+			});
 
-		console.log("OBJ export completed: " + vertices.length + " vertices, " + normals.length + " normals, " + faces.length + " faces from " + surfaces.length + " surface(s)");
-		showModalMessage("Export Complete", "Exported " + vertices.length + " vertices, " + normals.length + " normals, " + faces.length + " faces to OBJ", "success");
+			// Step 4) Download file
+			var uid = Math.random().toString(36).slice(2, 6);
+			var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+			writer.downloadFile(blob, "KIRRA_OBJ_" + uid + ".obj");
+
+			console.log("OBJ export completed: " + vertices.length + " vertices, " + normals.length + " normals, " + faces.length + " faces from " + surfaces.length + " surface(s)");
+			showModalMessage("Export Complete", "Exported " + vertices.length + " vertices, " + normals.length + " normals, " + faces.length + " faces to OBJ", "success");
 		} catch (error) {
 			console.error("OBJ export error:", error);
 			showModalMessage("Export Failed", "Error: " + error.message, "error");
@@ -8523,23 +8523,23 @@ document.querySelectorAll(".pointcloud-output-btn").forEach(function (button) {
 				return;
 			}
 
-		// Step 3) Extract all vertices from visible surfaces only as points
-		var points = [];
-		window.loadedSurfaces.forEach(function(surface) {
-			if (surface.visible && surface.triangles && Array.isArray(surface.triangles)) {
-				surface.triangles.forEach(function(triangle) {
-					if (triangle.vertices) {
-						triangle.vertices.forEach(function(vertex) {
-							points.push({
-								x: vertex.x,
-								y: vertex.y,
-								z: vertex.z || 0
+			// Step 3) Extract all vertices from visible surfaces only as points
+			var points = [];
+			window.loadedSurfaces.forEach(function (surface) {
+				if (surface.visible && surface.triangles && Array.isArray(surface.triangles)) {
+					surface.triangles.forEach(function (triangle) {
+						if (triangle.vertices) {
+							triangle.vertices.forEach(function (vertex) {
+								points.push({
+									x: vertex.x,
+									y: vertex.y,
+									z: vertex.z || 0
+								});
 							});
-						});
-					}
-				});
-			}
-		});
+						}
+					});
+				}
+			});
 
 			if (points.length === 0) {
 				showModalMessage("No Data", "No vertices found in surfaces", "warning");
@@ -8559,7 +8559,7 @@ document.querySelectorAll(".pointcloud-output-btn").forEach(function (button) {
 				defaultFilename,
 				"Export",
 				"Cancel",
-				async function(filename) {
+				async function (filename) {
 					if (!filename || filename.trim() === "") {
 						showModalMessage("Export Cancelled", "No filename provided", "warning");
 						return;
@@ -8591,7 +8591,7 @@ document.querySelectorAll(".pointcloud-output-btn").forEach(function (button) {
 						showModalMessage("Export Failed", "Error: " + error.message, "error");
 					}
 				},
-				function() {
+				function () {
 					console.log("Point Cloud export cancelled by user");
 				}
 			);
@@ -8603,8 +8603,8 @@ document.querySelectorAll(".pointcloud-output-btn").forEach(function (button) {
 });
 
 // KML/KMZ IMPORT - Import blast holes or geometry from Google Earth
-document.querySelectorAll(".kml-input-btn").forEach(function(button) {
-	button.addEventListener("click", async function() {
+document.querySelectorAll(".kml-input-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
 		try {
 			// Step 1) Create file input for KML/KMZ files
 			var input = document.createElement("input");
@@ -8612,7 +8612,7 @@ document.querySelectorAll(".kml-input-btn").forEach(function(button) {
 			input.accept = ".kml,.kmz";
 			input.multiple = false;
 
-			input.onchange = async function(e) {
+			input.onchange = async function (e) {
 				var file = e.target.files[0];
 				if (!file) return;
 
@@ -8650,7 +8650,7 @@ document.querySelectorAll(".kml-input-btn").forEach(function(button) {
 
 								// Step 7) Update UI and redraw
 								window.drawData(window.allBlastHoles, window.selectedHole);
-								
+
 								// Update tree view if available
 								if (window.debouncedUpdateTreeView) {
 									window.debouncedUpdateTreeView();
@@ -8677,7 +8677,7 @@ document.querySelectorAll(".kml-input-btn").forEach(function(button) {
 
 								// Step 9) Update UI and redraw
 								window.drawData(window.allBlastHoles, window.selectedHole);
-								
+
 								// Update tree view if available
 								if (window.debouncedUpdateTreeView) {
 									window.debouncedUpdateTreeView();
@@ -8720,12 +8720,12 @@ document.querySelectorAll(".kml-input-btn").forEach(function(button) {
 });
 
 // KML/KMZ EXPORT - Export visible blast holes or geometry to Google Earth
-document.querySelectorAll(".kml-output-btn").forEach(function(button) {
-	button.addEventListener("click", async function() {
+document.querySelectorAll(".kml-output-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
 		try {
 			// Step 1) Show projection configuration dialog
 			var config = await window.promptForKMLExportProjection("blastholes");
-			
+
 			if (config.cancelled) {
 				return;
 			}
@@ -8733,10 +8733,10 @@ document.querySelectorAll(".kml-output-btn").forEach(function(button) {
 			// Step 2) Prepare data based on export type
 			var data = {};
 			var entityName = "Export";
-			
+
 			if (config.exportType === "blastholes") {
 				// Step 3) Filter visible holes
-				var visibleHoles = window.allBlastHoles.filter(function(hole) {
+				var visibleHoles = window.allBlastHoles.filter(function (hole) {
 					return window.isHoleVisible(hole);
 				});
 
@@ -8750,14 +8750,14 @@ document.querySelectorAll(".kml-output-btn").forEach(function(button) {
 			} else if (config.exportType === "geometry") {
 				// Step 4) Get visible KAD entities from kadDrawingsMap
 				var visibleEntities = [];
-				
+
 				if (window.allKADDrawingsMap && window.allKADDrawingsMap.size > 0) {
 					for (var [entityName, entityData] of window.allKADDrawingsMap.entries()) {
 						// Check visibility
 						if (window.isEntityVisible && !window.isEntityVisible(entityName)) {
 							continue;
 						}
-						
+
 						// Convert KAD format to entities array for KML export
 						if (entityData && entityData.data && Array.isArray(entityData.data)) {
 							// Create entity object compatible with KML writer
@@ -8771,7 +8771,7 @@ document.querySelectorAll(".kml-output-btn").forEach(function(button) {
 								lineWidth: entityData.data.length > 0 ? (entityData.data[0].lineWidth || 1) : 1,
 								coordinates: []
 							};
-							
+
 							// Map coordinates based on entity type
 							// IMPORTANT: Each coordinate carries its own color and lineWidth (and text/radius where applicable)
 							for (var i = 0; i < entityData.data.length; i++) {
@@ -8784,20 +8784,20 @@ document.querySelectorAll(".kml-output-btn").forEach(function(button) {
 									color: item.color || entity.color,  // Each coord has its own color!
 									lineWidth: item.lineWidth || entity.lineWidth  // Each coord has its own lineWidth!
 								};
-								
+
 								// Add text property only for text entities
 								if (entityData.entityType === "text" && item.text !== undefined) {
 									coord.text = item.text;
 								}
-								
+
 								// Add radius property only for circle entities
 								if (entityData.entityType === "circle" && item.radius !== undefined) {
 									coord.radius = item.radius;
 								}
-								
+
 								entity.coordinates.push(coord);
 							}
-							
+
 							// Add entity-level properties for circles and text
 							if (entityData.entityType === "circle" && entityData.data.length > 0) {
 								entity.radius = entityData.data[0].radius || 10;
@@ -8806,12 +8806,12 @@ document.querySelectorAll(".kml-output-btn").forEach(function(button) {
 								entity.text = entityData.data[0].text || "";
 								entity.fontHeight = entityData.data[0].fontHeight || 12;
 							}
-							
+
 							visibleEntities.push(entity);
 						}
 					}
 				}
-				
+
 				if (visibleEntities.length === 0) {
 					showModalMessage("No Data", "No visible geometry to export", "warning");
 					return;
@@ -8835,7 +8835,7 @@ document.querySelectorAll(".kml-output-btn").forEach(function(button) {
 				defaultFilename,
 				"Export",
 				"Cancel",
-				async function(filename) {
+				async function (filename) {
 					// User confirmed
 					if (!filename || filename.trim() === "") {
 						showModalMessage("Export Cancelled", "No filename provided", "warning");
@@ -8874,7 +8874,7 @@ document.querySelectorAll(".kml-output-btn").forEach(function(button) {
 
 						// Step 12) Show success message
 						showModalMessage(
-							"Export Successful", 
+							"Export Successful",
 							"Exported " + (config.exportType === "blastholes" ? visibleHoles.length + " holes" : visibleEntities.length + " entities") + " to " + filename,
 							"success"
 						);
@@ -8883,7 +8883,7 @@ document.querySelectorAll(".kml-output-btn").forEach(function(button) {
 						showModalMessage("Export Failed", error.message, "error");
 					}
 				},
-				function() {
+				function () {
 					// User cancelled
 					console.log("KML/KMZ export cancelled by user");
 				}
@@ -8965,7 +8965,7 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 									);
 
 									// CRITICAL FIX: Copy IREDES-specific fields that addHole() doesn't accept
-									var createdHole = allBlastHoles.find(function(hole) {
+									var createdHole = allBlastHoles.find(function (hole) {
 										return hole.entityName === entityName && hole.holeID === h.holeID;
 									});
 
@@ -9001,9 +9001,9 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 
 								// Step 9) Calculate burden and spacing (only if not already set)
 								// CRITICAL: Preserve user-supplied burden/spacing values
-								var needsBurdenCalc = importedHoles.filter(function(h) {
+								var needsBurdenCalc = importedHoles.filter(function (h) {
 									return (h.burden === undefined || h.burden === null || h.burden === 1) &&
-									       (h.spacing === undefined || h.spacing === null || h.spacing === 1);
+										(h.spacing === undefined || h.spacing === null || h.spacing === 1);
 								});
 								if (needsBurdenCalc.length > 0) {
 									calculateBurdenAndSpacingForHoles(needsBurdenCalc);
@@ -9350,7 +9350,7 @@ document.querySelector(".wenco-input-btn")?.addEventListener("click", function (
 
 							// Convert from points format (x, y, z) to KAD data format (pointXLocation, etc.)
 							if (entity.points && Array.isArray(entity.points)) {
-								entity.data = entity.points.map(function(point, index) {
+								entity.data = entity.points.map(function (point, index) {
 									var dataPoint = {
 										entityName: entity.entityName,
 										entityType: entity.entityType,
@@ -9389,7 +9389,7 @@ document.querySelector(".wenco-input-btn")?.addEventListener("click", function (
 						if (surfaces.length > 0) {
 							if (!window.loadedSurfaces) window.loadedSurfaces = new Map();
 
-							surfaces.forEach(function(surface) {
+							surfaces.forEach(function (surface) {
 								// Generate unique surface ID
 								var surfaceId = surface.name || ("NAV_Surface_" + Date.now());
 								var counter = 1;
@@ -9428,7 +9428,7 @@ document.querySelector(".wenco-input-btn")?.addEventListener("click", function (
 							parts.push(entities.length + " entit" + (entities.length === 1 ? "y" : "ies"));
 						}
 						if (surfaces.length > 0) {
-							var totalTriangles = surfaces.reduce(function(sum, s) { return sum + (s.triangleCount || 0); }, 0);
+							var totalTriangles = surfaces.reduce(function (sum, s) { return sum + (s.triangleCount || 0); }, 0);
 							parts.push(surfaces.length + " surface" + (surfaces.length === 1 ? "" : "s") + " (" + totalTriangles + " triangles)");
 						}
 						message += parts.join(", ");
@@ -9465,7 +9465,7 @@ document.querySelector(".wenco-output-btn")?.addEventListener("click", function 
 	// Filter to only visible surfaces
 	var visibleSurfaces = [];
 	if (window.loadedSurfaces && window.loadedSurfaces.size > 0) {
-		window.loadedSurfaces.forEach(function(surface) {
+		window.loadedSurfaces.forEach(function (surface) {
 			if (surface.visible) {
 				visibleSurfaces.push(surface);
 			}
@@ -9497,7 +9497,7 @@ document.querySelector(".wenco-output-btn")?.addEventListener("click", function 
 		defaultFilename,
 		"Export",
 		"Cancel",
-		function(filename) {
+		function (filename) {
 			// User confirmed - proceed with export
 			if (!filename || filename.trim() === "") {
 				showModalMessage("Export Cancelled", "No filename provided", "warning");
@@ -9518,7 +9518,7 @@ document.querySelector(".wenco-output-btn")?.addEventListener("click", function 
 				exportNAVStandard(visibleKADEntities, visibleSurfaces, filename);
 			}
 		},
-		function() {
+		function () {
 			// User cancelled
 			console.log("NAV export cancelled by user");
 		}
@@ -9534,54 +9534,54 @@ function exportNAVWithFilePicker(entities, surfaces, defaultFilename) {
 			accept: { 'text/plain': ['.nav'] }
 		}]
 	})
-	.then(function(fileHandle) {
-		// User selected save location
-		return fileHandle.createWritable()
-			.then(function(writable) {
-				// Generate NAV content
-				if (window.fileManager) {
-					var writer = window.fileManager.getWriter("wenco-nav");
-					if (writer) {
-						writer.options.filename = fileHandle.name;
+		.then(function (fileHandle) {
+			// User selected save location
+			return fileHandle.createWritable()
+				.then(function (writable) {
+					// Generate NAV content
+					if (window.fileManager) {
+						var writer = window.fileManager.getWriter("wenco-nav");
+						if (writer) {
+							writer.options.filename = fileHandle.name;
 
-						// Generate NAV content (don't auto-download)
-						var navContent = writer.generateNAV(entities, surfaces);
+							// Generate NAV content (don't auto-download)
+							var navContent = writer.generateNAV(entities, surfaces);
 
-						// Count total items exported
-						var totalTriangles = 0;
-						if (surfaces && Array.isArray(surfaces)) {
-							surfaces.forEach(function(surface) {
-								if (surface.triangles) totalTriangles += surface.triangles.length;
-							});
+							// Count total items exported
+							var totalTriangles = 0;
+							if (surfaces && Array.isArray(surfaces)) {
+								surfaces.forEach(function (surface) {
+									if (surface.triangles) totalTriangles += surface.triangles.length;
+								});
+							}
+							var totalItems = entities.length + totalTriangles;
+
+							// Write to selected file
+							return writable.write(navContent)
+								.then(function () {
+									return writable.close();
+								})
+								.then(function () {
+									var message = "Exported " + entities.length + " entities";
+									if (totalTriangles > 0) {
+										message += " and " + totalTriangles + " triangles";
+									}
+									message += " to " + fileHandle.name;
+									showModalMessage("Export Success", message, "success");
+								});
 						}
-						var totalItems = entities.length + totalTriangles;
-
-						// Write to selected file
-						return writable.write(navContent)
-							.then(function() {
-								return writable.close();
-							})
-							.then(function() {
-								var message = "Exported " + entities.length + " entities";
-								if (totalTriangles > 0) {
-									message += " and " + totalTriangles + " triangles";
-								}
-								message += " to " + fileHandle.name;
-								showModalMessage("Export Success", message, "success");
-							});
 					}
-				}
-			});
-	})
-	.catch(function(error) {
-		if (error.name === 'AbortError') {
-			console.log("User cancelled file picker");
-		} else {
-			console.error("File System Access API error:", error);
-			// Fallback to standard download
-			exportNAVStandard(entities, surfaces, defaultFilename);
-		}
-	});
+				});
+		})
+		.catch(function (error) {
+			if (error.name === 'AbortError') {
+				console.log("User cancelled file picker");
+			} else {
+				console.error("File System Access API error:", error);
+				// Fallback to standard download
+				exportNAVStandard(entities, surfaces, defaultFilename);
+			}
+		});
 }
 
 // Helper function: Export NAV with standard download (no location browser)
@@ -9601,11 +9601,11 @@ function exportNAVStandard(entities, surfaces, filename) {
 
 				// Write NAV file (handles download internally)
 				writer.write(data)
-					.then(function(result) {
+					.then(function (result) {
 						// Count triangles
 						var totalTriangles = 0;
 						if (surfaces && Array.isArray(surfaces)) {
-							surfaces.forEach(function(surface) {
+							surfaces.forEach(function (surface) {
 								if (surface.triangles) totalTriangles += surface.triangles.length;
 							});
 						}
@@ -9618,7 +9618,7 @@ function exportNAVStandard(entities, surfaces, filename) {
 
 						showModalMessage("Export Success", message, "success");
 					})
-					.catch(function(error) {
+					.catch(function (error) {
 						console.error("Wenco NAV export error:", error);
 						showModalMessage("Export Error", "Failed to export Wenco NAV: " + error.message, "error");
 					});
@@ -9704,7 +9704,7 @@ document.querySelector(".cblast-input-btn")?.addEventListener("click", function 
 							);
 
 							// CRITICAL FIX: Copy CBLAST-specific fields that addHole() doesn't accept
-							var createdHole = allBlastHoles.find(function(hole) {
+							var createdHole = allBlastHoles.find(function (hole) {
 								return hole.entityName === entityName && hole.holeID === h.holeID;
 							});
 
@@ -9749,9 +9749,9 @@ document.querySelector(".cblast-input-btn")?.addEventListener("click", function 
 
 						// Step 7) Calculate burden and spacing (only if not already set)
 						// CRITICAL: Preserve user-supplied burden/spacing values
-						var needsBurdenCalc = importedHoles.filter(function(h) {
+						var needsBurdenCalc = importedHoles.filter(function (h) {
 							return (h.burden === undefined || h.burden === null || h.burden === 1) &&
-							       (h.spacing === undefined || h.spacing === null || h.spacing === 1);
+								(h.spacing === undefined || h.spacing === null || h.spacing === 1);
 						});
 						if (needsBurdenCalc.length > 0) {
 							calculateBurdenAndSpacingForHoles(needsBurdenCalc);
@@ -9815,7 +9815,7 @@ document.querySelector(".cblast-output-btn")?.addEventListener("click", function
 	}
 
 	// Step 2) Filter to only visible blast holes (CBLAST is holes-only export)
-	var visibleHoles = allBlastHoles.filter(function(hole) {
+	var visibleHoles = allBlastHoles.filter(function (hole) {
 		return isHoleVisible(hole);
 	});
 
@@ -9844,7 +9844,7 @@ document.querySelector(".cblast-output-btn")?.addEventListener("click", function
 		defaultFilename,
 		"Export",
 		"Cancel",
-		function(filename) {
+		function (filename) {
 			// User confirmed
 			if (!filename || filename.trim() === "") {
 				showModalMessage("Export Cancelled", "No filename provided", "warning");
@@ -9864,7 +9864,7 @@ document.querySelector(".cblast-output-btn")?.addEventListener("click", function
 				exportCBLASTStandard(visibleHoles, filename);
 			}
 		},
-		function() {
+		function () {
 			// User cancelled
 			console.log("CBLAST export cancelled by user");
 		}
@@ -9880,43 +9880,43 @@ function exportCBLASTWithFilePicker(holes, defaultFilename) {
 			accept: { 'text/csv': ['.csv'] }
 		}]
 	})
-	.then(function(fileHandle) {
-		// User selected save location
-		return fileHandle.createWritable()
-			.then(function(writable) {
-				// Generate CBLAST CSV content
-				if (window.fileManager) {
-					var writer = window.fileManager.getWriter("cblast-csv");
-					if (writer) {
-						writer.options.filename = fileHandle.name;
+		.then(function (fileHandle) {
+			// User selected save location
+			return fileHandle.createWritable()
+				.then(function (writable) {
+					// Generate CBLAST CSV content
+					if (window.fileManager) {
+						var writer = window.fileManager.getWriter("cblast-csv");
+						if (writer) {
+							writer.options.filename = fileHandle.name;
 
-						// Generate CSV content (don't auto-download)
-						var csvContent = writer.generateCSV(holes);
+							// Generate CSV content (don't auto-download)
+							var csvContent = writer.generateCSV(holes);
 
-						// Write to selected file
-						return writable.write(csvContent)
-							.then(function() {
-								return writable.close();
-							})
-							.then(function() {
-								var message = "Exported " + holes.length + " blast holes";
-								message += " (" + (holes.length * 4) + " records)";
-								message += " to " + fileHandle.name;
-								showModalMessage("Export Success", message, "success");
-							});
+							// Write to selected file
+							return writable.write(csvContent)
+								.then(function () {
+									return writable.close();
+								})
+								.then(function () {
+									var message = "Exported " + holes.length + " blast holes";
+									message += " (" + (holes.length * 4) + " records)";
+									message += " to " + fileHandle.name;
+									showModalMessage("Export Success", message, "success");
+								});
+						}
 					}
-				}
-			});
-	})
-	.catch(function(error) {
-		if (error.name === 'AbortError') {
-			console.log("User cancelled file picker");
-		} else {
-			console.error("File System Access API error:", error);
-			// Fallback to standard download
-			exportCBLASTStandard(holes, defaultFilename);
-		}
-	});
+				});
+		})
+		.catch(function (error) {
+			if (error.name === 'AbortError') {
+				console.log("User cancelled file picker");
+			} else {
+				console.error("File System Access API error:", error);
+				// Fallback to standard download
+				exportCBLASTStandard(holes, defaultFilename);
+			}
+		});
 }
 
 // Helper function: Export CBLAST with standard download (no location browser)
@@ -9935,13 +9935,13 @@ function exportCBLASTStandard(holes, filename) {
 
 				// Write CBLAST CSV file (handles download internally)
 				writer.write(data)
-					.then(function(result) {
+					.then(function (result) {
 						var message = "Exported " + holes.length + " blast holes";
 						message += " (" + (holes.length * 4) + " records)";
 						message += " to " + filename;
 						showModalMessage("Export Success", message, "success");
 					})
-					.catch(function(error) {
+					.catch(function (error) {
 						console.error("CBLAST export error:", error);
 						showModalMessage("Export Error", "Failed to export CBLAST CSV: " + error.message, "error");
 					});
@@ -9966,29 +9966,29 @@ function exportDXFWithFilePicker(dxfContent, defaultFilename) {
 			accept: { 'application/dxf': ['.dxf'] }
 		}]
 	})
-	.then(function(fileHandle) {
-		// User selected save location
-		return fileHandle.createWritable()
-			.then(function(writable) {
-				// Write DXF content
-				return writable.write(dxfContent)
-					.then(function() {
-						return writable.close();
-					})
-					.then(function() {
-						showModalMessage("Export Success", "Exported DXF to " + fileHandle.name, "success");
-					});
-			});
-	})
-	.catch(function(error) {
-		if (error.name === 'AbortError') {
-			console.log("User cancelled file picker");
-		} else {
-			console.error("File System Access API error:", error);
-			// Fallback to standard download
-			downloadDXF(dxfContent, defaultFilename);
-		}
-	});
+		.then(function (fileHandle) {
+			// User selected save location
+			return fileHandle.createWritable()
+				.then(function (writable) {
+					// Write DXF content
+					return writable.write(dxfContent)
+						.then(function () {
+							return writable.close();
+						})
+						.then(function () {
+							showModalMessage("Export Success", "Exported DXF to " + fileHandle.name, "success");
+						});
+				});
+		})
+		.catch(function (error) {
+			if (error.name === 'AbortError') {
+				console.log("User cancelled file picker");
+			} else {
+				console.error("File System Access API error:", error);
+				// Fallback to standard download
+				downloadDXF(dxfContent, defaultFilename);
+			}
+		});
 }
 
 // Helper function: Export CSV with File System Access API (save location browser)
@@ -10000,36 +10000,36 @@ function exportCSVWithFilePicker(blob, defaultFilename) {
 			accept: { 'text/csv': ['.csv'] }
 		}]
 	})
-	.then(function(fileHandle) {
-		// User selected save location
-		return fileHandle.createWritable()
-			.then(function(writable) {
-				// Write CSV content
-				return writable.write(blob)
-					.then(function() {
-						return writable.close();
-					})
-					.then(function() {
-						showModalMessage("Export Success", "Exported CSV to " + fileHandle.name, "success");
-					});
-			});
-	})
-	.catch(function(error) {
-		if (error.name === 'AbortError') {
-			console.log("User cancelled file picker");
-		} else {
-			console.error("File System Access API error:", error);
-			// Fallback to standard download (create temp link)
-			var url = URL.createObjectURL(blob);
-			var link = document.createElement("a");
-			link.href = url;
-			link.download = defaultFilename;
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			URL.revokeObjectURL(url);
-		}
-	});
+		.then(function (fileHandle) {
+			// User selected save location
+			return fileHandle.createWritable()
+				.then(function (writable) {
+					// Write CSV content
+					return writable.write(blob)
+						.then(function () {
+							return writable.close();
+						})
+						.then(function () {
+							showModalMessage("Export Success", "Exported CSV to " + fileHandle.name, "success");
+						});
+				});
+		})
+		.catch(function (error) {
+			if (error.name === 'AbortError') {
+				console.log("User cancelled file picker");
+			} else {
+				console.error("File System Access API error:", error);
+				// Fallback to standard download (create temp link)
+				var url = URL.createObjectURL(blob);
+				var link = document.createElement("a");
+				link.href = url;
+				link.download = defaultFilename;
+				document.body.appendChild(link);
+				link.click();
+				document.body.removeChild(link);
+				URL.revokeObjectURL(url);
+			}
+		});
 }
 
 // Helper function: Export Surpac STR with File System Access API (save location browser)
@@ -10041,34 +10041,34 @@ function exportSurpacSTRWithFilePicker(blob, defaultFilename) {
 			accept: { 'application/octet-stream': ['.str'] }
 		}]
 	})
-	.then(function(fileHandle) {
-		return fileHandle.createWritable()
-			.then(function(writable) {
-				return writable.write(blob)
-					.then(function() {
-						return writable.close();
-					})
-					.then(function() {
-						showModalMessage("Export Success", "Exported Surpac STR to " + fileHandle.name, "success");
-					});
-			});
-	})
-	.catch(function(error) {
-		if (error.name === 'AbortError') {
-			console.log("User cancelled file picker");
-		} else {
-			console.error("File System Access API error:", error);
-			// Fallback to standard download
-			var url = URL.createObjectURL(blob);
-			var link = document.createElement("a");
-			link.href = url;
-			link.download = defaultFilename;
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			URL.revokeObjectURL(url);
-		}
-	});
+		.then(function (fileHandle) {
+			return fileHandle.createWritable()
+				.then(function (writable) {
+					return writable.write(blob)
+						.then(function () {
+							return writable.close();
+						})
+						.then(function () {
+							showModalMessage("Export Success", "Exported Surpac STR to " + fileHandle.name, "success");
+						});
+				});
+		})
+		.catch(function (error) {
+			if (error.name === 'AbortError') {
+				console.log("User cancelled file picker");
+			} else {
+				console.error("File System Access API error:", error);
+				// Fallback to standard download
+				var url = URL.createObjectURL(blob);
+				var link = document.createElement("a");
+				link.href = url;
+				link.download = defaultFilename;
+				document.body.appendChild(link);
+				link.click();
+				document.body.removeChild(link);
+				URL.revokeObjectURL(url);
+			}
+		});
 }
 
 // Helper function: Export Surpac DTM+STR with File System Access API (2 files)
@@ -10081,64 +10081,64 @@ function exportSurpacWithFilePicker(dtmBlob, dtmFilename, strBlob, strFilename) 
 			accept: { 'application/octet-stream': ['.dtm'] }
 		}]
 	})
-	.then(function(fileHandle) {
-		return fileHandle.createWritable()
-			.then(function(writable) {
-				return writable.write(dtmBlob)
-					.then(function() {
-						return writable.close();
+		.then(function (fileHandle) {
+			return fileHandle.createWritable()
+				.then(function (writable) {
+					return writable.write(dtmBlob)
+						.then(function () {
+							return writable.close();
+						});
+				})
+				.then(function () {
+					// DTM saved, now save STR file
+					return window.showSaveFilePicker({
+						suggestedName: strFilename,
+						types: [{
+							description: 'Surpac STR Files',
+							accept: { 'application/octet-stream': ['.str'] }
+						}]
 					});
-			})
-			.then(function() {
-				// DTM saved, now save STR file
-				return window.showSaveFilePicker({
-					suggestedName: strFilename,
-					types: [{
-						description: 'Surpac STR Files',
-						accept: { 'application/octet-stream': ['.str'] }
-					}]
+				})
+				.then(function (strFileHandle) {
+					return strFileHandle.createWritable()
+						.then(function (writable) {
+							return writable.write(strBlob)
+								.then(function () {
+									return writable.close();
+								})
+								.then(function () {
+									showModalMessage("Export Complete", "Exported both " + dtmFilename + " and " + strFilename, "success");
+								});
+						});
 				});
-			})
-			.then(function(strFileHandle) {
-				return strFileHandle.createWritable()
-					.then(function(writable) {
-						return writable.write(strBlob)
-							.then(function() {
-								return writable.close();
-							})
-							.then(function() {
-								showModalMessage("Export Complete", "Exported both " + dtmFilename + " and " + strFilename, "success");
-							});
-					});
-			});
-	})
-	.catch(function(error) {
-		if (error.name === 'AbortError') {
-			console.log("User cancelled file picker");
-		} else {
-			console.error("File System Access API error:", error);
-			// Fallback to standard download for both files
-			var url1 = URL.createObjectURL(dtmBlob);
-			var link1 = document.createElement("a");
-			link1.href = url1;
-			link1.download = dtmFilename;
-			document.body.appendChild(link1);
-			link1.click();
-			document.body.removeChild(link1);
-			URL.revokeObjectURL(url1);
+		})
+		.catch(function (error) {
+			if (error.name === 'AbortError') {
+				console.log("User cancelled file picker");
+			} else {
+				console.error("File System Access API error:", error);
+				// Fallback to standard download for both files
+				var url1 = URL.createObjectURL(dtmBlob);
+				var link1 = document.createElement("a");
+				link1.href = url1;
+				link1.download = dtmFilename;
+				document.body.appendChild(link1);
+				link1.click();
+				document.body.removeChild(link1);
+				URL.revokeObjectURL(url1);
 
-			var url2 = URL.createObjectURL(strBlob);
-			var link2 = document.createElement("a");
-			link2.href = url2;
-			link2.download = strFilename;
-			document.body.appendChild(link2);
-			link2.click();
-			document.body.removeChild(link2);
-			URL.revokeObjectURL(url2);
+				var url2 = URL.createObjectURL(strBlob);
+				var link2 = document.createElement("a");
+				link2.href = url2;
+				link2.download = strFilename;
+				document.body.appendChild(link2);
+				link2.click();
+				document.body.removeChild(link2);
+				URL.revokeObjectURL(url2);
 
-			showModalMessage("Export Complete", "Exported both " + dtmFilename + " and " + strFilename, "success");
-		}
-	});
+				showModalMessage("Export Complete", "Exported both " + dtmFilename + " and " + strFilename, "success");
+			}
+		});
 }
 
 // Helper function: Export Point Cloud with File System Access API (save location browser)
@@ -10150,34 +10150,34 @@ function exportPointCloudWithFilePicker(blob, defaultFilename) {
 			accept: { 'text/plain': ['.xyz'] }
 		}]
 	})
-	.then(function(fileHandle) {
-		return fileHandle.createWritable()
-			.then(function(writable) {
-				return writable.write(blob)
-					.then(function() {
-						return writable.close();
-					})
-					.then(function() {
-						showModalMessage("Export Success", "Exported point cloud to " + fileHandle.name, "success");
-					});
-			});
-	})
-	.catch(function(error) {
-		if (error.name === 'AbortError') {
-			console.log("User cancelled file picker");
-		} else {
-			console.error("File System Access API error:", error);
-			// Fallback to standard download
-			var url = URL.createObjectURL(blob);
-			var link = document.createElement("a");
-			link.href = url;
-			link.download = defaultFilename;
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			URL.revokeObjectURL(url);
-		}
-	});
+		.then(function (fileHandle) {
+			return fileHandle.createWritable()
+				.then(function (writable) {
+					return writable.write(blob)
+						.then(function () {
+							return writable.close();
+						})
+						.then(function () {
+							showModalMessage("Export Success", "Exported point cloud to " + fileHandle.name, "success");
+						});
+				});
+		})
+		.catch(function (error) {
+			if (error.name === 'AbortError') {
+				console.log("User cancelled file picker");
+			} else {
+				console.error("File System Access API error:", error);
+				// Fallback to standard download
+				var url = URL.createObjectURL(blob);
+				var link = document.createElement("a");
+				link.href = url;
+				link.download = defaultFilename;
+				document.body.appendChild(link);
+				link.click();
+				document.body.removeChild(link);
+				URL.revokeObjectURL(url);
+			}
+		});
 }
 
 // LAS POINT CLOUD - Coming Soon
@@ -11670,7 +11670,7 @@ async function parseK2Dcsv(data) {
 		if (!allBlastHoles || !Array.isArray(allBlastHoles)) allBlastHoles = [];
 
 		// Step 3) Group holes by entity for processing
-		var entitiesBefore = new Set(allBlastHoles.map(function(h) { return h.entityName; }));
+		var entitiesBefore = new Set(allBlastHoles.map(function (h) { return h.entityName; }));
 
 		// Step 3a) Clear proximity Skip All flag for new import
 		window.proximitySkipAll = false;
@@ -11711,7 +11711,7 @@ async function parseK2Dcsv(data) {
 
 			// CRITICAL FIX: Copy timing/connector fields that addHole() doesn't accept
 			// Find the hole that was just created and update it with additional fields
-			var createdHole = allBlastHoles.find(function(hole) {
+			var createdHole = allBlastHoles.find(function (hole) {
 				return hole.entityName === h.entityName && hole.holeID === h.holeID;
 			});
 
@@ -11751,12 +11751,12 @@ async function parseK2Dcsv(data) {
 		}
 
 		// Step 5) Get all imported holes for post-processing
-		var entitiesAfter = new Set(allBlastHoles.map(function(h) { return h.entityName; }));
-		var newEntities = Array.from(entitiesAfter).filter(function(e) { return !entitiesBefore.has(e); });
+		var entitiesAfter = new Set(allBlastHoles.map(function (h) { return h.entityName; }));
+		var newEntities = Array.from(entitiesAfter).filter(function (e) { return !entitiesBefore.has(e); });
 
 		// Step 5a) Calculate import statistics
-		var importedCount = allBlastHoles.filter(function(h) {
-			return newEntities.some(function(e) { return h.entityName === e; });
+		var importedCount = allBlastHoles.filter(function (h) {
+			return newEntities.some(function (e) { return h.entityName === e; });
 		}).length;
 		var skippedCount = totalHoles - importedCount;
 		var wasCancelled = window.holeGenerationCancelled;
@@ -11766,14 +11766,14 @@ async function parseK2Dcsv(data) {
 		window.holeGenerationCancelled = false;
 
 		// Step 6) Calculate burden and spacing for new entities
-		newEntities.forEach(function(entityName) {
-			var entityHoles = allBlastHoles.filter(function(h) { return h.entityName === entityName; });
+		newEntities.forEach(function (entityName) {
+			var entityHoles = allBlastHoles.filter(function (h) { return h.entityName === entityName; });
 			if (entityHoles.length > 0) {
 				// Only calculate if not already set (default is 1, so recalculate ONLY if exactly 1)
 				// CRITICAL: Preserve user-supplied 0 values (0 means "no burden/spacing")
-				var needsCalculation = entityHoles.filter(function(h) {
+				var needsCalculation = entityHoles.filter(function (h) {
 					return (h.burden === undefined || h.burden === null || h.burden === 1) &&
-					       (h.spacing === undefined || h.spacing === null || h.spacing === 1);
+						(h.spacing === undefined || h.spacing === null || h.spacing === 1);
 				});
 				if (needsCalculation.length > 0) {
 					calculateBurdenAndSpacingForHoles(needsCalculation);
@@ -11872,61 +11872,61 @@ async function parseDXFtoKadMaps(dxf) {
 		}
 
 		var parser = new DXFParser();
-	var result = await parser.parse({ dxfData: dxf });
+		var result = await parser.parse({ dxfData: dxf });
 
-	// Step 2) Merge parsed KAD drawings into global allKADDrawingsMap with chunking
-	var MAX_VERTICES_PER_ENTITY = 10000; // GPU single buffer limit
-	var chunkedCount = 0;
-	var totalOriginalVertices = 0;
-	
-	for (var [entityName, entityData] of result.kadDrawings.entries()) {
-		// Step 2a) Check if entity needs chunking (lines/polys with >10k vertices)
-		if ((entityData.entityType === "line" || entityData.entityType === "poly") && 
-		    entityData.data && entityData.data.length > MAX_VERTICES_PER_ENTITY) {
-			
-			totalOriginalVertices += entityData.data.length;
-			
-			// Step 2b) Split into chunks
-			var numChunks = Math.ceil(entityData.data.length / MAX_VERTICES_PER_ENTITY);
-			console.warn("⚠️ Large DXF entity detected: " + entityName + " (" + entityData.data.length.toLocaleString() + " vertices)");
-			console.warn("   → Splitting into " + numChunks + " chunks of ~" + Math.ceil(entityData.data.length / numChunks).toLocaleString() + " vertices each");
-			
-			for (var chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
-				var startIdx = chunkIdx * MAX_VERTICES_PER_ENTITY;
-				var endIdx = Math.min(startIdx + MAX_VERTICES_PER_ENTITY + 1, entityData.data.length); // +1 for overlap
-				var chunkData = entityData.data.slice(startIdx, endIdx);
-				
-				// Step 2c) Create unique name for chunk (check for collisions with existing entities)
-				var baseChunkName = entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
-				var chunkName = getUniqueEntityName(baseChunkName, entityData.entityType);
-				
-				// Step 2d) Store chunk as separate entity
-				allKADDrawingsMap.set(chunkName, {
-					entityName: chunkName,
-					entityType: entityData.entityType,
-					data: chunkData,
-					isChunk: true,
-					originalEntity: entityName,
-					chunkIndex: chunkIdx,
-					totalChunks: numChunks
-				});
-				chunkedCount++;
+		// Step 2) Merge parsed KAD drawings into global allKADDrawingsMap with chunking
+		var MAX_VERTICES_PER_ENTITY = 10000; // GPU single buffer limit
+		var chunkedCount = 0;
+		var totalOriginalVertices = 0;
+
+		for (var [entityName, entityData] of result.kadDrawings.entries()) {
+			// Step 2a) Check if entity needs chunking (lines/polys with >10k vertices)
+			if ((entityData.entityType === "line" || entityData.entityType === "poly") &&
+				entityData.data && entityData.data.length > MAX_VERTICES_PER_ENTITY) {
+
+				totalOriginalVertices += entityData.data.length;
+
+				// Step 2b) Split into chunks
+				var numChunks = Math.ceil(entityData.data.length / MAX_VERTICES_PER_ENTITY);
+				console.warn("⚠️ Large DXF entity detected: " + entityName + " (" + entityData.data.length.toLocaleString() + " vertices)");
+				console.warn("   → Splitting into " + numChunks + " chunks of ~" + Math.ceil(entityData.data.length / numChunks).toLocaleString() + " vertices each");
+
+				for (var chunkIdx = 0; chunkIdx < numChunks; chunkIdx++) {
+					var startIdx = chunkIdx * MAX_VERTICES_PER_ENTITY;
+					var endIdx = Math.min(startIdx + MAX_VERTICES_PER_ENTITY + 1, entityData.data.length); // +1 for overlap
+					var chunkData = entityData.data.slice(startIdx, endIdx);
+
+					// Step 2c) Create unique name for chunk (check for collisions with existing entities)
+					var baseChunkName = entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
+					var chunkName = getUniqueEntityName(baseChunkName, entityData.entityType);
+
+					// Step 2d) Store chunk as separate entity
+					allKADDrawingsMap.set(chunkName, {
+						entityName: chunkName,
+						entityType: entityData.entityType,
+						data: chunkData,
+						isChunk: true,
+						originalEntity: entityName,
+						chunkIndex: chunkIdx,
+						totalChunks: numChunks
+					});
+					chunkedCount++;
+				}
+			} else {
+				// Step 2e) Normal-sized entity - check for name collision before storing
+				var uniqueName = getUniqueEntityName(entityName, entityData.entityType);
+				if (uniqueName !== entityName) {
+					// Name collision detected - update entity's internal name
+					entityData.entityName = uniqueName;
+				}
+				allKADDrawingsMap.set(uniqueName, entityData);
 			}
-		} else {
-			// Step 2e) Normal-sized entity - check for name collision before storing
-			var uniqueName = getUniqueEntityName(entityName, entityData.entityType);
-			if (uniqueName !== entityName) {
-				// Name collision detected - update entity's internal name
-				entityData.entityName = uniqueName;
-			}
-			allKADDrawingsMap.set(uniqueName, entityData);
 		}
-	}
-	
-	if (chunkedCount > 0) {
-		console.log("✂️ Chunked " + chunkedCount + " large DXF entities at storage level");
-		console.log("   📊 Total vertices chunked: " + totalOriginalVertices.toLocaleString());
-	}
+
+		if (chunkedCount > 0) {
+			console.log("✂️ Chunked " + chunkedCount + " large DXF entities at storage level");
+			console.log("   📊 Total vertices chunked: " + totalOriginalVertices.toLocaleString());
+		}
 
 		// Step 3) Merge parsed surfaces into global loadedSurfaces Map
 		for (var [surfaceId, surfaceData] of result.surfaces.entries()) {
@@ -12239,31 +12239,31 @@ function extractTrianglesFromThreeJSMesh(object3D) {
 	var triangles = [];
 	var points = [];
 	var vertexMap = new Map(); // For deduplication
-	
-	object3D.traverse(function(child) {
+
+	object3D.traverse(function (child) {
 		if (child.isMesh && child.geometry) {
 			var geometry = child.geometry;
-			
+
 			// Step 0a) Get position attribute
 			var positions = geometry.attributes.position;
 			if (!positions) {
 				console.warn("Mesh has no position attribute");
 				return;
 			}
-			
+
 			// Step 0b) Check if indexed or non-indexed geometry
 			var indices = geometry.index;
 			var faceCount = 0;
-			
+
 			if (indices) {
 				// Indexed geometry
 				faceCount = indices.count / 3;
-				
+
 				for (var i = 0; i < faceCount; i++) {
 					var i0 = indices.array[i * 3];
 					var i1 = indices.array[i * 3 + 1];
 					var i2 = indices.array[i * 3 + 2];
-					
+
 					var v0 = {
 						x: positions.array[i0 * 3],
 						y: positions.array[i0 * 3 + 1],
@@ -12279,16 +12279,16 @@ function extractTrianglesFromThreeJSMesh(object3D) {
 						y: positions.array[i2 * 3 + 1],
 						z: positions.array[i2 * 3 + 2]
 					};
-					
+
 					// Add to points with deduplication
-					[v0, v1, v2].forEach(function(v) {
+					[v0, v1, v2].forEach(function (v) {
 						var key = v.x.toFixed(6) + "," + v.y.toFixed(6) + "," + v.z.toFixed(6);
 						if (!vertexMap.has(key)) {
 							vertexMap.set(key, v);
 							points.push(v);
 						}
 					});
-					
+
 					triangles.push({
 						vertices: [v0, v1, v2],
 						uvs: [],
@@ -12299,7 +12299,7 @@ function extractTrianglesFromThreeJSMesh(object3D) {
 			} else {
 				// Non-indexed geometry (each 3 vertices = 1 triangle)
 				faceCount = positions.count / 3;
-				
+
 				for (var i = 0; i < faceCount; i++) {
 					var v0 = {
 						x: positions.array[i * 9],
@@ -12316,16 +12316,16 @@ function extractTrianglesFromThreeJSMesh(object3D) {
 						y: positions.array[i * 9 + 7],
 						z: positions.array[i * 9 + 8]
 					};
-					
+
 					// Add to points with deduplication
-					[v0, v1, v2].forEach(function(v) {
+					[v0, v1, v2].forEach(function (v) {
 						var key = v.x.toFixed(6) + "," + v.y.toFixed(6) + "," + v.z.toFixed(6);
 						if (!vertexMap.has(key)) {
 							vertexMap.set(key, v);
 							points.push(v);
 						}
 					});
-					
+
 					triangles.push({
 						vertices: [v0, v1, v2],
 						uvs: [],
@@ -12336,7 +12336,7 @@ function extractTrianglesFromThreeJSMesh(object3D) {
 			}
 		}
 	});
-	
+
 	console.log("🔷 Extracted " + triangles.length + " triangles, " + points.length + " unique points from Three.js mesh");
 	return { triangles: triangles, points: points };
 }
@@ -12367,264 +12367,264 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 		try {
 			// Step 2) Check if we have textures
 			var hasTextures = textureBlobs && Object.keys(textureBlobs).length > 0;
-			
+
 			// Step 3) Handle textured OBJ (with MTL and textures)
 			if (hasTextures && mtlContent) {
-			// Step 3a) Create texture URLs from blobs
-			var textureURLs = {};
-			var blobURLs = []; // Track for cleanup
-			text.textContent = "Creating texture URLs...";
-			bar.style.width = "10%";
+				// Step 3a) Create texture URLs from blobs
+				var textureURLs = {};
+				var blobURLs = []; // Track for cleanup
+				text.textContent = "Creating texture URLs...";
+				bar.style.width = "10%";
 
-			Object.keys(textureBlobs).forEach(function (texName) {
-				var url = URL.createObjectURL(textureBlobs[texName]);
-				textureURLs[texName] = url;
-				blobURLs.push(url);
-				console.log("🎨 Created blob URL for texture: " + texName);
-			});
-
-			// Step 4) Extract texture references directly from MTL content
-			// This is more reliable than depending on MTLLoader's internal structure
-			var textureRefs = extractTextureRefsFromMTL(mtlContent);
-			console.log("🎨 Texture references from MTL: " + textureRefs.join(", "));
-			text.textContent = "Loading textures (" + Object.keys(textureBlobs).length + ")...";
-			bar.style.width = "20%";
-
-			// Step 5) Pre-load all textures into a map
-			var textureLoader = new THREE.TextureLoader();
-			var loadedTextures = {};
-			var texturePromises = [];
-
-			// Step 5a) Load each texture blob we have
-			Object.keys(textureBlobs).forEach(function (texName) {
-				var texturePromise = new Promise(function (resolveTexture) {
-					textureLoader.load(
-						textureURLs[texName],
-						function (texture) {
-							// Step 5b) Texture loaded successfully
-							texture.wrapS = THREE.RepeatWrapping;
-							texture.wrapT = THREE.RepeatWrapping;
-							texture.flipY = true; // Standard UV convention
-							// Step 5b-1) CRITICAL: Set sRGB encoding for correct color space
-							texture.colorSpace = THREE.SRGBColorSpace;
-							texture.needsUpdate = true;
-							loadedTextures[texName] = texture;
-							loadedTextures[texName.toLowerCase()] = texture; // Also store lowercase for matching
-							console.log("🎨 Texture pre-loaded: " + texName);
-							// Update progress
-							const loadedCount = Object.keys(loadedTextures).length / 2; // Divide by 2 (we store twice)
-							const totalCount = Object.keys(textureBlobs).length;
-							const progress = 20 + (loadedCount / totalCount) * 30; // 20% to 50%
-							bar.style.width = progress + "%";
-							text.textContent = "Loaded texture " + loadedCount + " of " + totalCount;
-							resolveTexture();
-						},
-						undefined, // onProgress
-						function (error) {
-							console.warn("🚨 Failed to pre-load texture: " + texName, error);
-							resolveTexture();
-						}
-					);
+				Object.keys(textureBlobs).forEach(function (texName) {
+					var url = URL.createObjectURL(textureBlobs[texName]);
+					textureURLs[texName] = url;
+					blobURLs.push(url);
+					console.log("🎨 Created blob URL for texture: " + texName);
 				});
-				texturePromises.push(texturePromise);
-			});
 
-			// Step 6) Wait for ALL textures to pre-load
-			Promise.all(texturePromises).then(function () {
-				console.log("🎨 All " + Object.keys(loadedTextures).length + " textures pre-loaded for: " + fileName);
-				text.textContent = "Parsing MTL materials...";
-				bar.style.width = "55%";
+				// Step 4) Extract texture references directly from MTL content
+				// This is more reliable than depending on MTLLoader's internal structure
+				var textureRefs = extractTextureRefsFromMTL(mtlContent);
+				console.log("🎨 Texture references from MTL: " + textureRefs.join(", "));
+				text.textContent = "Loading textures (" + Object.keys(textureBlobs).length + ")...";
+				bar.style.width = "20%";
 
-				// Step 7) Parse MTL content
-				var mtlLoader = new MTLLoader();
-				mtlLoader.setResourcePath("");
-				var materials = mtlLoader.parse(mtlContent);
-				materials.preload();
+				// Step 5) Pre-load all textures into a map
+				var textureLoader = new THREE.TextureLoader();
+				var loadedTextures = {};
+				var texturePromises = [];
 
-				text.textContent = "Parsing OBJ geometry...";
-				bar.style.width = "70%";
-
-				// Step 8) Parse OBJ content with materials
-				var objLoader = new OBJLoader();
-				objLoader.setMaterials(materials);
-				var object3D = objLoader.parse(objContent);
-				object3D.name = fileName;
-
-				text.textContent = "Applying textures to mesh...";
-				bar.style.width = "85%";
-
-				// Step 9) Extract material properties from MTL for storage
-				var materialProperties = extractMaterialProperties(mtlContent);
-				console.log("🎨 Extracted material properties: " + Object.keys(materialProperties).length + " materials");
-
-				// Step 9a) Apply textures to mesh materials by matching texture filenames
-				// Also collect final material properties (after texture application) for storage
-				var finalMaterialProperties = {};
-				object3D.traverse(function (child) {
-					if (child.isMesh) {
-						// DIAGNOSTIC: Log initial material type from MTLLoader
-						console.log("🎨 INITIAL LOAD: Material type from MTLLoader: " + child.material.type);
-						console.log("🎨 INITIAL LOAD: Material color: rgb(" + (child.material.color.r * 255).toFixed(0) + ", " + (child.material.color.g * 255).toFixed(0) + ", " + (child.material.color.b * 255).toFixed(0) + ")");
-						console.log("🎨 INITIAL LOAD: Has map: " + !!child.material.map + ", map colorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
-						console.log("🎨 INITIAL LOAD: Has emissive: " + child.material.emissive.getHexString() + ", emissiveIntensity: " + child.material.emissiveIntensity);
-						if (child.material.type === "MeshPhongMaterial") {
-							console.log("🎨 INITIAL LOAD: Phong shininess: " + child.material.shininess + ", specular: " + child.material.specular.getHexString());
-							console.log("🎨 INITIAL LOAD: Phong emissiveMap: " + !!child.material.emissiveMap + ", lightMap: " + !!child.material.lightMap);
-						}
-						console.log("🎨 INITIAL LOAD: Material side: " + child.material.side + ", depthTest: " + child.material.depthTest + ", depthWrite: " + child.material.depthWrite);
-
-						child.material.side = THREE.DoubleSide;
-
-						// Step 9a.1) Find matching texture for this material
-						var appliedTexture = false;
-						var appliedTextureName = null;
-
-						// Try to find texture by checking each loaded texture
-						Object.keys(loadedTextures).forEach(function (texKey) {
-							if (!appliedTexture && loadedTextures[texKey]) {
-								// Apply the first available texture
-								child.material.map = loadedTextures[texKey];
-								child.material.needsUpdate = true;
-								appliedTexture = true;
-								appliedTextureName = texKey;
-								console.log("🎨 Applied texture '" + texKey + "' to mesh: " + (child.name || "unnamed"));
+				// Step 5a) Load each texture blob we have
+				Object.keys(textureBlobs).forEach(function (texName) {
+					var texturePromise = new Promise(function (resolveTexture) {
+						textureLoader.load(
+							textureURLs[texName],
+							function (texture) {
+								// Step 5b) Texture loaded successfully
+								texture.wrapS = THREE.RepeatWrapping;
+								texture.wrapT = THREE.RepeatWrapping;
+								texture.flipY = true; // Standard UV convention
+								// Step 5b-1) CRITICAL: Set sRGB encoding for correct color space
+								texture.colorSpace = THREE.SRGBColorSpace;
+								texture.needsUpdate = true;
+								loadedTextures[texName] = texture;
+								loadedTextures[texName.toLowerCase()] = texture; // Also store lowercase for matching
+								console.log("🎨 Texture pre-loaded: " + texName);
+								// Update progress
+								const loadedCount = Object.keys(loadedTextures).length / 2; // Divide by 2 (we store twice)
+								const totalCount = Object.keys(textureBlobs).length;
+								const progress = 20 + (loadedCount / totalCount) * 30; // 20% to 50%
+								bar.style.width = progress + "%";
+								text.textContent = "Loaded texture " + loadedCount + " of " + totalCount;
+								resolveTexture();
+							},
+							undefined, // onProgress
+							function (error) {
+								console.warn("🚨 Failed to pre-load texture: " + texName, error);
+								resolveTexture();
 							}
+						);
+					});
+					texturePromises.push(texturePromise);
+				});
+
+				// Step 6) Wait for ALL textures to pre-load
+				Promise.all(texturePromises).then(function () {
+					console.log("🎨 All " + Object.keys(loadedTextures).length + " textures pre-loaded for: " + fileName);
+					text.textContent = "Parsing MTL materials...";
+					bar.style.width = "55%";
+
+					// Step 7) Parse MTL content
+					var mtlLoader = new MTLLoader();
+					mtlLoader.setResourcePath("");
+					var materials = mtlLoader.parse(mtlContent);
+					materials.preload();
+
+					text.textContent = "Parsing OBJ geometry...";
+					bar.style.width = "70%";
+
+					// Step 8) Parse OBJ content with materials
+					var objLoader = new OBJLoader();
+					objLoader.setMaterials(materials);
+					var object3D = objLoader.parse(objContent);
+					object3D.name = fileName;
+
+					text.textContent = "Applying textures to mesh...";
+					bar.style.width = "85%";
+
+					// Step 9) Extract material properties from MTL for storage
+					var materialProperties = extractMaterialProperties(mtlContent);
+					console.log("🎨 Extracted material properties: " + Object.keys(materialProperties).length + " materials");
+
+					// Step 9a) Apply textures to mesh materials by matching texture filenames
+					// Also collect final material properties (after texture application) for storage
+					var finalMaterialProperties = {};
+					object3D.traverse(function (child) {
+						if (child.isMesh) {
+							// DIAGNOSTIC: Log initial material type from MTLLoader
+							console.log("🎨 INITIAL LOAD: Material type from MTLLoader: " + child.material.type);
+							console.log("🎨 INITIAL LOAD: Material color: rgb(" + (child.material.color.r * 255).toFixed(0) + ", " + (child.material.color.g * 255).toFixed(0) + ", " + (child.material.color.b * 255).toFixed(0) + ")");
+							console.log("🎨 INITIAL LOAD: Has map: " + !!child.material.map + ", map colorSpace: " + (child.material.map ? child.material.map.colorSpace : "N/A"));
+							console.log("🎨 INITIAL LOAD: Has emissive: " + child.material.emissive.getHexString() + ", emissiveIntensity: " + child.material.emissiveIntensity);
+							if (child.material.type === "MeshPhongMaterial") {
+								console.log("🎨 INITIAL LOAD: Phong shininess: " + child.material.shininess + ", specular: " + child.material.specular.getHexString());
+								console.log("🎨 INITIAL LOAD: Phong emissiveMap: " + !!child.material.emissiveMap + ", lightMap: " + !!child.material.lightMap);
+							}
+							console.log("🎨 INITIAL LOAD: Material side: " + child.material.side + ", depthTest: " + child.material.depthTest + ", depthWrite: " + child.material.depthWrite);
+
+							child.material.side = THREE.DoubleSide;
+
+							// Step 9a.1) Find matching texture for this material
+							var appliedTexture = false;
+							var appliedTextureName = null;
+
+							// Try to find texture by checking each loaded texture
+							Object.keys(loadedTextures).forEach(function (texKey) {
+								if (!appliedTexture && loadedTextures[texKey]) {
+									// Apply the first available texture
+									child.material.map = loadedTextures[texKey];
+									child.material.needsUpdate = true;
+									appliedTexture = true;
+									appliedTextureName = texKey;
+									console.log("🎨 Applied texture '" + texKey + "' to mesh: " + (child.name || "unnamed"));
+								}
+							});
+
+							if (!appliedTexture) {
+								console.warn("🚨 No texture applied to mesh: " + (child.name || "unnamed"));
+							}
+
+							// Step 9a.2) Store final material properties (after texture application)
+							var materialName = child.name || "default";
+							var matProps = materialProperties[materialName] ||
+								materialProperties[Object.keys(materialProperties)[0]] || {
+								Kd: [1, 1, 1],
+								Ns: 0,
+								map_Kd: appliedTextureName,
+							};
+
+							finalMaterialProperties[materialName] = {
+								name: materialName,
+								Ka: matProps.Ka || [0, 0, 0],
+								Kd: matProps.Kd || [1, 1, 1],
+								Ks: matProps.Ks || [0, 0, 0],
+								Ns: matProps.Ns || 0,
+								map_Kd: appliedTextureName || matProps.map_Kd || null,
+								illum: matProps.illum || 2,
+							};
+						}
+					});
+
+					// Step 12) Extract points and triangles from Three.js mesh (reliable topology)
+					text.textContent = "Extracting mesh data...";
+					bar.style.width = "90%";
+
+					var extracted = extractTrianglesFromThreeJSMesh(object3D);
+					var triangles = extracted.triangles;
+					var points = extracted.points;
+
+					console.log("🔷 Extracted from Three.js: " + points.length + " points, " + triangles.length + " triangles");
+
+					// Step 13) Calculate mesh bounds from extracted points
+					var minX = Infinity, maxX = -Infinity;
+					var minY = Infinity, maxY = -Infinity;
+					var minZ = Infinity, maxZ = -Infinity;
+					for (var i = 0; i < points.length; i++) {
+						var pt = points[i];
+						if (pt.x < minX) minX = pt.x;
+						if (pt.x > maxX) maxX = pt.x;
+						if (pt.y < minY) minY = pt.y;
+						if (pt.y > maxY) maxY = pt.y;
+						if (pt.z < minZ) minZ = pt.z;
+						if (pt.z > maxZ) maxZ = pt.z;
+					}
+					var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
+					console.log("📐 Calculated meshBounds: " + minX.toFixed(2) + " " + maxX.toFixed(2) + " " + minY.toFixed(2) + " " + maxY.toFixed(2));
+
+					// Step 14) Create surface ID
+					var surfaceId = fileName;
+
+					// Step 15) Store in loadedSurfaces with all necessary data
+					loadedSurfaces.set(surfaceId, {
+						// Standard surface fields for Data Explorer
+						id: surfaceId,
+						name: fileName,
+						points: points,
+						triangles: triangles,
+						visible: true,
+						gradient: "texture", // Default to "texture" to show JPG texture if available
+						transparency: 1.0,
+
+						// Textured mesh specific fields
+						isTexturedMesh: true,
+						threeJSMesh: object3D,
+						meshBounds: meshBounds,
+
+						// Raw data for IndexedDB persistence
+						objContent: objContent,
+						mtlContent: mtlContent,
+						textureBlobs: textureBlobs,
+						materialProperties: finalMaterialProperties, // Store serializable material properties
+					});
+
+					console.log("🎨 Textured OBJ loaded: " + fileName + " (" + points.length + " points, " + triangles.length + " triangles)");
+
+					// Step 15) Create flattened 2D image for canvas rendering
+					// This is now called AFTER textures are loaded
+					flattenTexturedMeshToImage(surfaceId, object3D, meshBounds, fileName);
+
+					// Step 16) Save to database
+					saveSurfaceToDB(surfaceId)
+						.then(function () {
+							console.log("💾 Textured surface saved to database: " + surfaceId);
+						})
+						.catch(function (err) {
+							console.error("❌ Failed to save textured surface:", err);
 						});
 
-						if (!appliedTexture) {
-							console.warn("🚨 No texture applied to mesh: " + (child.name || "unnamed"));
-						}
+					// Step 17) Update UI
+					updateCentroids();
+					drawData(allBlastHoles, selectedHole);
+					debouncedUpdateTreeView();
+					updateStatusMessage("Loaded textured surface: " + fileName);
 
-						// Step 9a.2) Store final material properties (after texture application)
-						var materialName = child.name || "default";
-						var matProps = materialProperties[materialName] ||
-							materialProperties[Object.keys(materialProperties)[0]] || {
-							Kd: [1, 1, 1],
-							Ns: 0,
-							map_Kd: appliedTextureName,
-						};
+					// Step 18) Cleanup blob URLs after a delay (textures are now loaded)
+					setTimeout(function () {
+						blobURLs.forEach(function (url) {
+							URL.revokeObjectURL(url);
+						});
+					}, 5000);
 
-						finalMaterialProperties[materialName] = {
-							name: materialName,
-							Ka: matProps.Ka || [0, 0, 0],
-							Kd: matProps.Kd || [1, 1, 1],
-							Ks: matProps.Ks || [0, 0, 0],
-							Ns: matProps.Ns || 0,
-							map_Kd: appliedTextureName || matProps.map_Kd || null,
-							illum: matProps.illum || 2,
-						};
-					}
+					// Step 19) Close progress dialog
+					text.textContent = "Complete!";
+					bar.style.width = "100%";
+					setTimeout(function () {
+						progressDialog.close();
+					}, 500);
+
+					resolve(object3D);
 				});
-
-				// Step 12) Extract points and triangles from Three.js mesh (reliable topology)
-				text.textContent = "Extracting mesh data...";
-				bar.style.width = "90%";
-				
-				var extracted = extractTrianglesFromThreeJSMesh(object3D);
-				var triangles = extracted.triangles;
-				var points = extracted.points;
-				
-				console.log("🔷 Extracted from Three.js: " + points.length + " points, " + triangles.length + " triangles");
-				
-				// Step 13) Calculate mesh bounds from extracted points
-				var minX = Infinity, maxX = -Infinity;
-				var minY = Infinity, maxY = -Infinity;
-				var minZ = Infinity, maxZ = -Infinity;
-				for (var i = 0; i < points.length; i++) {
-					var pt = points[i];
-					if (pt.x < minX) minX = pt.x;
-					if (pt.x > maxX) maxX = pt.x;
-					if (pt.y < minY) minY = pt.y;
-					if (pt.y > maxY) maxY = pt.y;
-					if (pt.z < minZ) minZ = pt.z;
-					if (pt.z > maxZ) maxZ = pt.z;
-				}
-				var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
-				console.log("📐 Calculated meshBounds: " + minX.toFixed(2) + " " + maxX.toFixed(2) + " " + minY.toFixed(2) + " " + maxY.toFixed(2));
-
-				// Step 14) Create surface ID
-				var surfaceId = fileName;
-
-				// Step 15) Store in loadedSurfaces with all necessary data
-				loadedSurfaces.set(surfaceId, {
-					// Standard surface fields for Data Explorer
-					id: surfaceId,
-					name: fileName,
-					points: points,
-					triangles: triangles,
-					visible: true,
-					gradient: "texture", // Default to "texture" to show JPG texture if available
-					transparency: 1.0,
-
-					// Textured mesh specific fields
-					isTexturedMesh: true,
-					threeJSMesh: object3D,
-					meshBounds: meshBounds,
-
-					// Raw data for IndexedDB persistence
-					objContent: objContent,
-					mtlContent: mtlContent,
-					textureBlobs: textureBlobs,
-					materialProperties: finalMaterialProperties, // Store serializable material properties
-				});
-
-				console.log("🎨 Textured OBJ loaded: " + fileName + " (" + points.length + " points, " + triangles.length + " triangles)");
-
-				// Step 15) Create flattened 2D image for canvas rendering
-				// This is now called AFTER textures are loaded
-				flattenTexturedMeshToImage(surfaceId, object3D, meshBounds, fileName);
-
-				// Step 16) Save to database
-				saveSurfaceToDB(surfaceId)
-					.then(function () {
-						console.log("💾 Textured surface saved to database: " + surfaceId);
-					})
-					.catch(function (err) {
-						console.error("❌ Failed to save textured surface:", err);
-					});
-
-				// Step 17) Update UI
-				updateCentroids();
-				drawData(allBlastHoles, selectedHole);
-				debouncedUpdateTreeView();
-				updateStatusMessage("Loaded textured surface: " + fileName);
-
-				// Step 18) Cleanup blob URLs after a delay (textures are now loaded)
-				setTimeout(function () {
-					blobURLs.forEach(function (url) {
-						URL.revokeObjectURL(url);
-					});
-				}, 5000);
-
-				// Step 19) Close progress dialog
-				text.textContent = "Complete!";
-				bar.style.width = "100%";
-				setTimeout(function () {
-					progressDialog.close();
-				}, 500);
-
-				resolve(object3D);
-			});
 			} else {
 				// Step 20) No textures - parse OBJ without materials and create regular surface
 				console.log("🔷 No textures - loading as regular surface");
 				text.textContent = "Parsing OBJ geometry...";
 				bar.style.width = "50%";
-				
+
 				var objLoader = new OBJLoader();
 				var object3D = objLoader.parse(objContent);
 				object3D.name = fileName;
-				
+
 				// Step 21) Extract triangles from Three.js mesh
 				text.textContent = "Extracting triangles...";
 				bar.style.width = "75%";
-				
+
 				var extracted = extractTrianglesFromThreeJSMesh(object3D);
 				var triangles = extracted.triangles;
 				var points = extracted.points;
-				
+
 				console.log("🔷 Extracted from Three.js: " + points.length + " points, " + triangles.length + " triangles");
-				
+
 				// Step 22) Calculate bounds
 				var minX = Infinity, maxX = -Infinity;
 				var minY = Infinity, maxY = -Infinity;
@@ -12639,7 +12639,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					if (pt.z > maxZ) maxZ = pt.z;
 				}
 				var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
-				
+
 				// Step 23) Store as regular surface
 				var surfaceId = fileName;
 				loadedSurfaces.set(surfaceId, {
@@ -12653,9 +12653,9 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					isTexturedMesh: false,
 					meshBounds: meshBounds,
 				});
-				
+
 				console.log("✅ OBJ loaded (non-textured): " + fileName + " (" + points.length + " points, " + triangles.length + " triangles)");
-				
+
 				// Step 24) Save to database
 				saveSurfaceToDB(surfaceId)
 					.then(function () {
@@ -12664,20 +12664,20 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					.catch(function (err) {
 						console.error("❌ Failed to save surface:", err);
 					});
-				
+
 				// Step 25) Update UI
 				updateCentroids();
 				drawData(allBlastHoles, selectedHole);
 				debouncedUpdateTreeView();
 				updateStatusMessage("Loaded OBJ surface: " + fileName + " (" + triangles.length + " triangles)");
-				
+
 				// Step 26) Close progress dialog
 				text.textContent = "Complete!";
 				bar.style.width = "100%";
 				setTimeout(function () {
 					progressDialog.close();
 				}, 500);
-				
+
 				resolve(object3D);
 			}
 		} catch (error) {
@@ -12728,7 +12728,7 @@ function rebuildTexturedMesh(surfaceId) {
 			});
 		}
 		else {
-		console.warn("🚨 REBUILD: NO TEXTURE BLOBS found for " + surfaceId + " - mesh will have no textures!");
+			console.warn("🚨 REBUILD: NO TEXTURE BLOBS found for " + surfaceId + " - mesh will have no textures!");
 		}
 
 		// Step 3) Pre-load all textures into a map (same approach as initial load)
@@ -12785,7 +12785,7 @@ function rebuildTexturedMesh(surfaceId) {
 
 			console.log("🎨 REBUILD: Centering OBJ vertices around mesh center: (" + meshCenterX.toFixed(2) + ", " + meshCenterY.toFixed(2) + ")");
 
-			object3D.traverse(function(child) {
+			object3D.traverse(function (child) {
 				if (child.isMesh && child.geometry) {
 					var positions = child.geometry.attributes.position;
 					if (positions) {
@@ -14171,11 +14171,11 @@ function exportKADDXF() {
 	// DEBUG: Check if data is duplicating
 	console.log("exportKADDXF: allKADDrawingsMap.size =", allKADDrawingsMap.size);
 	var totalPoints = 0;
-	allKADDrawingsMap.forEach(function(entity) {
+	allKADDrawingsMap.forEach(function (entity) {
 		totalPoints += entity.data ? entity.data.length : 0;
 	});
 	console.log("exportKADDXF: Total points across all entities =", totalPoints);
-	
+
 	let dxf = "0\nSECTION\n2\nHEADER\n0\nENDSEC\n";
 	dxf += "0\nSECTION\n2\nTABLES\n0\nENDSEC\n";
 	dxf += "0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n";
@@ -18290,7 +18290,7 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			if (length > 0) {
 				//const perpX = (dy / length) * horizontalOffset;
 				//const perpY = (-dx / length) * horizontalOffset;
-//
+				//
 				//offsetSegments.push({
 				//	start: {
 				//		x: p1.pointXLocation + perpX,
@@ -18304,103 +18304,103 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 				//	},
 				//	index: 0,
 				//});
-				  			let perpX1 = (dy / length) * horizontalOffset;
-  			let perpY1 = (-dx / length) * horizontalOffset;
-  			let perpX2 = perpX1;
-  			let perpY2 = perpY1;
+				let perpX1 = (dy / length) * horizontalOffset;
+				let perpY1 = (-dx / length) * horizontalOffset;
+				let perpX2 = perpX1;
+				let perpY2 = perpY1;
 
-  			// Apply elevation limit (project to level) if enabled
-  			let p1ZDelta = parseFloat(zDelta);
-  			let p2ZDelta = parseFloat(zDelta);
+				// Apply elevation limit (project to level) if enabled
+				let p1ZDelta = parseFloat(zDelta);
+				let p2ZDelta = parseFloat(zDelta);
 
-  			if (limitElevation && projectionAngle !== 0) {
-  				const angleRad = Math.abs(projectionAngle * Math.PI / 180);
-  				const tanAngle = Math.tan(angleRad);
+				if (limitElevation && projectionAngle !== 0) {
+					const angleRad = Math.abs(projectionAngle * Math.PI / 180);
+					const tanAngle = Math.tan(angleRad);
 
-  				// Check p1 (start point) - limit projection to elevation limit
-  				const p1OrigZ = parseFloat(p1.pointZLocation);
+					// Check p1 (start point) - limit projection to elevation limit
+					const p1OrigZ = parseFloat(p1.pointZLocation);
 
-  				if (projectionAngle < 0) {
-  					// Projecting downward
-  					if (p1OrigZ > elevationLimit) {
-  						// Point is above limit - project down to limit
-  						p1ZDelta = elevationLimit - p1OrigZ;
-  						const verticalDrop = p1OrigZ - elevationLimit;
-  						const horizontalDistance = verticalDrop / tanAngle;
-  						perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  						perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  					} else {
-  						// Point is at or below limit - no offset
-  						p1ZDelta = 0;
-  						perpX1 = 0;
-  						perpY1 = 0;
-  					}
-  				} else if (projectionAngle > 0) {
-  					// Projecting upward
-  					if (p1OrigZ < elevationLimit) {
-  						// Point is below limit - project up to limit
-  						p1ZDelta = elevationLimit - p1OrigZ;
-  						const verticalRise = elevationLimit - p1OrigZ;
-  						const horizontalDistance = verticalRise / tanAngle;
-  						perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  						perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  					} else {
-  						// Point is at or above limit - no offset
-  						p1ZDelta = 0;
-  						perpX1 = 0;
-  						perpY1 = 0;
-  					}
-  				}
+					if (projectionAngle < 0) {
+						// Projecting downward
+						if (p1OrigZ > elevationLimit) {
+							// Point is above limit - project down to limit
+							p1ZDelta = elevationLimit - p1OrigZ;
+							const verticalDrop = p1OrigZ - elevationLimit;
+							const horizontalDistance = verticalDrop / tanAngle;
+							perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+							perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						} else {
+							// Point is at or below limit - no offset
+							p1ZDelta = 0;
+							perpX1 = 0;
+							perpY1 = 0;
+						}
+					} else if (projectionAngle > 0) {
+						// Projecting upward
+						if (p1OrigZ < elevationLimit) {
+							// Point is below limit - project up to limit
+							p1ZDelta = elevationLimit - p1OrigZ;
+							const verticalRise = elevationLimit - p1OrigZ;
+							const horizontalDistance = verticalRise / tanAngle;
+							perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+							perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						} else {
+							// Point is at or above limit - no offset
+							p1ZDelta = 0;
+							perpX1 = 0;
+							perpY1 = 0;
+						}
+					}
 
-  				// Check p2 (end point) - limit projection to elevation limit
-  				const p2OrigZ = parseFloat(p2.pointZLocation);
+					// Check p2 (end point) - limit projection to elevation limit
+					const p2OrigZ = parseFloat(p2.pointZLocation);
 
-  				if (projectionAngle < 0) {
-  					// Projecting downward
-  					if (p2OrigZ > elevationLimit) {
-  						// Point is above limit - project down to limit
-  						p2ZDelta = elevationLimit - p2OrigZ;
-  						const verticalDrop = p2OrigZ - elevationLimit;
-  						const horizontalDistance = verticalDrop / tanAngle;
-  						perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  						perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  					} else {
-  						// Point is at or below limit - no offset
-  						p2ZDelta = 0;
-  						perpX2 = 0;
-  						perpY2 = 0;
-  					}
-  				} else if (projectionAngle > 0) {
-  					// Projecting upward
-  					if (p2OrigZ < elevationLimit) {
-  						// Point is below limit - project up to limit
-  						p2ZDelta = elevationLimit - p2OrigZ;
-  						const verticalRise = elevationLimit - p2OrigZ;
-  						const horizontalDistance = verticalRise / tanAngle;
-  						perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  						perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
-  					} else {
-  						// Point is at or above limit - no offset
-  						p2ZDelta = 0;
-  						perpX2 = 0;
-  						perpY2 = 0;
-  					}
-  				}
-  			}
+					if (projectionAngle < 0) {
+						// Projecting downward
+						if (p2OrigZ > elevationLimit) {
+							// Point is above limit - project down to limit
+							p2ZDelta = elevationLimit - p2OrigZ;
+							const verticalDrop = p2OrigZ - elevationLimit;
+							const horizontalDistance = verticalDrop / tanAngle;
+							perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+							perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						} else {
+							// Point is at or below limit - no offset
+							p2ZDelta = 0;
+							perpX2 = 0;
+							perpY2 = 0;
+						}
+					} else if (projectionAngle > 0) {
+						// Projecting upward
+						if (p2OrigZ < elevationLimit) {
+							// Point is below limit - project up to limit
+							p2ZDelta = elevationLimit - p2OrigZ;
+							const verticalRise = elevationLimit - p2OrigZ;
+							const horizontalDistance = verticalRise / tanAngle;
+							perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+							perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						} else {
+							// Point is at or above limit - no offset
+							p2ZDelta = 0;
+							perpX2 = 0;
+							perpY2 = 0;
+						}
+					}
+				}
 
-  			offsetSegments.push({
-  				start: {
-  					x: p1.pointXLocation + perpX1,
-  					y: p1.pointYLocation + perpY1,
-  					z: parseFloat(p1.pointZLocation) + p1ZDelta,
-  				},
-  				end: {
-  					x: p2.pointXLocation + perpX2,
-  					y: p2.pointYLocation + perpY2,
-  					z: parseFloat(p2.pointZLocation) + p2ZDelta,
-  				},
-  				index: 0,
-  			});
+				offsetSegments.push({
+					start: {
+						x: p1.pointXLocation + perpX1,
+						y: p1.pointYLocation + perpY1,
+						z: parseFloat(p1.pointZLocation) + p1ZDelta,
+					},
+					end: {
+						x: p2.pointXLocation + perpX2,
+						y: p2.pointYLocation + perpY2,
+						z: parseFloat(p2.pointZLocation) + p2ZDelta,
+					},
+					index: 0,
+				});
 			}
 		}
 
@@ -18680,7 +18680,7 @@ function createOffsetEntity(originalEntity, offsetAmount, projectionAngle, color
 		const newEntityData = offsetPath.map((pt, index) => {
 			const worldX = pt.X / scale;
 			const worldY = pt.Y / scale;
-					
+
 			// Determine elevation based on keepElevations setting
 			let worldZ;
 			if (keepElevations) {
@@ -18722,7 +18722,7 @@ function createOffsetEntity(originalEntity, offsetAmount, projectionAngle, color
 
 				worldZ = targetZ;
 			}
-			
+
 			return {
 				entityName: newEntityName,
 				entityType: originalEntity.entityType,
@@ -22525,19 +22525,29 @@ function saveAQMPopup() {
 
 		var entityName = visibleBlastHoles[0].entityName || "Blast";
 
-	if (savedPrefs) {
-		try {
-			var prefs = JSON.parse(savedPrefs);
-			blastName = prefs.blastName || entityName;
-			patternName = prefs.patternName || entityName;
-			materialType = prefs.materialType || "Material";
-			instruction = prefs.instruction || "Instruction";
-			useHoleTypeAsInstruction = prefs.useHoleTypeAsInstruction || false;
-			writeIgnoreColumn = prefs.writeIgnoreColumn !== false; // Default true
-			columnOrder = prefs.columnOrder || ["Pattern", "Blast", "Name", "Easting", "Northing", "Elevation", "Angle", "Azimuth", "Diameter", "Instruction", "Material Type"];
-			columnEnabled = prefs.columnEnabled || {}; // Map of column name to enabled state
-		} catch (e) {
-			console.warn("Failed to parse AQM export preferences:", e);
+		if (savedPrefs) {
+			try {
+				var prefs = JSON.parse(savedPrefs);
+				blastName = prefs.blastName || entityName;
+				patternName = prefs.patternName || entityName;
+				materialType = prefs.materialType || "Material";
+				instruction = prefs.instruction || "Instruction";
+				useHoleTypeAsInstruction = prefs.useHoleTypeAsInstruction || false;
+				writeIgnoreColumn = prefs.writeIgnoreColumn !== false; // Default true
+				columnOrder = prefs.columnOrder || ["Pattern", "Blast", "Name", "Easting", "Northing", "Elevation", "Angle", "Azimuth", "Diameter", "Instruction", "Material Type"];
+				columnEnabled = prefs.columnEnabled || {}; // Map of column name to enabled state
+			} catch (e) {
+				console.warn("Failed to parse AQM export preferences:", e);
+				blastName = entityName;
+				patternName = entityName;
+				materialType = "Material";
+				instruction = "Instruction";
+				useHoleTypeAsInstruction = false;
+				writeIgnoreColumn = true;
+				columnOrder = ["Pattern", "Blast", "Name", "Easting", "Northing", "Elevation", "Angle", "Azimuth", "Diameter", "Instruction", "Material Type"];
+				columnEnabled = {}; // All enabled by default
+			}
+		} else {
 			blastName = entityName;
 			patternName = entityName;
 			materialType = "Material";
@@ -22547,185 +22557,175 @@ function saveAQMPopup() {
 			columnOrder = ["Pattern", "Blast", "Name", "Easting", "Northing", "Elevation", "Angle", "Azimuth", "Diameter", "Instruction", "Material Type"];
 			columnEnabled = {}; // All enabled by default
 		}
-	} else {
-		blastName = entityName;
-		patternName = entityName;
-		materialType = "Material";
-		instruction = "Instruction";
-		useHoleTypeAsInstruction = false;
-		writeIgnoreColumn = true;
-		columnOrder = ["Pattern", "Blast", "Name", "Easting", "Northing", "Elevation", "Angle", "Azimuth", "Diameter", "Instruction", "Material Type"];
-		columnEnabled = {}; // All enabled by default
-	}
 
-	// Step 3) Generate default filename with fresh timestamp
-	var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
-	var defaultFilename = "AQM_" + entityName + "_" + timestamp;
+		// Step 3) Generate default filename with fresh timestamp
+		var timestamp = new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_");
+		var defaultFilename = "AQM_" + entityName + "_" + timestamp;
 
-	// Step 4) Create dialog content
-	var contentHTML = '<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">';
+		// Step 4) Create dialog content
+		var contentHTML = '<div style="display: flex; flex-direction: column; height: 100%; overflow: hidden;">';
 
-	// Header section - Filename
-	contentHTML += '<div style="padding: 10px; border-bottom: 1px solid var(--light-mode-border);" class="button-container-2col">';
-	contentHTML += '<label class="labelWhite15">Filename (without .aqm):</label>';
-	contentHTML += '<input type="text" id="export-aqm-filename" value="' + defaultFilename + '" style="width: 100%; padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
-	contentHTML += '<label class="labelWhite15"><strong>Holes to Export:</strong> ' + visibleBlastHoles.length + '</label>';
-	contentHTML += '<div></div>';
-	contentHTML += '</div>';
+		// Header section - Filename
+		contentHTML += '<div style="padding: 10px; border-bottom: 1px solid var(--light-mode-border);" class="button-container-2col">';
+		contentHTML += '<label class="labelWhite15">Filename (without .aqm):</label>';
+		contentHTML += '<input type="text" id="export-aqm-filename" value="' + defaultFilename + '" style="width: 100%; padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+		contentHTML += '<label class="labelWhite15"><strong>Holes to Export:</strong> ' + visibleBlastHoles.length + '</label>';
+		contentHTML += '<div></div>';
+		contentHTML += '</div>';
 
-	// AQM-specific fields section
-	contentHTML += '<div style="padding: 10px; border-bottom: 1px solid var(--light-mode-border);" class="button-container-2col">';
-	contentHTML += '<label class="labelWhite12">Blast Name:</label>';
-	contentHTML += '<input type="text" id="export-aqm-blast-name" value="' + blastName + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px;">';
-	contentHTML += '<label class="labelWhite12">Pattern Name:</label>';
-	contentHTML += '<input type="text" id="export-aqm-pattern-name" value="' + patternName + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px;">';
-	contentHTML += '<label class="labelWhite12">Material Type:</label>';
-	contentHTML += '<input type="text" id="export-aqm-material-type" value="' + materialType + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px;">';
-	contentHTML += '<label class="labelWhite12">Instruction:</label>';
-	contentHTML += '<input type="text" id="export-aqm-instruction" value="' + instruction + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px;">';
-	contentHTML += '<label class="labelWhite12">Use hole type as instruction:</label>';
-	contentHTML += '<input type="checkbox" id="export-aqm-use-hole-type"' + (useHoleTypeAsInstruction ? ' checked' : '') + '>';
-	contentHTML += '<label class="labelWhite12">Write Ignore Columns:</label>';
-	contentHTML += '<input type="checkbox" id="export-aqm-write-ignore"' + (writeIgnoreColumn ? ' checked' : '') + '>';
-	contentHTML += '</div>';
+		// AQM-specific fields section
+		contentHTML += '<div style="padding: 10px; border-bottom: 1px solid var(--light-mode-border);" class="button-container-2col">';
+		contentHTML += '<label class="labelWhite12">Blast Name:</label>';
+		contentHTML += '<input type="text" id="export-aqm-blast-name" value="' + blastName + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px;">';
+		contentHTML += '<label class="labelWhite12">Pattern Name:</label>';
+		contentHTML += '<input type="text" id="export-aqm-pattern-name" value="' + patternName + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px;">';
+		contentHTML += '<label class="labelWhite12">Material Type:</label>';
+		contentHTML += '<input type="text" id="export-aqm-material-type" value="' + materialType + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px;">';
+		contentHTML += '<label class="labelWhite12">Instruction:</label>';
+		contentHTML += '<input type="text" id="export-aqm-instruction" value="' + instruction + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px;">';
+		contentHTML += '<label class="labelWhite12">Use hole type as instruction:</label>';
+		contentHTML += '<input type="checkbox" id="export-aqm-use-hole-type"' + (useHoleTypeAsInstruction ? ' checked' : '') + '>';
+		contentHTML += '<label class="labelWhite12">Write Ignore Columns:</label>';
+		contentHTML += '<input type="checkbox" id="export-aqm-write-ignore"' + (writeIgnoreColumn ? ' checked' : '') + '>';
+		contentHTML += '</div>';
 
-	// Column ordering section
-	contentHTML += '<div style="flex: 1; display: flex; flex-direction: column; padding: 10px; overflow: hidden;">';
-	contentHTML += '<label class="labelWhite15" style="margin-bottom: 10px;"><strong>Column Order (Drag to Reorder):</strong></label>';
-	contentHTML += '<div id="aqm-column-order-list" style="flex: 1; overflow-y: auto; background: var(--dark-mode-bg); border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 5px;">';
-	contentHTML += '</div>';
-	contentHTML += '</div>';
-	contentHTML += '</div>';
+		// Column ordering section
+		contentHTML += '<div style="flex: 1; display: flex; flex-direction: column; padding: 10px; overflow: hidden;">';
+		contentHTML += '<label class="labelWhite15" style="margin-bottom: 10px;"><strong>Column Order (Drag to Reorder):</strong></label>';
+		contentHTML += '<div id="aqm-column-order-list" style="flex: 1; overflow-y: auto; background: var(--dark-mode-bg); border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 5px;">';
+		contentHTML += '</div>';
+		contentHTML += '</div>';
+		contentHTML += '</div>';
 
-	// Step 5) Create dialog
+		// Step 5) Create dialog
 		var dialog;
 		try {
 			dialog = new FloatingDialog({
-		title: "Export AQM File - Column Order",
-		content: contentHTML,
-		layoutType: "default",
-		width: 650,
-		height: 750,
-		showConfirm: true,
-		showCancel: true,
-		confirmText: "Export",
-		cancelText: "Cancel",
-		onConfirm: async function () {
-			try {
-				// Step 6) Get column order and enabled state from sortable list
-				var orderList = document.getElementById("aqm-column-order-list");
-				var columnOrder = [];
-				var columnEnabled = {};
-				var exportColumnOrder = []; // Column order for export (includes "Ignore")
-				var items = orderList.querySelectorAll(".aqm-column-item");
-
-				for (var i = 0; i < items.length; i++) {
-					var item = items[i];
-					var checkbox = item.querySelector(".aqm-column-checkbox");
-					var colName = item.getAttribute("data-col-name");
-
-					// Save actual column name (not "Ignore")
-					columnOrder.push(colName);
-					// Save enabled state
-					columnEnabled[colName] = checkbox && checkbox.checked;
-					// Build export order (use "Ignore" for unchecked columns)
-					if (checkbox && !checkbox.checked) {
-						exportColumnOrder.push("Ignore");
-					} else {
-						exportColumnOrder.push(colName);
-					}
-				}
-
-				if (columnOrder.length !== 11) {
-					showModalMessage("Invalid Column Order", "AQM files must have exactly 11 columns", "error");
-					return;
-				}
-
-				// Step 7) Get form values
-				var filename = document.getElementById("export-aqm-filename").value.trim();
-				var blastName = document.getElementById("export-aqm-blast-name").value.trim();
-				var patternName = document.getElementById("export-aqm-pattern-name").value.trim();
-				var materialType = document.getElementById("export-aqm-material-type").value.trim();
-				var instruction = document.getElementById("export-aqm-instruction").value.trim();
-				var useHoleTypeAsInstruction = document.getElementById("export-aqm-use-hole-type").checked;
-				var writeIgnoreColumn = document.getElementById("export-aqm-write-ignore").checked;
-
-				if (!filename) {
-					showModalMessage("No Filename", "Please enter a filename", "warning");
-					return;
-				}
-
-				// Ensure .aqm extension
-				if (!filename.toLowerCase().endsWith(".aqm")) {
-					filename += ".aqm";
-				}
-
-				// Step 8) Save preferences (with actual column names and enabled state)
-				localStorage.setItem("kirra_aqm_export_prefs", JSON.stringify({
-					blastName: blastName,
-					patternName: patternName,
-					materialType: materialType,
-					instruction: instruction,
-					useHoleTypeAsInstruction: useHoleTypeAsInstruction,
-					writeIgnoreColumn: writeIgnoreColumn,
-					columnOrder: columnOrder,
-					columnEnabled: columnEnabled
-				}));
-
-				// Step 9) Generate AQM content using existing converter function (use exportColumnOrder with "Ignore")
-				var aqmContent = convertPointsToAQMCSV(
-					visibleBlastHoles,
-					filename.replace(".aqm", ""), // Remove extension for converter
-					blastName,
-					patternName,
-					materialType,
-					instruction,
-					useHoleTypeAsInstruction,
-					writeIgnoreColumn,
-					exportColumnOrder
-				);
-
-				// Step 10) Export using File System Access API if available
-				if (window.showSaveFilePicker) {
+				title: "Export AQM File - Column Order",
+				content: contentHTML,
+				layoutType: "default",
+				width: 650,
+				height: 750,
+				showConfirm: true,
+				showCancel: true,
+				confirmText: "Export",
+				cancelText: "Cancel",
+				onConfirm: async function () {
 					try {
-						var fileHandle = await window.showSaveFilePicker({
-							suggestedName: filename,
-							types: [{
-								description: 'AQM Files',
-								accept: { 'text/csv': ['.aqm'] }
-							}]
-						});
+						// Step 6) Get column order and enabled state from sortable list
+						var orderList = document.getElementById("aqm-column-order-list");
+						var columnOrder = [];
+						var columnEnabled = {};
+						var exportColumnOrder = []; // Column order for export (includes "Ignore")
+						var items = orderList.querySelectorAll(".aqm-column-item");
 
-						var writable = await fileHandle.createWritable();
-						await writable.write(aqmContent);
-						await writable.close();
+						for (var i = 0; i < items.length; i++) {
+							var item = items[i];
+							var checkbox = item.querySelector(".aqm-column-checkbox");
+							var colName = item.getAttribute("data-col-name");
 
-						showModalMessage("Export Success", "Exported AQM to " + fileHandle.name, "success");
-						dialog.close();
-					} catch (error) {
-						if (error.name === 'AbortError') {
-							console.log("User cancelled file picker");
+							// Save actual column name (not "Ignore")
+							columnOrder.push(colName);
+							// Save enabled state
+							columnEnabled[colName] = checkbox && checkbox.checked;
+							// Build export order (use "Ignore" for unchecked columns)
+							if (checkbox && !checkbox.checked) {
+								exportColumnOrder.push("Ignore");
+							} else {
+								exportColumnOrder.push(colName);
+							}
+						}
+
+						if (columnOrder.length !== 11) {
+							showModalMessage("Invalid Column Order", "AQM files must have exactly 11 columns", "error");
+							return;
+						}
+
+						// Step 7) Get form values
+						var filename = document.getElementById("export-aqm-filename").value.trim();
+						var blastName = document.getElementById("export-aqm-blast-name").value.trim();
+						var patternName = document.getElementById("export-aqm-pattern-name").value.trim();
+						var materialType = document.getElementById("export-aqm-material-type").value.trim();
+						var instruction = document.getElementById("export-aqm-instruction").value.trim();
+						var useHoleTypeAsInstruction = document.getElementById("export-aqm-use-hole-type").checked;
+						var writeIgnoreColumn = document.getElementById("export-aqm-write-ignore").checked;
+
+						if (!filename) {
+							showModalMessage("No Filename", "Please enter a filename", "warning");
+							return;
+						}
+
+						// Ensure .aqm extension
+						if (!filename.toLowerCase().endsWith(".aqm")) {
+							filename += ".aqm";
+						}
+
+						// Step 8) Save preferences (with actual column names and enabled state)
+						localStorage.setItem("kirra_aqm_export_prefs", JSON.stringify({
+							blastName: blastName,
+							patternName: patternName,
+							materialType: materialType,
+							instruction: instruction,
+							useHoleTypeAsInstruction: useHoleTypeAsInstruction,
+							writeIgnoreColumn: writeIgnoreColumn,
+							columnOrder: columnOrder,
+							columnEnabled: columnEnabled
+						}));
+
+						// Step 9) Generate AQM content using existing converter function (use exportColumnOrder with "Ignore")
+						var aqmContent = convertPointsToAQMCSV(
+							visibleBlastHoles,
+							filename.replace(".aqm", ""), // Remove extension for converter
+							blastName,
+							patternName,
+							materialType,
+							instruction,
+							useHoleTypeAsInstruction,
+							writeIgnoreColumn,
+							exportColumnOrder
+						);
+
+						// Step 10) Export using File System Access API if available
+						if (window.showSaveFilePicker) {
+							try {
+								var fileHandle = await window.showSaveFilePicker({
+									suggestedName: filename,
+									types: [{
+										description: 'AQM Files',
+										accept: { 'text/csv': ['.aqm'] }
+									}]
+								});
+
+								var writable = await fileHandle.createWritable();
+								await writable.write(aqmContent);
+								await writable.close();
+
+								showModalMessage("Export Success", "Exported AQM to " + fileHandle.name, "success");
+								dialog.close();
+							} catch (error) {
+								if (error.name === 'AbortError') {
+									console.log("User cancelled file picker");
+								} else {
+									console.error("File System Access API error:", error);
+									// Fallback to standard download
+									downloadAQMStandard(aqmContent, filename);
+									dialog.close();
+								}
+							}
 						} else {
-							console.error("File System Access API error:", error);
-							// Fallback to standard download
+							// Fallback to standard download for unsupported browsers
 							downloadAQMStandard(aqmContent, filename);
 							dialog.close();
 						}
+					} catch (error) {
+						console.error("AQM export error:", error);
+						showModalMessage("Export Error", "Error: " + error.message, "error");
 					}
-				} else {
-					// Fallback to standard download for unsupported browsers
-					downloadAQMStandard(aqmContent, filename);
-					dialog.close();
+				},
+				onCancel: function () {
+					// Dialog cancelled
 				}
-			} catch (error) {
-				console.error("AQM export error:", error);
-				showModalMessage("Export Error", "Error: " + error.message, "error");
-			}
-		},
-		onCancel: function () {
-			// Dialog cancelled
-		}
-	});
+			});
 		} catch (dialogError) {
 			console.error("Error creating FloatingDialog:", dialogError);
 			showModalMessage("Dialog Error", "Failed to create export dialog: " + dialogError.message, "error");
@@ -22735,118 +22735,118 @@ function saveAQMPopup() {
 		// Show the dialog
 		dialog.show();
 
-	// Step 6) Initialize column order list with drag-and-drop
-	setTimeout(function () {
-		var orderList = document.getElementById("aqm-column-order-list");
-		if (!orderList) return;
+		// Step 6) Initialize column order list with drag-and-drop
+		setTimeout(function () {
+			var orderList = document.getElementById("aqm-column-order-list");
+			if (!orderList) return;
 
-		// Define available AQM columns (all 11 are always present)
-		var aqmColumns = [
-			{ name: "Pattern", label: "Pattern" },
-			{ name: "Blast", label: "Blast" },
-			{ name: "Name", label: "Name" },
-			{ name: "Easting", label: "Easting" },
-			{ name: "Northing", label: "Northing" },
-			{ name: "Elevation", label: "Elevation" },
-			{ name: "Angle", label: "Angle" },
-			{ name: "Azimuth", label: "Azimuth" },
-			{ name: "Diameter", label: "Diameter" },
-			{ name: "Instruction", label: "Instruction" },
-			{ name: "Material Type", label: "Material Type" }
-		];
+			// Define available AQM columns (all 11 are always present)
+			var aqmColumns = [
+				{ name: "Pattern", label: "Pattern" },
+				{ name: "Blast", label: "Blast" },
+				{ name: "Name", label: "Name" },
+				{ name: "Easting", label: "Easting" },
+				{ name: "Northing", label: "Northing" },
+				{ name: "Elevation", label: "Elevation" },
+				{ name: "Angle", label: "Angle" },
+				{ name: "Azimuth", label: "Azimuth" },
+				{ name: "Diameter", label: "Diameter" },
+				{ name: "Instruction", label: "Instruction" },
+				{ name: "Material Type", label: "Material Type" }
+			];
 
-		// Populate order list from saved preferences or defaults (all 11 columns always shown)
-		for (var i = 0; i < columnOrder.length; i++) {
-			var colName = columnOrder[i];
-			var colData = aqmColumns.find(function(col) { return col.name === colName; });
-			if (!colData) continue;
+			// Populate order list from saved preferences or defaults (all 11 columns always shown)
+			for (var i = 0; i < columnOrder.length; i++) {
+				var colName = columnOrder[i];
+				var colData = aqmColumns.find(function (col) { return col.name === colName; });
+				if (!colData) continue;
 
-			var item = document.createElement("div");
-			item.className = "aqm-column-item";
-			item.setAttribute("data-col-name", colName);
-			item.setAttribute("draggable", "true");
-			item.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 8px; margin-bottom: 3px; background: var(--button-bg); border: 1px solid var(--light-mode-border); border-radius: 3px; cursor: move; user-select: none;";
+				var item = document.createElement("div");
+				item.className = "aqm-column-item";
+				item.setAttribute("data-col-name", colName);
+				item.setAttribute("draggable", "true");
+				item.style.cssText = "display: flex; align-items: center; gap: 8px; padding: 8px; margin-bottom: 3px; background: var(--button-bg); border: 1px solid var(--light-mode-border); border-radius: 3px; cursor: move; user-select: none;";
 
-			// Create checkbox (unchecked = Ignore)
-			var checkbox = document.createElement("input");
-			checkbox.type = "checkbox";
-			checkbox.className = "aqm-column-checkbox";
-			// Check if this column is enabled (default true if not specified)
-			checkbox.checked = columnEnabled[colName] !== false;
-			checkbox.style.cssText = "cursor: pointer;";
-			checkbox.onclick = function(e) {
-				e.stopPropagation(); // Prevent drag when clicking checkbox
-			};
+				// Create checkbox (unchecked = Ignore)
+				var checkbox = document.createElement("input");
+				checkbox.type = "checkbox";
+				checkbox.className = "aqm-column-checkbox";
+				// Check if this column is enabled (default true if not specified)
+				checkbox.checked = columnEnabled[colName] !== false;
+				checkbox.style.cssText = "cursor: pointer;";
+				checkbox.onclick = function (e) {
+					e.stopPropagation(); // Prevent drag when clicking checkbox
+				};
 
-			// Create drag handle
-			var handle = document.createElement("span");
-			handle.textContent = "::";
-			handle.style.cssText = "color: var(--accent-color); font-weight: bold; min-width: 30px;";
+				// Create drag handle
+				var handle = document.createElement("span");
+				handle.textContent = "::";
+				handle.style.cssText = "color: var(--accent-color); font-weight: bold; min-width: 30px;";
 
-			// Create column number
-			var number = document.createElement("span");
-			number.className = "aqm-column-number";
-			number.textContent = (i + 1) + ".";
-			number.style.cssText = "color: var(--text-color); font-weight: bold; min-width: 25px;";
+				// Create column number
+				var number = document.createElement("span");
+				number.className = "aqm-column-number";
+				number.textContent = (i + 1) + ".";
+				number.style.cssText = "color: var(--text-color); font-weight: bold; min-width: 25px;";
 
-			// Create column label
-			var label = document.createElement("span");
-			label.textContent = colData.label;
-			label.style.cssText = "color: var(--text-color); flex: 1;";
+				// Create column label
+				var label = document.createElement("span");
+				label.textContent = colData.label;
+				label.style.cssText = "color: var(--text-color); flex: 1;";
 
-			item.appendChild(checkbox);
-			item.appendChild(handle);
-			item.appendChild(number);
-			item.appendChild(label);
-			orderList.appendChild(item);
-		}
-
-		// Set up drag-and-drop
-		var draggedItem = null;
-
-		orderList.addEventListener("dragstart", function (e) {
-			if (e.target.className === "aqm-column-item") {
-				draggedItem = e.target;
-				e.target.style.opacity = "0.5";
-			}
-		});
-
-		orderList.addEventListener("dragend", function (e) {
-			if (e.target.className === "aqm-column-item") {
-				e.target.style.opacity = "1";
-				updateColumnNumbers();
-			}
-		});
-
-		orderList.addEventListener("dragover", function (e) {
-			e.preventDefault();
-			var target = e.target;
-			while (target && target.className !== "aqm-column-item") {
-				target = target.parentElement;
+				item.appendChild(checkbox);
+				item.appendChild(handle);
+				item.appendChild(number);
+				item.appendChild(label);
+				orderList.appendChild(item);
 			}
 
-			if (target && target !== draggedItem && target.className === "aqm-column-item") {
-				var rect = target.getBoundingClientRect();
-				var midpoint = rect.top + rect.height / 2;
-				if (e.clientY < midpoint) {
-					target.parentNode.insertBefore(draggedItem, target);
-				} else {
-					target.parentNode.insertBefore(draggedItem, target.nextSibling);
+			// Set up drag-and-drop
+			var draggedItem = null;
+
+			orderList.addEventListener("dragstart", function (e) {
+				if (e.target.className === "aqm-column-item") {
+					draggedItem = e.target;
+					e.target.style.opacity = "0.5";
+				}
+			});
+
+			orderList.addEventListener("dragend", function (e) {
+				if (e.target.className === "aqm-column-item") {
+					e.target.style.opacity = "1";
+					updateColumnNumbers();
+				}
+			});
+
+			orderList.addEventListener("dragover", function (e) {
+				e.preventDefault();
+				var target = e.target;
+				while (target && target.className !== "aqm-column-item") {
+					target = target.parentElement;
+				}
+
+				if (target && target !== draggedItem && target.className === "aqm-column-item") {
+					var rect = target.getBoundingClientRect();
+					var midpoint = rect.top + rect.height / 2;
+					if (e.clientY < midpoint) {
+						target.parentNode.insertBefore(draggedItem, target);
+					} else {
+						target.parentNode.insertBefore(draggedItem, target.nextSibling);
+					}
+				}
+			});
+
+			// Update column numbers after reordering
+			function updateColumnNumbers() {
+				var items = orderList.querySelectorAll(".aqm-column-item");
+				for (var i = 0; i < items.length; i++) {
+					var numberSpan = items[i].querySelector(".aqm-column-number");
+					if (numberSpan) {
+						numberSpan.textContent = (i + 1) + ".";
+					}
 				}
 			}
-		});
-
-		// Update column numbers after reordering
-		function updateColumnNumbers() {
-			var items = orderList.querySelectorAll(".aqm-column-item");
-			for (var i = 0; i < items.length; i++) {
-				var numberSpan = items[i].querySelector(".aqm-column-number");
-				if (numberSpan) {
-					numberSpan.textContent = (i + 1) + ".";
-				}
-			}
-		}
-	}, 100);
+		}, 100);
 	} catch (error) {
 		console.error("Error in saveAQMPopup:", error);
 		showModalMessage("Export Error", "Failed to open AQM export dialog: " + error.message, "error");
@@ -23707,7 +23707,7 @@ async function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLoc
 	let horizontalProjectionToGrade = benchLength * sinAngle;
 	let gradeXLocation = parseFloat(startXLocation + horizontalProjectionToGrade * Math.cos(bearingRad));
 	let gradeYLocation = parseFloat(startYLocation + horizontalProjectionToGrade * Math.sin(bearingRad));
-	
+
 	// Only overwrite gradeZLocation if useGradeZ is false (using length-based calculation)
 	if (!useGradeZ) {
 		gradeZLocation = parseFloat(startZLocation - benchHeight);
@@ -27069,7 +27069,7 @@ function drawData(allBlastHoles, selectedHole) {
 						}
 					}
 				}
-				
+
 				// Step 3.1e) CRITICAL: Update LineMaterial resolution after adding all fat lines
 				// This ensures fat lines render with correct thickness on initial draw
 				if (typeof updateAllLineMaterialResolution === "function") {
@@ -27176,9 +27176,9 @@ function drawData(allBlastHoles, selectedHole) {
 							var entityColor = pointsToRender[0].color || "#FFFFFF"; // Fallback color
 							var isPolygon = entity.entityType === "poly";
 
-							if(developerModeEnabled){
-							console.log("[3D Batched] entity:", name, "lineWidth:", entityLineWidth, "rawValue:", pointsToRender[0].lineWidth, "numPoints:", pointsToRender.length);
-						}
+							if (developerModeEnabled) {
+								console.log("[3D Batched] entity:", name, "lineWidth:", entityLineWidth, "rawValue:", pointsToRender[0].lineWidth, "numPoints:", pointsToRender.length);
+							}
 
 							// ONE draw call for entire entity with per-vertex colors!
 							drawKADBatchedPolylineThreeJS(batchedPoints, entityLineWidth, entityColor, name, isPolygon);
@@ -27201,7 +27201,7 @@ function drawData(allBlastHoles, selectedHole) {
 								var color = nextPoint.color || "#FF0000";
 
 								if (i === 0) {
-								//	console.log("[3D Segment] segment", i, "lineWidth:", lineWidth, "rawValue:", nextPoint.lineWidth, "color:", color);
+									//	console.log("[3D Segment] segment", i, "lineWidth:", lineWidth, "rawValue:", nextPoint.lineWidth, "color:", color);
 								}
 
 								if (entity.entityType === "line") {
@@ -28429,7 +28429,7 @@ async function loadSurfaceIntoMemory(surfaceId) {
 						surfaceEntry.flattenedImageDimensions = surfaceData.flattenedImageDimensions || null;
 
 						// Step 3) Rebuild textured mesh asynchronously
-						setTimeout(function() {
+						setTimeout(function () {
 							rebuildTexturedMesh(surfaceData.id);
 						}, 100);
 					}
@@ -28882,7 +28882,7 @@ function setKADEntityVisibility(entityName, visible) {
 		updateTreeViewVisibilityStates();
 
 		drawData(allBlastHoles, selectedHole);
-		
+
 		// Step 1) Save visibility change to IndexedDB
 		if (typeof debouncedSaveKAD === "function") {
 			debouncedSaveKAD();
@@ -28902,7 +28902,7 @@ function setKADElementVisibility(entityName, pointID, visible) {
 			clearHiddenFromSelections();
 			drawData(allBlastHoles, selectedHole);
 			updateTreeViewVisibilityStates();
-			
+
 			// Step 2) Save visibility change to IndexedDB
 			if (typeof debouncedSaveKAD === "function") {
 				debouncedSaveKAD();
@@ -28930,7 +28930,7 @@ function setHoleVisibility(holeID, visible) {
 		clearHiddenFromSelections();
 		window.threeDataNeedsRebuild = true; // Force 3D geometry rebuild on visibility change
 		drawData(allBlastHoles, selectedHole);
-		
+
 		// Step 3) Save visibility change to IndexedDB
 		if (typeof debouncedSaveHoles === "function") {
 			debouncedSaveHoles();
@@ -28949,7 +28949,7 @@ function setEntityVisibility(entityName, visible) {
 	clearHiddenFromSelections();
 	window.threeDataNeedsRebuild = true; // Force 3D geometry rebuild on visibility change
 	drawData(allBlastHoles, selectedHole);
-	
+
 	// Step 5) Save entity visibility changes to IndexedDB
 	if (typeof debouncedSaveHoles === "function") {
 		debouncedSaveHoles();
@@ -29795,7 +29795,7 @@ function endKadTools() {
 		}, 1500);
 		drawData(allBlastHoles, selectedHole);
 	}
-	
+
 	// Step 4) Hide pattern tool HUD labels when switching tools
 	hidePatternToolLabels();
 	// Step 5) Hide drawingDistance panel when KAD tools end
@@ -30349,7 +30349,7 @@ function openNavLeft() {
 		const toolbar = document.getElementById("toolbarPanel");
 		console.log("Toolbar classes:", toolbar.className);
 	}
-	
+
 	// Step #) Update HUD overlay position
 	updateHUDSidebarState(true);
 }
@@ -30373,7 +30373,7 @@ function closeNavLeft() {
 	if (toolbarPanel) {
 		toolbarPanel.updateSidebarState(false);
 	}
-	
+
 	// Step #) Update HUD overlay position
 	updateHUDSidebarState(false);
 }
@@ -34569,6 +34569,20 @@ function showCustomCsvExportModal() {
 		cancelText: "Cancel",
 		onConfirm: async function () {
 			try {
+				// Step 10) Get filename from input field
+				var filenameElement = document.getElementById("export-csv-filename");
+				if (!filenameElement) {
+					showModalMessage("Export Error", "Filename input field not found in dialog", "error");
+					return;
+				}
+				var filename = filenameElement.value.trim();
+
+				// Ensure .csv extension
+				if (!filename.toLowerCase().endsWith(".csv")) {
+					filename += ".csv";
+				}
+
+
 				// Step 6) Get selected columns in order from the sortable list
 				var orderList = document.getElementById("csv-column-order-list");
 				var columnOrder = [];
@@ -34632,23 +34646,14 @@ function showCustomCsvExportModal() {
 					includeHeaders: includeHeaders,
 					customHeaders: customHeaders,
 					customFields: customFields,
-					decimalPlaces: 4
+					decimalPlaces: 4,
+					fieldMapping: HOLE_FIELD_MAPPING
 				});
 
 				// Step 9) Generate CSV
 				var blob = await writer.write({ holes: visibleHoles });
 
-				// Step 10) Get filename from input field
-				var filename = document.getElementById("export-csv-filename").value.trim();
-				if (!filename) {
-					showModalMessage("No Filename", "Please enter a filename", "warning");
-					return;
-				}
 
-				// Ensure .csv extension
-				if (!filename.toLowerCase().endsWith(".csv")) {
-					filename += ".csv";
-				}
 
 				// Step 11) Try to use File System Access API for custom filename
 				if (window.showSaveFilePicker) {
@@ -34697,7 +34702,7 @@ function showCustomCsvExportModal() {
 	dialog.show();
 
 	// Initialize column order list after dialog is rendered
-	setTimeout(function() {
+	setTimeout(function () {
 		// Add enabled custom fields to selectedColumns before initializing
 		for (var i = 0; i < customFields.length; i++) {
 			if (customFields[i].enabled && customFields[i].name) {
@@ -34897,12 +34902,12 @@ function initializeCsvColumnOrder(availableColumns, selectedColumns) {
 
 	// Listen for custom field checkbox and name changes
 	for (var i = 0; i < 3; i++) {
-		(function(fieldIndex) {
+		(function (fieldIndex) {
 			var customFieldCheckbox = document.getElementById("custom-field-" + fieldIndex + "-enabled");
 			var customFieldName = document.getElementById("custom-field-" + fieldIndex + "-name");
 			var customFieldKey = "customField" + fieldIndex;
 
-			var updateCustomField = function() {
+			var updateCustomField = function () {
 				var isEnabled = customFieldCheckbox && customFieldCheckbox.checked;
 				var hasName = customFieldName && customFieldName.value.trim();
 
@@ -35446,7 +35451,7 @@ function calculateBurdenAndSpacingForHoles(holes) {
 
 	// Group holes by entity name
 	var entitiesByName = new Map();
-	holes.forEach(function(hole) {
+	holes.forEach(function (hole) {
 		if (!entitiesByName.has(hole.entityName)) {
 			entitiesByName.set(hole.entityName, []);
 		}
@@ -35454,10 +35459,10 @@ function calculateBurdenAndSpacingForHoles(holes) {
 	});
 
 	// Calculate burden and spacing for each entity
-	entitiesByName.forEach(function(entityHoles, entityName) {
+	entitiesByName.forEach(function (entityHoles, entityName) {
 		// Group holes by row
 		var rowMap = new Map();
-		entityHoles.forEach(function(hole) {
+		entityHoles.forEach(function (hole) {
 			var rowKey = hole.rowID || 0;
 			if (!rowMap.has(rowKey)) {
 				rowMap.set(rowKey, []);
@@ -35466,14 +35471,14 @@ function calculateBurdenAndSpacingForHoles(holes) {
 		});
 
 		// Sort holes within each row by posID
-		rowMap.forEach(function(rowHoles) {
-			rowHoles.sort(function(a, b) {
+		rowMap.forEach(function (rowHoles) {
+			rowHoles.sort(function (a, b) {
 				return (a.posID || 0) - (b.posID || 0);
 			});
 		});
 
 		// Calculate spacing (distance to next hole in same row)
-		rowMap.forEach(function(rowHoles) {
+		rowMap.forEach(function (rowHoles) {
 			for (var i = 0; i < rowHoles.length; i++) {
 				var hole = rowHoles[i];
 				if (i < rowHoles.length - 1) {
@@ -35505,21 +35510,21 @@ function calculateBurdenAndSpacingForHoles(holes) {
 		var burdenBearingRadians = rowBearingRadians - Math.PI / 2; // Perpendicular to row
 
 		// Project all holes onto burden axis (perpendicular to rows)
-		entityHoles.forEach(function(hole) {
+		entityHoles.forEach(function (hole) {
 			hole.burdenProjection =
 				hole.startXLocation * Math.cos(burdenBearingRadians) +
 				hole.startYLocation * Math.sin(burdenBearingRadians);
 		});
 
 		// Calculate burden as perpendicular distance between rows
-		var sortedRows = Array.from(rowMap.keys()).sort(function(a, b) { return a - b; });
+		var sortedRows = Array.from(rowMap.keys()).sort(function (a, b) { return a - b; });
 
-		sortedRows.forEach(function(rowID, rowIndex) {
+		sortedRows.forEach(function (rowID, rowIndex) {
 			var rowHoles = rowMap.get(rowID);
 
 			// Calculate average burden projection for this row
 			var avgBurdenProj = 0;
-			rowHoles.forEach(function(hole) {
+			rowHoles.forEach(function (hole) {
 				avgBurdenProj += hole.burdenProjection;
 			});
 			avgBurdenProj /= rowHoles.length;
@@ -35532,7 +35537,7 @@ function calculateBurdenAndSpacingForHoles(holes) {
 				var nextRowID = sortedRows[rowIndex + 1];
 				var nextRowHoles = rowMap.get(nextRowID);
 				var nextAvgProj = 0;
-				nextRowHoles.forEach(function(hole) {
+				nextRowHoles.forEach(function (hole) {
 					nextAvgProj += hole.burdenProjection;
 				});
 				nextAvgProj /= nextRowHoles.length;
@@ -35543,7 +35548,7 @@ function calculateBurdenAndSpacingForHoles(holes) {
 				var prevRowID = sortedRows[rowIndex - 1];
 				var prevRowHoles = rowMap.get(prevRowID);
 				var prevAvgProj = 0;
-				prevRowHoles.forEach(function(hole) {
+				prevRowHoles.forEach(function (hole) {
 					prevAvgProj += hole.burdenProjection;
 				});
 				prevAvgProj /= prevRowHoles.length;
@@ -35551,7 +35556,7 @@ function calculateBurdenAndSpacingForHoles(holes) {
 			}
 
 			// Assign burden to each hole in row (rounded to 3 decimal places)
-			rowHoles.forEach(function(hole) {
+			rowHoles.forEach(function (hole) {
 				if (rowIndex === 0) {
 					// First row - use burden to next row
 					hole.burden = Math.round((burdenToNext || 0) * 1000) / 1000;
@@ -35566,7 +35571,7 @@ function calculateBurdenAndSpacingForHoles(holes) {
 		});
 
 		// Clean up temporary projection properties
-		entityHoles.forEach(function(hole) {
+		entityHoles.forEach(function (hole) {
 			delete hole.burdenProjection;
 		});
 
@@ -35586,7 +35591,7 @@ function estimateRowOrientation(holes) {
 	// Use PCA (Principal Component Analysis) to find dominant direction
 	var meanX = 0;
 	var meanY = 0;
-	holes.forEach(function(hole) {
+	holes.forEach(function (hole) {
 		meanX += hole.startXLocation;
 		meanY += hole.startYLocation;
 	});
@@ -35597,7 +35602,7 @@ function estimateRowOrientation(holes) {
 	var covarXY = 0;
 	var covarYY = 0;
 
-	holes.forEach(function(hole) {
+	holes.forEach(function (hole) {
 		var dx = hole.startXLocation - meanX;
 		var dy = hole.startYLocation - meanY;
 		covarXX += dx * dx;
@@ -38766,7 +38771,7 @@ function drawPatternInPolygon3DVisual() {
 	var dx = 0;
 	var dy = 0;
 	var lineLength = 0;
-	
+
 	if (patternStartPoint && patternEndPoint) {
 		// Full line from start to end
 		sLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
@@ -38774,7 +38779,7 @@ function drawPatternInPolygon3DVisual() {
 		dx = patternEndPoint.x - patternStartPoint.x;
 		dy = patternEndPoint.y - patternStartPoint.y;
 		lineLength = Math.sqrt(dx * dx + dy * dy);
-		
+
 		// Step 4a) Draw dashed line using cheap THREE.LineDashedMaterial (like drawKADLeadingLineThreeJS)
 		// Use polygon's Z for line elevation
 		var lineZ = drawZ;
@@ -38836,7 +38841,7 @@ function drawPatternInPolygon3DVisual() {
 		var perpX = dirY; // Perpendicular X (90° counter-clockwise)
 		var perpY = -dirX;  // Perpendicular Y (90° counter-clockwise)
 		var perpAngle = Math.atan2(perpY, perpX); // Angle of perpendicular direction
-		
+
 		// Create triangle shape: equilateral triangle, 2 units wide, pointing in perpendicular direction
 		var triangleSize = 3.0; // Size of triangle base
 		var triangleShape = new THREE.Shape();
@@ -38845,13 +38850,13 @@ function drawPatternInPolygon3DVisual() {
 		triangleShape.lineTo(-triangleSize / 2, 0);
 		triangleShape.lineTo(triangleSize / 2, 0);
 		triangleShape.lineTo(0, triangleSize); // Close triangle
-		
+
 		// Extrude settings: depth 0.2 (200mm), no bevel
 		var extrudeSettings = {
 			depth: 0.2, // 200mm extrusion
 			bevelEnabled: false
 		};
-		
+
 		// Create extruded triangle geometry
 		var triangleGeom = new THREE.ExtrudeGeometry(triangleShape, extrudeSettings);
 		var triangleMat = new THREE.MeshBasicMaterial({
@@ -38861,10 +38866,10 @@ function drawPatternInPolygon3DVisual() {
 			side: THREE.DoubleSide
 		});
 		var triangle = new THREE.Mesh(triangleGeom, triangleMat);
-		
+
 		// Step 5e) Position triangle at exact midpoint
 		triangle.position.copy(midPoint);
-		
+
 		// Step 5f) Orient triangle: lay flat on XY plane, point in perpendicular direction
 		// IMPORTANT: PatternInPolygon triangle should be rotated 90° clockwise around Z axis
 		// Triangle is created in XY plane (pointing up in +Y), rotate to point perpendicular to line
@@ -38884,10 +38889,10 @@ function drawPatternInPolygon3DVisual() {
 
 	// Step 6) Add group to scene
 	threeRenderer.scene.add(window.patternTool3DGroup);
-	
+
 	// Step 8) Build overlay data for HUD labels (consistent with 2D)
 	var overlayData = { toolType: "polygon" };
-	
+
 	// Step 8a) Add start point label
 	if (patternStartPoint) {
 		// FIX: Use actual Z from patternStartPoint or polygon
@@ -38903,7 +38908,7 @@ function drawPatternInPolygon3DVisual() {
 			overlayData.startCanvasY = screenStart.y;
 		}
 	}
-	
+
 	// Step 8b) Add end point label
 	if (patternEndPoint) {
 		// FIX: Use actual Z from patternEndPoint or polygon
@@ -38919,7 +38924,7 @@ function drawPatternInPolygon3DVisual() {
 			overlayData.endCanvasY = screenEnd.y;
 		}
 	}
-	
+
 	// Step 8c) Add reference point label
 	if (patternReferencePoint) {
 		// FIX: Use actual Z from patternReferencePoint or polygon
@@ -38935,7 +38940,7 @@ function drawPatternInPolygon3DVisual() {
 			overlayData.refCanvasY = screenRef.y;
 		}
 	}
-	
+
 	// Step 8d) Add distance label
 	if (patternStartPoint && patternEndPoint) {
 		var dx = patternEndPoint.x - patternStartPoint.x;
@@ -38950,7 +38955,7 @@ function drawPatternInPolygon3DVisual() {
 			overlayData.midCanvasY = screenMid.y;
 		}
 	}
-	
+
 	// Step 8e) Show HUD overlay labels
 	showPatternToolLabels(overlayData);
 }
@@ -39108,10 +39113,10 @@ function drawHolesAlongLine3DVisual() {
 
 	// Step 5) Add group to scene
 	threeRenderer.scene.add(window.holesAlongLine3DGroup);
-	
+
 	// Step 6) Build overlay data for HUD labels (consistent with 2D)
 	var overlayData = { toolType: "line" };
-	
+
 	// Step 6a) Add start point label
 	if (lineStartPoint) {
 		var screenStart = worldToScreen(lineStartPoint.x, lineStartPoint.y, dataCentroidZ || 0);
@@ -39121,7 +39126,7 @@ function drawHolesAlongLine3DVisual() {
 			overlayData.startCanvasY = screenStart.y;
 		}
 	}
-	
+
 	// Step 6b) Add end point label
 	if (lineEndPoint) {
 		var screenEnd = worldToScreen(lineEndPoint.x, lineEndPoint.y, dataCentroidZ || 0);
@@ -39131,7 +39136,7 @@ function drawHolesAlongLine3DVisual() {
 			overlayData.endCanvasY = screenEnd.y;
 		}
 	}
-	
+
 	// Step 6c) Add distance label (works for both completed line and preview)
 	if (lineStartPoint && (lineEndPoint || (currentMouseWorldX && currentMouseWorldY))) {
 		// Use end point if it exists, otherwise use mouse position for preview
@@ -39218,17 +39223,17 @@ function drawPatternOnPolylineVisual() {
 					endIdx = i;
 				}
 			}
-			
+
 			// Draw active segments in cyan with thicker line
 			if (startIdx !== -1 && endIdx !== -1 && startIdx !== endIdx) {
 				ctx.strokeStyle = "#00FFFF"; // Cyan for active segment
 				ctx.lineWidth = 5;
 				ctx.setLineDash([]);
 				ctx.beginPath();
-				
+
 				var minIdx = Math.min(startIdx, endIdx);
 				var maxIdx = Math.max(startIdx, endIdx);
-				
+
 				for (var j = minIdx; j <= maxIdx; j++) {
 					var vertex = selectedPolyline.vertices[j];
 					const [canvasX, canvasY] = worldToCanvas(vertex.x, vertex.y);
@@ -39276,7 +39281,7 @@ function drawPatternOnPolylineVisual() {
 		var totalDist = 0;
 		var startIdx = -1;
 		var endIdx = -1;
-		
+
 		// Find indices
 		for (var i = 0; i < selectedPolyline.vertices.length; i++) {
 			var v = selectedPolyline.vertices[i];
@@ -39287,11 +39292,11 @@ function drawPatternOnPolylineVisual() {
 				endIdx = i;
 			}
 		}
-		
+
 		if (startIdx !== -1 && endIdx !== -1) {
 			var minIdx = Math.min(startIdx, endIdx);
 			var maxIdx = Math.max(startIdx, endIdx);
-			
+
 			for (var j = minIdx; j < maxIdx; j++) {
 				var v1 = selectedPolyline.vertices[j];
 				var v2 = selectedPolyline.vertices[j + 1];
@@ -39299,7 +39304,7 @@ function drawPatternOnPolylineVisual() {
 				var dy = v2.y - v1.y;
 				totalDist += Math.sqrt(dx * dx + dy * dy);
 			}
-			
+
 			// Calculate midpoint in canvas coords
 			var midVertex = selectedPolyline.vertices[Math.floor((minIdx + maxIdx) / 2)];
 			var [midX, midY] = worldToCanvas(midVertex.x, midVertex.y);
@@ -39363,7 +39368,7 @@ function drawHolesAlongPolyline3DVisual() {
 		var startIdx = -1;
 		var endIdx = -1;
 		var searchPoints = selectedPolyline.entity && selectedPolyline.entity.data ? selectedPolyline.entity.data : selectedPolyline.vertices;
-		
+
 		for (var k = 0; k < searchPoints.length; k++) {
 			var pt = searchPoints[k];
 			var ptX = pt.pointXLocation || pt.x;
@@ -39385,14 +39390,14 @@ function drawHolesAlongPolyline3DVisual() {
 				}
 			}
 		}
-		
+
 		// Step 2b) Draw active segments in cyan using fat lines (thicker than green outline)
 		if (startIdx !== -1 && endIdx !== -1 && startIdx !== endIdx) {
 			var minIdx = Math.min(startIdx, endIdx);
 			var maxIdx = Math.max(startIdx, endIdx);
 			// Track if we're going from high index to low (reversed direction)
 			var isReversed = startIdx > endIdx;
-			
+
 			// Step 2c) Collect cyan segments for active path
 			// FIX: Use actual entity geometry (entity.data) instead of vertices array to ensure perfect alignment
 			// This matches how drawKADEntityHighlight() works - uses entity.data directly
@@ -39402,18 +39407,18 @@ function drawHolesAlongPolyline3DVisual() {
 				var entityPoints = selectedPolyline.entity.data;
 				var isClosedShape = selectedPolyline.type === "polygon";
 				var numSegments = isClosedShape ? entityPoints.length : entityPoints.length - 1;
-				
+
 				for (var m = minIdx; m < maxIdx && m < numSegments; m++) {
 					var point1 = entityPoints[m];
 					var point2 = isClosedShape ? entityPoints[(m + 1) % entityPoints.length] : entityPoints[m + 1];
-					
+
 					var segLocal1 = worldToThreeLocal(point1.pointXLocation, point1.pointYLocation);
 					var segLocal2 = worldToThreeLocal(point2.pointXLocation, point2.pointYLocation);
-					
+
 					// Use actual Z from entity points (same as highlight function)
 					var cyanZ1 = (point1.pointZLocation || dataCentroidZ || 0) + 0.2;
 					var cyanZ2 = (point2.pointZLocation || dataCentroidZ || 0) + 0.2;
-					
+
 					cyanSegments.push({
 						x1: segLocal1.x, y1: segLocal1.y, z1: cyanZ1,
 						x2: segLocal2.x, y2: segLocal2.y, z2: cyanZ2
@@ -39434,7 +39439,7 @@ function drawHolesAlongPolyline3DVisual() {
 					});
 				}
 			}
-			
+
 			// Step 2d) Create cyan fat lines for active segment (slightly thicker)
 			if (cyanSegments.length > 0) {
 				var cyanLines = GeometryFactory._createHighlightLinesBatch(cyanSegments, 5, resolution, "rgba(0, 255, 255, 1.0)");
@@ -39443,7 +39448,7 @@ function drawHolesAlongPolyline3DVisual() {
 					window.holesAlongPolyline3DGroup.add(cyanLines);
 				}
 			}
-			
+
 			// Step 2e) Add small pyramid arrow at midpoint of active segment
 			if (cyanSegments.length >= 1) {
 				// Step 2f) Calculate midpoint and direction along active segment path
@@ -39457,7 +39462,7 @@ function drawHolesAlongPolyline3DVisual() {
 					segLengths.push(len);
 					totalLength += len;
 				}
-				
+
 				// Step 2g) Find midpoint along path
 				var halfLength = totalLength / 2;
 				var accumulated = 0;
@@ -39481,7 +39486,7 @@ function drawHolesAlongPolyline3DVisual() {
 					}
 					accumulated += segLengths[p];
 				}
-				
+
 				// Removed pyramid from HolesAlongPolyLine tool as per user requirements
 			}
 		}
@@ -39507,10 +39512,10 @@ function drawHolesAlongPolyline3DVisual() {
 
 	// Step 5) Add group to scene
 	threeRenderer.scene.add(window.holesAlongPolyline3DGroup);
-	
+
 	// Step 6) Build overlay data for HUD labels (consistent with 2D)
 	var overlayData = { toolType: "polyline" };
-	
+
 	// Step 6a) Add start point label
 	if (polylineStartPoint) {
 		// FIX: Use actual Z from polylineStartPoint or selected polyline
@@ -39532,7 +39537,7 @@ function drawHolesAlongPolyline3DVisual() {
 			overlayData.startCanvasY = screenStart.y;
 		}
 	}
-	
+
 	// Step 6b) Add end point label
 	if (polylineEndPoint) {
 		// FIX: Use actual Z from polylineEndPoint or selected polyline
@@ -39554,7 +39559,7 @@ function drawHolesAlongPolyline3DVisual() {
 			overlayData.endCanvasY = screenEnd.y;
 		}
 	}
-	
+
 	// Step 6c) Add distance label if both points selected
 	if (polylineStartPoint && polylineEndPoint && selectedPolyline && selectedPolyline.vertices) {
 		// Calculate total distance along polyline path
@@ -39569,7 +39574,7 @@ function drawHolesAlongPolyline3DVisual() {
 				endIdx = idx;
 			}
 		}
-		
+
 		if (startIdx !== -1 && endIdx !== -1) {
 			var totalDist = 0;
 			var minI = Math.min(startIdx, endIdx);
@@ -39581,7 +39586,7 @@ function drawHolesAlongPolyline3DVisual() {
 				var ddy = v2.y - v1.y;
 				totalDist += Math.sqrt(ddx * ddx + ddy * ddy);
 			}
-			
+
 			// Get midpoint along active segment
 			var midVertex = selectedPolyline.vertices[Math.floor((minI + maxI) / 2)];
 			var screenMid = worldToScreen(midVertex.x, midVertex.y, midVertex.z || dataCentroidZ || 0);
@@ -39592,7 +39597,7 @@ function drawHolesAlongPolyline3DVisual() {
 			}
 		}
 	}
-	
+
 	// Step 6d) Show HUD overlay labels
 	showPatternToolLabels(overlayData);
 }
@@ -40240,7 +40245,7 @@ function loadPointCloudFile(file) {
 	reader.readAsText(file);
 }
 
-	// Step 1) Auto-discover companion MTL/texture files for OBJ
+// Step 1) Auto-discover companion MTL/texture files for OBJ
 async function loadOBJWithAutoDiscovery(objFile) {
 	try {
 		updateStatusMessage("Loading OBJ: " + objFile.name + " (searching for MTL/textures...)");
@@ -40545,7 +40550,7 @@ function createMaterialFromProperties(materialProps, texture, textureName) {
 		material.map = texture;
 		material.needsUpdate = true;
 		console.log("🎨 createMaterialFromProperties: Texture applied to material, colorSpace: " + texture.colorSpace + ", image: " + (texture.image ? "loaded" : "null"));
-		console.log("🎨 createMaterialFromProperties: Created MeshPhongMaterial with Kd: [" + materialProps.Kd.join(", ") + "], Ks: [" + (materialProps.Ks || [0,0,0]).join(", ") + "], Ns: " + (materialProps.Ns || 30));
+		console.log("🎨 createMaterialFromProperties: Created MeshPhongMaterial with Kd: [" + materialProps.Kd.join(", ") + "], Ks: [" + (materialProps.Ks || [0, 0, 0]).join(", ") + "], Ns: " + (materialProps.Ns || 30));
 	} else {
 		console.warn("🚨 createMaterialFromProperties: No valid texture provided!");
 	}
@@ -40615,7 +40620,7 @@ function processSurfacePoints(points, fileName) {
 			}
 
 			updateStatusMessage("Surface loaded: " + fileName + " (" + points.length.toLocaleString() + " points)");
-			
+
 			// Update TreeView to show new surface
 			if (typeof debouncedUpdateTreeView === "function") {
 				debouncedUpdateTreeView();
@@ -40995,7 +41000,7 @@ function showDecimationWarning(points, fileName) {
 		cancelText: "Cancel",
 		option1Text: "Decimate",
 		option2Text: "As Points",
-		onConfirm: async function() {
+		onConfirm: async function () {
 			// Step 3) Continue (Mesh) button
 			createSurfaceFromPoints(points, fileName, false);
 			try {
@@ -41004,7 +41009,7 @@ function showDecimationWarning(points, fileName) {
 				console.error("Failed to save full surface:", saveError);
 			}
 		},
-		onOption1: async function() {
+		onOption1: async function () {
 			// Step 4) Decimate button
 			var decimatedPoints = decimatePointCloud(points, 5000);
 			createSurfaceFromPoints(decimatedPoints, fileName, false);
@@ -41014,11 +41019,11 @@ function showDecimationWarning(points, fileName) {
 				console.error("Failed to save decimated surface:", saveError);
 			}
 		},
-		onOption2: function() {
+		onOption2: function () {
 			// Step 5) As Points button
 			createKADPointsFromPointCloud(points, fileName);
 		},
-		onCancel: function() {
+		onCancel: function () {
 			// Step 6) Cancel button - just close
 			console.log("Point cloud import cancelled");
 		}
@@ -43813,16 +43818,16 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		const pixelsToWorld = frustumWidth / rect.width;
 		snapRadiusWorld = snapRadiusPixels * pixelsToWorld;
 	}
-	
+
 	// Step 0.5b) Use InteractionManager's raycast method (same as click handler) - GPU-accelerated!
 	// This method handles mouse position, camera setup, and returns only visible intersecting objects
 	if (im && typeof im.raycast === "function" && tr && tr.camera && tr.scene) {
 		try {
 			const intersects = im.raycast();
-			
+
 			// Step 0.5c) Extract entity names and hole IDs from raycast results
 			// These are the objects that Three.js says are visible and intersecting the ray
-			intersects.forEach(function(intersect) {
+			intersects.forEach(function (intersect) {
 				var object = intersect.object;
 				var depth = 0;
 				// Traverse up the object hierarchy to find KAD entities or holes
@@ -43852,20 +43857,20 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 	// Step 0.6) PERFORMANCE OPTIMIZATION: Screen-space frustum check helper
 	// Only check objects that are within screen bounds (with padding for snap radius)
 	// Note: canvas and camera already declared at top of function
-	const isPointInFrustum = function(worldX, worldY, worldZ) {
+	const isPointInFrustum = function (worldX, worldY, worldZ) {
 		if (!camera || !canvas) return true; // If no camera, check everything (fallback)
-		
+
 		// Convert world to screen coordinates
 		const screenPos = worldToScreen(worldX, worldY, worldZ);
 		if (!screenPos) return true; // Fallback if conversion fails
-		
+
 		// Check if point is within screen bounds (with padding for snap radius)
 		const padding = snapRadiusPixels * 2; // Extra padding for objects near screen edge
 		const rect = canvas.getBoundingClientRect();
-		return screenPos.x >= -padding && 
-		       screenPos.x <= rect.width + padding &&
-		       screenPos.y >= -padding && 
-		       screenPos.y <= rect.height + padding;
+		return screenPos.x >= -padding &&
+			screenPos.x <= rect.width + padding &&
+			screenPos.y >= -padding &&
+			screenPos.y <= rect.height + padding;
 	};
 
 	// Step 1) Convert helper function: World coordinates to Three.js local coordinates
@@ -43893,13 +43898,13 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		allBlastHoles.forEach((hole) => {
 			// Skip hidden holes - check both group visibility and individual hole visibility
 			if (!isHoleVisible(hole)) return;
-			
+
 			// PERFORMANCE: Skip holes not in frustum (unless they were hit by raycast)
 			const holeInFrustum = isPointInFrustum(hole.startXLocation, hole.startYLocation, hole.startZLocation || 0) ||
-			                      isPointInFrustum(hole.gradeXLocation, hole.gradeYLocation, hole.gradeZLocation || 0) ||
-			                      isPointInFrustum(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0);
+				isPointInFrustum(hole.gradeXLocation, hole.gradeYLocation, hole.gradeZLocation || 0) ||
+				isPointInFrustum(hole.endXLocation, hole.endYLocation, hole.endZLocation || 0);
 			const holeVisible = visibleHoleIDs.has(hole.holeID);
-			
+
 			// Only check if hole is visible via raycast OR in frustum
 			if (!holeVisible && !holeInFrustum) return;
 
@@ -43957,20 +43962,20 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		for (var [entityName, entity] of allKADDrawingsMap) {
 			// Performance limit - skip remaining entities if we've checked enough
 			if (entityCount >= MAX_SNAP_ENTITIES) break;
-			
+
 			// Skip hidden KAD entities
 			if (!isEntityVisible(entityName)) continue;
-			
+
 			// PERFORMANCE: Skip entities not visible via raycast AND not in frustum
 			const entityVisible = visibleEntityNames.has(entityName);
 			// Smart frustum check: for lines/polygons, check more points or all points if entity is small
 			var entityInFrustum = false;
 			if (!entityVisible && entity.data && entity.data.length > 0) {
 				// For lines and polygons, check more points since they can cross the screen
-				const pointsToCheck = (entity.entityType === "line" || entity.entityType === "poly" || entity.entityType === "polygon") 
+				const pointsToCheck = (entity.entityType === "line" || entity.entityType === "poly" || entity.entityType === "polygon")
 					? Math.min(10, entity.data.length)  // Check up to 10 points for lines/polys
 					: Math.min(3, entity.data.length);   // Only 3 points for other types
-				
+
 				for (var i = 0; i < pointsToCheck; i++) {
 					var point = entity.data[i];
 					if (isPointInFrustum(point.pointXLocation, point.pointYLocation, point.pointZLocation || window.dataCentroidZ || 0)) {
@@ -43979,10 +43984,10 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 					}
 				}
 			}
-			
+
 			// Only check if entity is visible via raycast OR in frustum
 			if (!entityVisible && !entityInFrustum) continue;
-			
+
 			entityCount++;
 
 			// Check vertices (points, line endpoints, polygon vertices, etc.)
@@ -43990,22 +43995,22 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 			var pointCount = 0;
 			for (var dataPoint of entity.data) {
 				if (pointCount >= MAX_SNAP_POINTS_PER_ENTITY) break;
-				
+
 				// Use SCREEN-SPACE distance for vertices (same as segments)
 				const screenPos = worldToScreen(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || window.dataCentroidZ || 0);
 				if (!screenPos) continue; // Skip if worldToScreen fails
-				
+
 				// PERFORMANCE: Skip points far outside screen (but keep a generous margin for snap radius)
 				const margin = snapRadiusPixels * 3; // Generous margin
 				const canvas = tr ? tr.getCanvas() : null;
 				if (canvas) {
 					const rect = canvas.getBoundingClientRect();
 					if (screenPos.x < -margin || screenPos.x > rect.width + margin ||
-					    screenPos.y < -margin || screenPos.y > rect.height + margin) {
+						screenPos.y < -margin || screenPos.y > rect.height + margin) {
 						continue;
 					}
 				}
-				
+
 				pointCount++;
 				const dx = mouseScreenX - screenPos.x;
 				const dy = mouseScreenY - screenPos.y;
@@ -44062,19 +44067,19 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 						// This matches the selection behavior and avoids coordinate system issues
 						const screen1 = worldToScreen(p1.pointXLocation, p1.pointYLocation, p1.pointZLocation || window.dataCentroidZ || 0);
 						const screen2 = worldToScreen(p2.pointXLocation, p2.pointYLocation, p2.pointZLocation || window.dataCentroidZ || 0);
-						
+
 						// Skip if projection fails
 						if (!screen1 || !screen2) continue;
-						
+
 						// PERFORMANCE: Skip segments where both endpoints are far outside screen
 						const margin = snapRadiusPixels * 3; // Generous margin
 						const canvas = tr ? tr.getCanvas() : null;
 						if (canvas) {
 							const rect = canvas.getBoundingClientRect();
 							const p1OutOfBounds = screen1.x < -margin || screen1.x > rect.width + margin ||
-							                      screen1.y < -margin || screen1.y > rect.height + margin;
+								screen1.y < -margin || screen1.y > rect.height + margin;
 							const p2OutOfBounds = screen2.x < -margin || screen2.x > rect.width + margin ||
-							                      screen2.y < -margin || screen2.y > rect.height + margin;
+								screen2.y < -margin || screen2.y > rect.height + margin;
 							if (p1OutOfBounds && p2OutOfBounds) continue;
 						}
 
@@ -44149,7 +44154,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		intersections.forEach((intersection) => {
 			// PERFORMANCE: Skip intersections not in frustum
 			if (!isPointInFrustum(intersection.x, intersection.y, intersection.z)) return;
-			
+
 			// Convert world coords to local for ray comparison
 			const intersectionLocal = worldToLocal(intersection.x, intersection.y, intersection.z);
 			const intersectionResult = distanceFromPointToRay(intersectionLocal, rayOrigin, rayDirection);
@@ -44174,14 +44179,14 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 				// PERFORMANCE: Limit surface points checked
 				var surfacePointCount = 0;
 				const MAX_SURFACE_POINTS = 100; // Limit surface points for performance
-				
+
 				surface.points.forEach((surfacePoint, index) => {
 					if (surfacePointCount >= MAX_SURFACE_POINTS) return;
 					surfacePointCount++;
-					
+
 					// PERFORMANCE: Skip surface points not in frustum
 					if (!isPointInFrustum(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0)) return;
-					
+
 					// Convert world coords to local for ray comparison
 					const pointLocal = worldToLocal(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0);
 					const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
@@ -45313,9 +45318,9 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 
 				// Clear selections
 				selectedHole = null;
-				selectedMultipleHoles = [];				
+				selectedMultipleHoles = [];
 				// Use refreshPoints() for complete update
-				refreshPoints();				
+				refreshPoints();
 				updateStatusMessage("Deleted holes without renumbering");
 				setTimeout(function () { updateStatusMessage(""); }, 2000);
 			}
@@ -45810,7 +45815,7 @@ window.handleTreeViewShowProperties = function (nodeId, type) {
 	}
 	// KAD entity properties (show first point in entity)
 	else if ((parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" ||
-			  parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
+		parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
 		const entityType = parts[0];
 		const entityName = parts[1];
 

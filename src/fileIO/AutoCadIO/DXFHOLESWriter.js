@@ -56,7 +56,8 @@ class DXFHOLESWriter extends BaseWriter {
 		// Step 17) Define HOLE_TEXT layer (white, for all text)
 		dxf += "0\nLAYER\n2\nHOLE_TEXT\n70\n0\n62\n7\n6\nCONTINUOUS\n"; // Color 7 = white
 
-		dxf += "0\nENDTAB\n0\nENDTAB\n0\nENDSEC\n";
+		dxf += "0\nENDTAB\n";
+		dxf += "0\nENDSEC\n";
 
 		// Step 18) Build BLOCKS section (empty)
 		dxf += "0\nSECTION\n2\nBLOCKS\n0\nENDSEC\n";

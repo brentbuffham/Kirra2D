@@ -57,8 +57,11 @@ class CustomBlastHoleTextWriter extends BaseWriter {
 			burden: { property: "burden", type: "number", default: 0 },
 			spacing: { property: "spacing", type: "number", default: 0 },
 			measuredLength: { property: "measuredLength", type: "number", default: 0 },
+			measuredLengthTimeStamp: { property: "measuredLengthTimeStamp", type: "string", default: "09/05/1975 00:00:00" },
 			measuredMass: { property: "measuredMass", type: "number", default: 0 },
-			measuredComment: { property: "measuredComment", type: "string", default: "None" }
+			measuredMassTimeStamp: { property: "measuredMassTimeStamp", type: "string", default: "09/05/1975 00:00:00" },
+			measuredComment: { property: "measuredComment", type: "string", default: "None" },
+			measuredCommentTimeStamp: { property: "measuredCommentTimeStamp", type: "string", default: "09/05/1975 00:00:00" }
 		};
 	}
 

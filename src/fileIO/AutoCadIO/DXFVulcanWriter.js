@@ -18,7 +18,7 @@ class DXFVulcanWriter extends BaseWriter {
 
 		// Step 8) Writer options
 		this.blastName = options.blastName || "BLAST";
-		this.coordinateSystem = options.coordinateSystem || "MGA"; // "MGA" or "LOCAL"
+		this.coordinateSystem = options.coordinateSystem || "MGA"; // "MGA" or "LOCAL" Not using coordinate system for now
 		this.includeText = options.includeText !== false; // Default true
 		this.include3DFaces = options.include3DFaces || false; // Default false
 		this.textHeight = options.textHeight || 0.5;
@@ -52,8 +52,8 @@ class DXFVulcanWriter extends BaseWriter {
 		var dxf = "";
 		dxf += "0\nSECTION\n";
 		dxf += "2\nHEADER\n";
-		dxf += "9\n$ACADVER\n1\nAC1015\n"; // AutoCAD 2000 format
-		dxf += "9\n$INSUNITS\n70\n4\n"; // Millimeters
+		// dxf += "9\n$ACADVER\n1\nAC1015\n"; // AutoCAD 2000 format
+		// dxf += "9\n$INSUNITS\n70\n4\n"; // Millimeters
 		dxf += "0\nENDSEC\n";
 
 		// Step 16) Build TABLES section
@@ -159,7 +159,7 @@ class DXFVulcanWriter extends BaseWriter {
 
 		// Step 34) Get layer name
 		var blastName = hole.entityName || this.blastName;
-		var layerName = blastName + "_" + this.coordinateSystem;
+		var layerName = blastName;// + "_" + this.coordinateSystem; Not using coordinate system for now
 
 		// Step 35) Get hole ID
 		var holeID = hole.holeID || "Unknown";
@@ -234,7 +234,7 @@ class DXFVulcanWriter extends BaseWriter {
 
 		// Step 43) Get layer name
 		var blastName = hole.entityName || this.blastName;
-		var layerName = blastName + "_" + this.coordinateSystem;
+		var layerName = blastName; // + "_" + this.coordinateSystem; Not using coordinate system for now
 
 		// Step 44) Get hole ID
 		var holeID = hole.holeID || "Unknown";
@@ -263,7 +263,7 @@ class DXFVulcanWriter extends BaseWriter {
 		}
 
 		// Step 48) Get layer name
-		var layerName = face.layer || this.blastName + "_" + this.coordinateSystem;
+		var layerName = face.layer || this.blastName; // + "_" + this.coordinateSystem; Not using coordinate system for now
 
 		// Step 49) Build 3DFACE entity
 		var dxf = "";
