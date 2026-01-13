@@ -566,9 +566,16 @@ class DXFParser extends BaseParser {
 					for (var j = 0; j < xdata.customStrings.length; j++) {
 						var str = xdata.customStrings[j];
 						if (typeof str === "string" && str.indexOf("VulcanName=") === 0) {
-							var vulcanName = str.substring(11); // Extract value after "VulcanName="
-							console.log("🎯 Found VulcanName:", vulcanName);
-							return vulcanName;
+							var vulcanName = str.substring(11).trim(); // Extract value after "VulcanName="
+							
+							// Validate the name is meaningful
+							if (vulcanName && vulcanName !== "" && vulcanName !== "--" && vulcanName !== "-") {
+								console.log("🎯 Found VulcanName:", vulcanName);
+								return vulcanName;
+							} else {
+								console.warn("⚠️ Invalid VulcanName detected (empty or dashes):", vulcanName);
+								return null;
+							}
 						}
 					}
 				}
@@ -580,9 +587,16 @@ class DXFParser extends BaseParser {
 				for (var k = 0; k < customStrings.length; k++) {
 					var str = customStrings[k];
 					if (typeof str === "string" && str.indexOf("VulcanName=") === 0) {
-						var vulcanName = str.substring(11);
-						console.log("🎯 Found VulcanName:", vulcanName);
-						return vulcanName;
+						var vulcanName = str.substring(11).trim();
+						
+						// Validate the name is meaningful
+						if (vulcanName && vulcanName !== "" && vulcanName !== "--" && vulcanName !== "-") {
+							console.log("🎯 Found VulcanName:", vulcanName);
+							return vulcanName;
+						} else {
+							console.warn("⚠️ Invalid VulcanName detected (empty or dashes):", vulcanName);
+							return null;
+						}
 					}
 				}
 			}
