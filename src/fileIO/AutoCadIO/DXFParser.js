@@ -569,7 +569,7 @@ class DXFParser extends BaseParser {
 							var vulcanName = str.substring(11).trim(); // Extract value after "VulcanName="
 							
 							// Validate the name is meaningful
-							if (vulcanName && vulcanName !== "" && vulcanName !== "--" && vulcanName !== "-") {
+							if (vulcanName && vulcanName !== "--" && vulcanName !== "-") {
 								console.log("🎯 Found VulcanName:", vulcanName);
 								return vulcanName;
 							} else {
@@ -590,7 +590,7 @@ class DXFParser extends BaseParser {
 						var vulcanName = str.substring(11).trim();
 						
 						// Validate the name is meaningful
-						if (vulcanName && vulcanName !== "" && vulcanName !== "--" && vulcanName !== "-") {
+						if (vulcanName && vulcanName !== "--" && vulcanName !== "-") {
 							console.log("🎯 Found VulcanName:", vulcanName);
 							return vulcanName;
 						} else {
