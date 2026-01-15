@@ -50,7 +50,7 @@ class CustomBlastHoleTextWriter extends BaseWriter {
 			benchHeight: { property: "benchHeight", type: "number", default: 10 },
 			fromHoleID: { property: "fromHoleID", type: "string", default: "" },
 			timingDelayMilliseconds: { property: "timingDelayMilliseconds", type: "number", default: 0 },
-			initiationTime: { property: "initiationTime", type: "number", default: 0 },
+			holeTime: { property: "holeTime", type: "number", default: 0 },
 			colorHexDecimal: { property: "colorHexDecimal", type: "string", default: "red" },
 			rowID: { property: "rowID", type: "string", default: "" },
 			posID: { property: "posID", type: "string", default: "" },

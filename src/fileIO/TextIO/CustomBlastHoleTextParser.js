@@ -188,8 +188,8 @@ const HOLE_FIELD_MAPPING = {
 			return value === null || value === undefined || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0);
 		},
 	},
-	initiationTime: {
-		property: "initiationTime",
+	holeTime: {
+		property: "holeTime",
 		type: "number",
 		default: 0,
 		validation: function (value) {
@@ -326,7 +326,7 @@ class CustomBlastHoleTextParser extends BaseParser {
 			var measuredMassTimeStamp = getValue("measuredMassTimeStamp");
 			var measuredCommentTimeStamp = getValue("measuredCommentTimeStamp");
 			var colorHexDecimal = getValue("colorHexDecimal");
-			var initiationTime = getValue("initiationTime");
+			var holeTime = getValue("holeTime");
 			var timingDelayMilliseconds = getValue("timingDelayMilliseconds");
 			var fromHoleID = getValue("fromHoleID");
 			var holeType = getValue("holeType");
@@ -391,7 +391,7 @@ class CustomBlastHoleTextParser extends BaseParser {
 					holeLengthCalculated: holeLengthCalculated || 0,
 					holeAngle: holeAngle || 0,
 					holeBearing: holeBearing || 0,
-					initiationTime: initiationTime || 0,
+					holeTime: holeTime || 0,
 					measuredLength: measuredLength || 0,
 					measuredLengthTimeStamp: measuredLengthTimeStamp || "09/05/1975 00:00:00",
 					measuredMass: measuredMass || 0,
@@ -500,9 +500,9 @@ class CustomBlastHoleTextParser extends BaseParser {
 		// Step 30) Ensure all required properties exist
 		this.setHoleDefaults(hole);
 
-		// Step 31) Set timingDelayMilliseconds to initiationTime
-		if (hole.initiationTime !== undefined && !isNaN(hole.initiationTime)) {
-			hole.timingDelayMilliseconds = hole.initiationTime;
+		// Step 31) Set timingDelayMilliseconds to holeTime
+		if (hole.holeTime !== undefined && !isNaN(hole.holeTime)) {
+			hole.timingDelayMilliseconds = hole.holeTime;
 		}
 
 		// Step 32) Calculate missing geometry
@@ -521,7 +521,7 @@ class CustomBlastHoleTextParser extends BaseParser {
 		if (!hole.measuredCommentTimeStamp) hole.measuredCommentTimeStamp = "09/05/1975 00:00:00";
 
 		// Step 34) Ensure numeric properties are valid
-		var numericProps = ["startXLocation", "startYLocation", "startZLocation", "endXLocation", "endYLocation", "endZLocation", "gradeXLocation", "gradeYLocation", "gradeZLocation", "holeLengthCalculated", "holeAngle", "holeBearing", "holeDiameter", "subdrillAmount", "benchHeight", "timingDelayMilliseconds", "initiationTime", "measuredLength", "measuredMass"];
+		var numericProps = ["startXLocation", "startYLocation", "startZLocation", "endXLocation", "endYLocation", "endZLocation", "gradeXLocation", "gradeYLocation", "gradeZLocation", "holeLengthCalculated", "holeAngle", "holeBearing", "holeDiameter", "subdrillAmount", "benchHeight", "timingDelayMilliseconds", "holeTime", "measuredLength", "measuredMass"];
 
 		numericProps.forEach((prop) => {
 			if (isNaN(hole[prop])) {

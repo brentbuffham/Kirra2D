@@ -3533,6 +3533,53 @@ let scale = 5; // adjust the scale to fit the allBlastHoles in the canvas
 let fontSize = document.getElementById("fontSlider").value;
 //TODO Eventually use this class for all holes.
 class BlastHole {
+	/**
+	 * The BlastHole class is used to store the data for a blast hole.
+	 * 
+	 * @param {*} data 
+	 * @param {string} entityName - The entity name
+	 * @param {string} entityType - The entity type (default: "hole")
+	 * @param {*} holeID - The hole identifier
+	 * @param {number} startXLocation - The start X location
+	 * @param {number} startYLocation - The start Y location
+	 * @param {number} startZLocation - The start Z location
+	 * @param {number} endXLocation - The end X location
+	 * @param {number} endYLocation - The end Y location
+	 * @param {number} endZLocation - The end Z location
+	 * @param {number} gradeXLocation - The grade X location
+	 * @param {number} gradeYLocation - The grade Y location
+	 * @param {number} gradeZLocation - The grade Z location
+	 * @param {number} subdrillAmount - The subdrill amount (deltaZ of gradeZ to toeZ -> downhole =+ve uphole =-ve)
+	 * @param {number} subdrillLength - The subdrill length (distance of subdrill from gradeXYZ to toeXYZ -> downhole =+ve uphole =-ve)
+	 * @param {number} benchHeight - The bench height (deltaZ of collarZ to gradeZ -> always Absolute)
+	 * @param {number} holeDiameter - The hole diameter
+	 * @param {string} holeType - The hole type
+	 * @param {string} fromHoleID - The from hole identifier
+	 * @param {number} timingDelayMilliseconds - The timing delay in milliseconds
+	 * @param {string} colorHexDecimal - The color in hex decimal format
+	 * @param {number} holeLengthCalculated - The calculated hole length (Distance from the collarXYZ to the ToeXYZ)
+	 * @param {number} holeAngle - The hole angle from Collar to Toe (0° = Vertical) --> 0° = Vertical, 90° = Horizontal, 180° = Inverted, 270° = Upside Down
+	 * @param {number} holeBearing - The hole bearing
+	 * @param {number} holeTime - The initiation time (holeTime and initiationTime are the same)
+	 * @param {number} measuredLength - The measured length
+	 * @param {string} measuredLengthTimeStamp - The measured length timestamp
+	 * @param {number} measuredMass - The measured mass
+	 * @param {string} measuredMassTimeStamp - The measured mass timestamp
+	 * @param {string} measuredComment - The measured comment
+	 * @param {string} measuredCommentTimeStamp - The measured comment timestamp
+	 * @param {*} rowID - The row identifier
+	 * @param {*} posID - The position identifier
+	 * @param {number} burden - The burden
+	 * @param {number} spacing - The spacing
+	 * @param {number} connectorCurve - The connector curve
+	 * @param {boolean} visible - The visibility flag
+	 * future properties:
+	 * @params {colorHexDecimal} holeColor - The color of the hole
+	 * @params {string} holeMarkerShape - The shape of the hole marker shape at collar - currently X for Dummy(no depth hole), square for no diameter hole and circle for a diameter hole
+	 * @params {float} holeMarkerSize - The size of the hole marker shape at collar - currently controlled by holescale and diameter.
+	 */
+
+
 	constructor(data = {}) {
 		this.entityName = data.entityName || "";
 		this.entityType = data.entityType || "hole";
@@ -3554,6 +3601,7 @@ class BlastHole {
 		this.fromHoleID = data.fromHoleID || "";
 		this.timingDelayMilliseconds = data.timingDelayMilliseconds || 0;
 		this.colorHexDecimal = data.colorHexDecimal || "red";
+		this.holeTime = data.holeTime || 0; //initiation time and holrTime are the same
 		this.holeLengthCalculated = data.holeLengthCalculated || 0; //Distance from the collarXYZ to the ToeXYZ
 		this.holeAngle = data.holeAngle || 0; //Angle of the blast hole from Collar to Toe --> 0° = Vertical
 		this.holeBearing = data.holeBearing || 0;
@@ -14376,7 +14424,7 @@ function convertPointsToAllDataCSV() {
 
 	let csv = "";
 	const header =
-		"entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID, burden, spacing, connectorCurve";
+		"entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID, burden, spacing, connectorCurve";
 	csv += header + "\n";
 	const decimalPlaces = 4;
 
@@ -27880,10 +27928,10 @@ function saveHolesToLocalStorage(allBlastHoles) {
 	if (allBlastHoles !== null) {
 		/* STRUCTURE OF THE POINTS ARRAY
 		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
+		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID,burden,spacing,connectorCurve
 	*/
 		const lines = allBlastHoles.map((hole) => {
-			return `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation},${hole.startYLocation},${hole.startZLocation},${hole.endXLocation},${hole.endYLocation},${hole.endZLocation},${hole.gradeXLocation},${hole.gradeYLocation},${hole.gradeZLocation},${hole.subdrillAmount},${hole.subdrillLength},${hole.benchHeight},${hole.holeDiameter},${hole.holeType},${hole.fromHoleID},${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated},${hole.holeAngle},${hole.holeBearing},${hole.initiationTime},${hole.measuredLength},${hole.measuredLengthTimeStamp},${hole.measuredMass},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}\n`;
+			return `${hole.entityName},${hole.entityType},${hole.holeID},${hole.startXLocation},${hole.startYLocation},${hole.startZLocation},${hole.endXLocation},${hole.endYLocation},${hole.endZLocation},${hole.gradeXLocation},${hole.gradeYLocation},${hole.gradeZLocation},${hole.subdrillAmount},${hole.subdrillLength},${hole.benchHeight},${hole.holeDiameter},${hole.holeType},${hole.fromHoleID},${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated},${hole.holeAngle},${hole.holeBearing},${hole.holeTime},${hole.measuredLength},${hole.measuredLengthTimeStamp},${hole.measuredMass},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}\n`;
 		});
 
 		const csvString = lines.join("\n");
@@ -27945,7 +27993,7 @@ async function loadHolesFromLocalStorage() {
 	}
 	/* STRUCTURE OF THE POINTS ARRAY
 		0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29
-		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,initiationTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
+		entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID
 	*/
 	const csvString = localStorage.getItem("kirraDataPoints");
 	//console.log(csvString);
@@ -32991,8 +33039,8 @@ const HOLE_FIELD_MAPPING = {
 			return value === null || value === undefined || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0);
 		},
 	},
-	initiationTime: {
-		property: "initiationTime",
+	holeTime: {
+		property: "holeTime",
 		type: "number",
 		default: 0,
 		validation: function (value) {
@@ -33027,6 +33075,62 @@ const HOLE_FIELD_MAPPING = {
 		property: "measuredComment",
 		type: "string",
 		default: "None",
+		validation: function (value) {
+			return true;
+		},
+	},
+	entityType: {
+		property: "entityType",
+		type: "string",
+		default: "hole",
+		validation: function (value) {
+			return true;
+		},
+	},
+	subdrillLength: {
+		property: "subdrillLength",
+		type: "number",
+		default: 0,
+		validation: function (value) {
+			return value === null || value === undefined || (!isNaN(parseFloat(value)));
+		},
+	},
+	burden: {
+		property: "burden",
+		type: "number",
+		default: 0,
+		validation: function (value) {
+			return value === null || value === undefined || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0);
+		},
+	},
+	spacing: {
+		property: "spacing",
+		type: "number",
+		default: 0,
+		validation: function (value) {
+			return value === null || value === undefined || (!isNaN(parseFloat(value)) && parseFloat(value) >= 0);
+		},
+	},
+	measuredLengthTimeStamp: {
+		property: "measuredLengthTimeStamp",
+		type: "string",
+		default: "09/05/1975 00:00:00",
+		validation: function (value) {
+			return true;
+		},
+	},
+	measuredMassTimeStamp: {
+		property: "measuredMassTimeStamp",
+		type: "string",
+		default: "09/05/1975 00:00:00",
+		validation: function (value) {
+			return true;
+		},
+	},
+	measuredCommentTimeStamp: {
+		property: "measuredCommentTimeStamp",
+		type: "string",
+		default: "09/05/1975 00:00:00",
 		validation: function (value) {
 			return true;
 		},
@@ -33096,10 +33200,10 @@ function updateHoleFromCsvData(hole, getValue, angleConvention, diameterUnit) {
 	// Ensure all required properties exist
 	setHoleDefaults(hole);
 
-	// Step 3) Set timingDelayMilliseconds to initiationTime
-	// This ensures imported holes use initiation time as their delay
-	if (hole.initiationTime !== undefined && !isNaN(hole.initiationTime)) {
-		hole.timingDelayMilliseconds = hole.initiationTime;
+	// Step 3) Set timingDelayMilliseconds to holeTime
+	// This ensures imported holes use hole time as their delay
+	if (hole.holeTime !== undefined && !isNaN(hole.holeTime)) {
+		hole.timingDelayMilliseconds = hole.holeTime;
 	}
 
 	// Calculate missing geometry - this is the key fix
@@ -33407,7 +33511,7 @@ function setHoleDefaults(hole) {
 	if (!hole.measuredCommentTimeStamp) hole.measuredCommentTimeStamp = "09/05/1975 00:00:00";
 
 	// Ensure numeric properties are valid
-	const numericProps = ["startXLocation", "startYLocation", "startZLocation", "endXLocation", "endYLocation", "endZLocation", "gradeXLocation", "gradeYLocation", "gradeZLocation", "holeLengthCalculated", "holeAngle", "holeBearing", "holeDiameter", "subdrillAmount", "benchHeight", "timingDelayMilliseconds", "initiationTime", "measuredLength", "measuredMass"];
+	const numericProps = ["startXLocation", "startYLocation", "startZLocation", "endXLocation", "endYLocation", "endZLocation", "gradeXLocation", "gradeYLocation", "gradeZLocation", "holeLengthCalculated", "holeAngle", "holeBearing", "holeDiameter", "subdrillAmount", "benchHeight", "timingDelayMilliseconds", "holeTime", "measuredLength", "measuredMass"];
 
 	numericProps.forEach(function (prop) {
 		if (isNaN(hole[prop])) {
@@ -33498,7 +33602,7 @@ function processCsvData(data, columnOrder, fileName) {
 		let measuredMassTimeStamp = getValue("measuredMassTimeStamp");
 		let measuredCommentTimeStamp = getValue("measuredCommentTimeStamp");
 		let colorHexDecimal = getValue("colorHexDecimal");
-		let initiationTime = getValue("initiationTime");
+		let holeTime = getValue("holeTime");
 		let timingDelayMilliseconds = getValue("timingDelayMilliseconds");
 		let fromHoleID = getValue("fromHoleID");
 		let holeType = getValue("holeType");
@@ -33561,7 +33665,7 @@ function processCsvData(data, columnOrder, fileName) {
 				holeLengthCalculated: holeLengthCalculated || 0,
 				holeAngle: holeAngle || 0,
 				holeBearing: holeBearing || 0,
-				initiationTime: initiationTime || 0,
+				holeTime: holeTime || 0,
 				measuredLength: measuredLength || 0,
 				measuredLengthTimeStamp: measuredLengthTimeStamp || "09/05/1975 00:00:00",
 				measuredMass: measuredMass || 0,
@@ -34094,7 +34198,7 @@ function setupCsvDialogEventListeners(csvData, fieldGroups) {
 		holeAngle: ["angle", "dip", "mast angle", "holeangle", "hole angle"],
 		rowID: ["rowid", "row id", "row", "echelon", "rowno", "row number"],
 		posID: ["posid", "pos id", "position", "pos", "position id", "pos number", "posno"],
-		initiationTime: ["initiation", "initiationtime", "initiation time", "firing time", "firingtime"],
+		holeTime: ["initiation", "initiationtime", "initiation time", "firing time", "firingtime", "holetime", "hole time"],
 		fromHoleID: ["from", "fromhole", "from hole", "tie from", "tiefrom"],
 		timingDelayMilliseconds: ["delay", "timing", "timingdelay", "timing delay", "ms", "milliseconds"],
 		colorHexDecimal: ["color", "colour", "tie color", "tiecolor"],
@@ -34418,7 +34522,7 @@ function showCustomCsvExportModal() {
 		// Timing
 		{ name: "fromHoleID", label: "From Hole ID", group: "Timing" },
 		{ name: "timingDelayMilliseconds", label: "Timing Delay (ms)", group: "Timing" },
-		{ name: "initiationTime", label: "Initiation Time", group: "Timing" },
+		{ name: "holeTime", label: "Initiation Time", group: "Timing" },
 		{ name: "colorHexDecimal", label: "Tie Color", group: "Timing" },
 		// Measured
 		{ name: "measuredLength", label: "Measured Length", group: "Measured" },
