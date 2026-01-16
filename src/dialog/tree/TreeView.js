@@ -436,12 +436,30 @@ export class TreeView {
 			const isChunkNode = parts.length === 4 && parts[2] === "chunk";
 			return isEntityNode || isChunkNode;
 		});
+		
+		// Step 4) Check if selection is a KAD layer (entity-level node like line⣿name, poly⣿name, etc.)
+		const isKADLayer = selectedNodeIds.some((nodeId) => {
+			const parts = nodeId.split("⣿");
+			return (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
+		});
+		
+		// Step 5) Check if ALL selected nodes are KAD layers (for multi-layer operations)
+		const allAreKADLayers = selectedNodeIds.length > 0 && selectedNodeIds.every((nodeId) => {
+			const parts = nodeId.split("⣿");
+			return (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
+		});
+		
 		const renameItem = menu.querySelector("[data-action=\"rename\"]");
 		const resetConnectionsItem = menu.querySelector("[data-action=\"reset-connections\"]");
 		const propertiesItem = menu.querySelector("[data-action=\"properties\"]");
 		const deleteItem = menu.querySelector("[data-action=\"delete\"]");
 		const hideItem = menu.querySelector("[data-action=\"hide\"]");
 		const showItem = menu.querySelector("[data-action=\"show\"]");
+		// Step 6) Get layer-specific menu items
+		const showLayerItem = menu.querySelector("[data-action=\"show-layer\"]");
+		const hideLayerItem = menu.querySelector("[data-action=\"hide-layer\"]");
+		const deleteLayerItem = menu.querySelector("[data-action=\"delete-layer\"]");
+		const layerSeparator = menu.querySelector(".layer-separator");
 
 		if (resetConnectionsItem) {
 			resetConnectionsItem.style.display = hasHoles ? "flex" : "none";
@@ -451,13 +469,30 @@ export class TreeView {
 			deleteItem.style.display = isTopLevelParent || isSubGroup ? "none" : "flex";
 		}
 
-		// Step 4) Always show hide/show options (even for top-level nodes and subgroups)
+		// Step 7) Show/hide regular hide/show options (hide when layer options are shown)
 		if (hideItem) {
-			hideItem.style.display = "flex";
+			hideItem.style.display = isKADLayer ? "none" : "flex";
 		}
 		
 		if (showItem) {
-			showItem.style.display = "flex";
+			showItem.style.display = isKADLayer ? "none" : "flex";
+		}
+		
+		// Step 8) Show/hide layer-specific menu items (only for KAD layer nodes)
+		if (showLayerItem) {
+			showLayerItem.style.display = isKADLayer ? "flex" : "none";
+		}
+		
+		if (hideLayerItem) {
+			hideLayerItem.style.display = isKADLayer ? "flex" : "none";
+		}
+		
+		if (deleteLayerItem) {
+			deleteLayerItem.style.display = isKADLayer ? "flex" : "none";
+		}
+		
+		if (layerSeparator) {
+			layerSeparator.style.display = isKADLayer ? "block" : "none";
 		}
 
 		if (propertiesItem) {
@@ -534,6 +569,16 @@ export class TreeView {
 				break;
 			case "properties":
 				this.showProperties();
+				break;
+			// Step 9) Layer-specific actions for KAD entities
+			case "show-layer":
+				this.showLayerSelected();
+				break;
+			case "hide-layer":
+				this.hideLayerSelected();
+				break;
+			case "delete-layer":
+				this.deleteLayerSelected();
 				break;
 		}
 		document.getElementById("treeContextMenu").style.display = "none";
@@ -630,6 +675,148 @@ export class TreeView {
 		if (typeof window.updateTreeViewVisibilityStates === "function") {
 			window.updateTreeViewVisibilityStates();
 		}
+	}
+
+	// Step 10) Show Layer - Show selected KAD entity layers
+	showLayerSelected() {
+		this.selectedNodes.forEach((nodeId) => {
+			const parts = nodeId.split("⣿");
+			// Check if this is a KAD layer node (format: entityType⣿entityName)
+			if ((parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
+				const entityName = parts[1];
+				const entity = window.allKADDrawingsMap ? window.allKADDrawingsMap.get(entityName) : null;
+				
+				if (entity) {
+					// Step 10a) Set entity visibility to true
+					entity.visible = true;
+					console.log("✅ [TreeView] Show layer: " + entityName);
+					
+					// Step 10b) Update tree view visual state
+					const element = this.container.querySelector("[data-node-id=\"" + nodeId + "\"]");
+					if (element) {
+						element.style.opacity = "1";
+						element.classList.remove("hidden-node");
+					}
+				}
+			}
+		});
+
+		// Step 10c) Save changes and redraw
+		if (typeof window.debouncedSaveKAD === "function") {
+			window.debouncedSaveKAD();
+		}
+		
+		this.clearSelection();
+		
+		if (typeof window.updateTreeViewVisibilityStates === "function") {
+			window.updateTreeViewVisibilityStates();
+		}
+		
+		if (typeof window.drawData === "function") {
+			window.drawData(window.allBlastHoles, window.selectedHole);
+		}
+	}
+
+	// Step 11) Hide Layer - Hide selected KAD entity layers
+	hideLayerSelected() {
+		this.selectedNodes.forEach((nodeId) => {
+			const parts = nodeId.split("⣿");
+			// Check if this is a KAD layer node (format: entityType⣿entityName)
+			if ((parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
+				const entityName = parts[1];
+				const entity = window.allKADDrawingsMap ? window.allKADDrawingsMap.get(entityName) : null;
+				
+				if (entity) {
+					// Step 11a) Set entity visibility to false
+					entity.visible = false;
+					console.log("✅ [TreeView] Hide layer: " + entityName);
+					
+					// Step 11b) Update tree view visual state
+					const element = this.container.querySelector("[data-node-id=\"" + nodeId + "\"]");
+					if (element) {
+						element.style.opacity = "0.5";
+						element.classList.add("hidden-node");
+					}
+				}
+			}
+		});
+
+		// Step 11c) Save changes and redraw
+		if (typeof window.debouncedSaveKAD === "function") {
+			window.debouncedSaveKAD();
+		}
+		
+		this.clearSelection();
+		
+		if (typeof window.updateTreeViewVisibilityStates === "function") {
+			window.updateTreeViewVisibilityStates();
+		}
+		
+		if (typeof window.drawData === "function") {
+			window.drawData(window.allBlastHoles, window.selectedHole);
+		}
+	}
+
+	// Step 12) Delete Layer - Delete selected KAD entity layers
+	deleteLayerSelected() {
+		const layersToDelete = [];
+		
+		this.selectedNodes.forEach((nodeId) => {
+			const parts = nodeId.split("⣿");
+			// Check if this is a KAD layer node (format: entityType⣿entityName)
+			if ((parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
+				const entityName = parts[1];
+				layersToDelete.push(entityName);
+			}
+		});
+
+		if (layersToDelete.length === 0) return;
+
+		// Step 12a) Confirm deletion with user
+		const layerCount = layersToDelete.length;
+		const confirmMessage = layerCount === 1
+			? "Are you sure you want to delete layer '" + layersToDelete[0] + "'?"
+			: "Are you sure you want to delete " + layerCount + " layers?";
+
+		if (typeof window.showConfirmationDialog === "function") {
+			window.showConfirmationDialog(
+				"Delete Layer" + (layerCount > 1 ? "s" : ""),
+				confirmMessage,
+				() => {
+					this.performLayerDeletion(layersToDelete);
+				},
+				null
+			);
+		} else if (confirm(confirmMessage)) {
+			this.performLayerDeletion(layersToDelete);
+		}
+	}
+
+	// Step 13) Perform the actual layer deletion
+	performLayerDeletion(layersToDelete) {
+		layersToDelete.forEach((entityName) => {
+			if (window.allKADDrawingsMap && window.allKADDrawingsMap.has(entityName)) {
+				// Step 13a) Remove from map
+				window.allKADDrawingsMap.delete(entityName);
+				console.log("✅ [TreeView] Deleted layer: " + entityName);
+			}
+		});
+
+		// Step 13b) Save changes
+		if (typeof window.debouncedSaveKAD === "function") {
+			window.debouncedSaveKAD();
+		}
+
+		// Step 13c) Update tree view
+		this.clearSelection();
+		this.updateTreeData();
+
+		// Step 13d) Redraw canvas
+		if (typeof window.drawData === "function") {
+			window.drawData(window.allBlastHoles, window.selectedHole);
+		}
+
+		console.log("✅ [TreeView] Layer deletion complete. Deleted " + layersToDelete.length + " layer(s).");
 	}
 
 	// Step 4) Add helper methods to hide/show all children recursively

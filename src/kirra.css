@@ -2234,6 +2234,37 @@ body.dark-mode .tree-meta {
     content: "";
 }
 
+/* Step 2) Layer-specific context menu icons */
+.tree-context-item[data-action="show-layer"] span:first-child:before {
+    background-image: url("/icons/eye.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
+.tree-context-item[data-action="hide-layer"] span:first-child:before {
+    background-image: url("/icons/eye-closed.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
+.tree-context-item[data-action="delete-layer"] span:first-child:before {
+    background-image: url("/icons/trash.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
 /* General icon sizing for all tree icons */
 .tree-icon:before {
     width: 18px;
@@ -2334,6 +2365,35 @@ body.dark-mode .tree-meta {
     background-image: url("/icons/TIF-image.png");
 }
 
+/* Step 1) Layer icon for KAD entity groups (using folder.png as fallback) */
+.tree-icon.layer:before {
+    background-image: url("/icons/folder.png");
+}
+
+.tree-icon.points-group:before {
+    background-image: url("/icons/dots-diagonal-2.png");
+}
+
+.tree-icon.line-group:before {
+    background-image: url("/icons/stairs.png");
+}
+
+.tree-icon.polygon-group:before {
+    background-image: url("/icons/square-rotated.png");
+}
+
+.tree-icon.circle-group:before {
+    background-image: url("/icons/circle.png");
+}
+
+.tree-icon.text-group:before {
+    background-image: url("/icons/text-resize.png");
+}
+
+.tree-icon.point-chunk:before {
+    background-image: url("/icons/folder.png");
+}
+
 /* Context Menu */
 .tree-context-menu {
     position: fixed;
@@ -2357,7 +2417,10 @@ body.dark-mode .tree-context-item[data-action="show"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="properties"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="delete"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="rename"] span:first-child:before,
-body.dark-mode .tree-context-item[data-action="reset-connections"] span:first-child:before {
+body.dark-mode .tree-context-item[data-action="reset-connections"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="show-layer"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="hide-layer"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="delete-layer"] span:first-child:before {
     filter: invert(1);
 }
 
