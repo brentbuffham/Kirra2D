@@ -511,6 +511,14 @@ function exposeGlobalsToWindow() {
 	window.selectedMultiplePoints = selectedMultiplePoints; // CRITICAL: Expose for multi-vertex highlighting
 	window.isSelectionPointerActive = isSelectionPointerActive;
 	window.allKADDrawingsMap = allKADDrawingsMap;
+	// Step 3) Expose layer Maps for TreeView access
+	window.allDrawingLayers = allDrawingLayers;
+	window.allSurfaceLayers = allSurfaceLayers;
+	window.DEFAULT_DRAWING_LAYER_ID = DEFAULT_DRAWING_LAYER_ID;
+	window.DEFAULT_SURFACE_LAYER_ID = DEFAULT_SURFACE_LAYER_ID;
+	// Step 18a) Expose active layer tracking
+	window.activeDrawingLayerId = activeDrawingLayerId;
+	window.activeSurfaceLayerId = activeSurfaceLayerId;
 	window.isPatternInPolygonActive = isPatternInPolygonActive;
 	window.isHolesAlongPolyLineActive = isHolesAlongPolyLineActive;
 	window.getEntityFromKADObject = getEntityFromKADObject;
@@ -565,6 +573,7 @@ function exposeGlobalsToWindow() {
 	window.calculateHoleGeometry = calculateHoleGeometry;
 	window.debouncedSaveHoles = debouncedSaveHoles;
 	window.debouncedSaveKAD = debouncedSaveKAD;
+	window.debouncedSaveLayers = debouncedSaveLayers;
 	window.clearAllSelectionState = clearAllSelectionState;
 	window.setSelectionFromTreeView = setSelectionFromTreeView; // CRITICAL: For TreeView to update selection
 	window.openColorPickerForElement = openColorPickerForElement; // CRITICAL: For TreeView color swatch clicks
@@ -6618,6 +6627,8 @@ holeLengthSlider.addEventListener("input", function () {
 				holeLengthLabel.textContent = "Hole Length : " + parseFloat(newHoleLength).toFixed(1) + "m";
 				calculateHoleGeometry(clickedHole, newHoleLength, 1);
 				drawData(allBlastHoles, selectedHole);
+				// Step 7) TreeView refresh bug fix - update tree after property change
+				if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 			}
 		}
 		if (selectedMultipleHoles != null) {
@@ -6626,6 +6637,8 @@ holeLengthSlider.addEventListener("input", function () {
 				calculateHoleGeometry(hole, newHoleLength, 1);
 				drawData(allBlastHoles, selectedHole);
 			});
+			// Step 7) TreeView refresh bug fix - update tree after property change
+			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		}
 	}
 });
@@ -6647,6 +6660,8 @@ holeAngleSlider.addEventListener("input", function () {
 				holeLengthLabel.textContent = "Hole Length : " + parseFloat(newLength).toFixed(1) + "m";
 
 				drawData(allBlastHoles, selectedHole);
+				// Step 7) TreeView refresh bug fix - update tree after property change
+				if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 			}
 		}
 		if (selectedMultipleHoles != null) {
@@ -6662,6 +6677,8 @@ holeAngleSlider.addEventListener("input", function () {
 				holeLengthSlider.value = newLength;
 				holeLengthLabel.textContent = "Hole Length : " + parseFloat(newLength).toFixed(1) + "m";
 			}
+			// Step 7) TreeView refresh bug fix - update tree after property change
+			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		}
 	}
 });
@@ -6677,6 +6694,8 @@ holeDiameterSlider.addEventListener("input", function () {
 				holeDiameterLabel.textContent = "Hole Diameter : " + parseFloat(newHoleDiameter).toFixed(0) + "mm";
 				calculateHoleGeometry(clickedHole, newHoleDiameter, 7);
 				drawData(allBlastHoles, selectedHole);
+				// Step 7) TreeView refresh bug fix - update tree after property change
+				if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 			}
 		}
 		if (selectedMultipleHoles != null) {
@@ -6685,6 +6704,8 @@ holeDiameterSlider.addEventListener("input", function () {
 				calculateHoleGeometry(hole, newHoleDiameter, 7);
 				drawData(allBlastHoles, selectedHole);
 			});
+			// Step 7) TreeView refresh bug fix - update tree after property change
+			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		}
 	}
 });
@@ -6703,6 +6724,8 @@ holeBearingSlider.addEventListener("input", function () {
 				// Calculate endXYZ and draw allBlastHoles
 				calculateHoleGeometry(clickedHole, newHoleBearing, 3);
 				drawData(allBlastHoles, selectedHole);
+				// Step 7) TreeView refresh bug fix - update tree after property change
+				if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 			}
 		}
 		if (selectedMultipleHoles != null) {
@@ -6714,6 +6737,8 @@ holeBearingSlider.addEventListener("input", function () {
 				calculateHoleGeometry(hole, newHoleBearing, 3);
 				drawData(allBlastHoles, selectedHole);
 			});
+			// Step 7) TreeView refresh bug fix - update tree after property change
+			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		}
 	}
 });
@@ -6735,6 +6760,8 @@ holeSubdrillSlider.addEventListener("input", function () {
 				holeLengthLabel.textContent = "Hole Length : " + parseFloat(newLength).toFixed(1) + "m";
 
 				drawData(allBlastHoles, selectedHole);
+				// Step 7) TreeView refresh bug fix - update tree after property change
+				if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 			}
 		}
 		if (selectedMultipleHoles != null) {
@@ -6750,6 +6777,8 @@ holeSubdrillSlider.addEventListener("input", function () {
 				holeLengthSlider.value = newLength;
 				holeLengthLabel.textContent = "Hole Length : " + parseFloat(newLength).toFixed(1) + "m";
 			}
+			// Step 7) TreeView refresh bug fix - update tree after property change
+			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		}
 	}
 });
@@ -7963,6 +7992,10 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 										window.loadedSurfaces = new Map();
 									}
 
+									// Step 21) Create surface layer for DTM import
+									var dtmLayer = getOrCreateLayerForImport("surface", fileName);
+									var dtmLayerId = dtmLayer ? dtmLayer.layerId : null;
+
 									data.surfaces.forEach(function (surface) {
 										// Step 6c) Create a proper surface record with id and points for TreeView/DB
 										var surfaceId = surface.name || ("DTM_Surface_" + Date.now());
@@ -7996,10 +8029,17 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 											visible: surface.visible !== false,
 											gradient: "default",
 											color: surface.color || "#00FF00",
-											transparency: 1.0
+											transparency: 1.0,
+											layerId: dtmLayerId  // Step 21a) Assign layer ID
 										};
 
 										window.loadedSurfaces.set(surfaceId, surfaceData);
+										
+										// Step 21b) Add surface to layer's entities set
+										if (dtmLayer) {
+											dtmLayer.entities.add(surfaceId);
+										}
+										
 										console.log("Imported surface: " + surfaceId + " (" + surfaceData.points.length + " points, " + surfaceData.triangles.length + " triangles)");
 
 										// Step 6c.1) Save surface to IndexedDB
@@ -8014,6 +8054,11 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									});
 
 									showModalMessage("Import Complete", "Imported " + data.surfaces.length + " surface(s)", "success");
+
+									// Step 21c) Save layers after import
+									if (typeof debouncedSaveLayers === "function") {
+										debouncedSaveLayers();
+									}
 
 									// Update display
 									drawData();
@@ -8062,6 +8107,12 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 							if (data.kadEntities && data.kadEntities.length > 0) {
 								if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
 
+								// Step 22) Create drawing layer for STR import using filename
+								var strFileName = file.name;
+								var strLayer = getOrCreateLayerForImport("drawing", strFileName);
+								var strLayerId = strLayer ? strLayer.layerId : null;
+								console.log("✅ [Layer] Created drawing layer for STR import:", strFileName, "->", strLayerId);
+
 								// Step 6a) Chunk large polylines/lines BEFORE storing in database
 								// This prevents GPU exhaustion and database bloat
 								// CRITICAL: This is about SINGLE entity size, not total file size!
@@ -8071,6 +8122,9 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 								var totalOriginalVertices = 0;
 
 								data.kadEntities.forEach(function (entity) {
+									// Step 22a) Assign layer ID to entity
+									entity.layerId = strLayerId;
+
 									// Step 6a.1) Check if entity needs chunking (lines/polys with >10k vertices)
 									if ((entity.entityType === "line" || entity.entityType === "poly") && entity.data && entity.data.length > MAX_VERTICES_PER_ENTITY) {
 										totalOriginalVertices += entity.data.length;
@@ -8090,16 +8144,22 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 											var baseChunkName = entity.entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
 											var chunkName = getUniqueEntityName(baseChunkName, entity.entityType);
 
-											// Step 6a.4) Store chunk as separate entity
+											// Step 6a.4) Store chunk as separate entity with layerId
 											allKADDrawingsMap.set(chunkName, {
 												entityName: chunkName,
 												entityType: entity.entityType,
+												layerId: strLayerId,
 												data: chunkData,
 												isChunk: true,
 												originalEntity: entity.entityName,
 												chunkIndex: chunkIdx,
 												totalChunks: numChunks
 											});
+											
+											// Step 22b) Add to layer entities set
+											if (strLayer) {
+												strLayer.entities.add(chunkName);
+											}
 											chunkedCount++;
 										}
 									} else {
@@ -8110,6 +8170,11 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 											entity.entityName = uniqueName;
 										}
 										allKADDrawingsMap.set(uniqueName, entity);
+										
+										// Step 22c) Add to layer entities set
+										if (strLayer) {
+											strLayer.entities.add(uniqueName);
+										}
 									}
 								});
 
@@ -8145,6 +8210,11 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 								// Save KAD entities to IndexedDB
 								if (typeof debouncedSaveKAD === "function") {
 									debouncedSaveKAD();
+								}
+
+								// Step 22d) Save layers after STR import
+								if (typeof debouncedSaveLayers === "function") {
+									debouncedSaveLayers();
 								}
 
 								// Update TreeView to show new KAD entities
@@ -8718,13 +8788,29 @@ document.querySelectorAll(".kml-input-btn").forEach(function (button) {
 						} else if (result.dataType === "geometry") {
 							// Step 8) Import geometry (KAD entities)
 							if (result.kadEntities && result.kadEntities.size > 0) {
-								// Add entities to allKADDrawingsMap
+								// Step 23) Create layer for KML import
+								var kmlLayer = window.getOrCreateLayerForImport("drawing", file.name);
+								var kmlLayerId = kmlLayer ? kmlLayer.layerId : null;
+								console.log("✅ [Layer] Created drawing layer for KML import:", file.name, "->", kmlLayerId);
+
+								// Add entities to allKADDrawingsMap with layer assignment
 								for (var [entityName, entityData] of result.kadEntities.entries()) {
+									// Step 23a) Assign layerId to entity
+									entityData.layerId = kmlLayerId;
 									window.allKADDrawingsMap.set(entityName, entityData);
+									// Step 23b) Add to layer entities set
+									if (kmlLayer) {
+										kmlLayer.entities.add(entityName);
+									}
 								}
 
 								// Step 9) Update UI and redraw
 								window.drawData(window.allBlastHoles, window.selectedHole);
+
+								// Step 23c) Save layers
+								if (window.debouncedSaveLayers) {
+									window.debouncedSaveLayers();
+								}
 
 								// Update tree view if available
 								if (window.debouncedUpdateTreeView) {
@@ -11862,16 +11948,18 @@ async function parseK2Dcsv(data) {
 // All parsing logic moved to src/fileIO/TextIO/BlastHoleCSVParser.js
 
 async function handleDXFUpload(event) {
-	const file = event.target.files[0];
+	var file = event.target.files[0];
 	if (!file) return;
 
-	const reader = new FileReader();
+	var fileName = file.name;
+	var reader = new FileReader();
 	reader.onload = async function (e) {
-		const dxfContent = e.target.result;
+		var dxfContent = e.target.result;
 		try {
-			const parser = new DxfParser();
-			const dxf = parser.parseSync(dxfContent);
-			await parseDXFtoKadMaps(dxf);
+			var parser = new DxfParser();
+			var dxf = parser.parseSync(dxfContent);
+			// Step 15) Pass filename for layer creation
+			await parseDXFtoKadMaps(dxf, fileName);
 		} catch (error) {
 			console.error("DXF parsing failed:", error);
 			alert("Error parsing DXF file.");
@@ -11911,7 +11999,7 @@ function getUniqueEntityName(baseName, entityType) {
 // Step 6) Returns structured data: { kadDrawings: Map, surfaces: Map, entityCounts: {} }
 // Step 7) Backward compatibility maintained via wrapper function below
 
-async function parseDXFtoKadMaps(dxf) {
+async function parseDXFtoKadMaps(dxf, fileName) {
 	try {
 		// Step 1) Use FileManager to parse DXF data
 		var DXFParser = window.fileManager.parsers.get("dxf");
@@ -11922,12 +12010,28 @@ async function parseDXFtoKadMaps(dxf) {
 		var parser = new DXFParser();
 		var result = await parser.parse({ dxfData: dxf });
 
+		// Step 15a) Layer System - Create layer for this DXF import
+		var layerId = null;
+		var layer = null;
+		if (fileName) {
+			layer = getOrCreateLayerForImport("drawing", fileName);
+			if (layer) {
+				layerId = layer.layerId;
+				console.log("✅ [Layer] Created drawing layer for DXF import:", fileName, "->", layerId);
+			}
+		}
+
 		// Step 2) Merge parsed KAD drawings into global allKADDrawingsMap with chunking
 		var MAX_VERTICES_PER_ENTITY = 10000; // GPU single buffer limit
 		var chunkedCount = 0;
 		var totalOriginalVertices = 0;
 
 		for (var [entityName, entityData] of result.kadDrawings.entries()) {
+			// Step 15b) Assign layerId to entity
+			if (layerId) {
+				entityData.layerId = layerId;
+			}
+
 			// Step 2a) Check if entity needs chunking (lines/polys with >10k vertices)
 			if ((entityData.entityType === "line" || entityData.entityType === "poly") &&
 				entityData.data && entityData.data.length > MAX_VERTICES_PER_ENTITY) {
@@ -11948,16 +12052,23 @@ async function parseDXFtoKadMaps(dxf) {
 					var baseChunkName = entityName + "_chunk" + (chunkIdx + 1) + "of" + numChunks;
 					var chunkName = getUniqueEntityName(baseChunkName, entityData.entityType);
 
-					// Step 2d) Store chunk as separate entity
-					allKADDrawingsMap.set(chunkName, {
+					// Step 2d) Store chunk as separate entity with layerId
+					var chunkEntity = {
 						entityName: chunkName,
 						entityType: entityData.entityType,
+						layerId: layerId,
 						data: chunkData,
 						isChunk: true,
 						originalEntity: entityName,
 						chunkIndex: chunkIdx,
 						totalChunks: numChunks
-					});
+					};
+					allKADDrawingsMap.set(chunkName, chunkEntity);
+					
+					// Step 15c) Add entity to layer
+					if (layer) {
+						layer.entities.add(chunkName);
+					}
 					chunkedCount++;
 				}
 			} else {
@@ -11968,6 +12079,11 @@ async function parseDXFtoKadMaps(dxf) {
 					entityData.entityName = uniqueName;
 				}
 				allKADDrawingsMap.set(uniqueName, entityData);
+				
+				// Step 15d) Add entity to layer
+				if (layer) {
+					layer.entities.add(uniqueName);
+				}
 			}
 		}
 
@@ -11977,7 +12093,25 @@ async function parseDXFtoKadMaps(dxf) {
 		}
 
 		// Step 3) Merge parsed surfaces into global loadedSurfaces Map
+		// Step 15e) Create surface layer if there are surfaces
+		var surfaceLayerId = null;
+		var surfaceLayer = null;
+		if (result.surfaces.size > 0 && fileName) {
+			surfaceLayer = getOrCreateLayerForImport("surface", fileName);
+			if (surfaceLayer) {
+				surfaceLayerId = surfaceLayer.layerId;
+				console.log("✅ [Layer] Created surface layer for DXF import:", fileName, "->", surfaceLayerId);
+			}
+		}
+
 		for (var [surfaceId, surfaceData] of result.surfaces.entries()) {
+			// Step 15f) Assign layerId to surface
+			if (surfaceLayerId) {
+				surfaceData.layerId = surfaceLayerId;
+				if (surfaceLayer) {
+					surfaceLayer.entities.add(surfaceId);
+				}
+			}
 			loadedSurfaces.set(surfaceId, surfaceData);
 
 			// Step 4) Save surface to database using async pattern
@@ -11996,6 +12130,8 @@ async function parseDXFtoKadMaps(dxf) {
 		updateCentroids();
 		drawData(allBlastHoles, selectedHole);
 		debouncedSaveKAD();
+		// Step 15g) Save layers after import
+		debouncedSaveLayers();
 		zoomToFitAll();
 
 		// Step 5a) Update TreeView to show new KAD entities
@@ -12593,6 +12729,13 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					// Step 14) Create surface ID
 					var surfaceId = fileName;
 
+					// Step 24) Create layer for OBJ import
+					var objLayer = getOrCreateLayerForImport("surface", fileName);
+					var objLayerId = objLayer ? objLayer.layerId : null;
+					if (objLayer) {
+						objLayer.entities.add(surfaceId);
+					}
+
 					// Step 15) Store in loadedSurfaces with all necessary data
 					loadedSurfaces.set(surfaceId, {
 						// Standard surface fields for Data Explorer
@@ -12603,6 +12746,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 						visible: true,
 						gradient: "texture", // Default to "texture" to show JPG texture if available
 						transparency: 1.0,
+						layerId: objLayerId, // Step 24a) Assign layer ID
 
 						// Textured mesh specific fields
 						isTexturedMesh: true,
@@ -12635,6 +12779,8 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					updateCentroids();
 					drawData(allBlastHoles, selectedHole);
 					debouncedUpdateTreeView();
+					// Step 24b) Save layers
+					debouncedSaveLayers();
 					updateStatusMessage("Loaded textured surface: " + fileName);
 
 					// Step 18) Cleanup blob URLs after a delay (textures are now loaded)
@@ -12690,6 +12836,14 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 
 				// Step 23) Store as regular surface
 				var surfaceId = fileName;
+
+				// Step 25) Create layer for non-textured OBJ import
+				var objLayer2 = getOrCreateLayerForImport("surface", fileName);
+				var objLayerId2 = objLayer2 ? objLayer2.layerId : null;
+				if (objLayer2) {
+					objLayer2.entities.add(surfaceId);
+				}
+
 				loadedSurfaces.set(surfaceId, {
 					id: surfaceId,
 					name: fileName,
@@ -12700,6 +12854,7 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 					transparency: 1.0,
 					isTexturedMesh: false,
 					meshBounds: meshBounds,
+					layerId: objLayerId2, // Step 25a) Assign layer ID
 				});
 
 				console.log("✅ OBJ loaded (non-textured): " + fileName + " (" + points.length + " points, " + triangles.length + " triangles)");
@@ -12717,6 +12872,8 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 				updateCentroids();
 				drawData(allBlastHoles, selectedHole);
 				debouncedUpdateTreeView();
+				// Step 25b) Save layers
+				debouncedSaveLayers();
 				updateStatusMessage("Loaded OBJ surface: " + fileName + " (" + triangles.length + " triangles)");
 
 				// Step 26) Close progress dialog
@@ -13328,6 +13485,20 @@ function fileFormatPopup(error) {
 // Create a Map for each entity type to store entities by name
 
 let allKADDrawingsMap = new Map();
+
+// Step 1) Layer System - Added 2026-01-16
+// Maps to store layer information for Drawings and Surfaces
+// Layer structure: { layerId, layerName, visible, sourceFile, importDate, entities: Set<entityName> }
+let allDrawingLayers = new Map();  // layerId -> Layer object for KAD drawings
+let allSurfaceLayers = new Map();  // layerId -> Layer object for surfaces
+
+// Step 2) Default layer ID constant
+var DEFAULT_DRAWING_LAYER_ID = "layer_default_drawings";
+var DEFAULT_SURFACE_LAYER_ID = "layer_default_surfaces";
+
+// Step 18) Active layer tracking - which layer new entities are added to
+var activeDrawingLayerId = DEFAULT_DRAWING_LAYER_ID;
+var activeSurfaceLayerId = DEFAULT_SURFACE_LAYER_ID;
 
 // Step #) Convert CSS color names to hex for 3D compatibility
 // Three.js batched rendering only handles hex colors, not named colors
@@ -17555,10 +17726,24 @@ function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWi
 
 	if (!union) {
 		if (addToMaps) {
+			// Step 30b) Get active layer for radii polygons
+			var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+			if (!window.allDrawingLayers.has(activeLayerId)) {
+				window.allDrawingLayers.set(activeLayerId, {
+					layerId: activeLayerId,
+					name: "Default Layer",
+					type: "drawing",
+					visible: true,
+					entities: new Set()
+				});
+			}
+			var activeLayer = window.allDrawingLayers.get(activeLayerId);
+			
 			rawPolygons.forEach((polygon) => {
 				entityName = (useToeLocation ? "RAD-END" : "RAD-SRT") + Math.random().toString(36).substring(2, 6);
 				allKADDrawingsMap.set(entityName, {
 					entityType: "poly",
+					layerId: activeLayerId,
 					data: polygon.map((pt) => ({
 						entityName: entityName,
 						pointXLocation: pt.x,
@@ -17571,6 +17756,7 @@ function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWi
 						entityType: "poly",
 					})),
 				});
+				if (activeLayer) activeLayer.entities.add(entityName);
 			});
 		}
 		return rawPolygons; // each point includes x, y, z
@@ -17625,6 +17811,19 @@ function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWi
 	);
 
 	if (addToMaps) {
+		// Step 30c) Get active layer for unioned radii polygons
+		var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+		if (!window.allDrawingLayers.has(activeLayerId)) {
+			window.allDrawingLayers.set(activeLayerId, {
+				layerId: activeLayerId,
+				name: "Default Layer",
+				type: "drawing",
+				visible: true,
+				entities: new Set()
+			});
+		}
+		var activeLayer = window.allDrawingLayers.get(activeLayerId);
+		
 		unionedPolygons.forEach((polygon) => {
 			entityName = (useToeLocation ? "RAD-END" : "RAD-SRT") + Math.random().toString(36).substring(2, 6);
 			//add pointID to each point starting from 1 to nth
@@ -17635,6 +17834,7 @@ function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWi
 			});
 			allKADDrawingsMap.set(entityName, {
 				entityType: "poly",
+				layerId: activeLayerId,
 				data: polygon.map((pt) => ({
 					entityName: entityName,
 					pointXLocation: pt.x,
@@ -17647,6 +17847,7 @@ function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWi
 					entityType: "poly",
 				})),
 			});
+			if (activeLayer) activeLayer.entities.add(entityName);
 		});
 	}
 
@@ -17762,6 +17963,19 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 	// Step 8: Handle non-union case (multiple separate polygons)
 	if (!union) {
 		if (addToMaps) {
+			// Step 30d) Get active layer for enhanced radii polygons
+			var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+			if (!window.allDrawingLayers.has(activeLayerId)) {
+				window.allDrawingLayers.set(activeLayerId, {
+					layerId: activeLayerId,
+					name: "Default Layer",
+					type: "drawing",
+					visible: true,
+					entities: new Set()
+				});
+			}
+			var activeLayer = window.allDrawingLayers.get(activeLayerId);
+			
 			rawPolygons.forEach((polygon, index) => {
 				// Step 9: Create unique entity name with enhanced indicators
 				let entityName = useToeLocation ? "RAD-END" : "RAD-SRT";
@@ -17773,9 +17987,10 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 				}
 				entityName += "-" + Math.random().toString(36).substring(2, 6);
 
-				// Step 10: Add polygon to KAD drawings map
+				// Step 10: Add polygon to KAD drawings map with active layer
 				allKADDrawingsMap.set(entityName, {
 					entityType: "poly",
+					layerId: activeLayerId,
 					data: polygon.map((pt, pointIndex) => ({
 						entityName: entityName,
 						pointXLocation: pt.x,
@@ -17788,8 +18003,9 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 						entityType: "poly",
 					})),
 				});
+				if (activeLayer) activeLayer.entities.add(entityName);
 
-				console.log("✅ Created enhanced polygon: " + entityName + " with " + polygon.length + " points");
+				console.log("✅ Created enhanced polygon: " + entityName + " in layer:", activeLayerId);
 			});
 		}
 		return rawPolygons;
@@ -17850,6 +18066,19 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 	});
 
 	if (addToMaps) {
+		// Step 30e) Get active layer for enhanced unioned radii polygons
+		var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+		if (!window.allDrawingLayers.has(activeLayerId)) {
+			window.allDrawingLayers.set(activeLayerId, {
+				layerId: activeLayerId,
+				name: "Default Layer",
+				type: "drawing",
+				visible: true,
+				entities: new Set()
+			});
+		}
+		var activeLayer = window.allDrawingLayers.get(activeLayerId);
+		
 		unionedPolygons.forEach((polygon, index) => {
 			let entityName = (useToeLocation ? "RAD-END" : "RAD-SRT") + "-UNION";
 			if (rotationOffset !== 0) {
@@ -17868,6 +18097,7 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 
 			allKADDrawingsMap.set(entityName, {
 				entityType: "poly",
+				layerId: activeLayerId,
 				data: polygon.map((pt) => ({
 					entityName: entityName,
 					pointXLocation: pt.x,
@@ -17880,6 +18110,7 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 					entityType: "poly",
 				})),
 			});
+			if (activeLayer) activeLayer.entities.add(entityName);
 
 			console.log("✅ Created enhanced union polygon: " + entityName + " with " + polygon.length + " points");
 		});
@@ -18493,15 +18724,34 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 			visible: true,
 		}));
 
-		// Add to the map
+		// Step 30) Add to active layer (or default if none)
+		var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+		if (!window.allDrawingLayers.has(activeLayerId)) {
+			window.allDrawingLayers.set(activeLayerId, {
+				layerId: activeLayerId,
+				name: "Default Layer",
+				type: "drawing",
+				visible: true,
+				entities: new Set()
+			});
+		}
+		var activeLayer = window.allDrawingLayers.get(activeLayerId);
+		
+		// Add to the map with active layer assignment
 		allKADDrawingsMap.set(newEntityName, {
 			entityName: newEntityName,
 			entityType: originalEntity.entityType || "line",
+			layerId: activeLayerId,
 			data: newEntityData,
 			visible: true,
 		});
+		
+		// Add to layer's entities set
+		if (activeLayer) {
+			activeLayer.entities.add(newEntityName);
+		}
 
-		console.log("✅ Created crossover-handled line offset:", newEntityName, "with", newEntityData.length, "points");
+		console.log("✅ Created crossover-handled line offset:", newEntityName, "in layer:", activeLayerId);
 		return newEntityName;
 	} catch (error) {
 		console.error("Error in createLineOffsetCustom:", error);
@@ -18562,13 +18812,33 @@ function createSimpleLineOffset(originalEntity, horizontalOffset, zDelta, color,
 		visible: true,
 	}));
 
+	// Step 30a) Add to active layer (or default if none)
+	var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+	if (!window.allDrawingLayers.has(activeLayerId)) {
+		window.allDrawingLayers.set(activeLayerId, {
+			layerId: activeLayerId,
+			name: "Default Layer",
+			type: "drawing",
+			visible: true,
+			entities: new Set()
+		});
+	}
+	var activeLayer = window.allDrawingLayers.get(activeLayerId);
+	
 	allKADDrawingsMap.set(newEntityName, {
 		entityName: newEntityName,
 		entityType: "line",
+		layerId: activeLayerId,
 		data: newEntityData,
 		visible: true,
 	});
+	
+	// Add to layer's entities set
+	if (activeLayer) {
+		activeLayer.entities.add(newEntityName);
+	}
 
+	console.log("✅ Created simple line offset:", newEntityName, "in layer:", activeLayerId);
 	return newEntityName;
 }
 
@@ -22043,18 +22313,39 @@ function addKADPoint() {
 
 		// Create the entity if it doesn't exist
 		if (!allKADDrawingsMap.has(entityName)) {
+			// Step 26) Get active layer for new drawing entity
+			var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+			// Ensure default layer exists
+			if (!window.allDrawingLayers.has(activeLayerId)) {
+				window.allDrawingLayers.set(activeLayerId, {
+					layerId: activeLayerId,
+					name: "Default Layer",
+					type: "drawing",
+					visible: true,
+					entities: new Set()
+				});
+			}
+			var activeLayer = window.allDrawingLayers.get(activeLayerId);
+			
 			allKADDrawingsMap.set(entityName, {
 				entityName: entityName,
 				entityType: entityType,
+				layerId: activeLayerId, // Step 26a) Assign to active layer
 				data: [],
 				visible: true,
 			});
+			// Step 26b) Add to layer's entities set
+			if (activeLayer) {
+				activeLayer.entities.add(entityName);
+			}
+			console.log("📝 Created KAD point entity in layer:", activeLayerId);
 		}
 
 		allKADDrawingsMap.get(entityName).data.push(pointObject);
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
 		drawData(allBlastHoles, selectedHole);
 		debouncedSaveKAD();
+		debouncedSaveLayers();
 		debouncedUpdateTreeView();
 		console.log("Added point", pointID, "to", entityName);
 	}
@@ -22129,18 +22420,39 @@ function addKADLine() {
 
 		// Add to allKADDrawingsMap instead
 		if (!allKADDrawingsMap.has(entityName)) {
+			// Step 26c) Get active layer for new line entity
+			var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+			// Ensure default layer exists
+			if (!window.allDrawingLayers.has(activeLayerId)) {
+				window.allDrawingLayers.set(activeLayerId, {
+					layerId: activeLayerId,
+					name: "Default Layer",
+					type: "drawing",
+					visible: true,
+					entities: new Set()
+				});
+			}
+			var activeLayer = window.allDrawingLayers.get(activeLayerId);
+			
 			allKADDrawingsMap.set(entityName, {
 				name: entityName,
 				entityType: entityType,
+				layerId: activeLayerId, // Step 26d) Assign to active layer
 				data: [],
 				visible: true,
 			});
+			// Step 26e) Add to layer's entities set
+			if (activeLayer) {
+				activeLayer.entities.add(entityName);
+			}
+			console.log("📝 Created KAD line entity in layer:", activeLayerId);
 		}
 		allKADDrawingsMap.get(entityName).data.push(lineObject); // Changed map
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
 	}
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
+	debouncedSaveLayers();
 	debouncedUpdateTreeView();
 }
 
@@ -22215,12 +22527,32 @@ function addKADPoly() {
 
 		// Add the point to allKADDrawingsMap
 		if (!allKADDrawingsMap.has(entityName)) {
+			// Step 26f) Get active layer for new polygon entity
+			var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+			// Ensure default layer exists
+			if (!window.allDrawingLayers.has(activeLayerId)) {
+				window.allDrawingLayers.set(activeLayerId, {
+					layerId: activeLayerId,
+					name: "Default Layer",
+					type: "drawing",
+					visible: true,
+					entities: new Set()
+				});
+			}
+			var activeLayer = window.allDrawingLayers.get(activeLayerId);
+			
 			allKADDrawingsMap.set(entityName, {
 				name: entityName,
 				entityType: entityType,
+				layerId: activeLayerId, // Step 26g) Assign to active layer
 				data: [],
 				visible: true,
 			});
+			// Step 26h) Add to layer's entities set
+			if (activeLayer) {
+				activeLayer.entities.add(entityName);
+			}
+			console.log("📝 Created KAD polygon entity in layer:", activeLayerId);
 		}
 		allKADDrawingsMap.get(entityName).data.push(polyObject);
 		// Add this line to update the last draw point
@@ -22228,6 +22560,7 @@ function addKADPoly() {
 	}
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
+	debouncedSaveLayers();
 	debouncedUpdateTreeView();
 	console.log("allKADDrawingsMap: ", allKADDrawingsMap);
 }
@@ -22306,12 +22639,32 @@ function addKADCircle() {
 
 		// Create the entity if it doesn't exist
 		if (!allKADDrawingsMap.has(entityName)) {
+			// Step 26i) Get active layer for new circle entity
+			var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+			// Ensure default layer exists
+			if (!window.allDrawingLayers.has(activeLayerId)) {
+				window.allDrawingLayers.set(activeLayerId, {
+					layerId: activeLayerId,
+					name: "Default Layer",
+					type: "drawing",
+					visible: true,
+					entities: new Set()
+				});
+			}
+			var activeLayer = window.allDrawingLayers.get(activeLayerId);
+			
 			allKADDrawingsMap.set(entityName, {
 				entityName: entityName,
 				entityType: entityType,
+				layerId: activeLayerId, // Step 26j) Assign to active layer
 				data: [],
 				visible: true,
 			});
+			// Step 26k) Add to layer's entities set
+			if (activeLayer) {
+				activeLayer.entities.add(entityName);
+			}
+			console.log("📝 Created KAD circle entity in layer:", activeLayerId);
 		}
 		allKADDrawingsMap.get(entityName).data.push(circleObject);
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
@@ -22319,6 +22672,7 @@ function addKADCircle() {
 	}
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
+	debouncedSaveLayers();
 	debouncedUpdateTreeView();
 }
 
@@ -22533,12 +22887,32 @@ async function addKADText() {
 		// Create the entity if it doesn't exist
 		if (!allKADDrawingsMap.has(entityName)) {
 			console.log("Creating new map entry for:", entityName);
+			// Step 26l) Get active layer for new text entity
+			var activeLayerId = window.activeDrawingLayerId || window.DEFAULT_DRAWING_LAYER_ID;
+			// Ensure default layer exists
+			if (!window.allDrawingLayers.has(activeLayerId)) {
+				window.allDrawingLayers.set(activeLayerId, {
+					layerId: activeLayerId,
+					name: "Default Layer",
+					type: "drawing",
+					visible: true,
+					entities: new Set()
+				});
+			}
+			var activeLayer = window.allDrawingLayers.get(activeLayerId);
+			
 			allKADDrawingsMap.set(entityName, {
 				entityName: entityName,
 				entityType: entityType,
+				layerId: activeLayerId, // Step 26m) Assign to active layer
 				data: [],
 				visible: true,
 			});
+			// Step 26n) Add to layer's entities set
+			if (activeLayer) {
+				activeLayer.entities.add(entityName);
+			}
+			console.log("📝 Created KAD text entity in layer:", activeLayerId);
 		} else {
 			console.log("Using existing map entry for:", entityName);
 			console.log("Existing entity type:", allKADDrawingsMap.get(entityName).entityType);
@@ -22551,6 +22925,7 @@ async function addKADText() {
 		console.log("Added text", pointID, "to", entityName);
 		console.log("Final entity type:", allKADDrawingsMap.get(entityName).entityType);
 		debouncedSaveKAD();
+		debouncedSaveLayers();
 	}
 }
 /**
@@ -28040,9 +28415,11 @@ const STORE_NAME = "KADDRAWINGS";
 const SURFACE_STORE_NAME = "KADSURFACE";
 const IMAGE_STORE_NAME = "KADIMAGES";
 const BLASTHOLES_STORE_NAME = "BLASTHOLES";
+// Step 4) Layer System - Store for drawing and surface layers
+const LAYERS_STORE_NAME = "KADLAYERS";
 
 // Define all required stores - THIS WAS MISSING
-const REQUIRED_STORES = [STORE_NAME, SURFACE_STORE_NAME, IMAGE_STORE_NAME, BLASTHOLES_STORE_NAME];
+const REQUIRED_STORES = [STORE_NAME, SURFACE_STORE_NAME, IMAGE_STORE_NAME, BLASTHOLES_STORE_NAME, LAYERS_STORE_NAME];
 
 // Start with a higher version that you'll use going forward
 const DB_VERSION = 5; // Set this higher than your current version
@@ -28190,6 +28567,130 @@ function loadKADFromDB() {
 
 		request.onerror = (event) => {
 			console.error("Error loading KAD data from IndexedDB:", event.target.error);
+			reject(event.target.error);
+		};
+	});
+}
+
+// Step 5) Layer System - Save layers to IndexedDB
+var layerSaveTimeout;
+function debouncedSaveLayers() {
+	clearTimeout(layerSaveTimeout);
+	layerSaveTimeout = setTimeout(function() {
+		console.log("Auto-saving layers to DB...");
+		if (db) {
+			saveLayersToDB();
+		} else {
+			console.log("DB not ready, skipping layer auto-save");
+		}
+	}, 2000);
+}
+
+function saveLayersToDB() {
+	if (!db) {
+		console.error("DB not initialized. Cannot save layers.");
+		return;
+	}
+
+	var transaction = db.transaction([LAYERS_STORE_NAME], "readwrite");
+	var store = transaction.objectStore(LAYERS_STORE_NAME);
+
+	// Step 5a) Convert layer Maps to serializable format
+	// Convert Set to Array for JSON serialization
+	var drawingLayersArray = [];
+	allDrawingLayers.forEach(function(layer, layerId) {
+		drawingLayersArray.push({
+			layerId: layer.layerId,
+			layerName: layer.layerName,
+			visible: layer.visible,
+			sourceFile: layer.sourceFile,
+			importDate: layer.importDate,
+			entities: Array.from(layer.entities || [])
+		});
+	});
+
+	var surfaceLayersArray = [];
+	allSurfaceLayers.forEach(function(layer, layerId) {
+		surfaceLayersArray.push({
+			layerId: layer.layerId,
+			layerName: layer.layerName,
+			visible: layer.visible,
+			sourceFile: layer.sourceFile,
+			importDate: layer.importDate,
+			entities: Array.from(layer.entities || [])
+		});
+	});
+
+	var request = store.put({
+		id: "layersData",
+		drawingLayers: drawingLayersArray,
+		surfaceLayers: surfaceLayersArray
+	});
+
+	request.onsuccess = function() {
+		console.log("✅ Layers saved to IndexedDB");
+	};
+
+	request.onerror = function(event) {
+		console.error("Error saving layers to IndexedDB:", event.target.error);
+	};
+}
+
+// Step 6) Layer System - Load layers from IndexedDB
+function loadLayersFromDB() {
+	return new Promise(function(resolve, reject) {
+		if (!db) {
+			console.error("DB not initialized. Cannot load layers.");
+			return reject("DB not initialized");
+		}
+
+		var transaction = db.transaction([LAYERS_STORE_NAME], "readonly");
+		var store = transaction.objectStore(LAYERS_STORE_NAME);
+		var request = store.get("layersData");
+
+		request.onsuccess = function(event) {
+			var result = event.target.result;
+			if (result) {
+				// Step 6a) Restore drawing layers
+				if (result.drawingLayers && result.drawingLayers.length > 0) {
+					allDrawingLayers.clear();
+					result.drawingLayers.forEach(function(layer) {
+						allDrawingLayers.set(layer.layerId, {
+							layerId: layer.layerId,
+							layerName: layer.layerName,
+							visible: layer.visible !== false,
+							sourceFile: layer.sourceFile,
+							importDate: layer.importDate,
+							entities: new Set(layer.entities || [])
+						});
+					});
+					console.log("✅ Loaded " + allDrawingLayers.size + " drawing layers from IndexedDB");
+				}
+
+				// Step 6b) Restore surface layers
+				if (result.surfaceLayers && result.surfaceLayers.length > 0) {
+					allSurfaceLayers.clear();
+					result.surfaceLayers.forEach(function(layer) {
+						allSurfaceLayers.set(layer.layerId, {
+							layerId: layer.layerId,
+							layerName: layer.layerName,
+							visible: layer.visible !== false,
+							sourceFile: layer.sourceFile,
+							importDate: layer.importDate,
+							entities: new Set(layer.entities || [])
+						});
+					});
+					console.log("✅ Loaded " + allSurfaceLayers.size + " surface layers from IndexedDB");
+				}
+
+				resolve(true);
+			} else {
+				resolve(false);
+			}
+		};
+
+		request.onerror = function(event) {
+			console.error("Error loading layers from IndexedDB:", event.target.error);
 			reject(event.target.error);
 		};
 	});
@@ -28366,6 +28867,7 @@ async function saveSurfaceToDB(surfaceId) {
 				hillshadeColor: surface.hillshadeColor || null, // Step 0a) Save hillshade color for 2D/3D rendering
 				minLimit: surface.minLimit || null,
 				maxLimit: surface.maxLimit || null,
+				layerId: surface.layerId || null, // Step 28c) Save layerId for layer persistence
 				created: surface.created || new Date().toISOString(),
 				metadata: surface.metadata || {},
 			};
@@ -28510,11 +29012,23 @@ async function loadAllDataWithProgress() {
 		var holeCount = allBlastHoles ? allBlastHoles.length : 0;
 		updateLoadingProgress(loadingDialog, "Loaded " + holeCount + " blast holes", 25);
 
-		// Step 3) Load KAD entities (25-40%)
+		// Step 3) Load KAD entities (25-35%)
 		updateLoadingProgress(loadingDialog, "Loading KAD entities...", 30);
 		await loadKADFromDB();
 		var kadCount = allKADDrawingsMap ? allKADDrawingsMap.size : 0;
-		updateLoadingProgress(loadingDialog, "Loaded " + kadCount + " KAD entities", 40);
+		updateLoadingProgress(loadingDialog, "Loaded " + kadCount + " KAD entities", 35);
+
+		// Step 3a) Load layers (35-40%)
+		updateLoadingProgress(loadingDialog, "Loading layers...", 37);
+		await loadLayersFromDB();
+		var drawingLayerCount = allDrawingLayers ? allDrawingLayers.size : 0;
+		var surfaceLayerCount = allSurfaceLayers ? allSurfaceLayers.size : 0;
+		updateLoadingProgress(loadingDialog, "Loaded " + drawingLayerCount + " drawing layers, " + surfaceLayerCount + " surface layers", 38);
+
+		// Step 3b) Run migration for entities without layerId
+		updateLoadingProgress(loadingDialog, "Migrating entities...", 39);
+		migrateEntitiesWithoutLayerId();
+		updateLoadingProgress(loadingDialog, "Migration complete", 40);
 
 		// Step 4) Load surfaces (40-70%)
 		updateLoadingProgress(loadingDialog, "Loading surfaces...", 45);
@@ -28639,6 +29153,7 @@ async function loadAllSurfacesIntoMemory() {
 						gradient: surfaceData.isTexturedMesh ? "texture" : surfaceData.gradient || "default",
 						transparency: surfaceData.transparency || 1.0,
 						hillshadeColor: surfaceData.hillshadeColor || null, // Step 1b) Load hillshade color from DB
+						layerId: surfaceData.layerId || null, // Step 28) Restore layerId from DB
 					};
 
 					// Step 2) Check if this is a textured mesh
@@ -28827,6 +29342,60 @@ function toggleSurfaceVisibility(surfaceId) {
 		setSurfaceVisibility(surfaceId, surface.visible);
 	}
 }
+
+// Step 28a) Check if a surface is closed (watertight)
+// A closed surface has all triangle edges shared by exactly 2 triangles
+function isSurfaceClosed(surface) {
+	if (!surface || !surface.triangles || surface.triangles.length === 0) {
+		return false;
+	}
+	
+	// Build edge count map
+	// Edge key is created by sorting vertex indices to handle both directions
+	var edgeCount = new Map();
+	
+	function makeEdgeKey(v1, v2) {
+		// Create consistent edge key regardless of direction
+		var idx1 = v1.x !== undefined ? (v1.x + "," + v1.y + "," + v1.z) : v1.toString();
+		var idx2 = v2.x !== undefined ? (v2.x + "," + v2.y + "," + v2.z) : v2.toString();
+		return idx1 < idx2 ? idx1 + "|" + idx2 : idx2 + "|" + idx1;
+	}
+	
+	// Count edges from triangles
+	for (var i = 0; i < surface.triangles.length; i++) {
+		var tri = surface.triangles[i];
+		var verts = tri.vertices || [
+			surface.points[tri.a],
+			surface.points[tri.b],
+			surface.points[tri.c]
+		];
+		
+		if (!verts || verts.length < 3) continue;
+		
+		// Three edges per triangle
+		var edges = [
+			makeEdgeKey(verts[0], verts[1]),
+			makeEdgeKey(verts[1], verts[2]),
+			makeEdgeKey(verts[2], verts[0])
+		];
+		
+		edges.forEach(function(edge) {
+			edgeCount.set(edge, (edgeCount.get(edge) || 0) + 1);
+		});
+	}
+	
+	// Check if all edges appear exactly 2 times (shared by 2 triangles)
+	for (var entry of edgeCount.entries()) {
+		if (entry[1] !== 2) {
+			return false; // Found an edge that's not shared by exactly 2 triangles
+		}
+	}
+	
+	return true;
+}
+
+// Expose to window for TreeView access
+window.isSurfaceClosed = isSurfaceClosed;
 
 // ? Function to remove hidden entities from current selections
 function clearHiddenFromSelections() {
@@ -45199,6 +45768,67 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 		const parts = id.split("⣿");
 		return (parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
 	});
+	// Step 14) Check for layer nodes - Added 2026-01-16
+	const hasDrawingLayers = nodeIds.some(function (id) { 
+		return id.startsWith("layer-drawing⣿") && id.split("⣿").length === 2;
+	});
+	const hasSurfaceLayers = nodeIds.some(function (id) { 
+		return id.startsWith("layer-surface⣿") && id.split("⣿").length === 2;
+	});
+
+	// Step 14a) Handle layer deletion with confirmation
+	if (hasDrawingLayers || hasSurfaceLayers) {
+		var layerIds = nodeIds.filter(function (id) {
+			return id.startsWith("layer-drawing⣿") || id.startsWith("layer-surface⣿");
+		}).map(function (id) {
+			return {
+				type: id.startsWith("layer-drawing⣿") ? "drawing" : "surface",
+				layerId: id.split("⣿")[1]
+			};
+		});
+
+		// Step 14a-fix) Use FloatingDialog with 3 buttons for delete layer options
+		var dialogContent = '<div style="padding: 16px; text-align: center;">' +
+			'<p style="font-size: 14px; margin-bottom: 16px;">Delete ' + layerIds.length + ' layer(s)?</p>' +
+			'<p style="font-size: 12px; color: #888;">Choose how to handle entities inside:</p>' +
+			'</div>';
+
+		var deleteDialog = new FloatingDialog({
+			title: "Delete Layer(s)",
+			content: dialogContent,
+			width: 400,
+			height: "auto",
+			showConfirm: true,
+			showCancel: true,
+			showOption1: true,
+			confirmText: "Delete All",
+			cancelText: "Cancel",
+			option1Text: "Keep Entities",
+			draggable: true,
+			onConfirm: function() {
+				// Delete layer AND all entities inside
+				layerIds.forEach(function (layerInfo) {
+					deleteLayer(layerInfo.type, layerInfo.layerId, true);
+				});
+				treeViewInstance.updateTreeData();
+				deleteDialog.close();
+			},
+			onCancel: function() {
+				// Cancelled
+				deleteDialog.close();
+			},
+			onOption1: function() {
+				// Delete layer, move entities to Default Layer
+				layerIds.forEach(function (layerInfo) {
+					deleteLayer(layerInfo.type, layerInfo.layerId, false);
+				});
+				treeViewInstance.updateTreeData();
+				deleteDialog.close();
+			}
+		});
+		deleteDialog.show();
+		return;
+	}
 
 	// Delegate to existing deletion logic
 	if (hasKADElements) {
@@ -45491,6 +46121,638 @@ window.handleTreeViewVisibility = function (nodeId, type, itemId, isVisible) {
 	// Note: Individual visibility setters already call drawData() and updateTreeViewVisibilityStates()
 };
 
+// ================================================================================
+// Step 12) Layer System Functions - Added 2026-01-16
+// ================================================================================
+
+// Step 12a) Create a new layer via dialog
+window.createLayerDialog = function(layerType) {
+	console.log("🎄 [Layer] Creating " + layerType + " layer dialog");
+	
+	var dialogTitle = layerType === "drawing" ? "Create New Drawing Layer" : "Create New Surface Layer";
+	var dialog = new FloatingDialog({
+		title: dialogTitle,
+		width: 400,
+		height: "auto",
+		content: '<div style="padding: 16px;">' +
+			'<label style="display: block; margin-bottom: 8px; font-weight: bold;">Layer Name:</label>' +
+			'<input type="text" id="newLayerNameInput" placeholder="Enter layer name..." ' +
+			'style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box;" />' +
+			'</div>',
+		showConfirm: true,
+		confirmText: "Create",
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var nameInput = document.getElementById("newLayerNameInput");
+			var layerName = nameInput ? nameInput.value.trim() : "";
+			
+			if (!layerName) {
+				showModalMessage("Error", "Layer name cannot be empty", "error");
+				return;
+			}
+			
+			// Step 12b) Create the layer
+			var result = createLayer(layerType, layerName);
+			if (result.success) {
+				console.log("✅ [Layer] Created layer:", layerName, "with ID:", result.layerId);
+				
+				// Step 29) Automatically make the new layer active
+				setActiveLayer(layerType, result.layerId);
+				console.log("✅ [Layer] Set new layer as active:", result.layerId);
+				
+				debouncedUpdateTreeView();
+				debouncedSaveLayers();
+			} else {
+				showModalMessage("Error", result.message || "Failed to create layer", "error");
+			}
+			
+			dialog.close();
+		}
+	});
+	dialog.show();
+	
+	// Focus the input
+	setTimeout(function() {
+		var nameInput = document.getElementById("newLayerNameInput");
+		if (nameInput) nameInput.focus();
+	}, 100);
+};
+
+// Step 12c) Create a layer programmatically
+function createLayer(layerType, layerName, sourceFile) {
+	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+	var timestamp = Date.now();
+	var layerId = "layer_" + layerName.replace(/[^a-zA-Z0-9]/g, "_") + "_" + timestamp;
+	
+	// Check for duplicate names
+	var nameExists = false;
+	layersMap.forEach(function(layer) {
+		if (layer.layerName === layerName) {
+			nameExists = true;
+		}
+	});
+	
+	if (nameExists) {
+		return { success: false, message: "A layer with this name already exists" };
+	}
+	
+	var newLayer = {
+		layerId: layerId,
+		layerName: layerName,
+		visible: true,
+		sourceFile: sourceFile || null,
+		importDate: new Date().toISOString(),
+		entities: new Set()
+	};
+	
+	layersMap.set(layerId, newLayer);
+	console.log("✅ [Layer] Created " + layerType + " layer:", layerName, "ID:", layerId);
+	
+	return { success: true, layerId: layerId, layer: newLayer };
+}
+
+// Step 12d) Delete a layer and optionally its entities
+function deleteLayer(layerType, layerId, deleteEntities) {
+	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+	var layer = layersMap.get(layerId);
+	
+	if (!layer) {
+		console.warn("⚠️ [Layer] Layer not found:", layerId);
+		return { success: false, message: "Layer not found" };
+	}
+	
+	// Step 12d-1) If deleteEntities is true, remove all entities in the layer
+	if (deleteEntities) {
+		if (layerType === "drawing") {
+			// Delete entities from layer.entities Set
+			layer.entities.forEach(function(entityName) {
+				if (allKADDrawingsMap.has(entityName)) {
+					allKADDrawingsMap.delete(entityName);
+				}
+			});
+			// Also delete any entities with matching layerId
+			var entitiesToDelete = [];
+			allKADDrawingsMap.forEach(function(entity, entityName) {
+				if (entity.layerId === layerId) {
+					entitiesToDelete.push(entityName);
+				}
+			});
+			entitiesToDelete.forEach(function(entityName) {
+				allKADDrawingsMap.delete(entityName);
+			});
+			debouncedSaveKAD();
+		} else if (layerType === "surface") {
+			// Delete surfaces from layer.entities Set
+			layer.entities.forEach(function(surfaceId) {
+				if (loadedSurfaces && loadedSurfaces.has(surfaceId)) {
+					loadedSurfaces.delete(surfaceId);
+					// Also delete from IndexedDB
+					if (typeof deleteSurfaceFromDB === "function") {
+						deleteSurfaceFromDB(surfaceId);
+					}
+				}
+			});
+			// Also delete any surfaces with matching layerId
+			var surfacesToDelete = [];
+			if (loadedSurfaces) {
+				loadedSurfaces.forEach(function(surface, surfaceId) {
+					if (surface.layerId === layerId) {
+						surfacesToDelete.push(surfaceId);
+					}
+				});
+			}
+			surfacesToDelete.forEach(function(surfaceId) {
+				loadedSurfaces.delete(surfaceId);
+				if (typeof deleteSurfaceFromDB === "function") {
+					deleteSurfaceFromDB(surfaceId);
+				}
+			});
+		}
+	} else {
+		// Step 12d-2) Move entities to default layer
+		var defaultLayerId = layerType === "drawing" ? DEFAULT_DRAWING_LAYER_ID : DEFAULT_SURFACE_LAYER_ID;
+		var defaultLayer = layersMap.get(defaultLayerId);
+		
+		if (!defaultLayer) {
+			// Create default layer if it doesn't exist
+			defaultLayer = {
+				layerId: defaultLayerId,
+				layerName: "Default Layer",
+				visible: true,
+				sourceFile: null,
+				importDate: new Date().toISOString(),
+				entities: new Set()
+			};
+			layersMap.set(defaultLayerId, defaultLayer);
+		}
+		
+		// Move entities to default layer
+		if (layerType === "drawing") {
+			layer.entities.forEach(function(entityName) {
+				var entity = allKADDrawingsMap.get(entityName);
+				if (entity) {
+					entity.layerId = defaultLayerId;
+					defaultLayer.entities.add(entityName);
+				}
+			});
+			// Also update any entities with matching layerId
+			allKADDrawingsMap.forEach(function(entity, entityName) {
+				if (entity.layerId === layerId) {
+					entity.layerId = defaultLayerId;
+					defaultLayer.entities.add(entityName);
+				}
+			});
+			debouncedSaveKAD();
+		} else if (layerType === "surface") {
+			// Move surfaces from layer.entities Set
+			layer.entities.forEach(function(surfaceId) {
+				var surface = loadedSurfaces ? loadedSurfaces.get(surfaceId) : null;
+				if (surface) {
+					surface.layerId = defaultLayerId;
+					defaultLayer.entities.add(surfaceId);
+				}
+			});
+			// Also update any surfaces with matching layerId
+			if (loadedSurfaces) {
+				loadedSurfaces.forEach(function(surface, surfaceId) {
+					if (surface.layerId === layerId) {
+						surface.layerId = defaultLayerId;
+						defaultLayer.entities.add(surfaceId);
+					}
+				});
+			}
+		}
+	}
+	
+	// Remove the layer
+	layersMap.delete(layerId);
+	console.log("✅ [Layer] Deleted " + layerType + " layer:", layer.layerName);
+	
+	debouncedSaveLayers();
+	debouncedUpdateTreeView();
+	drawData(allBlastHoles, selectedHole);
+	
+	return { success: true };
+}
+
+// Step 12e) Rename a layer
+function renameLayer(layerType, layerId, newName) {
+	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+	var layer = layersMap.get(layerId);
+	
+	if (!layer) {
+		return { success: false, message: "Layer not found" };
+	}
+	
+	// Check for duplicate names
+	var nameExists = false;
+	layersMap.forEach(function(l, lid) {
+		if (l.layerName === newName && lid !== layerId) {
+			nameExists = true;
+		}
+	});
+	
+	if (nameExists) {
+		return { success: false, message: "A layer with this name already exists" };
+	}
+	
+	layer.layerName = newName;
+	console.log("✅ [Layer] Renamed layer to:", newName);
+	
+	debouncedSaveLayers();
+	debouncedUpdateTreeView();
+	
+	return { success: true };
+}
+
+// Step 12f) Set visibility for all entities in a layer
+window.setLayerVisibility = function(layerId, layerType, isVisible) {
+	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+	var layer = layersMap.get(layerId);
+	
+	if (!layer) {
+		console.warn("⚠️ [Layer] Layer not found:", layerId);
+		return;
+	}
+	
+	layer.visible = isVisible;
+	
+	// Step 12f-1) Set visibility for all entities in the layer
+	if (layerType === "drawing") {
+		// Method 1: Use layer.entities if populated
+		if (layer.entities && layer.entities.size > 0) {
+			layer.entities.forEach(function(entityName) {
+				var entity = allKADDrawingsMap.get(entityName);
+				if (entity) {
+					entity.visible = isVisible;
+				}
+			});
+		}
+		// Method 2: Also iterate all entities to catch any with matching layerId
+		if (allKADDrawingsMap) {
+			allKADDrawingsMap.forEach(function(entity, entityName) {
+				if (entity.layerId === layerId) {
+					entity.visible = isVisible;
+				}
+			});
+		}
+		debouncedSaveKAD();
+	} else if (layerType === "surface") {
+		// Method 1: Use layer.entities if populated
+		if (layer.entities && layer.entities.size > 0) {
+			layer.entities.forEach(function(surfaceId) {
+				if (loadedSurfaces && loadedSurfaces.has(surfaceId)) {
+					var surface = loadedSurfaces.get(surfaceId);
+					surface.visible = isVisible;
+				}
+			});
+		}
+		// Method 2: Also iterate all surfaces to catch any with matching layerId
+		if (loadedSurfaces) {
+			loadedSurfaces.forEach(function(surface, surfaceId) {
+				if (surface.layerId === layerId) {
+					surface.visible = isVisible;
+				}
+			});
+		}
+	}
+	
+	console.log("✅ [Layer] Set visibility for layer", layer.layerName, "to", isVisible);
+	debouncedSaveLayers();
+	drawData(allBlastHoles, selectedHole);
+};
+
+// Step 12f-2) Set visibility for all entities of a specific type within a layer
+window.setLayerEntityTypeVisibility = function(layerId, entityTypeFolder, isVisible) {
+	var layer = allDrawingLayers.get(layerId);
+	
+	if (!layer) {
+		console.warn("⚠️ [Layer] Layer not found for entity type visibility:", layerId);
+		return;
+	}
+	
+	// Map folder name to entity type
+	var entityTypeMap = {
+		"points": "point",
+		"lines": "line",
+		"polygons": "poly",
+		"circles": "circle",
+		"texts": "text"
+	};
+	var targetType = entityTypeMap[entityTypeFolder];
+	
+	if (!targetType) {
+		console.warn("⚠️ [Layer] Unknown entity type folder:", entityTypeFolder);
+		return;
+	}
+	
+	// Set visibility for all entities of this type in the layer
+	layer.entities.forEach(function(entityName) {
+		var entity = allKADDrawingsMap.get(entityName);
+		if (entity && entity.entityType === targetType) {
+			entity.visible = isVisible;
+		}
+	});
+	
+	console.log("✅ [Layer] Set visibility for", entityTypeFolder, "in layer", layer.layerName, "to", isVisible);
+	debouncedSaveKAD();
+	drawData(allBlastHoles, selectedHole);
+};
+
+// Step 12g) Get or create a layer for import (synchronous, for backward compatibility)
+function getOrCreateLayerForImport(layerType, fileName) {
+	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+	
+	// Check if a layer with this sourceFile already exists
+	var existingLayer = null;
+	layersMap.forEach(function(layer) {
+		if (layer.sourceFile === fileName || layer.layerName === fileName) {
+			existingLayer = layer;
+		}
+	});
+	
+	// Step 16) Name collision handling - if layer exists, create with unique name
+	if (existingLayer) {
+		// For auto-import, just add a numeric suffix
+		var counter = 2;
+		var newLayerName = fileName + "_" + counter;
+		while (layerNameExists(layersMap, newLayerName)) {
+			counter++;
+			newLayerName = fileName + "_" + counter;
+		}
+		console.log("⚠️ [Layer] Name collision: '" + fileName + "' already exists. Creating as '" + newLayerName + "'");
+		var result = createLayer(layerType, newLayerName, fileName);
+		if (result.success) {
+			return result.layer;
+		}
+		return null;
+	}
+	
+	// Create a new layer
+	var result = createLayer(layerType, fileName, fileName);
+	if (result.success) {
+		return result.layer;
+	}
+	
+	return null;
+}
+
+// Step 16a) Helper to check if a layer name exists
+function layerNameExists(layersMap, layerName) {
+	var exists = false;
+	layersMap.forEach(function(layer) {
+		if (layer.layerName === layerName) {
+			exists = true;
+		}
+	});
+	return exists;
+}
+
+// Step 16b) Async version with dialog for name collision
+async function getOrCreateLayerForImportAsync(layerType, fileName) {
+	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+	
+	// Check if a layer with this sourceFile already exists
+	var existingLayer = null;
+	layersMap.forEach(function(layer) {
+		if (layer.sourceFile === fileName || layer.layerName === fileName) {
+			existingLayer = layer;
+		}
+	});
+	
+	if (existingLayer) {
+		// Show collision dialog
+		return new Promise(function(resolve) {
+			showLayerCollisionDialog(layerType, fileName, existingLayer, function(action, newName) {
+				if (action === "rename") {
+					var result = createLayer(layerType, newName, fileName);
+					resolve(result.success ? result.layer : null);
+				} else if (action === "replace") {
+					// Delete existing layer and create new one
+					deleteLayer(layerType, existingLayer.layerId, true);
+					var result = createLayer(layerType, fileName, fileName);
+					resolve(result.success ? result.layer : null);
+				} else {
+					// Cancel
+					resolve(null);
+				}
+			});
+		});
+	}
+	
+	// Create a new layer
+	var result = createLayer(layerType, fileName, fileName);
+	if (result.success) {
+		return result.layer;
+	}
+	
+	return null;
+}
+
+// Step 16c) Show dialog for layer name collision
+function showLayerCollisionDialog(layerType, fileName, existingLayer, callback) {
+	var counter = 2;
+	var suggestedName = fileName + "_" + counter;
+	while (layerNameExists(layerType === "drawing" ? allDrawingLayers : allSurfaceLayers, suggestedName)) {
+		counter++;
+		suggestedName = fileName + "_" + counter;
+	}
+
+	var dialogContent = '<div style="padding: 16px;">' +
+		'<p style="margin-bottom: 16px;">A layer named <strong>"' + fileName + '"</strong> already exists.</p>' +
+		'<p style="margin-bottom: 16px;">What would you like to do?</p>' +
+		'<div style="margin-bottom: 12px;">' +
+			'<input type="radio" name="collisionAction" id="actionRename" value="rename" checked>' +
+			'<label for="actionRename"> Import as new layer with name:</label>' +
+		'</div>' +
+		'<input type="text" id="newLayerNameInput" value="' + suggestedName + '" ' +
+			'style="width: calc(100% - 20px); margin-left: 20px; padding: 8px; border: 1px solid #ccc; border-radius: 4px; margin-bottom: 12px;" />' +
+		'<div style="margin-bottom: 12px;">' +
+			'<input type="radio" name="collisionAction" id="actionReplace" value="replace">' +
+			'<label for="actionReplace"> Replace existing layer (delete old entities)</label>' +
+		'</div>' +
+		'</div>';
+
+	var dialog = new FloatingDialog({
+		title: "Layer Name Collision",
+		width: 450,
+		height: "auto",
+		content: dialogContent,
+		showConfirm: true,
+		confirmText: "Import",
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var renameRadio = document.getElementById("actionRename");
+			var nameInput = document.getElementById("newLayerNameInput");
+			
+			if (renameRadio && renameRadio.checked) {
+				var newName = nameInput ? nameInput.value.trim() : suggestedName;
+				callback("rename", newName);
+			} else {
+				callback("replace", null);
+			}
+			dialog.close();
+		},
+		onCancel: function() {
+			callback("cancel", null);
+			dialog.close();
+		}
+	});
+	dialog.show();
+}
+
+// Expose collision functions
+window.getOrCreateLayerForImportAsync = getOrCreateLayerForImportAsync;
+window.showLayerCollisionDialog = showLayerCollisionDialog;
+
+// ================================================================================
+// Step 17) Migration Logic - Migrate existing entities without layerId
+// ================================================================================
+
+function migrateEntitiesWithoutLayerId() {
+	console.log("🔄 [Migration] Checking for entities without layerId...");
+	
+	var migratedDrawings = 0;
+	var migratedSurfaces = 0;
+	
+	// Step 17a) Ensure default drawing layer exists
+	var defaultDrawingLayerId = DEFAULT_DRAWING_LAYER_ID;
+	if (!allDrawingLayers.has(defaultDrawingLayerId)) {
+		allDrawingLayers.set(defaultDrawingLayerId, {
+			layerId: defaultDrawingLayerId,
+			layerName: "Default Layer",
+			visible: true,
+			sourceFile: null,
+			importDate: new Date().toISOString(),
+			entities: new Set()
+		});
+		console.log("✅ [Migration] Created default drawing layer");
+	}
+	var defaultDrawingLayer = allDrawingLayers.get(defaultDrawingLayerId);
+	
+	// Step 17b) Migrate KAD entities without layerId
+	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+		allKADDrawingsMap.forEach(function(entity, entityName) {
+			if (!entity.layerId) {
+				entity.layerId = defaultDrawingLayerId;
+				defaultDrawingLayer.entities.add(entityName);
+				migratedDrawings++;
+			} else {
+				// Step 17c) Ensure entity is in its layer's entities set
+				var layer = allDrawingLayers.get(entity.layerId);
+				if (layer && !layer.entities.has(entityName)) {
+					layer.entities.add(entityName);
+				}
+			}
+		});
+	}
+	
+	// Step 17d) Ensure default surface layer exists
+	var defaultSurfaceLayerId = DEFAULT_SURFACE_LAYER_ID;
+	if (!allSurfaceLayers.has(defaultSurfaceLayerId)) {
+		allSurfaceLayers.set(defaultSurfaceLayerId, {
+			layerId: defaultSurfaceLayerId,
+			layerName: "Default Layer",
+			visible: true,
+			sourceFile: null,
+			importDate: new Date().toISOString(),
+			entities: new Set()
+		});
+		console.log("✅ [Migration] Created default surface layer");
+	}
+	var defaultSurfaceLayer = allSurfaceLayers.get(defaultSurfaceLayerId);
+	
+	// Step 17e) Migrate surfaces without layerId
+	if (loadedSurfaces && loadedSurfaces.size > 0) {
+		loadedSurfaces.forEach(function(surface, surfaceId) {
+			if (!surface.layerId) {
+				surface.layerId = defaultSurfaceLayerId;
+				defaultSurfaceLayer.entities.add(surfaceId);
+				migratedSurfaces++;
+			} else {
+				// Step 17f) Ensure surface is in its layer's entities set
+				var layer = allSurfaceLayers.get(surface.layerId);
+				if (layer && !layer.entities.has(surfaceId)) {
+					layer.entities.add(surfaceId);
+				}
+			}
+		});
+	}
+	
+	if (migratedDrawings > 0 || migratedSurfaces > 0) {
+		console.log("✅ [Migration] Migrated " + migratedDrawings + " drawing entities and " + migratedSurfaces + " surfaces to default layers");
+		debouncedSaveLayers();
+	} else {
+		console.log("✅ [Migration] No migration needed - all entities have layerId");
+	}
+}
+
+// Expose migration function
+window.migrateEntitiesWithoutLayerId = migrateEntitiesWithoutLayerId;
+
+// Step 12h) Add entity to a layer
+function addEntityToLayer(layerType, layerId, entityName) {
+	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+	var layer = layersMap.get(layerId);
+	
+	if (!layer) {
+		console.warn("⚠️ [Layer] Cannot add entity - layer not found:", layerId);
+		return false;
+	}
+	
+	layer.entities.add(entityName);
+	return true;
+}
+
+// Step 18b) Set active layer
+function setActiveLayer(layerType, layerId) {
+	if (layerType === "drawing") {
+		activeDrawingLayerId = layerId;
+		window.activeDrawingLayerId = layerId;
+		console.log("✅ [Layer] Active drawing layer set to:", layerId);
+	} else if (layerType === "surface") {
+		activeSurfaceLayerId = layerId;
+		window.activeSurfaceLayerId = layerId;
+		console.log("✅ [Layer] Active surface layer set to:", layerId);
+	}
+	
+	// Update TreeView to show active layer indicator
+	if (typeof debouncedUpdateTreeView === "function") {
+		debouncedUpdateTreeView();
+	}
+	
+	// Show user notification
+	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+	var layer = layersMap.get(layerId);
+	if (layer) {
+		updateStatusMessage("Active layer: " + layer.layerName);
+		setTimeout(function() { updateStatusMessage(""); }, 3000);
+	}
+}
+
+// Step 18c) Get active layer ID
+function getActiveLayerId(layerType) {
+	if (layerType === "drawing") {
+		return activeDrawingLayerId || DEFAULT_DRAWING_LAYER_ID;
+	} else if (layerType === "surface") {
+		return activeSurfaceLayerId || DEFAULT_SURFACE_LAYER_ID;
+	}
+	return null;
+}
+
+// Expose functions to window
+window.createLayer = createLayer;
+window.deleteLayer = deleteLayer;
+window.renameLayer = renameLayer;
+window.getOrCreateLayerForImport = getOrCreateLayerForImport;
+window.addEntityToLayer = addEntityToLayer;
+window.setActiveLayer = setActiveLayer;
+window.getActiveLayerId = getActiveLayerId;
+
+// ================================================================================
+// End Layer System Functions
+// ================================================================================
+
 // Step 3) Handle TreeView rename operations
 window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 	console.log("🎄 [TreeView] Rename requested for:", nodeId);
@@ -45636,6 +46898,51 @@ window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 				}
 			);
 		}
+		return;
+	}
+
+	// Step 13) Layer rename - Added 2026-01-16
+	// Node ID format: "layer-drawing⣿layerId" or "layer-surface⣿layerId"
+	if ((parts[0] === "layer-drawing" || parts[0] === "layer-surface") && parts.length === 2) {
+		var layerType = parts[0] === "layer-drawing" ? "drawing" : "surface";
+		var layerId = parts[1];
+		var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
+		var layer = layersMap.get(layerId);
+
+		if (!layer) {
+			console.log("🚫 [TreeView] Layer not found:", layerId);
+			return;
+		}
+
+		window.showConfirmationDialogWithInput(
+			"Rename Layer",
+			"Enter new name for layer:",
+			"New Name",
+			"text",
+			layer.layerName || "Layer",
+			"OK",
+			"Cancel",
+			function (newName) {
+				if (newName && newName.trim() && newName.trim() !== layer.layerName) {
+					var trimmedName = newName.trim();
+					var result = renameLayer(layerType, layerId, trimmedName);
+					
+					if (result.success) {
+						console.log("✅ Layer renamed:", layer.layerName, "->", trimmedName);
+						
+						// Update TreeView
+						if (treeViewInstance && typeof treeViewInstance.updateTreeData === "function") {
+							treeViewInstance.updateTreeData();
+						}
+					} else {
+						showModalMessage("Rename Error", result.message || "Failed to rename layer", "error");
+					}
+				}
+			},
+			function () {
+				// Cancelled
+			}
+		);
 		return;
 	}
 

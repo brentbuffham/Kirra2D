@@ -424,31 +424,66 @@ export class TreeView {
 	}
 
 	showContextMenu(x, y) {
-		const menu = document.getElementById("treeContextMenu");
-		const selectedNodeIds = Array.from(this.selectedNodes);
-		const isTopLevelParent = selectedNodeIds.some((nodeId) => nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images");
-		const hasHoles = selectedNodeIds.some((nodeId) => nodeId.startsWith("hole⣿"));
-		const isSubGroup = selectedNodeIds.some((nodeId) => nodeId.startsWith("drawings⣿") && nodeId.split("⣿").length === 2);
+		var menu = document.getElementById("treeContextMenu");
+		var selectedNodeIds = Array.from(this.selectedNodes);
+		var isTopLevelParent = selectedNodeIds.some(function(nodeId) { 
+			return nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images"; 
+		});
+		var hasHoles = selectedNodeIds.some(function(nodeId) { return nodeId.startsWith("hole⣿"); });
+		var isSubGroup = selectedNodeIds.some(function(nodeId) { 
+			return nodeId.startsWith("drawings⣿") && nodeId.split("⣿").length === 2; 
+		});
+		
+		// Step 8) Layer System 2026-01-16: Detect layer nodes and Drawings/Surfaces root
+		var isDrawingsRoot = selectedNodeIds.some(function(nodeId) { return nodeId === "drawings"; });
+		var isSurfacesRoot = selectedNodeIds.some(function(nodeId) { return nodeId === "surfaces"; });
+		var isLayerNode = selectedNodeIds.some(function(nodeId) {
+			return nodeId.startsWith("layer-drawing⣿") || nodeId.startsWith("layer-surface⣿");
+		});
+		var isDrawingLayer = selectedNodeIds.some(function(nodeId) {
+			return nodeId.startsWith("layer-drawing⣿") && nodeId.split("⣿").length === 2;
+		});
+		var isSurfaceLayer = selectedNodeIds.some(function(nodeId) {
+			return nodeId.startsWith("layer-surface⣿") && nodeId.split("⣿").length === 2;
+		});
+		
 		// Step 276c) Check if any selected node is an entity node (line⣿name, poly⣿name, etc.) or chunk node
-		const hasEntityOrChunk = selectedNodeIds.some((nodeId) => {
-			const parts = nodeId.split("⣿");
-			const isEntityNode = (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
-			const isChunkNode = parts.length === 4 && parts[2] === "chunk";
+		var hasEntityOrChunk = selectedNodeIds.some(function(nodeId) {
+			var parts = nodeId.split("⣿");
+			var isEntityNode = (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
+			var isChunkNode = parts.length === 4 && parts[2] === "chunk";
 			return isEntityNode || isChunkNode;
 		});
-		const renameItem = menu.querySelector("[data-action=\"rename\"]");
-		const resetConnectionsItem = menu.querySelector("[data-action=\"reset-connections\"]");
-		const propertiesItem = menu.querySelector("[data-action=\"properties\"]");
-		const deleteItem = menu.querySelector("[data-action=\"delete\"]");
-		const hideItem = menu.querySelector("[data-action=\"hide\"]");
-		const showItem = menu.querySelector("[data-action=\"show\"]");
+		
+		var addLayerItem = menu.querySelector("[data-action=\"add-layer\"]");
+		var makeActiveItem = menu.querySelector("[data-action=\"make-active\"]");
+		var renameItem = menu.querySelector("[data-action=\"rename\"]");
+		var resetConnectionsItem = menu.querySelector("[data-action=\"reset-connections\"]");
+		var propertiesItem = menu.querySelector("[data-action=\"properties\"]");
+		var deleteItem = menu.querySelector("[data-action=\"delete\"]");
+		var hideItem = menu.querySelector("[data-action=\"hide\"]");
+		var showItem = menu.querySelector("[data-action=\"show\"]");
+
+		// Step 8a) Show "Add Layer" only for Drawings or Surfaces root nodes
+		if (addLayerItem) {
+			addLayerItem.style.display = (isDrawingsRoot || isSurfacesRoot) ? "flex" : "none";
+		}
+
+		// Step 19) Show "Make Active" only for layer nodes
+		if (makeActiveItem) {
+			makeActiveItem.style.display = (isDrawingLayer || isSurfaceLayer) ? "flex" : "none";
+		}
 
 		if (resetConnectionsItem) {
 			resetConnectionsItem.style.display = hasHoles ? "flex" : "none";
 		}
 
+		// Step 8b) Show delete for layers and regular items, but not top-level parents
 		if (deleteItem) {
-			deleteItem.style.display = isTopLevelParent || isSubGroup ? "none" : "flex";
+			var canDelete = !isTopLevelParent && !isSubGroup;
+			// Allow deleting layers
+			if (isDrawingLayer || isSurfaceLayer) canDelete = true;
+			deleteItem.style.display = canDelete ? "flex" : "none";
 		}
 
 		// Step 4) Always show hide/show options (even for top-level nodes and subgroups)
@@ -462,14 +497,15 @@ export class TreeView {
 
 		if (propertiesItem) {
 			// Show properties for entity nodes, chunk nodes, and regular elements 
-			// Hide only for top-level parents and subgroups that don't contain entity or chunk nodes
-			propertiesItem.style.display = (isTopLevelParent || isSubGroup) && !hasEntityOrChunk ? "none" : "flex";  
+			// Hide for: top-level parents, subgroups, and surface layer nodes (but show for individual surfaces)
+			var hideProperties = (isTopLevelParent || isSubGroup || isSurfaceLayer) && !hasEntityOrChunk;
+			propertiesItem.style.display = hideProperties ? "none" : "flex";  
 		}
 
-		let showRename = false;
+		var showRename = false;
 		if (selectedNodeIds.length === 1) {
-			const nodeId = selectedNodeIds[0];
-			const parts = nodeId.split("⣿");
+			var nodeId = selectedNodeIds[0];
+			var parts = nodeId.split("⣿");
 			if ((parts[0] === "points" || parts[0] === "line" || parts[0] === "poly" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
 				showRename = true;
 			}
@@ -487,11 +523,15 @@ export class TreeView {
 			if (parts[0] === "hole" && parts.length === 3) {
 				showRename = true;
 			}
+			// Step 8c) Allow renaming layer nodes
+			if ((parts[0] === "layer-drawing" || parts[0] === "layer-surface") && parts.length === 2) {
+				showRename = true;
+			}
 		}
 		// Step 276b) Allow renaming when multiple holes are selected (BlastName reassignment)
 		// Only show if ALL selected items are holes
 		if (selectedNodeIds.length > 1) {
-			const allAreHoles = selectedNodeIds.every((id) => id.startsWith("hole⣿"));
+			var allAreHoles = selectedNodeIds.every(function(id) { return id.startsWith("hole⣿"); });
 			if (allAreHoles) {
 				showRename = true;
 			}
@@ -511,12 +551,21 @@ export class TreeView {
 	}
 
 	handleContextAction(e) {
-		const action = e.target.closest(".tree-context-item")?.dataset.action;
+		var actionElement = e.target.closest(".tree-context-item");
+		var action = actionElement ? actionElement.dataset.action : null;
 		if (!action) return;
 
 		this.hideContextMenu();
 
 		switch (action) {
+			case "add-layer":
+				// Step 9) Layer System - Add new layer
+				this.addLayer();
+				break;
+			case "make-active":
+				// Step 19a) Layer System - Make layer active
+				this.makeLayerActive();
+				break;
 			case "rename":
 				this.renameEntity();
 				break;
@@ -545,6 +594,54 @@ export class TreeView {
 		console.log("Renumber not yet implemented");
 	}
 
+	// Step 10) Layer System - Add a new layer
+	addLayer() {
+		if (this.selectedNodes.size === 0) return;
+
+		var nodeIds = Array.from(this.selectedNodes);
+		var selectedNodeId = nodeIds[0];
+
+		// Step 10a) Determine if adding to Drawings or Surfaces
+		var isDrawings = selectedNodeId === "drawings";
+		var isSurfaces = selectedNodeId === "surfaces";
+
+		if (!isDrawings && !isSurfaces) {
+			console.log("Add Layer: Can only add to Drawings or Surfaces root");
+			return;
+		}
+
+		// Step 10b) Delegate to global function in kirra.js
+		if (typeof window.createLayerDialog === "function") {
+			window.createLayerDialog(isDrawings ? "drawing" : "surface");
+		} else {
+			console.error("createLayerDialog function not found in window scope");
+		}
+	}
+
+	// Step 19b) Layer System - Make layer active
+	makeLayerActive() {
+		if (this.selectedNodes.size === 0) return;
+
+		var nodeIds = Array.from(this.selectedNodes);
+		var selectedNodeId = nodeIds[0];
+		var parts = selectedNodeId.split("⣿");
+
+		if (parts.length !== 2) return;
+
+		var layerType = null;
+		var layerId = parts[1];
+
+		if (parts[0] === "layer-drawing") {
+			layerType = "drawing";
+		} else if (parts[0] === "layer-surface") {
+			layerType = "surface";
+		}
+
+		if (layerType && typeof window.setActiveLayer === "function") {
+			window.setActiveLayer(layerType, layerId);
+		}
+	}
+
 	resetConnections() {
 		if (this.selectedNodes.size === 0) return;
 
@@ -571,24 +668,61 @@ export class TreeView {
 	}
 
 	hideSelected() {
-		this.selectedNodes.forEach((nodeId) => {
-			const element = this.container.querySelector("[data-node-id=\"" + nodeId + "\"]");
+		var self = this;
+		this.selectedNodes.forEach(function(nodeId) {
+			var element = self.container.querySelector("[data-node-id=\"" + nodeId + "\"]");
 			if (element) {
 				element.style.opacity = "0.5";
 				element.classList.add("hidden-node");
 
-				const type = nodeId.split("⣿")[0];
-				const itemId = nodeId.split("⣿").slice(1).join("⣿");
+				var parts = nodeId.split("⣿");
+				var type = parts[0];
+				var itemId = parts.slice(1).join("⣿");
 
 				// Step 1) Handle top-level nodes (hide all children)
 				if (nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images") {
-					this.hideAllChildren(nodeId);
+					self.hideAllChildren(nodeId);
 				}
-				// Step 2) Handle subgroup nodes
-				else if (nodeId.startsWith("drawings⣿")) {
-					this.hideAllChildren(nodeId);
+				// Step 2) Handle drawing layer nodes (hide all entities in layer)
+				else if (type === "layer-drawing" && parts.length === 2) {
+					var layerId = parts[1];
+					if (typeof window.setLayerVisibility === "function") {
+						window.setLayerVisibility(layerId, "drawing", false);
+					}
+					self.hideAllChildren(nodeId);
 				}
-				// Step 3) Handle individual items
+				// Step 2a) Handle drawing layer entity-type folders (e.g., layer-drawing⣿layerId⣿points)
+				else if (type === "layer-drawing" && parts.length === 3) {
+					// Hide all entities of this type within the layer
+					self.hideAllChildren(nodeId);
+					// Also set visibility on each entity
+					var layerId = parts[1];
+					var entityTypeFolder = parts[2]; // "points", "lines", "polygons", "circles", "texts"
+					if (typeof window.setLayerEntityTypeVisibility === "function") {
+						window.setLayerEntityTypeVisibility(layerId, entityTypeFolder, false);
+					}
+				}
+				// Step 3) Handle surface layer nodes (hide all surfaces in layer)
+				else if (type === "layer-surface" && parts.length === 2) {
+					var layerId = parts[1];
+					if (typeof window.setLayerVisibility === "function") {
+						window.setLayerVisibility(layerId, "surface", false);
+					}
+					self.hideAllChildren(nodeId);
+				}
+				// Step 4) Handle individual KAD entities (points⣿name, line⣿name, etc.)
+				else if (type === "points" || type === "line" || type === "poly" || type === "circle" || type === "text") {
+					if (typeof window.setKADEntityVisibility === "function") {
+						window.setKADEntityVisibility(itemId, false);
+					}
+				}
+				// Step 5) Handle individual surfaces (surface⣿surfaceId)
+				else if (type === "surface") {
+					if (typeof window.setSurfaceVisibility === "function") {
+						window.setSurfaceVisibility(itemId, false);
+					}
+				}
+				// Step 6) Handle other items via generic handler
 				else if (typeof window.handleTreeViewVisibility === "function") {
 					window.handleTreeViewVisibility(nodeId, type, itemId, false);
 				}
@@ -599,27 +733,68 @@ export class TreeView {
 		if (typeof window.updateTreeViewVisibilityStates === "function") {
 			window.updateTreeViewVisibilityStates();
 		}
+		// Redraw to reflect visibility changes
+		if (typeof window.drawData === "function") {
+			window.drawData(window.allBlastHoles, window.selectedHole);
+		}
 	}
 
 	showSelected() {
-		this.selectedNodes.forEach((nodeId) => {
-			const element = this.container.querySelector("[data-node-id=\"" + nodeId + "\"]");
+		var self = this;
+		this.selectedNodes.forEach(function(nodeId) {
+			var element = self.container.querySelector("[data-node-id=\"" + nodeId + "\"]");
 			if (element) {
 				element.style.opacity = "1";
 				element.classList.remove("hidden-node");
 
-				const type = nodeId.split("⣿")[0];
-				const itemId = nodeId.split("⣿").slice(1).join("⣿");
+				var parts = nodeId.split("⣿");
+				var type = parts[0];
+				var itemId = parts.slice(1).join("⣿");
 
 				// Step 1) Handle top-level nodes (show all children)
 				if (nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images") {
-					this.showAllChildren(nodeId);
+					self.showAllChildren(nodeId);
 				}
-				// Step 2) Handle subgroup nodes
-				else if (nodeId.startsWith("drawings⣿")) {
-					this.showAllChildren(nodeId);
+				// Step 2) Handle drawing layer nodes (show all entities in layer)
+				else if (type === "layer-drawing" && parts.length === 2) {
+					var layerId = parts[1];
+					if (typeof window.setLayerVisibility === "function") {
+						window.setLayerVisibility(layerId, "drawing", true);
+					}
+					self.showAllChildren(nodeId);
 				}
-				// Step 3) Handle individual items
+				// Step 2a) Handle drawing layer entity-type folders (e.g., layer-drawing⣿layerId⣿points)
+				else if (type === "layer-drawing" && parts.length === 3) {
+					// Show all entities of this type within the layer
+					self.showAllChildren(nodeId);
+					// Also set visibility on each entity
+					var layerId = parts[1];
+					var entityTypeFolder = parts[2]; // "points", "lines", "polygons", "circles", "texts"
+					if (typeof window.setLayerEntityTypeVisibility === "function") {
+						window.setLayerEntityTypeVisibility(layerId, entityTypeFolder, true);
+					}
+				}
+				// Step 3) Handle surface layer nodes (show all surfaces in layer)
+				else if (type === "layer-surface" && parts.length === 2) {
+					var layerId = parts[1];
+					if (typeof window.setLayerVisibility === "function") {
+						window.setLayerVisibility(layerId, "surface", true);
+					}
+					self.showAllChildren(nodeId);
+				}
+				// Step 4) Handle individual KAD entities (points⣿name, line⣿name, etc.)
+				else if (type === "points" || type === "line" || type === "poly" || type === "circle" || type === "text") {
+					if (typeof window.setKADEntityVisibility === "function") {
+						window.setKADEntityVisibility(itemId, true);
+					}
+				}
+				// Step 5) Handle individual surfaces (surface⣿surfaceId)
+				else if (type === "surface") {
+					if (typeof window.setSurfaceVisibility === "function") {
+						window.setSurfaceVisibility(itemId, true);
+					}
+				}
+				// Step 6) Handle other items via generic handler
 				else if (typeof window.handleTreeViewVisibility === "function") {
 					window.handleTreeViewVisibility(nodeId, type, itemId, true);
 				}
@@ -629,6 +804,10 @@ export class TreeView {
 		this.clearSelection();
 		if (typeof window.updateTreeViewVisibilityStates === "function") {
 			window.updateTreeViewVisibilityStates();
+		}
+		// Redraw to reflect visibility changes
+		if (typeof window.drawData === "function") {
+			window.drawData(window.allBlastHoles, window.selectedHole);
 		}
 	}
 
@@ -758,6 +937,30 @@ export class TreeView {
 				window.setTextsGroupVisibility(false);
 			}
 		}
+		// Step 27a) Handle layer-based node IDs for hiding
+		else if (parentNodeId.startsWith("layer-drawing⣿")) {
+			var parts = parentNodeId.split("⣿");
+			var layerId = parts[1];
+			if (parts.length === 2) {
+				// Hide entire drawing layer - handled by setLayerVisibility
+				if (typeof window.setLayerVisibility === "function") {
+					window.setLayerVisibility(layerId, "drawing", false);
+				}
+			} else if (parts.length === 3) {
+				// Hide entity type folder within layer
+				if (typeof window.setLayerEntityTypeVisibility === "function") {
+					window.setLayerEntityTypeVisibility(layerId, parts[2], false);
+				}
+			}
+		}
+		else if (parentNodeId.startsWith("layer-surface⣿")) {
+			var parts = parentNodeId.split("⣿");
+			var layerId = parts[1];
+			// Hide entire surface layer
+			if (typeof window.setLayerVisibility === "function") {
+				window.setLayerVisibility(layerId, "surface", false);
+			}
+		}
 	}
 
 	showAllChildren(parentNodeId) {
@@ -883,6 +1086,30 @@ export class TreeView {
 			}
 			if (typeof window.setTextsGroupVisibility === "function") {
 				window.setTextsGroupVisibility(true);
+			}
+		}
+		// Step 27b) Handle layer-based node IDs for showing
+		else if (parentNodeId.startsWith("layer-drawing⣿")) {
+			var parts = parentNodeId.split("⣿");
+			var layerId = parts[1];
+			if (parts.length === 2) {
+				// Show entire drawing layer - handled by setLayerVisibility
+				if (typeof window.setLayerVisibility === "function") {
+					window.setLayerVisibility(layerId, "drawing", true);
+				}
+			} else if (parts.length === 3) {
+				// Show entity type folder within layer
+				if (typeof window.setLayerEntityTypeVisibility === "function") {
+					window.setLayerEntityTypeVisibility(layerId, parts[2], true);
+				}
+			}
+		}
+		else if (parentNodeId.startsWith("layer-surface⣿")) {
+			var parts = parentNodeId.split("⣿");
+			var layerId = parts[1];
+			// Show entire surface layer
+			if (typeof window.setLayerVisibility === "function") {
+				window.setLayerVisibility(layerId, "surface", true);
 			}
 		}
 	}
@@ -1170,99 +1397,156 @@ export class TreeView {
 	}
 
 	buildDrawingData() {
-		const drawingChildren = [];
-		const pointsChildren = [];
-		const linesChildren = [];
-		const polysChildren = [];
-		const circlesChildren = [];
-		const textsChildren = [];
+		var drawingChildren = [];
 
-		// PERFORMANCE FIX 2025-12-28: Just create entity-level nodes with EMPTY children
-		// Children will be loaded lazily when entity is expanded
-		if (typeof window.allKADDrawingsMap !== "undefined" && window.allKADDrawingsMap && window.allKADDrawingsMap.size > 0) {
-			// Pre-calculate entity counts for summary (fast)
-			var entityTypes = { point: 0, line: 0, poly: 0, circle: 0, text: 0 };
+		// Step 1) Layer System 2026-01-16: Organize by layers, then by entity type within each layer
+		// Structure: Drawings -> Layer -> EntityType -> Entities
+		
+		if (typeof window.allKADDrawingsMap === "undefined" || !window.allKADDrawingsMap || window.allKADDrawingsMap.size === 0) {
+			return drawingChildren;
+		}
 
-			for (const [entityName, entity] of window.allKADDrawingsMap.entries()) {
-				// PERFORMANCE: Minimize work per entity - just count and categorize
-				var pointCount = entity.data ? entity.data.length : 0;
-				var entityType = entity.entityType;
-				entityTypes[entityType]++;
+		// Step 2) Build a map of layerId -> entities grouped by type
+		var layerEntityMap = new Map(); // layerId -> { points: [], lines: [], polys: [], circles: [], texts: [] }
+		var defaultLayerId = window.DEFAULT_DRAWING_LAYER_ID || "layer_default_drawings";
 
-				// Create minimal entity node - will be lazy loaded
-				var nodeId, nodeType;
-				switch (entityType) {
-					case "point":
-						nodeId = "points⣿" + entityName;
-						nodeType = "points-group";
-						pointsChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
-						break;
-					case "line":
-						nodeId = "line⣿" + entityName;
-						nodeType = "line-group";
-						linesChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
-						break;
-					case "poly":
-						nodeId = "poly⣿" + entityName;
-						nodeType = "polygon-group";
-						polysChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
-						break;
-					case "circle":
-						nodeId = "circle⣿" + entityName;
-						nodeType = "circle-group";
-						circlesChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
-						break;
-					case "text":
-						nodeId = "text⣿" + entityName;
-						nodeType = "text-group";
-						textsChildren.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", children: [] });
-						break;
-				}
+		for (var entry of window.allKADDrawingsMap.entries()) {
+			var entityName = entry[0];
+			var entity = entry[1];
+			var layerId = entity.layerId || defaultLayerId;
+			var entityType = entity.entityType;
+			var pointCount = entity.data ? entity.data.length : 0;
+
+			// Step 2a) Initialize layer bucket if not exists
+			if (!layerEntityMap.has(layerId)) {
+				layerEntityMap.set(layerId, {
+					points: [],
+					lines: [],
+					polys: [],
+					circles: [],
+					texts: []
+				});
+			}
+
+			var layerBucket = layerEntityMap.get(layerId);
+			// Get entity visibility
+			var entityVisible = entity.visible !== false;
+
+			// Step 2b) Create entity node and add to appropriate type bucket
+			var nodeId, nodeType;
+			switch (entityType) {
+				case "point":
+					nodeId = "points⣿" + entityName;
+					nodeType = "points-leaf";
+					layerBucket.points.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					break;
+				case "line":
+					nodeId = "line⣿" + entityName;
+					nodeType = "line-leaf";
+					layerBucket.lines.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					break;
+				case "poly":
+					nodeId = "poly⣿" + entityName;
+					nodeType = "polygon-leaf";
+					layerBucket.polys.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					break;
+				case "circle":
+					nodeId = "circle⣿" + entityName;
+					nodeType = "circle-leaf";
+					layerBucket.circles.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					break;
+				case "text":
+					nodeId = "text⣿" + entityName;
+					nodeType = "text-leaf";
+					layerBucket.texts.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					break;
 			}
 		}
 
-		if (pointsChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿points",
-				type: "points-folder",
-				label: "Points",
-				children: pointsChildren,
-			});
+		// Step 3) Build layer nodes from allDrawingLayers or from layerEntityMap keys
+		var layerIds = new Set(layerEntityMap.keys());
+		
+		// Also include layers from allDrawingLayers that may be empty
+		if (window.allDrawingLayers) {
+			for (var lid of window.allDrawingLayers.keys()) {
+				layerIds.add(lid);
+			}
 		}
 
-		if (linesChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿lines",
-				type: "lines-folder",
-				label: "Lines",
-				children: linesChildren,
-			});
-		}
+		// Step 4) Create layer nodes
+		for (var layerId of layerIds) {
+			var layer = window.allDrawingLayers ? window.allDrawingLayers.get(layerId) : null;
+			var layerName = layer ? layer.layerName : (layerId === defaultLayerId ? "Default Layer" : layerId);
+			var layerVisible = layer ? layer.visible !== false : true;
+			var layerBucket = layerEntityMap.get(layerId) || { points: [], lines: [], polys: [], circles: [], texts: [] };
 
-		if (polysChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿polygons",
-				type: "polygons-folder",
-				label: "Polygons",
-				children: polysChildren,
-			});
-		}
+			// Step 4a) Build entity type folders within this layer
+			var layerChildren = [];
+			var totalEntities = 0;
 
-		if (circlesChildren.length > 0) {
-			drawingChildren.push({
-				id: "drawings⣿circles",
-				type: "circle-folder",
-				label: "Circles",
-				children: circlesChildren,
-			});
-		}
+			if (layerBucket.points.length > 0) {
+				totalEntities += layerBucket.points.length;
+				layerChildren.push({
+					id: "layer-drawing⣿" + layerId + "⣿points",
+					type: "points-folder",
+					label: "Points",
+					meta: "(" + layerBucket.points.length + ")",
+					children: layerBucket.points
+				});
+			}
 
-		if (textsChildren.length > 0) {
+			if (layerBucket.lines.length > 0) {
+				totalEntities += layerBucket.lines.length;
+				layerChildren.push({
+					id: "layer-drawing⣿" + layerId + "⣿lines",
+					type: "lines-folder",
+					label: "Lines",
+					meta: "(" + layerBucket.lines.length + ")",
+					children: layerBucket.lines
+				});
+			}
+
+			if (layerBucket.polys.length > 0) {
+				totalEntities += layerBucket.polys.length;
+				layerChildren.push({
+					id: "layer-drawing⣿" + layerId + "⣿polygons",
+					type: "polygons-folder",
+					label: "Polygons",
+					meta: "(" + layerBucket.polys.length + ")",
+					children: layerBucket.polys
+				});
+			}
+
+			if (layerBucket.circles.length > 0) {
+				totalEntities += layerBucket.circles.length;
+				layerChildren.push({
+					id: "layer-drawing⣿" + layerId + "⣿circles",
+					type: "circle-folder",
+					label: "Circles",
+					meta: "(" + layerBucket.circles.length + ")",
+					children: layerBucket.circles
+				});
+			}
+
+			if (layerBucket.texts.length > 0) {
+				totalEntities += layerBucket.texts.length;
+				layerChildren.push({
+					id: "layer-drawing⣿" + layerId + "⣿texts",
+					type: "text-folder",
+					label: "Texts",
+					meta: "(" + layerBucket.texts.length + ")",
+					children: layerBucket.texts
+				});
+			}
+
+			// Step 4b) Create layer node
 			drawingChildren.push({
-				id: "drawings⣿texts",
-				type: "text-folder",
-				label: "Texts",
-				children: textsChildren,
+				id: "layer-drawing⣿" + layerId,
+				type: "layer-drawing",
+				label: layerName,
+				meta: "(" + totalEntities + " entities)",
+				visible: layerVisible,
+				children: layerChildren
 			});
 		}
 
@@ -1270,16 +1554,63 @@ export class TreeView {
 	}
 
 	buildSurfaceData() {
-		const surfaceChildren = [];
+		var surfaceChildren = [];
+		var defaultLayerId = window.DEFAULT_SURFACE_LAYER_ID || "layer_default_surfaces";
 
-		if (window.loadedSurfaces) {
-			window.loadedSurfaces.forEach((surface, surfaceId) => {
-				surfaceChildren.push({
-					id: "surface⣿" + surfaceId,
-					type: "surface",
-					label: surface.name,
-					meta: "(" + (surface.points?.length || 0) + " points | " + (surface.triangles?.length || 0) + " triangles)",
-				});
+		// Step 1) Layer System 2026-01-16: Organize surfaces by layers
+		if (!window.loadedSurfaces || window.loadedSurfaces.size === 0) {
+			return surfaceChildren;
+		}
+
+		// Step 2) Build a map of layerId -> surfaces
+		var layerSurfaceMap = new Map(); // layerId -> [surfaces]
+
+		window.loadedSurfaces.forEach(function(surface, surfaceId) {
+			var layerId = surface.layerId || defaultLayerId;
+			var surfaceVisible = surface.visible !== false;
+			
+			// Step 28b) Determine surface icon type based on open/closed state
+			var isClosed = typeof window.isSurfaceClosed === "function" && window.isSurfaceClosed(surface);
+			var surfaceType = isClosed ? "surface-closed" : "surface-open";
+
+			if (!layerSurfaceMap.has(layerId)) {
+				layerSurfaceMap.set(layerId, []);
+			}
+
+			layerSurfaceMap.get(layerId).push({
+				id: "surface⣿" + surfaceId,
+				type: surfaceType,
+				label: surface.name,
+				meta: "(" + (surface.points ? surface.points.length : 0) + " pts | " + (surface.triangles ? surface.triangles.length : 0) + " tris)",
+				visible: surfaceVisible,
+				surfaceId: surfaceId
+			});
+		});
+
+		// Step 3) Build layer nodes from allSurfaceLayers or from layerSurfaceMap keys
+		var layerIds = new Set(layerSurfaceMap.keys());
+		
+		// Also include layers from allSurfaceLayers that may be empty
+		if (window.allSurfaceLayers) {
+			for (var lid of window.allSurfaceLayers.keys()) {
+				layerIds.add(lid);
+			}
+		}
+
+		// Step 4) Create layer nodes
+		for (var layerId of layerIds) {
+			var layer = window.allSurfaceLayers ? window.allSurfaceLayers.get(layerId) : null;
+			var layerName = layer ? layer.layerName : (layerId === defaultLayerId ? "Default Layer" : layerId);
+			var layerVisible = layer ? layer.visible !== false : true;
+			var layerSurfaces = layerSurfaceMap.get(layerId) || [];
+
+			surfaceChildren.push({
+				id: "layer-surface⣿" + layerId,
+				type: "layer-surface",
+				label: layerName,
+				meta: "(" + layerSurfaces.length + " surfaces)",
+				visible: layerVisible,
+				children: layerSurfaces
 			});
 		}
 
@@ -1317,14 +1648,33 @@ export class TreeView {
 				
 				const isExpanded = this.expandedNodes.has(node.id) || node.expanded;
 				const isSelected = this.selectedNodes.has(node.id);
+				
+				// Step 20) Check if this is the active layer
+				var isActiveLayer = false;
+				if (node.id && node.id.startsWith("layer-drawing⣿")) {
+					var layerId = node.id.split("⣿")[1];
+					isActiveLayer = (layerId === window.activeDrawingLayerId);
+				} else if (node.id && node.id.startsWith("layer-surface⣿")) {
+					var layerId = node.id.split("⣿")[1];
+					isActiveLayer = (layerId === window.activeSurfaceLayerId);
+				}
+				
+				// Step 20a) Check visibility state for hidden-node class
+				var isHidden = node.visible === false;
 
 				let colorSwatchHtml = "";
 				if (node.elementData && node.type.includes("⣿element")) {
 					const color = node.elementData.color || "#777777";
 					colorSwatchHtml = "<span class=\"color-swatch\" style=\"background-color: " + color + ";\" data-element-id=\"" + node.id + "\" data-entity-name=\"" + node.elementData.entityName + "\" data-point-id=\"" + node.elementData.pointID + "\"></span>";
 				}
+				
+				// Step 20b) Build class list
+				var itemClasses = "tree-item";
+				if (isSelected) itemClasses += " selected";
+				if (isActiveLayer) itemClasses += " active-layer";
+				if (isHidden) itemClasses += " hidden-node";
 
-				let html = "<li class=\"tree-node\"><div class=\"tree-item " + (isSelected ? "selected" : "") + "\" data-node-id=\"" + node.id + "\"><span class=\"tree-expand " + (shouldShowExpand ? (isExpanded ? "expanded" : "") : "leaf") + "\"></span><span class=\"tree-icon " + node.type + "\"></span>" + colorSwatchHtml + "<span class=\"tree-label\">" + node.label + "</span>" + (node.meta ? "<span class=\"tree-meta\">" + node.meta + "</span>" : "") + "</div>";
+				let html = "<li class=\"tree-node\"><div class=\"" + itemClasses + "\" data-node-id=\"" + node.id + "\"" + (isHidden ? " style=\"opacity: 0.5;\"" : "") + "><span class=\"tree-expand " + (shouldShowExpand ? (isExpanded ? "expanded" : "") : "leaf") + "\"></span><span class=\"tree-icon " + node.type + "\"></span>" + colorSwatchHtml + "<span class=\"tree-label\">" + node.label + "</span>" + (node.meta ? "<span class=\"tree-meta\">" + node.meta + "</span>" : "") + "</div>";
 
 				// Step 2) Always create children container for entity nodes (even if empty) for lazy loading
 				if (shouldShowExpand) {

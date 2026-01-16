@@ -2334,6 +2334,111 @@ body.dark-mode .tree-meta {
     background-image: url("/icons/TIF-image.png");
 }
 
+/* Step 1) Layer System Icons - Added 2026-01-16 */
+.tree-icon.layer:before {
+    background-image: url("/icons/layers.png");
+}
+
+.tree-icon.layer-drawing:before {
+    background-image: url("/icons/layers.png");
+}
+
+.tree-icon.layer-surface:before {
+    background-image: url("/icons/layers.png");
+}
+
+/* Step 2) Leaf Icons for entity items within layers */
+.tree-icon.points-leaf:before {
+    background-image: url("/icons/dots-diagonal-2.png");
+}
+
+.tree-icon.points-group:before {
+    background-image: url("/icons/circles.png");
+}
+
+.tree-icon.line-leaf:before {
+    background-image: url("/icons/line-leaf.png");
+}
+
+.tree-icon.line-group:before {
+    background-image: url("/icons/line.png");
+}
+
+.tree-icon.polygon-leaf:before {
+    background-image: url("/icons/polygon-leaf.png");
+}
+
+.tree-icon.polygon-group:before {
+    background-image: url("/icons/square-rotated.png");
+}
+
+.tree-icon.circle-leaf:before {
+    background-image: url("/icons/circle.png");
+}
+
+.tree-icon.circle-group:before {
+    background-image: url("/icons/circle.png");
+}
+
+.tree-icon.text-leaf:before {
+    background-image: url("/icons/text-leaf.png");
+}
+
+.tree-icon.text-group:before {
+    background-image: url("/icons/text-resize.png");
+}
+
+.tree-icon.surface-item:before {
+    background-image: url("/icons/solid-surface.png");
+}
+
+/* Step 28) Surface open/closed leaf icons */
+.tree-icon.surface-closed:before {
+    background-image: url("/icons/surface-closed-leaf.png");
+}
+
+.tree-icon.surface-open:before {
+    background-image: url("/icons/surface-open-leaf.png");
+}
+
+/* Step 3) Context menu icon for Add Layer */
+.tree-context-item[data-action="add-layer"] span:first-child:before {
+    background-image: url("/icons/layer-add.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
+/* Step 4) Active layer indicator */
+.tree-item.active-layer {
+    background-color: rgba(76, 175, 80, 0.15);
+    border-left: 3px solid #4CAF50;
+}
+
+.tree-item.active-layer .tree-label:after {
+    content: " ✓";
+    color: #4CAF50;
+    font-weight: bold;
+}
+
+body.dark-mode .tree-item.active-layer {
+    background-color: rgba(76, 175, 80, 0.2);
+}
+
+/* Step 5) Context menu icon for Make Active */
+.tree-context-item[data-action="make-active"] span:first-child:before {
+    background-image: url("/icons/circle-plus.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
 /* Context Menu */
 .tree-context-menu {
     position: fixed;
