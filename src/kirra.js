@@ -18378,7 +18378,9 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 		} else {
 			// Vertical Priority: The offset amount IS the vertical distance
 			// The sign of the projection angle determines up/down direction
-			// The sign of the offset amount only affects horizontal direction (left/right)
+			// The sign of the offset amount affects horizontal direction:
+			//   - Lines: +ve = left (facing forward), -ve = right
+			//   - Polygons: +ve = expand outward, -ve = contract inward
 
 			if (projectionAngle > 0) {
 				// Positive angle = going UP
@@ -18401,8 +18403,10 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 				const angleRad = (projectionAngle * Math.PI) / 180;
 				const tanAngle = Math.tan(angleRad);
 				if (Math.abs(tanAngle) > 0.001) {
-					// Horizontal offset maintains the left/right direction from offsetAmount sign
-					// but adjusts magnitude based on the angle
+					// Horizontal offset maintains direction from offsetAmount sign:
+					//   - Lines: +ve = left, -ve = right (when facing forward)
+					//   - Polygons: +ve = expand, -ve = contract
+					// Magnitude is adjusted based on the projection angle
 					horizontalOffset = Math.sign(offsetAmount) * (Math.abs(verticalOffset) / Math.abs(tanAngle));
 				} else {
 					horizontalOffset = offsetAmount; // Fallback for very small angles
@@ -18419,16 +18423,21 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 		// Note: Polygon offset direction is now handled correctly by the perpendicular vector calculation
 		// No negation needed since we fixed the perpendicular direction (dy, -dx) vs old (-dy, dx)
 
+		// Step 1) Create descriptive direction string based on entity type
+		const directionDescription = isClosedPolygon 
+			? (offsetAmount > 0 ? "expand (outward)" : "contract (inward)")
+			: (offsetAmount > 0 ? "left (facing forward)" : "right (facing forward)");
+
 		console.log("🔧 Offset calculation:");
-		console.log("  offsetAmount:", offsetAmount, "(direction:", offsetAmount > 0 ? "right" : "left", ")");
-		console.log("  projectionAngle:", projectionAngle, "°");
+		console.log("  entityType:", originalEntity.entityType, "| isClosedPolygon:", isClosedPolygon);
+		console.log("  offsetAmount:", offsetAmount + "m | direction:", directionDescription);
+		console.log("  projectionAngle:", projectionAngle + "° (0°=horizontal, +ve=up, -ve=down)");
 		console.log("  priorityMode:", priorityMode);
-		console.log("  isClosedPolygon:", isClosedPolygon);
-		console.log("  horizontalOffset:", horizontalOffset.toFixed(3));
-		console.log("  verticalOffset:", verticalOffset.toFixed(3));
-		console.log("  zDelta:", zDelta.toFixed(3));
-		console.log("  baseEntityName:", baseEntityName); // Debug log
-		console.log("  handleCrossovers", handleCrossovers);
+		console.log("  horizontalOffset:", horizontalOffset.toFixed(3) + "m");
+		console.log("  verticalOffset:", verticalOffset.toFixed(3) + "m");
+		console.log("  zDelta:", zDelta.toFixed(3) + "m (" + (zDelta > 0 ? "up" : zDelta < 0 ? "down" : "no change") + ")");
+		console.log("  baseEntityName:", baseEntityName);
+		console.log("  handleCrossovers:", handleCrossovers);
 
 		if (!handleCrossovers) {
 			// Use the simple method without crossover handling

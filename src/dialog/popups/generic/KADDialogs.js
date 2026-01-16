@@ -589,15 +589,15 @@ export function showOffsetKADPopup(kadObject) {
 
 	// Step 22) Create form content using the helper function
 	const fields = [
-		{
-			label: "Offset (m) -ve = in, +ve = out",
-			name: "offsetAmount",
-			type: "number",
-			value: "1.0",
-			step: "0.1",
-			min: "-100",
-			max: "100",
-		},
+	{
+		label: "Offset (m) +ve = expand, -ve = contract",
+		name: "offsetAmount",
+		type: "number",
+		value: "1.0",
+		step: "0.1",
+		min: "-100",
+		max: "100",
+	},
 		{
 			label: "Projection (°) +ve° = up, -ve° = dn",
 			name: "projectionAngle",
@@ -680,9 +680,10 @@ export function showOffsetKADPopup(kadObject) {
 	notesDiv.style.color = "#888";
 	notesDiv.innerHTML = `
                 <strong>Notes:</strong><br>
-                • Lines: Positive values offset to the right, negative to the left<br>
-                • Polygons: Positive values offset outwards, negative inwards<br>
-                • 0° = horizontal, +° = up slope, -° = down slope<br>
+                • Lines: +ve offsets left (facing forward), -ve offsets right<br>
+                • Polygons: +ve expands outward, -ve contracts inward<br>
+                • Projection: 0° = horizontal, +° = up slope, -° = down slope<br>
+                • Combinations: +ve offset +ve angle = expand up, -ve offset -ve angle = contract down<br>
                 • Distance Priority: total distance from line<br>
                 • Vertical Priority: vertical offset (may be >total distance)<br>
                 • Multiple offsets create lines at distance × 1, × 2, etc.<br>
@@ -812,15 +813,15 @@ export function showRadiiConfigPopup(selectedEntities) {
 
 	// Step 33) Create form fields with inherited values and new rotation/starburst fields
 	const fields = [
-		{
-			label: "Radius (m)",
-			name: "radiiRadius",
-			type: "number",
-			value: "5.0",
-			step: "0.1",
-			min: "0.1",
-			max: "100",
-		},
+	{
+		label: "Radius (m) +ve = expand, -ve = contract",
+		name: "radiiRadius",
+		type: "number",
+		value: "5.0",
+		step: "0.1",
+		min: "-100",
+		max: "100",
+	},
 		{
 			label: "Circle Steps",
 			name: "radiiSteps",
