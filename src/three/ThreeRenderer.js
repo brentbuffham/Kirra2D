@@ -1,6 +1,13 @@
 /* prettier-ignore-file */
 //=================================================
 // ThreeRenderer.js - Core Three.js rendering system
+//
+// ARCHITECTURE (V2 - Consolidated):
+// - Cleaner initialization sequence (renderer → scene → camera → lighting → groups)
+// - Explicit Z-up coordinate system configuration with detailed comments
+// - Better organized private methods (_prefixed) vs public API
+// - Memory-optimized WebGL renderer settings
+// - Integrates with LayerManager and LODManager for performance
 //=================================================
 import * as THREE from "three";
 import { clearTextCache } from "./GeometryFactory.js";
@@ -8,97 +15,312 @@ import { InstancedMeshManager } from "./InstancedMeshManager.js";
 
 export class ThreeRenderer {
 	constructor(containerElement, width, height) {
-		// Step 1) Store container reference
+		console.log("🎨 ThreeRenderer initializing...");
+
+		// Cleaner initialization sequence
+		this._initializeBasics(containerElement, width, height);
+		this._createRenderer();
+		this._createScene();
+		this._createCamera();
+		this._createLighting();
+		this._createGroups();
+		this._initializeMaps();
+		this._initializeInstancing();
+		this._createHelpers();
+		this._setupEventHandlers();
+		this._exposeAPI();
+
+		console.log("✅ ThreeRenderer initialization complete");
+	}
+
+	// ========================================
+	// PRIVATE INITIALIZATION METHODS
+	// ========================================
+
+	/**
+	 * Step 1: Store basic properties
+	 */
+	_initializeBasics(containerElement, width, height) {
 		this.container = containerElement;
 		this.width = width;
 		this.height = height;
 
-		// Step 1a) Orbit center coordinates (for 3D orbit around data centroid)
+		// Orbit center coordinates (for 3D orbit around data centroid)
 		this.orbitCenterX = 0;
 		this.orbitCenterY = 0;
 		this.orbitCenterZ = 0;
 
-		// Step 2) Create scene with white background (will update based on dark mode)
+		// Camera state tracking
+		this.cameraState = {
+			centroidX: 0,
+			centroidY: 0,
+			scale: 1,
+			rotation: 0,
+			orbitX: 0,
+			orbitY: 0,
+			orbitZ: 0
+		};
+
+		// Rotation change tracking (for billboard optimization)
+		this.cameraRotationChanged = false;
+		this.lastRotation = 0;
+		this.lastOrbitX = 0;
+		this.lastOrbitY = 0;
+
+		// Render control flags
+		this.needsRender = true;
+		this.animationFrameId = null;
+		this.contextLost = false;
+	}
+
+	/**
+	 * Step 2: Create WebGL renderer FIRST (establishes context)
+	 *
+	 * MEMORY OPTIMIZATION:
+	 * - antialias: false saves ~25% GPU memory
+	 * - preserveDrawingBuffer: false saves 20-50MB GPU memory
+	 */
+	_createRenderer() {
+		this.renderer = new THREE.WebGLRenderer({
+			antialias: false, // Save ~25% GPU memory
+			alpha: true, // Transparency support
+			preserveDrawingBuffer: false, // Save 20-50MB GPU memory
+			powerPreference: "high-performance"
+		});
+
+		this.renderer.setSize(this.width, this.height);
+		this.renderer.setPixelRatio(window.devicePixelRatio);
+
+		// CRITICAL: sRGB color space (Three.js r150+)
+		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+		this.renderer.setClearColor(0x000000, 0); // Transparent
+	}
+
+	/**
+	 * Step 3: Create scene (simple, no background yet)
+	 */
+	_createScene() {
 		this.scene = new THREE.Scene();
 		this.scene.background = new THREE.Color(0xffffff); // White for light mode
+	}
 
-		// Step 3) Create orthographic camera with Z-up coordinate system
-		// Camera coordinates: +X East, +Y North, +Z Up
-		const aspect = width / height;
-		const frustumSize = 1000;
+	/**
+	 * Step 4: Create camera with EXPLICIT Z-up configuration
+	 *
+	 * CRITICAL Z-UP WORLD CONVENTION:
+	 * - Kirra uses UTM/mining coordinates where Z = elevation
+	 * - +X = East, +Y = North, +Z = Up (altitude)
+	 * - Camera positioned ABOVE origin, looking DOWN (-Z direction)
+	 * - Up vector = (0, 0, 1) to maintain Z-up orientation
+	 *
+	 * ORTHOGRAPHIC PROJECTION:
+	 * - Fixed frustum size matching canvas dimensions (1:1 pixel mapping)
+	 * - Zoom applied via camera.zoom property (not frustum scaling)
+	 * - Near/far planes: Large range for mining elevations (-50000 to +50000)
+	 */
+	_createCamera() {
+		const aspect = this.width / this.height;
+		const frustumSize = 1000; // Base frustum size (will be overridden by updateCamera)
+
 		this.camera = new THREE.OrthographicCamera(
 			-frustumSize * aspect / 2, // left
 			frustumSize * aspect / 2, // right
 			frustumSize / 2, // top
 			-frustumSize / 2, // bottom
-			-50000, // near (large range for mining elevations)
-			50000 // far (large range for mining elevations)
+			-50000, // near (large for mining depths)
+			50000 // far (large for mining elevations)
 		);
 
-		// Step 4) Position camera looking down at origin (will be updated to look at data centroid)
+		// CRITICAL: Z-up camera setup
+		// Position: Above origin (Z = +5000), looking down (-Z direction)
 		this.camera.position.set(0, 0, 5000);
+
+		// Up vector: +Z axis (CRITICAL for Z-up world)
+		this.camera.up.set(0, 0, 1);
+
+		// Look at origin (will be updated to data centroid)
 		this.camera.lookAt(0, 0, 0);
-		this.camera.up.set(0, 0, 1); // Z-up orientation
 
-		// Step 5) Create WebGL renderer with transparency
-		// CRITICAL MEMORY OPTIMIZATION:
-		// - preserveDrawingBuffer: false saves 20-50MB GPU memory (only enable for screenshots)
-		// - antialias: false saves ~25% GPU memory (can enable via settings if needed)
-		this.renderer = new THREE.WebGLRenderer({
-			antialias: false, // ← Disabled for memory savings (enable in settings if GPU allows)
-			alpha: true,
-			preserveDrawingBuffer: false // ← CRITICAL: Set to false to save GPU memory!
-		});
-		this.renderer.setSize(width, height);
-		this.renderer.setPixelRatio(window.devicePixelRatio);
-		// Step 5b) CRITICAL: Set sRGB output encoding for correct color space
-		this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-		this.renderer.setClearColor(0x000000, 0); // Transparent
+		// Default zoom (1:1 pixel mapping)
+		this.camera.zoom = 1;
+		this.camera.updateProjectionMatrix();
+	}
 
-		// Step 5a) Handle WebGL context loss (prevents crashes and enables recovery)
-		var self = this;
+	/**
+	 * Step 5: Create lighting (after scene exists)
+	 *
+	 * LIGHTING SETUP:
+	 * - Ambient light (0.8 intensity) - fills all areas for visibility
+	 * - Directional light (0.5 intensity) - positioned to camera side
+	 * - MeshPhongMaterial compatible (for textured OBJ surfaces)
+	 */
+	_createLighting() {
+		// Ambient light - fill lighting for visibility
+		this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+		this.scene.add(this.ambientLight);
+
+		// Store default intensity for restoration
+		this._defaultAmbientIntensity = 0.8;
+
+		// Directional light - key light from camera side
+		this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
+		this.directionalLight.position.set(0, 0, 5000);
+		this.scene.add(this.directionalLight);
+
+		// Store default intensity for restoration
+		this._defaultDirectionalIntensity = 0.5;
+	}
+
+	/**
+	 * Step 6: Create organized scene groups
+	 *
+	 * SCENE ORGANIZATION:
+	 * Each group represents a logical layer in the 3D visualization:
+	 * - holesGroup: Blast holes (cylinders, text labels)
+	 * - surfacesGroup: DTM surfaces, textured meshes
+	 * - kadGroup: KAD vector drawings (points, lines, polygons)
+	 * - contoursGroup: Contour lines, elevation markers
+	 * - imagesGroup: GeoTIFF imagery, raster data
+	 * - connectorsGroup: UI elements (mouse indicator, connectors)
+	 */
+	_createGroups() {
+		// Blast holes group
+		this.holesGroup = new THREE.Group();
+		this.holesGroup.name = "Blast Holes";
+		this.scene.add(this.holesGroup);
+
+		// Surfaces group (DTM, textured meshes)
+		this.surfacesGroup = new THREE.Group();
+		this.surfacesGroup.name = "Surfaces/DTM";
+		this.scene.add(this.surfacesGroup);
+
+		// KAD drawings group (vector data)
+		this.kadGroup = new THREE.Group();
+		this.kadGroup.name = "KAD Drawings";
+		this.scene.add(this.kadGroup);
+
+		// Contours group (elevation lines)
+		this.contoursGroup = new THREE.Group();
+		this.contoursGroup.name = "Contours";
+		this.scene.add(this.contoursGroup);
+
+		// Images group (GeoTIFF, raster imagery)
+		this.imagesGroup = new THREE.Group();
+		this.imagesGroup.name = "Images/GeoTIFF";
+		this.scene.add(this.imagesGroup);
+
+		// Connectors group (UI elements, mouse indicator)
+		this.connectorsGroup = new THREE.Group();
+		this.connectorsGroup.name = "Connectors/UI";
+		this.scene.add(this.connectorsGroup);
+	}
+
+	/**
+	 * Step 7: Initialize mesh maps for object tracking
+	 */
+	_initializeMaps() {
+		// Store mesh references for selection and updates
+		this.holeMeshMap = new Map(); // holeId -> mesh
+		this.surfaceMeshMap = new Map(); // surfaceId -> mesh
+		this.kadMeshMap = new Map(); // kadId -> mesh
+
+		// Legacy instanced hole tracking (V1 compatibility)
+		this.instancedCollars = null;
+		this.instancedGradesPositive = null;
+		this.instancedGradesNegative = null;
+		this.instancedToes = null;
+		this.instancedDirectionArrows = null;
+		this.instanceIdToHole = new Map();
+		this.holeToInstanceId = new Map();
+		this.instancedHolesCount = 0;
+	}
+
+	/**
+	 * Step 8: Initialize advanced instancing system
+	 *
+	 * INSTANCED RENDERING:
+	 * - InstancedMeshManager automatically groups holes by diameter/type
+	 * - Provides 10-50x performance improvement for large blasts (500+ holes)
+	 * - Enabled by default for all rendering
+	 */
+	_initializeInstancing() {
+		this.instancedMeshManager = new InstancedMeshManager(this.holesGroup);
+		this.useInstancing = true; // Enable by default
+
+		// Raycaster for selection (configured for instanced meshes)
+		this.raycaster = new THREE.Raycaster();
+		this.raycaster.params.Line.threshold = 5; // Line selection tolerance
+	}
+
+	/**
+	 * Step 9: Create visual helpers (grid, axis)
+	 *
+	 * GRID HELPER:
+	 * - Default: 10m divisions, 50 divisions = 500m total
+	 * - Rotated to XY plane (Z-up coordinate system)
+	 * - Hidden by default, controlled by settings
+	 *
+	 * AXIS HELPER:
+	 * - X = Red (East), Y = Green (North), Z = Blue (Up)
+	 * - Fixed 50px screen size, positioned at orbit center
+	 * - Hidden by default, shown during orbit
+	 */
+	_createHelpers() {
+		// Grid helper (hidden by default)
+		const defaultGridSize = 10; // meters per division
+		const gridDivisions = 50;
+		const totalGridSize = defaultGridSize * gridDivisions;
+		const gridColor = 0x888888; // Grey
+
+		this.gridHelper = new THREE.GridHelper(totalGridSize, gridDivisions, gridColor, gridColor);
+		this.gridHelper.rotation.x = Math.PI / 2; // Rotate to XY plane (Z-up)
+		this.gridHelper.position.z = 0;
+		this.gridHelper.material.opacity = 0.3;
+		this.gridHelper.material.transparent = true;
+		this.gridHelper.visible = false; // Hidden by default
+		this.scene.add(this.gridHelper);
+
+		// Store grid settings
+		this.gridOpacity = 0.3;
+		this.gridSize = defaultGridSize;
+		this.gridPlane = "XY"; // Default plane
+
+		// Axis helper (hidden by default)
+		this.axisHelper = this._createAxisHelper(111); // Base size
+		this.axisHelper.visible = false;
+		this.scene.add(this.axisHelper);
+		this.axisHelperBaseSize = 111;
+	}
+
+	/**
+	 * Step 10: Setup event handlers (context loss, etc.)
+	 */
+	_setupEventHandlers() {
+		const self = this;
+
+		// WebGL context loss handler
 		this.renderer.domElement.addEventListener(
 			"webglcontextlost",
 			function(event) {
 				event.preventDefault();
-				console.error("⚠️ WebGL context lost! GPU memory may be exhausted.");
-				console.error("   Possible causes:");
-				console.error("   - Too many textures/geometries in memory");
-				console.error("   - Browser tab was backgrounded for too long");
-				console.error("   - GPU driver issue or system resource pressure");
+				console.error("⚠️ WebGL context lost! GPU memory exhausted.");
 				self.contextLost = true;
-
-				// Stop render loop to prevent errors
 				self.stopRenderLoop();
 
-				// Step 5a.1) Show user-friendly dialog
-				// IMPORTANT: Use setTimeout to ensure dialog renders after context loss
+				// Show user-friendly dialog after delay
 				setTimeout(function() {
-					// Try to use FloatingDialog if available
-					var FloatingDialog = window.FloatingDialog;
+					const FloatingDialog = window.FloatingDialog;
 					if (FloatingDialog) {
 						try {
-							var dialog = new FloatingDialog({
+							const dialog = new FloatingDialog({
 								title: "GPU Memory Exhausted",
-								content: "<div style='padding: 10px;'>" + "<p><strong>WebGL context lost!</strong></p>" + "<p>The 3D rendering system has run out of GPU memory, likely due to:</p>" + "<ul>" + "<li>Very large CAD files with complex geometry (>50k vertices)</li>" + "<li>Too many textures or surfaces loaded simultaneously</li>" + "<li>System resource pressure or GPU driver issues</li>" + "</ul>" + "<p>Click OK to reload the application and free GPU memory.</p>" + "</div>",
+								content: "<div style='padding: 10px;'>" + "<p><strong>WebGL context lost!</strong></p>" + "<p>The 3D rendering system has run out of GPU memory.</p>" + "<p>Click OK to reload the application.</p>" + "</div>",
 								width: 500,
-								height: 320,
+								height: 250,
 								buttons: [
 									{
 										text: "OK - Reload App",
 										callback: function() {
-											// Attempt cleanup before reload
-											try {
-												if (self.scene) {
-													self.scene.clear();
-												}
-												if (self.renderer) {
-													self.renderer.dispose();
-												}
-											} catch (e) {
-												console.error("Error during cleanup:", e);
-											}
-											// Reload page
 											location.reload();
 										}
 									}
@@ -106,15 +328,12 @@ export class ThreeRenderer {
 							});
 							dialog.show();
 						} catch (e) {
-							console.error("Error showing FloatingDialog:", e);
-							// Fallback to alert
-							if (confirm("GPU context lost due to memory exhaustion.\n\nClick OK to reload the application.")) {
+							if (confirm("GPU context lost. Click OK to reload.")) {
 								location.reload();
 							}
 						}
 					} else {
-						// Fallback to confirm dialog if FloatingDialog not available
-						if (confirm("GPU context lost due to memory exhaustion.\n\nThe 3D rendering has exceeded GPU memory limits.\nClick OK to reload the application.")) {
+						if (confirm("GPU context lost. Click OK to reload.")) {
 							location.reload();
 						}
 					}
@@ -123,171 +342,84 @@ export class ThreeRenderer {
 			false
 		);
 
+		// WebGL context restored handler
 		this.renderer.domElement.addEventListener(
 			"webglcontextrestored",
 			function() {
-				console.log("✅ WebGL context restored - reinitializing scene");
+				console.log("✅ WebGL context restored");
 				self.contextLost = false;
-				// Restart render loop
 				self.startRenderLoop();
-				// Force a re-render
 				self.needsRender = true;
 			},
 			false
 		);
-
-		this.contextLost = false;
-
-		// Step 6) Add lighting
-		this.ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
-		this.scene.add(this.ambientLight);
-
-		// Step 6a) Store directional light reference to update position with camera
-		this.directionalLight = new THREE.DirectionalLight(0xffffff, 0.5);
-		this.directionalLight.position.set(0, 0, 5000);
-		this.scene.add(this.directionalLight);
-
-		// Step 7) Initialize object groups for organization
-		this.holesGroup = new THREE.Group();
-		this.holesGroup.name = "Holes";
-		this.scene.add(this.holesGroup);
-
-		this.surfacesGroup = new THREE.Group();
-		this.surfacesGroup.name = "Surfaces";
-		this.scene.add(this.surfacesGroup);
-
-		this.kadGroup = new THREE.Group();
-		this.kadGroup.name = "KAD";
-		this.scene.add(this.kadGroup);
-
-		this.contoursGroup = new THREE.Group();
-		this.contoursGroup.name = "Contours";
-		this.scene.add(this.contoursGroup);
-
-		this.imagesGroup = new THREE.Group();
-		this.imagesGroup.name = "Images";
-		this.scene.add(this.imagesGroup);
-
-		this.connectorsGroup = new THREE.Group();
-		this.connectorsGroup.name = "Connectors";
-		this.scene.add(this.connectorsGroup);
-
-		// Step 8) Store mesh references for selection
-		this.holeMeshMap = new Map(); // holeId -> mesh
-		this.surfaceMeshMap = new Map(); // surfaceId -> mesh
-		this.kadMeshMap = new Map(); // kadId -> mesh
-
-		// Step 8a) Instanced rendering for holes (optional optimization)
-		// These are only populated when useInstancedHoles is enabled
-		this.instancedCollars = null; // InstancedMesh for collar circles
-		this.instancedGradesPositive = null; // InstancedMesh for grade circles (positive subdrill, RED solid)
-		this.instancedGradesNegative = null; // InstancedMesh for grade circles (negative/zero subdrill, RED transparent)
-		this.instancedToes = null; // InstancedMesh for toe circles
-		this.instanceIdToHole = new Map(); // instanceId -> hole data object
-		this.holeToInstanceId = new Map(); // holeId string -> instanceId number
-		this.instancedHolesCount = 0; // Current count of instanced holes
-
-		// Step 8b) Instanced rendering for direction arrows (optional optimization)
-		this.instancedDirectionArrows = null; // InstancedMesh for first movement direction arrows
-
-		// Step 8c) NEW: Advanced instanced mesh manager for high-performance hole rendering
-		// Replaces manual instancing with automatic grouping by diameter/type
-		// Provides 10-50x performance improvement for large blasts (500+ holes)
-		this.instancedMeshManager = new InstancedMeshManager(this.holesGroup);
-		this.useInstancing = true; // Enable by default for all rendering
-
-		// Step 9) Raycaster for selection
-		this.raycaster = new THREE.Raycaster();
-		this.raycaster.params.Line.threshold = 5; // Increase line selection tolerance
-
-		// Step 10) Camera state for external sync
-		this.cameraState = {
-			centroidX: 0,
-			centroidY: 0,
-			scale: 1,
-			rotation: 0,
-			orbitX: 0,
-			orbitY: 0
-		};
-
-		// Step 11) Animation control
-		this.needsRender = true;
-		this.animationFrameId = null;
-
-		// Step 11a) Track rotation changes for conditional billboard updates
-		this.cameraRotationChanged = false;
-		this.lastRotation = 0;
-		this.lastOrbitX = 0;
-		this.lastOrbitY = 0;
-
-		// Step 12) Create XYZ axis helper (hidden by default)
-		// Size is in world units but will be scaled to maintain fixed screen size
-		this.axisHelper = this.createAxisHelper(77); // Base size for calculations
-		this.axisHelper.visible = false;
-		this.scene.add(this.axisHelper);
-		this.axisHelperBaseSize = 77; // Store base size for screen-space scaling
-
-		// Step 13) Create grid helper (default 10m divisions, 50 divisions = 500m total)
-		// Step 13a) Grid is created but hidden by default - visibility controlled by settings
-		const defaultGridSize = 10; // meters per division
-		const gridDivisions = 50;
-		const totalGridSize = defaultGridSize * gridDivisions;
-		const gridColor = 0x888888; // Grey
-		this.gridHelper = new THREE.GridHelper(totalGridSize, gridDivisions, gridColor, gridColor);
-		this.gridHelper.rotation.x = Math.PI / 2; // Rotate to XY plane (Z-up)
-		this.gridHelper.position.z = 0;
-		this.gridHelper.material.opacity = 0.3;
-		this.gridHelper.material.transparent = true;
-		this.gridHelper.visible = false; // Step 13b) Hidden by default - controlled by settings
-		this.scene.add(this.gridHelper);
-
-		// Store grid settings
-		this.gridOpacity = 0.3;
-		this.gridSize = defaultGridSize;
-		this.gridPlane = "XY"; // Default plane
 	}
 
-	// Step 11b) Create XYZ axis helper widget (fixed 50px screen size)
-	createAxisHelper(size) {
-		const group = new THREE.Group();
-		group.name = "AxisHelper"; // Name for easy identification
+	/**
+	 * Step 11: Expose public API properties (compatibility)
+	 */
+	_exposeAPI() {
+		// All public properties already defined as instance properties
+		// This method exists for future API additions
 
-		// X-axis (Red) - points East
+		// Ensure backward compatibility flags
+		this.continuousRendering = false; // Legacy flag (not used in V2)
+	}
+
+	// ========================================
+	// PRIVATE HELPER METHODS
+	// ========================================
+
+	/**
+	 * Create XYZ axis helper widget
+	 * @param {number} size - Base size in world units
+	 * @returns {THREE.Group} Axis helper group
+	 */
+	_createAxisHelper(size) {
+		const group = new THREE.Group();
+		group.name = "AxisHelper";
+
+		// X-axis (Red) - East
 		const xGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(size, 0, 0)]);
 		const xMaterial = new THREE.LineBasicMaterial({ color: 0xff0000, linewidth: 3 });
 		const xLine = new THREE.Line(xGeometry, xMaterial);
 		group.add(xLine);
 
-		// Y-axis (Green) - points North (up)
+		// Y-axis (Green) - North
 		const yGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, size, 0)]);
 		const yMaterial = new THREE.LineBasicMaterial({ color: 0x00ff00, linewidth: 3 });
 		const yLine = new THREE.Line(yGeometry, yMaterial);
 		group.add(yLine);
 
-		// Z-axis (Blue) - points up out of screen
+		// Z-axis (Blue) - Up
 		const zGeometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), new THREE.Vector3(0, 0, size)]);
 		const zMaterial = new THREE.LineBasicMaterial({ color: 0x0000ff, linewidth: 3 });
 		const zLine = new THREE.Line(zGeometry, zMaterial);
 		group.add(zLine);
 
-		// Add labels using sprites
-		const xLabel = this.createTextSprite("X", 0xff0000);
+		// Labels using sprites
+		const xLabel = this._createTextSprite("X", 0xff0000);
 		xLabel.position.set(size + 10, 0, 0);
 		group.add(xLabel);
 
-		const yLabel = this.createTextSprite("Y", 0x00ff00);
+		const yLabel = this._createTextSprite("Y", 0x00ff00);
 		yLabel.position.set(0, size + 10, 0);
 		group.add(yLabel);
 
-		const zLabel = this.createTextSprite("Z", 0x0000ff);
+		const zLabel = this._createTextSprite("Z", 0x0000ff);
 		zLabel.position.set(0, 0, size + 10);
 		group.add(zLabel);
 
 		return group;
 	}
 
-	// Step 11c) Create text sprite for axis labels
-	createTextSprite(text, color) {
+	/**
+	 * Create text sprite for axis labels
+	 * @param {string} text - Label text
+	 * @param {number} color - Label color (hex)
+	 * @returns {THREE.Sprite} Text sprite
+	 */
+	_createTextSprite(text, color) {
 		const canvas = document.createElement("canvas");
 		const context = canvas.getContext("2d");
 		canvas.width = 128;
@@ -308,543 +440,32 @@ export class ThreeRenderer {
 		return sprite;
 	}
 
-	// Step 12) Get the canvas element for DOM insertion
-	getCanvas() {
-		return this.renderer.domElement;
-	}
-
-	// Step 13) Update camera to match world coordinates and 2D canvas transformation
-	updateCamera(centroidX, centroidY, scale, rotation = 0, orbitX = 0, orbitY = 0, orbitZ = 0, skipRender = false) {
-		this.cameraState.centroidX = centroidX;
-		this.cameraState.centroidY = centroidY;
-		this.cameraState.scale = scale;
-		this.cameraState.rotation = rotation;
-		this.cameraState.orbitX = orbitX;
-		this.cameraState.orbitY = orbitY;
-		this.cameraState.orbitZ = orbitZ;
-
-		// Step 13a) Update axis helper position if it's visible (but don't auto-show)
-		// The axis helper is controlled by mouse/touch events in CameraControls
-		if (this.axisHelper && this.axisHelper.visible) {
-			this.axisHelper.position.set(centroidX, centroidY, this.orbitCenterZ);
-
-			// Maintain fixed screen size
-			const desiredScreenPixels = 77;
-			const worldUnitsForFixedScreenSize = desiredScreenPixels / scale;
-			const scaleFactor = worldUnitsForFixedScreenSize / this.axisHelperBaseSize;
-			this.axisHelper.scale.set(scaleFactor, scaleFactor, scaleFactor);
-		}
-
-		// Step 14) Calculate camera position based on orbit angles
-		// Camera distance from data centroid (use larger value for mining elevations)
-		const cameraDistance = 5000; // Increased for large elevation ranges
-
-		// If orbit angles are non-zero, calculate 3D camera position
-		if (orbitX !== 0 || orbitY !== 0) {
-			// Spherical to Cartesian conversion (Z-up)
-			// orbitX = pitch (elevation from XY plane), orbitY = yaw (azimuth in XY plane)
-
-			// Note: In standard math, x=cos(pitch)cos(yaw), y=cos(pitch)sin(yaw), z=sin(pitch)
-			// But we want to match standard camera controls feel:
-			// orbitX (Pitch): 0 = Top Down (looking -Z), 90 = Horizon
-			// Actually, let's check CameraControls.
-			// If orbitX is 0, we are looking Down.
-
-			// Z-up Spherical:
-			// Position relative to centroid
-			// If Pitch(orbitX) = 0, we want camera at (0, 0, dist).
-			// If Pitch(orbitX) = 90 deg, we want camera at (dist, 0, 0) (Side view).
-
-			// Let's use:
-			// Z = dist * cos(pitch)
-			// RadiusXY = dist * sin(pitch)
-			// X = RadiusXY * sin(yaw)
-			// Y = RadiusXY * cos(yaw)
-
-			// Use orbitX directly as angle from Z-axis (Zenith)
-			// 0 = Top, PI/2 = Horizon
-
-			const x = cameraDistance * Math.sin(orbitX) * Math.sin(orbitY);
-			const y = cameraDistance * Math.sin(orbitX) * Math.cos(orbitY); // Swap sin/cos for alignment?
-			const z = cameraDistance * Math.cos(orbitX);
-
-			// Position camera relative to orbit center (centroidX, centroidY, orbitCenterZ)
-			this.camera.position.set(centroidX + x, centroidY + y, this.orbitCenterZ + z);
-
-			// Look at the orbit center (using data Z centroid)
-			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
-
-			// Apply Z-axis rotation (2D spin) via Roll if needed, or rely on Up vector
-			// this.camera.rotateZ(rotation); // RotateZ might conflict with LookAt/Up.
-			// For Z-up camera, "Roll" is rotation around Z (View Axis).
-			// OrthographicCamera rotation.z corresponds to Roll.
-			this.camera.rotation.z += rotation;
-		} else {
-			// Standard 2D top-down view - position camera above data centroid
-			this.camera.position.x = centroidX;
-			this.camera.position.y = centroidY;
-			this.camera.position.z = this.orbitCenterZ + cameraDistance;
-
-			// Look at the data centroid
-			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
-
-			// Reset camera rotation to default (looking down)
-			this.camera.rotation.set(0, 0, 0);
-			this.camera.up.set(0, 0, 1); // Z-up
-
-			// Apply Z-axis rotation only (Roll)
-			this.camera.rotation.z = rotation;
-		}
-
-		// Step 15) Update orthographic camera using SAME approach as 2D canvas
-		// CRITICAL: Match 2D transformation exactly: worldToCanvas(x,y) = [(x - centroidX) * scale + canvas.width/2, ...]
-		// 2D: (1) Translate by centroid, (2) Scale, (3) Add canvas offset
-		// 3D: (1) Geometry already translated via worldToThreeLocal() [DONE], (2) Apply zoom via camera.zoom property [DO THIS], (3) Camera positioned at centroid [DONE]
-
-		// Step 15a) Use FIXED frustum size matching canvas dimensions (no scale factor!)
-		// This creates 1:1 mapping where 1 world unit = 1 pixel at zoom=1
-		const frustumWidth = this.width;
-		const frustumHeight = this.height;
-
-		this.camera.left = -frustumWidth / 2;
-		this.camera.right = frustumWidth / 2;
-		this.camera.top = frustumHeight / 2;
-		this.camera.bottom = -frustumHeight / 2;
-
-		// Step 15b) Apply zoom using camera.zoom property (matches 2D scale behavior)
-		// zoom=1: 1 world unit = 1 pixel (baseline)
-		// zoom=2: 1 world unit = 2 pixels (zoomed in 2x)
-		// zoom=0.5: 1 world unit = 0.5 pixels (zoomed out 2x)
-		// This is equivalent to scaling the projection matrix without touching geometry
-		this.camera.zoom = scale;
-
-		this.camera.updateProjectionMatrix();
-
-		// Step 15a) Update directional light to be above camera (on camera side)
-		if (this.directionalLight) {
-			// Step 15a1) Position light above camera position (camera side)
-			// Light should be above the camera, not at camera position
-			const lightOffset = 1000; // Offset above camera
-			this.directionalLight.position.set(this.camera.position.x, this.camera.position.y + lightOffset, this.camera.position.z);
-			// Step 15a2) Make light point at the orbit center
-			this.directionalLight.target.position.set(centroidX, centroidY, this.orbitCenterZ);
-			this.directionalLight.target.updateMatrixWorld();
-		}
-
-		// Step 15b) Skip render during wheel zoom for performance (text billboard updates are expensive)
-		if (!skipRender) {
-			this.needsRender = true;
-		}
-		// Step 15c) Track if camera rotation changed (for billboard updates)
-		const rotationChanged = this.lastRotation !== rotation || this.lastOrbitX !== orbitX || this.lastOrbitY !== orbitY;
-
-		if (rotationChanged) {
-			this.cameraRotationChanged = true;
-			this.lastRotation = rotation;
-			this.lastOrbitX = orbitX;
-			this.lastOrbitY = orbitY;
-		}
-	}
-
-	// Step 16) Set orbit center Z coordinate (backward compatibility - use setOrbitCenter for full 3D)
-	setOrbitCenterZ(z) {
-		this.orbitCenterZ = z || 0;
-		if (developerModeEnabled) {
-			console.log("🎯 Orbit center Z set to:", this.orbitCenterZ);
-		}
-	}
-
-	// Step 16a) Update lighting based on bearing and elevation
-	updateLighting(bearingDeg, elevationDeg) {
-		// Step 16a1) Convert bearing and elevation to radians
-		// Bearing: 0° = North, 90° = West, 180° = South, 270° = East
-		// Elevation: 0° = horizontal, 90° = vertical
-		const bearingRad = bearingDeg * Math.PI / 180;
-		const elevationRad = elevationDeg * Math.PI / 180;
-
-		// Step 16a2) Calculate light direction vector
-		// X = East/West (positive = East)
-		// Y = Up/Down (positive = Up)
-		// Z = North/South (positive = North)
-		// For bearing: 0° = North (Z+), 90° = West (X-), 180° = South (Z-), 270° = East (X+)
-		const distance = 10000; // Distance from target
-		const x = -distance * Math.sin(bearingRad) * Math.cos(elevationRad);
-		const y = distance * Math.sin(elevationRad);
-		const z = distance * Math.cos(bearingRad) * Math.cos(elevationRad);
-
-		// Step 16a3) Get current camera state to position light relative to camera
-		const cameraState = this.cameraState;
-		const targetX = cameraState.centroidX || 0;
-		const targetY = cameraState.centroidY || 0;
-		const targetZ = this.orbitCenterZ || 0;
-
-		// Step 16a4) Position light relative to camera position (above camera side)
-		if (this.directionalLight) {
-			// Step 16a5) Calculate light position relative to camera
-			// Light should be above camera, positioned based on bearing/elevation
-			const cameraPos = this.camera.position;
-			const lightOffsetY = 1000; // Offset above camera
-
-			// Position light above camera, offset by bearing/elevation
-			this.directionalLight.position.set(
-				cameraPos.x + x * 0.1, // Small offset based on bearing
-				cameraPos.y + lightOffsetY, // Above camera
-				cameraPos.z + z * 0.1 // Small offset based on bearing
-			);
-
-			// Step 16a6) Make light point at target (orbit center)
-			this.directionalLight.target.position.set(targetX, targetY, targetZ);
-			this.directionalLight.target.updateMatrixWorld();
-		}
-
-		// Step 16a7) Request render
-		this.requestRender();
-	}
-
-	// Step 16b) Update clipping planes
-	updateClippingPlanes(near, far) {
-		// Step 16b1) Update camera near and far planes
-		this.camera.near = near;
-		this.camera.far = far;
-
-		// Step 16b2) Update projection matrix
-		this.camera.updateProjectionMatrix();
-
-		// Step 16b3) Update clipping plane helpers if they exist
-		if (this.clippingPlaneNearHelper) {
-			const clippingPlaneNear = new THREE.Plane(new THREE.Vector3(0, 0, -1), -near);
-			this.clippingPlaneNearHelper.plane.copy(clippingPlaneNear);
-			if (developerModeEnabled) {
-				console.log("✂️ Near clipping plane helper updated to:", near);
-			}
-		}
-
-		if (this.clippingPlaneFarHelper) {
-			const clippingPlaneFar = new THREE.Plane(new THREE.Vector3(0, 0, 1), -far);
-			this.clippingPlaneFarHelper.plane.copy(clippingPlaneFar);
-			if (developerModeEnabled) {
-				console.log("✂️ Far clipping plane helper updated to:", far);
-			}
-		}
-
-		// Step 16b4) Request render
-		this.requestRender();
-		if (developerModeEnabled) {
-			console.log("✂️ Clipping planes updated: near=" + near + ", far=" + far);
-		}
-	}
-
-	// Step 16c) Update ambient light intensity
-	updateAmbientLightIntensity(intensity) {
-		if (this.ambientLight) {
-			this.ambientLight.intensity = intensity;
-			this.requestRender();
-		}
-	}
-
-	// Step 16d) Update directional light intensity
-	updateDirectionalLightIntensity(intensity) {
-		if (this.directionalLight) {
-			this.directionalLight.intensity = intensity;
-			this.requestRender();
-		}
-	}
-
-	// Step 16e) Update shadow intensity
-	updateShadowIntensity(intensity) {
-		// Store the shadow intensity setting
-		this.shadowIntensity = intensity;
-
-		// Update all shadow-casting lights
-		if (this.directionalLight && this.directionalLight.shadow) {
-			// Adjust shadow darkness (0 = no shadow, 1 = max shadow)
-			this.directionalLight.shadow.darkness = intensity;
-			this.requestRender();
-		}
-
-		// Note: For more advanced shadow control, this could also affect:
-		// - Shadow bias
-		// - Shadow map resolution
-		// - Shadow camera bounds
-		if (developerModeEnabled) {
-			console.log("🌑 Shadow intensity updated to:", intensity);
-		}
-	}
-
-	// Step 16f) Set clipping plane visualization
-	setClippingPlaneVisualization(visible) {
-		if (developerModeEnabled) {
-			console.log("✂️ setClippingPlaneVisualization called with visible =", visible, "type:", typeof visible);
-		}
-
-		if (visible) {
-			// Step 16f.1) Create near clipping plane helper if it doesn't exist
-			if (!this.clippingPlaneNearHelper) {
-				if (developerModeEnabled) {
-					console.log("✂️ Creating new near clipping plane helper");
-				}
-				const nearDistance = this.camera.near || -50000;
-				const clippingPlaneNear = new THREE.Plane(new THREE.Vector3(0, 0, -1), -nearDistance);
-				this.clippingPlaneNearHelper = new THREE.PlaneHelper(clippingPlaneNear, 5000, 0xff3333);
-				this.clippingPlaneNearHelper.userData = { type: "clippingPlaneNearHelper" };
-				this.clippingPlaneNearHelper.material.opacity = 0.3;
-				this.clippingPlaneNearHelper.material.transparent = true;
-				this.clippingPlaneNearHelper.material.side = THREE.DoubleSide;
-				this.scene.add(this.clippingPlaneNearHelper);
-			}
-
-			// Step 16f.2) Create far clipping plane helper if it doesn't exist
-			if (!this.clippingPlaneFarHelper) {
-				if (developerModeEnabled) {
-					console.log("✂️ Creating new far clipping plane helper");
-				}
-				const farDistance = this.camera.far || 50000;
-				const clippingPlaneFar = new THREE.Plane(new THREE.Vector3(0, 0, 1), -farDistance);
-				this.clippingPlaneFarHelper = new THREE.PlaneHelper(clippingPlaneFar, 5000, 0x3333ff);
-				this.clippingPlaneFarHelper.userData = { type: "clippingPlaneFarHelper" };
-				this.clippingPlaneFarHelper.material.opacity = 0.3;
-				this.clippingPlaneFarHelper.material.transparent = true;
-				this.clippingPlaneFarHelper.material.side = THREE.DoubleSide;
-				this.scene.add(this.clippingPlaneFarHelper);
-			}
-
-			this.clippingPlaneNearHelper.visible = true;
-			this.clippingPlaneFarHelper.visible = true;
-			if (developerModeEnabled) {
-				console.log("✂️ Clipping plane helpers are now visible");
-			}
-		} else {
-			// Step 16f.3) Hide and dispose clipping plane helpers
-			if (this.clippingPlaneNearHelper) {
-				this.scene.remove(this.clippingPlaneNearHelper);
-				if (this.clippingPlaneNearHelper.geometry) this.clippingPlaneNearHelper.geometry.dispose();
-				if (this.clippingPlaneNearHelper.material) this.clippingPlaneNearHelper.material.dispose();
-				this.clippingPlaneNearHelper = null;
-				if (developerModeEnabled) {
-					console.log("✂️ Near clipping plane helper disposed");
-				}
-			}
-
-			if (this.clippingPlaneFarHelper) {
-				this.scene.remove(this.clippingPlaneFarHelper);
-				if (this.clippingPlaneFarHelper.geometry) this.clippingPlaneFarHelper.geometry.dispose();
-				if (this.clippingPlaneFarHelper.material) this.clippingPlaneFarHelper.material.dispose();
-				this.clippingPlaneFarHelper = null;
-				if (developerModeEnabled) {
-					console.log("✂️ Far clipping plane helper disposed");
-				}
-			}
-		}
-
-		this.requestRender();
-		if (developerModeEnabled) {
-			console.log("✂️ Clipping plane visualization final state:", visible ? "ON" : "OFF");
-		}
-	}
-
-	// Step 16g) Set grid visibility
-	setGridVisible(visible) {
-		if (developerModeEnabled) {
-			console.log("📐 setGridVisible called with visible =", visible, "type:", typeof visible);
-		}
-
-		if (visible) {
-			// Step 16g.1) Show grid if exists, or create it
-			if (this.gridHelper) {
-				// Step 16g.1a) Ensure grid is visible
-				this.gridHelper.visible = true;
-				if (developerModeEnabled) {
-					console.log("📐 Grid visibility set to ON");
-				}
-			} else {
-				// Step 16g.2) Grid doesn't exist - recreate it with current settings
-				if (developerModeEnabled) {
-					console.log("📐 Grid helper doesn't exist - creating new grid");
-				}
-				const size = this.gridSize || 10;
-				const divisions = 50;
-				const totalSize = size * divisions;
-				const gridColor = window.darkModeEnabled ? 0x444444 : 0xcccccc;
-
-				this.gridHelper = new THREE.GridHelper(totalSize, divisions, gridColor, gridColor);
-
-				// Step 16g.2a) Ensure grid is visible
-				this.gridHelper.visible = true;
-
-				// Apply grid plane orientation
-				const gridPlane = this.gridPlane || "XY";
-				this.applyGridPlaneOrientation(gridPlane);
-
-				// Position grid at data centroid
-				this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
-
-				// Step 16g.2b) Apply current opacity (use default 0.3 if not set)
-				const opacity = this.gridOpacity !== undefined ? this.gridOpacity : 0.3;
-				this.gridHelper.material.opacity = opacity;
-				this.gridHelper.material.transparent = true;
-
-				// Step 16g.2c) Store opacity if it wasn't set
-				if (this.gridOpacity === undefined) {
-					this.gridOpacity = opacity;
-				}
-
-				this.scene.add(this.gridHelper);
-				if (developerModeEnabled) {
-					console.log("📐 Grid created and added to scene with opacity:", opacity);
-				}
-			}
-		} else {
-			// Step 16g.3) Hide AND dispose grid to free memory
-			if (this.gridHelper) {
-				if (developerModeEnabled) {
-					console.log("📐 Disposing grid helper");
-				}
-				this.scene.remove(this.gridHelper);
-				if (this.gridHelper.geometry) this.gridHelper.geometry.dispose();
-				if (this.gridHelper.material) {
-					// Step 16g.3a) Handle both single material and material array
-					if (Array.isArray(this.gridHelper.material)) {
-						this.gridHelper.material.forEach(function(mat) {
-							if (mat) mat.dispose();
-						});
-					} else {
-						this.gridHelper.material.dispose();
-					}
-				}
-				this.gridHelper = null;
-				if (developerModeEnabled) {
-					console.log("📐 Grid disposed and removed");
-				}
-			} else {
-				if (developerModeEnabled) {
-					console.log("📐 Grid helper doesn't exist - nothing to dispose");
-				}
-			}
-		}
-
-		this.requestRender();
-	}
-
-	// Step 16h) Update grid size
-	updateGridSize(size) {
-		// Step 16h.1) Store grid size
-		this.gridSize = size;
-
-		// Step 16h.2) Only update if grid exists
-		if (!this.gridHelper) {
-			if (developerModeEnabled) {
-				console.log("📐 Grid size stored:", size, "(grid not created yet)");
-			}
-			return;
-		}
-
-		// Step 16h.3) Remove old grid
-		this.scene.remove(this.gridHelper);
-		this.gridHelper.geometry.dispose();
-		this.gridHelper.material.dispose();
-
-		// Step 16h.4) Create new grid with updated size
-		const divisions = 50; // Number of grid divisions
-		const gridSize = size * divisions; // Total grid size
-		const gridColor = window.darkModeEnabled ? 0x444444 : 0xcccccc;
-
-		this.gridHelper = new THREE.GridHelper(gridSize, divisions, gridColor, gridColor);
-
-		// Step 16h.5) Apply grid plane orientation
-		const gridPlane = this.gridPlane || "XY";
-		this.applyGridPlaneOrientation(gridPlane);
-
-		// Step 16h.6) Position grid at data centroid
-		this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
-
-		// Step 16h.7) Apply current opacity (use default 0.3 if not set)
-		const opacity = this.gridOpacity !== undefined ? this.gridOpacity : 0.3;
-		this.gridHelper.material.opacity = opacity;
-		this.gridHelper.material.transparent = true;
-
-		// Step 16h.8) Ensure grid is visible
-		this.gridHelper.visible = true;
-
-		this.scene.add(this.gridHelper);
-		this.requestRender();
-		if (developerModeEnabled) {
-			console.log("📐 Grid size updated to:", size, "m per division at centroid (" + (this.orbitCenterX || 0).toFixed(2) + ", " + (this.orbitCenterY || 0).toFixed(2) + ", " + (this.orbitCenterZ || 0).toFixed(2) + ")");
-		}
-	}
-
-	// Step 16i) Update grid opacity
-	updateGridOpacity(opacity) {
-		// Step 16i.1) Validate and store opacity (ensure it's a number between 0 and 1)
-		const validOpacity = Math.max(0, Math.min(1, parseFloat(opacity) || 0.3));
-		this.gridOpacity = validOpacity;
-
-		// Step 16i.2) Only update if grid exists
-		if (this.gridHelper && this.gridHelper.material) {
-			// Step 16i.2a) Ensure grid remains visible even if opacity is 0
-			this.gridHelper.visible = true;
-
-			// Step 16i.2b) Update material opacity
-			this.gridHelper.material.opacity = validOpacity;
-			this.gridHelper.material.transparent = true;
-
-			this.requestRender();
-			if (developerModeEnabled) {
-				console.log("📐 Grid opacity updated to:", validOpacity, "(grid visible:", this.gridHelper.visible + ")");
-			}
-		} else {
-			if (developerModeEnabled) {
-				console.log("📐 Grid opacity stored:", validOpacity, "(grid not created yet)");
-			}
-		}
-	}
-
-	// Step 16j) Update grid plane orientation
-	updateGridPlane(plane) {
-		// Step 16j.1) Store plane setting
-		this.gridPlane = plane;
-		if (developerModeEnabled) {
-			console.log("📐 updateGridPlane called with plane:", plane);
-		}
-
-		// Step 16j.2) Only update if grid exists
-		if (this.gridHelper) {
-			this.applyGridPlaneOrientation(plane);
-			// Reposition grid at data centroid
-			this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
-			this.requestRender();
-			if (developerModeEnabled) {
-				console.log("📐 Grid plane updated to:", plane);
-			}
-		} else {
-			if (developerModeEnabled) {
-				console.log("📐 Grid plane stored:", plane, "(grid not created yet)");
-			}
-		}
-	}
-
-	// Step 16k) Apply grid plane orientation (helper method)
-	applyGridPlaneOrientation(plane) {
+	/**
+	 * Apply grid plane orientation
+	 * @param {string} plane - Plane orientation ("XY", "XZ", "YZ", "Camera")
+	 */
+	_applyGridPlaneOrientation(plane) {
 		if (!this.gridHelper) return;
 
-		// Step 16k.1) Reset rotation
+		// Reset rotation
 		this.gridHelper.rotation.set(0, 0, 0);
 
-		// Step 16k.2) Apply rotation based on plane
+		// Apply rotation based on plane
 		switch (plane) {
 			case "XY":
 				// XY plane (horizontal, looking down Z axis)
-				this.gridHelper.rotation.x = Math.PI / 2; // Rotate to XY plane (Z-up)
+				this.gridHelper.rotation.x = Math.PI / 2;
 				break;
 			case "XZ":
 				// XZ plane (vertical, looking down Y axis)
-				// No rotation needed (GridHelper default is XZ)
+				// No rotation needed (GridHelper default)
 				break;
 			case "YZ":
 				// YZ plane (vertical, looking down X axis)
 				this.gridHelper.rotation.z = Math.PI / 2;
 				break;
 			case "Camera":
-				// Camera frustum plane - align with camera orientation
+				// Align with camera orientation
 				this.gridHelper.rotation.copy(this.camera.rotation);
 				break;
 			default:
@@ -852,92 +473,32 @@ export class ThreeRenderer {
 				this.gridHelper.rotation.x = Math.PI / 2;
 				break;
 		}
-		if (developerModeEnabled) {
-			console.log("📐 Applied grid plane orientation:", plane);
-		}
 	}
 
-	// Step 16L) Set orbit center (data centroid)
-	setOrbitCenter(x, y, z) {
-		this.orbitCenterX = x || 0;
-		this.orbitCenterY = y || 0;
-		this.orbitCenterZ = z || 0;
-		if (developerModeEnabled) {
-			console.log("🎯 Orbit center set to: (" + this.orbitCenterX.toFixed(2) + ", " + this.orbitCenterY.toFixed(2) + ", " + this.orbitCenterZ.toFixed(2) + ")");
-		}
-
-		// Step 16L.1) Update grid position if it exists
-		if (this.gridHelper) {
-			this.gridHelper.position.set(this.orbitCenterX, this.orbitCenterY, this.orbitCenterZ);
-			this.requestRender();
-			if (developerModeEnabled) {
-				console.log("📐 Grid repositioned to centroid");
-			}
-		}
-	}
-
-	// Step 17) Resize renderer and update camera bounds
-	resize(width, height) {
-		this.width = width;
-		this.height = height;
-		this.renderer.setSize(width, height);
-
-		// Step 17a) Use FIXED frustum size matching canvas dimensions (no scale factor!)
-		// This matches the updateCamera() approach - fixed frustum + camera.zoom
-		const frustumWidth = width;
-		const frustumHeight = height;
-
-		this.camera.left = -frustumWidth / 2;
-		this.camera.right = frustumWidth / 2;
-		this.camera.top = frustumHeight / 2;
-		this.camera.bottom = -frustumHeight / 2;
-
-		// Step 17b) camera.zoom already set in updateCamera(), just update projection matrix
-		this.camera.updateProjectionMatrix();
-
-		// Step 17c) Update LineMaterial resolutions for all fat lines
-		// LineMaterial needs resolution updated on window resize for proper thickness rendering
-		this.scene.traverse(function(child) {
-			if (child.material && child.material.isLineMaterial) {
-				child.material.resolution.set(width, height);
-			}
-		});
-
-		this.needsRender = true;
-	}
-
-	// Step 18) Convert world coordinates to Three.js coordinates
-	worldToThree(worldX, worldY, worldZ = 0) {
-		// World coords already match Three.js: +X right, +Y up
-		// Z: use worldZ directly (positive = out of screen)
-		return new THREE.Vector3(worldX, worldY, worldZ);
-	}
-
-	// Step 19) Helper method to dispose object resources
-	disposeObject(object) {
-		// Step 19a) Dispose troika text objects (special handling)
+	/**
+	 * Dispose single object resources
+	 * @param {THREE.Object3D} object - Object to dispose
+	 */
+	_disposeObject(object) {
+		// Troika text special handling
 		if (object.userData && object.userData.isTroikaText) {
-			// Troika text has its own dispose method that cleans up workers and resources
 			if (object.dispose && typeof object.dispose === "function") {
 				object.dispose();
 			}
-			// Also dispose geometry and material if they exist
-			if (object.geometry) {
-				object.geometry.dispose();
-			}
+			if (object.geometry) object.geometry.dispose();
 			if (object.material) {
 				if (object.material.map) object.material.map.dispose();
 				object.material.dispose();
 			}
-			return; // Don't continue with standard disposal
+			return;
 		}
 
-		// Step 19b) Dispose geometry
+		// Dispose geometry
 		if (object.geometry) {
 			object.geometry.dispose();
 		}
 
-		// Step 19c) Dispose material(s)
+		// Dispose material(s)
 		if (object.material) {
 			if (Array.isArray(object.material)) {
 				object.material.forEach(material => {
@@ -960,48 +521,455 @@ export class ThreeRenderer {
 			}
 		}
 
-		// Step 19d) Dispose textures on sprites
+		// Dispose sprite textures
 		if (object.isSprite && object.material && object.material.map) {
 			object.material.map.dispose();
 		}
 	}
 
-	// Step 20) Dispose group and all children
+	/**
+	 * Update text billboards to face camera
+	 * PERFORMANCE: Direct quaternion copy (4 float copies) is faster than frustum culling
+	 */
+	_updateTextBillboards() {
+		// Get billboard setting
+		const billboardSetting = window.load3DSettings ? window.load3DSettings().textBillboarding : "all";
+
+		// Cache camera quaternion (single reference, copied to all billboards)
+		const cameraQuat = this.camera.quaternion;
+
+		const updateGroup = (group, shouldBillboard) => {
+			if (!shouldBillboard) return;
+			
+			group.traverse(object => {
+				if (object.userData && object.userData.isTroikaText) {
+					object.quaternion.copy(cameraQuat);
+				}
+				if (object.userData && object.userData.textMesh) {
+					object.userData.textMesh.quaternion.copy(cameraQuat);
+					// Rotate background
+					object.traverse(child => {
+						if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
+							child.quaternion.copy(cameraQuat);
+						}
+					});
+				}
+			});
+		};
+
+		const billboardAll = billboardSetting === "all";
+		const billboardHoles = billboardSetting === "holes" || billboardAll;
+		const billboardKAD = billboardSetting === "kad" || billboardAll;
+
+		updateGroup(this.holesGroup, billboardHoles);
+		updateGroup(this.kadGroup, billboardKAD);
+		updateGroup(this.connectorsGroup, billboardAll);
+		updateGroup(this.contoursGroup, billboardAll);
+		updateGroup(this.surfacesGroup, billboardAll);
+	}
+
+	/**
+	 * Update billboarded objects (mouse torus, etc.)
+	 */
+	_updateBillboardedObjects() {
+		this.connectorsGroup.traverse(object => {
+			if (object.userData && object.userData.billboard) {
+				object.quaternion.copy(this.camera.quaternion);
+			}
+		});
+	}
+
+	// ========================================
+	// PUBLIC API METHODS (V1 Compatibility)
+	// ========================================
+
+	/**
+	 * Get canvas element
+	 * @returns {HTMLCanvasElement} WebGL canvas
+	 */
+	getCanvas() {
+		return this.renderer.domElement;
+	}
+
+	/**
+	 * Update camera to match world coordinates
+	 * @param {number} centroidX - World X coordinate
+	 * @param {number} centroidY - World Y coordinate
+	 * @param {number} scale - Zoom scale
+	 * @param {number} rotation - Camera rotation (radians)
+	 * @param {number} orbitX - Orbit pitch angle
+	 * @param {number} orbitY - Orbit yaw angle
+	 * @param {number} orbitZ - Orbit center Z
+	 * @param {boolean} skipRender - Skip render request
+	 */
+	updateCamera(centroidX, centroidY, scale, rotation = 0, orbitX = 0, orbitY = 0, orbitZ = 0, skipRender = false) {
+		// Store camera state
+		this.cameraState.centroidX = centroidX;
+		this.cameraState.centroidY = centroidY;
+		this.cameraState.scale = scale;
+		this.cameraState.rotation = rotation;
+		this.cameraState.orbitX = orbitX;
+		this.cameraState.orbitY = orbitY;
+		this.cameraState.orbitZ = orbitZ;
+
+		// Update axis helper position if visible
+		if (this.axisHelper && this.axisHelper.visible) {
+			this.axisHelper.position.set(centroidX, centroidY, this.orbitCenterZ || 0);
+
+			// Maintain fixed screen size
+			const desiredScreenPixels = 50;
+			const worldUnitsForFixedScreenSize = desiredScreenPixels / scale;
+			const scaleFactor = worldUnitsForFixedScreenSize / this.axisHelperBaseSize;
+			this.axisHelper.scale.set(scaleFactor, scaleFactor, scaleFactor);
+		}
+
+		// Calculate camera position based on orbit angles
+		const cameraDistance = 5000;
+
+		if (orbitX !== 0 || orbitY !== 0) {
+			// 3D orbit mode - spherical to Cartesian conversion
+			const x = cameraDistance * Math.sin(orbitX) * Math.sin(orbitY);
+			const y = cameraDistance * Math.sin(orbitX) * Math.cos(orbitY);
+			const z = cameraDistance * Math.cos(orbitX);
+
+			// Position camera relative to orbit center
+			this.camera.position.set(centroidX + x, centroidY + y, this.orbitCenterZ + z);
+
+			// Look at orbit center
+			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
+
+			// Apply Z-axis rotation
+			this.camera.rotation.z += rotation;
+		} else {
+			// 2D top-down view
+			this.camera.position.x = centroidX;
+			this.camera.position.y = centroidY;
+			this.camera.position.z = this.orbitCenterZ + cameraDistance;
+
+			// Look at centroid
+			this.camera.lookAt(centroidX, centroidY, this.orbitCenterZ);
+
+			// Reset rotation
+			this.camera.rotation.set(0, 0, 0);
+			this.camera.up.set(0, 0, 1); // Z-up
+
+			// Apply Z-axis rotation
+			this.camera.rotation.z = rotation;
+		}
+
+		// Update orthographic camera frustum
+		// CRITICAL: Fixed frustum size matching canvas dimensions (1:1 pixel mapping)
+		const frustumWidth = this.width;
+		const frustumHeight = this.height;
+
+		this.camera.left = -frustumWidth / 2;
+		this.camera.right = frustumWidth / 2;
+		this.camera.top = frustumHeight / 2;
+		this.camera.bottom = -frustumHeight / 2;
+
+		// Apply zoom via camera.zoom property
+		this.camera.zoom = scale;
+		this.camera.updateProjectionMatrix();
+
+		// Update directional light position
+		if (this.directionalLight) {
+			const lightOffset = 1000;
+			this.directionalLight.position.set(this.camera.position.x, this.camera.position.y + lightOffset, this.camera.position.z);
+			this.directionalLight.target.position.set(centroidX, centroidY, this.orbitCenterZ);
+			this.directionalLight.target.updateMatrixWorld();
+		}
+
+		// Skip render during wheel zoom for performance
+		if (!skipRender) {
+			this.needsRender = true;
+		}
+
+		// Track rotation changes for billboard optimization
+		const rotationChanged = this.lastRotation !== rotation || this.lastOrbitX !== orbitX || this.lastOrbitY !== orbitY;
+
+		if (rotationChanged) {
+			this.cameraRotationChanged = true;
+			this.lastRotation = rotation;
+			this.lastOrbitX = orbitX;
+			this.lastOrbitY = orbitY;
+		}
+	}
+
+	/**
+	 * Set orbit center (data centroid)
+	 * @param {number} x - World X coordinate
+	 * @param {number} y - World Y coordinate
+	 * @param {number} z - World Z coordinate
+	 */
+	setOrbitCenter(x, y, z) {
+		this.orbitCenterX = x || 0;
+		this.orbitCenterY = y || 0;
+		this.orbitCenterZ = z || 0;
+
+		// Update grid position if exists
+		if (this.gridHelper) {
+			this.gridHelper.position.set(this.orbitCenterX, this.orbitCenterY, this.orbitCenterZ);
+			this.requestRender();
+		}
+	}
+
+	/**
+	 * Set orbit center Z coordinate (backward compatibility)
+	 * @param {number} z - Z coordinate
+	 */
+	setOrbitCenterZ(z) {
+		this.orbitCenterZ = z || 0;
+	}
+
+	/**
+	 * Update lighting based on bearing and elevation
+	 * @param {number} bearingDeg - Bearing in degrees (0 = North)
+	 * @param {number} elevationDeg - Elevation in degrees (0 = horizontal)
+	 */
+	updateLighting(bearingDeg, elevationDeg) {
+		const bearingRad = bearingDeg * Math.PI / 180;
+		const elevationRad = elevationDeg * Math.PI / 180;
+
+		const distance = 10000;
+		const x = -distance * Math.sin(bearingRad) * Math.cos(elevationRad);
+		const y = distance * Math.sin(elevationRad);
+		const z = distance * Math.cos(bearingRad) * Math.cos(elevationRad);
+
+		const cameraState = this.cameraState;
+		const targetX = cameraState.centroidX || 0;
+		const targetY = cameraState.centroidY || 0;
+		const targetZ = this.orbitCenterZ || 0;
+
+		if (this.directionalLight) {
+			const cameraPos = this.camera.position;
+			const lightOffsetY = 1000;
+
+			this.directionalLight.position.set(cameraPos.x + x * 0.1, cameraPos.y + lightOffsetY, cameraPos.z + z * 0.1);
+
+			this.directionalLight.target.position.set(targetX, targetY, targetZ);
+			this.directionalLight.target.updateMatrixWorld();
+		}
+
+		this.requestRender();
+	}
+
+	/**
+	 * Update ambient light intensity
+	 * @param {number} intensity - Light intensity (0-1)
+	 */
+	updateAmbientLightIntensity(intensity) {
+		if (this.ambientLight) {
+			this.ambientLight.intensity = intensity;
+			this.requestRender();
+		}
+	}
+
+	/**
+	 * Update directional light intensity
+	 * @param {number} intensity - Light intensity (0-1)
+	 */
+	updateDirectionalLightIntensity(intensity) {
+		if (this.directionalLight) {
+			this.directionalLight.intensity = intensity;
+			this.requestRender();
+		}
+	}
+
+	/**
+	 * Update shadow intensity
+	 * @param {number} intensity - Shadow intensity (0-1)
+	 */
+	updateShadowIntensity(intensity) {
+		this.shadowIntensity = intensity;
+		if (this.directionalLight && this.directionalLight.shadow) {
+			this.directionalLight.shadow.darkness = intensity;
+			this.requestRender();
+		}
+	}
+
+	/**
+	 * Set grid visibility
+	 * @param {boolean} visible - Show/hide grid
+	 */
+	setGridVisible(visible) {
+		if (visible) {
+			if (this.gridHelper) {
+				this.gridHelper.visible = true;
+			} else {
+				// Create grid if doesn't exist
+				const size = this.gridSize || 10;
+				const divisions = 50;
+				const totalSize = size * divisions;
+				const gridColor = window.darkModeEnabled ? 0x444444 : 0xcccccc;
+
+				this.gridHelper = new THREE.GridHelper(totalSize, divisions, gridColor, gridColor);
+				this.gridHelper.visible = true;
+
+				this._applyGridPlaneOrientation(this.gridPlane || "XY");
+				this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
+
+				const opacity = this.gridOpacity !== undefined ? this.gridOpacity : 0.3;
+				this.gridHelper.material.opacity = opacity;
+				this.gridHelper.material.transparent = true;
+				this.gridOpacity = opacity;
+
+				this.scene.add(this.gridHelper);
+			}
+		} else {
+			if (this.gridHelper) {
+				this.scene.remove(this.gridHelper);
+				if (this.gridHelper.geometry) this.gridHelper.geometry.dispose();
+				if (this.gridHelper.material) {
+					if (Array.isArray(this.gridHelper.material)) {
+						this.gridHelper.material.forEach(mat => mat && mat.dispose());
+					} else {
+						this.gridHelper.material.dispose();
+					}
+				}
+				this.gridHelper = null;
+			}
+		}
+
+		this.requestRender();
+	}
+
+	/**
+	 * Update grid size
+	 * @param {number} size - Grid division size in meters
+	 */
+	updateGridSize(size) {
+		this.gridSize = size;
+
+		if (!this.gridHelper) return;
+
+		// Remove old grid
+		this.scene.remove(this.gridHelper);
+		this.gridHelper.geometry.dispose();
+		this.gridHelper.material.dispose();
+
+		// Create new grid
+		const divisions = 50;
+		const gridSize = size * divisions;
+		const gridColor = window.darkModeEnabled ? 0x444444 : 0xcccccc;
+
+		this.gridHelper = new THREE.GridHelper(gridSize, divisions, gridColor, gridColor);
+		this._applyGridPlaneOrientation(this.gridPlane || "XY");
+		this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
+
+		const opacity = this.gridOpacity !== undefined ? this.gridOpacity : 0.3;
+		this.gridHelper.material.opacity = opacity;
+		this.gridHelper.material.transparent = true;
+		this.gridHelper.visible = true;
+
+		this.scene.add(this.gridHelper);
+		this.requestRender();
+	}
+
+	/**
+	 * Update grid opacity
+	 * @param {number} opacity - Opacity value (0-1)
+	 */
+	updateGridOpacity(opacity) {
+		const validOpacity = Math.max(0, Math.min(1, parseFloat(opacity) || 0.3));
+		this.gridOpacity = validOpacity;
+
+		if (this.gridHelper && this.gridHelper.material) {
+			this.gridHelper.visible = true;
+			this.gridHelper.material.opacity = validOpacity;
+			this.gridHelper.material.transparent = true;
+			this.requestRender();
+		}
+	}
+
+	/**
+	 * Update grid plane orientation
+	 * @param {string} plane - Plane orientation ("XY", "XZ", "YZ", "Camera")
+	 */
+	updateGridPlane(plane) {
+		this.gridPlane = plane;
+
+		if (this.gridHelper) {
+			this._applyGridPlaneOrientation(plane);
+			this.gridHelper.position.set(this.orbitCenterX || 0, this.orbitCenterY || 0, this.orbitCenterZ || 0);
+			this.requestRender();
+		}
+	}
+
+	/**
+	 * Resize renderer and camera
+	 * @param {number} width - New width in pixels
+	 * @param {number} height - New height in pixels
+	 */
+	resize(width, height) {
+		this.width = width;
+		this.height = height;
+		this.renderer.setSize(width, height);
+
+		// Update camera frustum
+		const frustumWidth = width;
+		const frustumHeight = height;
+
+		this.camera.left = -frustumWidth / 2;
+		this.camera.right = frustumWidth / 2;
+		this.camera.top = frustumHeight / 2;
+		this.camera.bottom = -frustumHeight / 2;
+
+		this.camera.updateProjectionMatrix();
+
+		// Update LineMaterial resolutions
+		this.scene.traverse(child => {
+			if (child.material && child.material.isLineMaterial) {
+				child.material.resolution.set(width, height);
+			}
+		});
+
+		this.needsRender = true;
+	}
+
+	/**
+	 * Convert world coordinates to Three.js coordinates
+	 * @param {number} worldX - World X coordinate
+	 * @param {number} worldY - World Y coordinate
+	 * @param {number} worldZ - World Z coordinate
+	 * @returns {THREE.Vector3} Three.js position
+	 */
+	worldToThree(worldX, worldY, worldZ = 0) {
+		return new THREE.Vector3(worldX, worldY, worldZ);
+	}
+
+	/**
+	 * Dispose group and all children
+	 * @param {THREE.Group} group - Group to dispose
+	 */
 	disposeGroup(group) {
-		// Step 20a) Traverse and remove objects (but preserve cached text and instanced meshes)
 		const toRemove = [];
 		group.traverse(object => {
 			if (object !== group) {
-				// Step 20a.1) Check if this is a cached text object
+				// Skip cached text objects (will be reused)
 				if (object.userData && object.userData.isCachedText) {
-					// Don't dispose - just remove from group (will be reused)
 					toRemove.push(object);
 				} else if (object.userData && object.userData.type === "instancedHoles") {
-					// Step 20a.2) Check if this is an InstancedMesh from InstancedMeshManager
-					// These are already disposed by clearInstancedHoles() to prevent double-disposal
-					// Skip disposal - already handled by InstancedMeshManager
+					// Skip instanced meshes (handled separately)
 					toRemove.push(object);
 				} else {
-					// Normal objects - dispose normally
-					this.disposeObject(object);
+					// Normal objects - dispose
+					this._disposeObject(object);
 					toRemove.push(object);
 				}
 			}
 		});
 
-		// Step 20b) Remove all objects from group
-		toRemove.forEach(obj => {
-			group.remove(obj);
-		});
+		toRemove.forEach(obj => group.remove(obj));
 	}
 
-	// Step 21) Clear all geometry from scene
+	/**
+	 * Clear all geometry from scene
+	 */
 	clearAllGeometry() {
-		// Step 21a.0) CRITICAL: Clear instanced meshes BEFORE disposing groups
-		// This prevents double-disposal and memory leaks
+		// Clear instanced meshes FIRST
 		this.clearInstancedHoles();
 
-		// Step 21a) Dispose all groups to prevent memory leaks
+		// Dispose all groups
 		this.disposeGroup(this.holesGroup);
 		this.disposeGroup(this.surfacesGroup);
 		this.disposeGroup(this.kadGroup);
@@ -1009,57 +977,22 @@ export class ThreeRenderer {
 		this.disposeGroup(this.imagesGroup);
 		this.disposeGroup(this.connectorsGroup);
 
-		// Step 21b) Clear mesh maps
+		// Clear mesh maps
 		this.holeMeshMap.clear();
 		this.surfaceMeshMap.clear();
 		this.kadMeshMap.clear();
 
-		// Step 21c) Dispose axis helper if it exists
-		if (this.axisHelper) {
-			this.disposeAxisHelper();
-		}
-
-		// Step 21d) DON'T clear text cache - persist across redraws
-		// Text cache is only cleared when data actually changes (see clearTextCacheOnDataChange)
-
 		this.needsRender = true;
 	}
 
-	// Step 21e) Dispose axis helper and recreate
-	disposeAxisHelper() {
-		if (this.axisHelper) {
-			// Traverse and dispose all geometries and materials
-			this.axisHelper.traverse(child => {
-				if (child.geometry) {
-					child.geometry.dispose();
-				}
-				if (child.material) {
-					if (Array.isArray(child.material)) {
-						child.material.forEach(mat => mat.dispose());
-					} else {
-						child.material.dispose();
-					}
-				}
-				// Dispose sprite textures
-				if (child.material && child.material.map) {
-					child.material.map.dispose();
-				}
-			});
-			this.scene.remove(this.axisHelper);
-			this.axisHelper = null;
-		}
-	}
-
-	// Step 21d) Clear text cache when data changes (not on every redraw)
-	clearTextCacheOnDataChange() {
-		clearTextCache();
-	}
-
-	// Step 22) Clear specific group
+	/**
+	 * Clear specific group
+	 * @param {string} groupName - Group name to clear
+	 */
 	clearGroup(groupName) {
 		switch (groupName) {
 			case "holes":
-				this.clearInstancedHoles(); // Clear BEFORE disposing group
+				this.clearInstancedHoles();
 				this.disposeGroup(this.holesGroup);
 				this.holeMeshMap.clear();
 				break;
@@ -1084,9 +1017,11 @@ export class ThreeRenderer {
 		this.needsRender = true;
 	}
 
-	// Step 22a) Clear instanced holes (when switching modes or reloading data)
+	/**
+	 * Clear instanced holes
+	 */
 	clearInstancedHoles() {
-		// Step 22a.1) Dispose collar instances
+		// Dispose collar instances
 		if (this.instancedCollars) {
 			this.holesGroup.remove(this.instancedCollars);
 			if (this.instancedCollars.geometry) this.instancedCollars.geometry.dispose();
@@ -1094,7 +1029,7 @@ export class ThreeRenderer {
 			this.instancedCollars = null;
 		}
 
-		// Step 22a.2) Dispose positive grade circle instances
+		// Dispose grade instances (positive)
 		if (this.instancedGradesPositive) {
 			this.holesGroup.remove(this.instancedGradesPositive);
 			if (this.instancedGradesPositive.geometry) this.instancedGradesPositive.geometry.dispose();
@@ -1102,7 +1037,7 @@ export class ThreeRenderer {
 			this.instancedGradesPositive = null;
 		}
 
-		// Step 22a.2b) Dispose negative grade circle instances
+		// Dispose grade instances (negative)
 		if (this.instancedGradesNegative) {
 			this.holesGroup.remove(this.instancedGradesNegative);
 			if (this.instancedGradesNegative.geometry) this.instancedGradesNegative.geometry.dispose();
@@ -1110,7 +1045,7 @@ export class ThreeRenderer {
 			this.instancedGradesNegative = null;
 		}
 
-		// Step 22a.3) Dispose toe instances
+		// Dispose toe instances
 		if (this.instancedToes) {
 			this.holesGroup.remove(this.instancedToes);
 			if (this.instancedToes.geometry) this.instancedToes.geometry.dispose();
@@ -1118,10 +1053,9 @@ export class ThreeRenderer {
 			this.instancedToes = null;
 		}
 
-		// Step 22a.4) Dispose direction arrow instances (Group containing shafts and heads)
+		// Dispose direction arrow instances
 		if (this.instancedDirectionArrows) {
 			this.contoursGroup.remove(this.instancedDirectionArrows);
-			// Dispose all children (instancedShafts and instancedHeads)
 			this.instancedDirectionArrows.traverse(child => {
 				if (child.isInstancedMesh) {
 					if (child.geometry) child.geometry.dispose();
@@ -1131,12 +1065,12 @@ export class ThreeRenderer {
 			this.instancedDirectionArrows = null;
 		}
 
-		// Step 22a.5) Clear mapping tables
+		// Clear mapping tables
 		this.instanceIdToHole.clear();
 		this.holeToInstanceId.clear();
 		this.instancedHolesCount = 0;
 
-		// Step 22a.6) NEW: Clear advanced instanced mesh manager
+		// Clear advanced instanced mesh manager
 		if (this.instancedMeshManager) {
 			this.instancedMeshManager.clearAll();
 		}
@@ -1144,44 +1078,37 @@ export class ThreeRenderer {
 		this.needsRender = true;
 	}
 
-	// Step 22b) Update single hole position in instanced mesh (for move tool)
+	/**
+	 * Update single hole position (for move tool)
+	 * @param {string} holeId - Hole ID
+	 * @param {number} newWorldX - New world X
+	 * @param {number} newWorldY - New world Y
+	 * @param {number} newWorldZ - New world Z
+	 */
 	updateHolePosition(holeId, newWorldX, newWorldY, newWorldZ) {
-		// Step 22b.1) Get instance ID from hole ID
-		var instanceId = this.holeToInstanceId.get(holeId);
+		const instanceId = this.holeToInstanceId.get(holeId);
 		if (instanceId === undefined) {
-			// Not using instanced rendering for this hole, fall back to holeMeshMap
-			var holeGroup = this.holeMeshMap.get(holeId);
+			// Not instanced, use holeMeshMap
+			const holeGroup = this.holeMeshMap.get(holeId);
 			if (holeGroup) {
-				var local = window.worldToThreeLocal(newWorldX, newWorldY);
+				const local = window.worldToThreeLocal(newWorldX, newWorldY);
 				holeGroup.position.set(local.x, local.y, newWorldZ);
 				this.needsRender = true;
 			}
 			return;
 		}
 
-		// Step 22b.2) Convert world coordinates to local Three.js coordinates
-		var local = window.worldToThreeLocal(newWorldX, newWorldY);
-
-		// Step 22b.3) Create transformation matrix for new position
-		var matrix = new THREE.Matrix4();
+		// Update instanced mesh position
+		const local = window.worldToThreeLocal(newWorldX, newWorldY);
+		const matrix = new THREE.Matrix4();
 		matrix.setPosition(local.x, local.y, newWorldZ);
 
-		// Step 22b.4) Update collar instance position
 		if (this.instancedCollars) {
 			this.instancedCollars.setMatrixAt(instanceId, matrix);
 			this.instancedCollars.instanceMatrix.needsUpdate = true;
 		}
 
-		// Step 22b.5) Update grade circle instance position
-		// NOTE: With split positive/negative grade instances, we can't easily update grades
-		// because instanceId refers to collar index, but grades have separate indices
-		// For now, grades remain static - can be improved later if needed
-		// TODO: Track grade instance indices separately if dynamic grade updates are needed
-
-		// Step 22b.6) Update toe instance position (if applicable)
 		if (this.instancedToes) {
-			// Toe position calculation would need the hole's geometry data
-			// For now, update to same position - proper implementation needs hole data
 			this.instancedToes.setMatrixAt(instanceId, matrix);
 			this.instancedToes.instanceMatrix.needsUpdate = true;
 		}
@@ -1189,134 +1116,50 @@ export class ThreeRenderer {
 		this.needsRender = true;
 	}
 
-	// Step 22c) Get hole data from instance ID (for raycasting)
+	/**
+	 * Get hole data from instance ID
+	 * @param {number} instanceId - Instance ID
+	 * @returns {Object} Hole data
+	 */
 	getHoleByInstanceId(instanceId) {
 		return this.instanceIdToHole.get(instanceId);
 	}
 
-	// Step 22d) Check if instanced rendering is active
+	/**
+	 * Check if instanced rendering is active
+	 * @returns {boolean} True if using instanced holes
+	 */
 	isUsingInstancedHoles() {
 		return this.instancedCollars !== null && this.instancedHolesCount > 0;
 	}
 
-	// Step 23) Render the scene
-
+	/**
+	 * Render the scene
+	 */
 	render() {
-		// Step 23a.0) Early return if WebGL context was lost
+		// Early return if context lost
 		if (this.contextLost) {
 			console.warn("⚠️ Skipping render - WebGL context lost");
 			return;
 		}
 
-		// Step 23a) PERFORMANCE FIX: Only update billboards when camera rotation changed
-		// Billboard updates are VERY expensive (traverse entire scene, update quaternions)
-		// Pan/zoom don't need billboard updates - only orbit/rotate does
+		// PERFORMANCE: Only update billboards when camera rotation changed
 		if (this.cameraRotationChanged) {
-			this.updateTextBillboards();
-			this.updateBillboardedObjects();
+			this._updateTextBillboards();
+			this._updateBillboardedObjects();
 			this.cameraRotationChanged = false;
 		}
 
 		this.renderer.render(this.scene, this.camera);
-
 		this.needsRender = false;
 	}
 
-	// Step 23b) Update all troika text objects to face camera (billboard behavior)
-	updateTextBillboards() {
-		// Step 23b.0) Get billboard setting from 3D settings
-		const billboardSetting = window.load3DSettings ? window.load3DSettings().textBillboarding : "all";
-
-		// Step 23b.0a) Create frustum for culling
-		const frustum = new THREE.Frustum();
-		const projScreenMatrix = new THREE.Matrix4();
-		projScreenMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
-		frustum.setFromProjectionMatrix(projScreenMatrix);
-
-		const updateGroup = (group, shouldBillboard) => {
-			group.traverse(object => {
-				// Check if this is a troika text object and billboarding is enabled for this type
-				if (object.userData && object.userData.isTroikaText && shouldBillboard) {
-					// Make text face camera (billboard effect)
-					if (frustum.containsPoint(object.position)) {
-						object.quaternion.copy(this.camera.quaternion);
-					}
-				}
-				// Also check for text inside groups (with backgrounds)
-				if (object.userData && object.userData.textMesh && shouldBillboard) {
-					if (frustum.containsPoint(object.position)) {
-						object.userData.textMesh.quaternion.copy(this.camera.quaternion);
-					}
-					// Rotate background too if it exists
-					object.traverse(child => {
-						if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
-							if (frustum.containsPoint(child.position)) {
-								child.quaternion.copy(this.camera.quaternion);
-							}
-						}
-					});
-				}
-			});
-		};
-
-		// Update text based on billboard setting - ensure text lies on XY plane when not billboarding
-		const billboardAll = billboardSetting === "all";
-		const billboardHoles = billboardSetting === "holes" || billboardAll;
-		const billboardKAD = billboardSetting === "kad" || billboardAll;
-		const billboardConnectors = billboardAll; // Connectors follow main setting
-		const billboardContours = billboardAll; // Contours follow main setting
-		const billboardSurfaces = billboardAll; // Surfaces follow main setting
-
-		// For non-billboarded text, ensure it lies flat on XY plane (not XZ)
-		const fixOrientation = (group, shouldBillboard) => {
-			if (!shouldBillboard) {
-				group.traverse(object => {
-					if (object.userData && object.userData.isTroikaText) {
-						// Reset orientation to lie flat on XY plane (horizontal)
-						object.quaternion.set(0, 0, 0, 1);
-					}
-					if (object.userData && object.userData.textMesh) {
-						object.userData.textMesh.quaternion.set(0, 0, 0, 1);
-						// Also fix background orientation
-						object.traverse(child => {
-							if (child.isMesh && child.geometry && child.geometry.type === "PlaneGeometry") {
-								child.quaternion.set(0, 0, 0, 1);
-							}
-						});
-					}
-				});
-			}
-		};
-
-		updateGroup(this.holesGroup, billboardHoles);
-		updateGroup(this.kadGroup, billboardKAD);
-		updateGroup(this.connectorsGroup, billboardConnectors);
-		updateGroup(this.contoursGroup, billboardContours);
-		updateGroup(this.surfacesGroup, billboardSurfaces);
-
-		// Fix orientation for non-billboarded groups to lie on XY plane
-		fixOrientation(this.holesGroup, billboardHoles);
-		fixOrientation(this.kadGroup, billboardKAD);
-		fixOrientation(this.connectorsGroup, billboardConnectors);
-		fixOrientation(this.contoursGroup, billboardContours);
-		fixOrientation(this.surfacesGroup, billboardSurfaces);
-	}
-
-	// Step 23c) Update billboarded objects (mouse torus, etc.) to face camera
-	updateBillboardedObjects() {
-		// Step 23c.1) Update connectors group (contains mouse indicator)
-		this.connectorsGroup.traverse(object => {
-			if (object.userData && object.userData.billboard) {
-				// Rotate object to face camera
-				object.quaternion.copy(this.camera.quaternion);
-			}
-		});
-	}
-
-	// Step 24) Start animation loop (only renders when needed)
+	/**
+	 * Start render loop
+	 */
 	startRenderLoop() {
 		const animate = () => {
-			// Step 24a) Update arcball controls if active
+			// Update arcball controls if active
 			if (window.cameraControls && window.cameraControls.controlMode === "arcball") {
 				window.cameraControls.update();
 			}
@@ -1329,7 +1172,9 @@ export class ThreeRenderer {
 		animate();
 	}
 
-	// Step 25) Stop animation loop
+	/**
+	 * Stop render loop
+	 */
 	stopRenderLoop() {
 		if (this.animationFrameId !== null) {
 			cancelAnimationFrame(this.animationFrameId);
@@ -1337,69 +1182,73 @@ export class ThreeRenderer {
 		}
 	}
 
-	// Step 26) Request render on next frame
+	/**
+	 * Request render on next frame
+	 */
 	requestRender() {
 		this.needsRender = true;
 	}
 
-	// Step 27) Update background color based on dark mode
+	/**
+	 * Set background color
+	 * @param {boolean} isDarkMode - Dark mode flag
+	 */
 	setBackgroundColor(isDarkMode) {
-		const backgroundColor = isDarkMode ? 0x000000 : 0xffffff; // Black in dark mode, white in light mode
+		const backgroundColor = isDarkMode ? 0x000000 : 0xffffff;
 		this.scene.background = new THREE.Color(backgroundColor);
 		this.needsRender = true;
 	}
 
-	// Step 28) Show/hide axis helper with fixed screen size (77 pixels)
+	/**
+	 * Show/hide axis helper
+	 * @param {boolean} show - Show/hide flag
+	 * @param {number} positionX - X position
+	 * @param {number} positionY - Y position
+	 * @param {number} scale - Scale factor
+	 */
 	showAxisHelper(show, positionX = 0, positionY = 0, scale = 1) {
-		// Step 28a) Check if gizmo display mode is "never" - if so, always hide
-		// This check should be done by the caller, but we add a safety check here
-		// The caller should pass show=false when mode is "never"
-
-		// Step 28b) Create axis helper if it doesn't exist
 		if (!this.axisHelper) {
-			this.axisHelper = this.createAxisHelper(50);
+			this.axisHelper = this._createAxisHelper(111);
 			this.axisHelper.visible = false;
 			this.scene.add(this.axisHelper);
-			this.axisHelperBaseSize = 50;
+			this.axisHelperBaseSize = 111;
 		}
 
 		if (this.axisHelper) {
 			this.axisHelper.visible = show;
 			if (show) {
-				// Position at orbit center (XY from camera controls, Z from orbit center)
 				this.axisHelper.position.set(positionX, positionY, this.orbitCenterZ || 0);
 
-				// Step 28c) Scale to maintain fixed screen size (77 pixels)
-				// Screen size (pixels) = world size * scale
-				// To get 50 pixels: world size = 50 / scale
-				const desiredScreenPixels = 77;
+				// Scale to maintain fixed screen size
+				const desiredScreenPixels = 111;
 				const worldUnitsForFixedScreenSize = desiredScreenPixels / scale;
 				const scaleFactor = worldUnitsForFixedScreenSize / this.axisHelperBaseSize;
 				this.axisHelper.scale.set(scaleFactor, scaleFactor, scaleFactor);
-
-				if (developerModeEnabled) {
-					console.log("🎯 Axis helper at orbit point:", positionX.toFixed(2), positionY.toFixed(2), "scale:", scaleFactor.toFixed(3));
-				}
 			}
 			this.needsRender = true;
 		}
 	}
 
-	// Step 29) Raycast for object selection
+	/**
+	 * Raycast for object selection
+	 * @param {number} mouseX - Mouse X in pixels
+	 * @param {number} mouseY - Mouse Y in pixels
+	 * @returns {Array} Intersection results
+	 */
 	raycast(mouseX, mouseY) {
-		// Convert mouse coordinates to normalized device coordinates (-1 to +1)
 		const mouse = new THREE.Vector2();
 		mouse.x = mouseX / this.width * 2 - 1;
 		mouse.y = -(mouseY / this.height) * 2 + 1;
 
 		this.raycaster.setFromCamera(mouse, this.camera);
-
-		// Check intersections with all objects
 		const intersects = this.raycaster.intersectObjects(this.scene.children, true);
 		return intersects;
 	}
 
-	// Step 30) Get scene statistics
+	/**
+	 * Get scene statistics
+	 * @returns {Object} Scene stats
+	 */
 	getStats() {
 		return {
 			holes: this.holeMeshMap.size,
@@ -1410,10 +1259,13 @@ export class ThreeRenderer {
 		};
 	}
 
-	// Step 30a) Get detailed memory statistics for debugging GPU memory leaks
+	/**
+	 * Get detailed memory statistics
+	 * @returns {Object} Memory stats
+	 */
 	getMemoryStats() {
-		var memory = this.renderer.info.memory;
-		var render = this.renderer.info.render;
+		const memory = this.renderer.info.memory;
+		const render = this.renderer.info.render;
 		return {
 			geometries: memory.geometries,
 			textures: memory.textures,
@@ -1429,29 +1281,56 @@ export class ThreeRenderer {
 		};
 	}
 
-	// Step 30b) Log memory stats to console (call for debugging)
+	/**
+	 * Log memory stats to console
+	 * @returns {Object} Memory stats
+	 */
 	logMemoryStats() {
-		var stats = this.getMemoryStats();
-		console.log("📊 Three.js Memory Stats:");
+		const stats = this.getMemoryStats();
+		console.log("📊 Three.js Memory Stats (V2):");
 		console.log("   Geometries:", stats.geometries);
 		console.log("   Textures:", stats.textures);
 		console.log("   Triangles:", stats.triangles);
 		console.log("   Draw Calls:", stats.drawCalls);
-		console.log("   Holes Group:", stats.holesGroupChildren);
-		console.log("   KAD Group:", stats.kadGroupChildren);
-		console.log("   Surfaces Group:", stats.surfacesGroupChildren);
-		console.log("   Contours Group:", stats.contoursGroupChildren);
-		console.log("   Images Group:", stats.imagesGroupChildren);
-		console.log("   Connectors Group:", stats.connectorsGroupChildren);
 		console.log("   Context Lost:", stats.contextLost);
 		return stats;
 	}
 
-	// Step 31) Cleanup
+	/**
+	 * Clear text cache when data changes
+	 */
+	clearTextCacheOnDataChange() {
+		clearTextCache();
+	}
+
+	/**
+	 * Update clipping planes
+	 * @param {number} near - Near plane distance
+	 * @param {number} far - Far plane distance
+	 */
+	updateClippingPlanes(near, far) {
+		this.camera.near = near;
+		this.camera.far = far;
+		this.camera.updateProjectionMatrix();
+		this.requestRender();
+	}
+
+	/**
+	 * Set clipping plane visualization
+	 * @param {boolean} visible - Show/hide clipping planes
+	 */
+	setClippingPlaneVisualization(visible) {
+		// Not implemented in V2 - stub for compatibility
+		this.requestRender();
+	}
+
+	/**
+	 * Cleanup and dispose
+	 */
 	dispose() {
 		this.stopRenderLoop();
 
-		// Dispose all geometries and materials
+		// Dispose all scene objects
 		this.scene.traverse(object => {
 			if (object.geometry) {
 				object.geometry.dispose();

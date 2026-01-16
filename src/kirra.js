@@ -25,25 +25,17 @@ import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { evaluate } from "mathjs";
 //=================================================
-// Three.js Renderer Selection (MUST BE EARLY!)
-//=================================================
-// CRITICAL: Load renderer preference from localStorage IMMEDIATELY
-// This must happen BEFORE initializeThreeJS() is called
-const storedRendererPref = localStorage.getItem("useExperimental3DRenderer");
-window.useExperimental3DRenderer = storedRendererPref === "true";
-console.log("🎯 Renderer preference loaded from localStorage:", storedRendererPref);
-console.log("🎯 window.useExperimental3DRenderer =", window.useExperimental3DRenderer);
-console.log("🎯 Will use renderer:", window.useExperimental3DRenderer ? "V2 (Experimental)" : "V1 (Stable)");
-
-//=================================================
 // Three.js Rendering System
 //=================================================
 import * as THREE from "three";
-// DIAGNOSTIC: Temporarily commented out to test if V1 renderer is causing conflicts
-// import { ThreeRenderer } from "./three/ThreeRenderer.js";
-import { ThreeRendererV2 } from "./three/ThreeRendererV2.js";
-// Force V2 renderer for diagnostic purposes
-const ThreeRenderer = ThreeRendererV2;
+// Step 1) Import ThreeRenderer (V2 architecture - consolidated)
+import { ThreeRenderer } from "./three/ThreeRenderer.js";
+// Step 2) Import Layer and LOD managers for optimized rendering
+import { LayerManager } from "./three/LayerManager.js";
+import { LODManager } from "./three/LODManager.js";
+// Step 3) Import batching utilities for performance
+import { LineBatcher } from "./three/LineBatcher.js";
+import { PointBatcher } from "./three/PointBatcher.js";
 import { CameraControls } from "./three/CameraControls.js";
 import { GeometryFactory, clearTextCache } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
@@ -93,6 +85,20 @@ import {
 	drawProtractorThreeJS,
 	clearProtractorThreeJS,
 	disposeKADThreeJS,
+	// Layer-aware KAD drawing functions
+	getOrCreateKADLayer,
+	drawKADPointToLayer,
+	drawKADLineSegmentToLayer,
+	drawKADPolygonSegmentToLayer,
+	drawKADBatchedPolylineToLayer,
+	drawKADSuperBatchedPointsToLayer,
+	drawKADSuperBatchedCirclesToLayer,
+	drawKADTextToLayer,
+	drawKADCircleToLayer,
+	setKADLayerVisibility,
+	setKADLayerOpacity,
+	removeKADLayer,
+	getAllKADLayers,
 } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
@@ -738,15 +744,20 @@ function initializeThreeJS() {
 			return;
 		}
 
-		// Choose renderer based on user preference (V1 or V2)
-		const RendererClass = window.useExperimental3DRenderer ? ThreeRendererV2 : ThreeRenderer;
-		const rendererVersion = window.useExperimental3DRenderer ? "V2 (Experimental)" : "V1 (Stable)";
-		console.log("🎨 About to instantiate renderer:", rendererVersion);
-		console.log("🎨 RendererClass =", RendererClass.name);
+		// Step 2a) Create Three.js renderer (consolidated V2 architecture)
+		console.log("🎨 Initializing ThreeRenderer...");
 
-		threeRenderer = new RendererClass(canvasContainer, canvas.clientWidth, canvas.clientHeight);
+		threeRenderer = new ThreeRenderer(canvasContainer, canvas.clientWidth, canvas.clientHeight);
 
-		console.log("✅ Renderer created successfully:", threeRenderer.constructor.name);
+		console.log("✅ ThreeRenderer created successfully");
+
+		// Step 2b) Initialize Layer Manager for KAD and surface layers
+		window.layerManager = new LayerManager(threeRenderer.scene);
+		console.log("✅ LayerManager initialized");
+
+		// Step 2c) Initialize LOD Manager for level-of-detail optimization
+		window.lodManager = new LODManager(threeRenderer);
+		console.log("✅ LODManager initialized");
 
 		// Step 2a) Optimize Troika font rendering for optimal performance (one-time, shared by all text)
 		// This configures optimal SDF settings and preloads all glyphs into Troika's shared atlas.
@@ -3895,31 +3906,8 @@ if (useInstancedHolesCheckbox) {
 	});
 }
 
-// Step 5) Experimental 3D Renderer (V2) toggle
-// NOTE: window.useExperimental3DRenderer is already set from localStorage at top of file
-// This code just syncs the checkbox with the flag
-const useExperimental3DRendererCheckbox = document.getElementById("useExperimental3DRenderer");
-if (useExperimental3DRendererCheckbox) {
-	// Sync checkbox with flag that was already loaded from localStorage
-	useExperimental3DRendererCheckbox.checked = window.useExperimental3DRenderer || false;
-}
-
-// Add event listener to handle toggle
-if (useExperimental3DRendererCheckbox) {
-	useExperimental3DRendererCheckbox.addEventListener("change", function () {
-		// Update flag and save to localStorage
-		window.useExperimental3DRenderer = this.checked;
-		localStorage.setItem("useExperimental3DRenderer", String(this.checked));
-
-		console.log("🔄 Experimental 3D Renderer " + (this.checked ? "enabled" : "disabled"));
-		console.log("⚠️ Reload page to switch renderers");
-
-		// Show user prompt to reload
-		if (confirm("Switch 3D renderer? This requires reloading the page.\n\nClick OK to reload now, Cancel to reload later.")) {
-			location.reload();
-		}
-	});
-}
+// NOTE: Experimental 3D Renderer toggle removed - V2 architecture is now the sole renderer
+// The LayerManager and LODManager are initialized in initializeThreeJS()
 
 ///////////////////////////
 

@@ -548,6 +548,275 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 // KAD Drawing Functions (3D)
 //=================================================
 
+//=================================================
+// Layer-Aware KAD Drawing Functions
+//=================================================
+
+/**
+ * Step 6a) Get or create KAD layer for drawing
+ * @param {string} layerId - Layer identifier (typically filename or entity name)
+ * @param {string} layerName - Display name for the layer
+ * @returns {Object} Layer object with threeGroup for adding objects
+ */
+export function getOrCreateKADLayer(layerId, layerName) {
+	if (!window.layerManager) {
+		// Fallback to default kadGroup if LayerManager not initialized
+		return {
+			id: "default",
+			name: "Default",
+			threeGroup: window.threeRenderer ? window.threeRenderer.kadGroup : null
+		};
+	}
+	return window.layerManager.getOrCreateKADLayer(layerId, layerName || layerId);
+}
+
+/**
+ * Step 6b) Get target group for KAD drawing (layer-aware)
+ * @param {string} layerId - Optional layer ID
+ * @returns {THREE.Group} Target group for adding objects
+ */
+function getKADTargetGroup(layerId) {
+	if (layerId && window.layerManager) {
+		var layer = window.layerManager.getKADLayer(layerId);
+		if (layer && layer.threeGroup) {
+			return layer.threeGroup;
+		}
+	}
+	// Fallback to default kadGroup
+	return window.threeRenderer ? window.threeRenderer.kadGroup : null;
+}
+
+/**
+ * Step 6c) Draw KAD point with layer support
+ * @param {number} worldX - X coordinate
+ * @param {number} worldY - Y coordinate
+ * @param {number} worldZ - Z coordinate
+ * @param {number} size - Point size
+ * @param {string} color - Point color
+ * @param {string} kadId - KAD entity ID for selection
+ * @param {string} layerId - Optional layer ID
+ */
+export function drawKADPointToLayer(worldX, worldY, worldZ, size, color, kadId, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var targetGroup = getKADTargetGroup(layerId);
+	if (!targetGroup) return;
+
+	var pointMesh = GeometryFactory.createKADPoint(worldX, worldY, worldZ, size, color);
+
+	if (kadId) {
+		pointMesh.userData = { type: "kadPoint", kadId: kadId, layerId: layerId };
+	}
+
+	targetGroup.add(pointMesh);
+}
+
+/**
+ * Step 6d) Draw KAD line segment with layer support
+ */
+export function drawKADLineSegmentToLayer(startX, startY, startZ, endX, endY, endZ, lineWidth, color, kadId, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var targetGroup = getKADTargetGroup(layerId);
+	if (!targetGroup) return;
+
+	var lineMesh = GeometryFactory.createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
+
+	if (kadId) {
+		lineMesh.userData = { type: "kadLine", kadId: kadId, layerId: layerId };
+	}
+
+	targetGroup.add(lineMesh);
+}
+
+/**
+ * Step 6e) Draw KAD polygon segment with layer support
+ */
+export function drawKADPolygonSegmentToLayer(startX, startY, startZ, endX, endY, endZ, lineWidth, color, kadId, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var targetGroup = getKADTargetGroup(layerId);
+	if (!targetGroup) return;
+
+	var polyMesh = GeometryFactory.createKADPolygonSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
+
+	if (kadId) {
+		polyMesh.userData = { type: "kadPolygon", kadId: kadId, layerId: layerId };
+	}
+
+	targetGroup.add(polyMesh);
+}
+
+/**
+ * Step 6f) Draw batched polyline with layer support
+ */
+export function drawKADBatchedPolylineToLayer(pointsArray, lineWidth, color, kadId, isPolygon, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (!pointsArray || pointsArray.length < 2) return;
+
+	var targetGroup = getKADTargetGroup(layerId);
+	if (!targetGroup) return;
+
+	var batchedLine = GeometryFactory.createBatchedPolyline(pointsArray, lineWidth, color, isPolygon);
+	if (!batchedLine) return;
+
+	if (kadId) {
+		batchedLine.userData = {
+			type: isPolygon ? "kadPolygon" : "kadLine",
+			kadId: kadId,
+			isBatched: true,
+			layerId: layerId
+		};
+	}
+
+	targetGroup.add(batchedLine);
+}
+
+/**
+ * Step 6g) Draw super-batched points with layer support
+ */
+export function drawKADSuperBatchedPointsToLayer(allPointEntities, worldToThreeLocal, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return null;
+	if (!allPointEntities || allPointEntities.length === 0) return null;
+
+	var targetGroup = getKADTargetGroup(layerId);
+	if (!targetGroup) return null;
+
+	var result = GeometryFactory.createSuperBatchedPoints(allPointEntities, worldToThreeLocal);
+	if (!result || !result.points) return null;
+
+	result.points.userData.layerId = layerId;
+	targetGroup.add(result.points);
+
+	// Update layer stats if LayerManager available
+	if (layerId && window.layerManager) {
+		window.layerManager.updateKADLayerStats(layerId, {
+			pointCount: allPointEntities.length
+		});
+	}
+
+	return result;
+}
+
+/**
+ * Step 6h) Draw super-batched circles with layer support
+ */
+export function drawKADSuperBatchedCirclesToLayer(allCircleEntities, worldToThreeLocal, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return null;
+	if (!allCircleEntities || allCircleEntities.length === 0) return null;
+
+	var targetGroup = getKADTargetGroup(layerId);
+	if (!targetGroup) return null;
+
+	var result = GeometryFactory.createSuperBatchedCircles(allCircleEntities, worldToThreeLocal);
+	if (!result || !result.lineSegments) return null;
+
+	result.lineSegments.userData.layerId = layerId;
+	targetGroup.add(result.lineSegments);
+
+	// Update layer stats if LayerManager available
+	if (layerId && window.layerManager) {
+		window.layerManager.updateKADLayerStats(layerId, {
+			circleCount: allCircleEntities.length
+		});
+	}
+
+	return result;
+}
+
+/**
+ * Step 6i) Draw KAD text with layer support
+ */
+export function drawKADTextToLayer(worldX, worldY, worldZ, text, fontSize, color, backgroundColor, kadId, anchorX, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var targetGroup = getKADTargetGroup(layerId);
+	if (!targetGroup) return;
+
+	var textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor, anchorX || "left");
+
+	if (kadId) {
+		if (!textSprite.userData) {
+			textSprite.userData = {};
+		}
+		textSprite.userData.type = "kadText";
+		textSprite.userData.kadId = kadId;
+		textSprite.userData.layerId = layerId;
+	}
+
+	if (!textSprite.parent) {
+		targetGroup.add(textSprite);
+	}
+}
+
+/**
+ * Step 6j) Draw KAD circle with layer support
+ */
+export function drawKADCircleToLayer(worldX, worldY, worldZ, radius, lineWidth, color, kadId, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var targetGroup = getKADTargetGroup(layerId);
+	if (!targetGroup) return;
+
+	var circleMesh = GeometryFactory.createKADCircle(worldX, worldY, worldZ, radius, lineWidth, color);
+
+	if (kadId) {
+		circleMesh.userData = { type: "kadCircle", kadId: kadId, layerId: layerId };
+	}
+
+	targetGroup.add(circleMesh);
+}
+
+/**
+ * Step 6k) Set KAD layer visibility
+ */
+export function setKADLayerVisibility(layerId, visible) {
+	if (window.layerManager) {
+		window.layerManager.setKADLayerVisibility(layerId, visible);
+		if (window.threeRenderer) {
+			window.threeRenderer.requestRender();
+		}
+	}
+}
+
+/**
+ * Step 6l) Set KAD layer opacity
+ */
+export function setKADLayerOpacity(layerId, opacity) {
+	if (window.layerManager) {
+		window.layerManager.setKADLayerOpacity(layerId, opacity);
+		if (window.threeRenderer) {
+			window.threeRenderer.requestRender();
+		}
+	}
+}
+
+/**
+ * Step 6m) Remove KAD layer
+ */
+export function removeKADLayer(layerId) {
+	if (window.layerManager) {
+		window.layerManager.removeKADLayer(layerId);
+		if (window.threeRenderer) {
+			window.threeRenderer.requestRender();
+		}
+	}
+}
+
+/**
+ * Step 6n) Get all KAD layers
+ */
+export function getAllKADLayers() {
+	if (window.layerManager) {
+		return window.layerManager.getAllKADLayers();
+	}
+	return [];
+}
+
+//=================================================
+// Original KAD Drawing Functions (backward compatible)
+//=================================================
+
 // Step 7) Draw KAD point in Three.js
 export function drawKADPointThreeJS(worldX, worldY, worldZ, size, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
