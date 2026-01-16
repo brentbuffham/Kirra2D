@@ -1,10 +1,24 @@
 /* prettier-ignore-file */
 //=================================================
-// LayerManager.js - Central Layer Management for 3D Scene
+// LayerManager.js - 3D Scene Organization (NOT Data Storage)
 //=================================================
-// Manages layers for KAD entities and surfaces
-// Provides visibility control, opacity, and layer-based operations
-// Integrates with ThreeRenderer for efficient scene organization
+// IMPORTANT: This is for THREE.js scene organization ONLY
+// 
+// DATA STORAGE remains in existing Maps:
+//   - window.loadedSurfaces - Surface data (saved to IndexedDB via saveSurfaceToDB)
+//   - window.allKADDrawingsMap - KAD entity data (saved to IndexedDB via saveKADToDB)
+//   - window.loadedImages - Image data
+//
+// TREEVIEW reads from the existing Maps above, NOT from LayerManager
+//
+// LayerManager creates THREE.Group objects to organize 3D rendering:
+//   - Allows visibility toggling without re-rendering
+//   - Allows opacity control per layer
+//   - Groups objects for efficient scene traversal
+//
+// The layer-aware drawing functions are OPTIONAL enhancements.
+// Existing drawing functions continue to work as before.
+//=================================================
 
 import * as THREE from "three";
 
