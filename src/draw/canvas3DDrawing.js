@@ -7,6 +7,8 @@
 
 import * as THREE from "three";
 import { GeometryFactory } from "../three/GeometryFactory.js";
+import { LineBatcher } from "../three/LineBatcher.js";
+import { PointBatcher } from "../three/PointBatcher.js";
 
 // Note: These functions access global variables from kirra.js via window object:
 // - threeInitialized, threeRenderer, worldToThreeLocal
@@ -814,6 +816,321 @@ export function getAllKADLayers() {
 }
 
 //=================================================
+// Enhanced Super-Batching Functions
+// Uses LineBatcher and PointBatcher for maximum GPU efficiency
+//=================================================
+
+/**
+ * Step 6o) Create a LineBatcher for accumulating lines
+ * @returns {LineBatcher} New LineBatcher instance
+ */
+export function createLineBatcher() {
+	var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+	return new LineBatcher(resolution);
+}
+
+/**
+ * Step 6p) Create a PointBatcher for accumulating points
+ * @returns {PointBatcher} New PointBatcher instance
+ */
+export function createPointBatcher() {
+	return new PointBatcher();
+}
+
+/**
+ * Step 6q) Draw all KAD lines/polygons using optimized batching
+ * This function batches ALL line entities into minimal draw calls
+ * @param {Array} lineEntities - Array of line entity objects
+ * @param {Array} polygonEntities - Array of polygon entity objects
+ * @param {Function} worldToThreeLocal - Coordinate conversion function
+ * @param {string} layerId - Optional layer ID
+ * @returns {Object} Result with line mesh and stats
+ */
+export function drawKADLinesAndPolygonsBatched(lineEntities, polygonEntities, worldToThreeLocal, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return null;
+
+	// Step 6q.1) Create batcher
+	var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+	var batcher = new LineBatcher(resolution);
+
+	// Step 6q.2) Process line entities
+	var lineCount = 0;
+	if (lineEntities && lineEntities.length > 0) {
+		for (var i = 0; i < lineEntities.length; i++) {
+			var entity = lineEntities[i];
+			if (!entity.points || entity.points.length < 2) continue;
+
+			// Convert points to local coordinates
+			var points = [];
+			for (var j = 0; j < entity.points.length; j++) {
+				var p = entity.points[j];
+				var local = worldToThreeLocal(p.pointXLocation, p.pointYLocation);
+				points.push({
+					x: local.x,
+					y: local.y,
+					z: p.pointZLocation || 0
+				});
+			}
+
+			// Add to batcher with metadata for picking
+			var metadata = {
+				type: "kadLine",
+				entityName: entity.entityName,
+				kadId: entity.entityName + ":::" + (entity.elementIndex || i)
+			};
+
+			batcher.addPolyline(
+				points,
+				entity.color || "#ffffff",
+				entity.lineWidth || 1,
+				metadata,
+				false // not closed
+			);
+
+			lineCount++;
+		}
+	}
+
+	// Step 6q.3) Process polygon entities
+	var polygonCount = 0;
+	if (polygonEntities && polygonEntities.length > 0) {
+		for (var k = 0; k < polygonEntities.length; k++) {
+			var polyEntity = polygonEntities[k];
+			if (!polyEntity.points || polyEntity.points.length < 2) continue;
+
+			// Convert points to local coordinates
+			var polyPoints = [];
+			for (var m = 0; m < polyEntity.points.length; m++) {
+				var pp = polyEntity.points[m];
+				var polyLocal = worldToThreeLocal(pp.pointXLocation, pp.pointYLocation);
+				polyPoints.push({
+					x: polyLocal.x,
+					y: polyLocal.y,
+					z: pp.pointZLocation || 0
+				});
+			}
+
+			// Add to batcher with metadata
+			var polyMetadata = {
+				type: "kadPolygon",
+				entityName: polyEntity.entityName,
+				kadId: polyEntity.entityName + ":::" + (polyEntity.elementIndex || k)
+			};
+
+			batcher.addPolyline(
+				polyPoints,
+				polyEntity.color || "#ffffff",
+				polyEntity.lineWidth || 1,
+				polyMetadata,
+				polyEntity.closed || false
+			);
+
+			polygonCount++;
+		}
+	}
+
+	// Step 6q.4) Finalize and add to scene
+	var meshes = batcher.finalize();
+	var targetGroup = getKADTargetGroup(layerId);
+
+	if (targetGroup && meshes.length > 0) {
+		meshes.forEach(function(mesh) {
+			mesh.userData.layerId = layerId;
+			targetGroup.add(mesh);
+		});
+	}
+
+	// Step 6q.5) Update layer stats
+	if (layerId && window.layerManager) {
+		window.layerManager.updateKADLayerStats(layerId, {
+			lineCount: lineCount,
+			polygonCount: polygonCount
+		});
+	}
+
+	var stats = batcher.getStats();
+	console.log("drawKADLinesAndPolygonsBatched: Created " + meshes.length + " batches for " + stats.totalSegments + " segments");
+
+	return {
+		meshes: meshes,
+		stats: stats,
+		lineCount: lineCount,
+		polygonCount: polygonCount
+	};
+}
+
+/**
+ * Step 6r) Draw all KAD points using optimized batching
+ * This function batches ALL point entities into a single THREE.Points object
+ * @param {Array} pointEntities - Array of point entity objects
+ * @param {Function} worldToThreeLocal - Coordinate conversion function
+ * @param {string} layerId - Optional layer ID
+ * @param {Object} options - Options (size, sizeAttenuation)
+ * @returns {Object} Result with points object and stats
+ */
+export function drawKADPointsBatched(pointEntities, worldToThreeLocal, layerId, options) {
+	if (!window.threeInitialized || !window.threeRenderer) return null;
+	if (!pointEntities || pointEntities.length === 0) return null;
+
+	options = options || {};
+
+	// Step 6r.1) Create batcher
+	var batcher = new PointBatcher();
+
+	// Step 6r.2) Process point entities
+	for (var i = 0; i < pointEntities.length; i++) {
+		var entity = pointEntities[i];
+		if (!entity.points || entity.points.length === 0) continue;
+
+		for (var j = 0; j < entity.points.length; j++) {
+			var p = entity.points[j];
+			var local = worldToThreeLocal(p.pointXLocation, p.pointYLocation);
+
+			var metadata = {
+				type: "kadPoint",
+				entityName: entity.entityName,
+				pointIndex: j,
+				kadId: entity.entityName + ":::" + (entity.elementIndex || i) + ":::" + j
+			};
+
+			batcher.addPoint(
+				local.x,
+				local.y,
+				p.pointZLocation || 0,
+				p.color || entity.color || "#ffffff",
+				options.size || 5.0,
+				metadata
+			);
+		}
+	}
+
+	// Step 6r.3) Finalize
+	var points = batcher.finalize({
+		size: options.size || 5.0,
+		sizeAttenuation: options.sizeAttenuation !== false,
+		transparent: true,
+		opacity: options.opacity || 1.0
+	});
+
+	// Step 6r.4) Add to scene
+	var targetGroup = getKADTargetGroup(layerId);
+	if (targetGroup && points) {
+		if (points.isGroup) {
+			points.children.forEach(function(child) {
+				child.userData.layerId = layerId;
+			});
+		} else {
+			points.userData.layerId = layerId;
+		}
+		targetGroup.add(points);
+	}
+
+	// Step 6r.5) Update layer stats
+	var totalPoints = batcher.getTotalPointCount();
+	if (layerId && window.layerManager) {
+		window.layerManager.updateKADLayerStats(layerId, {
+			pointCount: totalPoints
+		});
+	}
+
+	console.log("drawKADPointsBatched: Created batched points with " + totalPoints + " points");
+
+	return {
+		points: points,
+		totalPoints: totalPoints
+	};
+}
+
+/**
+ * Step 6s) Draw all KAD circles using LineBatcher
+ * @param {Array} circleEntities - Array of circle entity objects
+ * @param {Function} worldToThreeLocal - Coordinate conversion function
+ * @param {string} layerId - Optional layer ID
+ * @returns {Object} Result with mesh and stats
+ */
+export function drawKADCirclesBatched(circleEntities, worldToThreeLocal, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return null;
+	if (!circleEntities || circleEntities.length === 0) return null;
+
+	// Step 6s.1) Create batcher
+	var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
+	var batcher = new LineBatcher(resolution);
+
+	// Step 6s.2) Process circle entities
+	var circleCount = 0;
+	for (var i = 0; i < circleEntities.length; i++) {
+		var entity = circleEntities[i];
+
+		var centerX, centerY, centerZ, radius;
+
+		// Handle different circle data formats
+		if (entity.points && entity.points.length > 0) {
+			var center = entity.points[0];
+			var local = worldToThreeLocal(center.pointXLocation, center.pointYLocation);
+			centerX = local.x;
+			centerY = local.y;
+			centerZ = center.pointZLocation || 0;
+			radius = entity.radius || center.radius || 1;
+		} else if (entity.centerX !== undefined) {
+			var localCenter = worldToThreeLocal(entity.centerX, entity.centerY);
+			centerX = localCenter.x;
+			centerY = localCenter.y;
+			centerZ = entity.centerZ || 0;
+			radius = entity.radius || 1;
+		} else {
+			continue;
+		}
+
+		var metadata = {
+			type: "kadCircle",
+			entityName: entity.entityName,
+			kadId: entity.entityName + ":::" + (entity.elementIndex || i)
+		};
+
+		batcher.addCircle(
+			centerX,
+			centerY,
+			centerZ,
+			radius,
+			entity.color || "#ffffff",
+			entity.lineWidth || 1,
+			metadata,
+			32 // segments
+		);
+
+		circleCount++;
+	}
+
+	// Step 6s.3) Finalize and add to scene
+	var meshes = batcher.finalize();
+	var targetGroup = getKADTargetGroup(layerId);
+
+	if (targetGroup && meshes.length > 0) {
+		meshes.forEach(function(mesh) {
+			mesh.userData.layerId = layerId;
+			mesh.userData.type = "kadCircle";
+			targetGroup.add(mesh);
+		});
+	}
+
+	// Step 6s.4) Update layer stats
+	if (layerId && window.layerManager) {
+		window.layerManager.updateKADLayerStats(layerId, {
+			circleCount: circleCount
+		});
+	}
+
+	var stats = batcher.getStats();
+	console.log("drawKADCirclesBatched: Created " + meshes.length + " batches for " + circleCount + " circles");
+
+	return {
+		meshes: meshes,
+		stats: stats,
+		circleCount: circleCount
+	};
+}
+
+//=================================================
 // Original KAD Drawing Functions (backward compatible)
 //=================================================
 
@@ -998,6 +1315,120 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
 
 //=================================================
 // Surface & Other 3D Drawing
+//=================================================
+
+//=================================================
+// Layer-Aware Surface Drawing Functions
+//=================================================
+
+/**
+ * Step 11a) Get or create surface layer
+ * @param {string} layerId - Layer identifier (typically surface filename)
+ * @param {string} layerName - Display name for the layer
+ * @param {Object} options - Surface options (gradient, opacity, limits)
+ * @returns {Object} Layer object
+ */
+export function getOrCreateSurfaceLayer(layerId, layerName, options) {
+	if (!window.layerManager) {
+		return {
+			id: layerId,
+			name: layerName || layerId,
+			threeObject: null
+		};
+	}
+	return window.layerManager.getOrCreateSurfaceLayer(layerId, layerName || layerId, options);
+}
+
+/**
+ * Step 11b) Set surface layer visibility
+ * @param {string} layerId - Layer ID
+ * @param {boolean} visible - Visibility state
+ */
+export function setSurfaceLayerVisibility(layerId, visible) {
+	if (window.layerManager) {
+		window.layerManager.setSurfaceLayerVisibility(layerId, visible);
+		if (window.threeRenderer) {
+			window.threeRenderer.requestRender();
+		}
+	}
+}
+
+/**
+ * Step 11c) Set surface layer opacity
+ * @param {string} layerId - Layer ID
+ * @param {number} opacity - Opacity (0.0 to 1.0)
+ */
+export function setSurfaceLayerOpacity(layerId, opacity) {
+	if (window.layerManager) {
+		window.layerManager.setSurfaceLayerOpacity(layerId, opacity);
+		if (window.threeRenderer) {
+			window.threeRenderer.requestRender();
+		}
+	}
+}
+
+/**
+ * Step 11d) Remove surface layer
+ * @param {string} layerId - Layer ID
+ */
+export function removeSurfaceLayer(layerId) {
+	if (window.layerManager) {
+		window.layerManager.removeSurfaceLayer(layerId);
+		if (window.threeRenderer) {
+			window.threeRenderer.requestRender();
+		}
+	}
+}
+
+/**
+ * Step 11e) Get all surface layers
+ * @returns {Array} Array of surface layers
+ */
+export function getAllSurfaceLayers() {
+	if (window.layerManager) {
+		return window.layerManager.getAllSurfaceLayers();
+	}
+	return [];
+}
+
+/**
+ * Step 11f) Draw surface with layer support
+ * This function draws surface to a specific layer managed by LayerManager
+ */
+export function drawSurfaceToLayer(surfaceId, triangles, minZ, maxZ, gradient, transparency, surfaceData, layerId) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	// Step 11f.1) Create or get the layer
+	var layer = null;
+	if (layerId && window.layerManager) {
+		layer = window.layerManager.getOrCreateSurfaceLayer(layerId, surfaceData ? surfaceData.name : layerId, {
+			gradient: gradient,
+			opacity: transparency,
+			minLimit: surfaceData ? surfaceData.minLimit : null,
+			maxLimit: surfaceData ? surfaceData.maxLimit : null
+		});
+	}
+
+	// Step 11f.2) Call the standard drawSurfaceThreeJS
+	drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, transparency, surfaceData);
+
+	// Step 11f.3) If layer exists, update the layer's threeObject reference
+	if (layer && window.layerManager && window.threeRenderer.surfaceMeshMap) {
+		var surfaceMesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
+		if (surfaceMesh) {
+			window.layerManager.setSurfaceLayerObject(layerId, surfaceMesh);
+
+			// Update layer stats
+			window.layerManager.updateSurfaceLayerStats(layerId, {
+				triangleCount: triangles ? triangles.length : 0,
+				bounds: surfaceData ? surfaceData.meshBounds : null
+			});
+		}
+	}
+}
+
+//=================================================
+// Original Surface Drawing Functions
 //=================================================
 
 // Step 12) Draw surface in Three.js

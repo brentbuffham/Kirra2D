@@ -1159,9 +1159,14 @@ export class ThreeRenderer {
 	 */
 	startRenderLoop() {
 		const animate = () => {
-			// Update arcball controls if active
+			// Step 1) Update arcball controls if active
 			if (window.cameraControls && window.cameraControls.controlMode === "arcball") {
 				window.cameraControls.update();
+			}
+
+			// Step 2) Update LOD Manager if available (auto-adjusts detail based on zoom)
+			if (window.lodManager && window.lodManager.enabled) {
+				window.lodManager.update();
 			}
 
 			this.animationFrameId = requestAnimationFrame(animate);

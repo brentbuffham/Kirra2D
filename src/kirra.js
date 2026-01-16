@@ -99,6 +99,19 @@ import {
 	setKADLayerOpacity,
 	removeKADLayer,
 	getAllKADLayers,
+	// Layer-aware surface drawing functions
+	getOrCreateSurfaceLayer,
+	setSurfaceLayerVisibility,
+	setSurfaceLayerOpacity,
+	removeSurfaceLayer,
+	getAllSurfaceLayers,
+	drawSurfaceToLayer,
+	// Enhanced batching functions for performance
+	createLineBatcher,
+	createPointBatcher,
+	drawKADLinesAndPolygonsBatched,
+	drawKADPointsBatched,
+	drawKADCirclesBatched,
 } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
