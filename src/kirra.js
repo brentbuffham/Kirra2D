@@ -8719,9 +8719,21 @@ document.querySelectorAll(".kml-input-btn").forEach(function (button) {
 						} else if (result.dataType === "geometry") {
 							// Step 8) Import geometry (KAD entities)
 							if (result.kadEntities && result.kadEntities.size > 0) {
-								// Add entities to allKADDrawingsMap
+								// Add entities to allKADDrawingsMap with unique name handling
 								for (var [entityName, entityData] of result.kadEntities.entries()) {
-									window.allKADDrawingsMap.set(entityName, entityData);
+									// Step 8a) Check for duplicate name and generate unique if needed
+									var uniqueName = getUniqueEntityName(entityName, entityData.entityType);
+									if (uniqueName !== entityName) {
+										// Update entity's internal name to match unique name
+										entityData.entityName = uniqueName;
+										// Update all data points to have the correct entity name
+										if (entityData.data && Array.isArray(entityData.data)) {
+											entityData.data.forEach(function(point) {
+												point.entityName = uniqueName;
+											});
+										}
+									}
+									window.allKADDrawingsMap.set(uniqueName, entityData);
 								}
 
 								// Step 9) Update UI and redraw
@@ -9159,8 +9171,12 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 											}
 
 											// Step 13) Create KAD entity based on format type
-											var entityName = result.entityName || file.name.replace(/\.[^/.]+$/, "");
+											var baseEntityName = result.entityName || file.name.replace(/\.[^/.]+$/, "");
 											var kadEntity = null;
+											var entityType = format === "socket" ? "point" : "poly";
+											
+											// Step 13a) Generate unique name with 4-char UID if duplicate
+											var entityName = getUniqueEntityName(baseEntityName, entityType);
 
 											if (format === "socket") {
 												// Step 14) Sockets = individual points (not connected)
@@ -11881,25 +11897,51 @@ async function handleDXFUpload(event) {
 	reader.readAsText(file);
 	debouncedUpdateTreeView(); // Use debounced version
 }
-// Add this helper function to generate unique entity names
+// Step 1) Generate a 4-character UID using alphanumeric characters
+function generate4CharUID() {
+	var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
+	var uid = "";
+	for (var i = 0; i < 4; i++) {
+		uid += chars.charAt(Math.floor(Math.random() * chars.length));
+	}
+	return uid;
+}
+
+// Step 2) Helper function to generate unique entity names with 4-char UID suffix
 function getUniqueEntityName(baseName, entityType) {
 	// If baseName doesn't exist in the map, use it as-is
 	if (!allKADDrawingsMap.has(baseName)) {
 		return baseName;
 	}
 
-	// Otherwise, increment until we find a unique name
-	let counter = 1;
-	let uniqueName = baseName + "_" + counter;
+	// Step 3) Generate unique name with 4-character UID suffix
+	var uniqueName = baseName + "_" + generate4CharUID();
+	
+	// Step 4) Ensure uniqueness (rare collision protection)
+	var maxAttempts = 100;
+	var attempts = 0;
+	while (allKADDrawingsMap.has(uniqueName) && attempts < maxAttempts) {
+		uniqueName = baseName + "_" + generate4CharUID();
+		attempts++;
+	}
 
-	while (allKADDrawingsMap.has(uniqueName)) {
-		counter++;
+	// Step 5) Fallback to counter if UID collision persists (extremely rare)
+	if (allKADDrawingsMap.has(uniqueName)) {
+		var counter = 1;
 		uniqueName = baseName + "_" + counter;
+		while (allKADDrawingsMap.has(uniqueName)) {
+			counter++;
+			uniqueName = baseName + "_" + counter;
+		}
 	}
 
 	console.log("⚠️ Entity name collision avoided: '" + baseName + "' → '" + uniqueName + "'");
 	return uniqueName;
 }
+
+// Step 6) Expose generate4CharUID globally for use in other modules
+window.generate4CharUID = generate4CharUID;
+window.getUniqueEntityName = getUniqueEntityName;
 
 //=============================================================
 // VERBOSE REMOVAL COMMENT - parseDXFtoKadMaps function extracted

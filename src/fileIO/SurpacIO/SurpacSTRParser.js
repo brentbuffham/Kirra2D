@@ -164,8 +164,13 @@ class SurpacSTRParser extends BaseParser {
 		};
 	}
 
-	// Generate 4-character UID
+	// Step 7a) Generate 4-character UID - uses global function if available
 	generateUID() {
+		// Use global function if available for consistency across codebase
+		if (typeof window !== "undefined" && typeof window.generate4CharUID === "function") {
+			return window.generate4CharUID();
+		}
+		// Fallback to local implementation
 		var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
 		var uid = "";
 		for (var i = 0; i < 4; i++) {
