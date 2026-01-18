@@ -1583,31 +1583,40 @@ export class GeometryFactory {
 	}
 
 	// Step 12b) Create KAD text using troika-three-text (crisp SDF rendering)
+	// FIX: Text should use FIXED PIXEL SIZE on screen, matching 2D canvas behavior
+	// 2D canvas draws text at fixed pixel size regardless of zoom - 3D should match this
 	static createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, anchorX = "center") {
-		// Step 1) Create cache key (scale-independent - use pixel fontSize)
-		const currentScale = window.currentScale || 5;
-		const fontSizeWorldUnits = fontSize / currentScale;
-		const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," + String(text) + "," + fontSize + "," + color + "," + anchorX; // Include anchor in cache key
+		// Step 1) Calculate world units that give consistent PIXEL size on screen
+		// With orthographic camera: screenPixels = worldUnits * camera.zoom
+		// So: worldUnits = screenPixels / camera.zoom
+		// This makes text appear the SAME SIZE on screen regardless of zoom or data extent
+		const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+		const fontSizeWorldUnits = fontSize / cameraZoom;
+		
+		// Step 1a) Create cache key WITHOUT zoom - zoom changes just update fontSize
+		// This prevents memory bloat from creating new cache entries on every zoom
+		const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," + String(text) + "," + fontSize + "," + color + "," + anchorX;
 
-		// Step 1a) Return cached text if it exists
+		// Step 1b) Return cached text if it exists
 		if (textCache.has(cacheKey)) {
 			const cachedText = textCache.get(cacheKey);
 
-			// Step 1a.1) Ensure cached text has multi-channel SDF settings
-		if (cachedText.sdfGlyphSize !== 128) {
-			cachedText.sdfGlyphSize = 128;
-			cachedText.glyphSize = 256;
-			cachedText.glyphResolution = 1;
-		}
+			// Step 1b.1) Ensure cached text has multi-channel SDF settings
+			if (cachedText.sdfGlyphSize !== 128) {
+				cachedText.sdfGlyphSize = 128;
+				cachedText.glyphSize = 256;
+				cachedText.glyphResolution = 1;
+			}
 
-		// Step 1a.2) Update fontSize if scale changed
-		const newFontSizeWorldUnits = fontSize / currentScale;
-		if (Math.abs(cachedText.fontSize - newFontSizeWorldUnits) > 0.001) {
-			cachedText.fontSize = newFontSizeWorldUnits;
-			cachedText.sync(); // Update geometry
-		}
+			// Step 1b.2) ALWAYS update fontSize based on current camera zoom
+			// This ensures text maintains fixed screen pixel size as zoom changes
+			const newFontSizeWorldUnits = fontSize / cameraZoom;
+			if (Math.abs(cachedText.fontSize - newFontSizeWorldUnits) > 0.001) {
+				cachedText.fontSize = newFontSizeWorldUnits;
+				cachedText.sync(); // Update geometry
+			}
 
-			// Step 1a.2) Update position (might have changed)
+			// Step 1b.3) Update position (might have changed)
 			cachedText.position.set(worldX, worldY, worldZ);
 
 			return cachedText;
@@ -1623,13 +1632,13 @@ export class GeometryFactory {
 		textMesh.glyphSize = 256;     // Texture size for glyph rendering (default: 256)
 		textMesh.glyphResolution = 1; // Glyph detail level (1=normal, higher=more detail)
 
-		// Step 3) Convert pixel-based fontSize to world units based on camera scale
-		// fontSize is in pixels (e.g. 6px, 12px)
-		// Need to convert to world units using current camera frustum
+		// Step 3) Convert pixel-based fontSize to world units based on camera zoom
+		// This ensures text appears at consistent PIXEL SIZE on screen (like 2D canvas)
+		// fontSize is in pixels (e.g. 6px, 12px) - divide by camera zoom to get world units
 
 		// Step 3a) Set text content and properties
 		textMesh.text = String(text);
-		textMesh.fontSize = fontSizeWorldUnits; // Properly scaled to world units
+		textMesh.fontSize = fontSizeWorldUnits; // Scaled to give consistent screen pixels
 		textMesh.color = color;
 		textMesh.anchorX = anchorX; // Left, center, or right alignment
 		textMesh.anchorY = "middle"; // Center vertically
@@ -2482,8 +2491,28 @@ export class GeometryFactory {
 			group.add(arrowMesh);
 		}
 
-		// Step 20.5i) Delay text moved to HUD overlay (see StatusPanel)
-		// No longer rendered in 3D scene to reduce visual clutter
+		// Step 20.5i) Add delay text if provided
+		// Previously moved to HUD, but restored for 3D consistency with 2D view
+		if (delayText !== null && delayText !== undefined) {
+			// Step 20.5i.1) Calculate midpoint of connector for text placement
+			const midX = (fromX + toX) / 2;
+			const midY = (fromY + toY) / 2;
+			const midZ = Math.max(fromZ, toZ) + 0.5; // Slightly above connector
+			
+			// Step 20.5i.2) Create delay text using Troika
+			const delayString = String(delayText);
+			const textColor = "#FFFFFF"; // White text for visibility
+			
+			// Step 20.5i.3) Get camera zoom for fixed screen-space text size
+			const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+			const fontSize = 10 / cameraZoom; // 10 pixels on screen
+			
+			const textMesh = this.createKADText(midX, midY, midZ, delayString, fontSize * cameraZoom, textColor, null, "center");
+			if (textMesh) {
+				textMesh.userData = { type: "connectorDelayText" };
+				group.add(textMesh);
+			}
+		}
 
 		return group;
 	}

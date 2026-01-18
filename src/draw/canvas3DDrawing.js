@@ -1377,27 +1377,23 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	});
 
 	// Step 19.5c) Create mouse position indicator sphere
-	// Size matches snap tolerance slider - fixed pixel size on screen
+	// FIX: Size should be FIXED PIXEL SIZE on screen, matching 2D canvas behavior
+	// 2D canvas draws snap circle at fixed pixel radius - 3D should match this
 	const snapRadiusPixels = window.snapRadiusPixels !== undefined ? window.snapRadiusPixels : 15; // Default 15px
 
-	// Convert snap radius pixels to world units at cursor position
-	// This ensures the sphere appears as a constant screen-space size
-	let snapRadiusWorld;
-	if (typeof window.getSnapRadiusInWorldUnits3D === "function") {
-		snapRadiusWorld = window.getSnapRadiusInWorldUnits3D(snapRadiusPixels);
-	} else {
-		// Fallback to 2D calculation if function not available
-		snapRadiusWorld = snapRadiusPixels / (window.currentScale || 1.0);
-	}
+	// Step 19.5c.1) Calculate world units that give consistent PIXEL size on screen
+	// With orthographic camera: screenPixels = worldUnits * camera.zoom
+	// So: worldUnits = screenPixels / camera.zoom
+	// This makes cursor appear the SAME SIZE on screen regardless of zoom
+	const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+	const snapRadiusWorld = snapRadiusPixels / cameraZoom;
 
-	// CRITICAL: Ensure sphere is always visible with minimum size
-	// User reports sphere not visible even with previous attempts
-	// Use direct pixel-to-world conversion with enforced minimum of 1.0m radius
-	const indicatorSize = Math.max(snapRadiusWorld, 1.0);
+	// Step 19.5c.2) Use calculated world size (no minimum clamp - let it scale properly)
+	const indicatorSize = snapRadiusWorld;
 
 	// DEBUG: Log indicator size with more detail
 	if (window.developerModeEnabled) {
-		console.log("📍 Indicator size: snapRadiusPixels=" + snapRadiusPixels + "px, snapRadiusWorld=" + snapRadiusWorld.toFixed(4) + "m, indicatorSize=" + indicatorSize.toFixed(2) + "m");
+		console.log("📍 Indicator size: snapRadiusPixels=" + snapRadiusPixels + "px, cameraZoom=" + cameraZoom.toFixed(4) + ", indicatorSize=" + indicatorSize.toFixed(2) + "m");
 		console.log("📍 Camera distance check - threeRenderer.camera.position.z:", window.threeRenderer ? window.threeRenderer.camera.position.z.toFixed(2) : "N/A");
 	}
 	const indicatorGroup = GeometryFactory.createMousePositionIndicator(
@@ -1881,13 +1877,9 @@ export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlast
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!clippedCells || clippedCells.length === 0) return;
 
-	// Check if voronoi cells already exist to prevent duplicates
-	var hasExistingVoronoi = window.threeRenderer.surfacesGroup.children.some(function(child) {
-		return child.userData && child.userData.type === "voronoiCells";
-	});
-	if (hasExistingVoronoi) {
-		return; // CRITICAL: Prevent duplicate voronoi cells
-	}
+	// Step 22.0) Clear existing Voronoi cells first to prevent accumulation
+	clearVoronoiCellsThreeJS();
+
 
 	// Step 22a) Default extrusionHeight if not provided
 	if (extrusionHeight === undefined || extrusionHeight === null) {
@@ -1904,6 +1896,46 @@ export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlast
 	};
 
 	window.threeRenderer.surfacesGroup.add(voronoiGroup);
+}
+
+// Step 22.1) Clear Voronoi cells from 3D scene
+// Call when toggling Voronoi display OFF or before creating new cells
+export function clearVoronoiCellsThreeJS() {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	
+	var surfacesGroup = window.threeRenderer.surfacesGroup;
+	if (!surfacesGroup) return;
+	
+	// Step 22.1a) Find and remove all Voronoi cell groups
+	var toRemove = [];
+	surfacesGroup.children.forEach(function(child) {
+		if (child.userData && child.userData.type === "voronoiCells") {
+			toRemove.push(child);
+		}
+	});
+	
+	// Step 22.1b) Dispose geometry, materials, and textures to prevent memory leaks
+	toRemove.forEach(function(voronoiGroup) {
+		voronoiGroup.traverse(function(object) {
+			if (object.geometry) {
+				object.geometry.dispose();
+			}
+			if (object.material) {
+				// Step 22.1c) Dispose textures before disposing material
+				if (object.material.map) object.material.map.dispose();
+				if (Array.isArray(object.material)) {
+					object.material.forEach(function(mat) { mat.dispose(); });
+				} else {
+					object.material.dispose();
+				}
+			}
+		});
+		surfacesGroup.remove(voronoiGroup);
+	});
+	
+	if (toRemove.length > 0) {
+		console.log("🗑️ Cleared " + toRemove.length + " Voronoi cell group(s) from 3D scene");
+	}
 }
 
 //=================================================

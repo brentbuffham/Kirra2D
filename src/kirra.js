@@ -101,6 +101,7 @@ import {
 	drawSlopeMapThreeJS,
 	drawBurdenReliefMapThreeJS,
 	drawVoronoiCellsThreeJS,
+	clearVoronoiCellsThreeJS,
 	drawKADLeadingLineThreeJS,
 	clearKADLeadingLineThreeJS,
 	drawRulerThreeJS,
@@ -1828,7 +1829,9 @@ function handle3DClick(event) {
 				// Step 12i.1h) Update time chart
 				timeChart();
 
-				// Step 12i.1i) Draw - only yellow highlight visible now
+				// Step 12i.1i) Trigger 3D rebuild to show new connector
+				window.threeDataNeedsRebuild = true;
+				// Step 12i.1j) Draw - only yellow highlight visible now
 				drawData(allBlastHoles, selectedHole);
 			}
 		} else if (isAddingMultiConnector) {
@@ -1889,7 +1892,9 @@ function handle3DClick(event) {
 				// Step 12i.2g) Update time chart
 				timeChart();
 
-				// Step 12i.2h) Draw - only yellow highlight visible now
+				// Step 12i.2h) Trigger 3D rebuild to show new connectors
+				window.threeDataNeedsRebuild = true;
+				// Step 12i.2i) Draw - only yellow highlight visible now
 				drawData(allBlastHoles, selectedHole);
 			}
 		} else if (isMultiHoleSelectionEnabled) {
@@ -4295,6 +4300,7 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("touchstart", handleKADLineClick);
 		isDrawingLine = false;
 		createNewEntity = true;
+		lastKADDrawPoint = null; // Step #) Clear last draw point to prevent stale leading lines
 	}
 
 	// Remove polygon drawing listeners
@@ -4303,6 +4309,7 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("touchstart", handleKADPolyClick);
 		isDrawingPoly = false;
 		createNewEntity = true;
+		lastKADDrawPoint = null; // Step #) Clear last draw point to prevent stale leading lines
 	}
 
 	// Remove point drawing listeners
@@ -4311,6 +4318,7 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("touchstart", handleKADPointClick);
 		isDrawingPoint = false;
 		createNewEntity = true;
+		lastKADDrawPoint = null; // Step #) Clear last draw point to prevent stale leading lines
 	}
 
 	// Remove text drawing listeners
@@ -4319,6 +4327,7 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("touchstart", handleKADTextClick);
 		isDrawingText = false;
 		createNewEntity = true;
+		lastKADDrawPoint = null; // Step #) Clear last draw point to prevent stale leading lines
 	}
 
 	// Remove circle drawing listeners
@@ -4327,6 +4336,7 @@ function removeEventListenersExcluding(excluding = []) {
 		canvas.removeEventListener("touchstart", handleKADCircleClick);
 		isDrawingCircle = false;
 		createNewEntity = true;
+		lastKADDrawPoint = null; // Step #) Clear last draw point to prevent stale leading lines
 	}
 
 	// Remove ruler tool listeners
@@ -4938,7 +4948,23 @@ const allToggles = [displayHoleId, displayHoleLength, displayHoleDiameter, displ
 
 allToggles.forEach((opt) => {
 	if (opt)
-		opt.addEventListener("change", () => {
+		opt.addEventListener("change", function() {
+			// Step #) When toggling OFF, clear relevant 3D geometry groups to ensure they're removed
+			if (!this.checked && window.threeRenderer) {
+				// Step #) Map display toggles to their 3D groups
+				if (this === displayConnectors) {
+					window.threeRenderer.clearGroup("connectors");
+				} else if (this === displayContours || this === displayRelief || this === displayFirstMovements) {
+					window.threeRenderer.clearGroup("contours");
+				} else if (this === displayVoronoiCells) {
+					// Step #) Clear Voronoi cells specifically (they're in surfaces group)
+					if (typeof clearVoronoiCellsThreeJS === "function") {
+						clearVoronoiCellsThreeJS();
+					}
+				}
+			}
+			// Step #) Force 3D rebuild on any display toggle change
+			window.threeDataNeedsRebuild = true;
 			// assuming drawData is your main render function
 			drawData(allBlastHoles, selectedHole);
 		});
@@ -8160,6 +8186,8 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									}
 
 									// Update display
+									// Step #) Trigger 3D rebuild to show imported Surpac surface data
+									window.threeDataNeedsRebuild = true;
 									drawData();
 
 									// Update tree view if available
@@ -8378,6 +8406,8 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 									data.surfaces.reduce(function (sum, s) { return sum + s.triangles.length; }, 0) + " triangles from DTM");
 
 								// Draw the imported data
+								// Step #) Trigger 3D rebuild to show imported DTM surface data
+								window.threeDataNeedsRebuild = true;
 								drawData(allBlastHoles, selectedHole);
 
 								// Update tree view if available
@@ -8451,6 +8481,8 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 
 								// Update UI elements (same as DXF import)
 								updateCentroids();
+								// Step #) Trigger 3D rebuild to show imported STR KAD data
+								window.threeDataNeedsRebuild = true;
 								drawData(allBlastHoles, selectedHole);
 								debouncedSaveKAD();
 								zoomToFitAll();
@@ -10469,6 +10501,8 @@ document.querySelectorAll(".las-input-btn").forEach(function (button) {
 							}
 
 							// Step 9) Update UI and redraw
+							// Step #) Trigger 3D rebuild to show imported LAS point cloud
+							window.threeDataNeedsRebuild = true;
 							window.drawData(window.allBlastHoles, window.selectedHole);
 
 							// Step 10) Save layers
@@ -10734,6 +10768,8 @@ document.querySelectorAll(".shape-input-btn").forEach(function (button) {
 							}
 
 							// Step 12) Update UI and redraw
+							// Step #) Trigger 3D rebuild to show imported Shapefile data
+							window.threeDataNeedsRebuild = true;
 							window.drawData(window.allBlastHoles, window.selectedHole);
 
 							// Step 13) Save layers
@@ -11097,7 +11133,14 @@ document.addEventListener("DOMContentLoaded", function () {
 	fontSlider.addEventListener("input", function () {
 		currentFontSize = this.value;
 		currentFontSize = document.getElementById("fontSlider").value;
+		window.currentFontSize = currentFontSize; // Step #) Update global for 3D text rendering
 		fontLabel.textContent = "Font Size : " + currentFontSize + "px";
+		// Step #) Clear text cache when font size changes so new text is created with new size
+		if (window.threeRenderer && typeof window.threeRenderer.clearTextCacheOnDataChange === "function") {
+			window.threeRenderer.clearTextCacheOnDataChange();
+		}
+		// Step #) Trigger 3D rebuild to update text with new font size
+		window.threeDataNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
 	});
 
@@ -11854,6 +11897,8 @@ async function handleFileUpload(event) {
 			if (window.threeRenderer && typeof window.threeRenderer.clearTextCacheOnDataChange === "function") {
 				window.threeRenderer.clearTextCacheOnDataChange();
 			}
+			// Step #) Trigger 3D rebuild to show imported KAD data
+			window.threeDataNeedsRebuild = true;
 			drawData(allBlastHoles, selectedHole);
 		} else if (file.name.endsWith(".csv") || file.name.endsWith(".CSV")) {
 			try {
@@ -11893,6 +11938,8 @@ async function handleFileUpload(event) {
 				if (window.threeRenderer && typeof window.threeRenderer.clearTextCacheOnDataChange === "function") {
 					window.threeRenderer.clearTextCacheOnDataChange();
 				}
+				// Step #) Trigger 3D rebuild to show imported CSV data
+				window.threeDataNeedsRebuild = true;
 				drawData(allBlastHoles, selectedHole);
 				countAllBlastHoles = allBlastHoles.length;
 			} catch (error) {
@@ -12695,6 +12742,8 @@ async function parseDXFtoKadMaps(dxf, fileName) {
 
 		// Step 5) Update UI elements
 		updateCentroids();
+		// Step #) Trigger 3D rebuild to show imported DXF data
+		window.threeDataNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
 		debouncedSaveKAD();
 		// Step 15g) Save layers after import
@@ -13344,6 +13393,8 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 
 					// Step 17) Update UI
 					updateCentroids();
+					// Step #) Trigger 3D rebuild to show imported textured OBJ surface
+					window.threeDataNeedsRebuild = true;
 					drawData(allBlastHoles, selectedHole);
 					debouncedUpdateTreeView();
 					// Step 24b) Save layers
@@ -13437,6 +13488,8 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 
 				// Step 25) Update UI
 				updateCentroids();
+				// Step #) Trigger 3D rebuild to show imported OBJ surface
+				window.threeDataNeedsRebuild = true;
 				drawData(allBlastHoles, selectedHole);
 				debouncedUpdateTreeView();
 				// Step 25b) Save layers
@@ -24443,6 +24496,8 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 	isAddingPattern = false;
 	addPatternSwitch.checked = false;
 	resetZoom();
+	// Step #) Trigger 3D rebuild to show newly generated pattern
+	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 
 	if (typeof debouncedUpdateTreeView === "function") {
@@ -27872,14 +27927,30 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 				});
 				childrenToRemove.forEach(function (child) {
-					// Dispose geometry and material to prevent memory leaks
+					// Step #) Dispose geometry, material, and TEXTURES to prevent memory leaks
 					if (child.traverse) {
 						child.traverse(function (obj) {
 							if (obj.geometry) obj.geometry.dispose();
 							if (obj.material) {
 								if (Array.isArray(obj.material)) {
-									obj.material.forEach(function (m) { m.dispose(); });
+									obj.material.forEach(function (m) {
+										// Step #) Dispose textures before disposing material
+										if (m.map) m.map.dispose();
+										if (m.lightMap) m.lightMap.dispose();
+										if (m.bumpMap) m.bumpMap.dispose();
+										if (m.normalMap) m.normalMap.dispose();
+										if (m.specularMap) m.specularMap.dispose();
+										if (m.envMap) m.envMap.dispose();
+										m.dispose();
+									});
 								} else {
+									// Step #) Dispose textures before disposing material
+									if (obj.material.map) obj.material.map.dispose();
+									if (obj.material.lightMap) obj.material.lightMap.dispose();
+									if (obj.material.bumpMap) obj.material.bumpMap.dispose();
+									if (obj.material.normalMap) obj.material.normalMap.dispose();
+									if (obj.material.specularMap) obj.material.specularMap.dispose();
+									if (obj.material.envMap) obj.material.envMap.dispose();
 									obj.material.dispose();
 								}
 							}
@@ -32977,6 +33048,8 @@ function handleMoveToolMouseUp(event) {
 			// Step 7f) Call drawData with null to prevent highlight recreation (like Escape key does)
 			// This ensures no other code recreates highlights after we remove them
 			if (typeof drawData === "function") {
+				// Step #) Trigger 3D rebuild to reflect moved hole positions
+				window.threeDataNeedsRebuild = true;
 				drawData(allBlastHoles, null);
 			}
 
@@ -33026,6 +33099,8 @@ function handleMoveToolMouseUp(event) {
 		selectedMultipleHoles = [];
 		moveToolSelectedHole = null;
 		dragInitialPositions = null; // CRITICAL: Clear to prevent wrong hole moving next time
+		// Step #) Trigger 3D rebuild to reflect moved hole positions
+		window.threeDataNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
 	}
 }
@@ -39404,6 +39479,8 @@ function generatePatternInPolygon(patternSettings) {
 	}
 
 	// Update display
+	// Step #) Trigger 3D rebuild to show newly generated pattern in polygon
+	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 	if (!window.holeGenerationCancelled) {
 		debouncedSaveHoles(); // Auto-save holes to IndexedDB (only if not cancelled, since we already saved above)
@@ -39540,6 +39617,8 @@ function generateHolesAlongLine(params) {
 
 	// Redraw
 	debouncedUpdateTreeView(); // Use debounced version
+	// Step #) Trigger 3D rebuild to show newly generated holes along line
+	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 
 	// Recalculate holesAdded AFTER potential removal
@@ -41250,6 +41329,8 @@ function generateHolesAlongPolyline(params, vertices) {
 	}
 
 	// Redraw
+	// Step #) Trigger 3D rebuild to show newly generated holes along polyline
+	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 
 	// Recalculate holesAdded AFTER potential removal
