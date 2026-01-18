@@ -300,7 +300,7 @@ export function editBlastNamePopup(selectedHole) {
 		window.selectedMultipleHoles = [];
 		window.selectedKADObject = null;
 		window.selectedMultipleKADObjects = [];
-		window.drawData(window.allBlastHoles, window.selectedHole);
+		if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		window.debouncedUpdateTreeView();
 		resolve({ isConfirmed: false });
 	},
@@ -364,7 +364,7 @@ export function editHoleTypePopup() {
 					window.clickedHole = window.allBlastHoles[index];
 					window.clickedHole.holeType = typeValue;
 
-					window.drawData(window.allBlastHoles, window.selectedHole);
+					if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 					window.debouncedUpdateTreeView();
 					
 					// Step 56a) Save changes to IndexedDB
@@ -381,7 +381,7 @@ export function editHoleTypePopup() {
 			window.selectedMultipleHoles = [];
 			window.selectedKADObject = null;
 			window.selectedMultipleKADObjects = [];
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			window.debouncedUpdateTreeView();
 		},
 	});
@@ -486,7 +486,7 @@ export function editHoleLengthPopup() {
 						window.holeLengthLabel.textContent = "Hole Length : " + lengthValue.toFixed(1) + "m";
 					}
 
-				window.drawData(window.allBlastHoles, window.selectedHole);
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 
 				// Step 71a) Save changes to IndexedDB
 				if (typeof window.debouncedUpdateTreeView === "function") {
@@ -505,7 +505,7 @@ export function editHoleLengthPopup() {
 			window.selectedMultipleHoles = [];
 			window.selectedKADObject = null;
 			window.selectedMultipleKADObjects = [];
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			window.debouncedUpdateTreeView();
 		},
 	});
@@ -573,7 +573,7 @@ export function measuredLengthPopup() {
 
 				console.log("The Hole " + window.clickedHole.holeID + " Length is : " + window.clickedHole.measuredLength + " @ " + window.clickedHole.measuredLengthTimeStamp);
 
-				window.drawData(window.allBlastHoles, window.selectedHole);
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 				
 				// Step 80a) Save changes to IndexedDB
 				if (typeof window.debouncedSaveHoles === "function") {
@@ -589,7 +589,7 @@ export function measuredLengthPopup() {
 			window.selectedMultipleHoles = [];
 			window.selectedKADObject = null;
 			window.selectedMultipleKADObjects = [];
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			window.debouncedUpdateTreeView();
 		},
 	});
@@ -657,7 +657,7 @@ export function measuredMassPopup() {
 
 				console.log("The Hole " + window.clickedHole.holeID + " Mass is : " + window.clickedHole.measuredMass + " @ " + window.clickedHole.measuredMassTimeStamp);
 
-				window.drawData(window.allBlastHoles, window.selectedHole);
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 				
 				// Step 89a) Save changes to IndexedDB
 				if (typeof window.debouncedSaveHoles === "function") {
@@ -673,7 +673,7 @@ export function measuredMassPopup() {
 			window.selectedMultipleHoles = [];
 			window.selectedKADObject = null;
 			window.selectedMultipleKADObjects = [];
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			window.debouncedUpdateTreeView();
 		},
 	});
@@ -750,7 +750,7 @@ export function measuredCommentPopup() {
 
 				console.log("The Hole " + window.clickedHole.holeID + " Comment is : " + window.clickedHole.measuredComment + " @ " + window.clickedHole.measuredCommentTimeStamp);
 
-				window.drawData(window.allBlastHoles, window.selectedHole);
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 				
 				// Step 98a) Save changes to IndexedDB
 				if (typeof window.debouncedSaveHoles === "function") {
@@ -766,7 +766,7 @@ export function measuredCommentPopup() {
 			window.selectedMultipleHoles = [];
 			window.selectedKADObject = null;
 			window.selectedMultipleKADObjects = [];
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			window.debouncedUpdateTreeView();
 		},
 	});

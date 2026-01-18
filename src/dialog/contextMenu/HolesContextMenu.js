@@ -358,14 +358,14 @@ export function showHolePropertyEditor(hole) {
 			if (typeof window.longPressTimeout !== "undefined") clearTimeout(window.longPressTimeout);
 
 			// Redraw canvas when dialog closes
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		},
 		onOption1: () => {
 			// Step 10b) Hide holes - just set visible flag
 			holes.forEach((hole) => {
 				hole.visible = false;
 			});
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		},
 		onOption2: () => {
 			// Step 10c) Delete holes using Factory Code with renumber prompt
@@ -410,7 +410,7 @@ export function showHolePropertyEditor(hole) {
 							// Debounced save and updates (USE FACTORY CODE)
 							window.debouncedSaveHoles();
 							window.debouncedUpdateTreeView();
-							window.drawData(window.allBlastHoles, window.selectedHole);
+							if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 							window.updateStatusMessage("Deleted " + holes.length + " hole(s) and renumbered from " + startNumber);
 							setTimeout(() => window.updateStatusMessage(""), 2000);
 						},
@@ -435,7 +435,7 @@ export function showHolePropertyEditor(hole) {
 					// Debounced save and updates (USE FACTORY CODE)
 					window.debouncedSaveHoles();
 					window.debouncedUpdateTreeView();
-					window.drawData(window.allBlastHoles, window.selectedHole);
+					if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 					window.updateStatusMessage("Deleted " + holes.length + " hole(s)");
 					setTimeout(() => window.updateStatusMessage(""), 2000);
 				}
@@ -574,7 +574,7 @@ export function showHolePropertyEditor(hole) {
 
 						window.debouncedSaveHoles();
 						window.debouncedUpdateTreeView();
-						window.drawData(window.allBlastHoles, window.selectedHole);
+						if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 						window.updateStatusMessage("Inserted hole before " + sourceHole.holeID);
 						setTimeout(() => window.updateStatusMessage(""), 2000);
 					}
@@ -683,7 +683,7 @@ export function showHolePropertyEditor(hole) {
 
 						window.debouncedSaveHoles();
 						window.debouncedUpdateTreeView();
-						window.drawData(window.allBlastHoles, window.selectedHole);
+						if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 						window.updateStatusMessage("Inserted hole after " + sourceHole.holeID);
 						setTimeout(() => window.updateStatusMessage(""), 2000);
 					}
@@ -912,7 +912,7 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 	}
 
 	// Redraw and save
-	window.drawData(window.allBlastHoles, window.selectedHole);
+	if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 	window.debouncedUpdateTreeView();
 	window.debouncedSaveHoles();
 

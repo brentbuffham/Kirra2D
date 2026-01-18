@@ -270,7 +270,7 @@ export function showKADPropertyEditorPopup(kadObject) {
 
 			window.debouncedSaveKAD();
 			window.clearAllSelectionState();
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		},
 		onDeny: () => {
 			// Step 5b) Get form values and apply to this element only
@@ -299,19 +299,19 @@ export function showKADPropertyEditorPopup(kadObject) {
 			updateKADObjectProperties(kadObject, newProperties, "element");
 			window.debouncedSaveKAD();
 			window.clearAllSelectionState();
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		},
 		onCancel: () => {
 			// Step 5c) Clear selection and redraw when dialog closes
 			window.clearAllSelectionState();
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		},
 		onOption1: () => {
 			// Step 5d) Hide entire entity using the proper visibility function
 			window.setKADEntityVisibility(kadObject.entityName, false);
 			window.clearAllSelectionState();
 			//window.debouncedSaveKAD(); don't save visbility it is only for the view.
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			dialog.close();
 		},
 		onOption2: () => {
@@ -364,7 +364,7 @@ export function showKADPropertyEditorPopup(kadObject) {
 			window.debouncedSaveKAD();
 			window.debouncedUpdateTreeView();
 			window.clearAllSelectionState();
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 
 			setTimeout(() => window.updateStatusMessage(""), 2000);
 		},
@@ -419,7 +419,7 @@ export function showKADPropertyEditorPopup(kadObject) {
 			// Save and redraw
 			window.debouncedSaveKAD();
 			window.debouncedUpdateTreeView();
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			window.updateStatusMessage("Inserted point in " + kadObject.entityName);
 			setTimeout(() => window.updateStatusMessage(""), 2000);
 		}
@@ -578,14 +578,14 @@ export function showMultipleKADPropertyEditor(kadObjects) {
 			// Step 6f.3) Save and redraw
 			window.debouncedSaveKAD();
 			window.clearAllSelectionState();
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			window.updateStatusMessage("Updated " + kadObjects.length + " " + entityType + "(s)");
 			setTimeout(() => window.updateStatusMessage(""), 2000);
 		},
 		onCancel: () => {
 			// Step 6f.4) Just close
 			window.clearAllSelectionState();
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		}
 	});
 

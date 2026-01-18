@@ -120,7 +120,7 @@ export function showImageContextMenu(x, y, imageId = null) {
                 currentImage.transparency = newTransparency;
                 currentImage.zElevation = newZ;
             }
-            window.drawData(window.allBlastHoles, window.selectedHole);
+            if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
         },
         onCancel: function () {
             // Step 6b) Just close, no changes
@@ -132,13 +132,13 @@ export function showImageContextMenu(x, y, imageId = null) {
                     .deleteImageFromDB(currentImageId)
                     .then(function () {
                         window.loadedImages.delete(currentImageId);
-                        window.drawData(window.allBlastHoles, window.selectedHole);
+                        if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
                         window.debouncedUpdateTreeView();
                     })
                     .catch(function (error) {
                         console.error("Error removing image:", error);
                         window.loadedImages.delete(currentImageId);
-                        window.drawData(window.allBlastHoles, window.selectedHole);
+                        if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
                     });
             }
         },
@@ -152,7 +152,7 @@ export function showImageContextMenu(x, y, imageId = null) {
             } else {
                 currentImage.visible = !currentImage.visible;
             }
-            window.drawData(window.allBlastHoles, window.selectedHole);
+            if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
         }
     });
 

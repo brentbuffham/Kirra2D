@@ -29,24 +29,39 @@ import { evaluate } from "mathjs";
 //=================================================
 // CRITICAL: Load renderer preference from localStorage IMMEDIATELY
 // This must happen BEFORE initializeThreeJS() is called
-const storedRendererPref = localStorage.getItem("useExperimental3DRenderer");
-window.useExperimental3DRenderer = storedRendererPref === "true";
-console.log("🎯 Renderer preference loaded from localStorage:", storedRendererPref);
-console.log("🎯 window.useExperimental3DRenderer =", window.useExperimental3DRenderer);
-console.log("🎯 Will use renderer:", window.useExperimental3DRenderer ? "V2 (Experimental)" : "V1 (Stable)");
+// Options: "v1" (legacy), "v2" (stable default), "perf" (performance)
+const storedRendererPref = localStorage.getItem("rendererSelection") || "v2";
+window.rendererSelection = storedRendererPref;
+console.log("🎯 Renderer preference loaded:", storedRendererPref);
+const rendererNames = { v1: "V1 (Legacy)", v2: "V2 (Stable)", perf: "Performance" };
+console.log("🎯 Will use renderer:", rendererNames[storedRendererPref] || "V2 (Stable)");
 
 //=================================================
 // Three.js Rendering System
 //=================================================
 import * as THREE from "three";
-// DIAGNOSTIC: Temporarily commented out to test if V1 renderer is causing conflicts
-// import { ThreeRenderer } from "./three/ThreeRenderer.js";
+// Three renderer options:
+// - ThreeRenderer (V1): Original stable renderer
+// - ThreeRendererV2: Cleaner architecture, memory optimizations
+// - ThreeRendererPerf: V2 + dirty flags, batching support, culling (RECOMMENDED)
+import { ThreeRenderer as ThreeRendererV1 } from "./three/ThreeRenderer.js";
 import { ThreeRendererV2 } from "./three/ThreeRendererV2.js";
-// Force V2 renderer for diagnostic purposes
-const ThreeRenderer = ThreeRendererV2;
+import { ThreeRendererPerf } from "./three/ThreeRendererPerf.js";
+
+// Renderer selection:
+// - V2 is the default stable renderer
+// - ThreeRendererPerf adds dirty flags and performance tracking
+// - V1 is legacy, kept for debugging
+// Note: The renderer just renders the scene - the real performance issue was
+// in the DRAWING code creating individual objects (now fixed with batching)
+
 import { CameraControls } from "./three/CameraControls.js";
 import { GeometryFactory, clearTextCache } from "./three/GeometryFactory.js";
 import { InteractionManager } from "./three/InteractionManager.js";
+
+// Performance-optimized rendering system
+import { SceneManager, getSceneManager } from "./three/SceneManager.js";
+import { getPerformanceMonitor } from "./three/PerformanceMonitor.js";
 import { PolygonSelection3D } from "./three/PolygonSelection3D.js";
 // Troika text optimization - configure builder and preload font for optimal performance
 // import { configureTextBuilder, preloadFont } from "troika-three-text";
@@ -399,6 +414,7 @@ let threeRenderer = null;
 let cameraControls = null;
 let interactionManager = null; // 3D raycasting and interaction manager
 let coordinateDebugger = null; // Coordinate transform debugging tool
+let sceneManager = null; // Performance-optimized scene coordinator
 let threeInitialized = false;
 let threeInitializationFailed = false; // Step 0a) Prevent retry storm if initialization fails
 let onlyShowThreeJS = false; // Toggle to show only Three.js rendering
@@ -533,6 +549,13 @@ function exposeGlobalsToWindow() {
 	// Step 6b) Expose drawing functions for 3D polygon selection
 	window.drawData = drawData;
 	window.renderThreeJS = renderThreeJS;
+	
+	// Step 6b.1) Helper function for dialogs to trigger 3D rebuild when properties change
+	// Use this instead of just drawData() when changing: transparency, gradient, color, visibility, etc.
+	window.redraw3D = function() {
+		window.threeDataNeedsRebuild = true;
+		drawData(window.allBlastHoles, window.selectedHole);
+	};
 	window.updateStatusMessage = updateStatusMessage;
 	window.updateSelectionAveragesAndSliders = updateSelectionAveragesAndSliders;
 
@@ -747,13 +770,32 @@ function initializeThreeJS() {
 			return;
 		}
 
-		// Choose renderer based on user preference (V1 or V2)
-		const RendererClass = window.useExperimental3DRenderer ? ThreeRendererV2 : ThreeRenderer;
-		const rendererVersion = window.useExperimental3DRenderer ? "V2 (Experimental)" : "V1 (Stable)";
-		console.log("🎨 About to instantiate renderer:", rendererVersion);
+		// Choose renderer based on user preference (dropdown selection)
+		// Options: "v1" (legacy), "v2" (stable default), "perf" (performance)
+		let RendererClass;
+		let rendererVersion;
+		switch (window.rendererSelection) {
+			case "v1":
+				RendererClass = ThreeRendererV1;
+				rendererVersion = "ThreeRendererV1 (Legacy)";
+				break;
+			case "perf":
+				RendererClass = ThreeRendererPerf;
+				rendererVersion = "ThreeRendererPerf (Performance)";
+				break;
+			case "v2":
+			default:
+				RendererClass = ThreeRendererV2;
+				rendererVersion = "ThreeRendererV2 (Stable)";
+				break;
+		}
+		console.log("🎨 Renderer selected:", rendererVersion);
 		console.log("🎨 RendererClass =", RendererClass.name);
 
 		threeRenderer = new RendererClass(canvasContainer, canvas.clientWidth, canvas.clientHeight);
+		
+		// Store renderer info for display
+		window.currentRendererVersion = rendererVersion;
 
 		console.log("✅ Renderer created successfully:", threeRenderer.constructor.name);
 
@@ -902,7 +944,12 @@ function initializeThreeJS() {
 		interactionManager = new InteractionManager(threeRenderer, threeRenderer.camera);
 		window.interactionManager = interactionManager; // Expose globally
 
-		// Step 6a.1) Create coordinate debugger for troubleshooting transform issues
+		// Step 6a.1) Create SceneManager for performance-optimized rendering
+		sceneManager = getSceneManager(threeRenderer);
+		window.sceneManager = sceneManager; // Expose globally for console access
+		console.log("🎬 SceneManager created - use window.sceneManager for performance utilities");
+
+		// Step 6a.2) Create coordinate debugger for troubleshooting transform issues
 		coordinateDebugger = new CoordinateDebugger(threeRenderer, interactionManager);
 		window.coordinateDebugger = coordinateDebugger; // Expose globally for console access
 		console.log("🔍 CoordinateDebugger created - use window.coordinateDebugger.enable() to activate");
@@ -2870,9 +2917,24 @@ function handle3DMouseMove(event) {
 
 	// Step 13f.8) Draw KAD leading line preview if drawing tool is active
 	const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText || isAddingHole;
+	
+	// DEBUG: Log leading line conditions
+	if (developerModeEnabled && isAnyDrawingToolActive) {
+		console.log("🔸 Leading Line Check: isAnyDrawingToolActive=" + isAnyDrawingToolActive + ", lastKADDrawPoint=" + (lastKADDrawPoint ? "exists" : "null") + ", createNewEntity=" + createNewEntity);
+		if (lastKADDrawPoint) {
+			console.log("🔸 lastKADDrawPoint: x=" + lastKADDrawPoint.x + ", y=" + lastKADDrawPoint.y + ", z=" + lastKADDrawPoint.z);
+		}
+	}
+	
 	if (isAnyDrawingToolActive && lastKADDrawPoint && createNewEntity === false) {
-		// Get drawing Z value
-		const drawZ = drawingZValue || document.getElementById("drawingElevation").value || 0;
+		// Get drawing Z value - IMPORTANT: Use same Z for both ends (like 2D drawing)
+		const drawZ = parseFloat(drawingZValue || document.getElementById("drawingElevation").value || 0);
+		// Use the LAST POINT's Z, NOT the raycasted mouse Z (which could be on a surface at different elevation)
+		const leadingLineZ = lastKADDrawPoint.z || drawZ;
+
+		if (developerModeEnabled) {
+			console.log("🔸 DRAWING LEADING LINE from (" + lastKADDrawPoint.x.toFixed(2) + "," + lastKADDrawPoint.y.toFixed(2) + "," + leadingLineZ.toFixed(2) + ") to (" + currentMouseWorldX.toFixed(2) + "," + currentMouseWorldY.toFixed(2) + "," + leadingLineZ.toFixed(2) + ")");
+		}
 
 		// Determine color based on active tool
 		var leadingLineColor = "rgba(0, 255, 255, 0.8)"; // Cyan default
@@ -2888,15 +2950,8 @@ function handle3DMouseMove(event) {
 			leadingLineColor = "rgba(0, 255, 0, 0.8)"; // Green for text
 		}
 
-		drawKADLeadingLineThreeJS(
-			lastKADDrawPoint.x,
-			lastKADDrawPoint.y,
-			lastKADDrawPoint.z || parseFloat(drawZ),
-			currentMouseWorldX,
-			currentMouseWorldY,
-			currentMouseWorldZ || parseFloat(drawZ), // Use raycast Z, fallback to drawZ
-			leadingLineColor
-		);
+		// Step 13f.8a) Leading line drawing moved to AFTER rebuild (line 27875) to prevent it being cleared
+		// drawKADLeadingLineThreeJS() is now called after rebuild completes
 
 		// Step 13f.8b) Show distance overlay for drawing tools with tool-specific color
 		var drawDx = currentMouseWorldX - lastKADDrawPoint.x;
@@ -3086,9 +3141,9 @@ function handle3DMouseMove(event) {
 		drawPatternInPolygon3DVisual();
 	}
 
-	if (threeRenderer.renderer) {
-		threeRenderer.render();
-	}
+	// NOTE: Removed direct render() call here - was causing WebGL context crash
+	// The CameraControls animation loop already handles continuous rendering
+	// Calling render() on every mouse move (hundreds/sec) caused shader errors to accumulate
 }
 
 // Step 15) Handle 3D touch events
@@ -3866,6 +3921,51 @@ developerModeCheckbox.addEventListener("change", function () {
 ///////////////////////////
 
 ///////////////////////////
+// PERFORMANCE MONITOR TOGGLE
+// Step PM1) Get checkbox element
+const perfMonitorCheckbox = document.getElementById("perfMonitorEnabled");
+let perfMonitorEnabled = false;
+
+// Step PM2) Performance monitor instance (lazy loaded)
+let perfMonitor = null;
+
+// Step PM3) Add event listener
+if (perfMonitorCheckbox) {
+	perfMonitorCheckbox.addEventListener("change", function () {
+		perfMonitorEnabled = perfMonitorCheckbox.checked;
+		window.perfMonitorEnabled = perfMonitorEnabled;
+		console.log("Performance Monitor " + (perfMonitorEnabled ? "enabled" : "disabled"));
+		
+		// Step PM4) Toggle performance monitor overlay
+		if (perfMonitorEnabled) {
+			// Lazy load and show
+			if (!perfMonitor && window.threeRenderer) {
+				// Use the already imported getPerformanceMonitor
+				perfMonitor = getPerformanceMonitor(window.threeRenderer);
+				perfMonitor.show();
+				// Expose for debugging
+				window.perfMonitor = perfMonitor;
+			} else if (perfMonitor) {
+				// Update renderer reference if changed
+				if (window.threeRenderer) {
+					perfMonitor.setRenderer(window.threeRenderer);
+				}
+				perfMonitor.show();
+			}
+		} else {
+			// Hide
+			if (perfMonitor) {
+				perfMonitor.hide();
+			}
+		}
+	});
+}
+
+// Step PM5) Expose flag for other modules
+window.perfMonitorEnabled = perfMonitorEnabled;
+///////////////////////////
+
+///////////////////////////
 // 3D OPTIMIZATION FLAGS
 // Step 1) Get checkbox elements for 3D optimization options
 var use3DSimplificationCheckbox = document.getElementById("use3DSimplification");
@@ -3904,27 +4004,26 @@ if (useInstancedHolesCheckbox) {
 	});
 }
 
-// Step 5) Experimental 3D Renderer (V2) toggle
-// NOTE: window.useExperimental3DRenderer is already set from localStorage at top of file
-// This code just syncs the checkbox with the flag
-const useExperimental3DRendererCheckbox = document.getElementById("useExperimental3DRenderer");
-if (useExperimental3DRendererCheckbox) {
-	// Sync checkbox with flag that was already loaded from localStorage
-	useExperimental3DRendererCheckbox.checked = window.useExperimental3DRenderer || false;
-}
-
-// Add event listener to handle toggle
-if (useExperimental3DRendererCheckbox) {
-	useExperimental3DRendererCheckbox.addEventListener("change", function () {
-		// Update flag and save to localStorage
-		window.useExperimental3DRenderer = this.checked;
-		localStorage.setItem("useExperimental3DRenderer", String(this.checked));
-
-		console.log("🔄 Experimental 3D Renderer " + (this.checked ? "enabled" : "disabled"));
-		console.log("⚠️ Reload page to switch renderers");
+// Step 5) 3D Renderer Selection (dropdown)
+// NOTE: window.rendererSelection is already set from localStorage at top of file
+// This code syncs the dropdown with the saved preference
+const rendererSelect = document.getElementById("rendererSelect");
+if (rendererSelect) {
+	// Sync dropdown with saved preference
+	rendererSelect.value = window.rendererSelection || "v2";
+	
+	// Add event listener for selection change
+	rendererSelect.addEventListener("change", function () {
+		const newValue = this.value;
+		window.rendererSelection = newValue;
+		localStorage.setItem("rendererSelection", newValue);
+		
+		const names = { v1: "V1 (Legacy)", v2: "V2 (Stable)", perf: "Performance" };
+		console.log("🔄 Renderer changed to:", names[newValue]);
+		console.log("⚠️ Reload page to apply change");
 
 		// Show user prompt to reload
-		if (confirm("Switch 3D renderer? This requires reloading the page.\n\nClick OK to reload now, Cancel to reload later.")) {
+		if (confirm("Switch to " + names[newValue] + " renderer?\n\nThis requires reloading the page.\nClick OK to reload now, Cancel to reload later.")) {
 			location.reload();
 		}
 	});
@@ -21047,6 +21146,9 @@ function handleConnectorClick(event) {
 
 				// directionArrows now contains the arrow data for later drawing
 				timeChart();
+				
+				// Step #) Trigger 3D rebuild to update connectors
+				window.threeDataNeedsRebuild = true;
 				drawData(allBlastHoles, selectedHole);
 			}
 		}
@@ -21081,6 +21183,8 @@ function handleConnectorClick(event) {
 				// Update timing chart display
 				timeChart();
 
+				// Step #) Trigger 3D rebuild to update connectors
+				window.threeDataNeedsRebuild = true;
 				drawData(allBlastHoles, selectedHole);
 				//console.log("centroidX: " + centroidX + " centroidY: " + centroidY);
 			}
@@ -21619,8 +21723,10 @@ function deleteSelectedPattern() {
 
 			// directionArrows now contains the arrow data for later drawing
 
+			window.threeDataNeedsRebuild = true; // Trigger 3D rebuild after pattern deletion
 			drawData(allBlastHoles, selectedHole);
 		} else {
+			window.threeDataNeedsRebuild = true; // Trigger 3D rebuild
 			drawData(allBlastHoles, selectedHole);
 		}
 	}
@@ -22178,7 +22284,8 @@ function handleDrawingKeyEvents(event) {
 				updateStatusMessage(message);
 				setTimeout(() => updateStatusMessage(""), 2000);
 
-				// Redraw the canvas
+				// Redraw the canvas (trigger 3D rebuild for deleted point)
+				window.threeDataNeedsRebuild = true;
 				drawData(allBlastHoles, selectedHole);
 				debouncedSaveKAD();
 
@@ -22352,6 +22459,7 @@ function addKADPoint() {
 
 		allKADDrawingsMap.get(entityName).data.push(pointObject);
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
+		window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD point
 		drawData(allBlastHoles, selectedHole);
 		debouncedSaveKAD();
 		debouncedSaveLayers();
@@ -22459,6 +22567,7 @@ function addKADLine() {
 		allKADDrawingsMap.get(entityName).data.push(lineObject); // Changed map
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
 	}
+	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD line
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
 	debouncedSaveLayers();
@@ -22567,6 +22676,7 @@ function addKADPoly() {
 		// Add this line to update the last draw point
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
 	}
+	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD polygon
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
 	debouncedSaveLayers();
@@ -22679,6 +22789,7 @@ function addKADCircle() {
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
 		console.log("Added circle", pointID, "to", entityName);
 	}
+	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD circle
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
 	debouncedSaveLayers();
@@ -22929,6 +23040,7 @@ async function addKADText() {
 
 		allKADDrawingsMap.get(entityName).data.push(textObject);
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
+		window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD text
 		drawData(allBlastHoles, selectedHole);
 		debouncedUpdateTreeView();
 		console.log("Added text", pointID, "to", entityName);
@@ -24332,6 +24444,7 @@ async function addHole(useCustomHoleID, useGradeZ, entityName, holeID, startXLoc
 
 	if (isAddingHole && !isAddingPattern) {
 		debouncedUpdateTreeView();
+		window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new hole
 		drawData(allBlastHoles, selectedHole);
 	}
 }
@@ -25977,9 +26090,11 @@ function drawData(allBlastHoles, selectedHole) {
 	// Step 0c) Calculate Z centroid for orbit center (always recalculate for dynamic data)
 	dataCentroidZ = calculateDataZCentroid();
 
-	// Step 1) Clear Three.js geometry for rebuild
-	// Note: Super-batch optimization (ONE draw call for all lines) makes this fast even for large DXFs
-	clearThreeJS();
+	// Step 1) Clear Three.js geometry ONLY when rebuild is needed
+	// CRITICAL: Don't clear every frame - this was causing 1-4 FPS!
+	if (window.threeDataNeedsRebuild && onlyShowThreeJS) {
+		clearThreeJS();
+	}
 	// Step 1a) Clear 2D canvas always (to remove old content)
 	if (ctx) {
 		clearCanvas();
@@ -27310,38 +27425,69 @@ function drawData(allBlastHoles, selectedHole) {
 		// Draw holes - ONLY rebuild geometry when data changes
 		var toeSizeInMeters3D = document.getElementById("toeSlider") ? parseFloat(document.getElementById("toeSlider").value) : 1;
 		if (blastGroupVisible && allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
-			// Step 3.1) NEW INSTANCED RENDERING: Use InstancedMeshManager for 10-50x performance improvement
-			// Automatically groups holes by diameter/type and batches rendering
-			// Draws collar/grade/toe circles as instances, hole body lines as individual objects
-			for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
-				var hole = allBlastHoles[holeIdx];
-				if (hole.visible === false) continue;
+			// Step 3.1) ONLY REBUILD GEOMETRY when threeDataNeedsRebuild is true
+			// This prevents rebuilding geometry every frame (which was causing 1 FPS!)
+			if (window.threeDataNeedsRebuild) {
+				// NEW INSTANCED RENDERING: Use InstancedMeshManager for 10-50x performance improvement
+				// Automatically groups holes by diameter/type and batches rendering
+				for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
+					var hole = allBlastHoles[holeIdx];
+					if (hole.visible === false) continue;
 
-				// Use instanced rendering (includes collar, grade, toe automatically)
-				// Pass toe slider radius so all toes use the same size
-				drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
+					// Use instanced rendering (includes collar, grade, toe automatically)
+					// Pass toe slider radius so all toes use the same size
+					drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
 
-				// Draw hole text labels (labels are still individual sprites for flexibility)
-				if (threeInitialized) {
-					drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
+					// Draw hole text labels (labels are still individual sprites for flexibility)
+					if (threeInitialized) {
+						drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
+					}
 				}
-			}
 
-			if (developerModeEnabled) {
-				console.log("🚀 Instanced rendering active: " + allBlastHoles.length + " holes");
+				// Step 3.2) FLUSH BATCHED LINES - Creates single draw call for all hole body lines
+				// This is the key performance optimization: 1644 lines -> ~5 draw calls
 				if (threeRenderer && threeRenderer.instancedMeshManager) {
-					console.log("📊 Instance stats:", threeRenderer.instancedMeshManager.getStats());
+					threeRenderer.instancedMeshManager.flushLineBatches(threeRenderer.holesGroup);
 				}
+
+				if (developerModeEnabled) {
+					console.log("🚀 Instanced rendering complete: " + allBlastHoles.length + " holes");
+					if (threeRenderer && threeRenderer.instancedMeshManager) {
+						console.log("📊 Instance stats:", threeRenderer.instancedMeshManager.getStats());
+					}
+				}
+				// NOTE: threeDataNeedsRebuild flag reset moved to AFTER KAD drawing (Step 3 below)
 			}
 
-			// Step 3.5) Highlighting and connectors - run EVERY frame (not just on rebuild)
+			// Step 3.5) Clear and redraw connectors when data changes (rebuild is true)
 			// NOTE: Highlight clearing moved to Step 3.4 (outside holes block) so it runs even with 0 holes
+			
+			// Step 3.5a) Clear connectors when rebuild is needed so they can be redrawn
+			if (window.threeDataNeedsRebuild && threeRenderer && threeRenderer.connectorsGroup) {
+				var connectorsToRemove = [];
+				threeRenderer.connectorsGroup.children.forEach(function(child) {
+					if (child.userData && child.userData.type === "connector") {
+						connectorsToRemove.push(child);
+					}
+				});
+				connectorsToRemove.forEach(function(child) {
+					threeRenderer.connectorsGroup.remove(child);
+					if (child.geometry) child.geometry.dispose();
+					if (child.material) {
+						if (Array.isArray(child.material)) {
+							child.material.forEach(function(m) { m.dispose(); });
+						} else {
+							child.material.dispose();
+						}
+					}
+				});
+			}
 
 			for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
 				var hole = allBlastHoles[holeIdx];
 				if (hole.visible === false) continue;
 
-				// Step 4) Draw connectors in Three.js
+				// Step 4) Draw connectors in Three.js (only when rebuild needed or first time)
 				if (threeInitialized && displayOptions3D.connector && hole.fromHoleID) {
 					// Build hole map for connector lookup
 					const holeMap3D = new Map();
@@ -27411,7 +27557,9 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 
 		// Step 3) Draw KAD entities in Three.js
-		if (drawingsGroupVisible) {
+		// CRITICAL: Only rebuild KAD geometry when threeDataNeedsRebuild is true
+		// This was the cause of 17k+ scene objects - KAD was adding every frame without clearing!
+		if (drawingsGroupVisible && window.threeDataNeedsRebuild) {
 
 			// Step 3.1) SUPER-BATCH: For large DXF files, merge ALL lines/polys into ONE geometry
 			// This reduces 3799 draw calls to just 1 - massive performance improvement!
@@ -27705,6 +27853,50 @@ function drawData(allBlastHoles, selectedHole) {
 
 		// Step 6) Highlight selected KAD objects in Three.js (after KAD drawing)
 		highlightSelectedKADThreeJS();
+	}
+
+	// Step 7) RESET REBUILD FLAG - After all geometry (holes AND KAD) is drawn
+	// This MUST be after both blocks to prevent partial rebuilds
+	if (window.threeDataNeedsRebuild) {
+		window.threeDataNeedsRebuild = false;
+		if (developerModeEnabled) {
+			console.log("✅ 3D geometry rebuild complete - flag reset");
+		}
+	}
+
+	// Step 7a) Draw leading line AFTER rebuild completes (so it doesn't get cleared)
+	// Leading line is a temporary UI element, redrawn every frame like mouse indicator
+	if (onlyShowThreeJS && threeInitialized) {
+		const isAnyDrawingToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText || isAddingHole;
+		if (isAnyDrawingToolActive && lastKADDrawPoint && createNewEntity === false) {
+			const drawZ = parseFloat(drawingZValue || document.getElementById("drawingElevation").value || 0);
+			const leadingLineZ = lastKADDrawPoint.z || drawZ;
+			
+			var leadingLineColor = "rgba(0, 255, 255, 0.8)"; // Cyan default
+			if (isDrawingPoint || isAddingHole) {
+				leadingLineColor = "rgba(209, 0, 0, 0.8)"; // Red
+			} else if (isDrawingLine) {
+				leadingLineColor = "rgba(0, 255, 255, 0.8)"; // Cyan
+			} else if (isDrawingPoly) {
+				leadingLineColor = "rgba(255, 0, 255, 0.8)"; // Magenta
+			} else if (isDrawingCircle) {
+				leadingLineColor = "rgba(255, 165, 0, 0.8)"; // Orange
+			} else if (isDrawingText) {
+				leadingLineColor = "rgba(0, 255, 0, 0.8)"; // Green
+			}
+			
+			drawKADLeadingLineThreeJS(
+				lastKADDrawPoint.x,
+				lastKADDrawPoint.y,
+				leadingLineZ,
+				currentMouseWorldX,
+				currentMouseWorldY,
+				leadingLineZ,
+				leadingLineColor
+			);
+		} else {
+			clearKADLeadingLineThreeJS();
+		}
 	}
 
 	// Step 2) Render Three.js scene ONLY when in Three.js-only mode
@@ -28358,6 +28550,7 @@ function refreshPoints() {
 	const { resultTriangles, reliefTriangles } = delaunayTriangles(allBlastHoles, maxEdgeLength);
 
 	// Step 5) Redraw and update tree view
+	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild after data refresh
 	drawData(allBlastHoles, selectedHole);
 	debouncedUpdateTreeView();
 
@@ -30338,6 +30531,14 @@ darkModeToggle.addEventListener("change", () => {
 		window.baseCtx.fillRect(0, 0, window.baseCanvas.width, window.baseCanvas.height);
 	}
 
+	// Step 1b) Trigger full 3D rebuild to update all colors (hole lines, connectors, etc.)
+	if (threeInitialized && onlyShowThreeJS) {
+		window.threeDataNeedsRebuild = true;
+	}
+
+	// Step 1c) Redraw to apply new colors
+	drawData(allBlastHoles, selectedHole);
+
 	if (Array.isArray(holeTimes)) {
 		timeChart();
 	}
@@ -30659,6 +30860,7 @@ window.onload = function () {
 									if (typeof debouncedSaveKAD === "function") {
 										debouncedSaveKAD();
 									}
+									window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for deleted vertex
 									drawData(allBlastHoles, selectedHole);
 									syncCanvasToTreeView();
 									updateTreeView();
@@ -30677,6 +30879,7 @@ window.onload = function () {
 									if (typeof debouncedSaveKAD === "function") {
 										debouncedSaveKAD();
 									}
+									window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for deleted entity
 									drawData(allBlastHoles, selectedHole);
 									syncCanvasToTreeView();
 									updateTreeView();
@@ -30707,6 +30910,7 @@ window.onload = function () {
 								if (typeof debouncedSaveKAD === "function") {
 									debouncedSaveKAD();
 								}
+								window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for deleted KAD entity
 								drawData(allBlastHoles, selectedHole);
 								syncCanvasToTreeView();
 								updateTreeView();
@@ -30739,6 +30943,7 @@ window.onload = function () {
 							if (typeof debouncedSaveKAD === "function") {
 								debouncedSaveKAD();
 							}
+							window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for deleted KAD entities
 							drawData(allBlastHoles, selectedHole);
 							syncCanvasToTreeView();
 							updateTreeView();

@@ -157,7 +157,7 @@ export function showAddHoleDialog() {
             window.worldZ = null;
             window.isAddingSingleHole = false;
             window.multipleAddHoleFormData = null; // Clear stored form data
-            window.drawData(window.allBlastHoles, window.selectedHole); // Redraw to clear visuals
+            if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); } // Redraw to clear visuals
         }
     });
 
@@ -406,7 +406,7 @@ export function addHoleToBlast(formData, worldX, worldY, isMultipleMode, dialog)
         window.worldY = null;
 
         // Redraw to show the added hole and keep crosshair visible
-        window.drawData(window.allBlastHoles, window.selectedHole);
+        if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
     } else {
         // Single mode: close dialog and reset tool completely
         console.log("🔹 Single mode: Closing dialog and resetting tool");
@@ -432,7 +432,7 @@ export function addHoleToBlast(formData, worldX, worldY, isMultipleMode, dialog)
             window.canvas.removeEventListener("click", window.handleHoleAddingClick);
             window.canvas.removeEventListener("touchstart", window.handleHoleAddingClick);
         }
-        window.drawData(window.allBlastHoles, window.selectedHole);
+        if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
     }
 }
 
@@ -513,7 +513,7 @@ export function addHoleToBlastDirect(formData, finalX, finalY, holeID) {
     }
 
     // Step 19d) Update display
-    window.drawData(window.allBlastHoles, window.selectedHole);
+    if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
     window.updateStatusMessage("Hole added to " + formData.blastName);
 }
 

@@ -511,7 +511,7 @@ export async function showTriangulationPopup() {
 
 						// Yield before heavy drawData call
 						await new Promise(function(resolve) { setTimeout(resolve, 10); });
-						window.drawData(window.allBlastHoles, window.selectedHole);
+						if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 
 						// Yield before tree update
 						await new Promise(function(resolve) { setTimeout(resolve, 10); });
@@ -738,7 +738,7 @@ export function showOffsetKADPopup(kadObject) {
 			window.canvas.removeEventListener("click", window.handleOffsetKADClick);
 			window.canvas.removeEventListener("touchstart", window.handleOffsetKADClick);
 			window.updateStatusMessage("");
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			window.selectedKADPolygon = null;
 			window.selectedKADObject = null;
 			window.selectedPoint = null;

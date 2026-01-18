@@ -2199,6 +2199,9 @@
 						<!-- add a developer mode button-->
 						<input type="checkbox" id="developerMode"> <label for="developerMode">Developer Mode</label>
 						<br>
+						<!-- Performance Monitor overlay toggle -->
+						<input type="checkbox" id="perfMonitorEnabled"> <label for="perfMonitorEnabled">Performance Monitor</label>
+						<br>
 						<!-- add a 3D screen space Snapping on/off mode button-->
 						<input type="checkbox" id="screenSpaceSnapping" checked> <label for="screenSpaceSnapping">Screen Space Snapping</label>
 						<br>
@@ -2211,11 +2214,16 @@
 						<br>
 						<input type="checkbox" id="use3DSimplification" checked> <label for="use3DSimplification">Use 3D Simplification</label>
 						<br>
-						<input type="checkbox" id="useInstancedHoles" checked> <label for="useInstancedHoles">Use Instanced Holes</label> <!--unchecked by default-->
+						<input type="checkbox" id="useInstancedHoles" checked> <label for="useInstancedHoles">Use Instanced Holes</label>
 						<br>
-						<input type="checkbox" id="useExperimental3DRenderer"> <label for="useExperimental3DRenderer">Use Experimental 3D Renderer (V2)</label>
+						<label for="rendererSelect" style="margin-right: 8px;">3D Renderer:</label>
+						<select id="rendererSelect" style="padding: 4px 8px; border-radius: 4px;">
+							<option value="v2">V2 - Stable (Default)</option>
+							<option value="perf">Performance - Dirty Flags + Budget</option>
+							<option value="v1">V1 - Legacy</option>
+						</select>
 						<br>
-						<small style="color: #888;">Requires reload to take effect. V2 has cleaner initialization.</small>
+						<small style="color: #888;">Requires page reload to take effect.</small>
 						<br>
 						<hr>
 						GPU Memory Management:

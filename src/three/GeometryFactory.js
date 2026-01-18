@@ -1951,10 +1951,9 @@ export class GeometryFactory {
 		}
 
 		if (positions.length === 0) {
-			// Return empty mesh if no triangles
-			const geometry = new THREE.BufferGeometry();
-			const material = new THREE.MeshBasicMaterial();
-			return new THREE.Mesh(geometry, material);
+			// Return null if no triangles - don't create empty meshes with empty materials
+			// Empty materials cause WebGL shader compilation errors
+			return null;
 		}
 
 		// Step 15) Create BufferGeometry
@@ -1985,9 +1984,8 @@ export class GeometryFactory {
 	// Step 16) Create slope surface (triangles positioned at collar Z, colored by slope angle)
 	static createSlopeSurface(triangles, allBlastHoles, worldToThreeLocalFn, transparency = 1.0) {
 		if (!triangles || triangles.length === 0) {
-			const geometry = new THREE.BufferGeometry();
-			const material = new THREE.MeshBasicMaterial();
-			return new THREE.Mesh(geometry, material);
+			// Return null if no triangles - don't create empty meshes with empty materials
+			return null;
 		}
 
 		const positions = [];
@@ -2038,9 +2036,8 @@ export class GeometryFactory {
 		}
 
 		if (positions.length === 0) {
-			const geometry = new THREE.BufferGeometry();
-			const material = new THREE.MeshBasicMaterial();
-			return new THREE.Mesh(geometry, material);
+			// Return null if no triangles - don't create empty meshes with empty materials
+			return null;
 		}
 
 		// Step 16e) Create BufferGeometry
@@ -2065,9 +2062,8 @@ export class GeometryFactory {
 	// Step 16.5) Create burden relief surface (triangles positioned at collar Z, colored by burden relief)
 	static createReliefSurface(triangles, allBlastHoles, worldToThreeLocalFn, transparency = 1.0) {
 		if (!triangles || triangles.length === 0) {
-			const geometry = new THREE.BufferGeometry();
-			const material = new THREE.MeshBasicMaterial();
-			return new THREE.Mesh(geometry, material);
+			// Return null if no triangles - don't create empty meshes with empty materials
+			return null;
 		}
 
 		const positions = [];
@@ -2141,9 +2137,8 @@ export class GeometryFactory {
 		}
 
 		if (positions.length === 0) {
-			const geometry = new THREE.BufferGeometry();
-			const material = new THREE.MeshBasicMaterial();
-			return new THREE.Mesh(geometry, material);
+			// Return null if no triangles - don't create empty meshes with empty materials
+			return null;
 		}
 
 		// Step 16.5f) Create BufferGeometry

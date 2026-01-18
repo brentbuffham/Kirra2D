@@ -266,27 +266,15 @@ export class ThreeRendererV2 {
 	 * - Hidden by default, shown during orbit
 	 */
 	_createHelpers() {
-		// Grid helper (hidden by default)
-		const defaultGridSize = 10; // meters per division
-		const gridDivisions = 50;
-		const totalGridSize = defaultGridSize * gridDivisions;
-		const gridColor = 0x888888; // Grey
-
-		this.gridHelper = new THREE.GridHelper(totalGridSize, gridDivisions, gridColor, gridColor);
-		this.gridHelper.rotation.x = Math.PI / 2; // Rotate to XY plane (Z-up)
-		this.gridHelper.position.z = 0;
-		this.gridHelper.material.opacity = 0.3;
-		this.gridHelper.material.transparent = true;
-		this.gridHelper.visible = false; // Hidden by default
-		this.scene.add(this.gridHelper);
-
-		// Store grid settings
+		// Grid helper REMOVED - not used in app, adds GPU overhead
+		// Created on-demand if ever needed via showGrid()
+		this.gridHelper = null;
 		this.gridOpacity = 0.3;
-		this.gridSize = defaultGridSize;
-		this.gridPlane = "XY"; // Default plane
+		this.gridSize = 10;
+		this.gridPlane = "XY";
 
-		// Axis helper (hidden by default)
-		this.axisHelper = this._createAxisHelper(111); // Base size
+		// Axis helper (hidden by default, but used when enabled)
+		this.axisHelper = this._createAxisHelper(111);
 		this.axisHelper.visible = false;
 		this.scene.add(this.axisHelper);
 		this.axisHelperBaseSize = 111;
@@ -969,6 +957,11 @@ export class ThreeRendererV2 {
 		// Clear instanced meshes FIRST
 		this.clearInstancedHoles();
 
+		// Clear line batches from InstancedMeshManager (critical for performance)
+		if (this.instancedMeshManager) {
+			this.instancedMeshManager.clearLineBatches();
+		}
+
 		// Dispose all groups
 		this.disposeGroup(this.holesGroup);
 		this.disposeGroup(this.surfacesGroup);
@@ -993,6 +986,9 @@ export class ThreeRendererV2 {
 		switch (groupName) {
 			case "holes":
 				this.clearInstancedHoles();
+				if (this.instancedMeshManager) {
+					this.instancedMeshManager.clearLineBatches();
+				}
 				this.disposeGroup(this.holesGroup);
 				this.holeMeshMap.clear();
 				break;
@@ -1151,6 +1147,12 @@ export class ThreeRendererV2 {
 		}
 
 		this.renderer.render(this.scene, this.camera);
+
+		// Update performance monitor if enabled
+		if (window.perfMonitor && window.perfMonitorEnabled) {
+			window.perfMonitor.update();
+		}
+
 		this.needsRender = false;
 	}
 

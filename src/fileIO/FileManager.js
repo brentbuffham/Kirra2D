@@ -5,7 +5,7 @@
 // Step 1) Central manager for all file import/export operations
 // Step 2) Manages parser and writer registration and dispatching
 // Step 3) Converted to ES Module for Vite bundling
-// Step 4) Created: 2026-01-03
+// Step 4) Created: 2026-01-03, Updated: 2026-01-17
 
 // Step 5) Define FileManager class
 class FileManager {
@@ -48,7 +48,17 @@ class FileManager {
 	// Step 12) Parse file based on extension or explicit format
 	async parse(file, options = {}) {
 		// Step 13) Determine format from explicit option or file extension
-		var format = options.format || this.detectFormat(file.name, options);
+		var format = options.format;
+
+		if (!format) {
+			// Step 13a) Check if this is a DXF file that needs binary detection
+			var ext = this.getExtension(file.name);
+			if (ext === "dxf" && !options.skipBinaryDetection) {
+				format = await this.detectDXFFormat(file);
+			} else {
+				format = this.detectFormat(file.name, options);
+			}
+		}
 
 		if (!format) {
 			throw new Error("Could not detect file format for: " + file.name);
@@ -70,6 +80,52 @@ class FileManager {
 		}
 	}
 
+	// Step 15a) Detect DXF format (binary vs ASCII) by reading file header
+	async detectDXFFormat(file) {
+		var BINARY_SENTINEL = "AutoCAD Binary DXF\r\n\x1a\x00";
+		var SENTINEL_LENGTH = 22;
+
+		try {
+			// Read first 22 bytes of the file
+			var slice = file.slice(0, SENTINEL_LENGTH);
+			var arrayBuffer = await this.readBlobAsArrayBuffer(slice);
+			var buffer = new Uint8Array(arrayBuffer);
+
+			// Check for binary DXF sentinel
+			if (buffer.length >= SENTINEL_LENGTH) {
+				var sentinel = "";
+				for (var i = 0; i < SENTINEL_LENGTH; i++) {
+					sentinel += String.fromCharCode(buffer[i]);
+				}
+				if (sentinel === BINARY_SENTINEL) {
+					console.log("Detected Binary DXF format");
+					return "dxf-binary";
+				}
+			}
+
+			// Default to ASCII DXF
+			console.log("Detected ASCII DXF format");
+			return "dxf";
+		} catch (error) {
+			console.warn("DXF format detection failed, defaulting to ASCII:", error);
+			return "dxf";
+		}
+	}
+
+	// Step 15b) Helper to read blob as array buffer
+	readBlobAsArrayBuffer(blob) {
+		return new Promise(function(resolve, reject) {
+			var reader = new FileReader();
+			reader.onload = function() {
+				resolve(reader.result);
+			};
+			reader.onerror = function() {
+				reject(new Error("Failed to read blob"));
+			};
+			reader.readAsArrayBuffer(blob);
+		});
+	}
+
 	// Step 16) Write data to specified format
 	async write(data, format, options = {}) {
 		// Step 17) Get writer class for this format
@@ -88,7 +144,7 @@ class FileManager {
 		}
 	}
 
-	// Step 19) Detect format from filename
+	// Step 19) Detect format from filename (synchronous, for non-DXF files)
 	detectFormat(filename, options = {}) {
 		// Step 20) Get file extension
 		var ext = this.getExtension(filename);

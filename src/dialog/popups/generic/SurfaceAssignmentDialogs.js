@@ -812,7 +812,7 @@ function assignHolesToFixedElevation(elevation, type) {
 
 	// Step 45) Redraw
 	if (window.drawData && window.allBlastHoles) {
-		window.drawData(window.allBlastHoles, window.selectedHole);
+		if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 	}
 
 	return assignedCount;

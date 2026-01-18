@@ -280,7 +280,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
                 console.error("Failed to save surface:", err);
             });
 
-            window.drawData(window.allBlastHoles, window.selectedHole);
+            if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
         },
         onCancel: function () {
             // Step 7b) Just close, no changes
@@ -291,20 +291,20 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
                 .deleteSurfaceFromDB(currentSurface.id)
                 .then(function () {
                     window.loadedSurfaces.delete(currentSurface.id);
-                    window.drawData(window.allBlastHoles, window.selectedHole);
+                    if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
                     window.debouncedUpdateTreeView();
                     console.log("Surface removed from both memory and database");
                 })
                 .catch(function (error) {
                     console.error("Error removing surface:", error);
                     window.loadedSurfaces.delete(currentSurface.id);
-                    window.drawData(window.allBlastHoles, window.selectedHole);
+                    if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
                 });
         },
         onOption2: function () {
             // Step 7d) Toggle visibility
             window.setSurfaceVisibility(currentSurface.id, !currentSurface.visible);
-            window.drawData(window.allBlastHoles, window.selectedHole);
+            if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
         }
     });
 

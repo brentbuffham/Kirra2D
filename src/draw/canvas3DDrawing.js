@@ -7,6 +7,8 @@
 
 import * as THREE from "three";
 import { GeometryFactory } from "../three/GeometryFactory.js";
+// Note: LineSegmentsGeometry, LineMaterial, LineSegments2 are used by GeometryFactory for KAD lines
+// The leading line uses simple THREE.Line like the ruler tool for reliability
 
 // Note: These functions access global variables from kirra.js via window object:
 // - threeInitialized, threeRenderer, worldToThreeLocal
@@ -184,14 +186,14 @@ export function drawHoleThreeJS_Instanced(hole, toeSliderRadius) {
 
 	// Calculate radii
 	const diameterInMeters = holeDiameter / 1000;
-	const radiusInMeters = (diameterInMeters / 2) * (window.holeScale * 2);
+	const radiusInMeters = diameterInMeters / 2 * (window.holeScale * 2);
 	const gradeRadiusInMeters = radiusInMeters * 0.5;
 
 	// Colors (matching original drawHoleThreeJS exactly)
 	const collarColor = window.darkModeEnabled ? 0xffffff : 0x000000;
 	const lineColor = window.darkModeEnabled ? 0xffffff : 0x000000;
 	const gradeColor = 0xff0000; // Always RED
-	const toeColor = window.darkModeEnabled ? 0x5EACFF : 0x26FF00; // Blue in dark, green in light
+	const toeColor = window.darkModeEnabled ? 0x5eacff : 0x26ff00; // Blue in dark, green in light
 
 	// Step 4) Create hole body lines (individual objects - lightweight)
 	const lineGroup = new THREE.Group();
@@ -220,12 +222,7 @@ export function drawHoleThreeJS_Instanced(hole, toeSliderRadius) {
 	} else if (holeDiameter === 0 || isNaN(holeDiameter)) {
 		// Zero diameter hole - draw square (keep as individual geometry)
 		const squareSize = 10 / window.currentScale;
-		const zeroGroup = GeometryFactory.createZeroDiameterHole(
-			collarLocal.x, collarLocal.y, collarZ,
-			gradeLocal.x, gradeLocal.y, gradeZ,
-			toeLocal.x, toeLocal.y, toeZ,
-			squareSize, subdrillAmount, window.darkModeEnabled
-		);
+		const zeroGroup = GeometryFactory.createZeroDiameterHole(collarLocal.x, collarLocal.y, collarZ, gradeLocal.x, gradeLocal.y, gradeZ, toeLocal.x, toeLocal.y, toeZ, squareSize, subdrillAmount, window.darkModeEnabled);
 		zeroGroup.userData = {
 			type: "hole",
 			holeId: uniqueHoleId,
@@ -238,53 +235,22 @@ export function drawHoleThreeJS_Instanced(hole, toeSliderRadius) {
 		return; // Don't use instancing for zero-diameter holes
 	}
 
-	// Step 5) Normal hole - use instancing for circles, individual lines for body
+	// Step 5) Normal hole - use instancing for circles, BATCHED lines for body
 
 	// Step 5a) Add collar circle as instance
-	manager.addHoleInstance(
-		uniqueHoleId,
-		"collar",
-		collarLocal.x,
-		collarLocal.y,
-		collarZ,
-		holeDiameter,
-		radiusInMeters,
-		collarColor,
-		window.darkModeEnabled
-	);
+	manager.addHoleInstance(uniqueHoleId, "collar", collarLocal.x, collarLocal.y, collarZ, holeDiameter, radiusInMeters, collarColor, window.darkModeEnabled);
 
-	// Step 5b) Create hole body lines
+	// Step 5b) Add hole body lines to BATCH (not individual objects!)
+	// This reduces draw calls from 1000s to ~5-10
+	const lineColorKey = window.darkModeEnabled ? "solid_white" : "solid_black";
+
 	if (hasNegativeSubdrill) {
 		// NEGATIVE SUBDRILL CASE
 		// Solid line from collar to toe
-		const collarToToePoints = [
-			new THREE.Vector3(collarLocal.x, collarLocal.y, collarZ),
-			new THREE.Vector3(toeLocal.x, toeLocal.y, toeZ)
-		];
-		const collarToToeGeometry = new THREE.BufferGeometry().setFromPoints(collarToToePoints);
-		const collarToToeMaterial = new THREE.LineBasicMaterial({
-			color: lineColor,
-			linewidth: 1,
-			transparent: false,
-			opacity: 1.0
-		});
-		const collarToToeLine = new THREE.Line(collarToToeGeometry, collarToToeMaterial);
-		lineGroup.add(collarToToeLine);
+		manager.addLineToBatch(lineColorKey, collarLocal.x, collarLocal.y, collarZ, toeLocal.x, toeLocal.y, toeZ);
 
 		// RED transparent line from toe to grade
-		const toeToGradePoints = [
-			new THREE.Vector3(toeLocal.x, toeLocal.y, toeZ),
-			new THREE.Vector3(gradeLocal.x, gradeLocal.y, gradeZ)
-		];
-		const toeToGradeGeometry = new THREE.BufferGeometry().setFromPoints(toeToGradePoints);
-		const toeToGradeMaterial = new THREE.LineBasicMaterial({
-			color: 0xff0000,
-			linewidth: 1,
-			transparent: true,
-			opacity: 0.2
-		});
-		const toeToGradeLine = new THREE.Line(toeToGradeGeometry, toeToGradeMaterial);
-		lineGroup.add(toeToGradeLine);
+		manager.addLineToBatch("transparent_red", toeLocal.x, toeLocal.y, toeZ, gradeLocal.x, gradeLocal.y, gradeZ);
 
 		// Add grade circle as instance (RED transparent for negative subdrill)
 		manager.addHoleInstance(
@@ -301,34 +267,10 @@ export function drawHoleThreeJS_Instanced(hole, toeSliderRadius) {
 	} else {
 		// POSITIVE/ZERO SUBDRILL CASE
 		// Solid line from collar to grade
-		const collarToGradePoints = [
-			new THREE.Vector3(collarLocal.x, collarLocal.y, collarZ),
-			new THREE.Vector3(gradeLocal.x, gradeLocal.y, gradeZ)
-		];
-		const collarToGradeGeometry = new THREE.BufferGeometry().setFromPoints(collarToGradePoints);
-		const collarToGradeMaterial = new THREE.LineBasicMaterial({
-			color: lineColor,
-			linewidth: 1,
-			transparent: false,
-			opacity: 1.0
-		});
-		const collarToGradeLine = new THREE.Line(collarToGradeGeometry, collarToGradeMaterial);
-		lineGroup.add(collarToGradeLine);
+		manager.addLineToBatch(lineColorKey, collarLocal.x, collarLocal.y, collarZ, gradeLocal.x, gradeLocal.y, gradeZ);
 
 		// RED solid line from grade to toe
-		const gradeToToePoints = [
-			new THREE.Vector3(gradeLocal.x, gradeLocal.y, gradeZ),
-			new THREE.Vector3(toeLocal.x, toeLocal.y, toeZ)
-		];
-		const gradeToToeGeometry = new THREE.BufferGeometry().setFromPoints(gradeToToePoints);
-		const gradeToToeMaterial = new THREE.LineBasicMaterial({
-			color: gradeColor,
-			linewidth: 1,
-			transparent: false,
-			opacity: 1.0
-		});
-		const gradeToToeLine = new THREE.Line(gradeToToeGeometry, gradeToToeMaterial);
-		lineGroup.add(gradeToToeLine);
+		manager.addLineToBatch("solid_red", gradeLocal.x, gradeLocal.y, gradeZ, toeLocal.x, toeLocal.y, toeZ);
 
 		// Add grade circle as instance (RED solid for positive subdrill)
 		manager.addHoleInstance(
@@ -361,15 +303,11 @@ export function drawHoleThreeJS_Instanced(hole, toeSliderRadius) {
 		);
 	}
 
-	// Step 6) Copy userData to all children for raycasting
-	// When raycaster hits a child line, it needs to find the hole userData
-	lineGroup.traverse(child => {
-		if (child.isLine) {
-			child.userData = Object.assign({}, lineGroup.userData, child.userData);
-		}
-	});
+	// NOTE: Lines are batched and will be flushed ONCE after all holes are drawn
+	// The lineGroup is no longer used for lines - only kept for hole metadata lookup
+	lineGroup.userData.linesBatched = true;
 
-	// Step 7) Add line group to scene
+	// Step 6) Add empty line group to scene (for metadata/selection lookup only)
 	window.threeRenderer.holesGroup.add(lineGroup);
 	window.threeRenderer.holeMeshMap.set(hole.holeID, lineGroup);
 }
@@ -760,23 +698,16 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			console.log("🎨 drawSurfaceThreeJS: Using textured mesh rendering for " + surfaceId + ", gradient: " + gradient + ", hasTexture: " + hasTexture);
 		}
 
-		// Step 12b) Check if already added to scene
+		// Step 12b) Check if already added to scene - CRITICAL: Return early to prevent duplicates!
 		var existingMesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
 		if (existingMesh) {
+			// Already in scene, just ensure visibility
 			if (developerModeEnabled) {
-				// Already in scene, just ensure visibility
-				if (developerModeEnabled) {
-					console.log("🎨 drawSurfaceThreeJS: Mesh already in scene for " + surfaceId + ", setting visible");
-				}
-				existingMesh.visible = true;
-
-				// Log mesh position and bounding box for debugging
-				if (developerModeEnabled) {
-					console.log("🎨 Existing mesh position: (" + existingMesh.position.x.toFixed(2) + ", " + existingMesh.position.y.toFixed(2) + ", " + existingMesh.position.z.toFixed(2) + ")");
-				}
-
-				return;
+				console.log("🎨 drawSurfaceThreeJS: Mesh already in scene for " + surfaceId + ", setting visible");
+				console.log("🎨 Existing mesh position: (" + existingMesh.position.x.toFixed(2) + ", " + existingMesh.position.y.toFixed(2) + ", " + existingMesh.position.z.toFixed(2) + ")");
 			}
+			existingMesh.visible = true;
+			return; // CRITICAL: Return here to prevent adding duplicate meshes!
 		}
 		if (developerModeEnabled) {
 			console.log("🎨 Mesh NOT in scene yet, creating new instance for " + surfaceId);
@@ -893,7 +824,8 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			console.log("🎨 Mesh visible: " + texturedMesh.visible + ", children count: " + texturedMesh.children.length);
 
 			// Check actual vertex Z range
-			var minVertexZ = Infinity, maxVertexZ = -Infinity;
+			var minVertexZ = Infinity,
+				maxVertexZ = -Infinity;
 			var firstVertex = null;
 			texturedMesh.traverse(function(child) {
 				if (child.isMesh && child.geometry && child.geometry.attributes.position) {
@@ -903,7 +835,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 						if (z < minVertexZ) minVertexZ = z;
 						if (z > maxVertexZ) maxVertexZ = z;
 						if (!firstVertex) {
-							firstVertex = { x: positions[i], y: positions[i+1], z: positions[i+2] };
+							firstVertex = { x: positions[i], y: positions[i + 1], z: positions[i + 2] };
 						}
 					}
 				}
@@ -963,7 +895,15 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		};
 	}
 
-	// Step 11) Create mesh with vertex colors (using local coordinates)
+	// Step 11) Check if surface already exists to prevent duplicates
+	var existingSurfaceMesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
+	if (existingSurfaceMesh) {
+		// Already in scene, just ensure visibility
+		existingSurfaceMesh.visible = true;
+		return; // CRITICAL: Return here to prevent adding duplicate meshes!
+	}
+
+	// Step 11b) Create mesh with vertex colors (using local coordinates)
 	var surfaceMesh = GeometryFactory.createSurface(localTriangles, colorFunction, transparency);
 	surfaceMesh.userData = { type: "surface", surfaceId: surfaceId };
 
@@ -976,8 +916,17 @@ export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!contourLinesArray || contourLinesArray.length === 0) return;
 
+	// Check if contours already exist to prevent duplicates
+	var hasExistingContours = window.threeRenderer.contoursGroup.children.some(function(child) {
+		return child.userData && child.userData.type === "contourLines";
+	});
+	if (hasExistingContours) {
+		return; // CRITICAL: Prevent duplicate contours
+	}
+
 	// Step 13a) Pass allBlastHoles and worldToThreeLocal for collar Z positioning
 	const contourGroup = GeometryFactory.createContourLines(contourLinesArray, color, allBlastHoles, window.worldToThreeLocal);
+	contourGroup.userData = { type: "contourLines" };
 	window.threeRenderer.contoursGroup.add(contourGroup);
 
 	// Step 13b) Add 3D text labels for each contour level (matching 2D overlay behavior)
@@ -1036,8 +985,17 @@ export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
 export function drawDirectionArrowsThreeJS(directionArrows, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
+	// Check if direction arrows already exist to prevent duplicates
+	var hasExistingArrows = window.threeRenderer.contoursGroup.children.some(function(child) {
+		return child.userData && child.userData.type === "directionArrows";
+	});
+	if (hasExistingArrows) {
+		return; // CRITICAL: Prevent duplicate direction arrows
+	}
+
 	// Step 14a) Pass allBlastHoles and worldToThreeLocal for collar Z positioning
 	const arrowGroup = GeometryFactory.createDirectionArrows(directionArrows, allBlastHoles, window.worldToThreeLocal);
+	arrowGroup.userData = { type: "directionArrows" };
 	window.threeRenderer.contoursGroup.add(arrowGroup);
 }
 
@@ -1064,6 +1022,18 @@ export function drawBackgroundImageThreeJS(imageId, imageCanvas, bbox, transpare
 	if (!imageMesh) {
 		console.warn("Failed to create image plane for imageId:", imageId);
 		return;
+	}
+
+	// Check if image already exists to prevent duplicates
+	var existingImage = null;
+	window.threeRenderer.imagesGroup.children.forEach(function(child) {
+		if (child.userData && child.userData.imageId === imageId) {
+			existingImage = child;
+		}
+	});
+	if (existingImage) {
+		existingImage.visible = true;
+		return; // CRITICAL: Prevent duplicate images
 	}
 
 	imageMesh.userData = {
@@ -1106,10 +1076,21 @@ export function drawConnectorThreeJS(fromHole, toHole, color, curve, delayText, 
 	);
 
 	// Step 16d) Add metadata for selection
+	var fromHoleKey = fromHole.entityName + ":::" + fromHole.holeID;
+	var toHoleKey = toHole.entityName + ":::" + toHole.holeID;
+
+	// Check if connector already exists for this hole pair to prevent duplicates
+	var hasExistingConnector = window.threeRenderer.connectorsGroup.children.some(function(child) {
+		return child.userData && child.userData.type === "connector" && child.userData.fromHoleId === fromHoleKey && child.userData.toHoleId === toHoleKey;
+	});
+	if (hasExistingConnector) {
+		return; // CRITICAL: Prevent duplicate connectors
+	}
+
 	connectorGroup.userData = {
 		type: "connector",
-		fromHoleId: fromHole.entityName + ":::" + fromHole.holeID,
-		toHoleId: toHole.entityName + ":::" + toHole.holeID
+		fromHoleId: fromHoleKey,
+		toHoleId: toHoleKey
 	};
 
 	window.threeRenderer.connectorsGroup.add(connectorGroup);
@@ -1320,7 +1301,7 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 	};
 
 	window.threeRenderer.connectorsGroup.add(stadiumGroup);
-	
+
 	// Request render to display the stadium zone
 	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
 		window.threeRenderer.requestRender();
@@ -1344,7 +1325,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// Step 19.5a) Convert world coordinates to local Three.js coordinates
 	const local = window.worldToThreeLocal(worldX, worldY);
 	const z = worldZ || 0;
-	
+
 	// DEBUG: Log local coordinates
 	if (window.developerModeEnabled) {
 		console.log("📍 drawMouseIndicator local coords:", local.x.toFixed(2), local.y.toFixed(2), z.toFixed(2));
@@ -1413,7 +1394,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// User reports sphere not visible even with previous attempts
 	// Use direct pixel-to-world conversion with enforced minimum of 1.0m radius
 	const indicatorSize = Math.max(snapRadiusWorld, 1.0);
-	
+
 	// DEBUG: Log indicator size with more detail
 	if (window.developerModeEnabled) {
 		console.log("📍 Indicator size: snapRadiusPixels=" + snapRadiusPixels + "px, snapRadiusWorld=" + snapRadiusWorld.toFixed(4) + "m, indicatorSize=" + indicatorSize.toFixed(2) + "m");
@@ -1436,7 +1417,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// No billboarding markup needed - sphere looks the same from all angles
 
 	connectorsGroup.add(indicatorGroup);
-	
+
 	// Request render to display the mouse indicator
 	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
 		window.threeRenderer.requestRender();
@@ -1446,20 +1427,33 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 }
 
 // Step 19.6) Draw KAD leading line preview in Three.js
+// FIXED: Use EXACT same approach as working KAD line drawing (batched lines pattern)
+// The key is: worldToThreeLocal converts coords, then use LineSegments with BufferGeometry
 export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, toWorldX, toWorldY, toWorldZ, color) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (fromWorldX === undefined || fromWorldY === undefined) return;
 	if (toWorldX === undefined || toWorldY === undefined) return;
 
 	// Step 19.6a) Convert world coordinates to local Three.js coordinates
-	const fromLocal = window.worldToThreeLocal(fromWorldX, fromWorldY);
-	const toLocal = window.worldToThreeLocal(toWorldX, toWorldY);
-	const fromZ = fromWorldZ || 0;
-	const toZ = toWorldZ || 0;
+	// This MUST happen - same as line 27784-27785 in kirra.js for working KAD lines
+	var fromLocal = window.worldToThreeLocal(fromWorldX, fromWorldY);
+	var toLocal = window.worldToThreeLocal(toWorldX, toWorldY);
+	var fromZ = fromWorldZ || 0;
+	var toZ = toWorldZ || 0;
 
-	// Step 19.6b) Remove existing leading line if present
-	const connectorsGroup = window.threeRenderer.connectorsGroup;
-	const toRemove = [];
+	if (window.developerModeEnabled) {
+		console.log("🔸 Leading line: world(" + fromWorldX.toFixed(2) + "," + fromWorldY.toFixed(2) + ") → local(" + fromLocal.x.toFixed(2) + "," + fromLocal.y.toFixed(2) + ")");
+	}
+
+	// Step 19.6b) Remove existing leading line from connectorsGroup (same as ruler/mouse indicator)
+	// connectorsGroup is for temporary UI elements that are redrawn every frame
+	var connectorsGroup = window.threeRenderer.connectorsGroup;
+	if (!connectorsGroup) {
+		console.warn("🔸 Leading line: connectorsGroup not found!");
+		return;
+	}
+
+	var toRemove = [];
 	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
@@ -1471,33 +1465,66 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 		if (obj.material) obj.material.dispose();
 	});
 
-	// Step 19.6c) Create dashed line geometry from last point to current mouse position
-	const lineColor = color || "rgba(0, 255, 255, 0.8)";
-	const points = [new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ), new THREE.Vector3(toLocal.x, toLocal.y, toZ)];
+	// Step 19.6c) Parse color
+	var r = 0,
+		g = 1,
+		b = 1; // Default cyan
+	if (color) {
+		if (color.startsWith("rgba(") || color.startsWith("rgb(")) {
+			var match = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+			if (match) {
+				r = parseInt(match[1]) / 255;
+				g = parseInt(match[2]) / 255;
+				b = parseInt(match[3]) / 255;
+			}
+		} else if (color.startsWith("#") && color.length >= 7) {
+			var hex = parseInt(color.slice(1, 7), 16);
+			r = ((hex >> 16) & 255) / 255;
+			g = ((hex >> 8) & 255) / 255;
+			b = (hex & 255) / 255;
+		}
+	}
 
-	const geometry = new THREE.BufferGeometry().setFromPoints(points);
-	const material = new THREE.LineDashedMaterial({
-		color: new THREE.Color(lineColor),
-		dashSize: 0.5,
-		gapSize: 0.25,
-		linewidth: 2
+	// Step 19.6d) Create LineSegments using SAME pattern as createBatchedPolyline (line 537-632)
+	// This is the WORKING approach used by all KAD lines
+	var positions = new Float32Array(6); // 2 points * 3 coords
+	var colors = new Float32Array(6); // 2 points * 3 colors
+
+	// Start point
+	positions[0] = fromLocal.x;
+	positions[1] = fromLocal.y;
+	positions[2] = fromZ;
+	// End point
+	positions[3] = toLocal.x;
+	positions[4] = toLocal.y;
+	positions[5] = toZ;
+
+	// Colors for both vertices
+	colors[0] = r;
+	colors[1] = g;
+	colors[2] = b;
+	colors[3] = r;
+	colors[4] = g;
+	colors[5] = b;
+
+	var geometry = new THREE.BufferGeometry();
+	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+	geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+	var material = new THREE.LineBasicMaterial({
+		vertexColors: true,
+		linewidth: 1
 	});
 
-	const line = new THREE.Line(geometry, material);
-	line.computeLineDistances(); // Required for dashed lines
+	// Use LineSegments (same as createBatchedPolyline line 625)
+	var lineSegments = new THREE.LineSegments(geometry, material);
+	lineSegments.userData = { type: "kadLeadingLine" };
+	lineSegments.name = "kad-leading-line";
 
-	// Step 19.6d) Add metadata
-	line.userData = {
-		type: "kadLeadingLine"
-	};
+	connectorsGroup.add(lineSegments);
 
-	connectorsGroup.add(line);
-	
-	// Request render to display the leading line
-	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
-		window.threeRenderer.requestRender();
-	} else if (window.threeRenderer) {
-		window.threeRenderer.needsRender = true;
+	if (window.developerModeEnabled) {
+		console.log("🔸 Leading line ADDED to connectorsGroup. Children:", connectorsGroup.children.length);
 	}
 }
 
@@ -1505,8 +1532,10 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 export function clearKADLeadingLineThreeJS() {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
-	const connectorsGroup = window.threeRenderer.connectorsGroup;
-	const toRemove = [];
+	var connectorsGroup = window.threeRenderer.connectorsGroup;
+	if (!connectorsGroup) return;
+
+	var toRemove = [];
 	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
@@ -1724,15 +1753,24 @@ export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!triangles || triangles.length === 0) return;
 
+	// Check if slope map already exists to prevent duplicates
+	var hasExistingSlope = window.threeRenderer.surfacesGroup.children.some(function(child) {
+		return child.userData && child.userData.type === "slopeMap";
+	});
+	if (hasExistingSlope) {
+		return; // CRITICAL: Prevent duplicate slope maps
+	}
+
 	// Step 20a) Create slope surface geometry
 	const slopeMesh = GeometryFactory.createSlopeSurface(triangles, allBlastHoles, window.worldToThreeLocal, 1.0);
 
-	// Step 20b) Add metadata
-	slopeMesh.userData = {
-		type: "slopeMap"
-	};
-
-	window.threeRenderer.surfacesGroup.add(slopeMesh);
+	// Step 20b) Add metadata and to scene (if mesh was created)
+	if (slopeMesh) {
+		slopeMesh.userData = {
+			type: "slopeMap"
+		};
+		window.threeRenderer.surfacesGroup.add(slopeMesh);
+	}
 
 	// Step 20c) Add text labels for slope values on each triangle
 	for (const triangle of triangles) {
@@ -1778,15 +1816,24 @@ export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!triangles || triangles.length === 0) return;
 
+	// Check if relief map already exists to prevent duplicates
+	var hasExistingRelief = window.threeRenderer.surfacesGroup.children.some(function(child) {
+		return child.userData && child.userData.type === "burdenReliefMap";
+	});
+	if (hasExistingRelief) {
+		return; // CRITICAL: Prevent duplicate relief maps
+	}
+
 	// Step 21a) Create relief surface geometry
 	const reliefMesh = GeometryFactory.createReliefSurface(triangles, allBlastHoles, window.worldToThreeLocal, 1.0);
 
-	// Step 21b) Add metadata
-	reliefMesh.userData = {
-		type: "burdenReliefMap"
-	};
-
-	window.threeRenderer.surfacesGroup.add(reliefMesh);
+	// Step 21b) Add metadata and to scene (if mesh was created)
+	if (reliefMesh) {
+		reliefMesh.userData = {
+			type: "burdenReliefMap"
+		};
+		window.threeRenderer.surfacesGroup.add(reliefMesh);
+	}
 
 	// Step 21c) Add text labels for relief values on each triangle
 	// Relief triangle format: [[x, y, holeTime], [x, y, holeTime], [x, y, holeTime]]
@@ -1833,6 +1880,14 @@ export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
 export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlastHoles, extrusionHeight, useToeLocation, selectedMetric) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!clippedCells || clippedCells.length === 0) return;
+
+	// Check if voronoi cells already exist to prevent duplicates
+	var hasExistingVoronoi = window.threeRenderer.surfacesGroup.children.some(function(child) {
+		return child.userData && child.userData.type === "voronoiCells";
+	});
+	if (hasExistingVoronoi) {
+		return; // CRITICAL: Prevent duplicate voronoi cells
+	}
 
 	// Step 22a) Default extrusionHeight if not provided
 	if (extrusionHeight === undefined || extrusionHeight === null) {

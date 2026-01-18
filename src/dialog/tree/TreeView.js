@@ -735,7 +735,7 @@ export class TreeView {
 		}
 		// Redraw to reflect visibility changes
 		if (typeof window.drawData === "function") {
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		}
 	}
 
@@ -807,7 +807,7 @@ export class TreeView {
 		}
 		// Redraw to reflect visibility changes
 		if (typeof window.drawData === "function") {
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		}
 	}
 
@@ -1879,7 +1879,7 @@ export class TreeView {
 
 		// Redraw canvas
 		if (typeof window.drawData === "function") {
-			window.drawData(window.allBlastHoles, window.selectedHole);
+			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 		}
 	}
 

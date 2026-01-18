@@ -1219,6 +1219,11 @@ export class ThreeRenderer {
 
 		this.renderer.render(this.scene, this.camera);
 
+		// Step 23b) Update performance monitor if enabled
+		if (window.perfMonitor && window.perfMonitorEnabled) {
+			window.perfMonitor.update();
+		}
+
 		this.needsRender = false;
 	}
 

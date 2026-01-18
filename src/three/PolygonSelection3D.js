@@ -723,7 +723,7 @@ export class PolygonSelection3D {
         console.log("  selectedMultipleKADObjects:", window.selectedMultipleKADObjects ? window.selectedMultipleKADObjects.length : "undefined");
 
         if (window.drawData) {
-            window.drawData(window.allBlastHoles, window.selectedHole);
+            if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
             console.log("✓ drawData() called");
         } else {
             console.log("❌ drawData() function not found!");

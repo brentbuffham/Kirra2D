@@ -194,7 +194,7 @@ export function showPatternDialog(mode, worldX, worldY) {
 
 			// Redraw to clear any visual indicators
 			if (typeof window.drawData === "function" && window.allBlastHoles && window.selectedHole !== undefined) {
-				window.drawData(window.allBlastHoles, window.selectedHole);
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			}
 
 			dialog.close();
@@ -488,7 +488,7 @@ export function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 				window.debouncedUpdateTreeView();
 			}
 			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
-				window.drawData(window.allBlastHoles, window.selectedHole);
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			}
 
 			// Step 8s) Deactivate tool
@@ -528,7 +528,7 @@ export function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 
 			// Step 8w) Redraw to clear any visual indicators
 			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
-				window.drawData(window.allBlastHoles, window.selectedHole);
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			}
 
 			// Step 8x) Reset tool
@@ -864,7 +864,7 @@ export function showHolesAlongLinePopup() {
 
 			// Step 10w) Redraw to clear any visual indicators
 			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
-				window.drawData(window.allBlastHoles, window.selectedHole);
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
 			}
 
 			// Step 10x) Reset tool

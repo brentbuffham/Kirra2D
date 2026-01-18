@@ -4,6 +4,7 @@
 //=============================================================
 // Manages THREE.InstancedMesh objects for rendering thousands of blast holes
 // Groups holes by diameter and type (collar/grade/toe) for optimal batching
+// Also batches LINE SEGMENTS to reduce draw calls from 1000s to ~10
 // Provides 10-50x performance improvement over individual mesh rendering
 
 import * as THREE from "three";
@@ -35,6 +36,16 @@ export class InstancedMeshManager {
 		this.tempMatrix = new THREE.Matrix4();
 		this.tempColor = new THREE.Color();
 		this.tempVector = new THREE.Vector3();
+
+		// =============================================
+		// LINE BATCHING - Batch all hole body lines into single draw calls
+		// =============================================
+		// Format: { "solid_white": [x1,y1,z1, x2,y2,z2, ...], "solid_red": [...] }
+		this.lineBatches = new Map();
+		// Built line meshes
+		this.lineMeshes = new Map();
+		// Flag to track if batches need rebuilding
+		this.linesDirty = false;
 	}
 
 	/**
@@ -244,6 +255,112 @@ export class InstancedMeshManager {
 		this.holeInstanceMap.delete(holeId);
 	}
 
+	// =============================================
+	// LINE BATCHING METHODS
+	// =============================================
+
+	/**
+	 * Add a line segment to a batch (instead of creating individual Line object)
+	 * @param {string} batchKey - Batch key (e.g., "solid_white", "solid_red", "transparent_red")
+	 * @param {number} x1 - Start X
+	 * @param {number} y1 - Start Y
+	 * @param {number} z1 - Start Z
+	 * @param {number} x2 - End X
+	 * @param {number} y2 - End Y
+	 * @param {number} z2 - End Z
+	 */
+	addLineToBatch(batchKey, x1, y1, z1, x2, y2, z2) {
+		if (!this.lineBatches.has(batchKey)) {
+			this.lineBatches.set(batchKey, []);
+		}
+		var batch = this.lineBatches.get(batchKey);
+		batch.push(x1, y1, z1, x2, y2, z2);
+		this.linesDirty = true;
+	}
+
+	/**
+	 * Build all batched lines into LineSegments meshes
+	 * Call this ONCE after all holes are added
+	 * @param {THREE.Group} targetGroup - Group to add line meshes to (e.g., holesGroup)
+	 */
+	flushLineBatches(targetGroup) {
+		if (!this.linesDirty) return;
+
+		// Clear old line meshes
+		this.lineMeshes.forEach(function(mesh) {
+			if (mesh.parent) mesh.parent.remove(mesh);
+			if (mesh.geometry) mesh.geometry.dispose();
+			if (mesh.material) mesh.material.dispose();
+		});
+		this.lineMeshes.clear();
+
+		var self = this;
+
+		// Build each batch
+		this.lineBatches.forEach(function(positions, batchKey) {
+			if (positions.length === 0) return;
+
+			// Parse batch key for properties
+			var parts = batchKey.split("_");
+			var style = parts[0]; // "solid" or "transparent"
+			var colorName = parts[1]; // "white", "black", "red"
+
+			// Determine color
+			var color;
+			switch (colorName) {
+				case "white": color = 0xffffff; break;
+				case "black": color = 0x000000; break;
+				case "red": color = 0xff0000; break;
+				default: color = 0xffffff;
+			}
+
+			// Create geometry from positions
+			var geometry = new THREE.BufferGeometry();
+			geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+
+			// Create material
+			var material = new THREE.LineBasicMaterial({
+				color: color,
+				transparent: (style === "transparent"),
+				opacity: (style === "transparent") ? 0.2 : 1.0,
+				depthWrite: (style !== "transparent")
+			});
+
+			// Create LineSegments (pairs of vertices = line segments)
+			var mesh = new THREE.LineSegments(geometry, material);
+			mesh.userData = {
+				type: "batchedHoleLines",
+				batchKey: batchKey,
+				lineCount: positions.length / 6
+			};
+
+			targetGroup.add(mesh);
+			self.lineMeshes.set(batchKey, mesh);
+		});
+
+		this.linesDirty = false;
+
+		// Log batching stats (only once, not every frame)
+		var totalLines = 0;
+		this.lineBatches.forEach(function(positions) {
+			totalLines += positions.length / 6;
+		});
+		// Only log if we actually built new lines
+		if (totalLines > 0) {
+			console.log("🚀 Line batching: " + totalLines + " lines in " + this.lineMeshes.size + " draw calls");
+		}
+	}
+
+	/**
+	 * Clear line batches (call before redrawing all holes)
+	 */
+	clearLineBatches() {
+		this.lineBatches.forEach(function(batch) {
+			batch.length = 0; // Clear array without creating new one
+		});
+		this.linesDirty = true;
+	}
+
 	/**
 	 * Clear all instances and reset
 	 */
@@ -260,6 +377,18 @@ export class InstancedMeshManager {
 		this.holeInstanceMap.clear();
 		this.nextIndexMap.clear();
 		this.instanceCounts.clear();
+
+		// Clear line batches
+		this.lineBatches.forEach(function(batch) {
+			batch.length = 0;
+		});
+		this.lineMeshes.forEach(function(mesh) {
+			if (mesh.parent) mesh.parent.remove(mesh);
+			if (mesh.geometry) mesh.geometry.dispose();
+			if (mesh.material) mesh.material.dispose();
+		});
+		this.lineMeshes.clear();
+		this.linesDirty = false;
 	}
 
 	/**
