@@ -9,6 +9,8 @@
 // Step 5) Reference: ASPRS LAS Specification 1.4-R15
 
 import BaseParser from "../BaseParser.js";
+import proj4 from "proj4";
+import { top100EPSGCodes, isLikelyWGS84 } from "../../dialog/popups/generic/ProjectionDialog.js";
 
 // Step 6) LAS Classification lookup table
 const LAS_CLASSIFICATIONS = {
@@ -57,11 +59,47 @@ class LASParser extends BaseParser {
 
 	// Step 9) Main parse method
 	async parse(file) {
-		// Step 10) Read file as ArrayBuffer for binary parsing
-		var arrayBuffer = await this.readAsArrayBuffer(file);
+		try {
+			// Step 10) Read file as ArrayBuffer for binary parsing
+			var arrayBuffer = await this.readAsArrayBuffer(file);
 
-		// Step 11) Parse the LAS data
-		return this.parseLASData(arrayBuffer);
+			// Step 11) Parse the LAS data (initial parsing without transformation)
+			var rawData = this.parseLASData(arrayBuffer);
+
+			// Step 12) Detect coordinate system from bounds
+			var isWGS84 = this.detectCoordinateSystem(rawData.header);
+
+			// Step 13) Prompt user for import configuration
+			var config = await this.promptForImportConfiguration(file.name, isWGS84);
+
+			if (config.cancelled) {
+				return { success: false, message: "Import cancelled by user" };
+			}
+
+			// Step 14) Apply coordinate transformations if needed
+			if (config.transform) {
+				rawData = await this.applyCoordinateTransformation(rawData, config);
+			}
+
+			// Step 15) Apply master RL offset if specified
+			if (config.masterRLX !== 0 || config.masterRLY !== 0) {
+				rawData = this.applyMasterRLOffset(rawData, config.masterRLX, config.masterRLY);
+			}
+
+			// Step 16) Convert to kadDrawingsMap format for Kirra compatibility
+			rawData.kadDrawingsMap = this.convertToKadFormat(rawData.points, rawData.header);
+
+			// Step 17) Return final processed data
+			return {
+				...rawData,
+				config: config,
+				dataType: "pointcloud",
+				success: true
+			};
+		} catch (error) {
+			console.error("LAS parse error:", error);
+			throw error;
+		}
 	}
 
 	// Step 12) Read file as ArrayBuffer
@@ -106,15 +144,11 @@ class LASParser extends BaseParser {
 			// Step 18) Calculate statistics
 			var stats = this.calculateStatistics(points, header);
 
-			// Step 19) Convert to kadDrawingsMap format for Kirra compatibility
-			var kadDrawingsMap = this.convertToKadFormat(points, header);
-
-			// Step 20) Return parsed data
+			// Step 19) Return parsed data (without KAD conversion - done later)
 			return {
 				header: header,
 				vlrs: vlrs,
 				points: points,
-				kadDrawingsMap: kadDrawingsMap,
 				statistics: stats,
 				successCount: points.length,
 				errorCount: 0,
@@ -703,6 +737,268 @@ class LASParser extends BaseParser {
 		};
 
 		return colors[classification] || "#808080"; // Default gray
+	}
+
+	// Step 39) Detect coordinate system from LAS header bounds
+	detectCoordinateSystem(header) {
+		var bbox = [header.minX, header.minY, header.maxX, header.maxY];
+		return isLikelyWGS84(bbox);
+	}
+
+	// Step 40) Prompt user for import configuration
+	async promptForImportConfiguration(filename, isWGS84) {
+		return new Promise(function(resolve) {
+			// Step 41) Create dialog content HTML
+			var contentHTML = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">';
+
+			// Step 42) File information
+			contentHTML += '<div style="text-align: left;">';
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;"><strong>File:</strong> ' + filename + "</p>";
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">Detected coordinate system: <strong>' + (isWGS84 ? "WGS84 (latitude/longitude)" : "Projected (UTM/local)") + "</strong></p>";
+			contentHTML += '<p class="labelWhite15" style="margin: 0;">LAS files contain point cloud data. How would you like to import this data?</p>';
+			contentHTML += "</div>";
+
+			// Step 43) Import type selection
+			contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Import As:</p>';
+
+			contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
+			contentHTML += '<input type="radio" id="import-pointcloud" name="import-type" value="pointcloud" checked style="margin: 0;">';
+			contentHTML += '<label for="import-pointcloud" class="labelWhite15" style="margin: 0; cursor: pointer;">Point Cloud (KAD points by classification)</label>';
+			contentHTML += "</div>";
+
+			contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
+			contentHTML += '<input type="radio" id="import-surface" name="import-type" value="surface" style="margin: 0;">';
+			contentHTML += '<label for="import-surface" class="labelWhite15" style="margin: 0; cursor: pointer;">Surface (triangulated mesh)</label>';
+			contentHTML += "</div>";
+
+			contentHTML += "</div>";
+
+			// Step 44) Coordinate transformation options (only if WGS84 detected)
+			if (isWGS84) {
+				contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+				contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Coordinate Transformation:</p>';
+
+				contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
+				contentHTML += '<input type="radio" id="keep-wgs84-las" name="transform" value="keep" style="margin: 0;">';
+				contentHTML += '<label for="keep-wgs84-las" class="labelWhite15" style="margin: 0; cursor: pointer;">Keep as WGS84 (latitude/longitude)</label>';
+				contentHTML += "</div>";
+
+				contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
+				contentHTML += '<input type="radio" id="transform-utm-las" name="transform" value="transform" checked style="margin: 0;">';
+				contentHTML += '<label for="transform-utm-las" class="labelWhite15" style="margin: 0; cursor: pointer;">Transform to projected coordinates</label>';
+				contentHTML += "</div>";
+
+				// EPSG dropdown
+				contentHTML += '<div id="las-epsg-section" style="margin-top: 10px; display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: center;">';
+				contentHTML += '<label class="labelWhite15">EPSG Code:</label>';
+				contentHTML += '<select id="las-import-epsg-code" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+				contentHTML += '<option value="">-- Select EPSG Code --</option>';
+
+				// Add EPSG codes
+				top100EPSGCodes.forEach(function(item) {
+					contentHTML += '<option value="' + item.code + '">' + item.code + " - " + item.name + "</option>";
+				});
+
+				contentHTML += "</select>";
+				contentHTML += "</div>";
+
+				// Custom Proj4
+				contentHTML += '<div style="margin-top: 8px; display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: start;">';
+				contentHTML += '<label class="labelWhite15" style="padding-top: 4px;">Or Custom Proj4:</label>';
+				contentHTML += '<textarea id="las-import-custom-proj4" placeholder="+proj=utm +zone=50 +south +datum=WGS84 +units=m +no_defs" style="height: 60px; padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>';
+				contentHTML += "</div>";
+
+				contentHTML += "</div>";
+			}
+
+			// Step 45) Master RL offset
+			contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Master Reference Location (Optional):</p>';
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; opacity: 0.8;">Apply offset to all imported coordinates</p>';
+
+			contentHTML += '<div style="display: grid; grid-template-columns: 80px 1fr 80px 1fr; gap: 8px; align-items: center;">';
+			contentHTML += '<label class="labelWhite15">Easting:</label>';
+			contentHTML += '<input type="number" id="las-master-rl-x" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<label class="labelWhite15">Northing:</label>';
+			contentHTML += '<input type="number" id="las-master-rl-y" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += "</div>";
+
+			contentHTML += "</div>";
+
+			// Step 46) Point decimation options
+			contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Point Cloud Options:</p>';
+
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
+			contentHTML += '<label class="labelWhite15">Max Points:</label>';
+			contentHTML += '<input type="number" id="las-max-points" value="100000" min="1000" max="1000000" step="1000" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += "</div>";
+
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
+			contentHTML += '<label class="labelWhite15">Classification Filter:</label>';
+			contentHTML += '<select id="las-classification-filter" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<option value="all">All Classifications</option>';
+			contentHTML += '<option value="ground">Ground Only (2)</option>';
+			contentHTML += '<option value="vegetation">Vegetation (3,4,5)</option>';
+			contentHTML += '<option value="buildings">Buildings (6)</option>';
+			contentHTML += '<option value="unclassified">Unclassified Only (1)</option>';
+			contentHTML += "</select>";
+			contentHTML += "</div>";
+
+			contentHTML += "</div>";
+
+			// Error message
+			contentHTML += '<div id="las-import-error-message" style="display: none; margin-top: 8px; padding: 6px; background: #f44336; color: white; border-radius: 3px; font-size: 11px;"></div>';
+
+			contentHTML += "</div>";
+
+			// Step 47) Create dialog
+			var dialog = new window.FloatingDialog({
+				title: "Import LAS Point Cloud",
+				content: contentHTML,
+				layoutType: "default",
+				width: 650,
+				height: 700,
+				showConfirm: true,
+				showCancel: true,
+				confirmText: "Import",
+				cancelText: "Cancel",
+				onConfirm: async function() {
+					try {
+						// Get form values
+						var importType = document.querySelector('input[name="import-type"]:checked').value;
+						var maxPoints = parseInt(document.getElementById("las-max-points").value);
+						var classificationFilter = document.getElementById("las-classification-filter").value;
+						var masterRLX = parseFloat(document.getElementById("las-master-rl-x").value) || 0;
+						var masterRLY = parseFloat(document.getElementById("las-master-rl-y").value) || 0;
+						var errorDiv = document.getElementById("las-import-error-message");
+
+						var config = {
+							cancelled: false,
+							importType: importType,
+							maxPoints: maxPoints,
+							classificationFilter: classificationFilter,
+							masterRLX: masterRLX,
+							masterRLY: masterRLY,
+							transform: false,
+							epsgCode: null,
+							proj4Source: null
+						};
+
+						// Check transformation options if WGS84
+						if (isWGS84) {
+							var transformRadio = document.querySelector('input[name="transform"]:checked');
+							if (transformRadio && transformRadio.value === "transform") {
+								config.transform = true;
+								var epsgCode = document.getElementById("las-import-epsg-code").value.trim();
+								var customProj4 = document.getElementById("las-import-custom-proj4").value.trim();
+
+								if (!epsgCode && !customProj4) {
+									errorDiv.textContent = "Please select an EPSG code or provide a custom Proj4 definition for transformation";
+									errorDiv.style.display = "block";
+									return;
+								}
+
+								config.epsgCode = epsgCode || null;
+								config.proj4Source = customProj4 || null;
+
+								// Load EPSG definition if needed
+								if (epsgCode) {
+									await window.loadEPSGCode(epsgCode);
+								}
+							}
+						}
+
+						dialog.close();
+						resolve(config);
+					} catch (error) {
+						var errorDiv = document.getElementById("las-import-error-message");
+						if (errorDiv) {
+							errorDiv.textContent = "Configuration error: " + error.message;
+							errorDiv.style.display = "block";
+						}
+						console.error("LAS import configuration error:", error);
+					}
+				},
+				onCancel: function() {
+					dialog.close();
+					resolve({ cancelled: true });
+				}
+			});
+
+			dialog.show();
+
+			// Toggle EPSG section visibility
+			if (isWGS84) {
+				var transformRadios = document.querySelectorAll('input[name="transform"]');
+				var epsgSection = document.getElementById("las-epsg-section");
+
+				transformRadios.forEach(function(radio) {
+					radio.addEventListener("change", function() {
+						if (radio.value === "transform") {
+							epsgSection.style.display = "grid";
+						} else {
+							epsgSection.style.display = "none";
+						}
+					});
+				});
+			}
+		});
+	}
+
+	// Step 48) Apply coordinate transformation to points
+	async applyCoordinateTransformation(data, config) {
+		if (!config.transform) {
+			return data;
+		}
+
+		console.log("Transforming LAS coordinates from WGS84 to projected system...");
+
+		var sourceDef = "+proj=longlat +datum=WGS84 +no_defs";
+		var targetDef = config.proj4Source || "EPSG:" + config.epsgCode;
+
+		// Transform each point
+		for (var i = 0; i < data.points.length; i++) {
+			var point = data.points[i];
+			var transformed = proj4(sourceDef, targetDef, [point.x, point.y]);
+
+			point.x = transformed[0];
+			point.y = transformed[1];
+			// Z coordinate typically stays the same (elevation)
+		}
+
+		// Update header bounds
+		var stats = this.calculateStatistics(data.points, data.header);
+		data.header.minX = stats.minX;
+		data.header.maxX = stats.maxX;
+		data.header.minY = stats.minY;
+		data.header.maxY = stats.maxY;
+
+		return data;
+	}
+
+	// Step 49) Apply master RL offset
+	applyMasterRLOffset(data, offsetX, offsetY) {
+		if (offsetX === 0 && offsetY === 0) {
+			return data;
+		}
+
+		console.log("Applying master RL offset:", offsetX, offsetY);
+
+		for (var i = 0; i < data.points.length; i++) {
+			data.points[i].x += offsetX;
+			data.points[i].y += offsetY;
+		}
+
+		// Update header bounds
+		var stats = this.calculateStatistics(data.points, data.header);
+		data.header.minX = stats.minX;
+		data.header.maxX = stats.maxX;
+		data.header.minY = stats.minY;
+		data.header.maxY = stats.maxY;
+
+		return data;
 	}
 }
 

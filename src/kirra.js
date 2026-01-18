@@ -10413,17 +10413,485 @@ function exportPointCloudWithFilePicker(blob, defaultFilename) {
 		});
 }
 
-// LAS POINT CLOUD - Coming Soon
-document.querySelectorAll(".las-input-btn, .las-output-btn").forEach(function (button) {
-	button.addEventListener("click", function () {
-		showModalMessage("Coming Soon", "LAS Point Cloud import/export will be available in a future update", "info");
+// LAS POINT CLOUD IMPORT - Using FileManager LASParser
+document.querySelectorAll(".las-input-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		try {
+			// Step 1) Create file input for LAS/LAZ files
+			var input = document.createElement("input");
+			input.type = "file";
+			input.accept = ".las,.laz";
+			input.multiple = false;
+
+			input.onchange = async function (e) {
+				var file = e.target.files[0];
+				if (!file) return;
+
+				try {
+					// Step 2) Use FileManager to parse LAS file
+					if (window.fileManager) {
+						var parser = window.fileManager.getParser("las");
+						if (!parser) {
+							throw new Error("LAS parser not found in FileManager");
+						}
+
+						// Step 3) Show progress message
+						showStatusMessage("Importing " + file.name + "...");
+
+						// Step 4) Parse the file (includes projection dialog)
+						var result = await parser.parse(file);
+
+						if (!result || result.cancelled) {
+							showModalMessage("Import Cancelled", "LAS import was cancelled", "info");
+							return;
+						}
+
+						if (!result.success) {
+							throw new Error(result.message || "Failed to parse LAS file");
+						}
+
+						// Step 5) Handle the imported point cloud data
+						if (result.dataType === "pointcloud" && result.kadDrawingsMap) {
+							// Step 6) Create layer for LAS import
+							var lasLayer = window.getOrCreateLayerForImport("drawing", file.name);
+							var lasLayerId = lasLayer ? lasLayer.layerId : null;
+							console.log("✅ [Layer] Created drawing layer for LAS import:", file.name, "->", lasLayerId);
+
+							// Add entities to allKADDrawingsMap with layer assignment
+							for (var [entityName, entityData] of result.kadDrawingsMap.entries()) {
+								// Step 7) Assign layerId to entity
+								entityData.layerId = lasLayerId;
+								window.allKADDrawingsMap.set(entityName, entityData);
+								// Step 8) Add to layer entities set
+								if (lasLayer) {
+									lasLayer.entities.add(entityName);
+								}
+							}
+
+							// Step 9) Update UI and redraw
+							window.drawData(window.allBlastHoles, window.selectedHole);
+
+							// Step 10) Save layers
+							if (window.debouncedSaveLayers) {
+								window.debouncedSaveLayers();
+							}
+
+							// Update tree view if available
+							if (window.debouncedUpdateTreeView) {
+								window.debouncedUpdateTreeView();
+							}
+
+							// Show success message
+							showModalMessage(
+								"Import Successful",
+								"Imported LAS point cloud from " + file.name + " (" + result.successCount + " points)",
+								"success"
+							);
+
+							console.log("LAS import completed: " + result.successCount + " points");
+						} else {
+							showModalMessage("Import Error", "Unexpected data format from LAS parser", "error");
+						}
+					} else {
+						throw new Error("FileManager not available");
+					}
+				} catch (error) {
+					console.error("LAS import error:", error);
+					showModalMessage("Import Failed", "Error importing LAS file: " + error.message, "error");
+				}
+			};
+
+			input.click();
+		} catch (error) {
+			console.error("LAS import setup error:", error);
+			showModalMessage("Import Failed", "Error setting up LAS import: " + error.message, "error");
+		}
 	});
 });
 
-// ESRI SHAPEFILE - Coming Soon
-document.querySelectorAll(".shape-input-btn, .shape-output-btn").forEach(function (button) {
-	button.addEventListener("click", function () {
-		showModalMessage("Coming Soon", "ESRI Shapefile import/export will be available in a future update", "info");
+// LAS POINT CLOUD EXPORT - Using FileManager LASWriter
+document.querySelectorAll(".las-output-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		try {
+			// Step 1) Check if we have any point cloud data to export
+			var hasPointCloudData = false;
+			window.loadedSurfaces.forEach(function (surface) {
+				if (surface && surface.points && surface.points.length > 0) {
+					hasPointCloudData = true;
+				}
+			});
+
+			if (!hasPointCloudData && (!window.allKADDrawingsMap || window.allKADDrawingsMap.size === 0)) {
+				showModalMessage("No Data", "No point cloud or surface data available to export. Please load surfaces or KAD drawings first.", "warning");
+				return;
+			}
+
+			// Step 2) Get LAS writer from FileManager
+			var Writer = window.fileManager.writers.get("las");
+			if (!Writer) {
+				showModalMessage("Error", "LAS writer not found", "error");
+				return;
+			}
+
+			// Step 3) Show filename dialog first
+			showConfirmationDialogWithInput(
+				"Export LAS Point Cloud",
+				"Enter filename for LAS export",
+				"Filename:",
+				"text",
+				"POINTCLOUD_EXPORT_" + new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_") + ".las",
+				"Export",
+				"Cancel",
+				async function (filename) {
+					if (!filename || filename.trim() === "") {
+						showModalMessage("Export Cancelled", "No filename provided", "warning");
+						return;
+					}
+
+					if (!filename.toLowerCase().endsWith(".las")) {
+						filename += ".las";
+					}
+
+					try {
+						// Step 4) Collect point data from surfaces and KAD entities
+						var allPoints = [];
+
+						// From loaded surfaces
+						window.loadedSurfaces.forEach(function (surface) {
+							if (surface && surface.points && Array.isArray(surface.points)) {
+								surface.points.forEach(function (point) {
+									allPoints.push({
+										x: point.x || point.pointXLocation || 0,
+										y: point.y || point.pointYLocation || 0,
+										z: point.z || point.pointZLocation || 0,
+										classification: 1, // Unclassified
+										intensity: 0,
+										returnNumber: 1,
+										numberOfReturns: 1
+									});
+								});
+							}
+						});
+
+						// From KAD drawings (point entities)
+						if (window.allKADDrawingsMap) {
+							for (var [entityName, entityData] of window.allKADDrawingsMap.entries()) {
+								if (entityData && entityData.data && Array.isArray(entityData.data)) {
+									entityData.data.forEach(function (point) {
+										if (point.visible !== false) {
+											allPoints.push({
+												x: point.pointXLocation || 0,
+												y: point.pointYLocation || 0,
+												z: point.pointZLocation || 0,
+												classification: 1, // Unclassified
+												intensity: 0,
+												returnNumber: 1,
+												numberOfReturns: 1
+											});
+										}
+									});
+								}
+							}
+						}
+
+						if (allPoints.length === 0) {
+							showModalMessage("No Data", "No points found to export", "warning");
+							return;
+						}
+
+						// Step 5) Show projection dialog (placeholder for now)
+						showModalMessage("Coming Soon", "LAS export with projection settings will be available soon. Using default settings.", "info");
+
+						// Step 6) Export using default settings for now
+						var writer = new Writer();
+						var result = await writer.write({
+							points: allPoints
+						});
+
+						// Step 7) Use File System Access API if available
+						if (window.showSaveFilePicker) {
+							var fileHandle = await window.showSaveFilePicker({
+								suggestedName: filename,
+								types: [{
+									description: 'LAS Files',
+									accept: { 'application/octet-stream': ['.las'] }
+								}]
+							});
+							var writable = await fileHandle.createWritable();
+							await writable.write(result.lasFile);
+							await writable.close();
+
+							showModalMessage("Export Complete", "Exported " + allPoints.length + " points to " + fileHandle.name, "success");
+						} else {
+							// Fallback to standard download
+							writer.downloadFile(result.lasFile, filename);
+							showModalMessage("Export Complete", "Exported " + allPoints.length + " points to " + filename, "success");
+						}
+
+						console.log("LAS export completed: " + allPoints.length + " points");
+					} catch (error) {
+						console.error("LAS export error:", error);
+						showModalMessage("Export Failed", "Error: " + error.message, "error");
+					}
+				},
+				function () {
+					console.log("LAS export cancelled by user");
+				}
+			);
+		} catch (error) {
+			console.error("LAS export error:", error);
+			showModalMessage("Export Failed", "Error: " + error.message, "error");
+		}
+	});
+});
+
+// ESRI SHAPEFILE IMPORT - Using FileManager SHPFileParser
+document.querySelectorAll(".shape-input-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		try {
+			// Step 1) Create file input for shapefile components
+			var input = document.createElement("input");
+			input.type = "file";
+			input.accept = ".shp,.shx,.dbf,.prj,.cpg";
+			input.multiple = true; // Allow multiple files
+
+			input.onchange = async function (e) {
+				var files = Array.from(e.target.files);
+				if (files.length === 0) return;
+
+				try {
+					// Step 2) Organize files by extension
+					var fileMap = {};
+					files.forEach(function (file) {
+						var ext = file.name.toLowerCase().split('.').pop();
+						fileMap[ext] = file;
+					});
+
+					// Step 3) Check for required .shp file
+					if (!fileMap.shp) {
+						showModalMessage("Error", "Shapefile (.shp) file is required for import", "error");
+						return;
+					}
+
+					// Step 4) Use FileManager to parse shapefile
+					if (window.fileManager) {
+						var parser = window.fileManager.getParser("shapefile");
+						if (!parser) {
+							throw new Error("Shapefile parser not found in FileManager");
+						}
+
+						// Step 5) Show progress message
+						showStatusMessage("Importing " + fileMap.shp.name + "...");
+
+						// Step 6) Read all files as ArrayBuffers
+						var fileData = {};
+						var readPromises = [];
+
+						Object.keys(fileMap).forEach(function (ext) {
+							var promise = fileMap[ext].arrayBuffer().then(function (buffer) {
+								if (ext === 'prj') {
+									// Read PRJ as text
+									return fileMap[ext].text().then(function (text) {
+										fileData.prjString = text;
+									});
+								} else {
+									fileData[ext + 'Buffer'] = buffer;
+								}
+							});
+							readPromises.push(promise);
+						});
+
+						await Promise.all(readPromises);
+
+						// Step 7) Parse the shapefile (includes projection dialog)
+						var result = await parser.parse(fileData);
+
+						if (!result || result.cancelled) {
+							showModalMessage("Import Cancelled", "Shapefile import was cancelled", "info");
+							return;
+						}
+
+						if (!result.success) {
+							throw new Error(result.message || "Failed to parse shapefile");
+						}
+
+						// Step 8) Handle the imported shapefile data
+						if (result.kadDrawingsMap && result.kadDrawingsMap.size > 0) {
+							// Step 9) Create layer for shapefile import
+							var shpLayer = window.getOrCreateLayerForImport("drawing", fileMap.shp.name);
+							var shpLayerId = shpLayer ? shpLayer.layerId : null;
+							console.log("✅ [Layer] Created drawing layer for shapefile import:", fileMap.shp.name, "->", shpLayerId);
+
+							// Add entities to allKADDrawingsMap with layer assignment
+							for (var [entityName, entityData] of result.kadDrawingsMap.entries()) {
+								// Step 10) Assign layerId to entity
+								entityData.layerId = shpLayerId;
+								window.allKADDrawingsMap.set(entityName, entityData);
+								// Step 11) Add to layer entities set
+								if (shpLayer) {
+									shpLayer.entities.add(entityName);
+								}
+							}
+
+							// Step 12) Update UI and redraw
+							window.drawData(window.allBlastHoles, window.selectedHole);
+
+							// Step 13) Save layers
+							if (window.debouncedSaveLayers) {
+								window.debouncedSaveLayers();
+							}
+
+							// Update tree view if available
+							if (window.debouncedUpdateTreeView) {
+								window.debouncedUpdateTreeView();
+							}
+
+							// Show success message
+							showModalMessage(
+								"Import Successful",
+								"Imported shapefile from " + fileMap.shp.name + " (" + result.kadDrawingsMap.size + " entities)",
+								"success"
+							);
+
+							console.log("Shapefile import completed: " + result.kadDrawingsMap.size + " entities");
+						} else {
+							showModalMessage("No Data", "No geometry found in shapefile", "warning");
+						}
+					} else {
+						throw new Error("FileManager not available");
+					}
+				} catch (error) {
+					console.error("Shapefile import error:", error);
+					showModalMessage("Import Failed", "Error importing shapefile: " + error.message, "error");
+				}
+			};
+
+			input.click();
+		} catch (error) {
+			console.error("Shapefile import setup error:", error);
+			showModalMessage("Import Failed", "Error setting up shapefile import: " + error.message, "error");
+		}
+	});
+});
+
+// ESRI SHAPEFILE EXPORT - Using FileManager SHPFileWriter
+document.querySelectorAll(".shape-output-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		try {
+			// Step 1) Check if we have any KAD data to export
+			if (!window.allKADDrawingsMap || window.allKADDrawingsMap.size === 0) {
+				showModalMessage("No Data", "No KAD drawings available to export. Please create or import some geometry first.", "warning");
+				return;
+			}
+
+			// Step 2) Get shapefile writer from FileManager
+			var Writer = window.fileManager.writers.get("shapefile");
+			if (!Writer) {
+				showModalMessage("Error", "Shapefile writer not found", "error");
+				return;
+			}
+
+			// Step 3) Show filename dialog first
+			showConfirmationDialogWithInput(
+				"Export Shapefile",
+				"Enter base filename for shapefile export (will create .shp, .shx, .dbf, .prj files)",
+				"Filename:",
+				"text",
+				"SHAPEFILE_EXPORT_" + new Date().toISOString().slice(0, 19).replace(/[-:]/g, "").replace("T", "_"),
+				"Export",
+				"Cancel",
+				async function (filename) {
+					if (!filename || filename.trim() === "") {
+						showModalMessage("Export Cancelled", "No filename provided", "warning");
+						return;
+					}
+
+					if (filename.toLowerCase().endsWith('.shp')) {
+						filename = filename.slice(0, -4); // Remove .shp extension
+					}
+
+					try {
+						// Step 4) Collect KAD entities for export
+						var kadEntities = new Map();
+
+						// Only export visible entities
+						for (var [entityName, entityData] of window.allKADDrawingsMap.entries()) {
+							if (entityData.visible !== false) {
+								kadEntities.set(entityName, entityData);
+							}
+						}
+
+						if (kadEntities.size === 0) {
+							showModalMessage("No Data", "No visible KAD entities to export", "warning");
+							return;
+						}
+
+						// Step 5) Show projection dialog (placeholder for now)
+						showModalMessage("Coming Soon", "Shapefile export with projection settings will be available soon. Using default settings.", "info");
+
+						// Step 6) Export using default settings for now
+						var writer = new Writer();
+						var result = await writer.write({
+							kadDrawingsMap: kadEntities
+						});
+
+						if (!result.shp || !result.shx || !result.dbf) {
+							throw new Error("Shapefile writer did not return all required files");
+						}
+
+						// Step 7) Use File System Access API if available
+						if (window.showSaveFilePicker) {
+							// For shapefiles, we need to save multiple files
+							// This is complex with the File System Access API, so fall back to download for now
+							showModalMessage("Export Info", "Shapefile export uses ZIP download due to multiple files. Individual file saving coming soon.", "info");
+						}
+
+						// Step 8) Create ZIP file containing all shapefile components
+						if (typeof JSZip !== "undefined") {
+							var zip = new JSZip();
+
+							// Add files to ZIP
+							var baseName = filename;
+							zip.file(baseName + ".shp", result.shp);
+							zip.file(baseName + ".shx", result.shx);
+							zip.file(baseName + ".dbf", result.dbf);
+							if (result.prj) {
+								zip.file(baseName + ".prj", result.prj);
+							}
+							if (result.cpg) {
+								zip.file(baseName + ".cpg", result.cpg);
+							}
+
+							var zipBlob = await zip.generateAsync({ type: "blob" });
+
+							// Trigger download
+							var link = document.createElement("a");
+							link.href = URL.createObjectURL(zipBlob);
+							link.download = baseName + ".zip";
+							document.body.appendChild(link);
+							link.click();
+							document.body.removeChild(link);
+							URL.revokeObjectURL(link.href);
+
+							showModalMessage("Export Complete", "Exported " + kadEntities.size + " entities to " + baseName + ".zip", "success");
+						} else {
+							showModalMessage("Export Error", "JSZip library required for shapefile export", "error");
+						}
+
+						console.log("Shapefile export completed: " + kadEntities.size + " entities");
+					} catch (error) {
+						console.error("Shapefile export error:", error);
+						showModalMessage("Export Failed", "Error: " + error.message, "error");
+					}
+				},
+				function () {
+					console.log("Shapefile export cancelled by user");
+				}
+			);
+		} catch (error) {
+			console.error("Shapefile export error:", error);
+			showModalMessage("Export Failed", "Error: " + error.message, "error");
+		}
 	});
 });
 

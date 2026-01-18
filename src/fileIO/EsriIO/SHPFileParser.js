@@ -10,6 +10,8 @@
 // Step 5) Created: 2026-01-16
 
 import BaseParser from "../BaseParser.js";
+import proj4 from "proj4";
+import { top100EPSGCodes } from "../../dialog/popups/generic/ProjectionDialog.js";
 
 // Step 6) Shape type constants (from ESRI spec)
 const SHAPE_TYPE = {
@@ -62,18 +64,53 @@ class SHPFileParser extends BaseParser {
 
 	// Step 10) Main parse method - expects object with ArrayBuffers
 	async parse(data) {
-		// Step 11) Validate input - expect shp buffer, optional shx, dbf, prj
-		if (!data || !data.shpBuffer) {
-			throw new Error("Invalid input: shpBuffer (ArrayBuffer) required");
+		try {
+			// Step 11) Validate input - expect shp buffer, optional shx, dbf, prj
+			if (!data || !data.shpBuffer) {
+				throw new Error("Invalid input: shpBuffer (ArrayBuffer) required");
+			}
+
+			var shpBuffer = data.shpBuffer;
+			var shxBuffer = data.shxBuffer || null;
+			var dbfBuffer = data.dbfBuffer || null;
+			var prjString = data.prjString || null;
+
+			// Step 12) Parse the shapefile (initial parsing without transformation)
+			var rawData = await this.parseShapefile(shpBuffer, shxBuffer, dbfBuffer, prjString);
+
+			// Step 13) Detect coordinate system from PRJ file or bounds
+			var isWGS84 = this.detectCoordinateSystem(rawData.header, prjString);
+
+			// Step 14) Prompt user for import configuration
+			var config = await this.promptForImportConfiguration("shapefile.shp", isWGS84, prjString);
+
+			if (config.cancelled) {
+				return { success: false, cancelled: true, message: "Import cancelled by user" };
+			}
+
+			// Step 15) Apply coordinate transformations if needed
+			if (config.transform) {
+				rawData = await this.applyCoordinateTransformation(rawData, config);
+			}
+
+			// Step 16) Apply master RL offset if specified
+			if (config.masterRLX !== 0 || config.masterRLY !== 0) {
+				rawData = this.applyMasterRLOffset(rawData, config.masterRLX, config.masterRLY);
+			}
+
+			// Step 17) Convert to kadDrawingsMap format for Kirra compatibility
+			rawData.kadDrawingsMap = rawData.kadDrawings;
+
+			// Step 18) Return final processed data
+			return {
+				...rawData,
+				config: config,
+				success: true
+			};
+		} catch (error) {
+			console.error("Shapefile parse error:", error);
+			throw error;
 		}
-
-		var shpBuffer = data.shpBuffer;
-		var shxBuffer = data.shxBuffer || null;
-		var dbfBuffer = data.dbfBuffer || null;
-		var prjString = data.prjString || null;
-
-		// Step 12) Parse the shapefile
-		return await this.parseShapefile(shpBuffer, shxBuffer, dbfBuffer, prjString);
 	}
 
 	// Step 13) Parse shapefile components
@@ -743,6 +780,286 @@ SHPFileParser.parseFiles = async function(shpFile, shxFile, dbfFile, prjFile, cp
 	var data = await SHPFileParser.readFromFiles(shpFile, shxFile, dbfFile, prjFile, cpgFile);
 	var parser = new SHPFileParser(options || {});
 	return await parser.parse(data);
+};
+
+// Step 44) Detect coordinate system from header bounds and PRJ file
+SHPFileParser.prototype.detectCoordinateSystem = function(header, prjString) {
+	// If we have a PRJ file, try to detect WGS84 from it
+	if (prjString) {
+		var prjLower = prjString.toLowerCase();
+		if (prjLower.includes("wgs84") || prjLower.includes("wgs_1984") || prjLower.includes("4326")) {
+			return true;
+		}
+	}
+
+	// Fall back to coordinate bounds detection
+	var bbox = [header.boundingBox.xMin, header.boundingBox.yMin, header.boundingBox.xMax, header.boundingBox.yMax];
+	return isLikelyWGS84 ? isLikelyWGS84(bbox) : false;
+};
+
+// Step 45) Prompt user for import configuration
+SHPFileParser.prototype.promptForImportConfiguration = async function(filename, isWGS84, prjString) {
+	return new Promise(function(resolve) {
+		// Step 46) Create dialog content HTML
+		var contentHTML = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">';
+
+		// Step 47) File information
+		contentHTML += '<div style="text-align: left;">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;"><strong>File:</strong> ' + filename + "</p>";
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">Detected coordinate system: <strong>' + (isWGS84 ? "WGS84 (latitude/longitude)" : "Projected (UTM/local)") + "</strong></p>";
+		if (prjString) {
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">PRJ file found with projection definition</p>';
+		}
+		contentHTML += '<p class="labelWhite15" style="margin: 0;">ESRI Shapefiles contain vector geometry (points, lines, polygons).</p>';
+		contentHTML += "</div>";
+
+		// Step 48) Import type selection
+		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Import As:</p>';
+
+		contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
+		contentHTML += '<input type="radio" id="import-geometry-shp" name="import-type" value="geometry" checked style="margin: 0;">';
+		contentHTML += '<label for="import-geometry-shp" class="labelWhite15" style="margin: 0; cursor: pointer;">Geometry (KAD entities)</label>';
+		contentHTML += "</div>";
+
+		contentHTML += "</div>";
+
+		// Step 49) Coordinate transformation options
+		if (isWGS84) {
+			contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Coordinate Transformation:</p>';
+
+			contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
+			contentHTML += '<input type="radio" id="keep-wgs84-shp" name="transform" value="keep" style="margin: 0;">';
+			contentHTML += '<label for="keep-wgs84-shp" class="labelWhite15" style="margin: 0; cursor: pointer;">Keep as WGS84 (latitude/longitude)</label>';
+			contentHTML += "</div>";
+
+			contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
+			contentHTML += '<input type="radio" id="transform-utm-shp" name="transform" value="transform" checked style="margin: 0;">';
+			contentHTML += '<label for="transform-utm-shp" class="labelWhite15" style="margin: 0; cursor: pointer;">Transform to projected coordinates</label>';
+			contentHTML += "</div>";
+
+			// EPSG dropdown
+			contentHTML += '<div id="shp-epsg-section" style="margin-top: 10px; display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: center;">';
+			contentHTML += '<label class="labelWhite15">EPSG Code:</label>';
+			contentHTML += '<select id="shp-import-epsg-code" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<option value="">-- Select EPSG Code --</option>';
+
+			// Add EPSG codes
+			top100EPSGCodes.forEach(function(item) {
+				contentHTML += '<option value="' + item.code + '">' + item.code + " - " + item.name + "</option>";
+			});
+
+			contentHTML += "</select>";
+			contentHTML += "</div>";
+
+			// Custom Proj4
+			contentHTML += '<div style="margin-top: 8px; display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: start;">';
+			contentHTML += '<label class="labelWhite15" style="padding-top: 4px;">Or Custom Proj4:</label>';
+			contentHTML += '<textarea id="shp-import-custom-proj4" placeholder="+proj=utm +zone=50 +south +datum=WGS84 +units=m +no_defs" style="height: 60px; padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>';
+			contentHTML += "</div>";
+
+			contentHTML += "</div>";
+		}
+
+		// Step 50) Master RL offset
+		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Master Reference Location (Optional):</p>';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; opacity: 0.8;">Apply offset to all imported coordinates</p>';
+
+		contentHTML += '<div style="display: grid; grid-template-columns: 80px 1fr 80px 1fr; gap: 8px; align-items: center;">';
+		contentHTML += '<label class="labelWhite15">Easting:</label>';
+		contentHTML += '<input type="number" id="shp-master-rl-x" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+		contentHTML += '<label class="labelWhite15">Northing:</label>';
+		contentHTML += '<input type="number" id="shp-master-rl-y" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+		contentHTML += "</div>";
+
+		contentHTML += "</div>";
+
+		// Error message
+		contentHTML += '<div id="shp-import-error-message" style="display: none; margin-top: 8px; padding: 6px; background: #f44336; color: white; border-radius: 3px; font-size: 11px;"></div>';
+
+		contentHTML += "</div>";
+
+		// Step 51) Create dialog
+		var dialog = new window.FloatingDialog({
+			title: "Import ESRI Shapefile",
+			content: contentHTML,
+			layoutType: "default",
+			width: 650,
+			height: 650,
+			showConfirm: true,
+			showCancel: true,
+			confirmText: "Import",
+			cancelText: "Cancel",
+			onConfirm: async function() {
+				try {
+					// Get form values
+					var importType = document.querySelector('input[name="import-type"]:checked').value;
+					var masterRLX = parseFloat(document.getElementById("shp-master-rl-x").value) || 0;
+					var masterRLY = parseFloat(document.getElementById("shp-master-rl-y").value) || 0;
+					var errorDiv = document.getElementById("shp-import-error-message");
+
+					var config = {
+						cancelled: false,
+						importType: importType,
+						masterRLX: masterRLX,
+						masterRLY: masterRLY,
+						transform: false,
+						epsgCode: null,
+						proj4Source: null
+					};
+
+					// Check transformation options if WGS84
+					if (isWGS84) {
+						var transformRadio = document.querySelector('input[name="transform"]:checked');
+						if (transformRadio && transformRadio.value === "transform") {
+							config.transform = true;
+							var epsgCode = document.getElementById("shp-import-epsg-code").value.trim();
+							var customProj4 = document.getElementById("shp-import-custom-proj4").value.trim();
+
+							if (!epsgCode && !customProj4) {
+								errorDiv.textContent = "Please select an EPSG code or provide a custom Proj4 definition for transformation";
+								errorDiv.style.display = "block";
+								return;
+							}
+
+							config.epsgCode = epsgCode || null;
+							config.proj4Source = customProj4 || null;
+
+							// Load EPSG definition if needed
+							if (epsgCode) {
+								await window.loadEPSGCode(epsgCode);
+							}
+						}
+					}
+
+					dialog.close();
+					resolve(config);
+				} catch (error) {
+					var errorDiv = document.getElementById("shp-import-error-message");
+					if (errorDiv) {
+						errorDiv.textContent = "Configuration error: " + error.message;
+						errorDiv.style.display = "block";
+					}
+					console.error("Shapefile import configuration error:", error);
+				}
+			},
+			onCancel: function() {
+				dialog.close();
+				resolve({ cancelled: true });
+			}
+		});
+
+		dialog.show();
+
+		// Toggle EPSG section visibility
+		if (isWGS84) {
+			var transformRadios = document.querySelectorAll('input[name="transform"]');
+			var epsgSection = document.getElementById("shp-epsg-section");
+
+			transformRadios.forEach(function(radio) {
+				radio.addEventListener("change", function() {
+					if (radio.value === "transform") {
+						epsgSection.style.display = "grid";
+					} else {
+						epsgSection.style.display = "none";
+					}
+				});
+			});
+		}
+	});
+};
+
+// Step 52) Apply coordinate transformation to geometry
+SHPFileParser.prototype.applyCoordinateTransformation = async function(data, config) {
+	if (!config.transform) {
+		return data;
+	}
+
+	console.log("Transforming shapefile coordinates from WGS84 to projected system...");
+
+	var sourceDef = "+proj=longlat +datum=WGS84 +no_defs";
+	var targetDef = config.proj4Source || "EPSG:" + config.epsgCode;
+
+	// Transform each entity
+	for (var [entityName, entityData] of data.kadDrawings.entries()) {
+		if (entityData.data && Array.isArray(entityData.data)) {
+			entityData.data.forEach(function(point) {
+				if (point.pointXLocation !== undefined && point.pointYLocation !== undefined) {
+					var transformed = proj4(sourceDef, targetDef, [point.pointXLocation, point.pointYLocation]);
+					point.pointXLocation = transformed[0];
+					point.pointYLocation = transformed[1];
+				}
+			});
+		}
+	}
+
+	// Update header bounds
+	var allPoints = [];
+	for (var [entityName, entityData] of data.kadDrawings.entries()) {
+		if (entityData.data && Array.isArray(entityData.data)) {
+			entityData.data.forEach(function(point) {
+				allPoints.push({ x: point.pointXLocation, y: point.pointYLocation });
+			});
+		}
+	}
+
+	if (allPoints.length > 0) {
+		var minX = Math.min.apply(null, allPoints.map(p => p.x));
+		var maxX = Math.max.apply(null, allPoints.map(p => p.x));
+		var minY = Math.min.apply(null, allPoints.map(p => p.y));
+		var maxY = Math.max.apply(null, allPoints.map(p => p.y));
+
+		data.header.boundingBox.xMin = minX;
+		data.header.boundingBox.xMax = maxX;
+		data.header.boundingBox.yMin = minY;
+		data.header.boundingBox.yMax = maxY;
+	}
+
+	return data;
+};
+
+// Step 53) Apply master RL offset
+SHPFileParser.prototype.applyMasterRLOffset = function(data, offsetX, offsetY) {
+	if (offsetX === 0 && offsetY === 0) {
+		return data;
+	}
+
+	console.log("Applying master RL offset:", offsetX, offsetY);
+
+	for (var [entityName, entityData] of data.kadDrawings.entries()) {
+		if (entityData.data && Array.isArray(entityData.data)) {
+			entityData.data.forEach(function(point) {
+				if (point.pointXLocation !== undefined) point.pointXLocation += offsetX;
+				if (point.pointYLocation !== undefined) point.pointYLocation += offsetY;
+			});
+		}
+	}
+
+	// Update header bounds
+	var allPoints = [];
+	for (var [entityName, entityData] of data.kadDrawings.entries()) {
+		if (entityData.data && Array.isArray(entityData.data)) {
+			entityData.data.forEach(function(point) {
+				allPoints.push({ x: point.pointXLocation, y: point.pointYLocation });
+			});
+		}
+	}
+
+	if (allPoints.length > 0) {
+		var minX = Math.min.apply(null, allPoints.map(p => p.x));
+		var maxX = Math.max.apply(null, allPoints.map(p => p.x));
+		var minY = Math.min.apply(null, allPoints.map(p => p.y));
+		var maxY = Math.max.apply(null, allPoints.map(p => p.y));
+
+		data.header.boundingBox.xMin = minX;
+		data.header.boundingBox.xMax = maxX;
+		data.header.boundingBox.yMin = minY;
+		data.header.boundingBox.yMax = maxY;
+	}
+
+	return data;
 };
 
 export default SHPFileParser;

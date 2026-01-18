@@ -106,7 +106,7 @@ class KMLKMZParser extends BaseParser {
 			var config = await this.promptForImportConfiguration(file.name, isWGS84);
 
 			if (config.cancelled) {
-				return { success: false, message: "Import cancelled by user" };
+				return { cancelled: true, success: false, message: "Import cancelled by user" };
 			}
 
 			// Step 14) Parse placemarks
