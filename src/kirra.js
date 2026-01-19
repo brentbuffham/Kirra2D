@@ -566,6 +566,7 @@ function exposeGlobalsToWindow() {
 
 	// Step 6d) Expose additional functions needed by ContextMenuManager
 	window.getClickedHole = getClickedHole;
+	window.getClickedHole3DWithTolerance = getClickedHole3DWithTolerance;
 	window.getClickedKADObject = getClickedKADObject;
 	window.getClickedKADObject3D = getClickedKADObject3D;
 	window.getSnapToleranceInWorldUnits = getSnapToleranceInWorldUnits;
@@ -2774,44 +2775,6 @@ function handle3DMouseMove(event) {
 			currentScale,
 			isCurrentlySnapped
 		);
-
-		// Step 13f.6) Draw stadium zone if connector tool is active
-		const hasFromHole = fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID;
-		if (isAddingMultiConnector && hasFromHole && threeRenderer && threeRenderer.connectorsGroup) {
-			const toRemove = [];
-			threeRenderer.connectorsGroup.children.forEach((child) => {
-				if (child.userData && child.userData.type === "stadiumZone") {
-					toRemove.push(child);
-				}
-			});
-			toRemove.forEach((obj) => {
-				threeRenderer.connectorsGroup.remove(obj);
-				if (obj.geometry) obj.geometry.dispose();
-				if (obj.material) {
-					if (Array.isArray(obj.material)) {
-						obj.material.forEach((mat) => mat.dispose());
-					} else {
-						obj.material.dispose();
-					}
-				}
-			});
-
-			// Only draw stadium zone if we have valid mouse position
-			// Step #) Use mouseWorldPos (horizontal data plane) for stadium end point.
-			// The stadium represents the connection zone on the DATA PLANE, so we need
-			// the mouse intersection with the horizontal plane at the fromHole's Z level.
-			// Note: When camera orbits, mouse movement maps to different world positions,
-			// which is physically correct for data-plane interaction.
-			if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
-				// Use mouseWorldPos directly - it's already calculated at the correct Z level
-				var stadiumMousePos = {
-					x: mouseWorldPos.x,
-					y: mouseWorldPos.y,
-					z: fromHoleStore.startZLocation || dataCentroidZ || 0
-				};
-				drawConnectStadiumZoneThreeJS(fromHoleStore, stadiumMousePos, connectAmount);
-			}
-		}
 	}
 
 	// Step 13f.7) Always draw mouse position indicator at mouse position
@@ -2929,6 +2892,37 @@ function handle3DMouseMove(event) {
 			}
 		}
 		drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z, torusColor);
+
+		// Step 13f.7f.1) Store indicator position for use in drawData (stadium zone)
+		currentMouseIndicatorX = indicatorPos.x;
+		currentMouseIndicatorY = indicatorPos.y;
+		currentMouseIndicatorZ = indicatorPos.z;
+
+		// Step 13f.7g) Draw stadium zone at SAME position as mouse indicator
+		// This ensures stadium endpoint is attached to the mouse cursor
+		if (isAddingMultiConnector && fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID && threeRenderer && threeRenderer.connectorsGroup) {
+			// Step 13f.7g.1) Clear old stadium zone first
+			const toRemove = [];
+			threeRenderer.connectorsGroup.children.forEach(function(child) {
+				if (child.userData && child.userData.type === "stadiumZone") {
+					toRemove.push(child);
+				}
+			});
+			toRemove.forEach(function(obj) {
+				threeRenderer.connectorsGroup.remove(obj);
+				if (obj.geometry) obj.geometry.dispose();
+				if (obj.material) {
+					if (Array.isArray(obj.material)) {
+						obj.material.forEach(function(mat) { mat.dispose(); });
+					} else {
+						obj.material.dispose();
+					}
+				}
+			});
+			
+			// Step 13f.7g.2) Draw new stadium zone at mouse indicator position
+			drawConnectStadiumZoneThreeJS(fromHoleStore, { x: indicatorPos.x, y: indicatorPos.y, z: indicatorPos.z }, connectAmount);
+		}
 	}
 
 	// Step 13f.8) Draw KAD leading line preview if drawing tool is active
@@ -3795,6 +3789,10 @@ let currentMouseCanvasZ = document.getElementById("drawingElevation").value;
 let currentMouseWorldX = 0;
 let currentMouseWorldY = 0;
 let currentMouseWorldZ = document.getElementById("drawingElevation").value;
+// Step #) Store view-plane mouse position for stadium zone (follows cursor in 3D)
+let currentMouseIndicatorX = 0;
+let currentMouseIndicatorY = 0;
+let currentMouseIndicatorZ = 0;
 // Surfaces
 let allAvailableSurfaces = [];
 let intervalAmount = document.getElementById("intervalSlider").value;
@@ -6208,11 +6206,21 @@ addConnectorButton.addEventListener("change", function () {
 		// removeEventListenersExcluding(["tieConnectTool", "defaultListeners"]);
 		canvas.addEventListener("click", handleConnectorClick);
 		canvas.addEventListener("touchstart", handleConnectorClick);
+		// Step #) Also add listener to 3D canvas for 3D mode
+		if (threeRenderer && threeRenderer.getCanvas()) {
+			threeRenderer.getCanvas().addEventListener("click", handleConnectorClick);
+			threeRenderer.getCanvas().addEventListener("touchstart", handleConnectorClick);
+		}
 		drawData(allBlastHoles, selectedHole);
 	} else {
 		isAddingConnector = false;
 		canvas.removeEventListener("click", handleConnectorClick);
 		canvas.removeEventListener("touchstart", handleConnectorClick);
+		// Step #) Also remove listener from 3D canvas
+		if (threeRenderer && threeRenderer.getCanvas()) {
+			threeRenderer.getCanvas().removeEventListener("click", handleConnectorClick);
+			threeRenderer.getCanvas().removeEventListener("touchstart", handleConnectorClick);
+		}
 		// Step #) Uncheck floating toolbar tieConnectTool when sidenav is turned off
 		var tieConnectToolRef = document.getElementById("tieConnectTool");
 		if (tieConnectToolRef) tieConnectToolRef.checked = false;
@@ -6257,11 +6265,21 @@ addMultiConnectorButton.addEventListener("change", function () {
 		// removeEventListenersExcluding(["tieConectMultiTool", "defaultListeners"]);
 		canvas.addEventListener("click", handleConnectorClick);
 		canvas.addEventListener("touchstart", handleConnectorClick);
+		// Step #) Also add listener to 3D canvas for 3D mode
+		if (threeRenderer && threeRenderer.getCanvas()) {
+			threeRenderer.getCanvas().addEventListener("click", handleConnectorClick);
+			threeRenderer.getCanvas().addEventListener("touchstart", handleConnectorClick);
+		}
 		drawData(allBlastHoles, selectedHole);
 	} else {
 		isAddingMultiConnector = false;
 		canvas.removeEventListener("click", handleConnectorClick);
 		canvas.removeEventListener("touchstart", handleConnectorClick);
+		// Step #) Also remove listener from 3D canvas
+		if (threeRenderer && threeRenderer.getCanvas()) {
+			threeRenderer.getCanvas().removeEventListener("click", handleConnectorClick);
+			threeRenderer.getCanvas().removeEventListener("touchstart", handleConnectorClick);
+		}
 		// Step #) Uncheck floating toolbar tieConnectMultiTool when sidenav is turned off
 		var tieConnectMultiToolRef = document.getElementById("tieConnectMultiTool");
 		if (tieConnectMultiToolRef) tieConnectMultiToolRef.checked = false;
@@ -8918,8 +8936,17 @@ document.querySelectorAll(".kml-input-btn").forEach(function (button) {
 									window.allBlastHoles.push(result.holes[i]);
 								}
 
-								// Step 7) Update UI and redraw
+								// Step 7) Update centroids and trigger 3D rebuild
+								updateCentroids();
+								window.threeDataNeedsRebuild = true;
+
+								// Step 7a) Update UI and redraw
 								window.drawData(window.allBlastHoles, window.selectedHole);
+
+								// Step 7b) Save holes to IndexedDB
+								if (typeof debouncedSaveHoles === "function") {
+									debouncedSaveHoles();
+								}
 
 								// Update tree view if available
 								if (window.debouncedUpdateTreeView) {
@@ -8956,10 +8983,19 @@ document.querySelectorAll(".kml-input-btn").forEach(function (button) {
 									}
 								}
 
-								// Step 9) Update UI and redraw
+								// Step 9) Update centroids and trigger 3D rebuild
+								updateCentroids();
+								window.threeDataNeedsRebuild = true;
+
+								// Step 9a) Update UI and redraw
 								window.drawData(window.allBlastHoles, window.selectedHole);
 
-								// Step 23c) Save layers
+								// Step 23c) Save KAD entities to IndexedDB
+								if (typeof debouncedSaveKAD === "function") {
+									debouncedSaveKAD();
+								}
+
+								// Step 23d) Save layers
 								if (window.debouncedSaveLayers) {
 									window.debouncedSaveLayers();
 								}
@@ -9306,7 +9342,11 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 									directionArrows = contourResult.directionArrows;
 								}
 
-								// Step 10) Update time chart
+								// Step 10) Update centroids and trigger 3D rebuild
+								updateCentroids();
+								window.threeDataNeedsRebuild = true;
+
+								// Step 10a) Update time chart
 								timeChart();
 
 								// Step 11) Draw the imported data
@@ -9449,17 +9489,21 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 											// Step 16) Add to KAD drawings map
 											window.allKADDrawingsMap.set(entityName, kadEntity);
 
-											// Step 17) Update TreeView and redraw
-											if (typeof window.updateTreeView === "function") {
-												window.updateTreeView();
-											}
-											if (typeof window.requestDraw === "function") {
-												window.requestDraw();
+											// Step 17) Update centroids and trigger 3D rebuild
+											updateCentroids();
+											window.threeDataNeedsRebuild = true;
+
+											// Step 17a) Redraw
+											drawData(allBlastHoles, selectedHole);
+
+											// Step 18) Save KAD entities to IndexedDB
+											if (typeof debouncedSaveKAD === "function") {
+												debouncedSaveKAD();
 											}
 
-											// Step 18) Auto-save to KAD file
-											if (typeof window.saveToKADDatabase === "function") {
-												window.saveToKADDatabase();
+											// Step 18a) Update TreeView
+											if (typeof debouncedUpdateTreeView === "function") {
+												debouncedUpdateTreeView();
 											}
 
 											showModalMessage("Import Success", "Imported " + result.points.length + " points from " + file.name + " at elevation " + elevation.toFixed(3), "success");
@@ -9691,7 +9735,11 @@ document.querySelector(".wenco-input-btn")?.addEventListener("click", function (
 							});
 						}
 
-						// Step 4) Save and update
+						// Step 4) Update centroids and trigger 3D rebuild
+						updateCentroids();
+						window.threeDataNeedsRebuild = true;
+
+						// Step 4a) Save and update
 						if (typeof debouncedSaveKAD === "function") {
 							debouncedSaveKAD();
 						}
@@ -10051,6 +10099,10 @@ document.querySelector(".cblast-input-btn")?.addEventListener("click", function 
 							contourLinesArray = contourResult.contourLinesArray;
 							directionArrows = contourResult.directionArrows;
 						}
+
+						// Step 8a) Update centroids and trigger 3D rebuild
+						updateCentroids();
+						window.threeDataNeedsRebuild = true;
 
 						// Step 9) Update displays
 						timeChart();
@@ -10503,9 +10555,69 @@ document.querySelectorAll(".las-input-btn").forEach(function (button) {
 							throw new Error(result.message || "Failed to parse LAS file");
 						}
 
-						// Step 5) Handle the imported point cloud data
-						if (result.dataType === "pointcloud" && result.kadDrawingsMap) {
-							// Step 6) Create layer for LAS import
+						// Step 5) Handle the imported data based on type
+						if (result.dataType === "surfaces" && result.surfaces) {
+							// Step 5a) Surface import - triangulated mesh from LAS points
+							console.log("🔺 Processing LAS surface import with " + result.surfaces.size + " surfaces");
+							
+							// Step 5b) Create surface layer for LAS import
+							var surfaceLayer = window.getOrCreateLayerForImport("surface", file.name);
+							var surfaceLayerId = surfaceLayer ? surfaceLayer.layerId : null;
+							console.log("✅ [Layer] Created surface layer for LAS import:", file.name, "->", surfaceLayerId);
+							
+							// Step 5c) Add surfaces to loadedSurfaces
+							var totalTriangles = 0;
+							for (var [surfaceId, surfaceData] of result.surfaces.entries()) {
+								// Assign layerId to surface
+								if (surfaceLayerId) {
+									surfaceData.layerId = surfaceLayerId;
+									if (surfaceLayer) {
+										surfaceLayer.entities.add(surfaceId);
+									}
+								}
+								
+								window.loadedSurfaces.set(surfaceId, surfaceData);
+								totalTriangles += surfaceData.triangles ? surfaceData.triangles.length : 0;
+								
+								// Save surface to database
+								setTimeout(async function() {
+									try {
+										await saveSurfaceToDB(surfaceId);
+										console.log("LAS surface saved to database: " + surfaceId);
+									} catch (saveError) {
+										console.error("Failed to save LAS surface:", saveError);
+									}
+								}, 100);
+							}
+							
+							// Step 5d) Update UI and redraw
+							updateCentroids();
+							window.threeDataNeedsRebuild = true;
+							window.drawData(window.allBlastHoles, window.selectedHole);
+							
+							// Step 5e) Save layers
+							if (window.debouncedSaveLayers) {
+								window.debouncedSaveLayers();
+							}
+							
+							// Update tree view
+							if (window.debouncedUpdateTreeView) {
+								window.debouncedUpdateTreeView();
+							}
+							
+							zoomToFitAll();
+							
+							// Show success message
+							showModalMessage(
+								"Import Successful",
+								"Imported LAS surface from " + file.name + " (" + totalTriangles + " triangles)",
+								"success"
+							);
+							
+							console.log("LAS surface import completed: " + totalTriangles + " triangles");
+							
+						} else if (result.dataType === "pointcloud" && result.kadDrawingsMap) {
+							// Step 6) Create layer for LAS point cloud import
 							var lasLayer = window.getOrCreateLayerForImport("drawing", file.name);
 							var lasLayerId = lasLayer ? lasLayer.layerId : null;
 							console.log("✅ [Layer] Created drawing layer for LAS import:", file.name, "->", lasLayerId);
@@ -10521,12 +10633,17 @@ document.querySelectorAll(".las-input-btn").forEach(function (button) {
 								}
 							}
 
-							// Step 9) Update UI and redraw
-							// Step #) Trigger 3D rebuild to show imported LAS point cloud
+							// Step 9) Update centroids and trigger 3D rebuild
+							updateCentroids();
 							window.threeDataNeedsRebuild = true;
 							window.drawData(window.allBlastHoles, window.selectedHole);
 
-							// Step 10) Save layers
+							// Step 10) Save KAD entities to IndexedDB
+							if (typeof debouncedSaveKAD === "function") {
+								debouncedSaveKAD();
+							}
+
+							// Step 10a) Save layers
 							if (window.debouncedSaveLayers) {
 								window.debouncedSaveLayers();
 							}
@@ -10788,12 +10905,17 @@ document.querySelectorAll(".shape-input-btn").forEach(function (button) {
 								}
 							}
 
-							// Step 12) Update UI and redraw
-							// Step #) Trigger 3D rebuild to show imported Shapefile data
+							// Step 12) Update centroids and trigger 3D rebuild
+							updateCentroids();
 							window.threeDataNeedsRebuild = true;
 							window.drawData(window.allBlastHoles, window.selectedHole);
 
-							// Step 13) Save layers
+							// Step 13) Save KAD entities to IndexedDB
+							if (typeof debouncedSaveKAD === "function") {
+								debouncedSaveKAD();
+							}
+
+							// Step 13a) Save layers
 							if (window.debouncedSaveLayers) {
 								window.debouncedSaveLayers();
 							}
@@ -12864,6 +12986,9 @@ async function createImageSurfaceFromParser(result) {
 
 		// Step 3) Update centroids to include GeoTIFF extents
 		updateCentroidsWithBBox(result.bbox);
+
+		// Step 3a) Trigger 3D rebuild
+		window.threeDataNeedsRebuild = true;
 
 		// Step 4) Update display
 		drawData(allBlastHoles, selectedHole);
@@ -21343,6 +21468,91 @@ function getClickedHole(clickX, clickY) {
 	}
 	return null; // Return null if no hole is clicked
 }
+
+//-------------------------SELECTION OF BLAST HOLES IN 3D (with tolerance)----------------------//
+// Step #) This function uses screen-space distance (like the snap torus) to find holes within tolerance
+function getClickedHole3DWithTolerance(event) {
+	console.log("⬇️ [3D HOLE TOLERANCE] getClickedHole3DWithTolerance called, onlyShowThreeJS=" + onlyShowThreeJS);
+
+	// Step 1) Check if we're in 3D mode with required components
+	if (!onlyShowThreeJS || !threeRenderer || !threeRenderer.camera) {
+		console.log("⬇️ [3D HOLE TOLERANCE] Early exit: onlyShowThreeJS=" + onlyShowThreeJS + ", threeRenderer=" + !!threeRenderer);
+		return null;
+	}
+
+	// Step 2) Get canvas and mouse position
+	const canvas3D = threeRenderer.getCanvas();
+	if (!canvas3D) return null;
+
+	const rect = canvas3D.getBoundingClientRect();
+	const mouseScreenX = event.clientX - rect.left;
+	const mouseScreenY = event.clientY - rect.top;
+	const canvasWidth = rect.width;
+	const canvasHeight = rect.height;
+
+	// Step 3) Get snap tolerance in pixels
+	const tolerancePixels = snapRadiusPixels || 20;
+
+	// Step 4) Get camera for projection
+	const camera = threeRenderer.camera;
+
+	// Step 5) Helper function to project world position to screen pixels
+	var worldToScreen = function(worldX, worldY, worldZ) {
+		// Convert world to Three.js local coordinates
+		var localX = worldX - (window.threeLocalOriginX || window.dataCentroidX || 0);
+		var localY = worldY - (window.threeLocalOriginY || window.dataCentroidY || 0);
+
+		// Create vector and project to normalized device coordinates
+		var vector = new THREE.Vector3(localX, localY, worldZ);
+		vector.project(camera);
+
+		// Convert NDC (-1 to +1) to screen pixels (0 to width/height)
+		var screenX = ((vector.x + 1) * canvasWidth) / 2;
+		var screenY = ((-vector.y + 1) * canvasHeight) / 2; // Invert Y for screen coords
+
+		return { x: screenX, y: screenY };
+	};
+
+	// Step 6) Search all holes for closest one within tolerance
+	var closestHole = null;
+	var closestDistance = Infinity;
+
+	if (allBlastHoles && allBlastHoles.length > 0) {
+		allBlastHoles.forEach(function(hole) {
+			// Skip hidden holes
+			if (!isHoleVisible(hole)) return;
+
+			// Step 6a) Project hole collar to screen space
+			var collarScreen = worldToScreen(
+				hole.startXLocation,
+				hole.startYLocation,
+				hole.startZLocation || 0
+			);
+
+			// Step 6b) Calculate screen distance to mouse
+			var dx = collarScreen.x - mouseScreenX;
+			var dy = collarScreen.y - mouseScreenY;
+			var screenDistance = Math.sqrt(dx * dx + dy * dy);
+
+			// Step 6c) Check if within tolerance and closer than previous best
+			if (screenDistance <= tolerancePixels && screenDistance < closestDistance) {
+				closestDistance = screenDistance;
+				closestHole = hole;
+			}
+		});
+	}
+
+	// Step 7) Return closest hole if found within tolerance
+	if (closestHole) {
+		if (developerModeEnabled) {
+			console.log("⬇️ [3D HOLE] Found hole " + closestHole.holeID + " at screen distance " + closestDistance.toFixed(1) + "px (tolerance: " + tolerancePixels + "px)");
+		}
+		return closestHole;
+	}
+
+	return null;
+}
+
 //------------------MULTIPLE SELECTION OF BLAST HOLES----------------------//
 function getMultipleClickedHoles(clickX, clickY) {
 	if (!isMultiHoleSelectionEnabled) {
@@ -21657,11 +21867,28 @@ function getDelayValue() {
 }
 
 function handleConnectorClick(event) {
-	// Get the click/touch coordinates relative to the canvas
+	console.log("⬇️ [CONNECTOR CLICK] handleConnectorClick called, onlyShowThreeJS=" + onlyShowThreeJS + ", isAddingMultiConnector=" + isAddingMultiConnector);
+
+	// Step 1) Get the click/touch coordinates relative to the canvas
 	const rect = canvas.getBoundingClientRect();
 	const clickX = event.clientX - rect.left;
 	const clickY = event.clientY - rect.top;
-	const clickedHole = getClickedHole(clickX, clickY);
+
+	// Step 2) Use 3D tolerance-based selection when in 3D mode, otherwise use 2D
+	var clickedHole = null;
+	if (onlyShowThreeJS) {
+		// Step 2a) 3D mode: use screen-space tolerance selection (like snap torus)
+		console.log("⬇️ [CONNECTOR CLICK] Using 3D tolerance selection...");
+		clickedHole = getClickedHole3DWithTolerance(event);
+		console.log("⬇️ [CONNECTOR CLICK] 3D result: " + (clickedHole ? clickedHole.holeID : "null"));
+		if (developerModeEnabled && clickedHole) {
+			console.log("⬇️ [CONNECTOR 3D] Selected hole: " + clickedHole.holeID + " in entity: " + clickedHole.entityName);
+		}
+	} else {
+		// Step 2b) 2D mode: use standard 2D selection
+		clickedHole = getClickedHole(clickX, clickY);
+	}
+
 	if (isAddingConnector) {
 		if (clickedHole) {
 			if (!fromHoleStore) {
@@ -26622,6 +26849,12 @@ function drawData(allBlastHoles, selectedHole) {
 		if (hasHoles || hasSurfaces || hasKADDrawings) {
 			updateThreeLocalOrigin();
 
+			// Step 0b.0) CRITICAL: Re-sync globals to window AFTER origin update
+			// This ensures window.threeLocalOriginX/Y match module-level values
+			// Fixes stadium zone coordinate mismatch bug where InteractionManager
+			// used stale window.threeLocalOriginX/Y values
+			exposeGlobalsToWindow();
+
 			// Step 0b.1a) If 2D centroid is still at origin, calculate from all data sources
 			// This ensures camera positioning works with surfaces/images even without blast holes
 			if (centroidX === 0 && centroidY === 0) {
@@ -28049,18 +28282,20 @@ function drawData(allBlastHoles, selectedHole) {
 				});
 			}
 
+			// Step 4) Build hole map ONCE for connector lookup (moved outside loop for O(n) vs O(n²))
+			const holeMap3D = new Map();
+			if (displayOptions3D.connector) {
+				allBlastHoles.forEach(function(h) {
+					holeMap3D.set(h.entityName + ":::" + h.holeID, h);
+				});
+			}
+
 			for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
 				var hole = allBlastHoles[holeIdx];
 				if (hole.visible === false) continue;
 
-				// Step 4) Draw connectors in Three.js (only when rebuild needed or first time)
+				// Step 4a) Draw connectors in Three.js (only when rebuild needed or first time)
 				if (threeInitialized && displayOptions3D.connector && hole.fromHoleID) {
-					// Build hole map for connector lookup
-					const holeMap3D = new Map();
-					allBlastHoles.forEach((h) => {
-						holeMap3D.set(h.entityName + ":::" + h.holeID, h);
-					});
-
 					const [splitEntityName, splitFromHoleID] = hole.fromHoleID.split(":::");
 					const fromHole = holeMap3D.get(splitEntityName + ":::" + splitFromHoleID);
 					if (fromHole) {
@@ -28079,8 +28314,9 @@ function drawData(allBlastHoles, selectedHole) {
 						const isFromHole = fromHoleStore && fromHoleStore.entityName === hole.entityName && fromHoleStore.holeID === hole.holeID;
 						if (isFromHole) {
 							highlightSelectedHoleThreeJS(hole, "first");
-							if (isAddingMultiConnector && currentMouseWorldX !== undefined && currentMouseWorldY !== undefined) {
-								drawConnectStadiumZoneThreeJS(hole, { x: currentMouseWorldX, y: currentMouseWorldY, z: hole.startZLocation || window.dataCentroidZ || 0 }, connectAmount);
+							// Step 5.1a) Draw stadium zone using view-plane mouse position (follows cursor in 3D)
+							if (isAddingMultiConnector && currentMouseIndicatorX !== 0 && currentMouseIndicatorY !== 0) {
+								drawConnectStadiumZoneThreeJS(hole, { x: currentMouseIndicatorX, y: currentMouseIndicatorY, z: currentMouseIndicatorZ }, connectAmount);
 							}
 							// HUD: Show connector mode message (replaces 3D text)
 							showStatusMessage("1st Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Select second hole)", 0);
@@ -41693,12 +41929,8 @@ function loadPointCloudFile(file) {
 			}
 
 			if (points && points.length > 0) {
-				// Check if decimation is needed for performance
-				if (points.length > 10000) {
-					showDecimationWarning(points, file.name);
-				} else {
-					processSurfacePoints(points, file.name);
-				}
+				// Step 3) Always show import dialog for user control over options
+				showPointCloudImportDialog(points, file.name);
 			} else {
 				updateStatusMessage("No valid points found in: " + file.name);
 			}
@@ -42435,67 +42667,450 @@ function createSurfaceFromPoints(points, surfaceName = null, autoSave = true) {
 // - rasterizeSurfaceToElevationGrid() - Rasterizes triangle mesh to elevation grid
 // - interpolateZFromTriangles() - Barycentric interpolation for elevation
 
-// Point Cloud Decimation Dialog - FloatingDialog with 4 buttons
-function showDecimationWarning(points, fileName) {
+// Point Cloud Import Dialog - Full-featured dialog with WGS84 detection and triangulation options
+function showPointCloudImportDialog(points, fileName) {
 	var pointCount = points.length;
 
-	// Step 1) Create dialog content
-	var contentHTML = '<div style="text-align: center; padding: 20px;">';
-	contentHTML += '<label class="labelWhite16"><strong>' + fileName + '</strong></label><br>';
-	contentHTML += '<label class="labelWhite14">Contains ' + pointCount.toLocaleString() + ' points</label><br><br>';
-	contentHTML += '<label class="labelWhite12">Large point clouds may cause performance issues</label><br>';
-	contentHTML += '<label class="labelWhite12">Choose how to import this point cloud:</label>';
-	contentHTML += '</div>';
+	// Step 1) Detect if coordinates are likely WGS84
+	var minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+	for (var i = 0; i < Math.min(points.length, 1000); i++) {
+		var pt = points[i];
+		if (pt.x < minX) minX = pt.x;
+		if (pt.x > maxX) maxX = pt.x;
+		if (pt.y < minY) minY = pt.y;
+		if (pt.y > maxY) maxY = pt.y;
+	}
+	var bbox = [minX, minY, maxX, maxY];
+	var detectedWGS84 = isLikelyWGS84(bbox);
 
-	// Step 2) Create dialog with 4 buttons in button row
-	// Button order: option2 (As Points), option1 (Decimate), cancel, confirm (Continue)
+	// Step 2) Create dialog content HTML
+	var contentHTML = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">';
+
+	// Step 3) File information
+	contentHTML += '<div style="text-align: left;">';
+	contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;"><strong>File:</strong> ' + fileName + "</p>";
+	contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">Points: <strong>' + pointCount.toLocaleString() + '</strong></p>';
+	contentHTML += '<p class="labelWhite15" style="margin: 0 0 10px 0;">Detected coordinate system: <strong>' + (detectedWGS84 ? "WGS84 (latitude/longitude)" : "Projected (UTM/local)") + "</strong></p>";
+	contentHTML += "</div>";
+
+	// Step 4) Import type selection
+	contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+	contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Import As:</p>';
+
+	contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
+	contentHTML += '<input type="radio" id="pc-import-pointcloud" name="pc-import-type" value="pointcloud" style="margin: 0;">';
+	contentHTML += '<label for="pc-import-pointcloud" class="labelWhite15" style="margin: 0; cursor: pointer;">Point Cloud (KAD points)</label>';
+	contentHTML += "</div>";
+
+	contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
+	contentHTML += '<input type="radio" id="pc-import-surface" name="pc-import-type" value="surface" checked style="margin: 0;">';
+	contentHTML += '<label for="pc-import-surface" class="labelWhite15" style="margin: 0; cursor: pointer;">Surface (triangulated mesh)</label>';
+	contentHTML += "</div>";
+
+	contentHTML += "</div>";
+
+	// Step 5) Coordinate transformation options (only if WGS84 detected)
+	if (detectedWGS84) {
+		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Coordinate Transformation:</p>';
+
+		contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">';
+		contentHTML += '<input type="radio" id="pc-keep-wgs84" name="pc-transform" value="keep" style="margin: 0;">';
+		contentHTML += '<label for="pc-keep-wgs84" class="labelWhite15" style="margin: 0; cursor: pointer;">Keep as WGS84 (latitude/longitude)</label>';
+		contentHTML += "</div>";
+
+		contentHTML += '<div style="display: flex; align-items: center; gap: 8px;">';
+		contentHTML += '<input type="radio" id="pc-transform-utm" name="pc-transform" value="transform" checked style="margin: 0;">';
+		contentHTML += '<label for="pc-transform-utm" class="labelWhite15" style="margin: 0; cursor: pointer;">Transform to projected coordinates</label>';
+		contentHTML += "</div>";
+
+		// EPSG dropdown
+		contentHTML += '<div id="pc-epsg-section" style="margin-top: 10px; display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: center;">';
+		contentHTML += '<label class="labelWhite15">EPSG Code:</label>';
+		contentHTML += '<select id="pc-import-epsg-code" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+		contentHTML += '<option value="">-- Select EPSG Code --</option>';
+
+		// Add common EPSG codes (top100EPSGCodes from ProjectionDialog)
+		var commonEPSG = [
+			{ code: "32750", name: "WGS 84 / UTM zone 50S" },
+			{ code: "32751", name: "WGS 84 / UTM zone 51S" },
+			{ code: "32752", name: "WGS 84 / UTM zone 52S" },
+			{ code: "32753", name: "WGS 84 / UTM zone 53S" },
+			{ code: "32754", name: "WGS 84 / UTM zone 54S" },
+			{ code: "32755", name: "WGS 84 / UTM zone 55S" },
+			{ code: "32756", name: "WGS 84 / UTM zone 56S" },
+			{ code: "28350", name: "GDA94 / MGA zone 50" },
+			{ code: "28351", name: "GDA94 / MGA zone 51" },
+			{ code: "28352", name: "GDA94 / MGA zone 52" },
+			{ code: "28353", name: "GDA94 / MGA zone 53" },
+			{ code: "28354", name: "GDA94 / MGA zone 54" },
+			{ code: "28355", name: "GDA94 / MGA zone 55" },
+			{ code: "28356", name: "GDA94 / MGA zone 56" },
+			{ code: "7850", name: "GDA2020 / MGA zone 50" },
+			{ code: "7851", name: "GDA2020 / MGA zone 51" },
+			{ code: "7852", name: "GDA2020 / MGA zone 52" },
+			{ code: "7853", name: "GDA2020 / MGA zone 53" },
+			{ code: "7854", name: "GDA2020 / MGA zone 54" },
+			{ code: "7855", name: "GDA2020 / MGA zone 55" },
+			{ code: "7856", name: "GDA2020 / MGA zone 56" }
+		];
+		commonEPSG.forEach(function(item) {
+			contentHTML += '<option value="' + item.code + '">' + item.code + " - " + item.name + "</option>";
+		});
+		contentHTML += "</select>";
+		contentHTML += "</div>";
+
+		// Custom Proj4
+		contentHTML += '<div style="margin-top: 8px; display: grid; grid-template-columns: 100px 1fr; gap: 8px; align-items: start;">';
+		contentHTML += '<label class="labelWhite15" style="padding-top: 4px;">Or Custom Proj4:</label>';
+		contentHTML += '<textarea id="pc-import-custom-proj4" placeholder="+proj=utm +zone=50 +south +datum=WGS84 +units=m +no_defs" style="height: 50px; padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 11px; font-family: monospace; resize: vertical;"></textarea>';
+		contentHTML += "</div>";
+
+		contentHTML += "</div>";
+	}
+
+	// Step 6) Point Cloud options (shown for Point Cloud import)
+	contentHTML += '<div id="pc-pointcloud-options" style="display: none; border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+	contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Point Cloud Options:</p>';
+
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
+	contentHTML += '<label class="labelWhite15">Max Points:</label>';
+	contentHTML += '<input type="number" id="pc-max-points" value="100000" min="1000" max="1000000" step="1000" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += "</div>";
+
+	contentHTML += "</div>";
+
+	// Step 7) Surface triangulation options (shown for Surface import)
+	contentHTML += '<div id="pc-surface-options" style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+	contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Surface Triangulation Options:</p>';
+
+	// Surface Name
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+	contentHTML += '<label class="labelWhite15">Surface Name:</label>';
+	var defaultSurfaceName = fileName.replace(/\.[^/.]+$/, "") || "PointCloud_Surface";
+	contentHTML += '<input type="text" id="pc-surface-name" value="' + defaultSurfaceName + '" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += "</div>";
+
+	// Max Edge Length
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+	contentHTML += '<label class="labelWhite15">Max Edge Length:</label>';
+	contentHTML += '<input type="number" id="pc-max-edge-length" value="0" min="0" max="10000" step="1" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">0 = disabled. Removes convex hull triangles with long edges.</p>';
+	contentHTML += "</div>";
+
+	// Consider 3D Edge Length
+	contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; margin-left: 140px;">';
+	contentHTML += '<input type="checkbox" id="pc-consider-3d-length" style="margin: 0;">';
+	contentHTML += '<label for="pc-consider-3d-length" class="labelWhite15" style="margin: 0; cursor: pointer; font-size: 11px;">Consider 3D edge length (includes Z difference)</label>';
+	contentHTML += "</div>";
+
+	// Min Internal Angle
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+	contentHTML += '<label class="labelWhite15">Min Internal Angle:</label>';
+	contentHTML += '<input type="number" id="pc-min-angle" value="0" min="0" max="60" step="1" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">0 = disabled. Removes skinny triangles (degrees).</p>';
+	contentHTML += "</div>";
+
+	// Consider 3D Angle
+	contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; margin-left: 140px;">';
+	contentHTML += '<input type="checkbox" id="pc-consider-3d-angle" style="margin: 0;">';
+	contentHTML += '<label for="pc-consider-3d-angle" class="labelWhite15" style="margin: 0; cursor: pointer; font-size: 11px;">Consider 3D angle (includes Z in calculation)</label>';
+	contentHTML += "</div>";
+
+	// Surface Style (gradient)
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+	contentHTML += '<label class="labelWhite15">Surface Style:</label>';
+	contentHTML += '<select id="pc-surface-style" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += '<option value="default">Default (elevation)</option>';
+	contentHTML += '<option value="hillshade">Hillshade</option>';
+	contentHTML += '<option value="viridis">Viridis</option>';
+	contentHTML += '<option value="turbo">Turbo</option>';
+	contentHTML += '<option value="parula">Parula</option>';
+	contentHTML += '<option value="cividis">Cividis</option>';
+	contentHTML += '<option value="terrain">Terrain</option>';
+	contentHTML += "</select>";
+	contentHTML += "</div>";
+
+	contentHTML += "</div>";
+
+	// Error message
+	contentHTML += '<div id="pc-import-error-message" style="display: none; margin-top: 8px; padding: 6px; background: #f44336; color: white; border-radius: 3px; font-size: 11px;"></div>';
+
+	contentHTML += "</div>";
+
+	// Step 8) Create dialog
 	var dialog = new FloatingDialog({
-		title: "Large Point Cloud Detected",
+		title: "Import Point Cloud",
 		content: contentHTML,
 		layoutType: "default",
-		width: 500,
-		height: 250,
+		width: 650,
+		height: detectedWGS84 ? 780 : 580,
 		showConfirm: true,
 		showCancel: true,
-		showDeny: false,
-		showOption1: true,
-		showOption2: true,
-		showOption3: false,
-		confirmText: "Continue (Mesh)",
+		confirmText: "Import",
 		cancelText: "Cancel",
-		option1Text: "Decimate",
-		option2Text: "As Points",
-		onConfirm: async function () {
-			// Step 3) Continue (Mesh) button
-			createSurfaceFromPoints(points, fileName, false);
+		onConfirm: async function() {
 			try {
-				await saveSurfaceToDB(fileName || "surface_full_" + Date.now());
-			} catch (saveError) {
-				console.error("Failed to save full surface:", saveError);
+				// Step 9) Get form values
+				var importType = document.querySelector('input[name="pc-import-type"]:checked').value;
+				var errorDiv = document.getElementById("pc-import-error-message");
+				var processedPoints = points.slice(); // Copy points array
+
+				// Step 10) Handle coordinate transformation if WGS84
+				if (detectedWGS84) {
+					var transformRadio = document.querySelector('input[name="pc-transform"]:checked');
+					if (transformRadio && transformRadio.value === "transform") {
+						var epsgCode = document.getElementById("pc-import-epsg-code").value.trim();
+						var customProj4 = document.getElementById("pc-import-custom-proj4").value.trim();
+
+						if (!epsgCode && !customProj4) {
+							errorDiv.textContent = "Please select an EPSG code or provide a custom Proj4 definition for transformation";
+							errorDiv.style.display = "block";
+							return;
+						}
+
+						// Load EPSG definition if needed
+						if (epsgCode) {
+							await window.loadEPSGCode(epsgCode);
+						}
+
+						// Transform coordinates
+						var sourceDef = "+proj=longlat +datum=WGS84 +no_defs";
+						var targetDef = customProj4 || "EPSG:" + epsgCode;
+
+						console.log("Transforming point cloud from WGS84 to: " + targetDef);
+						updateStatusMessage("Transforming coordinates...");
+
+						for (var i = 0; i < processedPoints.length; i++) {
+							var pt = processedPoints[i];
+							var transformed = proj4(sourceDef, targetDef, [pt.x, pt.y]);
+							processedPoints[i] = { x: transformed[0], y: transformed[1], z: pt.z };
+							if (pt.r !== undefined) processedPoints[i].r = pt.r;
+							if (pt.g !== undefined) processedPoints[i].g = pt.g;
+							if (pt.b !== undefined) processedPoints[i].b = pt.b;
+							if (pt.color) processedPoints[i].color = pt.color;
+						}
+						console.log("Transformed " + processedPoints.length + " points");
+					}
+				}
+
+				// Step 11) Get ALL form values BEFORE closing dialog (elements removed on close)
+				var maxPoints = 100000;
+				var maxPointsEl = document.getElementById("pc-max-points");
+				if (maxPointsEl) maxPoints = parseInt(maxPointsEl.value) || 100000;
+
+				var surfaceNameEl = document.getElementById("pc-surface-name");
+				var maxEdgeLengthEl = document.getElementById("pc-max-edge-length");
+				var consider3DLengthEl = document.getElementById("pc-consider-3d-length");
+				var minAngleEl = document.getElementById("pc-min-angle");
+				var consider3DAngleEl = document.getElementById("pc-consider-3d-angle");
+				var surfaceStyleEl = document.getElementById("pc-surface-style");
+
+				var config = {
+					surfaceName: surfaceNameEl ? surfaceNameEl.value : "PointCloud_Surface",
+					maxEdgeLength: maxEdgeLengthEl ? parseFloat(maxEdgeLengthEl.value) || 0 : 0,
+					consider3DLength: consider3DLengthEl ? consider3DLengthEl.checked : false,
+					minAngle: minAngleEl ? parseFloat(minAngleEl.value) || 0 : 0,
+					consider3DAngle: consider3DAngleEl ? consider3DAngleEl.checked : false,
+					surfaceStyle: surfaceStyleEl ? surfaceStyleEl.value : "default"
+				};
+
+				// Step 12) NOW close the dialog
+				dialog.close();
+
+				// Step 13) Import based on type
+				if (importType === "pointcloud") {
+					// Point Cloud import
+					var finalPoints = processedPoints;
+					if (processedPoints.length > maxPoints) {
+						finalPoints = decimatePointCloud(processedPoints, maxPoints);
+						console.log("Decimated from " + processedPoints.length + " to " + finalPoints.length + " points");
+					}
+					createKADPointsFromPointCloud(finalPoints, fileName);
+					updateStatusMessage("Imported " + finalPoints.length + " points as KAD entities");
+				} else {
+					// Surface import with triangulation options
+					createSurfaceFromPointsWithOptions(processedPoints, config);
+				}
+
+			} catch (error) {
+				var errorDiv = document.getElementById("pc-import-error-message");
+				if (errorDiv) {
+					errorDiv.textContent = "Import error: " + error.message;
+					errorDiv.style.display = "block";
+				}
+				console.error("Point cloud import error:", error);
 			}
 		},
-		onOption1: async function () {
-			// Step 4) Decimate button
-			var decimatedPoints = decimatePointCloud(points, 5000);
-			createSurfaceFromPoints(decimatedPoints, fileName, false);
-			try {
-				await saveSurfaceToDB(fileName ? fileName + "_decimated" : "surface_decimated_" + Date.now());
-			} catch (saveError) {
-				console.error("Failed to save decimated surface:", saveError);
-			}
-		},
-		onOption2: function () {
-			// Step 5) As Points button
-			createKADPointsFromPointCloud(points, fileName);
-		},
-		onCancel: function () {
-			// Step 6) Cancel button - just close
+		onCancel: function() {
 			console.log("Point cloud import cancelled");
 		}
 	});
 
-	// Step 7) Show dialog
 	dialog.show();
+
+	// Step 12) Toggle Point Cloud / Surface options visibility based on import type
+	var importTypeRadios = document.querySelectorAll('input[name="pc-import-type"]');
+	var pointcloudOptions = document.getElementById("pc-pointcloud-options");
+	var surfaceOptions = document.getElementById("pc-surface-options");
+
+	importTypeRadios.forEach(function(radio) {
+		radio.addEventListener("change", function() {
+			if (radio.value === "surface" && radio.checked) {
+				pointcloudOptions.style.display = "none";
+				surfaceOptions.style.display = "block";
+			} else if (radio.value === "pointcloud" && radio.checked) {
+				pointcloudOptions.style.display = "block";
+				surfaceOptions.style.display = "none";
+			}
+		});
+	});
+
+	// Step 13) Toggle EPSG section visibility if WGS84 detected
+	if (detectedWGS84) {
+		var transformRadios = document.querySelectorAll('input[name="pc-transform"]');
+		var epsgSection = document.getElementById("pc-epsg-section");
+
+		transformRadios.forEach(function(radio) {
+			radio.addEventListener("change", function() {
+				if (radio.value === "transform") {
+					epsgSection.style.display = "grid";
+				} else {
+					epsgSection.style.display = "none";
+				}
+			});
+		});
+	}
+}
+
+// Legacy function - redirect to new dialog
+function showDecimationWarning(points, fileName) {
+	showPointCloudImportDialog(points, fileName);
+}
+
+// Create Surface from Points with Triangulation Options (edge/angle culling)
+function createSurfaceFromPointsWithOptions(points, config) {
+	var surfaceName = config.surfaceName || "surface_" + Date.now();
+	var maxEdgeLength = config.maxEdgeLength || 0;
+	var consider3DLength = config.consider3DLength || false;
+	var minAngle = config.minAngle || 0;
+	var consider3DAngle = config.consider3DAngle || false;
+	var surfaceStyle = config.surfaceStyle || "default";
+
+	// Debug logging (only in developer mode)
+	if (developerModeEnabled) {
+		console.log("Creating surface: " + surfaceName);
+		console.log("Options: maxEdgeLength=" + maxEdgeLength + ", minAngle=" + minAngle);
+	}
+
+	// Step 1) Create triangles using Delaunator
+	var coords = points.flatMap(function(p) { return [p.x, p.y]; });
+	var delaunay = new Delaunator(coords);
+
+	// Step 2) Helper function to calculate distance
+	function distanceSquared(p1, p2, use3D) {
+		var dx = p2.x - p1.x;
+		var dy = p2.y - p1.y;
+		if (use3D) {
+			var dz = p2.z - p1.z;
+			return dx * dx + dy * dy + dz * dz;
+		}
+		return dx * dx + dy * dy;
+	}
+
+	// Step 3) Convert to triangles with culling
+	var triangles = [];
+	var culledByEdge = 0;
+	var culledByAngle = 0;
+
+	for (var i = 0; i < delaunay.triangles.length; i += 3) {
+		var p1 = points[delaunay.triangles[i]];
+		var p2 = points[delaunay.triangles[i + 1]];
+		var p3 = points[delaunay.triangles[i + 2]];
+
+		// Step 3a) Edge length culling
+		if (maxEdgeLength > 0) {
+			var edge1Sq = distanceSquared(p1, p2, consider3DLength);
+			var edge2Sq = distanceSquared(p2, p3, consider3DLength);
+			var edge3Sq = distanceSquared(p3, p1, consider3DLength);
+			var maxEdgeSq = maxEdgeLength * maxEdgeLength;
+
+			if (edge1Sq > maxEdgeSq || edge2Sq > maxEdgeSq || edge3Sq > maxEdgeSq) {
+				culledByEdge++;
+				continue;
+			}
+		}
+
+		// Step 3b) Minimum angle culling
+		if (minAngle > 0) {
+			var edge1 = Math.sqrt(distanceSquared(p1, p2, consider3DAngle));
+			var edge2 = Math.sqrt(distanceSquared(p2, p3, consider3DAngle));
+			var edge3 = Math.sqrt(distanceSquared(p3, p1, consider3DAngle));
+
+			// Calculate angles using law of cosines
+			var angle1 = Math.acos(Math.max(-1, Math.min(1, (edge2 * edge2 + edge3 * edge3 - edge1 * edge1) / (2 * edge2 * edge3)))) * (180 / Math.PI);
+			var angle2 = Math.acos(Math.max(-1, Math.min(1, (edge1 * edge1 + edge3 * edge3 - edge2 * edge2) / (2 * edge1 * edge3)))) * (180 / Math.PI);
+			var angle3 = Math.acos(Math.max(-1, Math.min(1, (edge1 * edge1 + edge2 * edge2 - edge3 * edge3) / (2 * edge1 * edge2)))) * (180 / Math.PI);
+
+			var minTriAngle = Math.min(angle1, angle2, angle3);
+
+			if (minTriAngle < minAngle) {
+				culledByAngle++;
+				continue;
+			}
+		}
+
+		// Step 3c) Add triangle
+		triangles.push({
+			vertices: [p1, p2, p3],
+			minZ: Math.min(p1.z, p2.z, p3.z),
+			maxZ: Math.max(p1.z, p2.z, p3.z)
+		});
+	}
+
+	// Debug logging (only in developer mode)
+	if (developerModeEnabled) {
+		console.log("Generated " + triangles.length + " triangles");
+		console.log("Culled: " + culledByEdge + " by edge length, " + culledByAngle + " by angle");
+	}
+
+	// Step 4) Create surface ID
+	var surfaceId = surfaceName.replace(/\s+/g, "_");
+
+	// Step 5) Add surface to Map
+	loadedSurfaces.set(surfaceId, {
+		id: surfaceId,
+		name: surfaceName,
+		points: points,
+		triangles: triangles,
+		visible: true,
+		gradient: surfaceStyle,
+		metadata: {
+			source: "pointcloud_import",
+			pointCount: points.length,
+			triangleCount: triangles.length,
+			culledByEdge: culledByEdge,
+			culledByAngle: culledByAngle,
+			maxEdgeLength: maxEdgeLength,
+			minAngle: minAngle
+		}
+	});
+
+	// Step 6) Update display
+	updateCentroids();
+	drawData(allBlastHoles, selectedHole);
+
+	// Step 7) Update TreeView
+	if (typeof debouncedUpdateTreeView === "function") {
+		debouncedUpdateTreeView();
+	}
+
+	// Step 8) Save to IndexedDB
+	saveSurfaceToDB(surfaceId).catch(function(err) {
+		console.error("Failed to save surface:", err);
+	});
+
+	updateStatusMessage("Created surface: " + surfaceName + " with " + triangles.length + " triangles");
 }
 
 function decimatePointCloud(points, targetCount) {

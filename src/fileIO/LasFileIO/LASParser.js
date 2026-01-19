@@ -11,6 +11,7 @@
 import BaseParser from "../BaseParser.js";
 import proj4 from "proj4";
 import { top100EPSGCodes, isLikelyWGS84 } from "../../dialog/popups/generic/ProjectionDialog.js";
+import { Delaunay } from "d3-delaunay";
 
 // Step 6) LAS Classification lookup table
 const LAS_CLASSIFICATIONS = {
@@ -82,12 +83,29 @@ class LASParser extends BaseParser {
 			}
 
 			// Step 15) Apply master RL offset if specified
-			if (config.masterRLX !== 0 || config.masterRLY !== 0) {
-				rawData = this.applyMasterRLOffset(rawData, config.masterRLX, config.masterRLY);
-			}
+			// if (config.masterRLX !== 0 || config.masterRLY !== 0) {
+			// 	rawData = this.applyMasterRLOffset(rawData, config.masterRLX, config.masterRLY);
+			// }
 
 			// Step 16) Convert to kadDrawingsMap format for Kirra compatibility
-			rawData.kadDrawingsMap = this.convertToKadFormat(rawData.points, rawData.header);
+			if (config.importType === "surface") {
+				// Create triangulated surface
+				var surfaceResult = await this.createTriangulatedSurface(rawData.points, config);
+				return {
+					...surfaceResult,
+					config: config,
+					success: true
+				};
+			} else {
+				// Original point cloud behavior
+				rawData.kadDrawingsMap = this.convertToKadFormat(rawData.points, rawData.header);
+				return {
+					...rawData,
+					config: config,
+					dataType: "pointcloud",
+					success: true
+				};
+			}
 
 			// Step 17) Return final processed data
 			return {
@@ -712,6 +730,145 @@ class LASParser extends BaseParser {
 		return "#" + r8.toString(16).padStart(2, "0") + g8.toString(16).padStart(2, "0") + b8.toString(16).padStart(2, "0");
 	}
 
+	async createTriangulatedSurface(points, config) {
+		// Step 1) Get triangulation options from config
+		var maxEdgeLength = config.maxEdgeLength || 0;
+		var consider3DLength = config.consider3DLength || false;
+		var minAngle = config.minAngle || 0;
+		var consider3DAngle = config.consider3DAngle || false;
+		var surfaceName = config.surfaceName || "LAS_Surface";
+		var surfaceStyle = config.surfaceStyle || "default";
+
+		// Step 2) Prepare points for triangulation
+		var vertices = points.map(function(pt) {
+			return {
+				x: parseFloat(pt.x),
+				y: parseFloat(pt.y),
+				z: parseFloat(pt.z)
+			};
+		});
+
+		// Step 3) Check minimum points for triangulation
+		if (vertices.length < 3) {
+			throw new Error("Insufficient points for triangulation: " + vertices.length + " (minimum 3 required)");
+		}
+
+		// Step 4a) Debug logging (only in developer mode)
+		if (window.developerModeEnabled) {
+			console.log("🔺 Creating Delaunay triangulation from " + vertices.length + " LAS points");
+			console.log("🔺 Options: maxEdgeLength=" + maxEdgeLength + ", minAngle=" + minAngle + ", 3DLength=" + consider3DLength + ", 3DAngle=" + consider3DAngle);
+		}
+
+		// Step 4) Create Delaunay triangulation directly using d3-delaunay
+		var delaunay = Delaunay.from(
+			vertices,
+			function(d) {
+				return d.x;
+			},
+			function(d) {
+				return d.y;
+			}
+		);
+		var triangleIndices = delaunay.triangles;
+
+		// Step 5) Helper function to calculate distance
+		function distanceSquared(p1, p2, use3D) {
+			var dx = p2.x - p1.x;
+			var dy = p2.y - p1.y;
+			if (use3D) {
+				var dz = p2.z - p1.z;
+				return dx * dx + dy * dy + dz * dz;
+			}
+			return dx * dx + dy * dy;
+		}
+
+		// Step 6) Convert to triangle format with culling
+		// Format: { vertices: [{ x, y, z }, { x, y, z }, { x, y, z }] }
+		var resultTriangles = [];
+		var culledByEdge = 0;
+		var culledByAngle = 0;
+
+		for (var i = 0; i < triangleIndices.length; i += 3) {
+			var aIdx = triangleIndices[i];
+			var bIdx = triangleIndices[i + 1];
+			var cIdx = triangleIndices[i + 2];
+
+			var p1 = vertices[aIdx];
+			var p2 = vertices[bIdx];
+			var p3 = vertices[cIdx];
+
+			// Step 6a) Edge length culling
+			if (maxEdgeLength > 0) {
+				var edge1Sq = distanceSquared(p1, p2, consider3DLength);
+				var edge2Sq = distanceSquared(p2, p3, consider3DLength);
+				var edge3Sq = distanceSquared(p3, p1, consider3DLength);
+				var maxEdgeSq = maxEdgeLength * maxEdgeLength;
+
+				if (edge1Sq > maxEdgeSq || edge2Sq > maxEdgeSq || edge3Sq > maxEdgeSq) {
+					culledByEdge++;
+					continue; // Skip this triangle
+				}
+			}
+
+			// Step 6b) Minimum angle culling
+			if (minAngle > 0) {
+				var edge1 = Math.sqrt(distanceSquared(p1, p2, consider3DAngle));
+				var edge2 = Math.sqrt(distanceSquared(p2, p3, consider3DAngle));
+				var edge3 = Math.sqrt(distanceSquared(p3, p1, consider3DAngle));
+
+				// Calculate angles using law of cosines
+				var angle1 = Math.acos(Math.max(-1, Math.min(1, (edge2 * edge2 + edge3 * edge3 - edge1 * edge1) / (2 * edge2 * edge3)))) * (180 / Math.PI);
+				var angle2 = Math.acos(Math.max(-1, Math.min(1, (edge1 * edge1 + edge3 * edge3 - edge2 * edge2) / (2 * edge1 * edge3)))) * (180 / Math.PI);
+				var angle3 = Math.acos(Math.max(-1, Math.min(1, (edge1 * edge1 + edge2 * edge2 - edge3 * edge3) / (2 * edge1 * edge2)))) * (180 / Math.PI);
+
+				var minTriAngle = Math.min(angle1, angle2, angle3);
+
+				if (minTriAngle < minAngle) {
+					culledByAngle++;
+					continue; // Skip this triangle
+				}
+			}
+
+			// Step 6c) Add triangle in correct format
+			resultTriangles.push({
+				vertices: [{ x: p1.x, y: p1.y, z: p1.z }, { x: p2.x, y: p2.y, z: p2.z }, { x: p3.x, y: p3.y, z: p3.z }]
+			});
+		}
+
+		// Step 6d) Debug logging (only in developer mode)
+		if (window.developerModeEnabled) {
+			console.log("✅ Generated " + resultTriangles.length + " triangles from LAS point cloud");
+			console.log("🔺 Culled: " + culledByEdge + " by edge length, " + culledByAngle + " by angle");
+		}
+
+		// Step 7) Create the surface object with gradient
+		var surfaceId = surfaceName.replace(/\s+/g, "_") + "_" + Date.now();
+		var surface = {
+			id: surfaceId,
+			name: surfaceName,
+			type: "delaunay",
+			points: vertices,
+			triangles: resultTriangles,
+			visible: true,
+			gradient: surfaceStyle, // Uses selected gradient style
+			transparency: 1.0,
+			metadata: {
+				source: "LAS_import",
+				pointCount: vertices.length,
+				triangleCount: resultTriangles.length,
+				culledByEdge: culledByEdge,
+				culledByAngle: culledByAngle,
+				maxEdgeLength: maxEdgeLength,
+				minAngle: minAngle
+			}
+		};
+
+		// Step 8) Return in surfaces format expected by import system
+		return {
+			surfaces: new Map([[surfaceId, surface]]),
+			dataType: "surfaces"
+		};
+	}
 	// Step 38) Helper: Get default color for classification
 	getClassificationColor(classification) {
 		var colors = {
@@ -813,21 +970,21 @@ class LASParser extends BaseParser {
 			}
 
 			// Step 45) Master RL offset
-			contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
-			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Master Reference Location (Optional):</p>';
-			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; opacity: 0.8;">Apply offset to all imported coordinates</p>';
+			// contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+			// contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Master Reference Location (Optional):</p>';
+			// contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; opacity: 0.8;">Apply offset to all imported coordinates</p>';
 
-			contentHTML += '<div style="display: grid; grid-template-columns: 80px 1fr 80px 1fr; gap: 8px; align-items: center;">';
-			contentHTML += '<label class="labelWhite15">Easting:</label>';
-			contentHTML += '<input type="number" id="las-master-rl-x" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
-			contentHTML += '<label class="labelWhite15">Northing:</label>';
-			contentHTML += '<input type="number" id="las-master-rl-y" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
-			contentHTML += "</div>";
+			// contentHTML += '<div style="display: grid; grid-template-columns: 80px 1fr 80px 1fr; gap: 8px; align-items: center;">';
+			// contentHTML += '<label class="labelWhite15">Easting:</label>';
+			// contentHTML += '<input type="number" id="las-master-rl-x" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			// contentHTML += '<label class="labelWhite15">Northing:</label>';
+			// contentHTML += '<input type="number" id="las-master-rl-y" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			// contentHTML += "</div>";
 
-			contentHTML += "</div>";
+			// contentHTML += "</div>";
 
-			// Step 46) Point decimation options
-			contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+			// Step 46) Point decimation options (shown for Point Cloud import)
+			contentHTML += '<div id="las-pointcloud-options" style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
 			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Point Cloud Options:</p>';
 
 			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
@@ -843,6 +1000,65 @@ class LASParser extends BaseParser {
 			contentHTML += '<option value="vegetation">Vegetation (3,4,5)</option>';
 			contentHTML += '<option value="buildings">Buildings (6)</option>';
 			contentHTML += '<option value="unclassified">Unclassified Only (1)</option>';
+			contentHTML += "</select>";
+			contentHTML += "</div>";
+
+			contentHTML += "</div>";
+
+			// Step 46b) Surface triangulation options (shown for Surface import)
+			contentHTML += '<div id="las-surface-options" style="display: none; border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
+			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Surface Triangulation Options:</p>';
+
+			// Surface Name
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+			contentHTML += '<label class="labelWhite15">Surface Name:</label>';
+			contentHTML += '<input type="text" id="las-surface-name" value="LAS_Surface" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += "</div>";
+
+			// Max Edge Length
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+			contentHTML += '<label class="labelWhite15">Max Edge Length:</label>';
+			contentHTML += '<input type="number" id="las-max-edge-length" value="0" min="0" max="10000" step="1" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">0 = disabled. Removes convex hull triangles with long edges.</p>';
+			contentHTML += "</div>";
+
+			// Consider 3D Edge Length
+			contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; margin-left: 140px;">';
+			contentHTML += '<input type="checkbox" id="las-consider-3d-length" style="margin: 0;">';
+			contentHTML += '<label for="las-consider-3d-length" class="labelWhite15" style="margin: 0; cursor: pointer; font-size: 11px;">Consider 3D edge length (includes Z difference)</label>';
+			contentHTML += "</div>";
+
+			// Min Internal Angle
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+			contentHTML += '<label class="labelWhite15">Min Internal Angle:</label>';
+			contentHTML += '<input type="number" id="las-min-angle" value="0" min="0" max="60" step="1" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">0 = disabled. Removes skinny triangles (degrees).</p>';
+			contentHTML += "</div>";
+
+			// Consider 3D Angle
+			contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px; margin-left: 140px;">';
+			contentHTML += '<input type="checkbox" id="las-consider-3d-angle" style="margin: 0;">';
+			contentHTML += '<label for="las-consider-3d-angle" class="labelWhite15" style="margin: 0; cursor: pointer; font-size: 11px;">Consider 3D angle (includes Z in calculation)</label>';
+			contentHTML += "</div>";
+
+			// XYZ Tolerance (for deduplication)
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+			contentHTML += '<label class="labelWhite15">XYZ Tolerance:</label>';
+			contentHTML += '<input type="number" id="las-xyz-tolerance" value="0.001" min="0.001" max="10" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">Deduplicate points within this distance.</p>';
+			contentHTML += "</div>";
+
+			// Surface Style (gradient)
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+			contentHTML += '<label class="labelWhite15">Surface Style:</label>';
+			contentHTML += '<select id="las-surface-style" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<option value="default">Default (elevation)</option>';
+			contentHTML += '<option value="hillshade">Hillshade</option>';
+			contentHTML += '<option value="viridis">Viridis</option>';
+			contentHTML += '<option value="turbo">Turbo</option>';
+			contentHTML += '<option value="parula">Parula</option>';
+			contentHTML += '<option value="cividis">Cividis</option>';
+			contentHTML += '<option value="terrain">Terrain</option>';
 			contentHTML += "</select>";
 			contentHTML += "</div>";
 
@@ -870,26 +1086,27 @@ class LASParser extends BaseParser {
 						var importType = document.querySelector('input[name="import-type"]:checked').value;
 						var maxPoints = parseInt(document.getElementById("las-max-points").value);
 						var classificationFilter = document.getElementById("las-classification-filter").value;
-						var masterRLX = parseFloat(document.getElementById("las-master-rl-x").value) || 0;
-						var masterRLY = parseFloat(document.getElementById("las-master-rl-y").value) || 0;
 						var errorDiv = document.getElementById("las-import-error-message");
 
-						var config = {
-							cancelled: false,
-							importType: importType,
-							maxPoints: maxPoints,
-							classificationFilter: classificationFilter,
-							masterRLX: masterRLX,
-							masterRLY: masterRLY,
-							transform: false,
-							epsgCode: null,
-							proj4Source: null
-						};
+						var config = { cancelled: false, importType: importType, maxPoints: maxPoints, classificationFilter: classificationFilter, transform: false, epsgCode: null, proj4Source: null };
+
+						// Step 47a) Get surface triangulation options if surface import selected
+						if (importType === "surface") {
+							config.surfaceName = document.getElementById("las-surface-name").value || "LAS_Surface";
+							config.maxEdgeLength = parseFloat(document.getElementById("las-max-edge-length").value) || 0;
+							config.consider3DLength = document.getElementById("las-consider-3d-length").checked;
+							config.minAngle = parseFloat(document.getElementById("las-min-angle").value) || 0;
+							config.consider3DAngle = document.getElementById("las-consider-3d-angle").checked;
+							config.xyzTolerance = parseFloat(document.getElementById("las-xyz-tolerance").value) || 0.001;
+							config.surfaceStyle = document.getElementById("las-surface-style").value || "default";
+						}
 
 						// Check transformation options if WGS84
 						if (isWGS84) {
 							var transformRadio = document.querySelector('input[name="transform"]:checked');
 							if (transformRadio && transformRadio.value === "transform") {
+								config.masterRLX = masterRLX;
+								config.masterRLY = masterRLY;
 								config.transform = true;
 								var epsgCode = document.getElementById("las-import-epsg-code").value.trim();
 								var customProj4 = document.getElementById("las-import-custom-proj4").value.trim();
@@ -944,6 +1161,23 @@ class LASParser extends BaseParser {
 					});
 				});
 			}
+
+			// Step 47b) Toggle Point Cloud / Surface options visibility based on import type
+			var importTypeRadios = document.querySelectorAll('input[name="import-type"]');
+			var pointcloudOptions = document.getElementById("las-pointcloud-options");
+			var surfaceOptions = document.getElementById("las-surface-options");
+
+			importTypeRadios.forEach(function(radio) {
+				radio.addEventListener("change", function() {
+					if (radio.value === "surface" && radio.checked) {
+						pointcloudOptions.style.display = "none";
+						surfaceOptions.style.display = "block";
+					} else if (radio.value === "pointcloud" && radio.checked) {
+						pointcloudOptions.style.display = "block";
+						surfaceOptions.style.display = "none";
+					}
+				});
+			});
 		});
 	}
 
@@ -978,28 +1212,28 @@ class LASParser extends BaseParser {
 		return data;
 	}
 
-	// Step 49) Apply master RL offset
-	applyMasterRLOffset(data, offsetX, offsetY) {
-		if (offsetX === 0 && offsetY === 0) {
-			return data;
-		}
+	// Step 49) Apply master RL offset NOT NEEDED
+	// applyMasterRLOffset(data, offsetX, offsetY) {
+	// 	if (offsetX === 0 && offsetY === 0) {
+	// 		return data;
+	// 	}
 
-		console.log("Applying master RL offset:", offsetX, offsetY);
+	// 	console.log("Applying master RL offset:", offsetX, offsetY);
 
-		for (var i = 0; i < data.points.length; i++) {
-			data.points[i].x += offsetX;
-			data.points[i].y += offsetY;
-		}
+	// 	for (var i = 0; i < data.points.length; i++) {
+	// 		data.points[i].x += offsetX;
+	// 		data.points[i].y += offsetY;
+	// 	}
 
-		// Update header bounds
-		var stats = this.calculateStatistics(data.points, data.header);
-		data.header.minX = stats.minX;
-		data.header.maxX = stats.maxX;
-		data.header.minY = stats.minY;
-		data.header.maxY = stats.maxY;
+	// 	// Update header bounds
+	// 	var stats = this.calculateStatistics(data.points, data.header);
+	// 	data.header.minX = stats.minX;
+	// 	data.header.maxX = stats.maxX;
+	// 	data.header.minY = stats.minY;
+	// 	data.header.maxY = stats.maxY;
 
-		return data;
-	}
+	// 	return data;
+	// }
 }
 
 export default LASParser;

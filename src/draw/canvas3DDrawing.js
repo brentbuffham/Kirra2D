@@ -359,7 +359,7 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	const fontSize = parseInt(window.currentFontSize) || 12;
-	
+
 	// Step 0) Use a BASE font size for position calculation to maintain alignment
 	// The actual font rendering uses fontSize, but position calculation uses BASE_FONT_SIZE
 	// This prevents text from drifting away from the hole when font size increases
@@ -864,16 +864,36 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	// This allows textured OBJs to use elevation-based color gradients
 
 	// Step 9a) Standard surface rendering - Convert triangle vertices from world coordinates to local Three.js coordinates
-	var localTriangles = triangles.map(function(triangle) {
-		if (!triangle.vertices || triangle.vertices.length !== 3) return triangle;
+	var validTriangleCount = 0;
+	var invalidTriangleCount = 0;
+
+	var localTriangles = triangles.map(function(triangle, idx) {
+		if (!triangle.vertices || triangle.vertices.length !== 3) {
+			invalidTriangleCount++;
+			if (invalidTriangleCount <= 3 && developerModeEnabled) {
+				console.warn("⚠️ Invalid triangle at index " + idx + ":", triangle);
+			}
+			return triangle;
+		}
 
 		var localVertices = triangle.vertices.map(function(v) {
 			var local = window.worldToThreeLocal(v.x, v.y);
 			return { x: local.x, y: local.y, z: v.z }; // Keep elevation as-is
 		});
 
+		validTriangleCount++;
+
 		return Object.assign({}, triangle, { vertices: localVertices });
 	});
+
+	// Debug logs - only in developer mode
+	if (developerModeEnabled) {
+		console.log("🔺 [drawSurfaceThreeJS] Processing " + triangles.length + " triangles for " + surfaceId);
+		console.log("🔺 [drawSurfaceThreeJS] Valid triangles: " + validTriangleCount + ", Invalid: " + invalidTriangleCount);
+		if (localTriangles.length > 0 && localTriangles[0].vertices) {
+			console.log("🔺 [drawSurfaceThreeJS] First triangle sample:", JSON.stringify(localTriangles[0].vertices));
+		}
+	}
 
 	// Step 10) Create color function for this surface
 	var colorFunction;
@@ -911,6 +931,13 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 	// Step 11b) Create mesh with vertex colors (using local coordinates)
 	var surfaceMesh = GeometryFactory.createSurface(localTriangles, colorFunction, transparency);
+
+	// Step 11c) Check if mesh creation succeeded (returns null if no valid triangles)
+	if (!surfaceMesh) {
+		console.warn("⚠️ [drawSurfaceThreeJS] Failed to create surface mesh for " + surfaceId + " - no valid triangles");
+		return;
+	}
+
 	surfaceMesh.userData = { type: "surface", surfaceId: surfaceId };
 
 	window.threeRenderer.surfacesGroup.add(surfaceMesh);
@@ -1262,6 +1289,7 @@ export function highlightSelectedKADPointThreeJS(kadObject, highlightType) {
 }
 
 // Step 19) Draw connection stadium zone (multi-connector indicator) in Three.js
+// Now accepts WORLD coordinates for toMousePos and converts to local internally
 export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmount) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!fromHole || !toMousePos) return;
@@ -1276,14 +1304,25 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 		return;
 	}
 
-	// Step 19b) Convert BOTH positions to Three.js local coordinates
-	// worldToThreeLocal only accepts 2 parameters (x, y) - Z stays as-is
+	// Step 19b) Convert fromHole to local coordinates
 	const fromLocal = window.worldToThreeLocal(fromHole.startXLocation, fromHole.startYLocation);
+	
+	// Step 19b.1) Convert toMousePos to local - SAME as mouse indicator does
 	const toLocal = window.worldToThreeLocal(toMousePos.x, toMousePos.y);
 
 	// Step 19c) Extract Z coordinates separately (Z coordinates stay as-is, no conversion needed)
 	const fromZ = fromHole.startZLocation || 0;
 	const toZ = toMousePos.z !== undefined && isFinite(toMousePos.z) ? toMousePos.z : fromHole.startZLocation || 0;
+	
+	// DEBUG: Log coordinate conversion for stadium zone
+	if (window.developerModeEnabled) {
+		console.log("🏟️ Stadium Zone Coords:");
+		console.log("  fromHole world:", fromHole.startXLocation.toFixed(2), fromHole.startYLocation.toFixed(2), fromZ.toFixed(2));
+		console.log("  toMousePos world:", toMousePos.x.toFixed(2), toMousePos.y.toFixed(2), toZ.toFixed(2));
+		console.log("  threeLocalOrigin:", window.threeLocalOriginX.toFixed(2), window.threeLocalOriginY.toFixed(2));
+		console.log("  fromLocal:", fromLocal.x.toFixed(2), fromLocal.y.toFixed(2));
+		console.log("  toLocal:", toLocal.x.toFixed(2), toLocal.y.toFixed(2));
+	}
 
 	const radius = connectAmount;
 
@@ -1391,7 +1430,7 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// With orthographic camera: screenPixels = worldUnits * camera.zoom
 	// So: worldUnits = screenPixels / camera.zoom
 	// This makes cursor appear the SAME SIZE on screen regardless of zoom
-	const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+	const cameraZoom = window.threeRenderer && window.threeRenderer.camera ? window.threeRenderer.camera.zoom : 1;
 	const snapRadiusWorld = snapRadiusPixels / cameraZoom;
 
 	// Step 19.5c.2) Use calculated world size (no minimum clamp - let it scale properly)
@@ -1484,10 +1523,7 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 	}
 
 	// Step 19.6d) Create line using SAME pattern as working ruler tool
-	var points = [
-		new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ),
-		new THREE.Vector3(toLocal.x, toLocal.y, toZ)
-	];
+	var points = [new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ), new THREE.Vector3(toLocal.x, toLocal.y, toZ)];
 
 	var geometry = new THREE.BufferGeometry().setFromPoints(points);
 	var material = new THREE.LineBasicMaterial({
@@ -1869,7 +1905,6 @@ export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlast
 	// Step 22.0) Clear existing Voronoi cells first to prevent accumulation
 	clearVoronoiCellsThreeJS();
 
-
 	// Step 22a) Default extrusionHeight if not provided
 	if (extrusionHeight === undefined || extrusionHeight === null) {
 		extrusionHeight = 0.2;
@@ -1891,10 +1926,10 @@ export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlast
 // Call when toggling Voronoi display OFF or before creating new cells
 export function clearVoronoiCellsThreeJS() {
 	if (!window.threeInitialized || !window.threeRenderer) return;
-	
+
 	var surfacesGroup = window.threeRenderer.surfacesGroup;
 	if (!surfacesGroup) return;
-	
+
 	// Step 22.1a) Find and remove all Voronoi cell groups
 	var toRemove = [];
 	surfacesGroup.children.forEach(function(child) {
@@ -1902,7 +1937,7 @@ export function clearVoronoiCellsThreeJS() {
 			toRemove.push(child);
 		}
 	});
-	
+
 	// Step 22.1b) Dispose geometry, materials, and textures to prevent memory leaks
 	toRemove.forEach(function(voronoiGroup) {
 		voronoiGroup.traverse(function(object) {
@@ -1913,7 +1948,9 @@ export function clearVoronoiCellsThreeJS() {
 				// Step 22.1c) Dispose textures before disposing material
 				if (object.material.map) object.material.map.dispose();
 				if (Array.isArray(object.material)) {
-					object.material.forEach(function(mat) { mat.dispose(); });
+					object.material.forEach(function(mat) {
+						mat.dispose();
+					});
 				} else {
 					object.material.dispose();
 				}
@@ -1921,7 +1958,7 @@ export function clearVoronoiCellsThreeJS() {
 		});
 		surfacesGroup.remove(voronoiGroup);
 	});
-	
+
 	if (toRemove.length > 0) {
 		console.log("🗑️ Cleared " + toRemove.length + " Voronoi cell group(s) from 3D scene");
 	}

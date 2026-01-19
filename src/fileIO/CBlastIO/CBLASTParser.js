@@ -128,16 +128,30 @@ export default class CBLASTParser extends BaseParser {
 
 	// Step 21) Create blast hole object from 4 CBLAST records
 	createHoleFromRecords(holeRec, prodRec, detRec, strataRec) {
-		// Step 22) Extract hole geometry from HOLE record
-		// Format: HOLE,,holeID,easting,northing,elevation,bearing,angle,depth,diameter,,,
-		var holeID = holeRec[2] || "";
-		var easting = parseFloat(holeRec[3]) || 0;
-		var northing = parseFloat(holeRec[4]) || 0;
-		var elevation = parseFloat(holeRec[5]) || 0;
-		var bearing = parseFloat(holeRec[6]) || 0;
-		var angle = parseFloat(holeRec[7]) || 0; // Import angle directly (same as export)
-		var depth = parseFloat(holeRec[8]) || 0;
-		var diameter = parseFloat(holeRec[9]) || 0;
+		// Step 22) Detect format variant - check if field [1] is blank or contains holeID
+		// Format A (with blank): HOLE,,holeID,easting,northing,elevation,bearing,angle,depth,diameter,...
+		// Format B (no blank):   HOLE,holeID,easting,northing,elevation,bearing,angle,depth,diameter,...
+		var offset = 0;
+		if (holeRec[1] === "" || holeRec[1] === null || holeRec[1] === undefined) {
+			// Format A: blank field at [1], holeID at [2]
+			offset = 1;
+		} else if (!isNaN(parseFloat(holeRec[2])) && !isNaN(parseFloat(holeRec[3]))) {
+			// Format B: holeID at [1], easting at [2] (both are numbers)
+			offset = 0;
+		} else {
+			// Default to format A (with blank field) for safety
+			offset = 1;
+		}
+
+		// Step 22a) Extract hole geometry from HOLE record
+		var holeID = holeRec[1 + offset] || "";
+		var easting = parseFloat(holeRec[2 + offset]) || 0;
+		var northing = parseFloat(holeRec[3 + offset]) || 0;
+		var elevation = parseFloat(holeRec[4 + offset]) || 0;
+		var bearing = parseFloat(holeRec[5 + offset]) || 0;
+		var angle = parseFloat(holeRec[6 + offset]) || 0; // 0 = vertical down, 90 = horizontal
+		var depth = parseFloat(holeRec[7 + offset]) || 0;
+		var diameter = parseFloat(holeRec[8 + offset]) || 0;
 
 		// Step 23) Use angle directly (no conversion) - matches CBLASTWriter export
 		var holeAngle = angle;
@@ -156,14 +170,16 @@ export default class CBLASTParser extends BaseParser {
 		var endElevation = elevation - vertDist; // Down is negative
 
 		// Step 27) Extract product information from PRODUCT record
-		// Format: PRODUCT,,holeID,deckCount,product1,length1,product2,length2,...
-		var deckCount = parseInt(prodRec[3]) || 0;
+		// Format A (with blank): PRODUCT,,holeID,deckCount,product1,length1,...
+		// Format B (no blank):   PRODUCT,holeID,deckCount,product1,length1,...
+		var prodOffset = (prodRec[1] === "" || prodRec[1] === null || prodRec[1] === undefined) ? 1 : 0;
+		var deckCount = parseInt(prodRec[2 + prodOffset]) || 0;
 		var products = [];
 		var chargeLength = 0;
 
 		for (var i = 0; i < deckCount; i++) {
-			var productName = prodRec[4 + i * 2] || "";
-			var productLength = parseFloat(prodRec[5 + i * 2]) || 0;
+			var productName = prodRec[3 + prodOffset + i * 2] || "";
+			var productLength = parseFloat(prodRec[4 + prodOffset + i * 2]) || 0;
 
 			products.push({
 				name: productName,
@@ -171,18 +187,23 @@ export default class CBLASTParser extends BaseParser {
 			});
 
 			// Step 28) Calculate total charge length (exclude stemming types)
-			if (productName.toUpperCase() !== "AIR" && !productName.toUpperCase().includes("STEMMING")) {
+			if (productName.toUpperCase() !== "AIR" && 
+				!productName.toUpperCase().includes("STEMMING") &&
+				!productName.toUpperCase().includes("CRUSHED") &&
+				!productName.toUpperCase().includes("AGGREGATE")) {
 				chargeLength += productLength;
 			}
 		}
 
 		// Step 29) Extract detonator information from DETONATOR record
-		// Format: DETONATOR,,holeID,detCount,detType,depth,timeDelay,...
-		var detCount = parseInt(detRec[3]) || 0;
-		var detonatorType = detCount > 0 ? detRec[4] || "" : "";
+		// Format A (with blank): DETONATOR,,holeID,detCount,detType,depth,timeDelay,...
+		// Format B (no blank):   DETONATOR,holeID,detCount,detType,depth,timeDelay,...
+		var detOffset = (detRec[1] === "" || detRec[1] === null || detRec[1] === undefined) ? 1 : 0;
+		var detCount = parseInt(detRec[2 + detOffset]) || 0;
+		var detonatorType = detCount > 0 ? detRec[3 + detOffset] || "" : "";
 		// Extract detonator depth if there is at least one detonator, otherwise set to hole length (depth)
-		var detonatorDepth = detCount > 0 ? parseFloat(detRec[5]) || depth : depth;
-		var timeDelay = detCount > 0 ? parseFloat(detRec[6]) || 0 : 0;
+		var detonatorDepth = detCount > 0 ? parseFloat(detRec[4 + detOffset]) || depth : depth;
+		var timeDelay = detCount > 0 ? parseFloat(detRec[5 + detOffset]) || 0 : 0;
 
 		// Step 30) Calculate stemming height
 		var stemmingHeight = depth - chargeLength;
@@ -194,7 +215,12 @@ export default class CBLASTParser extends BaseParser {
 			holeType = "No Charge";
 		} else {
 			var hasExplosive = products.some(function(p) {
-				return p.name.toUpperCase() !== "AIR" && !p.name.toUpperCase().includes("STEMMING") && p.name.toUpperCase() !== "DO NOT CHARGE";
+				return p.name.toUpperCase() !== "AIR" && 
+					!p.name.toUpperCase().includes("STEMMING") && 
+					!p.name.toUpperCase().includes("CRUSHED") &&
+					!p.name.toUpperCase().includes("AGGREGATE") &&
+					!p.name.toUpperCase().includes("GAS BAG") &&
+					p.name.toUpperCase() !== "DO NOT CHARGE";
 			});
 			if (!hasExplosive) {
 				holeType = "No Charge";
@@ -206,9 +232,9 @@ export default class CBLASTParser extends BaseParser {
 		// For CBLAST: depth = hole length, subdrill = 0, so grade = toe
 		// Toe is at collar + depth along hole vector
 
-		// Calculate toe first (end of hole)
-		var toeX = easting + horizDist * Math.sin(bearingRad);
-		var toeY = northing + horizDist * Math.cos(bearingRad);
+		// Calculate toe first (end of hole) - using radBearing (fix variable name bug)
+		var toeX = easting + horizDist * Math.sin(radBearing);
+		var toeY = northing + horizDist * Math.cos(radBearing);
 		var toeZ = elevation - vertDist;
 
 		// Grade is at toe (CBLAST has no subdrill, grade = toe)

@@ -227,7 +227,7 @@ class KMLKMZParser extends BaseParser {
 				var epsgCodes = top100EPSGCodes;
 
 				for (var i = 0; i < epsgCodes.length; i++) {
-					contentHTML += '<option value="' + epsgCodes[i].code + '">' + epsgCodes[i].code + " - " + epsgCodes[i].name + "</option>"; '<option value="' + commonEPSG[i].code + '">' + commonEPSG[i].code + " - " + commonEPSG[i].name + "</option>";
+					contentHTML += '<option value="' + epsgCodes[i].code + '">' + epsgCodes[i].code + " - " + epsgCodes[i].name + "</option>";
 				}
 
 				contentHTML += "</select>";
@@ -242,21 +242,7 @@ class KMLKMZParser extends BaseParser {
 				contentHTML += "</div>";
 			}
 
-			// Step 30) Master RL (Reference Location) for coordinate offset
-			contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
-			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Master Reference Location (Optional):</p>';
-			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; opacity: 0.8;">Apply offset to all imported coordinates</p>';
-
-			contentHTML += '<div style="display: grid; grid-template-columns: 80px 1fr 80px 1fr; gap: 8px; align-items: center;">';
-			contentHTML += '<label class="labelWhite15">Easting:</label>';
-			contentHTML += '<input type="number" id="master-rl-x" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
-			contentHTML += '<label class="labelWhite15">Northing:</label>';
-			contentHTML += '<input type="number" id="master-rl-y" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
-			contentHTML += "</div>";
-
-			contentHTML += "</div>";
-
-			// Step 31) Default elevation for blast holes (if Z is missing)
+			// Step 30) Default elevation for blast holes (if Z is missing)
 			contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
 			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Default Values:</p>';
 
@@ -294,8 +280,6 @@ class KMLKMZParser extends BaseParser {
 						var importType = document.querySelector('input[name="import-type"]:checked').value;
 						var defaultElevation = parseFloat(document.getElementById("default-elevation").value);
 						var blastName = document.getElementById("default-blast-name").value.trim();
-						var masterRLX = parseFloat(document.getElementById("master-rl-x").value) || 0;
-						var masterRLY = parseFloat(document.getElementById("master-rl-y").value) || 0;
 						var errorDiv = document.getElementById("kml-import-error-message");
 
 						var config = {
@@ -303,8 +287,8 @@ class KMLKMZParser extends BaseParser {
 							importType: importType,
 							defaultElevation: defaultElevation || 0,
 							blastName: blastName || "Imported",
-							masterRLX: masterRLX,
-							masterRLY: masterRLY,
+							masterRLX: 0,
+							masterRLY: 0,
 							transform: false,
 							epsgCode: null,
 							proj4Source: null

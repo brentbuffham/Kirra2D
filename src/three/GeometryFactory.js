@@ -427,38 +427,21 @@ export class GeometryFactory {
 
 	static createKADPoint(worldX, worldY, worldZ, size, color) {
 		// Step 1) Convert pixel size to world units
-		const pixelSize = size * 20; // size is diameter in pixels
+		// Step 2) Convert size to pixel size (size is diameter in pixels)
+		const pixelSize = size * 10; // Scale factor for visibility
 
-		// Step 2) Create BufferGeometry with single point
+		// Step 3) Create BufferGeometry with single point
 		const geometry = new THREE.BufferGeometry();
 		geometry.setAttribute("position", new THREE.Float32BufferAttribute([worldX, worldY, worldZ], 3));
 
-		// Step 3) Create circular texture for points (programmatically)
-		const canvas = document.createElement("canvas");
-		canvas.width = 64;
-		canvas.height = 64;
-		const ctx = canvas.getContext("2d");
-
-		// Draw white circle on transparent background
-		ctx.fillStyle = "#ffffff";
-		ctx.beginPath();
-		ctx.arc(32, 32, 30, 0, Math.PI * 2);
-		ctx.fill();
-
-		const circleTexture = new THREE.CanvasTexture(canvas);
-		circleTexture.needsUpdate = true;
-
-		// Step 4) Create PointsMaterial with circular texture and sizeAttenuation: false
+		// Step 4) Create simple PointsMaterial WITHOUT texture (more efficient)
+		// No canvas texture = no WebGL context exhaustion, better performance
 		const material = new THREE.PointsMaterial({
-			map: circleTexture, // Apply circular texture
-			color: new THREE.Color(color), // Color tinting
+			color: new THREE.Color(color), // Direct color (no texture tinting)
 			size: pixelSize, // Size in pixels when sizeAttenuation is false
 			sizeAttenuation: false, // KEY: Maintains constant pixel size regardless of zoom
-			transparent: true, // Required for texture transparency
-			opacity: 1.0,
 			depthTest: true,
-			depthWrite: true,
-			alphaTest: 0.1, // Discard transparent pixels for better performance
+			depthWrite: true
 		});
 
 		// Step 5) Create Points object
@@ -1122,23 +1105,22 @@ export class GeometryFactory {
 		geometry.setAttribute("size", new THREE.BufferAttribute(sizes, 1));
 		
 		// Step 6) Create circular texture for points (shared)
-		var canvas = document.createElement("canvas");
-		canvas.width = 64;
-		canvas.height = 64;
-		var ctx = canvas.getContext("2d");
-		ctx.fillStyle = "#ffffff";
-		ctx.beginPath();
-		ctx.arc(32, 32, 30, 0, Math.PI * 2);
-		ctx.fill();
-		var circleTexture = new THREE.CanvasTexture(canvas);
+		//Commented out to improve performance and not use texture
+		// var canvas = document.createElement("canvas");
+		// canvas.width = 64;
+		// canvas.height = 64;
+		// var ctx = canvas.getContext("2d");
+		// ctx.fillStyle = "#ffffff";
+		// ctx.beginPath();
+		// ctx.arc(32, 32, 30, 0, Math.PI * 2);
+		// ctx.fill();
+		// var circleTexture = new THREE.CanvasTexture(canvas);
 		
 		// Step 7) Create PointsMaterial with vertex colors
 		var material = new THREE.PointsMaterial({
-			map: circleTexture,
 			vertexColors: true,
-			size: 10, // Default size (overridden by custom shader if needed)
-			sizeAttenuation: false, // Constant pixel size
-			transparent: true,
+			size: 5,  // Adjust size as needed
+			sizeAttenuation: false,  // ✅ Key: constant pixel size
 			alphaTest: 0.1,
 			depthTest: true,
 			depthWrite: false
@@ -1936,11 +1918,28 @@ export class GeometryFactory {
 		// Each triangle has: { vertices: [{x, y, z}, {x, y, z}, {x, y, z}], minZ, maxZ }
 		const positions = [];
 		const colors = [];
+		
+		// Debug logging (only in developer mode)
+		if (window.developerModeEnabled) {
+			console.log("🏗️ [createSurface] Building mesh from " + triangles.length + " triangles");
+		}
 
+		var skippedCount = 0;
 		for (let triangle of triangles) {
-			if (!triangle.vertices || triangle.vertices.length !== 3) continue;
+			if (!triangle.vertices || triangle.vertices.length !== 3) {
+				skippedCount++;
+				continue;
+			}
 
 			const [p1, p2, p3] = triangle.vertices;
+			
+			// Validate vertices have valid numbers
+			if (isNaN(p1.x) || isNaN(p1.y) || isNaN(p1.z) ||
+			    isNaN(p2.x) || isNaN(p2.y) || isNaN(p2.z) ||
+			    isNaN(p3.x) || isNaN(p3.y) || isNaN(p3.z)) {
+				skippedCount++;
+				continue;
+			}
 
 			// Add vertices
 			positions.push(p1.x, p1.y, p1.z);
@@ -1958,10 +1957,16 @@ export class GeometryFactory {
 				colors.push(color3.r, color3.g, color3.b);
 			}
 		}
+		
+		// Debug logging (only in developer mode)
+		if (window.developerModeEnabled) {
+			console.log("🏗️ [createSurface] Built " + (positions.length / 9) + " triangles, skipped " + skippedCount);
+		}
 
 		if (positions.length === 0) {
 			// Return null if no triangles - don't create empty meshes with empty materials
 			// Empty materials cause WebGL shader compilation errors
+			console.warn("🏗️ [createSurface] No valid positions - returning null");
 			return null;
 		}
 
@@ -2664,60 +2669,50 @@ export class GeometryFactory {
 	}
 
 	// Step 20.9) Create KAD point highlight for selection
-	// Uses Points geometry for efficient vertex rendering (more efficient than spheres)
+	// Uses simple Points geometry WITHOUT texture for efficient rendering
+	// No canvas texture = no WebGL context exhaustion, better performance
 	static createKADPointHighlight(x, y, z, baseRadius, color) {
-		// Step 20.9a) Parse color
-		let colorObj;
+		// Step 20.9a) Parse color to THREE.Color
+		var threeColor;
+		var opacity = 1.0;
+		
 		if (typeof color === "string" && color.startsWith("#")) {
 			// Hex color
-			const c = new THREE.Color(color);
-			colorObj = { r: c.r, g: c.g, b: c.b, a: 1.0 };
+			threeColor = new THREE.Color(color);
 		} else if (typeof color === "string" && color.startsWith("rgba")) {
-			// RGBA color
-			colorObj = this.parseRGBA(color);
+			// RGBA color - parse it
+			var colorObj = this.parseRGBA(color);
+			threeColor = new THREE.Color(colorObj.r, colorObj.g, colorObj.b);
+			opacity = colorObj.a;
 		} else {
-			// Default fallback
-			colorObj = { r: 1, g: 0, b: 0, a: 0.5 };
+			// Default fallback - red
+			threeColor = new THREE.Color(1, 0, 0);
+			opacity = 0.5;
 		}
 
-		// Step 20.9b) Convert baseRadius to pixel size (baseRadius is in world units, convert to pixels)
-		// baseRadius typically ranges from 0.5 to 1.0, convert to pixel size
-		const pixelSize = baseRadius * 20; // Convert world units to pixels
+		// Step 20.9b) Convert baseRadius to pixel size
+		// baseRadius typically ranges from 0.5 to 1.0, scale for visibility
+		// Highlight points are larger (doubled) for visibility
+		var pixelSize = baseRadius * 20; // Convert world units to pixels
 
 		// Step 20.9c) Create BufferGeometry with single point
-		const geometry = new THREE.BufferGeometry();
+		var geometry = new THREE.BufferGeometry();
 		geometry.setAttribute("position", new THREE.Float32BufferAttribute([x, y, z], 3));
 
-		// Step 20.9d) Create circular texture for points (reuse pattern from createKADPoint)
-		const canvas = document.createElement("canvas");
-		canvas.width = 64;
-		canvas.height = 64;
-		const ctx = canvas.getContext("2d");
-
-		// Draw circle on transparent background
-		ctx.fillStyle = "#ffffff";
-		ctx.beginPath();
-		ctx.arc(32, 32, 30, 0, Math.PI * 2);
-		ctx.fill();
-
-		const circleTexture = new THREE.CanvasTexture(canvas);
-		circleTexture.needsUpdate = true;
-
-		// Step 20.9e) Create PointsMaterial with circular texture and sizeAttenuation: false
-		const material = new THREE.PointsMaterial({
-			map: circleTexture, // Apply circular texture
-			color: new THREE.Color(colorObj.r, colorObj.g, colorObj.b), // Color tinting
+		// Step 20.9d) Create simple PointsMaterial WITHOUT texture (efficient!)
+		// No canvas texture = no WebGL context exhaustion, better performance
+		var material = new THREE.PointsMaterial({
+			color: threeColor, // Direct color (no texture)
 			size: pixelSize, // Size in pixels when sizeAttenuation is false
 			sizeAttenuation: false, // KEY: Maintains constant pixel size regardless of zoom/distance
-			transparent: colorObj.a < 1,
-			opacity: colorObj.a,
+			transparent: opacity < 1,
+			opacity: opacity,
 			depthTest: true,
-			depthWrite: false,
-			alphaTest: 0.1, // Discard transparent pixels for better performance
+			depthWrite: false
 		});
 
-		// Step 20.9f) Create Points object
-		const points = new THREE.Points(geometry, material);
+		// Step 20.9e) Create Points object
+		var points = new THREE.Points(geometry, material);
 		points.position.set(0, 0, 0); // Points are positioned via geometry attributes
 
 		return points;
