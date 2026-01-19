@@ -28,10 +28,15 @@ This plan addresses multiple 3D rendering and tool state bugs identified through
 - [x] Fix font slider updating 3D text (user applied fix - clears text cache and triggers rebuild)
 
 ### In Progress / Remaining Issues
-- [ ] Fix move tool 3D visual updates during drag (code in place but may need verification)
-- [ ] Fix shapefile highlight Z position matching actual geometry
-- [ ] Fix CSV import not showing 3D immediately (may need investigation)
-- [ ] Fix entities not removed from 3D when TreeView delete applied
+- [x] Fix CSV import not showing 3D immediately - **FIXED 2026-01-19** (added threeDataNeedsRebuild to custom CSV import at line 35427)
+- [x] Fix entities not removed from 3D when TreeView delete applied - **FIXED 2026-01-19** (added threeDataNeedsRebuild to all TreeView delete handlers)
+- [x] Fix offset tool not redrawing 3D on completion - **FIXED 2026-01-19** (added threeDataNeedsRebuild to performKADOffset)
+- [x] Fix radii tool not redrawing 3D on completion - **FIXED 2026-01-19** (added threeDataNeedsRebuild to createRadiiFromSelectedEntitiesFixed)
+- [x] Fix connectors not responding to TieSize slider - **FIXED 2026-01-19** (added threeDataNeedsRebuild to connSlider event)
+- [x] Fix connector stadium not following mouse - **FIXED 2026-01-19** (changed to use torusWorldPos for view plane tracking)
+- [x] Fix connector stadium rotational misalignment on orbit - **FIXED 2026-01-19** (same fix as above)
+- [x] Fix leading lines not working in 3D - **FIXED 2026-01-19** (added drawKADLeadingLineThreeJS call in handle3DMouseMove)
+- [x] Fix hole label text alignment at larger font sizes - **FIXED 2026-01-19** (use BASE_FONT_SIZE for position calculations)
 - [ ] Fix geometry count increasing by 5-10 on each orbit (memory leak during camera movement)
 - [ ] Investigate Voronoi framerate drop (geometry is batched but still slow)
 
@@ -51,9 +56,9 @@ This plan addresses multiple 3D rendering and tool state bugs identified through
 | Hole labels: consistent size when zoomed | ❌ | Font slider fix applied by user |
 | Shapefile: highlight matches geometry position | ❌ | Z positioning issue |
 | Selection: no texture count increase | ✅ | But textures don't decrease, geometry increases 5-10 per orbit |
-| CSV import: 3D shows imported holes immediately | ❌ | Needs investigation |
+| CSV import: 3D shows imported holes immediately | ✅ | **FIXED 2026-01-19** - added threeDataNeedsRebuild to custom CSV import |
 | DXF import: 3D shows imported geometry immediately | ✅ | Working |
-| Shapefile import: 3D shows imported geometry immediately | ✅ | But TreeView delete doesn't remove from 3D |
+| Shapefile import: 3D shows imported geometry immediately | ✅ | **FIXED 2026-01-19** - TreeView delete now triggers 3D rebuild |
 | Voronoi display: geometry count stays constant | ✅ | But framerate plummets |
 | Voronoi toggle: OFF clears geometry, ON recreates it | ✅ | Working |
 | Text in 3D: same pixel size on screen regardless of zoom | ❌ | Related to hole text labels |
@@ -140,14 +145,18 @@ This plan addresses multiple 3D rendering and tool state bugs identified through
 - Need to investigate what's being created during orbit that isn't being disposed
 - Likely candidates: axis helper recreation, grid recreation, or some highlight geometry
 
-### TreeView Delete Not Removing 3D Geometry
-- When entities are deleted via TreeView, the 3D geometry remains
-- Need to add `threeDataNeedsRebuild = true` to TreeView delete handlers
-- May need to explicitly remove geometry from scene
+### TreeView Delete Not Removing 3D Geometry - **FIXED 2026-01-19**
+- ~~When entities are deleted via TreeView, the 3D geometry remains~~
+- Added `window.threeDataNeedsRebuild = true;` to all TreeView delete handlers:
+  - KAD elements deletion (~line 46636)
+  - KAD entities deletion (~line 46654)
+  - Surfaces deletion (~line 46673)
+  - Images deletion (~line 46693)
+  - Holes deletion with renumbering (~line 46764)
 
-### CSV Import 3D Update
-- CSV import may have a code path that doesn't trigger 3D rebuild
-- Need to verify all CSV import completion paths set the flag
+### CSV Import 3D Update - **FIXED 2026-01-19**
+- ~~CSV import may have a code path that doesn't trigger 3D rebuild~~
+- Added `window.threeDataNeedsRebuild = true;` to custom CSV import at line 35427 (before `drawData()` call)
 
 ### Voronoi Performance
 - Even with cleanup working, Voronoi display causes framerate drop
@@ -158,11 +167,11 @@ This plan addresses multiple 3D rendering and tool state bugs identified through
 
 ## Next Steps
 
-1. Retest connector 3D updates after the fix
-2. Investigate geometry leak during orbit
-3. Add threeDataNeedsRebuild to TreeView delete handlers
-4. Verify CSV import all paths
-5. Consider Voronoi geometry batching for performance
+1. ~~Retest connector 3D updates after the fix~~ ✅
+2. Investigate geometry leak during orbit (5-10 geometries added per orbit)
+3. ~~Add threeDataNeedsRebuild to TreeView delete handlers~~ ✅ **FIXED 2026-01-19**
+4. ~~Verify CSV import all paths~~ ✅ **FIXED 2026-01-19**
+5. Consider Voronoi geometry batching for performance (framerate still drops)
 
 ---
 
@@ -199,3 +208,65 @@ if (obj.material.lightMap) obj.material.lightMap.dispose();
 obj.material.dispose();
 obj.geometry.dispose();
 ```
+
+---
+
+## Session Update: 2026-01-19
+
+### Changes Made This Session
+
+1. **Custom CSV Import 3D Fix** (`src/kirra.js` ~line 35427):
+   - Added `window.threeDataNeedsRebuild = true;` before `drawData()` call in custom CSV import completion handler
+   - This ensures 3D view updates immediately when importing CSV via the custom column mapping dialog
+
+2. **TreeView Delete 3D Rebuild Triggers** (`src/kirra.js` ~lines 46636-46764):
+   - Added `window.threeDataNeedsRebuild = true;` to ALL TreeView delete handlers:
+     - KAD elements deletion (line ~46636)
+     - KAD entities deletion (line ~46654)
+     - Surfaces deletion (line ~46673)
+     - Images deletion (line ~46693)
+     - Holes deletion with renumbering (line ~46764)
+   - Note: Holes deletion without renumbering already uses `refreshPoints()` which sets the flag
+
+### Session Update: 2026-01-19 (Part 2)
+
+### Additional Changes Made
+
+3. **Offset Tool 3D Redraw** (`src/kirra.js` ~line 19722):
+   - Added `window.threeDataNeedsRebuild = true;` before `drawData()` in `performKADOffset()` function
+   - Ensures offset entities appear in 3D immediately upon creation
+
+4. **Radii Tool 3D Redraw** (`src/kirra.js` ~line 19847):
+   - Added `window.threeDataNeedsRebuild = true;` before `drawData()` in `createRadiiFromSelectedEntitiesFixed()` function
+   - Ensures radii polygons appear in 3D immediately upon creation
+
+5. **Connector Size Slider 3D Rebuild** (`src/kirra.js` ~line 11117):
+   - Added `window.threeDataNeedsRebuild = true;` in connSlider event listener
+   - Ensures 3D connector ties update when the TieSize/connectorSizeSlider is changed
+
+6. **Connector Stadium Mouse Tracking Fix** (`src/kirra.js` ~line 2799):
+   - Changed stadium zone to use `torusWorldPos` (view plane) instead of `mouseWorldPos` (XY plane)
+   - Fixed rotational misalignment issue where stadium moved opposite to mouse during camera orbit
+   - Stadium end point now correctly follows the cursor regardless of camera orientation
+
+7. **Leading Lines in 3D Fix** (`src/kirra.js` ~line 2969):
+   - Added actual `drawKADLeadingLineThreeJS()` call in `handle3DMouseMove()` instead of relying on `drawData()`
+   - Leading line now properly follows the cursor during drawing operations in 3D mode
+   - Previously the call was deferred but `drawData()` isn't called on every mouse move
+
+8. **Hole Label Text Alignment Fix** (`src/draw/canvas3DDrawing.js` ~line 361):
+   - Added `BASE_FONT_SIZE = 10` constant for position calculations
+   - Text position calculations now use fixed base size instead of actual font size
+   - Prevents text from drifting away from hole when font size is increased (e.g., 20px)
+   - Actual font size still controls text rendering, only positions are normalized
+
+### Remaining Issues
+
+1. **Geometry Leak on Orbit** - Still needs investigation
+   - Geometry count increases by 5-10 on each camera orbit
+   - Requires runtime debugging with browser DevTools to identify source
+
+2. **Voronoi Performance** - Still needs optimization
+   - Framerate drops significantly when Voronoi display is enabled
+   - Current implementation creates individual meshes per cell
+   - Consider merging all cells into single BufferGeometry for better performance

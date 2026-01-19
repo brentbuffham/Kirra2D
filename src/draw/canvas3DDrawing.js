@@ -359,6 +359,11 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	const fontSize = parseInt(window.currentFontSize) || 12;
+	
+	// Step 0) Use a BASE font size for position calculation to maintain alignment
+	// The actual font rendering uses fontSize, but position calculation uses BASE_FONT_SIZE
+	// This prevents text from drifting away from the hole when font size increases
+	const BASE_FONT_SIZE = 10; // Fixed base for position calculations
 
 	// Step 0) EXACTLY match 2D: use worldToCanvas to get canvas coords, apply pixel offsets, convert back
 	// In 2D: [x, y] = worldToCanvas(hole.startXLocation, hole.startYLocation) then apply pixel offsets
@@ -369,16 +374,17 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	const textOffset = parseInt(hole.holeDiameter / 1000 * window.holeScale * window.currentScale);
 
 	// Step 0b) Calculate canvas positions EXACTLY like 2D (matching kirra.js lines 21424-21434)
+	// Use BASE_FONT_SIZE for position calculation to maintain alignment regardless of actual font size
 	const leftSideToe = parseInt(toeCanvasX) - textOffset;
 	const rightSideToe = parseInt(toeCanvasX) + textOffset;
 	const leftSideCollar = parseInt(collarCanvasX) - textOffset;
 	const rightSideCollar = parseInt(collarCanvasX) + textOffset;
 	const topSideToe = parseInt(toeCanvasY - textOffset);
-	const middleSideToe = parseInt(toeCanvasY + textOffset + parseInt(fontSize / 4));
-	const bottomSideToe = parseInt(toeCanvasY + textOffset + fontSize);
+	const middleSideToe = parseInt(toeCanvasY + textOffset + parseInt(BASE_FONT_SIZE / 4));
+	const bottomSideToe = parseInt(toeCanvasY + textOffset + BASE_FONT_SIZE);
 	const topSideCollar = parseInt(collarCanvasY - textOffset);
-	const middleSideCollar = parseInt(collarCanvasY + parseInt(fontSize / 2));
-	const bottomSideCollar = parseInt(collarCanvasY + textOffset + fontSize);
+	const middleSideCollar = parseInt(collarCanvasY + parseInt(BASE_FONT_SIZE / 2));
+	const bottomSideCollar = parseInt(collarCanvasY + textOffset + BASE_FONT_SIZE);
 
 	// Step 0c) Convert canvas pixel coordinates back to world coordinates (inverse of worldToCanvas)
 	// worldToCanvas: [(x - centroidX) * currentScale + canvas.width / 2, (-y + centroidY) * currentScale + canvas.height / 2]
@@ -473,11 +479,11 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 		drawHoleTextThreeJS(posPosWorld.x, posPosWorld.y, collarZ, "Pos:" + hole.posID, fontSize / 1.5, "#FF00FF", "right");
 	}
 	if (displayOptions.measuredLength) {
-		const lenPosWorld = canvasToWorld(leftSideCollar, bottomSideCollar + fontSize);
+		const lenPosWorld = canvasToWorld(leftSideCollar, bottomSideCollar + BASE_FONT_SIZE);
 		drawHoleTextThreeJS(lenPosWorld.x, lenPosWorld.y, collarZ, hole.measuredLength, fontSize / 1.5, "#FF4400", "right");
 	}
 	if (displayOptions.measuredMass) {
-		const massPosWorld = canvasToWorld(leftSideCollar, topSideCollar - fontSize);
+		const massPosWorld = canvasToWorld(leftSideCollar, topSideCollar - BASE_FONT_SIZE);
 		drawHoleTextThreeJS(massPosWorld.x, massPosWorld.y, collarZ, hole.measuredMass, fontSize / 1.5, "#FF6600", "right");
 	}
 }
@@ -1461,66 +1467,49 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 		if (obj.material) obj.material.dispose();
 	});
 
-	// Step 19.6c) Parse color
-	var r = 0,
-		g = 1,
-		b = 1; // Default cyan
+	// Step 19.6c) Parse color to hex (same pattern as ruler tool)
+	var lineColorHex = 0x00ffff; // Default cyan
 	if (color) {
 		if (color.startsWith("rgba(") || color.startsWith("rgb(")) {
 			var match = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
 			if (match) {
-				r = parseInt(match[1]) / 255;
-				g = parseInt(match[2]) / 255;
-				b = parseInt(match[3]) / 255;
+				var r = parseInt(match[1]);
+				var g = parseInt(match[2]);
+				var b = parseInt(match[3]);
+				lineColorHex = (r << 16) | (g << 8) | b;
 			}
 		} else if (color.startsWith("#") && color.length >= 7) {
-			var hex = parseInt(color.slice(1, 7), 16);
-			r = ((hex >> 16) & 255) / 255;
-			g = ((hex >> 8) & 255) / 255;
-			b = (hex & 255) / 255;
+			lineColorHex = parseInt(color.slice(1, 7), 16);
 		}
 	}
 
-	// Step 19.6d) Create LineSegments using SAME pattern as createBatchedPolyline (line 537-632)
-	// This is the WORKING approach used by all KAD lines
-	var positions = new Float32Array(6); // 2 points * 3 coords
-	var colors = new Float32Array(6); // 2 points * 3 colors
+	// Step 19.6d) Create line using SAME pattern as working ruler tool
+	var points = [
+		new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ),
+		new THREE.Vector3(toLocal.x, toLocal.y, toZ)
+	];
 
-	// Start point
-	positions[0] = fromLocal.x;
-	positions[1] = fromLocal.y;
-	positions[2] = fromZ;
-	// End point
-	positions[3] = toLocal.x;
-	positions[4] = toLocal.y;
-	positions[5] = toZ;
-
-	// Colors for both vertices
-	colors[0] = r;
-	colors[1] = g;
-	colors[2] = b;
-	colors[3] = r;
-	colors[4] = g;
-	colors[5] = b;
-
-	var geometry = new THREE.BufferGeometry();
-	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-	geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
-
+	var geometry = new THREE.BufferGeometry().setFromPoints(points);
 	var material = new THREE.LineBasicMaterial({
-		vertexColors: true,
-		linewidth: 1
+		color: lineColorHex,
+		linewidth: 2
 	});
 
-	// Use LineSegments (same as createBatchedPolyline line 625)
-	var lineSegments = new THREE.LineSegments(geometry, material);
-	lineSegments.userData = { type: "kadLeadingLine" };
-	lineSegments.name = "kad-leading-line";
+	var line = new THREE.Line(geometry, material);
+	line.userData = { type: "kadLeadingLine" };
+	line.name = "kad-leading-line";
 
-	connectorsGroup.add(lineSegments);
+	connectorsGroup.add(line);
 
 	if (window.developerModeEnabled) {
 		console.log("🔸 Leading line ADDED to connectorsGroup. Children:", connectorsGroup.children.length);
+	}
+
+	// Step 19.6e) Request render to display the leading line
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
 	}
 }
 
