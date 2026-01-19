@@ -94,8 +94,8 @@ class SHPFileParser extends BaseParser {
 			}
 
 			// Step 16) Apply master RL offset if specified
-			if (config.masterRLX !== 0 || config.masterRLY !== 0) {
-				rawData = this.applyMasterRLOffset(rawData, config.masterRLX, config.masterRLY);
+			if (config.masterRLZ !== 0) {
+				rawData = this.applyMasterRLOffset(rawData, 0, 0, config.masterRLZ); // X=0, Y=0, Z=offset
 			}
 
 			// Step 17) Convert to kadDrawingsMap format for Kirra compatibility
@@ -369,12 +369,12 @@ class SHPFileParser extends BaseParser {
 		// Shape type already read, skip it
 		offset += 4;
 
-		var x = view.getFloat64(offset, true) - this.offsetX;
-		var y = view.getFloat64(offset + 8, true) - this.offsetY;
-		var z = 0;
+		var x = view.getFloat64(offset, true); // offset + 0
+		var y = view.getFloat64(offset + 8, true); // offset + 8
+		var z = 0; // Default Z if no Z data
 
 		if (hasZ) {
-			z = view.getFloat64(offset + 16, true);
+			z = view.getFloat64(offset + 16, true); // offset + 16
 		}
 
 		counts.point++;
@@ -406,9 +406,9 @@ class SHPFileParser extends BaseParser {
 	parsePointM(view, offset, entityName, attributes, kadDrawingsMap, counts) {
 		offset += 4; // Skip shape type
 
-		var x = view.getFloat64(offset, true) - this.offsetX;
-		var y = view.getFloat64(offset + 8, true) - this.offsetY;
-		var m = view.getFloat64(offset + 16, true);
+		var x = view.getFloat64(offset, true); // offset + 0
+		var y = view.getFloat64(offset + 8, true); // offset + 8
+		var m = view.getFloat64(offset + 16, true); // offset + 16
 
 		counts.point++;
 
@@ -456,8 +456,8 @@ class SHPFileParser extends BaseParser {
 		// Read X,Y coordinates
 		var pointsOffset = offset;
 		for (var i = 0; i < numPoints; i++) {
-			var x = view.getFloat64(pointsOffset + i * 16, true) - this.offsetX;
-			var y = view.getFloat64(pointsOffset + i * 16 + 8, true) - this.offsetY;
+			var x = view.getFloat64(pointsOffset + i * 16, true);
+			var y = view.getFloat64(pointsOffset + i * 16 + 8, true);
 
 			data.push({
 				entityName: uniqueName,
@@ -510,8 +510,8 @@ class SHPFileParser extends BaseParser {
 		// Read points
 		var points = [];
 		for (var j = 0; j < numPoints; j++) {
-			var x = view.getFloat64(offset + j * 16, true) - this.offsetX;
-			var y = view.getFloat64(offset + j * 16 + 8, true) - this.offsetY;
+			var x = view.getFloat64(offset + j * 16, true);
+			var y = view.getFloat64(offset + j * 16 + 8, true);
 			points.push({ x: x, y: y, z: 0 });
 		}
 		offset += numPoints * 16;
@@ -864,16 +864,12 @@ SHPFileParser.prototype.promptForImportConfiguration = async function(filename, 
 
 		// Step 50) Master RL offset
 		contentHTML += '<div style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
-		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Master Reference Location (Optional):</p>';
-		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; opacity: 0.8;">Apply offset to all imported coordinates</p>';
-
-		contentHTML += '<div style="display: grid; grid-template-columns: 80px 1fr 80px 1fr; gap: 8px; align-items: center;">';
-		contentHTML += '<label class="labelWhite15">Easting:</label>';
-		contentHTML += '<input type="number" id="shp-master-rl-x" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
-		contentHTML += '<label class="labelWhite15">Northing:</label>';
-		contentHTML += '<input type="number" id="shp-master-rl-y" value="0" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Master RL Offset (Optional):</p>';
+		contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-size: 11px; opacity: 0.8;">Apply elevation offset to all imported geometry</p>';
+		contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
+		contentHTML += '<label class="labelWhite15">Elevation (RL):</label>';
+		contentHTML += '<input type="number" id="shp-master-rl-z" value="0" step="0.1" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
 		contentHTML += "</div>";
-
 		contentHTML += "</div>";
 
 		// Error message
@@ -896,19 +892,10 @@ SHPFileParser.prototype.promptForImportConfiguration = async function(filename, 
 				try {
 					// Get form values
 					var importType = document.querySelector('input[name="import-type"]:checked').value;
-					var masterRLX = parseFloat(document.getElementById("shp-master-rl-x").value) || 0;
-					var masterRLY = parseFloat(document.getElementById("shp-master-rl-y").value) || 0;
+					var masterRLZ = parseFloat(document.getElementById("shp-master-rl-z").value) || 0;
 					var errorDiv = document.getElementById("shp-import-error-message");
 
-					var config = {
-						cancelled: false,
-						importType: importType,
-						masterRLX: masterRLX,
-						masterRLY: masterRLY,
-						transform: false,
-						epsgCode: null,
-						proj4Source: null
-					};
+					var config = { cancelled: false, importType: importType, masterRLZ: masterRLZ, transform: false, epsgCode: null, proj4Source: null };
 
 					// Check transformation options if WGS84
 					if (isWGS84) {
@@ -1021,18 +1008,19 @@ SHPFileParser.prototype.applyCoordinateTransformation = async function(data, con
 };
 
 // Step 53) Apply master RL offset
-SHPFileParser.prototype.applyMasterRLOffset = function(data, offsetX, offsetY) {
-	if (offsetX === 0 && offsetY === 0) {
+SHPFileParser.prototype.applyMasterRLOffset = function(data, offsetX, offsetY, offsetZ) {
+	if (offsetX === 0 && offsetY === 0 && offsetZ === 0) {
 		return data;
 	}
 
-	console.log("Applying master RL offset:", offsetX, offsetY);
+	console.log("Applying master RL offset:", offsetX, offsetY, offsetZ);
 
 	for (var [entityName, entityData] of data.kadDrawings.entries()) {
 		if (entityData.data && Array.isArray(entityData.data)) {
 			entityData.data.forEach(function(point) {
 				if (point.pointXLocation !== undefined) point.pointXLocation += offsetX;
 				if (point.pointYLocation !== undefined) point.pointYLocation += offsetY;
+				if (point.pointZLocation !== undefined) point.pointZLocation += offsetZ;
 			});
 		}
 	}
