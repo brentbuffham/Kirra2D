@@ -769,19 +769,19 @@ function validateWorldZ(zValue, fallbackZ) {
 	if (zValue === undefined || zValue === null || !isFinite(zValue)) {
 		return fallbackZ || dataCentroidZ || 0;
 	}
-	
+
 	// Step 5b.2) Detect extreme Z values (more than 100km from centroid)
 	// This catches failed plane intersection results that return garbage values
 	var centroid = dataCentroidZ || 0;
 	var maxDeviation = 100000; // 100km max deviation from centroid
-	
+
 	if (Math.abs(zValue - centroid) > maxDeviation) {
 		if (window.developerModeEnabled) {
 			console.warn("⚠️ Extreme Z value detected: " + zValue.toFixed(2) + ", using fallback: " + (fallbackZ || centroid).toFixed(2));
 		}
 		return fallbackZ || centroid;
 	}
-	
+
 	return zValue;
 }
 // Expose to window for external modules
@@ -1333,14 +1333,8 @@ function handle3DClick(event) {
 			if (developerModeEnabled) {
 				console.log("⬇️ [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
 			}
-			// #region agent log - Hypothesis A/B: Log state BEFORE addKADLine
-			fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:1293-before', message: 'BEFORE addKADLine', data: { createNewEntity: createNewEntity, lastKADDrawPoint: lastKADDrawPoint, worldX: worldX, worldY: worldY, worldZ: worldZ }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A-B' }) }).catch(() => { });
-			// #endregion
 			addKADLine();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
-			// #region agent log - Hypothesis A/B: Log state AFTER addKADLine and updateLastKADDrawPoint
-			fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:1294-after', message: 'AFTER addKADLine+updateLastKADDrawPoint', data: { createNewEntity: createNewEntity, lastKADDrawPoint: lastKADDrawPoint }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A-B' }) }).catch(() => { });
-			// #endregion
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingPoly) {
 			if (developerModeEnabled) {
@@ -2564,9 +2558,6 @@ function handle3DClick(event) {
 
 // Step 13) Handle 3D mouse move - hover effects and stadium zone tracking
 function handle3DMouseMove(event) {
-	// #region agent log - Hypothesis G: Check if handle3DMouseMove is called after click (THROTTLED)
-	if (!window._lastMouseMoveLogTime || Date.now() - window._lastMouseMoveLogTime > 1000) { window._lastMouseMoveLogTime = Date.now(); fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:2523-entry', message: 'handle3DMouseMove called', data: { onlyShowThreeJS: onlyShowThreeJS, isDrawingLine: isDrawingLine, isDrawingPoly: isDrawingPoly, isDrawingPoint: isDrawingPoint, createNewEntity: createNewEntity, hasLastKADDrawPoint: !!lastKADDrawPoint }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'G' }) }).catch(() => { }); }
-	// #endregion
 	// Step 13a) Only handle if in 3D mode
 	if (!onlyShowThreeJS) return;
 
@@ -2990,10 +2981,6 @@ function handle3DMouseMove(event) {
 		}
 	}
 
-	// #region agent log - Hypothesis A/B/C: Check condition variables (THROTTLED - once per second)
-	if (isAnyDrawingToolActive && (!window._lastLeadingLineLogTime || Date.now() - window._lastLeadingLineLogTime > 1000)) { window._lastLeadingLineLogTime = Date.now(); fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:2939-condition', message: 'Leading line condition check', data: { isAnyDrawingToolActive: isAnyDrawingToolActive, hasLastKADDrawPoint: !!lastKADDrawPoint, lastKADDrawPoint: lastKADDrawPoint, createNewEntity: createNewEntity, conditionPasses: !!(isAnyDrawingToolActive && lastKADDrawPoint && createNewEntity === false), currentMouseWorldX: currentMouseWorldX, currentMouseWorldY: currentMouseWorldY }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A-B-C' }) }).catch(() => { }); }
-	// #endregion
-
 	if (isAnyDrawingToolActive && lastKADDrawPoint && createNewEntity === false) {
 		// Get drawing Z value - IMPORTANT: Use same Z for both ends (like 2D drawing)
 		const drawZ = parseFloat(drawingZValue || document.getElementById("drawingElevation").value || 0);
@@ -3021,8 +3008,6 @@ function handle3DMouseMove(event) {
 		// Step 13f.8a) Draw leading line directly in handle3DMouseMove for real-time updates
 		// The leading line must be drawn here (on mouse move) to follow the cursor.
 		// Drawing in drawData() alone was not sufficient because drawData() isn't called on every mouse move.
-		// #region agent log - Hypothesis D: Log before drawKADLeadingLineThreeJS call (REMOVED - confirmed working)
-		// #endregion
 		drawKADLeadingLineThreeJSV2(
 			lastKADDrawPoint.x,
 			lastKADDrawPoint.y,
@@ -3056,8 +3041,6 @@ function handle3DMouseMove(event) {
 		showDrawingDistance(drawDistance, drawBearing, drawToolType, event.clientX, event.clientY);
 	} else {
 		// Clear leading line if no drawing tool active or no last point
-		// #region agent log - Hypothesis E: Log when clearing (else branch taken) - REMOVED confirmed not the issue
-		// #endregion
 		clearKADLeadingLineThreeJS();
 		hideDrawingDistance();
 	}
@@ -31354,16 +31337,16 @@ function updateCentroids() {
 
 	// Step 5) Calculate full centroid including Z and update dataCentroidZ
 	var fullCentroid = calculateDataCentroid();
-	
+
 	// Step 5a) CRITICAL FIX: Also update dataCentroidZ when centroids are recalculated
 	// This ensures dataCentroidZ is immediately available after imports without waiting for render loop
 	dataCentroidZ = fullCentroid.z;
 	window.dataCentroidZ = dataCentroidZ;
-	
+
 	// Step 5b) Mark centroid as already calculated to prevent redundant calculation in render loop
 	centroidNeedsRecalculation = false;
 	window.centroidNeedsRecalculation = false;
-	
+
 	// Step 5c) CRITICAL FIX: Update threeRenderer orbit center when centroids change
 	// Without this, the 3D cursor (torus) disappears when orbiting because the view plane
 	// is positioned at the old orbitCenterZ (often 0) instead of the actual data Z elevation
@@ -31373,7 +31356,7 @@ function updateCentroids() {
 			console.log("🎯 Orbit center updated in updateCentroids(): X=" + fullCentroid.x.toFixed(2) + " Y=" + fullCentroid.y.toFixed(2) + " Z=" + fullCentroid.z.toFixed(2));
 		}
 	}
-	
+
 	// Step 5d) CRITICAL FIX: Update local origin for coordinate conversion (ONE TIME on import)
 	// Only update if origin is still at 0,0 - this runs once when first data is imported
 	// LAS imports and other surface-only imports need this to work correctly
@@ -31387,7 +31370,7 @@ function updateCentroids() {
 			console.log("📍 Local origin synced to window: X=" + threeLocalOriginX.toFixed(2) + " Y=" + threeLocalOriginY.toFixed(2));
 		}
 	}
-	
+
 	// Step 5f) Emit centroid to HUD overlay
 	emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
 }
@@ -46409,7 +46392,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 				}
 
 				// Step 5d) Now do detailed snap check on just the nearby points
-				nearbyPoints.forEach(function(item) {
+				nearbyPoints.forEach(function (item) {
 					var surfacePoint = item.point;
 					var index = item.index;
 

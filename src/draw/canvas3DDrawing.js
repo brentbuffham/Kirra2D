@@ -10,6 +10,10 @@ import { GeometryFactory } from "../three/GeometryFactory.js";
 // Note: LineSegmentsGeometry, LineMaterial, LineSegments2 are used by GeometryFactory for KAD lines
 // The leading line uses simple THREE.Line like the ruler tool for reliability
 
+// Step A1) BVH for accelerated raycasting on large surfaces (textured OBJ meshes)
+import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
+const BVH_MIN_TRIANGLES = 1000;
+
 // Note: These functions access global variables from kirra.js via window object:
 // - threeInitialized, threeRenderer, worldToThreeLocal
 // - holeScale, currentScale, darkModeEnabled
@@ -809,6 +813,38 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		// Step 12e) Set userData for selection
 		texturedMesh.userData = { type: "surface", surfaceId: surfaceId, isTexturedMesh: true };
 
+		// Step 12e.1) Add BVH for accelerated raycasting on large textured meshes
+		var totalTriangles = 0;
+		texturedMesh.traverse(function(child) {
+			if (child.isMesh && child.geometry) {
+				var posAttr = child.geometry.attributes.position;
+				if (posAttr) {
+					var triCount = child.geometry.index 
+						? child.geometry.index.count / 3 
+						: posAttr.count / 3;
+					totalTriangles += triCount;
+					
+					// Add BVH to each child mesh if large enough
+					if (triCount >= BVH_MIN_TRIANGLES) {
+						try {
+							var bvhStartTime = performance.now();
+							child.geometry.boundsTree = new MeshBVH(child.geometry);
+							child.raycast = acceleratedRaycast;
+							child.userData.hasBVH = true;
+							var bvhTime = performance.now() - bvhStartTime;
+							console.log("🏔️ [BVH] Built for textured mesh " + surfaceId + " child (" + Math.round(triCount) + " triangles) in " + bvhTime.toFixed(2) + "ms");
+						} catch (error) {
+							console.warn("🏔️ [BVH] Build failed for " + surfaceId + ": " + error.message);
+							child.userData.hasBVH = false;
+						}
+					}
+				}
+			}
+		});
+		if (developerModeEnabled) {
+			console.log("🏔️ [BVH] Textured mesh " + surfaceId + " total triangles: " + Math.round(totalTriangles));
+		}
+
 		// Step 12f) Apply transparency if specified
 		if (transparency < 1.0) {
 			texturedMesh.traverse(function (child) {
@@ -1471,8 +1507,6 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 // FIXED: Use EXACT same approach as working KAD line drawing (batched lines pattern)
 // The key is: worldToThreeLocal converts coords, then use LineSegments with BufferGeometry
 export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, toWorldX, toWorldY, toWorldZ, color) {
-	// #region agent log - Hypothesis D: Entry point - REMOVED confirmed working
-	// #endregion
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (fromWorldX === undefined || fromWorldY === undefined) return;
 	if (toWorldX === undefined || toWorldY === undefined) return;
@@ -1545,19 +1579,6 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 	}
 
 	kadGroup.add(line);
-
-	// #region agent log - Hypothesis J: Detailed diagnostics - check line, group, scene state
-	var calcLineLength = Math.sqrt(Math.pow(toLocal.x-fromLocal.x,2)+Math.pow(toLocal.y-fromLocal.y,2));
-	if (calcLineLength > 1) { 
-		var lineVisible = line.visible;
-		var lineInGroup = kadGroup.children.includes(line);
-		var groupVisible = kadGroup.visible;
-		var groupChildCount = kadGroup.children.length;
-		var groupInScene = window.threeRenderer.scene ? window.threeRenderer.scene.children.includes(kadGroup) : false;
-		var matVisible = line.material ? !line.material.transparent || line.material.opacity > 0 : 'no-material';
-		fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'canvas3DDrawing.js:1547-diag',message:'DETAILED LINE DIAGNOSTICS',data:{lineLength:calcLineLength,fromLocal:{x:fromLocal.x,y:fromLocal.y},toLocal:{x:toLocal.x,y:toLocal.y},fromZ:fromZ,toZ:toZ,color:lineColorCSS,lineVisible:lineVisible,lineInGroup:lineInGroup,groupVisible:groupVisible,groupChildCount:groupChildCount,groupInScene:groupInScene,matVisible:matVisible,lineType:line.type,isLineSegments2:line.isLineSegments2||false},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'J'})}).catch(()=>{}); 
-	}
-	// #endregion
 
 	if (window.developerModeEnabled) {
 		console.log("🔸 Leading line ADDED to kadGroup. Children:", kadGroup.children.length);

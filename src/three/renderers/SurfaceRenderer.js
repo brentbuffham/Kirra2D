@@ -12,9 +12,7 @@
 //=================================================
 
 import * as THREE from "three";
-
-// Note: mesh-bvh would be imported if available:
-// import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
+import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
 
 export class SurfaceRenderer {
 	constructor(sceneManager) {
@@ -30,7 +28,7 @@ export class SurfaceRenderer {
 
 		// Step 4) Configuration
 		this.config = {
-			useBVH: false,               // Enable when three-mesh-bvh is available
+			useBVH: true,                // BVH enabled for fast raycasting
 			useVertexColors: true,       // Use vertex colors for gradients
 			defaultGradient: "default",  // Default gradient type
 			wireframe: false,            // Wireframe mode
@@ -361,13 +359,28 @@ export class SurfaceRenderer {
 
 	/**
 	 * Add BVH to mesh for fast raycasting
+	 * BVH (Bounding Volume Hierarchy) accelerates raycasting from O(n) to O(log n)
 	 */
 	_addBVH(mesh) {
-		// This would use three-mesh-bvh if available:
-		// mesh.geometry.boundsTree = new MeshBVH(mesh.geometry);
-		// mesh.raycast = acceleratedRaycast;
-		console.log("🏔️ BVH would be added for mesh with " +
-			mesh.userData.triangleCount + " triangles");
+		try {
+			// Step 1) Build BVH from geometry
+			var startTime = performance.now();
+			mesh.geometry.boundsTree = new MeshBVH(mesh.geometry);
+			
+			// Step 2) Replace default raycast with accelerated version
+			mesh.raycast = acceleratedRaycast;
+			
+			// Step 3) Store reference for disposal
+			mesh.userData.hasBVH = true;
+			
+			var buildTime = performance.now() - startTime;
+			console.log("🏔️ BVH built for " + mesh.userData.surfaceId + 
+				" (" + mesh.userData.triangleCount + " triangles) in " + 
+				buildTime.toFixed(2) + "ms");
+		} catch (error) {
+			console.warn("🏔️ BVH build failed for " + mesh.userData.surfaceId + ": " + error.message);
+			mesh.userData.hasBVH = false;
+		}
 	}
 
 	// ========================================
@@ -470,6 +483,14 @@ export class SurfaceRenderer {
 
 		if (cached.mesh) {
 			if (cached.mesh.parent) cached.mesh.parent.remove(cached.mesh);
+			
+			// Step 1) Dispose BVH if present
+			if (cached.mesh.geometry && cached.mesh.geometry.boundsTree) {
+				cached.mesh.geometry.boundsTree.dispose();
+				cached.mesh.geometry.boundsTree = null;
+			}
+			
+			// Step 2) Dispose geometry and material
 			if (cached.mesh.geometry) cached.mesh.geometry.dispose();
 			if (cached.mesh.material) cached.mesh.material.dispose();
 		}

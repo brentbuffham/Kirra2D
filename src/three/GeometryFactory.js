@@ -10,6 +10,11 @@ import { Text } from "troika-three-text";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
 import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeometry.js";
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
+// Step A2) BVH for accelerated raycasting on large surfaces
+import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
+
+// Step A3) BVH configuration - minimum triangles to enable BVH acceleration
+const BVH_MIN_TRIANGLES = 1000;
 
 // Step 0) Text object cache to prevent recreation (performance)
 const textCache = new Map(); // key: "x,y,z,text,fontSize,color"
@@ -1992,6 +1997,23 @@ export class GeometryFactory {
 		});
 
 		const mesh = new THREE.Mesh(geometry, material);
+		
+		// Step 17) Add BVH for accelerated raycasting on large surfaces
+		var triangleCount = positions.length / 9;
+		if (triangleCount >= BVH_MIN_TRIANGLES) {
+			try {
+				var bvhStartTime = performance.now();
+				geometry.boundsTree = new MeshBVH(geometry);
+				mesh.raycast = acceleratedRaycast;
+				mesh.userData.hasBVH = true;
+				var bvhTime = performance.now() - bvhStartTime;
+				console.log("🏗️ [createSurface] BVH built for " + triangleCount + " triangles in " + bvhTime.toFixed(2) + "ms");
+			} catch (error) {
+				console.warn("🏗️ [createSurface] BVH build failed: " + error.message);
+				mesh.userData.hasBVH = false;
+			}
+		}
+		
 		return mesh;
 	}
 
