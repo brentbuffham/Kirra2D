@@ -554,11 +554,28 @@ class DXFParser extends BaseParser {
 
 			console.log("Creating surface from DXF 3DFACE entities: " + surfaceTriangles.length + " triangles, " + surfacePoints.length + " points");
 
+			// Step 45a) Calculate meshBounds from points for centroid calculation
+			// CRITICAL: Without meshBounds, centroid calculation cannot use this surface data
+			var minX = Infinity, maxX = -Infinity;
+			var minY = Infinity, maxY = -Infinity;
+			var minZ = Infinity, maxZ = -Infinity;
+			for (var bi = 0; bi < surfacePoints.length; bi++) {
+				var bp = surfacePoints[bi];
+				if (bp.x < minX) minX = bp.x;
+				if (bp.x > maxX) maxX = bp.x;
+				if (bp.y < minY) minY = bp.y;
+				if (bp.y > maxY) maxY = bp.y;
+				if (bp.z < minZ) minZ = bp.z;
+				if (bp.z > maxZ) maxZ = bp.z;
+			}
+			var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
+
 			surfaces.set(surfaceId, {
 				id: surfaceId,
 				name: surfaceId,
 				points: surfacePoints,
 				triangles: surfaceTriangles,
+				meshBounds: meshBounds, // CRITICAL: Add meshBounds for centroid calculation
 				visible: true,
 				gradient: "hillshade",
 				transparency: 1.0,

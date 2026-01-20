@@ -683,10 +683,10 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	// Check if mesh actually has textures
 	var hasTexture = false;
 	if (surfaceData && surfaceData.threeJSMesh) {
-		surfaceData.threeJSMesh.traverse(function(child) {
+		surfaceData.threeJSMesh.traverse(function (child) {
 			if (child.isMesh && child.material) {
 				if (Array.isArray(child.material)) {
-					hasTexture = child.material.some(function(mat) {
+					hasTexture = child.material.some(function (mat) {
 						return mat.map !== null && mat.map !== undefined;
 					});
 				} else {
@@ -725,7 +725,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 		// Step 12c.0) DIAGNOSTIC: Check original vertex positions BEFORE any transformation
 		var firstVertexOriginal = null;
-		texturedMesh.traverse(function(child) {
+		texturedMesh.traverse(function (child) {
 			if (!firstVertexOriginal && child.isMesh && child.geometry && child.geometry.attributes && child.geometry.attributes.position) {
 				var pos = child.geometry.attributes.position.array;
 				firstVertexOriginal = { x: pos[0], y: pos[1], z: pos[2] };
@@ -758,12 +758,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		texturedMesh.position.set(meshCenterLocalX, meshCenterLocalY, 0);
 
 		// Step 12c.2) Deep clone materials and preserve textures
-		texturedMesh.traverse(function(child) {
+		texturedMesh.traverse(function (child) {
 			if (child.isMesh) {
 				// Clone materials and preserve textures
 				if (child.material) {
 					if (Array.isArray(child.material)) {
-						child.material = child.material.map(function(mat) {
+						child.material = child.material.map(function (mat) {
 							var clonedMat = mat.clone();
 							if (mat.map) {
 								clonedMat.map = mat.map;
@@ -811,7 +811,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 		// Step 12f) Apply transparency if specified
 		if (transparency < 1.0) {
-			texturedMesh.traverse(function(child) {
+			texturedMesh.traverse(function (child) {
 				if (child.isMesh && child.material) {
 					child.material.transparent = true;
 					child.material.opacity = transparency;
@@ -833,7 +833,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			var minVertexZ = Infinity,
 				maxVertexZ = -Infinity;
 			var firstVertex = null;
-			texturedMesh.traverse(function(child) {
+			texturedMesh.traverse(function (child) {
 				if (child.isMesh && child.geometry && child.geometry.attributes.position) {
 					var positions = child.geometry.attributes.position.array;
 					for (var i = 0; i < positions.length; i += 3) {
@@ -867,7 +867,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	var validTriangleCount = 0;
 	var invalidTriangleCount = 0;
 
-	var localTriangles = triangles.map(function(triangle, idx) {
+	var localTriangles = triangles.map(function (triangle, idx) {
 		if (!triangle.vertices || triangle.vertices.length !== 3) {
 			invalidTriangleCount++;
 			if (invalidTriangleCount <= 3 && developerModeEnabled) {
@@ -876,7 +876,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			return triangle;
 		}
 
-		var localVertices = triangle.vertices.map(function(v) {
+		var localVertices = triangle.vertices.map(function (v) {
 			var local = window.worldToThreeLocal(v.x, v.y);
 			return { x: local.x, y: local.y, z: v.z }; // Keep elevation as-is
 		});
@@ -910,12 +910,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		}
 		// Step 10b-1) Convert hex color to Three.js RGB format
 		var fixedColor = hexToThreeColor(hillshadeHex);
-		colorFunction = function(z) {
+		colorFunction = function (z) {
 			return fixedColor;
 		};
 	} else {
 		// Step 10c) Regular elevation-based color gradient with custom limits support
-		colorFunction = function(z) {
+		colorFunction = function (z) {
 			var rgbString = window.elevationToColor(z, minZ, maxZ, gradient, surfaceMinLimit, surfaceMaxLimit);
 			return window.rgbStringToThreeColor(rgbString);
 		};
@@ -950,7 +950,7 @@ export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
 	if (!contourLinesArray || contourLinesArray.length === 0) return;
 
 	// Check if contours already exist to prevent duplicates
-	var hasExistingContours = window.threeRenderer.contoursGroup.children.some(function(child) {
+	var hasExistingContours = window.threeRenderer.contoursGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "contourLines";
 	});
 	if (hasExistingContours) {
@@ -1019,7 +1019,7 @@ export function drawDirectionArrowsThreeJS(directionArrows, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	// Check if direction arrows already exist to prevent duplicates
-	var hasExistingArrows = window.threeRenderer.contoursGroup.children.some(function(child) {
+	var hasExistingArrows = window.threeRenderer.contoursGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "directionArrows";
 	});
 	if (hasExistingArrows) {
@@ -1059,7 +1059,7 @@ export function drawBackgroundImageThreeJS(imageId, imageCanvas, bbox, transpare
 
 	// Check if image already exists to prevent duplicates
 	var existingImage = null;
-	window.threeRenderer.imagesGroup.children.forEach(function(child) {
+	window.threeRenderer.imagesGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.imageId === imageId) {
 			existingImage = child;
 		}
@@ -1113,7 +1113,7 @@ export function drawConnectorThreeJS(fromHole, toHole, color, curve, delayText, 
 	var toHoleKey = toHole.entityName + ":::" + toHole.holeID;
 
 	// Check if connector already exists for this hole pair to prevent duplicates
-	var hasExistingConnector = window.threeRenderer.connectorsGroup.children.some(function(child) {
+	var hasExistingConnector = window.threeRenderer.connectorsGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "connector" && child.userData.fromHoleId === fromHoleKey && child.userData.toHoleId === toHoleKey;
 	});
 	if (hasExistingConnector) {
@@ -1306,14 +1306,14 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 
 	// Step 19b) Convert fromHole to local coordinates
 	const fromLocal = window.worldToThreeLocal(fromHole.startXLocation, fromHole.startYLocation);
-	
+
 	// Step 19b.1) Convert toMousePos to local - SAME as mouse indicator does
 	const toLocal = window.worldToThreeLocal(toMousePos.x, toMousePos.y);
 
 	// Step 19c) Extract Z coordinates separately (Z coordinates stay as-is, no conversion needed)
 	const fromZ = fromHole.startZLocation || 0;
 	const toZ = toMousePos.z !== undefined && isFinite(toMousePos.z) ? toMousePos.z : fromHole.startZLocation || 0;
-	
+
 	// DEBUG: Log coordinate conversion for stadium zone
 	if (window.developerModeEnabled) {
 		console.log("🏟️ Stadium Zone Coords:");
@@ -1471,6 +1471,8 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 // FIXED: Use EXACT same approach as working KAD line drawing (batched lines pattern)
 // The key is: worldToThreeLocal converts coords, then use LineSegments with BufferGeometry
 export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, toWorldX, toWorldY, toWorldZ, color) {
+	// #region agent log - Hypothesis D: Entry point - REMOVED confirmed working
+	// #endregion
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (fromWorldX === undefined || fromWorldY === undefined) return;
 	if (toWorldX === undefined || toWorldY === undefined) return;
@@ -1486,28 +1488,28 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 		console.log("🔸 Leading line: world(" + fromWorldX.toFixed(2) + "," + fromWorldY.toFixed(2) + ") → local(" + fromLocal.x.toFixed(2) + "," + fromLocal.y.toFixed(2) + ")");
 	}
 
-	// Step 19.6b) Remove existing leading line from connectorsGroup (same as ruler/mouse indicator)
-	// connectorsGroup is for temporary UI elements that are redrawn every frame
-	var connectorsGroup = window.threeRenderer.connectorsGroup;
-	if (!connectorsGroup) {
-		console.warn("🔸 Leading line: connectorsGroup not found!");
+	// Step 19.6b) Remove existing leading line from kadGroup (where visible KAD entities live)
+	// FIX: Use kadGroup instead of connectorsGroup - kadGroup IS visible, connectorsGroup may not be
+	var kadGroup = window.threeRenderer.kadGroup;
+	if (!kadGroup) {
+		console.warn("🔸 Leading line: kadGroup not found!");
 		return;
 	}
 
 	var toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	kadGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
-		connectorsGroup.remove(obj);
+	toRemove.forEach(function (obj) {
+		kadGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
 	});
 
-	// Step 19.6c) Parse color to hex (same pattern as ruler tool)
-	var lineColorHex = 0x00ffff; // Default cyan
+	// Step 19.6c) Parse color to CSS string (required by GeometryFactory.createKADLineSegment)
+	var lineColorCSS = "#00ffff"; // Default cyan
 	if (color) {
 		if (color.startsWith("rgba(") || color.startsWith("rgb(")) {
 			var match = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
@@ -1515,30 +1517,50 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 				var r = parseInt(match[1]);
 				var g = parseInt(match[2]);
 				var b = parseInt(match[3]);
-				lineColorHex = (r << 16) | (g << 8) | b;
+				lineColorCSS = "#" + ((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1);
 			}
-		} else if (color.startsWith("#") && color.length >= 7) {
-			lineColorHex = parseInt(color.slice(1, 7), 16);
+		} else if (color.startsWith("#")) {
+			lineColorCSS = color;
 		}
 	}
 
-	// Step 19.6d) Create line using SAME pattern as working ruler tool
-	var points = [new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ), new THREE.Vector3(toLocal.x, toLocal.y, toZ)];
-
-	var geometry = new THREE.BufferGeometry().setFromPoints(points);
-	var material = new THREE.LineBasicMaterial({
-		color: lineColorHex,
-		linewidth: 2
-	});
-
-	var line = new THREE.Line(geometry, material);
+	// Step 19.6d) Create line using GeometryFactory.createKADLineSegment - SAME as visible KAD lines
+	// FIX: Use LineSegments2/LineMaterial (fat lines) instead of THREE.Line (1px invisible lines)
+	var line = GeometryFactory.createKADLineSegment(
+		fromLocal.x, fromLocal.y, fromZ,
+		toLocal.x, toLocal.y, toZ,
+		3, // lineWidth in pixels (screen-space)
+		lineColorCSS
+	);
 	line.userData = { type: "kadLeadingLine" };
 	line.name = "kad-leading-line";
+	line.renderOrder = 9999;  // Render on top of everything else
+	line.frustumCulled = false;  // Prevent frustum culling from hiding the line
 
-	connectorsGroup.add(line);
+	// FIX: Override material settings to render on TOP of other geometry (leading line should always be visible)
+	if (line.material) {
+		line.material.depthTest = false;  // Don't test depth - always render
+		line.material.depthWrite = false; // Don't write to depth buffer
+		line.material.transparent = true; // Required for proper renderOrder sorting
+	}
+
+	kadGroup.add(line);
+
+	// #region agent log - Hypothesis J: Detailed diagnostics - check line, group, scene state
+	var calcLineLength = Math.sqrt(Math.pow(toLocal.x-fromLocal.x,2)+Math.pow(toLocal.y-fromLocal.y,2));
+	if (calcLineLength > 1) { 
+		var lineVisible = line.visible;
+		var lineInGroup = kadGroup.children.includes(line);
+		var groupVisible = kadGroup.visible;
+		var groupChildCount = kadGroup.children.length;
+		var groupInScene = window.threeRenderer.scene ? window.threeRenderer.scene.children.includes(kadGroup) : false;
+		var matVisible = line.material ? !line.material.transparent || line.material.opacity > 0 : 'no-material';
+		fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'canvas3DDrawing.js:1547-diag',message:'DETAILED LINE DIAGNOSTICS',data:{lineLength:calcLineLength,fromLocal:{x:fromLocal.x,y:fromLocal.y},toLocal:{x:toLocal.x,y:toLocal.y},fromZ:fromZ,toZ:toZ,color:lineColorCSS,lineVisible:lineVisible,lineInGroup:lineInGroup,groupVisible:groupVisible,groupChildCount:groupChildCount,groupInScene:groupInScene,matVisible:matVisible,lineType:line.type,isLineSegments2:line.isLineSegments2||false},timestamp:Date.now(),sessionId:'debug-session',hypothesisId:'J'})}).catch(()=>{}); 
+	}
+	// #endregion
 
 	if (window.developerModeEnabled) {
-		console.log("🔸 Leading line ADDED to connectorsGroup. Children:", connectorsGroup.children.length);
+		console.log("🔸 Leading line ADDED to kadGroup. Children:", kadGroup.children.length);
 	}
 
 	// Step 19.6e) Request render to display the leading line
@@ -1553,16 +1575,100 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 export function clearKADLeadingLineThreeJS() {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
-	var connectorsGroup = window.threeRenderer.connectorsGroup;
-	if (!connectorsGroup) return;
+	// FIX: Use kadGroup instead of connectorsGroup - must match where we added the line
+	var kadGroup = window.threeRenderer.kadGroup;
+	if (!kadGroup) return;
 
 	var toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	kadGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
+		kadGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) obj.material.dispose();
+	});
+}
+
+//=================================================
+// V2 Leading Line - Clean implementation following ruler pattern
+//=================================================
+
+// drawKADLeadingLineThreeJSV2 - Fresh implementation copying ruler exactly
+export function drawKADLeadingLineThreeJSV2(fromWorldX, fromWorldY, fromWorldZ, toWorldX, toWorldY, toWorldZ, color) {
+	// Step 1) Guard checks - same as ruler
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (fromWorldX === undefined || fromWorldY === undefined) return;
+	if (toWorldX === undefined || toWorldY === undefined) return;
+
+	// Step 2) Convert world coordinates to local - EXACTLY like ruler
+	var fromLocal = window.worldToThreeLocal(fromWorldX, fromWorldY);
+	var toLocal = window.worldToThreeLocal(toWorldX, toWorldY);
+	var fromZ = fromWorldZ || 0;
+	var toZ = toWorldZ || 0;
+
+	// Step 3) Get connectorsGroup - SAME as ruler (NOT kadGroup)
+	var connectorsGroup = window.threeRenderer.connectorsGroup;
+	if (!connectorsGroup) return;
+
+	// Step 4) Remove existing leading lines - same pattern as ruler
+	var toRemove = [];
+	connectorsGroup.children.forEach(function (child) {
+		if (child.userData && child.userData.type === "kadLeadingLineV2") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(function (obj) {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) obj.material.dispose();
+	});
+
+	// Step 5) Parse color - default cyan
+	var lineColor = 0x00ffff;
+	if (color) {
+		if (color.startsWith && color.startsWith("#") && color.length >= 7) {
+			lineColor = parseInt(color.slice(1, 7), 16);
+		} else if (color.startsWith && (color.startsWith("rgba(") || color.startsWith("rgb("))) {
+			var match = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
+			if (match) {
+				lineColor = (parseInt(match[1]) << 16) | (parseInt(match[2]) << 8) | parseInt(match[3]);
+			}
+		}
+	}
+
+	// Step 6) Create line - EXACTLY like ruler (THREE.Line + LineBasicMaterial)
+	var points = [
+		new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ),
+		new THREE.Vector3(toLocal.x, toLocal.y, toZ)
+	];
+	var geometry = new THREE.BufferGeometry().setFromPoints(points);
+	var material = new THREE.LineBasicMaterial({ color: lineColor, linewidth: 2 });
+	var line = new THREE.Line(geometry, material);
+
+	// Step 7) Set userData - same pattern as ruler
+	line.userData = { type: "kadLeadingLineV2" };
+
+	// Step 8) Add to connectorsGroup - SAME as ruler
+	connectorsGroup.add(line);
+}
+
+// clearKADLeadingLineThreeJSV2 - Clean up V2 leading lines
+export function clearKADLeadingLineThreeJSV2() {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var connectorsGroup = window.threeRenderer.connectorsGroup;
+	if (!connectorsGroup) return;
+
+	var toRemove = [];
+	connectorsGroup.children.forEach(function (child) {
+		if (child.userData && child.userData.type === "kadLeadingLineV2") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1588,12 +1694,12 @@ export function drawRulerThreeJS(startWorldX, startWorldY, startWorldZ, endWorld
 	// Step 19.8b) Remove existing ruler line if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "rulerLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1647,12 +1753,12 @@ export function clearRulerThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "rulerLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1671,12 +1777,12 @@ export function drawProtractorThreeJS(centerWorldX, centerWorldY, centerWorldZ, 
 	// Step 19.10b) Remove existing protractor lines if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "protractorLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1757,12 +1863,12 @@ export function clearProtractorThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "protractorLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1775,7 +1881,7 @@ export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
 	if (!triangles || triangles.length === 0) return;
 
 	// Check if slope map already exists to prevent duplicates
-	var hasExistingSlope = window.threeRenderer.surfacesGroup.children.some(function(child) {
+	var hasExistingSlope = window.threeRenderer.surfacesGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "slopeMap";
 	});
 	if (hasExistingSlope) {
@@ -1838,7 +1944,7 @@ export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
 	if (!triangles || triangles.length === 0) return;
 
 	// Check if relief map already exists to prevent duplicates
-	var hasExistingRelief = window.threeRenderer.surfacesGroup.children.some(function(child) {
+	var hasExistingRelief = window.threeRenderer.surfacesGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "burdenReliefMap";
 	});
 	if (hasExistingRelief) {
@@ -1932,15 +2038,15 @@ export function clearVoronoiCellsThreeJS() {
 
 	// Step 22.1a) Find and remove all Voronoi cell groups
 	var toRemove = [];
-	surfacesGroup.children.forEach(function(child) {
+	surfacesGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "voronoiCells") {
 			toRemove.push(child);
 		}
 	});
 
 	// Step 22.1b) Dispose geometry, materials, and textures to prevent memory leaks
-	toRemove.forEach(function(voronoiGroup) {
-		voronoiGroup.traverse(function(object) {
+	toRemove.forEach(function (voronoiGroup) {
+		voronoiGroup.traverse(function (object) {
 			if (object.geometry) {
 				object.geometry.dispose();
 			}
@@ -1948,7 +2054,7 @@ export function clearVoronoiCellsThreeJS() {
 				// Step 22.1c) Dispose textures before disposing material
 				if (object.material.map) object.material.map.dispose();
 				if (Array.isArray(object.material)) {
-					object.material.forEach(function(mat) {
+					object.material.forEach(function (mat) {
 						mat.dispose();
 					});
 				} else {
@@ -1978,12 +2084,12 @@ export function disposeKADThreeJS() {
 
 	// Step 23a) Count objects for logging
 	var objectCount = 0;
-	kadGroup.traverse(function() {
+	kadGroup.traverse(function () {
 		objectCount++;
 	});
 
 	// Step 23b) Dispose all geometries and materials
-	kadGroup.traverse(function(object) {
+	kadGroup.traverse(function (object) {
 		if (object.geometry) {
 			object.geometry.dispose();
 		}
@@ -1991,7 +2097,7 @@ export function disposeKADThreeJS() {
 		// Only dispose if NOT using shared material cache
 		if (object.material && !GeometryFactory._lineMaterialCache) {
 			if (Array.isArray(object.material)) {
-				object.material.forEach(function(mat) {
+				object.material.forEach(function (mat) {
 					mat.dispose();
 				});
 			} else {

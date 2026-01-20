@@ -159,7 +159,7 @@ class KMLKMZParser extends BaseParser {
 
 		// Step 23) Parse first coordinate
 		var coordsText = coordinatesNodes[0].textContent.trim();
-		var coords = coordsText.split(/[\s,]+/).filter(function(c) {
+		var coords = coordsText.split(/[\s,]+/).filter(function (c) {
 			return c.length > 0;
 		});
 
@@ -176,7 +176,7 @@ class KMLKMZParser extends BaseParser {
 
 	// Step 25) Prompt user for import configuration
 	async promptForImportConfiguration(filename, isWGS84) {
-		return new Promise(function(resolve) {
+		return new Promise(function (resolve) {
 			// Step 26) Create dialog using FloatingDialog
 			var contentHTML = '<div style="display: flex; flex-direction: column; gap: 15px; padding: 10px;">';
 
@@ -274,7 +274,7 @@ class KMLKMZParser extends BaseParser {
 				showCancel: true,
 				confirmText: "Import",
 				cancelText: "Cancel",
-				onConfirm: async function() {
+				onConfirm: async function () {
 					try {
 						// Get form values
 						var importType = document.querySelector('input[name="import-type"]:checked').value;
@@ -329,7 +329,7 @@ class KMLKMZParser extends BaseParser {
 						console.error("KML import configuration error:", error);
 					}
 				},
-				onCancel: function() {
+				onCancel: function () {
 					dialog.close();
 					resolve({ cancelled: true });
 				}
@@ -342,8 +342,8 @@ class KMLKMZParser extends BaseParser {
 				var transformRadios = document.querySelectorAll('input[name="transform"]');
 				var epsgSection = document.getElementById("epsg-section");
 
-				transformRadios.forEach(function(radio) {
-					radio.addEventListener("change", function() {
+				transformRadios.forEach(function (radio) {
+					radio.addEventListener("change", function () {
 						if (radio.value === "transform") {
 							epsgSection.style.display = "grid";
 						} else {
@@ -377,7 +377,7 @@ class KMLKMZParser extends BaseParser {
 			}
 
 			var coordsText = coordsNode.textContent.trim();
-			var coords = coordsText.split(/[\s,]+/).filter(function(c) {
+			var coords = coordsText.split(/[\s,]+/).filter(function (c) {
 				return c.length > 0;
 			});
 
@@ -519,7 +519,7 @@ class KMLKMZParser extends BaseParser {
 			// Step 45) Get style from styleUrl or inline style
 			var styleUrl = placemark.querySelector("styleUrl");
 			var styleId = styleUrl ? styleUrl.textContent.trim().replace("#", "") : null;
-			var style = styleId ? styleMap[styleId] : this.parseInlineStyle(placemark);
+			var style = (styleId && styleMap[styleId]) ? styleMap[styleId] : this.parseInlineStyle(placemark);
 
 			// Step 46) Parse description for additional properties
 			var descProps = this.parseEntityDescription(placemark);
@@ -558,7 +558,7 @@ class KMLKMZParser extends BaseParser {
 
 			// Step 48) Parse coordinates
 			var coordsText = coordsNode.textContent.trim();
-			var coordPairs = coordsText.split(/\s+/).filter(function(c) {
+			var coordPairs = coordsText.split(/\s+/).filter(function (c) {
 				return c.length > 0;
 			});
 
@@ -785,12 +785,12 @@ class KMLKMZParser extends BaseParser {
 
 	// Step 48) Helper - read file as text
 	readFileAsText(file) {
-		return new Promise(function(resolve, reject) {
+		return new Promise(function (resolve, reject) {
 			var reader = new FileReader();
-			reader.onload = function(e) {
+			reader.onload = function (e) {
 				resolve(e.target.result);
 			};
-			reader.onerror = function(e) {
+			reader.onerror = function (e) {
 				reject(new Error("Failed to read file"));
 			};
 			reader.readAsText(file);
@@ -799,12 +799,12 @@ class KMLKMZParser extends BaseParser {
 
 	// Step 49) Helper - read file as array buffer
 	readFileAsArrayBuffer(file) {
-		return new Promise(function(resolve, reject) {
+		return new Promise(function (resolve, reject) {
 			var reader = new FileReader();
-			reader.onload = function(e) {
+			reader.onload = function (e) {
 				resolve(e.target.result);
 			};
-			reader.onerror = function(e) {
+			reader.onerror = function (e) {
 				reject(new Error("Failed to read file"));
 			};
 			reader.readAsArrayBuffer(file);

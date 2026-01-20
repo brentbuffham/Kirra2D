@@ -108,6 +108,22 @@ export default class NAVAsciiParser extends BaseParser {
 					vertices.push(triangle.vertices[2]);
 				}
 
+				// Step 16a.1) Calculate meshBounds from vertices for centroid calculation
+				// CRITICAL: Without meshBounds, centroid calculation cannot use this surface data
+				var minX = Infinity, maxX = -Infinity;
+				var minY = Infinity, maxY = -Infinity;
+				var minZ = Infinity, maxZ = -Infinity;
+				for (var vi = 0; vi < vertices.length; vi++) {
+					var v = vertices[vi];
+					if (v.x < minX) minX = v.x;
+					if (v.x > maxX) maxX = v.x;
+					if (v.y < minY) minY = v.y;
+					if (v.y > maxY) maxY = v.y;
+					if (v.z < minZ) minZ = v.z;
+					if (v.z > maxZ) maxZ = v.z;
+				}
+				var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
+
 				// Step 16b) Create surface object with hillshade coloring
 				var surface = {
 					name: entityName + "_" + layer,
@@ -117,6 +133,7 @@ export default class NAVAsciiParser extends BaseParser {
 					transparency: 1.0,
 					triangles: layerData.triangles,
 					points: vertices,
+					meshBounds: meshBounds, // CRITICAL: Add meshBounds for centroid calculation
 					vertexCount: vertices.length,
 					triangleCount: layerData.triangles.length
 				};

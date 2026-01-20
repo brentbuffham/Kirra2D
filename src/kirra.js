@@ -104,6 +104,8 @@ import {
 	clearVoronoiCellsThreeJS,
 	drawKADLeadingLineThreeJS,
 	clearKADLeadingLineThreeJS,
+	drawKADLeadingLineThreeJSV2,
+	clearKADLeadingLineThreeJSV2,
 	drawRulerThreeJS,
 	clearRulerThreeJS,
 	drawProtractorThreeJS,
@@ -432,6 +434,10 @@ let currentRotation = 0;
 // Step 1c) Track Z centroid of all data for orbit center
 let dataCentroidZ = 0;
 
+// Step 1d) Flag to indicate centroid needs recalculation (only on data change, NOT every frame)
+// CRITICAL: Calculating centroid every frame caused 1-5 FPS with large LAS files
+let centroidNeedsRecalculation = true;
+
 // Step 2) Helper to convert world coordinates to local Three.js coordinates
 function worldToThreeLocal(worldX, worldY) {
 	return {
@@ -479,6 +485,7 @@ function exposeGlobalsToWindow() {
 	window.threeInitialized = threeInitialized;
 	window.threeRenderer = threeRenderer;
 	window.dataCentroidZ = dataCentroidZ;
+	window.centroidNeedsRecalculation = centroidNeedsRecalculation;
 	window.threeLocalOriginX = threeLocalOriginX;
 	window.threeLocalOriginY = threeLocalOriginY;
 
@@ -626,18 +633,19 @@ function updateThreeLocalOrigin() {
 	// Priority 2: Use first surface point if available (including textured meshes)
 	if (loadedSurfaces && loadedSurfaces.size > 0) {
 		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
-			// Check for standard surface points
+			// Check for standard surface points (LAS, DXF 3DFACE, point cloud triangulations, etc.)
 			if (surface.points && surface.points.length > 0) {
 				threeLocalOriginX = surface.points[0].x;
 				threeLocalOriginY = surface.points[0].y;
 				console.log("📍 Three.js local origin set from surface points:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
 				return;
 			}
-			// Check for textured mesh bounds (OBJ files)
-			if (surface.isTexturedMesh && surface.meshBounds) {
+			// Check for meshBounds (LAS surfaces, OBJ files, any surface with bounds)
+			// This handles both textured meshes AND triangulated surfaces with meshBounds
+			if (surface.meshBounds) {
 				threeLocalOriginX = (surface.meshBounds.minX + surface.meshBounds.maxX) / 2;
 				threeLocalOriginY = (surface.meshBounds.minY + surface.meshBounds.maxY) / 2;
-				console.log("📍 Three.js local origin set from textured mesh center:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
+				console.log("📍 Three.js local origin set from mesh bounds center:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
 				return;
 			}
 		}
@@ -743,6 +751,41 @@ function calculateDataZCentroid() {
 	const centroid = calculateDataCentroid();
 	return centroid.z;
 }
+
+// Step 5a) Request centroid recalculation on next render frame
+// Call this after data imports, deletes, or any change that affects centroid
+function requestCentroidRecalculation() {
+	centroidNeedsRecalculation = true;
+	window.centroidNeedsRecalculation = true;
+}
+// Expose to window for external modules
+window.requestCentroidRecalculation = requestCentroidRecalculation;
+
+// Step 5b) Validate and clamp world Z coordinate to prevent extreme values
+// CRITICAL FIX: Without validation, cursor can disappear when Z becomes extreme (e.g., -683885)
+// This typically happens when no valid surface intersection occurs and plane intersection fails
+function validateWorldZ(zValue, fallbackZ) {
+	// Step 5b.1) If zValue is not a valid finite number, use fallback
+	if (zValue === undefined || zValue === null || !isFinite(zValue)) {
+		return fallbackZ || dataCentroidZ || 0;
+	}
+	
+	// Step 5b.2) Detect extreme Z values (more than 100km from centroid)
+	// This catches failed plane intersection results that return garbage values
+	var centroid = dataCentroidZ || 0;
+	var maxDeviation = 100000; // 100km max deviation from centroid
+	
+	if (Math.abs(zValue - centroid) > maxDeviation) {
+		if (window.developerModeEnabled) {
+			console.warn("⚠️ Extreme Z value detected: " + zValue.toFixed(2) + ", using fallback: " + (fallbackZ || centroid).toFixed(2));
+		}
+		return fallbackZ || centroid;
+	}
+	
+	return zValue;
+}
+// Expose to window for external modules
+window.validateWorldZ = validateWorldZ;
 
 function initializeThreeJS() {
 	if (threeInitialized) return;
@@ -1290,8 +1333,14 @@ function handle3DClick(event) {
 			if (developerModeEnabled) {
 				console.log("⬇️ [3D CLICK] Adding KAD Line point at:", worldX, worldY, worldZ);
 			}
+			// #region agent log - Hypothesis A/B: Log state BEFORE addKADLine
+			fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:1293-before', message: 'BEFORE addKADLine', data: { createNewEntity: createNewEntity, lastKADDrawPoint: lastKADDrawPoint, worldX: worldX, worldY: worldY, worldZ: worldZ }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A-B' }) }).catch(() => { });
+			// #endregion
 			addKADLine();
 			updateLastKADDrawPoint(worldX, worldY, worldZ);
+			// #region agent log - Hypothesis A/B: Log state AFTER addKADLine and updateLastKADDrawPoint
+			fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:1294-after', message: 'AFTER addKADLine+updateLastKADDrawPoint', data: { createNewEntity: createNewEntity, lastKADDrawPoint: lastKADDrawPoint }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A-B' }) }).catch(() => { });
+			// #endregion
 			if (typeof debouncedUpdateTreeView === "function") debouncedUpdateTreeView();
 		} else if (isDrawingPoly) {
 			if (developerModeEnabled) {
@@ -2515,6 +2564,9 @@ function handle3DClick(event) {
 
 // Step 13) Handle 3D mouse move - hover effects and stadium zone tracking
 function handle3DMouseMove(event) {
+	// #region agent log - Hypothesis G: Check if handle3DMouseMove is called after click (THROTTLED)
+	if (!window._lastMouseMoveLogTime || Date.now() - window._lastMouseMoveLogTime > 1000) { window._lastMouseMoveLogTime = Date.now(); fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:2523-entry', message: 'handle3DMouseMove called', data: { onlyShowThreeJS: onlyShowThreeJS, isDrawingLine: isDrawingLine, isDrawingPoly: isDrawingPoly, isDrawingPoint: isDrawingPoint, createNewEntity: createNewEntity, hasLastKADDrawPoint: !!lastKADDrawPoint }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'G' }) }).catch(() => { }); }
+	// #endregion
 	// Step 13a) Only handle if in 3D mode
 	if (!onlyShowThreeJS) return;
 
@@ -2755,7 +2807,9 @@ function handle3DMouseMove(event) {
 	if (mouseWorldPos) {
 		currentMouseWorldX = mouseWorldPos.x;
 		currentMouseWorldY = mouseWorldPos.y;
-		currentMouseWorldZ = mouseWorldPos.z || document.getElementById("drawingElevation").value;
+		// Step 13f.5.0) CRITICAL FIX: Validate Z to prevent extreme values that cause cursor to disappear
+		var rawZ = mouseWorldPos.z || document.getElementById("drawingElevation").value;
+		currentMouseWorldZ = validateWorldZ(parseFloat(rawZ), dataCentroidZ);
 
 		// Step 13f.5a) Update snapHighlight for HUD magnet icon
 		snapHighlight = snapResult.snapped ? snapResult.snapTarget : null;
@@ -2903,23 +2957,23 @@ function handle3DMouseMove(event) {
 		if (isAddingMultiConnector && fromHoleStore && fromHoleStore.entityName && fromHoleStore.holeID && threeRenderer && threeRenderer.connectorsGroup) {
 			// Step 13f.7g.1) Clear old stadium zone first
 			const toRemove = [];
-			threeRenderer.connectorsGroup.children.forEach(function(child) {
+			threeRenderer.connectorsGroup.children.forEach(function (child) {
 				if (child.userData && child.userData.type === "stadiumZone") {
 					toRemove.push(child);
 				}
 			});
-			toRemove.forEach(function(obj) {
+			toRemove.forEach(function (obj) {
 				threeRenderer.connectorsGroup.remove(obj);
 				if (obj.geometry) obj.geometry.dispose();
 				if (obj.material) {
 					if (Array.isArray(obj.material)) {
-						obj.material.forEach(function(mat) { mat.dispose(); });
+						obj.material.forEach(function (mat) { mat.dispose(); });
 					} else {
 						obj.material.dispose();
 					}
 				}
 			});
-			
+
 			// Step 13f.7g.2) Draw new stadium zone at mouse indicator position
 			drawConnectStadiumZoneThreeJS(fromHoleStore, { x: indicatorPos.x, y: indicatorPos.y, z: indicatorPos.z }, connectAmount);
 		}
@@ -2935,6 +2989,10 @@ function handle3DMouseMove(event) {
 			console.log("🔸 lastKADDrawPoint: x=" + lastKADDrawPoint.x + ", y=" + lastKADDrawPoint.y + ", z=" + lastKADDrawPoint.z);
 		}
 	}
+
+	// #region agent log - Hypothesis A/B/C: Check condition variables (THROTTLED - once per second)
+	if (isAnyDrawingToolActive && (!window._lastLeadingLineLogTime || Date.now() - window._lastLeadingLineLogTime > 1000)) { window._lastLeadingLineLogTime = Date.now(); fetch('http://127.0.0.1:7243/ingest/51f91b6d-6b36-4c48-8a5e-52742e76511f', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ location: 'kirra.js:2939-condition', message: 'Leading line condition check', data: { isAnyDrawingToolActive: isAnyDrawingToolActive, hasLastKADDrawPoint: !!lastKADDrawPoint, lastKADDrawPoint: lastKADDrawPoint, createNewEntity: createNewEntity, conditionPasses: !!(isAnyDrawingToolActive && lastKADDrawPoint && createNewEntity === false), currentMouseWorldX: currentMouseWorldX, currentMouseWorldY: currentMouseWorldY }, timestamp: Date.now(), sessionId: 'debug-session', hypothesisId: 'A-B-C' }) }).catch(() => { }); }
+	// #endregion
 
 	if (isAnyDrawingToolActive && lastKADDrawPoint && createNewEntity === false) {
 		// Get drawing Z value - IMPORTANT: Use same Z for both ends (like 2D drawing)
@@ -2963,7 +3021,9 @@ function handle3DMouseMove(event) {
 		// Step 13f.8a) Draw leading line directly in handle3DMouseMove for real-time updates
 		// The leading line must be drawn here (on mouse move) to follow the cursor.
 		// Drawing in drawData() alone was not sufficient because drawData() isn't called on every mouse move.
-		drawKADLeadingLineThreeJS(
+		// #region agent log - Hypothesis D: Log before drawKADLeadingLineThreeJS call (REMOVED - confirmed working)
+		// #endregion
+		drawKADLeadingLineThreeJSV2(
 			lastKADDrawPoint.x,
 			lastKADDrawPoint.y,
 			leadingLineZ,
@@ -2996,6 +3056,8 @@ function handle3DMouseMove(event) {
 		showDrawingDistance(drawDistance, drawBearing, drawToolType, event.clientX, event.clientY);
 	} else {
 		// Clear leading line if no drawing tool active or no last point
+		// #region agent log - Hypothesis E: Log when clearing (else branch taken) - REMOVED confirmed not the issue
+		// #endregion
 		clearKADLeadingLineThreeJS();
 		hideDrawingDistance();
 	}
@@ -3058,10 +3120,10 @@ function handle3DMouseMove(event) {
 		var snappedMouseX = patternSnapResult.worldX;
 		var snappedMouseY = patternSnapResult.worldY;
 
-		// Step 13f.9.5b) Reuse existing drawKADLeadingLineThreeJS for cheap dashed line
+		// Step 13f.9.5b) Reuse existing drawKADLeadingLineThreeJSV2 for cheap dashed line
 		var startZ = patternStartPoint.z || dataCentroidZ || 0;
 		var mouseZ = currentMouseWorldZ || startZ;
-		drawKADLeadingLineThreeJS(
+		drawKADLeadingLineThreeJSV2(
 			patternStartPoint.x, patternStartPoint.y, startZ,
 			snappedMouseX, snappedMouseY, mouseZ,
 			"rgba(0, 255, 0, 0.5)" // Green to match 2D
@@ -3081,7 +3143,7 @@ function handle3DMouseMove(event) {
 
 		var startZ = lineStartPoint.z || dataCentroidZ || 0;
 		var mouseZ = currentMouseWorldZ || startZ;
-		drawKADLeadingLineThreeJS(
+		drawKADLeadingLineThreeJSV2(
 			lineStartPoint.x, lineStartPoint.y, startZ,
 			snappedMouseX, snappedMouseY, mouseZ,
 			"rgba(0, 255, 0, 0.5)"
@@ -3146,10 +3208,10 @@ function handle3DMouseMove(event) {
 
 	// Step 13f.11) Draw Pattern In Polygon leading line and visuals if active
 	if (isPatternInPolygonActive && patternStartPoint && !patternEndPoint) {
-		// Reuse existing drawKADLeadingLineThreeJS for cheap dashed line to mouse
+		// Reuse existing drawKADLeadingLineThreeJSV2 for cheap dashed line to mouse
 		var patternStartZ = patternStartPoint.z || dataCentroidZ || 0;
 		var patternMouseZ = currentMouseWorldZ || patternStartZ;
-		drawKADLeadingLineThreeJS(
+		drawKADLeadingLineThreeJSV2(
 			patternStartPoint.x, patternStartPoint.y, patternStartZ,
 			currentMouseWorldX, currentMouseWorldY, patternMouseZ,
 			"rgba(0, 255, 0, 0.5)" // Green to match 2D
@@ -10559,12 +10621,12 @@ document.querySelectorAll(".las-input-btn").forEach(function (button) {
 						if (result.dataType === "surfaces" && result.surfaces) {
 							// Step 5a) Surface import - triangulated mesh from LAS points
 							console.log("🔺 Processing LAS surface import with " + result.surfaces.size + " surfaces");
-							
+
 							// Step 5b) Create surface layer for LAS import
 							var surfaceLayer = window.getOrCreateLayerForImport("surface", file.name);
 							var surfaceLayerId = surfaceLayer ? surfaceLayer.layerId : null;
 							console.log("✅ [Layer] Created surface layer for LAS import:", file.name, "->", surfaceLayerId);
-							
+
 							// Step 5c) Add surfaces to loadedSurfaces
 							var totalTriangles = 0;
 							for (var [surfaceId, surfaceData] of result.surfaces.entries()) {
@@ -10575,12 +10637,12 @@ document.querySelectorAll(".las-input-btn").forEach(function (button) {
 										surfaceLayer.entities.add(surfaceId);
 									}
 								}
-								
+
 								window.loadedSurfaces.set(surfaceId, surfaceData);
 								totalTriangles += surfaceData.triangles ? surfaceData.triangles.length : 0;
-								
+
 								// Save surface to database
-								setTimeout(async function() {
+								setTimeout(async function () {
 									try {
 										await saveSurfaceToDB(surfaceId);
 										console.log("LAS surface saved to database: " + surfaceId);
@@ -10589,33 +10651,33 @@ document.querySelectorAll(".las-input-btn").forEach(function (button) {
 									}
 								}, 100);
 							}
-							
+
 							// Step 5d) Update UI and redraw
 							updateCentroids();
 							window.threeDataNeedsRebuild = true;
 							window.drawData(window.allBlastHoles, window.selectedHole);
-							
+
 							// Step 5e) Save layers
 							if (window.debouncedSaveLayers) {
 								window.debouncedSaveLayers();
 							}
-							
+
 							// Update tree view
 							if (window.debouncedUpdateTreeView) {
 								window.debouncedUpdateTreeView();
 							}
-							
+
 							zoomToFitAll();
-							
+
 							// Show success message
 							showModalMessage(
 								"Import Successful",
 								"Imported LAS surface from " + file.name + " (" + totalTriangles + " triangles)",
 								"success"
 							);
-							
+
 							console.log("LAS surface import completed: " + totalTriangles + " triangles");
-							
+
 						} else if (result.dataType === "pointcloud" && result.kadDrawingsMap) {
 							// Step 6) Create layer for LAS point cloud import
 							var lasLayer = window.getOrCreateLayerForImport("drawing", file.name);
@@ -11788,7 +11850,8 @@ function handleMouseMove(event) {
 	const snapResult = canvasToWorldWithSnap(mouseX, mouseY);
 	currentMouseWorldX = snapResult.worldX;
 	currentMouseWorldY = snapResult.worldY;
-	currentMouseWorldZ = snapResult.worldZ;
+	// Step #) Validate Z to prevent extreme values (2D canvas path)
+	currentMouseWorldZ = validateWorldZ(snapResult.worldZ, dataCentroidZ);
 
 	// Update snapHighlight for HUD display (magnet icon)
 	snapHighlight = snapResult.snapped ? snapResult.snapTarget : null;
@@ -21497,7 +21560,7 @@ function getClickedHole3DWithTolerance(event) {
 	const camera = threeRenderer.camera;
 
 	// Step 5) Helper function to project world position to screen pixels
-	var worldToScreen = function(worldX, worldY, worldZ) {
+	var worldToScreen = function (worldX, worldY, worldZ) {
 		// Convert world to Three.js local coordinates
 		var localX = worldX - (window.threeLocalOriginX || window.dataCentroidX || 0);
 		var localY = worldY - (window.threeLocalOriginY || window.dataCentroidY || 0);
@@ -21518,7 +21581,7 @@ function getClickedHole3DWithTolerance(event) {
 	var closestDistance = Infinity;
 
 	if (allBlastHoles && allBlastHoles.length > 0) {
-		allBlastHoles.forEach(function(hole) {
+		allBlastHoles.forEach(function (hole) {
 			// Skip hidden holes
 			if (!isHoleVisible(hole)) return;
 
@@ -26870,8 +26933,16 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 	}
 
-	// Step 0c) Calculate Z centroid for orbit center (always recalculate for dynamic data)
-	dataCentroidZ = calculateDataZCentroid();
+	// Step 0c) Calculate Z centroid for orbit center ONLY when data changes
+	// CRITICAL FIX: Removed per-frame calculation that caused 1-5 FPS with large LAS files
+	// Now only recalculates when centroidNeedsRecalculation flag is set (by imports/deletes)
+	if (centroidNeedsRecalculation) {
+		dataCentroidZ = calculateDataZCentroid();
+		centroidNeedsRecalculation = false;
+		if (window.developerModeEnabled) {
+			console.log("📍 dataCentroidZ recalculated:", dataCentroidZ.toFixed(2));
+		}
+	}
 
 	// Step 1) Clear Three.js geometry ONLY when rebuild is needed
 	// CRITICAL: Don't clear every frame - this was causing 1-4 FPS!
@@ -28285,7 +28356,7 @@ function drawData(allBlastHoles, selectedHole) {
 			// Step 4) Build hole map ONCE for connector lookup (moved outside loop for O(n) vs O(n²))
 			const holeMap3D = new Map();
 			if (displayOptions3D.connector) {
-				allBlastHoles.forEach(function(h) {
+				allBlastHoles.forEach(function (h) {
 					holeMap3D.set(h.entityName + ":::" + h.holeID, h);
 				});
 			}
@@ -28687,7 +28758,7 @@ function drawData(allBlastHoles, selectedHole) {
 				leadingLineColor = "rgba(0, 255, 0, 0.8)"; // Green
 			}
 
-			drawKADLeadingLineThreeJS(
+			drawKADLeadingLineThreeJSV2(
 				lastKADDrawPoint.x,
 				lastKADDrawPoint.y,
 				leadingLineZ,
@@ -31281,8 +31352,43 @@ function updateCentroids() {
 		centroidY = sumY / records;
 	}
 
-	// Step 5) Emit centroid to HUD overlay (includes Z from calculateDataCentroid)
+	// Step 5) Calculate full centroid including Z and update dataCentroidZ
 	var fullCentroid = calculateDataCentroid();
+	
+	// Step 5a) CRITICAL FIX: Also update dataCentroidZ when centroids are recalculated
+	// This ensures dataCentroidZ is immediately available after imports without waiting for render loop
+	dataCentroidZ = fullCentroid.z;
+	window.dataCentroidZ = dataCentroidZ;
+	
+	// Step 5b) Mark centroid as already calculated to prevent redundant calculation in render loop
+	centroidNeedsRecalculation = false;
+	window.centroidNeedsRecalculation = false;
+	
+	// Step 5c) CRITICAL FIX: Update threeRenderer orbit center when centroids change
+	// Without this, the 3D cursor (torus) disappears when orbiting because the view plane
+	// is positioned at the old orbitCenterZ (often 0) instead of the actual data Z elevation
+	if (threeRenderer && typeof threeRenderer.setOrbitCenter === "function") {
+		threeRenderer.setOrbitCenter(fullCentroid.x, fullCentroid.y, fullCentroid.z);
+		if (developerModeEnabled) {
+			console.log("🎯 Orbit center updated in updateCentroids(): X=" + fullCentroid.x.toFixed(2) + " Y=" + fullCentroid.y.toFixed(2) + " Z=" + fullCentroid.z.toFixed(2));
+		}
+	}
+	
+	// Step 5d) CRITICAL FIX: Update local origin for coordinate conversion (ONE TIME on import)
+	// Only update if origin is still at 0,0 - this runs once when first data is imported
+	// LAS imports and other surface-only imports need this to work correctly
+	if (threeLocalOriginX === 0 && threeLocalOriginY === 0) {
+		updateThreeLocalOrigin();
+		// Step 5e) Sync ONLY the critical origin values to window for InteractionManager
+		// Avoids full exposeGlobalsToWindow() overhead - only syncs what's needed for cursor
+		window.threeLocalOriginX = threeLocalOriginX;
+		window.threeLocalOriginY = threeLocalOriginY;
+		if (developerModeEnabled) {
+			console.log("📍 Local origin synced to window: X=" + threeLocalOriginX.toFixed(2) + " Y=" + threeLocalOriginY.toFixed(2));
+		}
+	}
+	
+	// Step 5f) Emit centroid to HUD overlay
 	emitCentroid(fullCentroid.x, fullCentroid.y, fullCentroid.z);
 }
 
@@ -31347,52 +31453,48 @@ darkModeToggle.addEventListener("change", () => {
 	drawData(allBlastHoles, selectedHole);
 });
 
-function endKadTools() {
+function endKadTools(forceEnd = false) {
 	// Step 1) Check if any KAD drawing tool is active
 	var anyKADToolActive = addPointDraw.checked || addLineDraw.checked || addCircleDraw.checked || addPolyDraw.checked || addTextDraw.checked;
 
 	if (anyKADToolActive) {
-		// Step 2) Check if we're actively drawing (createNewEntity is false means we have started an entity)
-		if (!createNewEntity) {
-			// Step 2a) Actively drawing - just end the current entity, keep tool active
+		// Step 2) Decide: complete entity OR end tool
+		if (!createNewEntity && !forceEnd) {
+			// Step 2a) Actively drawing AND NOT forceEnd - complete entity, keep tool active
 			createNewEntity = true;
 			lastKADDrawPoint = null;
-			entityName = null; // CRITICAL: Reset entityName so next click creates NEW entity
+			entityName = null;
 			clearCurrentDrawingEntity();
-
-			// Step 2a.1) Additional state cleanup for leading lines and tool consistency
 			currentDrawingEntityName = null;
 			deleteKeyCount = 0;
 
 			updateStatusMessage("Entity finished. Click to start new " + (isDrawingLine ? "line" : isDrawingPoly ? "polygon" : isDrawingCircle ? "circle" : isDrawingPoint ? "point" : "text"));
-			setTimeout(function () {
-				updateStatusMessage("");
-			}, 2000);
-			// Redraw to clear preview line
+			setTimeout(function () { updateStatusMessage(""); }, 2000);
 			drawData(allBlastHoles, selectedHole);
+			setTimeout(() => { drawData(allBlastHoles, selectedHole); }, 10);
+			clearKADLeadingLineThreeJSV2();  // ADD THIS
 
-			// Step 2a.2) Force immediate redraw to clear any stale preview lines
-			setTimeout(() => {
-				drawData(allBlastHoles, selectedHole);
-			}, 10);
 		} else {
-			// Step 2b) Not actively drawing (no points added yet) - turn off tool entirely
+			// Step 2b) NOT actively drawing OR forceEnd - turn off tool entirely
 			addPointDraw.checked = false;
 			addLineDraw.checked = false;
 			addCircleDraw.checked = false;
 			addPolyDraw.checked = false;
 			addTextDraw.checked = false;
 
-			// Reset states
+			// ALSO uncheck the floating toolbar KAD buttons (the visual buttons)
+			addKADPointsTool.checked = false;
+			addKADLineTool.checked = false;
+			addKADPolygonTool.checked = false;
+			addKADCircleTool.checked = false;
+			addKADTextTool.checked = false;
+
 			createNewEntity = true;
 			lastKADDrawPoint = null;
-			entityName = null; // Reset entityName
-
-			// Step 2b.1) Additional state cleanup for leading lines and tool consistency
+			entityName = null;
 			currentDrawingEntityName = null;
 			deleteKeyCount = 0;
 
-			// Update drawing flags
 			isDrawingPoint = false;
 			isDrawingLine = false;
 			isDrawingCircle = false;
@@ -31400,17 +31502,10 @@ function endKadTools() {
 			isDrawingText = false;
 			clearCurrentDrawingEntity();
 			updateStatusMessage("Drawing tools cancelled");
-			setTimeout(function () {
-				updateStatusMessage("");
-			}, 1500);
-
-			// Redraw to clear any preview lines/indicators
+			setTimeout(function () { updateStatusMessage(""); }, 1500);
 			drawData(allBlastHoles, selectedHole);
-
-			// Step 2b.2) Force immediate redraw to clear any stale preview lines
-			setTimeout(() => {
-				drawData(allBlastHoles, selectedHole);
-			}, 10);
+			setTimeout(() => { drawData(allBlastHoles, selectedHole); }, 10);
+			clearKADLeadingLineThreeJSV2();  // ADD THIS
 		}
 	}
 
@@ -32190,7 +32285,7 @@ moveToTool.addEventListener("change", function () {
 		// Step 1) Store current selection BEFORE clearing anything
 		const preservedMultipleSelection = selectedMultipleHoles ? [...selectedMultipleHoles] : [];
 		const preservedSingleSelection = selectedHole;
-		endKadTools();
+		endKadTools(true);
 		resetFloatingToolbarButtons("moveToTool");
 		// DON'T remove all canvas listeners - keep the main mouse tracking
 		removeAllCanvasListenersKeepDefault();
@@ -33640,7 +33735,7 @@ selectPointerTool.addEventListener("change", function () {
 		// Uncheck the other buttons
 		resetFloatingToolbarButtons("selectPointerTool");
 		clearAllSelectionState();
-		endKadTools();
+		endKadTools(true);
 		// Remove conflicting listeners
 		removeAllCanvasListenersKeepDefault();
 		// This function did not work and was causing issues with the tool
@@ -34148,7 +34243,7 @@ selectByPolygonTool.addEventListener("change", function () {
 		// Step 2) 2D polygon selection mode (EXISTING CODE)
 		// Uncheck the other buttons
 		resetFloatingToolbarButtons("selectByPolygonTool");
-		endKadTools();
+		endKadTools(true);
 		clearAllSelectionState();
 		isPolygonSelectionActive = true;
 		selectedHole = null;
@@ -38781,7 +38876,7 @@ patternInPolygonTool.addEventListener("change", function () {
 		// This function did not work and was causing issues with the tool
 		// removeEventListenersExcluding(["patternInPolygonTool", "selectPointerTool", "defaultListeners"]);
 
-		endKadTools();
+		endKadTools(true);
 		isPatternInPolygonActive = true;
 		patternPolygonStep = 0;
 		selectedPolygon = null;
@@ -38952,7 +39047,7 @@ holesAlongPolyLineTool.addEventListener("change", function () {
 		removeAllCanvasListenersKeepDefault();
 		resetFloatingToolbarButtons("holesAlongPolyLineTool");
 
-		endKadTools();
+		endKadTools(true);
 		isHolesAlongPolyLineActive = true;
 		polylineStep = 0;
 		selectedPolyline = null;
@@ -39111,7 +39206,7 @@ holesAlongLineTool.addEventListener("change", function () {
 		removeAllCanvasListenersKeepDefault();
 		resetFloatingToolbarButtons("holesAlongLineTool");
 
-		endKadTools();
+		endKadTools(true);
 		isHolesAlongLineActive = true;
 		holesLineStep = 0;
 		window.holesLineStep = holesLineStep; // Keep window in sync
@@ -40479,7 +40574,7 @@ function drawPatternInPolygon3DVisual() {
 		dy = patternEndPoint.y - patternStartPoint.y;
 		lineLength = Math.sqrt(dx * dx + dy * dy);
 
-		// Step 4a) Draw dashed line using cheap THREE.LineDashedMaterial (like drawKADLeadingLineThreeJS)
+		// Step 4a) Draw dashed line using cheap THREE.LineDashedMaterial (like drawKADLeadingLineThreeJSV2)
 		// Use polygon's Z for line elevation
 		var lineZ = drawZ;
 		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
@@ -40504,7 +40599,7 @@ function drawPatternInPolygon3DVisual() {
 		dirLine.computeLineDistances(); // Required for dashed lines
 		window.patternTool3DGroup.add(dirLine);
 	} else if (patternStartPoint && !patternEndPoint && currentMouseWorldX && currentMouseWorldY) {
-		// Preview line to mouse cursor - handled by drawKADLeadingLineThreeJS in handle3DMouseMove
+		// Preview line to mouse cursor - handled by drawKADLeadingLineThreeJSV2 in handle3DMouseMove
 		// Just calculate values for arrow positioning
 		sLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
 		eLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
@@ -42754,7 +42849,7 @@ function showPointCloudImportDialog(points, fileName) {
 			{ code: "7855", name: "GDA2020 / MGA zone 55" },
 			{ code: "7856", name: "GDA2020 / MGA zone 56" }
 		];
-		commonEPSG.forEach(function(item) {
+		commonEPSG.forEach(function (item) {
 			contentHTML += '<option value="' + item.code + '">' + item.code + " - " + item.name + "</option>";
 		});
 		contentHTML += "</select>";
@@ -42849,7 +42944,7 @@ function showPointCloudImportDialog(points, fileName) {
 		showCancel: true,
 		confirmText: "Import",
 		cancelText: "Cancel",
-		onConfirm: async function() {
+		onConfirm: async function () {
 			try {
 				// Step 9) Get form values
 				var importType = document.querySelector('input[name="pc-import-type"]:checked').value;
@@ -42942,7 +43037,7 @@ function showPointCloudImportDialog(points, fileName) {
 				console.error("Point cloud import error:", error);
 			}
 		},
-		onCancel: function() {
+		onCancel: function () {
 			console.log("Point cloud import cancelled");
 		}
 	});
@@ -42954,8 +43049,8 @@ function showPointCloudImportDialog(points, fileName) {
 	var pointcloudOptions = document.getElementById("pc-pointcloud-options");
 	var surfaceOptions = document.getElementById("pc-surface-options");
 
-	importTypeRadios.forEach(function(radio) {
-		radio.addEventListener("change", function() {
+	importTypeRadios.forEach(function (radio) {
+		radio.addEventListener("change", function () {
 			if (radio.value === "surface" && radio.checked) {
 				pointcloudOptions.style.display = "none";
 				surfaceOptions.style.display = "block";
@@ -42971,8 +43066,8 @@ function showPointCloudImportDialog(points, fileName) {
 		var transformRadios = document.querySelectorAll('input[name="pc-transform"]');
 		var epsgSection = document.getElementById("pc-epsg-section");
 
-		transformRadios.forEach(function(radio) {
-			radio.addEventListener("change", function() {
+		transformRadios.forEach(function (radio) {
+			radio.addEventListener("change", function () {
 				if (radio.value === "transform") {
 					epsgSection.style.display = "grid";
 				} else {
@@ -43004,7 +43099,7 @@ function createSurfaceFromPointsWithOptions(points, config) {
 	}
 
 	// Step 1) Create triangles using Delaunator
-	var coords = points.flatMap(function(p) { return [p.x, p.y]; });
+	var coords = points.flatMap(function (p) { return [p.x, p.y]; });
 	var delaunay = new Delaunator(coords);
 
 	// Step 2) Helper function to calculate distance
@@ -43077,12 +43172,29 @@ function createSurfaceFromPointsWithOptions(points, config) {
 	// Step 4) Create surface ID
 	var surfaceId = surfaceName.replace(/\s+/g, "_");
 
+	// Step 4a) Calculate meshBounds from points for centroid calculation
+	// CRITICAL: Without meshBounds, centroid calculation cannot use this surface data
+	var minX = Infinity, maxX = -Infinity;
+	var minY = Infinity, maxY = -Infinity;
+	var minZ = Infinity, maxZ = -Infinity;
+	for (var bi = 0; bi < points.length; bi++) {
+		var bp = points[bi];
+		if (bp.x < minX) minX = bp.x;
+		if (bp.x > maxX) maxX = bp.x;
+		if (bp.y < minY) minY = bp.y;
+		if (bp.y > maxY) maxY = bp.y;
+		if (bp.z < minZ) minZ = bp.z;
+		if (bp.z > maxZ) maxZ = bp.z;
+	}
+	var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
+
 	// Step 5) Add surface to Map
 	loadedSurfaces.set(surfaceId, {
 		id: surfaceId,
 		name: surfaceName,
 		points: points,
 		triangles: triangles,
+		meshBounds: meshBounds, // CRITICAL: Add meshBounds for centroid calculation
 		visible: true,
 		gradient: surfaceStyle,
 		metadata: {
@@ -43106,7 +43218,7 @@ function createSurfaceFromPointsWithOptions(points, config) {
 	}
 
 	// Step 8) Save to IndexedDB
-	saveSurfaceToDB(surfaceId).catch(function(err) {
+	saveSurfaceToDB(surfaceId).catch(function (err) {
 		console.error("Failed to save surface:", err);
 	});
 
@@ -46253,16 +46365,53 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 	}
 
 	// Step 5) Search Surface Points (if surfaces are loaded) - OPTIMIZED: Only check visible surfaces
+	// CRITICAL FIX: Use mouse world position as search hint instead of checking first N points
+	// This ensures we search for surface vertices near where the user is actually pointing
 	if (loadedSurfaces && loadedSurfaces.size > 0) {
+		// Step 5a) Get approximate mouse world position for spatial filtering
+		// Use view plane intersection to find where the mouse is pointing in world space
+		var mouseHintX = null, mouseHintY = null;
+		if (im && typeof im.getMouseWorldPositionOnViewPlane === "function") {
+			var viewPlanePos = im.getMouseWorldPositionOnViewPlane();
+			if (viewPlanePos && isFinite(viewPlanePos.x) && isFinite(viewPlanePos.y)) {
+				mouseHintX = viewPlanePos.x;
+				mouseHintY = viewPlanePos.y;
+			}
+		}
+		// Fallback: use current centroid if view plane intersection fails
+		if (mouseHintX === null) {
+			mouseHintX = window.centroidX || 0;
+			mouseHintY = window.centroidY || 0;
+		}
+
+		// Step 5b) Calculate search radius in world units (generous to catch nearby vertices)
+		// Use 5x the snap radius to ensure we find vertices within snap distance
+		var surfaceSearchRadius = snapRadiusWorld * 5;
+		var surfaceSearchRadiusSq = surfaceSearchRadius * surfaceSearchRadius;
+
 		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
 			if (surface.visible && surface.points && surface.points.length > 0) {
-				// PERFORMANCE: Limit surface points checked
-				var surfacePointCount = 0;
-				const MAX_SURFACE_POINTS = 100; // Limit surface points for performance
+				// Step 5c) PERFORMANCE: Pre-filter points by XY distance from mouse hint
+				// This is O(n) but with simple distance check, much faster than ray math
+				var nearbyPoints = [];
+				var MAX_NEARBY_POINTS = 200; // Max points to collect near mouse
 
-				surface.points.forEach((surfacePoint, index) => {
-					if (surfacePointCount >= MAX_SURFACE_POINTS) return;
-					surfacePointCount++;
+				for (var pi = 0; pi < surface.points.length && nearbyPoints.length < MAX_NEARBY_POINTS; pi++) {
+					var sp = surface.points[pi];
+					var dxHint = sp.x - mouseHintX;
+					var dyHint = sp.y - mouseHintY;
+					var distSqFromHint = dxHint * dxHint + dyHint * dyHint;
+
+					// Only consider points within search radius of mouse hint
+					if (distSqFromHint <= surfaceSearchRadiusSq) {
+						nearbyPoints.push({ point: sp, index: pi });
+					}
+				}
+
+				// Step 5d) Now do detailed snap check on just the nearby points
+				nearbyPoints.forEach(function(item) {
+					var surfacePoint = item.point;
+					var index = item.index;
 
 					// PERFORMANCE: Skip surface points not in frustum
 					if (!isPointInFrustum(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0)) return;
@@ -46568,15 +46717,17 @@ function handleMouseMoveWithSnap(event) {
 	const snapResult = canvasToWorldWithSnap(mouseX, mouseY, mouseZ);
 	currentMouseWorldX = snapResult.worldX;
 	currentMouseWorldY = snapResult.worldY;
-	currentMouseWorldZ = snapResult.worldZ;
+	// Step #) Validate Z to prevent extreme values (2D canvas KAD drawing path)
+	currentMouseWorldZ = validateWorldZ(snapResult.worldZ, dataCentroidZ);
 
 	// Store snap target for visual feedback
 	snapHighlight = snapResult.snapped ? snapResult.snapTarget : null;
 	// Update elevation field when snapping to a Z value
 	if (snapResult.snapped && snapResult.worldZ !== undefined) {
-		document.getElementById("drawingElevation").value = snapResult.worldZ;
-		drawingZValue = snapResult.worldZ;
-		currentMouseWorldZ = snapResult.worldZ;
+		var validatedSnapZ = validateWorldZ(snapResult.worldZ, dataCentroidZ);
+		document.getElementById("drawingElevation").value = validatedSnapZ;
+		drawingZValue = validatedSnapZ;
+		currentMouseWorldZ = validatedSnapZ;
 	}
 	// Existing mouse move logic...
 	if (isDragging && !isDraggingBearing && !isDraggingHole) {

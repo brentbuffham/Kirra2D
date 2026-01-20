@@ -841,6 +841,26 @@ class LASParser extends BaseParser {
 			console.log("🔺 Culled: " + culledByEdge + " by edge length, " + culledByAngle + " by angle");
 		}
 
+		// Step 6e) Calculate meshBounds from vertices for centroid calculation
+		// CRITICAL: Without meshBounds, centroid calculation cannot use this surface data
+		var minX = Infinity, maxX = -Infinity;
+		var minY = Infinity, maxY = -Infinity;
+		var minZ = Infinity, maxZ = -Infinity;
+		for (var j = 0; j < vertices.length; j++) {
+			var v = vertices[j];
+			if (v.x < minX) minX = v.x;
+			if (v.x > maxX) maxX = v.x;
+			if (v.y < minY) minY = v.y;
+			if (v.y > maxY) maxY = v.y;
+			if (v.z < minZ) minZ = v.z;
+			if (v.z > maxZ) maxZ = v.z;
+		}
+		var meshBounds = { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
+
+		if (window.developerModeEnabled) {
+			console.log("📐 LAS meshBounds calculated: X[" + minX.toFixed(2) + "," + maxX.toFixed(2) + "] Y[" + minY.toFixed(2) + "," + maxY.toFixed(2) + "] Z[" + minZ.toFixed(2) + "," + maxZ.toFixed(2) + "]");
+		}
+
 		// Step 7) Create the surface object with gradient
 		var surfaceId = surfaceName.replace(/\s+/g, "_") + "_" + Date.now();
 		var surface = {
@@ -849,6 +869,7 @@ class LASParser extends BaseParser {
 			type: "delaunay",
 			points: vertices,
 			triangles: resultTriangles,
+			meshBounds: meshBounds, // CRITICAL: Add meshBounds for centroid calculation
 			visible: true,
 			gradient: surfaceStyle, // Uses selected gradient style
 			transparency: 1.0,
