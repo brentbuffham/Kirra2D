@@ -102,7 +102,6 @@ import {
 	drawBurdenReliefMapThreeJS,
 	drawVoronoiCellsThreeJS,
 	clearVoronoiCellsThreeJS,
-	drawKADLeadingLineThreeJS,
 	clearKADLeadingLineThreeJS,
 	drawKADLeadingLineThreeJSV2,
 	clearKADLeadingLineThreeJSV2,
@@ -3005,18 +3004,10 @@ function handle3DMouseMove(event) {
 			leadingLineColor = "rgba(0, 255, 0, 0.8)"; // Green for text
 		}
 
-		// Step 13f.8a) Draw leading line directly in handle3DMouseMove for real-time updates
-		// The leading line must be drawn here (on mouse move) to follow the cursor.
-		// Drawing in drawData() alone was not sufficient because drawData() isn't called on every mouse move.
-		drawKADLeadingLineThreeJSV2(
-			lastKADDrawPoint.x,
-			lastKADDrawPoint.y,
-			leadingLineZ,
-			currentMouseWorldX,
-			currentMouseWorldY,
-			leadingLineZ,
-			leadingLineColor
-		);
+
+		// Step 13f.8a) REMOVED - Leading line is now drawn ONLY in drawData() at line ~28758
+		// This duplicate code was being overwritten by drawData() anyway
+		// The drawData() version uses currentMouseIndicatorX/Y/Z which correctly tracks the cursor
 
 		// Step 13f.8b) Show distance overlay for drawing tools with tool-specific color
 		var drawDx = currentMouseWorldX - lastKADDrawPoint.x;
@@ -3106,12 +3097,34 @@ function handle3DMouseMove(event) {
 		// Step 13f.9.5b) Reuse existing drawKADLeadingLineThreeJSV2 for cheap dashed line
 		var startZ = patternStartPoint.z || dataCentroidZ || 0;
 		var mouseZ = currentMouseWorldZ || startZ;
+		// Step 13f.9.5a) Draw leading line from start point to mouse cursor
 		drawKADLeadingLineThreeJSV2(
-			patternStartPoint.x, patternStartPoint.y, startZ,
-			snappedMouseX, snappedMouseY, mouseZ,
+			patternStartPoint.x, 
+			patternStartPoint.y, 
+			startZ,
+			currentMouseIndicatorX, 
+			currentMouseIndicatorY, 
+			currentMouseIndicatorZ,
 			"rgba(0, 255, 0, 0.5)" // Green to match 2D
 		);
-		// Also redraw markers via the visual function
+		// Also redraw markers (green start, red end) and triangle via the visual function
+		drawPatternInPolygon3DVisual();
+		
+		// Step 13f.9.5c) Show distance overlay at line midpoint
+		var midWorldX = (patternStartPoint.x + currentMouseIndicatorX) / 2;
+		var midWorldY = (patternStartPoint.y + currentMouseIndicatorY) / 2;
+		var midWorldZ = (startZ + currentMouseIndicatorZ) / 2;
+		var screenMid = worldToScreen(midWorldX, midWorldY, midWorldZ);
+		if (screenMid && threeRenderer && threeRenderer.getCanvas()) {
+			var canvasRect = threeRenderer.getCanvas().getBoundingClientRect();
+			var dx = currentMouseIndicatorX - patternStartPoint.x;
+			var dy = currentMouseIndicatorY - patternStartPoint.y;
+			var distance = Math.sqrt(dx * dx + dy * dy);
+			var bearing = ((90 - Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+			showDrawingDistance(distance, bearing, "poly", screenMid.x + canvasRect.left, screenMid.y + canvasRect.top);
+		}
+	} else if (isPatternInPolygonActive) {
+		// Still active but no leading line needed - just update visuals (markers, direction line, arrow)
 		drawPatternInPolygon3DVisual();
 	}
 
@@ -3124,14 +3137,36 @@ function handle3DMouseMove(event) {
 		var snappedMouseX = holesLineSnapResult.worldX;
 		var snappedMouseY = holesLineSnapResult.worldY;
 
-		var startZ = lineStartPoint.z || dataCentroidZ || 0;
-		var mouseZ = currentMouseWorldZ || startZ;
+		// Step 13f.9.6a) Use snapped Z values - check for undefined, not falsy (Z=0 is valid)
+		var startZ = lineStartPoint.z !== undefined ? lineStartPoint.z : (currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : 0);
+		var mouseZ = currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : startZ;
+		
+		// Step 13f.9.6b) Draw leading line from start point to mouse cursor
 		drawKADLeadingLineThreeJSV2(
-			lineStartPoint.x, lineStartPoint.y, startZ,
-			snappedMouseX, snappedMouseY, mouseZ,
+			lineStartPoint.x, 
+			lineStartPoint.y, 
+			startZ,
+			currentMouseIndicatorX, 
+			currentMouseIndicatorY, 
+			mouseZ,
 			"rgba(0, 255, 0, 0.5)"
 		);
 		drawHolesAlongLine3DVisual();
+		
+		// Step 13f.9.6c) Show distance marker at line midpoint
+		var midWorldX = (lineStartPoint.x + currentMouseIndicatorX) / 2;
+		var midWorldY = (lineStartPoint.y + currentMouseIndicatorY) / 2;
+		var midWorldZ = (startZ + mouseZ) / 2;
+		var screenMid = worldToScreen(midWorldX, midWorldY, midWorldZ);
+		if (screenMid && threeRenderer && threeRenderer.getCanvas()) {
+			// FIX: Add canvas offset to convert canvas-relative to viewport-relative coordinates
+			var canvasRect = threeRenderer.getCanvas().getBoundingClientRect();
+			var dx = currentMouseIndicatorX - lineStartPoint.x;
+			var dy = currentMouseIndicatorY - lineStartPoint.y;
+			var distance = Math.sqrt(dx * dx + dy * dy);
+			var bearing = ((90 - Math.atan2(dy, dx) * 180 / Math.PI) + 360) % 360;
+			showDrawingDistance(distance, bearing, "line", screenMid.x + canvasRect.left, screenMid.y + canvasRect.top);
+		}
 	}
 
 	// Step 13f.9.7) Draw Holes Along Polyline leading line if active - REMOVED per user request
@@ -3189,22 +3224,9 @@ function handle3DMouseMove(event) {
 		hideProtractorPanel();
 	}
 
-	// Step 13f.11) Draw Pattern In Polygon leading line and visuals if active
-	if (isPatternInPolygonActive && patternStartPoint && !patternEndPoint) {
-		// Reuse existing drawKADLeadingLineThreeJSV2 for cheap dashed line to mouse
-		var patternStartZ = patternStartPoint.z || dataCentroidZ || 0;
-		var patternMouseZ = currentMouseWorldZ || patternStartZ;
-		drawKADLeadingLineThreeJSV2(
-			patternStartPoint.x, patternStartPoint.y, patternStartZ,
-			currentMouseWorldX, currentMouseWorldY, patternMouseZ,
-			"rgba(0, 255, 0, 0.5)" // Green to match 2D
-		);
-		// Redraw markers and arrow via the visual function
-		drawPatternInPolygon3DVisual();
-	} else if (isPatternInPolygonActive) {
-		// Still active but no leading line needed - just update visuals (markers, direction line, arrow)
-		drawPatternInPolygon3DVisual();
-	}
+	// Step 13f.11) REMOVED - Duplicate Pattern In Polygon code
+	// Pattern In Polygon leading line is now handled ONLY at Step 13f.9.5 above (line ~3100)
+	// This duplicate was causing the leading line to be drawn twice
 
 	// NOTE: Removed direct render() call here - was causing WebGL context crash
 	// The CameraControls animation loop already handles continuous rendering
@@ -25680,24 +25702,31 @@ function completePolygonSelection() {
 
 			let isInsideSelection = false;
 
-			// For all entity types, check if any point is inside the selection polygon
+			// For all entity types, check if any VISIBLE point is inside the selection polygon
 			for (const point of entity.data) {
+				// Step 4a) Skip hidden points - hidden items not selectable from canvas
+				if (point.visible === false) continue;
 				if (isPointInPolygon(point.pointXLocation, point.pointYLocation, polyPointsX, polyPointsY)) {
 					isInsideSelection = true;
 					break;
 				}
 			}
 
-			// Additional check: if any segment intersects the selection polygon boundary
+			// Additional check: if any VISIBLE segment intersects the selection polygon boundary
 			if (!isInsideSelection && entity.data.length >= 2) {
 				let numPoints = entity.data.length;
 				let isClosed = entity.entityType === "poly";
 
 				for (let i = 0; i < (isClosed ? numPoints : numPoints - 1); i++) {
-					const p1x = entity.data[i].pointXLocation;
-					const p1y = entity.data[i].pointYLocation;
-					const p2x = entity.data[(i + 1) % numPoints].pointXLocation;
-					const p2y = entity.data[(i + 1) % numPoints].pointYLocation;
+					const point1 = entity.data[i];
+					const point2 = entity.data[(i + 1) % numPoints];
+					// Step 4b) Skip segments where either endpoint is hidden
+					if (point1.visible === false || point2.visible === false) continue;
+					
+					const p1x = point1.pointXLocation;
+					const p1y = point1.pointYLocation;
+					const p2x = point2.pointXLocation;
+					const p2y = point2.pointYLocation;
 
 					for (let j = 0; j < polyPointsX.length; j++) {
 						const q1x = polyPointsX[j];
@@ -28741,15 +28770,19 @@ function drawData(allBlastHoles, selectedHole) {
 				leadingLineColor = "rgba(0, 255, 0, 0.8)"; // Green
 			}
 
+			// Step 7a.1) Use currentMouseIndicator (from indicatorPos) NOT currentMouseWorld
+			// indicatorPos correctly tracks mouse via view plane and snap targets
+			// currentMouseWorld comes from mouseWorldPos which doesn't handle camera rotation
 			drawKADLeadingLineThreeJSV2(
 				lastKADDrawPoint.x,
 				lastKADDrawPoint.y,
-				leadingLineZ,
-				currentMouseWorldX,
-				currentMouseWorldY,
-				leadingLineZ,
+				lastKADDrawPoint.z,
+				currentMouseIndicatorX,
+				currentMouseIndicatorY,
+				currentMouseIndicatorZ,
 				leadingLineColor
 			);
+
 		} else {
 			clearKADLeadingLineThreeJS();
 		}
@@ -33879,6 +33912,8 @@ function getClickedKADObject(clickX, clickY) {
 			if (entity.entityType === "point" || entity.entityType === "circle" || entity.entityType === "text") {
 				for (let i = 0; i < entity.data.length; i++) {
 					const point = entity.data[i];
+					// Step 1) Skip hidden elements - hidden items should not be selectable from canvas
+					if (point.visible === false) continue;
 					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldX, 2) + Math.pow(point.pointYLocation - worldY, 2));
 					if (developerModeEnabled) {
 						console.log("    📍 Element", i, "distance:", distance.toFixed(2), "| tolerance:", tolerance.toFixed(2));
@@ -33913,6 +33948,9 @@ function getClickedKADObject(clickX, clickY) {
 					const point1 = points[i];
 					const point2 = points[(i + 1) % points.length]; // Wrap for polygons
 
+					// Step 2) Skip segments where either endpoint is hidden - hidden items not selectable from canvas
+					if (point1.visible === false || point2.visible === false) continue;
+
 					// Calculate distance from click to line segment
 					const segmentDistance = pointToLineSegmentDistance(worldX, worldY, point1.pointXLocation, point1.pointYLocation, point2.pointXLocation, point2.pointYLocation);
 
@@ -33939,6 +33977,8 @@ function getClickedKADObject(clickX, clickY) {
 				if (!closestMatch) {
 					for (let i = 0; i < points.length; i++) {
 						const point = points[i];
+						// Step 3) Skip hidden vertices - hidden items not selectable from canvas
+						if (point.visible === false) continue;
 						const distance = Math.sqrt(Math.pow(point.pointXLocation - worldX, 2) + Math.pow(point.pointYLocation - worldY, 2));
 
 						if (distance <= tolerance && distance < minDistance) {
@@ -34042,6 +34082,8 @@ function getClickedKADObject3D(intersects, clickX, clickY) {
 
 		for (let i = 0; i < entity.data.length; i++) {
 			const point = entity.data[i];
+			// Step 13j.1d.1a) Skip hidden elements - hidden items not selectable from canvas
+			if (point.visible === false) continue;
 			const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
 
 			if (distance <= tolerance && distance < minDistance) {
@@ -34078,6 +34120,9 @@ function getClickedKADObject3D(intersects, clickX, clickY) {
 				const point1 = points[i];
 				const point2 = points[(i + 1) % points.length]; // Wrap for polygons
 
+				// Step 13j.1e.1a.1) Skip segments where either endpoint is hidden
+				if (point1.visible === false || point2.visible === false) continue;
+
 				// Calculate distance from click to line segment
 				const segmentDistance = pointToLineSegmentDistance(worldPos.x, worldPos.y, point1.pointXLocation, point1.pointYLocation, point2.pointXLocation, point2.pointYLocation);
 
@@ -34096,6 +34141,8 @@ function getClickedKADObject3D(intersects, clickX, clickY) {
 
 				for (let i = 0; i < points.length; i++) {
 					const point = points[i];
+					// Step 13j.1e.1b.1) Skip hidden vertices
+					if (point.visible === false) continue;
 					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldPos.x, 2) + Math.pow(point.pointYLocation - worldPos.y, 2));
 
 					if (distance <= tolerance && distance < minVertexDistance) {
@@ -38885,6 +38932,13 @@ patternInPolygonTool.addEventListener("change", function () {
 		selectedKADObject = null;
 		selectedKADPolygon = null;
 		window.selectedKADObject = null;
+		
+		// Clear 3D visuals (leading line and markers)
+		clearKADLeadingLineThreeJS();
+		if (window.patternTool3DGroup && threeRenderer && threeRenderer.scene) {
+			threeRenderer.scene.remove(window.patternTool3DGroup);
+			window.patternTool3DGroup = null;
+		}
 
 		canvas.removeEventListener("click", handlePatternInPolygonClick);
 		canvas.removeEventListener("touchstart", handlePatternInPolygonClick);
@@ -39213,6 +39267,14 @@ holesAlongLineTool.addEventListener("change", function () {
 		window.lineStartPoint = lineStartPoint; // Keep window in sync
 		lineEndPoint = null;
 		window.lineEndPoint = lineEndPoint; // Keep window in sync
+		
+		// Clear 3D visuals (leading line and markers)
+		clearKADLeadingLineThreeJS();
+		if (window.holesAlongLine3DGroup && threeRenderer && threeRenderer.scene) {
+			threeRenderer.scene.remove(window.holesAlongLine3DGroup);
+			window.holesAlongLine3DGroup = null;
+		}
+		hideDrawingDistance();
 
 		canvas.removeEventListener("click", handleHolesAlongLineClick);
 		canvas.removeEventListener("touchstart", handleHolesAlongLineClick);
@@ -39252,6 +39314,8 @@ function handleHolesAlongLineClick(event) {
 	const snapResult = canvasToWorldWithSnap(clickX, clickY);
 	worldX = snapResult.worldX;
 	worldY = snapResult.worldY;
+	// Step #) Capture Z from snap result (uses snapped object's Z or drawing elevation)
+	var worldZ = snapResult.worldZ !== undefined ? snapResult.worldZ : (drawingZValue || 0);
 
 	// Show snap feedback if snapped
 	if (snapResult.snapped) {
@@ -39264,6 +39328,7 @@ function handleHolesAlongLineClick(event) {
 			lineStartPoint = {
 				x: worldX,
 				y: worldY,
+				z: worldZ
 			};
 			window.lineStartPoint = lineStartPoint; // Keep window in sync
 			holesLineStep = 1;
@@ -39275,6 +39340,7 @@ function handleHolesAlongLineClick(event) {
 			lineEndPoint = {
 				x: worldX,
 				y: worldY,
+				z: worldZ
 			};
 			window.lineEndPoint = lineEndPoint; // Keep window in sync
 			window.showHolesAlongLinePopup();
@@ -40462,7 +40528,9 @@ function drawPatternInPolygonVisual() {
 }
 
 // 3D Visual feedback for Pattern in Polygon tool
-// NOTE: The polygon itself is drawn by the main KAD drawing loop - we only draw markers and arrow here
+// NOTE: The polygon itself is drawn by the main KAD drawing loop
+// NOTE: The leading line is drawn by drawKADLeadingLineThreeJSV2 in handle3DMouseMove
+// This function ONLY draws: point markers (green start, red end, magenta ref) and triangle arrow
 function drawPatternInPolygon3DVisual() {
 	// Step 0) Guard checks - clean up if tool inactive
 	if (!isPatternInPolygonActive || !threeInitialized || !threeRenderer) {
@@ -40470,8 +40538,6 @@ function drawPatternInPolygon3DVisual() {
 			threeRenderer.scene.remove(window.patternTool3DGroup);
 			window.patternTool3DGroup = null;
 		}
-		// Step 0.1) Hide HUD labels and clear leading line when tool is inactive
-		hidePatternToolLabels();
 		clearKADLeadingLineThreeJS();
 		return;
 	}
@@ -40486,155 +40552,87 @@ function drawPatternInPolygon3DVisual() {
 	window.patternTool3DGroup = new THREE.Group();
 	window.patternTool3DGroup.name = "patternTool3DVisuals";
 
-	// Step 0c) Get Z elevation from polygon's actual point data (Phase 4 fix)
-	var drawZ = dataCentroidZ || 0;
-	if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-		var firstPt = selectedPolygon.data[0];
-		drawZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
-	}
-	drawZ += 0.5; // Slight offset above polygon
+	// Step 0c) Calculate Z values - MUST MATCH drawKADLeadingLineThreeJSV2 exactly
+	// Leading line uses: startZ = patternStartPoint.z || dataCentroidZ || 0
+	// Leading line uses: endZ = currentMouseIndicatorZ
+	var lineStartZ = patternStartPoint ? (patternStartPoint.z || dataCentroidZ || 0) : (dataCentroidZ || 0);
 
-	// NOTE: Polygon highlight is now handled by highlightSelectedKADThreeJS() via window.selectedKADObject
-	// We only draw markers, direction line, and arrow here
-
-	// Step 1) Draw start point as billboard point (bright green)
+	// Step 1) Draw start point marker (bright green) - at SAME position as leading line start
 	if (patternStartPoint) {
 		var startLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
-		// Use polygon's Z if available, otherwise use drawZ
-		var startZ = drawZ;
-		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-			var firstPt = selectedPolygon.data[0];
-			startZ = (firstPt.pointZLocation || firstPt.z || drawZ) + 0.2;
-		} else {
-			startZ = drawZ + 0.2;
-		}
-		var startPoint = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, startZ, 0.8, "rgba(0, 255, 0, 1.0)");
-		window.patternTool3DGroup.add(startPoint);
+		var startMarker = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, lineStartZ, 0.8, "rgba(0, 255, 0, 1.0)");
+		if (startMarker) window.patternTool3DGroup.add(startMarker);
+		console.log("🟢 PatternInPoly START marker at local:", startLocal.x.toFixed(2), startLocal.y.toFixed(2), "Z:", lineStartZ.toFixed(2));
 	}
 
-	// Step 2) Draw end point as billboard point (bright red)
+	// Step 2) Draw end point marker (bright red) - at SAME position as leading line end
 	if (patternEndPoint) {
 		var endLocal = worldToThreeLocal(patternEndPoint.x, patternEndPoint.y);
-		// Use polygon's Z if available, otherwise use drawZ
-		var endZ = drawZ;
-		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-			var firstPt = selectedPolygon.data[0];
-			endZ = (firstPt.pointZLocation || firstPt.z || drawZ) + 0.2;
-		} else {
-			endZ = drawZ + 0.2;
-		}
-		var endPoint = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 1.0)");
-		window.patternTool3DGroup.add(endPoint);
+		var endZ = patternEndPoint.z || dataCentroidZ || 0;
+		var endMarker = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 1.0)");
+		if (endMarker) window.patternTool3DGroup.add(endMarker);
+		console.log("🔴 PatternInPoly END marker at local:", endLocal.x.toFixed(2), endLocal.y.toFixed(2), "Z:", endZ.toFixed(2));
+	} else if (patternStartPoint && currentMouseIndicatorX !== undefined && currentMouseIndicatorY !== undefined) {
+		// Preview mode - use currentMouseIndicator (same as leading line end)
+		var previewEndLocal = worldToThreeLocal(currentMouseIndicatorX, currentMouseIndicatorY);
+		var previewEndZ = currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : lineStartZ;
+		var previewMarker = GeometryFactory.createKADPointHighlight(previewEndLocal.x, previewEndLocal.y, previewEndZ, 0.6, "rgba(255, 0, 0, 0.5)");
+		if (previewMarker) window.patternTool3DGroup.add(previewMarker);
+		console.log("🔴 PatternInPoly PREVIEW END marker at local:", previewEndLocal.x.toFixed(2), previewEndLocal.y.toFixed(2), "Z:", previewEndZ.toFixed(2));
 	}
 
-	// Step 3) Draw reference point as billboard point (magenta)
+	// Step 3) Draw reference point marker (magenta/pink)
 	if (patternReferencePoint) {
 		var refLocal = worldToThreeLocal(patternReferencePoint.x, patternReferencePoint.y);
-		// Use polygon's Z if available, otherwise use drawZ
-		var refZ = drawZ;
-		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-			var firstPt = selectedPolygon.data[0];
-			refZ = (firstPt.pointZLocation || firstPt.z || drawZ) + 0.2;
-		} else {
-			refZ = drawZ + 0.2;
-		}
-		var refPoint = GeometryFactory.createKADPointHighlight(refLocal.x, refLocal.y, refZ, 0.8, "rgba(255, 0, 255, 1.0)");
-		window.patternTool3DGroup.add(refPoint);
+		var refZ = patternReferencePoint.z || dataCentroidZ || 0;
+		var refMarker = GeometryFactory.createKADPointHighlight(refLocal.x, refLocal.y, refZ, 0.8, "rgba(255, 0, 255, 1.0)");
+		if (refMarker) window.patternTool3DGroup.add(refMarker);
 	}
 
-	// Step 4) Draw direction line from start to end (or start to mouse) with perpendicular arrow
+	// Step 4) Calculate line direction for triangle arrow positioning
 	var sLocal = null;
 	var eLocal = null;
 	var dx = 0;
 	var dy = 0;
 	var lineLength = 0;
+	var lineEndZ = lineStartZ;
 
 	if (patternStartPoint && patternEndPoint) {
-		// Full line from start to end
 		sLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
 		eLocal = worldToThreeLocal(patternEndPoint.x, patternEndPoint.y);
 		dx = patternEndPoint.x - patternStartPoint.x;
 		dy = patternEndPoint.y - patternStartPoint.y;
 		lineLength = Math.sqrt(dx * dx + dy * dy);
-
-		// Step 4a) Draw dashed line using cheap THREE.LineDashedMaterial (like drawKADLeadingLineThreeJSV2)
-		// Use polygon's Z for line elevation
-		var lineZ = drawZ;
-		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-			var firstPt = selectedPolygon.data[0];
-			lineZ = (firstPt.pointZLocation || firstPt.z || drawZ) + 0.1;
-		} else {
-			lineZ = drawZ + 0.1;
-		}
-		var linePoints = [
-			new THREE.Vector3(sLocal.x, sLocal.y, lineZ),
-			new THREE.Vector3(eLocal.x, eLocal.y, lineZ)
-		];
-		var lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-		var lineMat = new THREE.LineDashedMaterial({
-			color: 0x00ff00, // Green
-			dashSize: 1.0,
-			gapSize: 0.5,
-			transparent: true,
-			opacity: 0.7
-		});
-		var dirLine = new THREE.Line(lineGeom, lineMat);
-		dirLine.computeLineDistances(); // Required for dashed lines
-		window.patternTool3DGroup.add(dirLine);
-	} else if (patternStartPoint && !patternEndPoint && currentMouseWorldX && currentMouseWorldY) {
-		// Preview line to mouse cursor - handled by drawKADLeadingLineThreeJSV2 in handle3DMouseMove
-		// Just calculate values for arrow positioning
+		lineEndZ = patternEndPoint.z || dataCentroidZ || 0;
+	} else if (patternStartPoint && !patternEndPoint && currentMouseIndicatorX !== undefined && currentMouseIndicatorY !== undefined) {
 		sLocal = worldToThreeLocal(patternStartPoint.x, patternStartPoint.y);
-		eLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
-		dx = currentMouseWorldX - patternStartPoint.x;
-		dy = currentMouseWorldY - patternStartPoint.y;
+		eLocal = worldToThreeLocal(currentMouseIndicatorX, currentMouseIndicatorY);
+		dx = currentMouseIndicatorX - patternStartPoint.x;
+		dy = currentMouseIndicatorY - patternStartPoint.y;
 		lineLength = Math.sqrt(dx * dx + dy * dy);
+		lineEndZ = currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : lineStartZ;
 	}
 
-	// Step 5) Draw square pyramid arrow at exact midpoint of leading line
-	// PatternInPolygon: Points toward END (increasing hole numbers), base parallel to line,
-	// apex perpendicular to line, lies on side in XY plane
+	// Step 5) Draw triangle arrow at midpoint
 	if (sLocal && eLocal && lineLength > 1) {
-		// Step 5a) Calculate line direction vector
 		var dirX = dx / lineLength;
 		var dirY = dy / lineLength;
-		var dirZ = 0; // Line is in XY plane
-
-		// Step 5b) Calculate exact midpoint of line using Vector3.lerp
-		var startVec = new THREE.Vector3(sLocal.x, sLocal.y, drawZ);
-		var endVec = new THREE.Vector3(eLocal.x, eLocal.y, drawZ);
+		var startVec = new THREE.Vector3(sLocal.x, sLocal.y, lineStartZ);
+		var endVec = new THREE.Vector3(eLocal.x, eLocal.y, lineEndZ);
 		var midPoint = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5);
 
-		// Step 5c) Get polygon's Z elevation for correct positioning
-		if (selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-			var firstPt = selectedPolygon.data[0];
-			var polygonZ = (firstPt.pointZLocation || firstPt.z || drawZ);
-			midPoint.z = polygonZ; // Position at polygon's Z elevation
-		}
+		var perpX = dirY;
+		var perpY = -dirX;
+		var perpAngle = Math.atan2(perpY, perpX);
 
-		// Step 5d) Create flat triangle extruded 200mm (0.2 units) instead of pyramid
-		// Triangle points perpendicular to direction line (burden direction)
-		// Calculate perpendicular direction (90° clockwise from line direction)
-		var perpX = dirY; // Perpendicular X (90° counter-clockwise)
-		var perpY = -dirX;  // Perpendicular Y (90° counter-clockwise)
-		var perpAngle = Math.atan2(perpY, perpX); // Angle of perpendicular direction
-
-		// Create triangle shape: equilateral triangle, 2 units wide, pointing in perpendicular direction
-		var triangleSize = 3.0; // Size of triangle base
+		var triangleSize = 3.0;
 		var triangleShape = new THREE.Shape();
-		// Triangle vertices: point at top (0, triangleSize), base corners at (-triangleSize/2, 0) and (triangleSize/2, 0)
 		triangleShape.moveTo(0, triangleSize);
 		triangleShape.lineTo(-triangleSize / 2, 0);
 		triangleShape.lineTo(triangleSize / 2, 0);
-		triangleShape.lineTo(0, triangleSize); // Close triangle
+		triangleShape.lineTo(0, triangleSize);
 
-		// Extrude settings: depth 0.2 (200mm), no bevel
-		var extrudeSettings = {
-			depth: 0.2, // 200mm extrusion
-			bevelEnabled: false
-		};
-
-		// Create extruded triangle geometry
+		var extrudeSettings = { depth: 0.2, bevelEnabled: false };
 		var triangleGeom = new THREE.ExtrudeGeometry(triangleShape, extrudeSettings);
 		var triangleMat = new THREE.MeshBasicMaterial({
 			color: 0x00ff00,
@@ -40643,102 +40641,27 @@ function drawPatternInPolygon3DVisual() {
 			side: THREE.DoubleSide
 		});
 		var triangle = new THREE.Mesh(triangleGeom, triangleMat);
-
-		// Step 5e) Position triangle at exact midpoint
 		triangle.position.copy(midPoint);
-
-		// Step 5f) Orient triangle: lay flat on XY plane, point in perpendicular direction
-		// IMPORTANT: PatternInPolygon triangle should be rotated 90° clockwise around Z axis
-		// Triangle is created in XY plane (pointing up in +Y), rotate to point perpendicular to line
-		triangle.rotation.z = perpAngle + Math.PI / 2; // Rotate 90° clockwise around Z to point perpendicular to line
-		// Triangle is already flat on XY plane (no X rotation needed)
-
+		triangle.rotation.z = perpAngle + Math.PI / 2;
 		window.patternTool3DGroup.add(triangle);
 
-		// Step 5g) Add wireframe edge for visibility
 		var edgeGeom = new THREE.EdgesGeometry(triangleGeom);
 		var edgeMat = new THREE.LineBasicMaterial({ color: 0x008800 });
 		var edges = new THREE.LineSegments(edgeGeom, edgeMat);
 		edges.position.copy(triangle.position);
 		edges.rotation.copy(triangle.rotation);
 		window.patternTool3DGroup.add(edges);
+		console.log("🔺 PatternInPoly TRIANGLE at midpoint:", midPoint.x.toFixed(2), midPoint.y.toFixed(2), midPoint.z.toFixed(2));
 	}
 
 	// Step 6) Add group to scene
 	threeRenderer.scene.add(window.patternTool3DGroup);
-
-	// Step 8) Build overlay data for HUD labels (consistent with 2D)
-	var overlayData = { toolType: "polygon" };
-
-	// Step 8a) Add start point label
-	if (patternStartPoint) {
-		// FIX: Use actual Z from patternStartPoint or polygon
-		var startZ = patternStartPoint.z;
-		if (startZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-			var firstPt = selectedPolygon.data[0];
-			startZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
-		}
-		var screenStart = worldToScreen(patternStartPoint.x, patternStartPoint.y, startZ || dataCentroidZ || 0);
-		if (screenStart) {
-			overlayData.startPoint = patternStartPoint;
-			overlayData.startCanvasX = screenStart.x;
-			overlayData.startCanvasY = screenStart.y;
-		}
-	}
-
-	// Step 8b) Add end point label
-	if (patternEndPoint) {
-		// FIX: Use actual Z from patternEndPoint or polygon
-		var endZ = patternEndPoint.z;
-		if (endZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-			var firstPt = selectedPolygon.data[0];
-			endZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
-		}
-		var screenEnd = worldToScreen(patternEndPoint.x, patternEndPoint.y, endZ || dataCentroidZ || 0);
-		if (screenEnd) {
-			overlayData.endPoint = patternEndPoint;
-			overlayData.endCanvasX = screenEnd.x;
-			overlayData.endCanvasY = screenEnd.y;
-		}
-	}
-
-	// Step 8c) Add reference point label
-	if (patternReferencePoint) {
-		// FIX: Use actual Z from patternReferencePoint or polygon
-		var refZ = patternReferencePoint.z;
-		if (refZ === undefined && selectedPolygon && selectedPolygon.data && selectedPolygon.data.length > 0) {
-			var firstPt = selectedPolygon.data[0];
-			refZ = firstPt.pointZLocation || firstPt.z || dataCentroidZ || 0;
-		}
-		var screenRef = worldToScreen(patternReferencePoint.x, patternReferencePoint.y, refZ || dataCentroidZ || 0);
-		if (screenRef) {
-			overlayData.refPoint = patternReferencePoint;
-			overlayData.refCanvasX = screenRef.x;
-			overlayData.refCanvasY = screenRef.y;
-		}
-	}
-
-	// Step 8d) Add distance label
-	if (patternStartPoint && patternEndPoint) {
-		var dx = patternEndPoint.x - patternStartPoint.x;
-		var dy = patternEndPoint.y - patternStartPoint.y;
-		var distance = Math.sqrt(dx * dx + dy * dy);
-		var midWorldX = (patternStartPoint.x + patternEndPoint.x) / 2;
-		var midWorldY = (patternStartPoint.y + patternEndPoint.y) / 2;
-		var screenMid = worldToScreen(midWorldX, midWorldY, dataCentroidZ || 0);
-		if (screenMid) {
-			overlayData.distance = distance;
-			overlayData.midCanvasX = screenMid.x;
-			overlayData.midCanvasY = screenMid.y;
-		}
-	}
-
-	// Step 8e) Show HUD overlay labels
-	showPatternToolLabels(overlayData);
+	console.log("✅ PatternInPoly 3D group added to scene, children:", window.patternTool3DGroup.children.length);
 }
 
 // 3D Visual feedback for Holes Along Line tool
-// Uses fat lines and billboard points to match 2D aesthetic and multiple KAD selection style
+// NOTE: The leading line is drawn by drawKADLeadingLineThreeJSV2 in handle3DMouseMove
+// This function ONLY draws: point markers (green start, red end) and triangle arrow pointing toward END
 function drawHolesAlongLine3DVisual() {
 	// Step 0) Guard checks - clean up if tool inactive
 	if (!isHolesAlongLineActive || !threeInitialized || !threeRenderer) {
@@ -40746,8 +40669,7 @@ function drawHolesAlongLine3DVisual() {
 			threeRenderer.scene.remove(window.holesAlongLine3DGroup);
 			window.holesAlongLine3DGroup = null;
 		}
-		// Step 0.1) Hide HUD labels when tool is inactive
-		hidePatternToolLabels();
+		clearKADLeadingLineThreeJS();
 		return;
 	}
 
@@ -40761,91 +40683,66 @@ function drawHolesAlongLine3DVisual() {
 	window.holesAlongLine3DGroup = new THREE.Group();
 	window.holesAlongLine3DGroup.name = "holesAlongLine3DVisuals";
 
-	// Step 0c) Get Z elevation for 3D drawing (slightly above surface)
-	var drawZ = (dataCentroidZ || 0) + 0.5;
+	// Step 0c) Calculate Z values - use snapped/clicked Z, NOT dataCentroidZ
+	// NOTE: Check for undefined specifically because Z=0 is valid
+	var lineStartZ = (lineStartPoint && lineStartPoint.z !== undefined) ? lineStartPoint.z : (currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : 0);
 
-	// Step 0d) Get resolution for fat lines
-	var resolution = new THREE.Vector2(window.innerWidth, window.innerHeight);
-
-	// Step 1) Draw start point as billboard point (bright green)
+	// Step 1) Draw start point marker (bright green) - at SAME position as leading line start
 	if (lineStartPoint) {
 		var startLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
-		// FIX: Use actual Z from lineStartPoint
-		var startZ = (lineStartPoint.z || drawZ) + 0.2;
-		var startPoint = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, startZ, 0.8, "rgba(0, 255, 0, 0.8)");
-		window.holesAlongLine3DGroup.add(startPoint);
+		var startMarker = GeometryFactory.createKADPointHighlight(startLocal.x, startLocal.y, lineStartZ, 0.8, "rgba(0, 255, 0, 1.0)");
+		if (startMarker) window.holesAlongLine3DGroup.add(startMarker);
 	}
 
-	// Step 2) Draw end point as billboard point (bright red)
+	// Step 2) Draw end point marker (bright red) - at SAME position as leading line end
 	if (lineEndPoint) {
 		var endLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
-		// FIX: Use actual Z from lineEndPoint
-		var endZ = (lineEndPoint.z || drawZ) + 0.2;
-		var endPoint = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 0.8)");
-		window.holesAlongLine3DGroup.add(endPoint);
+		var endZ = lineEndPoint.z !== undefined ? lineEndPoint.z : lineStartZ;
+		var endMarker = GeometryFactory.createKADPointHighlight(endLocal.x, endLocal.y, endZ, 0.8, "rgba(255, 0, 0, 1.0)");
+		if (endMarker) window.holesAlongLine3DGroup.add(endMarker);
+	} else if (lineStartPoint && currentMouseIndicatorX !== undefined && currentMouseIndicatorY !== undefined) {
+		// Preview mode - use currentMouseIndicatorZ (same as leading line end)
+		var previewEndLocal = worldToThreeLocal(currentMouseIndicatorX, currentMouseIndicatorY);
+		var previewEndZ = currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : lineStartZ;
+		var previewMarker = GeometryFactory.createKADPointHighlight(previewEndLocal.x, previewEndLocal.y, previewEndZ, 0.6, "rgba(255, 0, 0, 0.5)");
+		if (previewMarker) window.holesAlongLine3DGroup.add(previewMarker);
 	}
 
-	// Step 3) Draw direction line and arrow - works for both completed line and preview
+	// Step 3) Calculate line direction for triangle arrow positioning
 	var sLocal = null;
 	var eLocal = null;
 	var dx = 0;
 	var dy = 0;
 	var lineLength = 0;
+	var lineEndZ = lineStartZ;
 
 	if (lineStartPoint && lineEndPoint) {
-		// Full line from start to end
 		sLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
 		eLocal = worldToThreeLocal(lineEndPoint.x, lineEndPoint.y);
 		dx = lineEndPoint.x - lineStartPoint.x;
 		dy = lineEndPoint.y - lineStartPoint.y;
 		lineLength = Math.sqrt(dx * dx + dy * dy);
-
-		// Step 3a) Draw dashed line using cheap THREE.LineDashedMaterial
-		var lineZ = drawZ;
-		if (lineStartPoint.z !== undefined) {
-			lineZ = lineStartPoint.z + 0.1;
-		} else if (lineEndPoint.z !== undefined) {
-			lineZ = lineEndPoint.z + 0.1;
-		}
-		var linePoints = [
-			new THREE.Vector3(sLocal.x, sLocal.y, lineZ),
-			new THREE.Vector3(eLocal.x, eLocal.y, lineZ)
-		];
-		var lineGeom = new THREE.BufferGeometry().setFromPoints(linePoints);
-		var lineMat = new THREE.LineDashedMaterial({
-			color: 0x00ff00, // Green
-			dashSize: 1.0,
-			gapSize: 0.5,
-			transparent: true,
-			opacity: 0.7
-		});
-		var dirLine = new THREE.Line(lineGeom, lineMat);
-		dirLine.computeLineDistances(); // Required for dashed lines
-		window.holesAlongLine3DGroup.add(dirLine);
-	} else if (lineStartPoint && !lineEndPoint && currentMouseWorldX && currentMouseWorldY) {
-		// Preview line to mouse cursor - calculate values for arrow and label
+		lineEndZ = lineEndPoint.z !== undefined ? lineEndPoint.z : lineStartZ;
+	} else if (lineStartPoint && !lineEndPoint && currentMouseIndicatorX !== undefined && currentMouseIndicatorY !== undefined) {
 		sLocal = worldToThreeLocal(lineStartPoint.x, lineStartPoint.y);
-		eLocal = worldToThreeLocal(currentMouseWorldX, currentMouseWorldY);
-		dx = currentMouseWorldX - lineStartPoint.x;
-		dy = currentMouseWorldY - lineStartPoint.y;
+		eLocal = worldToThreeLocal(currentMouseIndicatorX, currentMouseIndicatorY);
+		dx = currentMouseIndicatorX - lineStartPoint.x;
+		dy = currentMouseIndicatorY - lineStartPoint.y;
 		lineLength = Math.sqrt(dx * dx + dy * dy);
+		lineEndZ = currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : lineStartZ;
 	}
 
-	// Step 3b) Draw triangle arrow at midpoint (works for both completed and preview)
+	// Step 4) Draw triangle arrow at midpoint - points TOWARD END (along line direction)
 	if (sLocal && eLocal && lineLength > 1) {
 		var dirX = dx / lineLength;
 		var dirY = dy / lineLength;
-
-		// Step 3c) Calculate midpoint
-		var lineZ = drawZ;
-		if (lineStartPoint.z !== undefined) {
-			lineZ = lineStartPoint.z + 0.1;
-		}
-		var startVec = new THREE.Vector3(sLocal.x, sLocal.y, lineZ);
-		var endVec = new THREE.Vector3(eLocal.x, eLocal.y, lineZ);
+		var startVec = new THREE.Vector3(sLocal.x, sLocal.y, lineStartZ);
+		var endVec = new THREE.Vector3(eLocal.x, eLocal.y, lineEndZ);
 		var midPoint = new THREE.Vector3().lerpVectors(startVec, endVec, 0.5);
 
-		// Step 3d) Create flat triangle extruded 200mm (0.2 units) pointing along line direction
+		// Triangle points toward END (along line direction, NOT perpendicular)
+		var lineAngle = Math.atan2(dirY, dirX);
+
 		var triangleSize = 2.0;
 		var triangleShape = new THREE.Shape();
 		triangleShape.moveTo(0, triangleSize);
@@ -40853,11 +40750,7 @@ function drawHolesAlongLine3DVisual() {
 		triangleShape.lineTo(triangleSize / 2, 0);
 		triangleShape.lineTo(0, triangleSize);
 
-		var extrudeSettings = {
-			depth: 0.2,
-			bevelEnabled: false
-		};
-
+		var extrudeSettings = { depth: 0.2, bevelEnabled: false };
 		var triangleGeom = new THREE.ExtrudeGeometry(triangleShape, extrudeSettings);
 		var triangleMat = new THREE.MeshBasicMaterial({
 			color: 0x00ff00,
@@ -40866,17 +40759,11 @@ function drawHolesAlongLine3DVisual() {
 			side: THREE.DoubleSide
 		});
 		var triangle = new THREE.Mesh(triangleGeom, triangleMat);
-
-		// Step 3e) Position triangle at exact midpoint
 		triangle.position.copy(midPoint);
-
-		// Step 3f) Orient triangle to point toward end
-		var lineAngle = Math.atan2(dirY, dirX);
-		triangle.rotation.z = lineAngle + Math.PI / 2 + Math.PI;
-
+		// Rotate to point along line direction toward END
+		triangle.rotation.z = lineAngle - Math.PI / 2;
 		window.holesAlongLine3DGroup.add(triangle);
 
-		// Step 3g) Add wireframe edge for visibility
 		var edgeGeom = new THREE.EdgesGeometry(triangleGeom);
 		var edgeMat = new THREE.LineBasicMaterial({ color: 0x008800 });
 		var edges = new THREE.LineSegments(edgeGeom, edgeMat);
@@ -40885,59 +40772,8 @@ function drawHolesAlongLine3DVisual() {
 		window.holesAlongLine3DGroup.add(edges);
 	}
 
-	// Step 4) Leading line from start to mouse is handled in handle3DMouseMove() (same as PatternInPolygon)
-	// This ensures live updates as mouse moves
-
 	// Step 5) Add group to scene
 	threeRenderer.scene.add(window.holesAlongLine3DGroup);
-
-	// Step 6) Build overlay data for HUD labels (consistent with 2D)
-	var overlayData = { toolType: "line" };
-
-	// Step 6a) Add start point label
-	if (lineStartPoint) {
-		var screenStart = worldToScreen(lineStartPoint.x, lineStartPoint.y, dataCentroidZ || 0);
-		if (screenStart) {
-			overlayData.startPoint = lineStartPoint;
-			overlayData.startCanvasX = screenStart.x;
-			overlayData.startCanvasY = screenStart.y;
-		}
-	}
-
-	// Step 6b) Add end point label
-	if (lineEndPoint) {
-		var screenEnd = worldToScreen(lineEndPoint.x, lineEndPoint.y, dataCentroidZ || 0);
-		if (screenEnd) {
-			overlayData.endPoint = lineEndPoint;
-			overlayData.endCanvasX = screenEnd.x;
-			overlayData.endCanvasY = screenEnd.y;
-		}
-	}
-
-	// Step 6c) Add distance label (works for both completed line and preview)
-	if (lineStartPoint && (lineEndPoint || (currentMouseWorldX && currentMouseWorldY))) {
-		// Use end point if it exists, otherwise use mouse position for preview
-		var endX = lineEndPoint ? lineEndPoint.x : currentMouseWorldX;
-		var endY = lineEndPoint ? lineEndPoint.y : currentMouseWorldY;
-
-		var dx = endX - lineStartPoint.x;
-		var dy = endY - lineStartPoint.y;
-		var distance = Math.sqrt(dx * dx + dy * dy);
-		// Calculate bearing: North = 0°, East = 90° (clockwise)
-		var bearing = (90 - (Math.atan2(dy, dx) * 180) / Math.PI + 360) % 360;
-		var midWorldX = (lineStartPoint.x + endX) / 2;
-		var midWorldY = (lineStartPoint.y + endY) / 2;
-		var screenMid = worldToScreen(midWorldX, midWorldY, dataCentroidZ || 0);
-		if (screenMid) {
-			overlayData.distance = distance;
-			overlayData.bearing = bearing;
-			overlayData.midCanvasX = screenMid.x;
-			overlayData.midCanvasY = screenMid.y;
-		}
-	}
-
-	// Step 6d) Show HUD overlay labels
-	showPatternToolLabels(overlayData);
 }
 
 // Add this function to draw poly line selection visuals
@@ -44941,6 +44777,8 @@ function snapToNearestPointExcludingHoles(rawWorldX, rawWorldY, searchRadius = g
 
 			// Check vertices
 			entity.data.forEach(function (dataPoint) {
+				// Step 1a) Skip hidden elements - hidden items not snappable from canvas
+				if (dataPoint.visible === false) return;
 				const dist = Math.sqrt(Math.pow(dataPoint.pointXLocation - rawWorldX, 2) + Math.pow(dataPoint.pointYLocation - rawWorldY, 2));
 				if (dist <= searchRadius) {
 					// Determine type based on entity type
@@ -44987,6 +44825,9 @@ function snapToNearestPointExcludingHoles(rawWorldX, rawWorldY, searchRadius = g
 					for (let i = 0; i < numSegments; i++) {
 						const p1 = points[i];
 						const p2 = points[(i + 1) % points.length]; // Wrap for polygons
+
+						// Step 1b) Skip segments where either endpoint is hidden
+						if (p1.visible === false || p2.visible === false) continue;
 
 						// Calculate distance from point to line segment
 						const segmentDistance = pointToLineSegmentDistance(rawWorldX, rawWorldY, p1.pointXLocation, p1.pointYLocation, p2.pointXLocation, p2.pointYLocation);
@@ -45191,6 +45032,8 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 
 			// Check vertices
 			entity.data.forEach(function (dataPoint) {
+				// Step 3b.1) Skip hidden elements - hidden items not snappable from canvas
+				if (dataPoint.visible === false) return;
 				// Convert world coords to local for ray comparison
 				const pointLocal = worldToLocal(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || 0);
 				const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
@@ -45238,6 +45081,9 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 					for (let i = 0; i < numSegments; i++) {
 						const p1 = points[i];
 						const p2 = points[(i + 1) % points.length];
+
+						// Step 3b.2) Skip segments where either endpoint is hidden
+						if (p1.visible === false || p2.visible === false) continue;
 
 						// SCREEN-SPACE SNAP: Project segment to screen and measure pixel distance
 						const screen1 = worldToScreen(p1.pointXLocation, p1.pointYLocation, p1.pointZLocation || window.dataCentroidZ || 0);
@@ -46171,6 +46017,9 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 			for (var dataPoint of entity.data) {
 				if (pointCount >= MAX_SNAP_POINTS_PER_ENTITY) break;
 
+				// Step 4a) Skip hidden elements - hidden items not snappable from canvas
+				if (dataPoint.visible === false) continue;
+
 				// Use SCREEN-SPACE distance for vertices (same as segments)
 				const screenPos = worldToScreen(dataPoint.pointXLocation, dataPoint.pointYLocation, dataPoint.pointZLocation || window.dataCentroidZ || 0);
 				if (!screenPos) continue; // Skip if worldToScreen fails
@@ -46237,6 +46086,9 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 					for (let i = 0; i < numSegments; i++) {
 						const p1 = points[i];
 						const p2 = points[(i + 1) % points.length];
+
+						// Step 4b) Skip segments where either endpoint is hidden
+						if (p1.visible === false || p2.visible === false) continue;
 
 						// SCREEN-SPACE SNAP: Project segment to screen and measure pixel distance
 						// This matches the selection behavior and avoids coordinate system issues
@@ -46533,6 +46385,8 @@ function snapToNearestPoint(rawWorldX, rawWorldY, searchRadius = getSnapToleranc
 
 			// First, check vertices (existing behavior)
 			entity.data.forEach((dataPoint) => {
+				// Step 2a) Skip hidden elements - hidden items not snappable from canvas
+				if (dataPoint.visible === false) return;
 				const dist = Math.sqrt(Math.pow(dataPoint.pointXLocation - rawWorldX, 2) + Math.pow(dataPoint.pointYLocation - rawWorldY, 2));
 				if (dist <= searchRadius) {
 					// Determine type based on entity type
@@ -46576,6 +46430,9 @@ function snapToNearestPoint(rawWorldX, rawWorldY, searchRadius = getSnapToleranc
 					for (let i = 0; i < numSegments; i++) {
 						const p1 = points[i];
 						const p2 = points[(i + 1) % points.length]; // Wrap for polygons
+
+						// Step 2b) Skip segments where either endpoint is hidden
+						if (p1.visible === false || p2.visible === false) continue;
 
 						// Calculate distance from point to line segment
 						const segmentDistance = pointToLineSegmentDistance(rawWorldX, rawWorldY, p1.pointXLocation, p1.pointYLocation, p2.pointXLocation, p2.pointYLocation);
@@ -47881,6 +47738,8 @@ function deleteLayer(layerType, layerId, deleteEntities) {
 
 	debouncedSaveLayers();
 	debouncedUpdateTreeView();
+	// Step #) Trigger 3D rebuild when layer is deleted
+	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 
 	return { success: true };
