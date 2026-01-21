@@ -18,6 +18,10 @@ import CustomBlastHoleTextWriter from "./TextIO/CustomBlastHoleTextWriter.js";
 import KADParser from "./KirraIO/KADParser.js";
 import KADWriter from "./KirraIO/KADWriter.js";
 
+// ShotPlus Format
+import SPFParser from "./OricaIO/SPFParser.js";
+//import SPFWriter from "./OricaIO/SPFWriter.js"; //not implemented yet
+
 // AutoCAD DXF (ASCII and Binary)
 import DXFParser from "./AutoCadIO/DXFParser.js";
 import BinaryDXFParser from "./AutoCadIO/BinaryDXFParser.js";
@@ -50,8 +54,6 @@ import SurpacSTRParser from "./SurpacIO/SurpacSTRParser.js";
 import SurpacSTRWriter from "./SurpacIO/SurpacSTRWriter.js";
 import SurpacDTMParser from "./SurpacIO/SurpacDTMParser.js";
 import SurpacDTMWriter from "./SurpacIO/SurpacDTMWriter.js";
-import SurpacBinarySTRParser from "./SurpacIO/SurpacBinarySTRParser.js";
-import SurpacBinaryDTMParser from "./SurpacIO/SurpacBinaryDTMParser.js";
 import SurpacSurfaceParser from "./SurpacIO/SurpacSurfaceParser.js";
 
 // Epiroc Formats
@@ -206,6 +208,17 @@ export function initializeFileManager() {
 		extensions: ["dxf"],
 		description: "DXF Binary with Vulcan XData tags",
 		category: "cad"
+	});
+
+	// =========================================================================
+	// ORICA SHOTPLUS FORMAT
+	// =========================================================================
+
+	// Step 10f) Register Orica ShotPlus SPF parser
+	fileManager.registerParser("orica-spf", SPFParser, {
+		extensions: ["spf"],
+		description: "Orica ShotPlus SPF file (ZIP archive with XML blast data)",
+		category: "blasting"
 	});
 
 	// =========================================================================

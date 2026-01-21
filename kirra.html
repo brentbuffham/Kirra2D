@@ -1724,7 +1724,7 @@
 						<hr>
 
 						<!-- DXF/DWG -->
-						<div class="label2" id="label_DXF" style="display: flex; align-items: center;">DXF/DWG
+						<div class="label2" id="label_DXF" style="display: flex; align-items: center;">DXF
 							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
 								<!-- Moved options to a Dialog Box instead of a dropdown -->
 								<!--<select id="dxfFormat" title="Select DXF/DWG format">
@@ -1738,28 +1738,38 @@
 									<option value="dwg-3dfaces">DWG (3DFaces)</option>
 								-->
 								</select>
-								<label class="icon-button dxf-input-btn" data-target="fileInputDXF" title="Import DXF/DWG">
+								<label class="icon-button dxf-input-btn" data-target="fileInputDXF" title="Import DXF">
 									<img src="icons/file-import.png" alt="Import">
 								</label>
-								<label class="icon-button dxf-output-btn" data-target="fileOutputDXF" title="Export DXF/DWG">
+								<label class="icon-button dxf-output-btn" data-target="fileOutputDXF" title="Export DXF">
 									<img src="icons/file-export.png" alt="Export">
 								</label>
 							</span>
 						</div>
 
+						<!-- Orica ShotPlus -->
+						<div class="label2" id="label_Orica" style="display: flex; align-items: center;">Orica ShotPlus
+							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+								<label class="icon-button orica-input-btn" data-target="fileInputOrica" title="Import Orica ShotPlus">
+									<img src="icons/file-import.png" alt="Import">
+								</label>
+								<!-- need a blank button or space so it looks good. -->
+								<span style="width: 28px;"></span>
+								<!--
+								Export is not supported yet
+								<label class="icon-button orica-output-btn" data-target="fileOutputOrica" title="Export Orica ShotPlus">
+									<img src="icons/file-export.png" alt="Export">
+								</label>-->
+							</span>
+						</div>
+
 						<!-- Surpac STR/DTM -->
-						<div class="label2" id="label_Surpac" style="display: flex; align-items: center;">Surpac (Text Only)
+						<div class="label2" id="label_Surpac" style="display: flex; align-items: center;">Surpac
 							<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
 								<select id="surpacFormat" title="Select Surpac format">
 									<option value="str-blastholes">STR holes</option>
 									<option value="str-kad-text">STR</option>
 									<option value="dtm-text">DTM & STR</option>
-									<!-- BINARY PARSING Has been disabled for now as it is not supported by the parser too difficult at the moment-->
-									<!--
-									<option value="str-kad">STR holes (binary)</option>
-									<option value="str-kad-binary">STR (binary)</option>
-									<option value="dtm-binary">DTM (binary)</option>
-									-->
 								</select>
 								<label class="icon-button surpac-input-btn" data-target="fileInputSurpac" title="Import Surpac">
 									<img src="icons/file-import.png" alt="Import">
@@ -1776,10 +1786,6 @@
 								<select id="imageFormat" title="Select Image format">
 									<option value="geo-tiff" selected>GeoTIFF</option> <!--  Export the cached canvas and stored Geotiff/Images as RGB GeoTIFF -->
 									<option value="elevation-tiff">Elev.GeoTIFF</option> <!--   Export the cached canvas and stored Surfaces as elevation GeoTIFF -->
-									<!-- JPG export is not supported yet -->
-									<!--
-									<option value="jpg">JPG</option>
-									-->
 								</select>
 								<label class="icon-button image-input-btn" data-target="fileInputImage" title="Import Image">
 									<img src="icons/file-import.png" alt="Import">

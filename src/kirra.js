@@ -3466,7 +3466,7 @@ document.addEventListener("DOMContentLoaded", function () {
 						// Step 1cd.3a) Now set the orbit center (threeRenderer now exists)
 						if (threeRenderer && typeof threeRenderer.setOrbitCenter === "function") {
 							var fullCentroid = calculateDataCentroid();
-							threeRenderer.setOrbitCenter(fullCentroid.x, fullCentroid.y, fullCentroid.z);
+							threeRenderer.setOrbitCenterZ(centroid.z);
 							console.log("🎯 Orbit center set after init: X=" + fullCentroid.x.toFixed(2) + " Y=" + fullCentroid.y.toFixed(2) + " Z=" + fullCentroid.z.toFixed(2));
 						}
 
@@ -8532,6 +8532,35 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 								showModalMessage("Import Complete",
 									"Imported " + data.surfaces.length + " surfaces from DTM/STR pair",
 									"success");
+							} else if (data.blastHoles && data.blastHoles.length > 0) {
+								// Step 8b) Import blast holes from Surpac STR format
+								console.log("Processing " + data.blastHoles.length + " blast holes from STR");
+
+								// Step 8b.1) Add blast holes to allBlastHoles array
+								var importTimestamp = Date.now();
+								data.blastHoles.forEach(function (hole, idx) {
+									// Ensure hole has required properties
+									if (!hole.holeID) {
+										hole.holeID = "STR_" + importTimestamp + "_" + idx;
+									}
+									allBlastHoles.push(hole);
+								});
+
+								// Step 8b.2) Update centroids and save
+								updateCentroids();
+								window.threeDataNeedsRebuild = true;
+								drawData(allBlastHoles, selectedHole);
+								debouncedSaveHoles();
+								zoomToFitAll();
+
+								// Step 8b.3) Update tree view
+								if (typeof debouncedUpdateTreeView === "function") {
+									debouncedUpdateTreeView();
+								}
+
+								showModalMessage("Import Complete",
+									"Imported " + data.blastHoles.length + " blast holes from STR",
+									"success");
 							} else if (data.kadEntities && data.kadEntities.length > 0) {
 								// Import KAD entities only (no blast holes)
 								if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
@@ -8632,7 +8661,9 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 					showModalMessage("File Error", "Failed to read file", "error");
 				};
 
-				reader.readAsText(file);
+				// Step 10) Read as ArrayBuffer to preserve binary data
+				// Binary STR files get corrupted when read as text
+				reader.readAsArrayBuffer(file);
 			};
 
 			// Step 11) Trigger file picker
@@ -10369,6 +10400,224 @@ function exportCBLASTStandard(holes, filename) {
 		showModalMessage("Export Error", "FileManager not available", "error");
 	}
 }
+
+// =============================================================================
+// ORICA SHOTPLUS SPF IMPORT
+// =============================================================================
+// Step 1) Handle Orica ShotPlus SPF file import
+document.querySelector(".orica-input-btn")?.addEventListener("click", function () {
+	// Step 2) Create file input for SPF files
+	var input = document.createElement("input");
+	input.type = "file";
+	input.accept = ".spf";
+	input.multiple = false;
+
+	input.onchange = function (e) {
+		var file = e.target.files[0];
+		if (!file) return;
+
+		// Step 3) Use FileManager to parse SPF file
+		if (window.fileManager) {
+			var parser = window.fileManager.getParser("orica-spf");
+			if (parser) {
+				parser
+					.parse(file)
+					.then(async function (result) {
+						var holes = result.kirraHoles;
+
+						if (!holes || holes.length === 0) {
+							showModalMessage("No Holes Found", "The ShotPlus file does not contain any valid holes.", "warning");
+							return;
+						}
+
+						// Step 4) Use entity name from parsed holes (extracted from comment field)
+						// Fall back to filename or blast header if not available
+						var entityName = "ShotPlus_Import";
+						
+						// Step 4a) First try to use entity name from first parsed hole
+						if (holes.length > 0 && holes[0].entityName && holes[0].entityName !== "SPF_Blast") {
+							entityName = holes[0].entityName;
+							console.log("SPF Using entity name from parsed data:", entityName);
+						}
+						// Step 4b) Fall back to blast header info
+						else if (result.blastHeader) {
+							if (result.blastHeader.location) {
+								entityName = result.blastHeader.location;
+							} else if (result.blastHeader.mine) {
+								entityName = result.blastHeader.mine;
+							}
+						}
+						// Step 4c) Fall back to filename
+						else {
+							entityName = file.name || "ShotPlus_Import";
+							if (entityName.indexOf(".") !== -1) {
+								entityName = entityName.substring(0, entityName.lastIndexOf("."));
+							}
+						}
+
+						if (!allBlastHoles || !Array.isArray(allBlastHoles)) allBlastHoles = [];
+
+						// Step 6) Clear proximity Skip All flag for new import
+						window.proximitySkipAll = false;
+						window.holeGenerationCancelled = false;
+
+						// Step 7) Call addHole() for each parsed hole
+						for (var i = 0; i < holes.length; i++) {
+							// Check if user cancelled the import
+							if (window.holeGenerationCancelled) {
+								console.log("Import cancelled by user at hole " + (i + 1) + " of " + holes.length);
+								break;
+							}
+
+							var h = holes[i];
+
+							await addHole(
+								true, // useCustomHoleID
+								true, // useGradeZ
+								entityName,
+								h.holeID,
+								h.startXLocation,
+								h.startYLocation,
+								h.startZLocation,
+								h.gradeZLocation,
+								h.holeDiameter,
+								h.holeType || "Production",
+								h.holeLengthCalculated,
+								h.subdrillAmount,
+								h.holeAngle,
+								h.holeBearing,
+								null, // rowID
+								null, // posID
+								h.burden || 0,
+								h.spacing || 0
+							);
+
+							// Step 8) Copy SPF-specific fields that addHole() doesn't accept
+							var createdHole = allBlastHoles.find(function (hole) {
+								return hole.entityName === entityName && hole.holeID === h.holeID;
+							});
+
+							if (createdHole) {
+								// Copy timing information
+								if (h.timingDelayMilliseconds !== undefined && h.timingDelayMilliseconds !== null) {
+									createdHole.timingDelayMilliseconds = h.timingDelayMilliseconds;
+								}
+								// Copy fromHoleID (parsed from SPF comment field)
+								if (h.fromHoleID && h.fromHoleID !== "") {
+									createdHole.fromHoleID = h.fromHoleID;
+								}
+								// Copy subdrill values in case addHole() calculated differently
+								if (h.subdrillAmount !== undefined && h.subdrillAmount !== null) {
+									createdHole.subdrillAmount = h.subdrillAmount;
+								}
+								if (h.subdrillLength !== undefined && h.subdrillLength !== null) {
+									createdHole.subdrillLength = h.subdrillLength;
+								}
+								// Copy measured mass (total charge from decks)
+								if (h.measuredMass !== undefined && h.measuredMass > 0) {
+									createdHole.measuredMass = h.measuredMass;
+									createdHole.measuredMassTimeStamp = h.measuredMassTimeStamp || new Date().toISOString();
+								}
+								// Copy comment
+								if (h.measuredComment && h.measuredComment !== "None") {
+									createdHole.measuredComment = h.measuredComment;
+								}
+							}
+						}
+
+						// Step 9) Get imported holes for HDBSCAN
+						var importedHoles = allBlastHoles.filter(function (hole) {
+							return hole.entityName === entityName;
+						});
+
+						// Step 10) Calculate import statistics
+						var totalHoles = holes.length;
+						var importedCount = importedHoles.length;
+						var skippedCount = totalHoles - importedCount;
+						var wasCancelled = window.holeGenerationCancelled;
+
+						// Step 11) Clear proximity flags after import
+						window.proximitySkipAll = false;
+						window.holeGenerationCancelled = false;
+
+						// Step 12) HDBSCAN row detection
+						if (importedHoles.length > 0) {
+							if (typeof improvedSmartRowDetection === "function") {
+								improvedSmartRowDetection(importedHoles, entityName);
+							} else if (typeof detectRowsUsingHDBSCAN === "function") {
+								detectRowsUsingHDBSCAN(importedHoles, entityName);
+							}
+						}
+
+						// Step 13) Calculate burden and spacing (only if not already set)
+						var needsBurdenCalc = importedHoles.filter(function (h) {
+							return (h.burden === undefined || h.burden === null || h.burden === 0 || h.burden === 1) &&
+								(h.spacing === undefined || h.spacing === null || h.spacing === 0 || h.spacing === 1);
+						});
+						if (needsBurdenCalc.length > 0) {
+							calculateBurdenAndSpacingForHoles(needsBurdenCalc);
+						}
+
+						// Step 14) Recalculate dependent structures
+						if (allBlastHoles.length > 0) {
+							var triangleResult = delaunayTriangles(allBlastHoles, maxEdgeLength);
+							holeTimes = calculateTimes(allBlastHoles);
+							var contourResult = recalculateContours(allBlastHoles, deltaX, deltaY);
+							contourLinesArray = contourResult.contourLinesArray;
+							directionArrows = contourResult.directionArrows;
+						}
+
+						// Step 15) Update centroids and trigger 3D rebuild
+						updateCentroids();
+						window.threeDataNeedsRebuild = true;
+
+						// Step 16) Update displays
+						timeChart();
+						drawData(allBlastHoles, selectedHole);
+
+						// Step 17) Save to IndexedDB
+						if (typeof debouncedSaveHoles === "function") {
+							debouncedSaveHoles();
+						}
+
+						// Step 18) Update TreeView
+						if (typeof debouncedUpdateTreeView === "function") {
+							debouncedUpdateTreeView();
+						}
+
+						// Step 19) Zoom to fit all data
+						zoomToFitAll();
+
+						// Step 20) Build import result message
+						var message;
+						if (wasCancelled) {
+							message = "Import cancelled. Imported " + importedCount + " of " + totalHoles + " holes from " + file.name;
+							showModalMessage("ShotPlus Import Cancelled", message, "warning");
+						} else if (skippedCount > 0) {
+							message = "Imported " + importedCount + " holes, skipped " + skippedCount + " (proximity conflicts) from " + file.name;
+							showModalMessage("ShotPlus Import Complete", message, "success");
+						} else {
+							message = "Imported " + importedCount + " holes from " + file.name;
+							if (result.blastHeader && result.blastHeader.location) {
+								message += " (Blast: " + result.blastHeader.location + ")";
+							}
+							showModalMessage("ShotPlus Import Success", message, "success");
+						}
+					})
+					.catch(function (error) {
+						console.error("ShotPlus import error:", error);
+						showModalMessage("Import Error", "Failed to parse ShotPlus SPF: " + error.message, "error");
+					});
+			} else {
+				showModalMessage("Import Error", "ShotPlus parser not available", "error");
+			}
+		} else {
+			showModalMessage("Import Error", "FileManager not available", "error");
+		}
+	};
+
+	input.click();
+});
 
 // Helper function: Export DXF with File System Access API (save location browser)
 function exportDXFWithFilePicker(dxfContent, defaultFilename) {
@@ -28044,8 +28293,8 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Powder Factor (kg/m\u00b3)", minPF, maxPF);
-					// Step 8b) Draw Voronoi cells in Three.js
-					if (threeInitialized) {
+					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					if (threeInitialized && onlyShowThreeJS) {
 						var voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
 						var clippedCells = clipVoronoiCells(voronoiMetrics);
 						drawVoronoiCellsThreeJS(
@@ -28098,8 +28347,8 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Mass (kg)", minMass, maxMass);
-					// Step 8b) Draw Voronoi cells in Three.js
-					if (threeInitialized) {
+					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					if (threeInitialized && onlyShowThreeJS) {
 						var voronoiMetricsMass = getVoronoiMetrics(allBlastHoles, useToeLocation);
 						var clippedCellsMass = clipVoronoiCells(voronoiMetricsMass);
 						drawVoronoiCellsThreeJS(
@@ -28150,8 +28399,8 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Volume (m\u00b3)", minVol, maxVol);
-					// Step 8b) Draw Voronoi cells in Three.js
-					if (threeInitialized) {
+					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					if (threeInitialized && onlyShowThreeJS) {
 						var voronoiMetricsVol = getVoronoiMetrics(allBlastHoles, useToeLocation);
 						var clippedCellsVol = clipVoronoiCells(voronoiMetricsVol);
 						drawVoronoiCellsThreeJS(
@@ -28203,8 +28452,8 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Area (m\u00b2)", minArea, maxArea);
-					// Step 8b) Draw Voronoi cells in Three.js
-					if (threeInitialized) {
+					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					if (threeInitialized && onlyShowThreeJS) {
 						var voronoiMetricsArea = getVoronoiMetrics(allBlastHoles, useToeLocation);
 						var clippedCellsArea = clipVoronoiCells(voronoiMetricsArea);
 						drawVoronoiCellsThreeJS(
@@ -28264,8 +28513,8 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Measured Length (m)", minMLen, maxMLen);
-					// Step 8b) Draw Voronoi cells in Three.js
-					if (threeInitialized) {
+					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					if (threeInitialized && onlyShowThreeJS) {
 						var voronoiMetricsMLen = getVoronoiMetrics(allBlastHoles, useToeLocation);
 						var clippedCellsMLen = clipVoronoiCells(voronoiMetricsMLen);
 						drawVoronoiCellsThreeJS(
@@ -28325,8 +28574,8 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Designed Length (m)", minDLen, maxDLen);
-					// Step 8b) Draw Voronoi cells in Three.js
-					if (threeInitialized) {
+					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					if (threeInitialized && onlyShowThreeJS) {
 						var voronoiMetricsDLen = getVoronoiMetrics(allBlastHoles, useToeLocation);
 						var clippedCellsDLen = clipVoronoiCells(voronoiMetricsDLen);
 						drawVoronoiCellsThreeJS(
@@ -28378,8 +28627,8 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Hole Firing Time (ms)", minHTime, maxHTime);
-					// Step 8b) Draw Voronoi cells in Three.js
-					if (threeInitialized) {
+					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					if (threeInitialized && onlyShowThreeJS) {
 						var voronoiMetricsHTime = getVoronoiMetrics(allBlastHoles, useToeLocation);
 						var clippedCellsHTime = clipVoronoiCells(voronoiMetricsHTime);
 						drawVoronoiCellsThreeJS(
@@ -32207,10 +32456,10 @@ function updateCentroids() {
 	// Step 5c) CRITICAL FIX: Update threeRenderer orbit center when centroids change
 	// Without this, the 3D cursor (torus) disappears when orbiting because the view plane
 	// is positioned at the old orbitCenterZ (often 0) instead of the actual data Z elevation
-	if (threeRenderer && typeof threeRenderer.setOrbitCenter === "function") {
-		threeRenderer.setOrbitCenter(fullCentroid.x, fullCentroid.y, fullCentroid.z);
+	if (threeRenderer && typeof threeRenderer.setOrbitCenterZ === "function") {
+		threeRenderer.setOrbitCenterZ(fullCentroid.z);
 		if (developerModeEnabled) {
-			console.log("🎯 Orbit center updated in updateCentroids(): X=" + fullCentroid.x.toFixed(2) + " Y=" + fullCentroid.y.toFixed(2) + " Z=" + fullCentroid.z.toFixed(2));
+			console.log("🎯 Orbit center Z updated in updateCentroids(): Z=" + fullCentroid.z.toFixed(2));
 		}
 	}
 
@@ -49233,8 +49482,8 @@ window.handleTreeViewRename = function (nodeId, treeViewInstance) {
 					hole.holeID = trimmedID;
 
 					// Step 3b.5) Save to IndexedDB
-					if (typeof debouncedSaveBlastHoles === "function") {
-						debouncedSaveBlastHoles();
+					if (typeof debouncedSaveHoles === "function") {
+						debouncedSaveHoles();
 					}
 
 					// Step 3b.6) Update TreeView
@@ -49376,8 +49625,8 @@ window.handleTreeViewRenameMultipleHoles = function (nodeIds, treeViewInstance) 
 			});
 
 			// Step 4h) Save and update
-			if (typeof debouncedSaveBlastHoles === "function") {
-				debouncedSaveBlastHoles();
+			if (typeof debouncedSaveHoles === "function") {
+				debouncedSaveHoles();
 			}
 
 			if (treeViewInstance && typeof treeViewInstance.updateTreeData === "function") {
@@ -49666,7 +49915,7 @@ function apply3DSettings(settings) {
 	if (threeRenderer) {
 		const centroid = calculateDataCentroid();
 		if (typeof threeRenderer.setOrbitCenter === "function") {
-			threeRenderer.setOrbitCenter(centroid.x, centroid.y, centroid.z);
+			threeRenderer.setOrbitCenterZ(centroid.z);
 		}
 	}
 

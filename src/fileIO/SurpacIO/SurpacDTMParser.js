@@ -2,10 +2,33 @@
 //=============================================================
 // SURPAC DTM PARSER - DIGITAL TERRAIN MODEL FORMAT
 //=============================================================
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// @deprecated 2026-01-21 - DO NOT USE THIS PARSER
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//
+// REASON FOR DEPRECATION:
+// This parser is INCORRECT. DTM files contain TRIANGLE INDICES
+// referencing vertices in a companion STR file, NOT coordinates.
+//
+// DTM file structure (per Surpac specification):
+//   - Header referencing STR file
+//   - OBJECT and TRISOLATION markers
+//   - Triangle records: triangleID, v1, v2, v3, neighbor1, neighbor2, neighbor3
+//
+// CORRECT USAGE:
+// Use SurpacSurfaceParser.js which correctly combines:
+//   - STR file (vertex coordinates)
+//   - DTM file (triangle connectivity)
+//
+// Reference: https://www.cse.unr.edu/~fredh/papers/working/vr-mining/string.html
+//
+// This file is kept for backward compatibility but may be removed in future.
+//=============================================================
+// ORIGINAL DESCRIPTION (INCORRECT):
 // Step 1) Parses Surpac DTM (Digital Terrain Model) format files
-// Step 2) Format: Y, X, Z, label, description (point cloud)
+// Step 2) Format: Y, X, Z, label, description (point cloud) <-- WRONG!
 // Step 3) Note: Y comes BEFORE X (Northing, Easting order)
-// Step 4) DTM files contain unique vertices from surfaces
+// Step 4) DTM files contain unique vertices from surfaces <-- WRONG!
 // Step 5) Reference: mka_pd_stg4_202406_v1.dtm
 // Step 6) Created: 2026-01-05
 

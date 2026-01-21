@@ -1,295 +1,248 @@
 // src/fileIO/SurpacIO/SurpacSTRParser.js
 //=============================================================
-// SURPAC STR PARSER - STRING FILE FORMAT
+// SURPAC STR PARSER - STRING FILE FORMAT (TEXT & BINARY)
 //=============================================================
-// Step 1) Parses Surpac STR (String) format files
-// Step 2) Supports Surpac 6.3 blast hole format with metadata
-// Step 3) Format: Y, X, Z (Northing, Easting, Elevation order)
-// Step 4) String numbers encode colors/types (1 = blast holes, 2-255 = colors)
-// Step 5) Reference: blastholes.str, Surpac 6.3 documentation
-// Step 6) Created: 2026-01-05
+// Step 1) Parses Surpac STR (String) format files per official specification
+// Step 2) Reference: https://www.cse.unr.edu/~fredh/papers/working/vr-mining/string.html
+//
+// FILE STRUCTURE:
+//   Line 1: Header record - location, date, purpose, memo (4 fields)
+//   Line 2: Axis record - 0, y1, x1, z1, y2, x2, z2 (string# always 0)
+//   Lines 3+: String records - string#, Y, X, Z, D1, D2, D3...
+//   Null record: 0, 0.000, 0.000, 0.000, (marks end of string/segment)
+//   End record: 0, 0.000, 0.000, 0.000, END (marks end of file)
+//
+// KEY RULES:
+//   - String numbers range 1-32000 and encode color/type
+//   - Points between null records form a connected string (polyline)
+//   - NULL RECORD (string# = 0) is the delimiter that ends a string
+//   - Multiple strings can share the same string number (separated by nulls)
+//   - D1-D100 are optional description fields (32 chars each, 512 total)
+//   - Coordinates: Y=Northing, X=Easting, Z=Elevation
+//
+// BLAST HOLE SUPPORT:
+//   - Detects Surpac 6.3 blast hole format with collar+toe pairs
+//   - Metadata in D1-D14 fields (DrillBlast ID, depth, diameter, bearing, dip, etc.)
+//
+// Created: 2026-01-05, Updated: 2026-01-21
 
 import BaseParser from "../BaseParser.js";
-import SurpacBinarySTRParser from "./SurpacBinarySTRParser.js";
 
-// Step 7) SurpacSTRParser class
 class SurpacSTRParser extends BaseParser {
 	constructor(options = {}) {
 		super(options);
+		// Step 3) Entity counter for generating unique names
+		this.entityCounter = 0;
 	}
 
-	// Step 8) Main parse method
+	// Step 4) Main parse method - handles both text and binary
 	async parse(content) {
-		// Step 9) Validate input
 		if (!content) {
 			throw new Error("Invalid content: content required");
 		}
 
-		// Step 10) Binary detection disabled - only parse text format
-		// TODO: Re-enable binary detection once binary format is properly tested
-		// if (this.isBinaryContent(content)) {
-		//     console.log("Detected binary STR format - delegating to binary parser");
-		//     var binaryParser = new SurpacBinarySTRParser();
-		//     return await binaryParser.parse(content);
-		// }
+		// Step 5) Reset counter for this parse session
+		this.entityCounter = 0;
 
-		// Step 11) Parse as text format
+		// Step 6) Detect binary vs text content
+		var isBinary = this.isBinaryContent(content);
+
+		if (isBinary) {
+			console.log("Detected binary STR format");
+			return await this.parseBinary(content);
+		} else {
+			console.log("Detected text STR format");
+			return this.parseText(content);
+		}
+	}
+
+	// =========================================================================
+	// TEXT PARSING
+	// =========================================================================
+
+	// Step 7) Parse text STR file
+	parseText(content) {
 		if (typeof content !== "string") {
-			throw new Error("Invalid text content: string required");
+			// Step 8) Convert ArrayBuffer to string if needed
+			if (content instanceof ArrayBuffer) {
+				var decoder = new TextDecoder("utf-8");
+				content = decoder.decode(content);
+			} else {
+				throw new Error("Invalid text content: string required");
+			}
 		}
 
-		// Step 10) Split into lines
 		var lines = content.split(/\r?\n/);
-
-		// Step 11) Initialize result containers
-		// NOTE: This parser handles KAD geometry ONLY - blast holes use a separate parser
 		var kadEntities = [];
+		var blastHoles = [];
 		var currentString = [];
-		var currentStringNumber = 0;
-		var currentEntityName = "";
-		var geometryMap = new Map(); // Group by entityName
+		var isBlastHoleFile = false;
 
-		// Step 12) Parse header (skip first 2 lines)
 		if (lines.length < 3) {
 			throw new Error("Invalid STR file: too few lines");
 		}
 
-		// Skip header line (line 0)
-		// Skip second line with zeros (line 1)
+		// Step 9) Detect if this is a blast hole file by checking first data line
+		for (var checkIdx = 2; checkIdx < Math.min(lines.length, 10); checkIdx++) {
+			var checkLine = lines[checkIdx].trim();
+			if (!checkLine) continue;
+			var checkParts = checkLine.split(",");
+			// Step 10) Blast holes have many D fields (DrillBlast1.1,BLASTID,00001,13.500,...)
+			if (checkParts.length > 10 && checkParts[4] && checkParts[4].indexOf("DrillBlast") !== -1) {
+				isBlastHoleFile = true;
+				console.log("Detected Surpac 6.3 blast hole format");
+				break;
+			}
+		}
 
-		// Step 13) Parse data lines
+		// Step 11) Parse based on file type
+		if (isBlastHoleFile) {
+			blastHoles = this.parseTextBlastHoles(lines);
+			console.log("Parsed " + blastHoles.length + " blast holes from STR");
+			return {
+				blastHoles: blastHoles,
+				kadEntities: []
+			};
+		}
+
+		// Step 12) Parse as KAD geometry (strings/polylines)
+		// Parse string records starting from line 3 (index 2)
+		// Line 1 = Header, Line 2 = Axis record
 		for (var i = 2; i < lines.length; i++) {
 			var line = lines[i].trim();
-
-			// Step 14) Skip empty lines
 			if (!line) continue;
 
-			// Step 15) Parse line into parts (comma-separated)
 			var parts = line.split(",").map(function(p) {
 				return p.trim();
 			});
 
 			if (parts.length < 4) continue;
 
-			// Step 16) Get string number and coordinates
 			var stringNumber = parseInt(parts[0]);
-			var y = parseFloat(parts[1]);
-			var x = parseFloat(parts[2]);
-			var z = parseFloat(parts[3]);
+			var y = parseFloat(parts[1]); // Northing
+			var x = parseFloat(parts[2]); // Easting
+			var z = parseFloat(parts[3]); // Elevation
 
-			// Step 16a) Validate coordinates - skip invalid data
-			if (isNaN(stringNumber) || isNaN(x) || isNaN(y) || isNaN(z)) {
-				console.warn("Skipping line " + (i + 1) + " - invalid coordinates:", line);
-				continue;
+			// Step 13) Extract description fields D1, D2, D3...
+			var descriptions = [];
+			for (var d = 4; d < parts.length; d++) {
+				descriptions.push(parts[d].trim());
 			}
 
-			// Step 17) Get entity name (D1 field) if present
-			// Ignore D2 field (column 6) - only use column 5
-			var entityName = parts.length > 4 ? parts[4].trim() : "";
-
-			// Step 18) Check for separator or end marker
+			// Step 14) NULL RECORD (string# = 0) - end of current string
+			// This is the CORRECT delimiter per specification
 			if (stringNumber === 0) {
-				// Separator or END marker
-				if (parts[4] && parts[4].toUpperCase() === "END") {
-					// End of file
+				// Step 15) Check for END marker
+				if (descriptions.length > 0 && descriptions[0].toUpperCase() === "END") {
+					if (currentString.length > 0) {
+						this.finalizeString(kadEntities, currentString);
+						currentString = [];
+					}
 					break;
 				}
 
-				// Step 19) Finalize current geometry string
+				// Step 16) Regular null record - finalize current string
 				if (currentString.length > 0) {
-					this.addGeometryToMap(geometryMap, currentString, currentStringNumber, currentEntityName);
+					this.finalizeString(kadEntities, currentString);
 					currentString = [];
-					currentStringNumber = 0;
-					currentEntityName = "";
 				}
-
 				continue;
 			}
 
-			// Step 20) KAD geometry (any string# 1-255)
-			// This includes surface vertices (string# 1, Y, X, Z) and polylines (string# 2-255)
-			// NOTE: Blast holes are handled by a separate dedicated parser
-
-			// Check if starting new geometry (different string number or entity name)
-			if (currentString.length > 0 && (currentStringNumber !== stringNumber || currentEntityName !== entityName)) {
-				// Finalize previous geometry
-				this.addGeometryToMap(geometryMap, currentString, currentStringNumber, currentEntityName);
-				currentString = [];
+			// Step 17) Validate coordinates
+			if (isNaN(stringNumber) || isNaN(x) || isNaN(y) || isNaN(z)) {
+				console.warn("Skipping line " + (i + 1) + " - invalid data");
+				continue;
 			}
 
-			// Add vertex to current string
-			currentStringNumber = stringNumber;
-			currentEntityName = entityName;
+			// Step 18) Add point to current string
 			currentString.push({
+				stringNumber: stringNumber,
 				x: x,
 				y: y,
-				z: z
+				z: z,
+				d1: descriptions[0] || "",
+				d2: descriptions[1] || "",
+				descriptions: descriptions
 			});
 		}
 
-		// Step 23) Finalize any remaining geometry
+		// Step 19) Finalize any remaining string
 		if (currentString.length > 0) {
-			this.addGeometryToMap(geometryMap, currentString, currentStringNumber, currentEntityName);
+			this.finalizeString(kadEntities, currentString);
 		}
-
-		// Step 24) Convert geometryMap to kadEntities array
-		kadEntities = this.convertGeometryMapToEntities(geometryMap);
 
 		console.log("Parsed " + kadEntities.length + " KAD entities from STR");
 
-		// Debug: Log entity structure to verify correctness
-		if (kadEntities.length > 0) {
-			console.log(
-				"Entity names:",
-				kadEntities
-					.map(function(e) {
-						return e.entityName;
-					})
-					.join(", ")
-			);
-			// Log first entity structure for verification
-			var firstEntity = kadEntities[0];
-			console.log("First entity structure:", {
-				entityName: firstEntity.entityName,
-				entityType: firstEntity.entityType,
-				dataPointCount: firstEntity.data.length,
-				firstPoint: firstEntity.data[0]
-			});
-		}
-
-		// Step 25) Return parsed data
-		// NOTE: This parser handles KAD geometry ONLY - blast holes use a separate dedicated parser
 		return {
 			kadEntities: kadEntities
 		};
 	}
 
-	// Generate 4-character UID
-	generateUID() {
-		var chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-		var uid = "";
-		for (var i = 0; i < 4; i++) {
-			uid += chars.charAt(Math.floor(Math.random() * chars.length));
-		}
-		return uid;
-	}
+	// Step 20) Parse text blast holes (Surpac 6.3 format)
+	parseTextBlastHoles(lines) {
+		var blastHoles = [];
+		var currentHole = null;
+		var holeCounter = 1;
 
-	// Add geometry to map, grouping by entity name
-	addGeometryToMap(geometryMap, vertices, stringNumber, entityName) {
-		if (vertices.length === 0) return;
+		for (var i = 2; i < lines.length; i++) {
+			var line = lines[i].trim();
+			if (!line) continue;
 
-		// Determine type based on vertex count and start/end match
-		var isClosed = vertices.length > 2 && Math.abs(vertices[0].x - vertices[vertices.length - 1].x) < 0.001 && Math.abs(vertices[0].y - vertices[vertices.length - 1].y) < 0.001 && Math.abs(vertices[0].z - vertices[vertices.length - 1].z) < 0.001;
+			var parts = line.split(",").map(function(p) {
+				return p.trim();
+			});
 
-		// Generate entity name if not provided (empty D1 field)
-		if (!entityName) {
-			if (vertices.length === 1) {
-				// Single point: use sequential numbering
-				var pointNum = 1;
-				while (geometryMap.has("surpac_pt_" + pointNum)) {
-					pointNum++;
+			if (parts.length < 4) continue;
+
+			var stringNumber = parseInt(parts[0]);
+
+			// Step 21) Skip null records and END
+			if (stringNumber === 0) {
+				if (parts[4] && parts[4].toUpperCase() === "END") {
+					break;
 				}
-				entityName = "surpac_pt_" + pointNum;
-			} else if (isClosed) {
-				// Closed polygon: use 4-char UID
-				entityName = "surpac_poly_" + this.generateUID();
-			} else {
-				// Open line: use 4-char UID
-				entityName = "surpac_line_" + this.generateUID();
+				continue;
 			}
-		} else {
-			// D1 field provided: append 4-char UID
-			entityName = entityName + "_" + this.generateUID();
+
+			var y = parseFloat(parts[1]); // Northing
+			var x = parseFloat(parts[2]); // Easting
+			var z = parseFloat(parts[3]); // Elevation
+
+			if (isNaN(x) || isNaN(y) || isNaN(z)) {
+				continue;
+			}
+
+			// Step 22) Check if this is a collar line (has metadata) or toe line
+			if (parts.length > 10 && parts[4] && parts[4].indexOf("DrillBlast") !== -1) {
+				// Step 23) Finalize previous hole if exists
+				if (currentHole) {
+					this.recalculateHoleGeometry(currentHole);
+					blastHoles.push(currentHole);
+				}
+
+				// Step 24) Parse collar line metadata
+				currentHole = this.parseBlastHoleCollar(x, y, z, parts, holeCounter++);
+			} else if (currentHole) {
+				// Step 25) This is a toe line
+				currentHole.endXLocation = x;
+				currentHole.endYLocation = y;
+				currentHole.endZLocation = z;
+			}
 		}
 
-		// Ensure uniqueness (rare collision for UID-based names)
-		var finalName = entityName;
-		while (geometryMap.has(finalName)) {
-			if (finalName.startsWith("surpac_pt_")) {
-				// For points, increment the number
-				var num = parseInt(finalName.replace("surpac_pt_", "")) + 1;
-				finalName = "surpac_pt_" + num;
-			} else {
-				// For others, generate new UID
-				finalName = finalName.replace(/_[a-z0-9]{4}$/, "_" + this.generateUID());
-			}
+		// Step 26) Finalize last hole
+		if (currentHole) {
+			this.recalculateHoleGeometry(currentHole);
+			blastHoles.push(currentHole);
 		}
 
-		// Create new entity in map with deep copy of vertices
-		geometryMap.set(finalName, {
-			entityName: finalName,
-			stringNumber: stringNumber,
-			vertices: vertices.map(function(v) {
-				return { x: v.x, y: v.y, z: v.z };
-			})
-		});
+		return blastHoles;
 	}
 
-	// Convert geometry map to KAD entities array
-	convertGeometryMapToEntities(geometryMap) {
-		var entities = [];
-
-		geometryMap.forEach(function(geom, entityName) {
-			var vertices = geom.vertices;
-			if (vertices.length === 0) return;
-
-			// Determine entity type and closure status
-			var entityType = "poly"; // Default
-			var isClosed = false; // Initialize for all cases
-
-			if (vertices.length === 1) {
-				entityType = "point";
-			} else if (vertices.length === 2) {
-				entityType = "line";
-			} else {
-				// Check if closed (first vertex = last vertex)
-				isClosed = Math.abs(vertices[0].x - vertices[vertices.length - 1].x) < 0.001 && Math.abs(vertices[0].y - vertices[vertices.length - 1].y) < 0.001 && Math.abs(vertices[0].z - vertices[vertices.length - 1].z) < 0.001;
-				entityType = isClosed ? "poly" : "line";
-			}
-
-			// Convert string number to color
-			var color = this.stringNumberToColor(geom.stringNumber);
-
-			// Create KAD entity with EXACT structure matching user's specification
-			// Entity level: ONLY entityName, entityType, data
-			var entity = {
-				entityName: entityName,
-				entityType: entityType,
-				data: vertices.map(function(v, index) {
-					// Determine if this is the closing point
-					var isLastPoint = index === vertices.length - 1;
-					var isClosingPoint = isClosed && isLastPoint;
-
-					var point = {
-						entityName: entityName,
-						entityType: entityType,
-						pointID: index + 1, // INTEGER not string!
-						pointXLocation: v.x,
-						pointYLocation: v.y,
-						pointZLocation: v.z,
-						lineWidth: 1,
-						color: color,
-						closed: isClosingPoint
-					};
-
-					// Point entities need 'connected' field
-					if (entityType === "point") {
-						point.connected = false;
-					}
-
-					return point;
-				})
-			};
-
-			entities.push(entity);
-		}, this);
-
-		return entities;
-	}
-
-	// Step 23) Parse blast hole collar line (Surpac 6.3 format)
-	parseBlastHoleCollar(parts, holeIndex) {
-		// Parts array:
+	// Step 27) Parse blast hole collar from line parts
+	parseBlastHoleCollar(collarX, collarY, collarZ, parts, holeIndex) {
+		// Parts array (Surpac 6.3 format):
 		// 0: String number (1)
 		// 1: Collar Y
 		// 2: Collar X
@@ -305,15 +258,7 @@ class SurpacSTRParser extends BaseParser {
 		// 12: D9 - Bearing/azimuth (e.g., "0.0000")
 		// 13: D10 - Dip (e.g., "-90.0000")
 		// 14: D11 - Blast method (e.g., "BLASTMETHOD")
-		// 15: D12 - Unknown
-		// 16: D13 - Empty
-		// 17: D14 - Unknown
 
-		var collarY = parseFloat(parts[1]);
-		var collarX = parseFloat(parts[2]);
-		var collarZ = parseFloat(parts[3]);
-
-		// Parse metadata fields
 		var blastDesignID = parts[4] || "";
 		var blastNameID = parts[5] || "BLASTID";
 		var holeID = parts[6] || holeIndex.toString();
@@ -325,33 +270,33 @@ class SurpacSTRParser extends BaseParser {
 		var dip = parseFloat(parts[13]) || -90; // Surpac dip (negative = down)
 		var blastMethod = parts[14] || "METHOD";
 
-		// Step 24) Convert Surpac dip to Kirra hole angle
+		// Step 28) Convert Surpac dip to Kirra hole angle
 		// Surpac: -90 = vertical down (dip), 0 = horizontal
 		// Kirra: 0 = vertical down, 90 = horizontal (angle from vertical)
-		// Conversion: Kirra angle = Surpac dip + 90
-		// Example: Surpac -90° → Kirra 0° (vertical), Surpac 0° → Kirra 90° (horizontal)
 		var holeAngle = dip + 90;
 
-		// Step 25) Create BlastHole object
+		var cleanHoleID = holeID.replace(/^0+/, "") || holeIndex.toString();
+
+		// Step 29) Create BlastHole object
 		var hole = {
 			entityName: blastNameID,
 			entityType: "hole",
-			holeID: holeID.replace(/^0+/, "") || holeIndex.toString(), // Remove leading zeros
+			holeID: cleanHoleID,
 			startXLocation: collarX,
 			startYLocation: collarY,
 			startZLocation: collarZ,
-			endXLocation: 0, // Will be set from toe line
+			endXLocation: 0,
 			endYLocation: 0,
 			endZLocation: 0,
 			gradeXLocation: 0,
 			gradeYLocation: 0,
 			gradeZLocation: 0,
-			subdrillAmount: subdrill, // Subdrill amount is the value from file
-			subdrillLength: 0, // Subdrill length will be calculated
+			subdrillAmount: subdrill,
+			subdrillLength: 0,
 			benchHeight: 0,
 			holeDiameter: diameter * 1000, // Convert meters to mm
 			holeType: rigName,
-			fromHoleID: blastNameID + ":::" + (holeID.replace(/^0+/, "") || holeIndex.toString()), // Format: "BlastName:::HoleID"
+			fromHoleID: blastNameID + ":::" + cleanHoleID,
 			timingDelayMilliseconds: 0,
 			colorHexDecimal: "red",
 			holeLengthCalculated: plannedDepth,
@@ -363,9 +308,9 @@ class SurpacSTRParser extends BaseParser {
 			measuredMassTimeStamp: "09/05/1975 00:00:00",
 			measuredComment: "None",
 			measuredCommentTimeStamp: "09/05/1975 00:00:00",
-			holeTime: 0, // Changed from null to 0
-			rowID: "", // Empty - will be calculated by Row/Pos scanner
-			posID: "", // Empty - will be calculated by Row/Pos scanner
+			holeTime: 0,
+			rowID: "",
+			posID: "",
 			visible: true,
 			burden: 0,
 			spacing: 0,
@@ -375,231 +320,353 @@ class SurpacSTRParser extends BaseParser {
 		return hole;
 	}
 
-	// Step 26) Recalculate hole geometry from collar-toe vector
-	recalculateHoleGeometry(hole) {
-		// Only recalculate if we have toe coordinates
-		if (!hole.endXLocation || !hole.endYLocation || !hole.endZLocation || (hole.endXLocation === 0 && hole.endYLocation === 0 && hole.endZLocation === 0)) {
-			return; // No toe data, keep original angle/bearing
+	// Step 30) Finalize a string into a KAD entity with unique name
+	finalizeString(kadEntities, vertices) {
+		if (vertices.length === 0) return;
+
+		var stringNumber = vertices[0].stringNumber;
+
+		// Step 31) Determine entity type
+		var entityType = "poly";
+		var isClosed = false;
+
+		if (vertices.length === 1) {
+			entityType = "point";
+		} else if (vertices.length === 2) {
+			entityType = "line";
+		} else {
+			var first = vertices[0];
+			var last = vertices[vertices.length - 1];
+			var tolerance = 0.001;
+
+			isClosed = Math.abs(first.x - last.x) < tolerance &&
+					   Math.abs(first.y - last.y) < tolerance &&
+					   Math.abs(first.z - last.z) < tolerance;
+
+			entityType = isClosed ? "poly" : "line";
 		}
 
-		// Calculate vector from collar to toe
+		var color = this.stringNumberToColor(stringNumber);
+
+		// Step 32) Generate UNIQUE entity name
+		var entityName = this.generateUniqueName(vertices, stringNumber, entityType, kadEntities);
+
+		// Step 33) Create KAD entity
+		var entity = {
+			entityName: entityName,
+			entityType: entityType,
+			data: []
+		};
+
+		for (var i = 0; i < vertices.length; i++) {
+			var v = vertices[i];
+
+			var point = {
+				entityName: entityName,
+				entityType: entityType,
+				pointID: i + 1,
+				pointXLocation: v.x,
+				pointYLocation: v.y,
+				pointZLocation: v.z,
+				lineWidth: 1,
+				color: color,
+				closed: (isClosed && i === vertices.length - 1),
+				visible: true
+			};
+
+			if (v.d1) {
+				point.label = v.d1;
+			}
+
+			entity.data.push(point);
+		}
+
+		kadEntities.push(entity);
+	}
+
+	// Step 34) Generate unique entity name - ALWAYS unique for Kirra layers
+	generateUniqueName(vertices, stringNumber, entityType, kadEntities) {
+		this.entityCounter++;
+
+		var firstVertex = vertices[0];
+		var baseName = "";
+
+		// Step 35) Try to extract meaningful name from description fields
+		if (firstVertex.d1) {
+			var d1 = firstVertex.d1;
+			// Step 36) Check if D1 is numeric (point index) - if so, try D2
+			if (/^\d+$/.test(d1)) {
+				if (firstVertex.d2 && firstVertex.d2.length > 0) {
+					baseName = firstVertex.d2;
+				}
+			} else {
+				baseName = d1;
+			}
+		}
+
+		// Step 37) If no meaningful name found, use type + string number
+		if (!baseName) {
+			var typePrefix = entityType === "poly" ? "Polygon" : 
+							 entityType === "line" ? "Line" : 
+							 entityType === "point" ? "Point" : "String";
+			baseName = typePrefix + "_" + stringNumber;
+		}
+
+		// Step 38) Always append unique counter to guarantee uniqueness
+		var uniqueName = baseName + "_" + this.padNumber(this.entityCounter, 4);
+
+		// Step 39) Double-check uniqueness (safety)
+		while (kadEntities.some(function(e) { return e.entityName === uniqueName; })) {
+			this.entityCounter++;
+			uniqueName = baseName + "_" + this.padNumber(this.entityCounter, 4);
+		}
+
+		return uniqueName;
+	}
+
+	// =========================================================================
+	// BINARY PARSING
+	// =========================================================================
+
+	// Step 40) Parse binary STR file
+	async parseBinary(content) {
+		// Step 41) Convert to ArrayBuffer if needed
+		var buffer;
+		if (typeof content === "string") {
+			buffer = this.stringToArrayBuffer(content);
+		} else if (content instanceof ArrayBuffer) {
+			buffer = content;
+		} else {
+			throw new Error("Invalid binary content type");
+		}
+
+		// Step 42) Parse header
+		var headerEnd = this.findBinaryHeaderEnd(buffer);
+		var headerBytes = new Uint8Array(buffer, 0, headerEnd);
+		var header = String.fromCharCode.apply(null, headerBytes);
+		console.log("Binary STR header:", header.substring(0, 100));
+
+		// Step 43) Parse binary data
+		var view = new DataView(buffer, headerEnd);
+		var bytes = new Uint8Array(buffer, headerEnd);
+		var kadEntities = [];
+		var blastHoles = [];
+		var currentString = [];
+		var currentHole = null;
+		var holeCounter = 1;
+		var pos = 0;
+
+		try {
+			while (pos < view.byteLength - 25) {
+				// Step 44) Skip null padding to find next record
+				var nullCount = 0;
+				while (pos < view.byteLength && bytes[pos] === 0x00) {
+					pos++;
+					nullCount++;
+				}
+
+				// Step 45) 8+ nulls indicates separator (end of string)
+				if (nullCount >= 8 && currentString.length > 0) {
+					this.finalizeString(kadEntities, currentString);
+					currentString = [];
+				}
+
+				if (pos >= view.byteLength - 25) break;
+
+				// Step 46) Read string number (1 byte)
+				// Surpac binary STR uses 1-byte string numbers
+				var stringNumber = bytes[pos];
+				pos++;
+
+				// Step 47) String# 0 = null record (end of string)
+				if (stringNumber === 0) {
+					if (currentString.length > 0) {
+						this.finalizeString(kadEntities, currentString);
+						currentString = [];
+					}
+					continue;
+				}
+
+				// Step 48) Read Y, X, Z as doubles (BIG-ENDIAN for Surpac)
+				if (pos + 24 > view.byteLength) break;
+
+				var coordView = new DataView(bytes.buffer, bytes.byteOffset + pos);
+				var y = coordView.getFloat64(0, false); // big-endian
+				var x = coordView.getFloat64(8, false);
+				var z = coordView.getFloat64(16, false);
+				pos += 24;
+
+				// Step 50) Validate coordinates - must be reasonable UTM-range values
+				if (isNaN(x) || isNaN(y) || isNaN(z)) {
+					continue;
+				}
+				
+				// Step 50b) Reject garbage values (outside UTM range)
+				if (Math.abs(x) > 1e12 || Math.abs(y) > 1e12 || Math.abs(z) > 1e12) {
+					continue;
+				}
+
+				// Step 51) Skip any padding nulls before description (but not 8+ which is separator)
+				while (pos < bytes.length && bytes[pos] === 0x00) {
+					// Check if this is a separator (8+ nulls)
+					var nullRun = 0;
+					var checkPos = pos;
+					while (checkPos < bytes.length && bytes[checkPos] === 0x00) {
+						nullRun++;
+						checkPos++;
+					}
+					if (nullRun >= 8) break; // Leave separator for outer loop
+					pos++; // Skip padding null
+				}
+
+				// Step 52) Read description (printable ASCII until null terminator)
+				var description = "";
+				var maxDescLength = 512;
+				while (pos < bytes.length && description.length < maxDescLength) {
+					var byte = bytes[pos];
+					if (byte >= 0x20 && byte <= 0x7E) {
+						description += String.fromCharCode(byte);
+						pos++;
+					} else {
+						break; // Hit null terminator or non-printable
+					}
+				}
+
+				// Step 53) Skip the null terminator if present
+				if (pos < bytes.length && bytes[pos] === 0x00) {
+					pos++;
+				}
+
+				var desc = description.trim();
+
+				// Step 54) Check if this is a blast hole (string# 1 with metadata)
+				if (stringNumber === 1 && desc && desc.indexOf(",") !== -1 && desc.indexOf("DrillBlast") !== -1) {
+					// Step 55) Finalize previous hole
+					if (currentHole) {
+						this.recalculateHoleGeometry(currentHole);
+						blastHoles.push(currentHole);
+					}
+					// Step 56) Parse collar from binary metadata
+					var metaParts = desc.split(",").map(function(p) { return p.trim(); });
+					// Reconstruct full parts array for parseBlastHoleCollar
+					var fullParts = ["1", y.toString(), x.toString(), z.toString()].concat(metaParts);
+					currentHole = this.parseBlastHoleCollar(x, y, z, fullParts, holeCounter++);
+				} else if (stringNumber === 1 && currentHole && !desc) {
+					// Step 57) Toe line for current hole
+					currentHole.endXLocation = x;
+					currentHole.endYLocation = y;
+					currentHole.endZLocation = z;
+				} else {
+					// Step 58) Regular geometry point
+					currentString.push({
+						stringNumber: stringNumber,
+						x: x,
+						y: y,
+						z: z,
+						d1: desc,
+						d2: "",
+						descriptions: desc ? [desc] : []
+					});
+				}
+			}
+
+			// Step 58) Finalize remaining data
+			if (currentString.length > 0) {
+				this.finalizeString(kadEntities, currentString);
+			}
+			if (currentHole) {
+				this.recalculateHoleGeometry(currentHole);
+				blastHoles.push(currentHole);
+			}
+
+		} catch (error) {
+			console.warn("Error parsing binary STR at position " + pos + ":", error);
+		}
+
+		// Step 59) Return appropriate format
+		if (blastHoles.length > 0) {
+			console.log("Parsed " + blastHoles.length + " blast holes from binary STR");
+			return {
+				blastHoles: blastHoles,
+				kadEntities: kadEntities.length > 0 ? kadEntities : []
+			};
+		} else {
+			console.log("Parsed " + kadEntities.length + " KAD entities from binary STR");
+			return {
+				kadEntities: kadEntities
+			};
+		}
+	}
+
+	// =========================================================================
+	// UTILITY METHODS
+	// =========================================================================
+
+	// Step 60) Recalculate hole geometry from collar-toe vector
+	recalculateHoleGeometry(hole) {
+		if (!hole.endXLocation || !hole.endYLocation || !hole.endZLocation ||
+			(hole.endXLocation === 0 && hole.endYLocation === 0 && hole.endZLocation === 0)) {
+			return;
+		}
+
 		var deltaX = hole.endXLocation - hole.startXLocation;
 		var deltaY = hole.endYLocation - hole.startYLocation;
 		var deltaZ = hole.endZLocation - hole.startZLocation;
 
-		// Calculate 3D length
 		var length = Math.sqrt(deltaX * deltaX + deltaY * deltaY + deltaZ * deltaZ);
+		if (length === 0) return;
 
-		if (length === 0) {
-			return; // Zero-length hole, keep original
-		}
-
-		// Calculate bearing (azimuth) from North
-		// atan2(deltaX, deltaY) gives bearing where 0° = North, 90° = East
+		// Step 61) Calculate bearing (azimuth) from North
 		var bearingRadians = Math.atan2(deltaX, deltaY);
 		var bearing = bearingRadians * (180 / Math.PI);
+		if (bearing < 0) bearing += 360;
 
-		// Normalize to 0-360
-		if (bearing < 0) {
-			bearing += 360;
-		}
-
-		// Calculate angle from vertical
-		// Angle from vertical = acos(|deltaZ| / length)
-		// Use absolute value of deltaZ since we measure angle from vertical regardless of up/down
+		// Step 62) Calculate angle from vertical
 		var angleRadians = Math.acos(Math.abs(deltaZ) / length);
 		var angle = angleRadians * (180 / Math.PI);
 
-		// Update hole with calculated values
 		hole.holeBearing = bearing;
 		hole.holeAngle = angle;
 		hole.holeLengthCalculated = length;
 
-		// Calculate benchHeight (vertical drop minus subdrill)
+		// Step 63) Calculate benchHeight and grade point
 		hole.benchHeight = Math.abs(deltaZ) - hole.subdrillAmount;
 
-		// Calculate gradeXYZ and subdrillLength using geometry
 		var radAngle = angle * (Math.PI / 180);
 		var cosAngle = Math.cos(radAngle);
 		var sinAngle = Math.sin(radAngle);
-		var radBearing = (450 - bearing) % 360 * (Math.PI / 180);
+		var radBearing = ((450 - bearing) % 360) * (Math.PI / 180);
 
 		if (Math.abs(cosAngle) > 1e-9) {
-			// Calculate subdrill length along hole axis
 			hole.subdrillLength = hole.subdrillAmount / cosAngle;
-
-			// Calculate grade point (toe without subdrill)
 			var benchDrillLength = hole.benchHeight / cosAngle;
 			hole.gradeZLocation = hole.startZLocation - hole.benchHeight;
 			var horizontalProjectionToGrade = benchDrillLength * sinAngle;
 			hole.gradeXLocation = hole.startXLocation + horizontalProjectionToGrade * Math.cos(radBearing);
 			hole.gradeYLocation = hole.startYLocation + horizontalProjectionToGrade * Math.sin(radBearing);
 		} else {
-			// Horizontal hole (angle = 90°)
 			hole.subdrillLength = 0;
 			hole.gradeXLocation = hole.endXLocation;
 			hole.gradeYLocation = hole.endYLocation;
 			hole.gradeZLocation = hole.endZLocation;
 		}
-
-		console.log("Recalculated hole " + hole.holeID + ": bearing=" + bearing.toFixed(2) + "°, angle=" + angle.toFixed(2) + "°, length=" + length.toFixed(3) + "m, benchHeight=" + hole.benchHeight.toFixed(2) + "m");
 	}
 
-	// Step 27) Finalize KAD string entity
-	finalizeKADString(points, stringNumber, kadEntities) {
-		if (points.length === 0) return;
-
-		// Step 27) Determine entity type based on point count
-		var entityType = "poly"; // Default to polyline
-		if (points.length === 1) {
-			entityType = "point";
-		} else if (points.length === 2) {
-			entityType = "line";
-		}
-
-		// Step 28) Convert string number to color
-		var color = this.stringNumberToColor(stringNumber);
-
-		// Step 29) Create KAD entity
-		var entity = {
-			entityName: "STR_String_" + stringNumber,
-			entityType: entityType,
-			color: color,
-			visible: true,
-			data: points.map(function(p, index) {
-				return {
-					pointID: index.toString(),
-					pointXLocation: p.x,
-					pointYLocation: p.y,
-					pointZLocation: p.z
-				};
-			})
-		};
-
-		kadEntities.push(entity);
-	}
-
-	// Step 30) Convert Surpac string number to hex color
-	stringNumberToColor(stringNumber) {
-		// Handle separator (string# 0) - map to black
-		if (stringNumber === 0) {
-			return "#000000";
-		}
-
-		// Convert to 32-color palette index: Math.ceil(stringNumber / 32)
-		// String#   1-32  → Math.ceil(1/32) to Math.ceil(32/32) = 1 → Position 1 (index 1)
-		// String#  33-64  → Math.ceil(33/32) to Math.ceil(64/32) = 2 → Position 2 (index 2)
-		// String# 481-512 → Math.ceil(481/32) to Math.ceil(512/32) = 16 → Position 16 (index 16)
-		var paletteIndex = Math.ceil(stringNumber / 32);
-
-		// Kirra 32-color palette (from jscolor configuration)
-		var palette32 = [
-			"#000000", // Position 0 (separator/default) - Black
-			"#770000", // Position 1 (String# 1-32) - Dark Red
-			"#FF0000", // Position 2 - Red
-			"#FF9900", // Position 3 - Orange
-			"#FFFF00", // Position 4 - Yellow
-			"#00ff00", // Position 5 - Lime Green
-			"#009900", // Position 6 - Green
-			"#00ffFF", // Position 7 - Cyan
-			"#0099ff", // Position 8 - Sky Blue
-			"#0000FF", // Position 9 - Blue
-			"#FF00FF", // Position 10 - Magenta
-			"#550000", // Position 11 - Dark Maroon
-			"#AA0000", // Position 12 - Dark Red
-			"#883300", // Position 13 - Brown
-			"#bbbb00", // Position 14 - Olive
-			"#33AA00", // Position 15 - Forest Green
-			"#006600", // Position 16 - Dark Green (String# 511 maps here)
-			"#007F7F", // Position 17 - Teal
-			"#002288", // Position 18 - Navy Blue
-			"#000099", // Position 19 - Dark Blue
-			"#7F007F", // Position 20 - Purple
-			"#010101", // Position 21 - Almost Black
-			"#222222", // Position 22 - Very Dark Gray
-			"#333333", // Position 23 - Dark Gray
-			"#444444", // Position 24 - Gray
-			"#555555", // Position 25 - Medium Gray
-			"#777777", // Position 26 - Light Gray
-			"#888888", // Position 27 - Silver
-			"#AAAAAA", // Position 28 - Light Silver
-			"#cccccc", // Position 29 - Very Light Gray
-			"#FEFEFE" // Position 30 - Almost White
-		];
-
-		// Clamp palette index to valid range
-		if (paletteIndex < 0) paletteIndex = 0;
-		if (paletteIndex >= palette32.length) paletteIndex = palette32.length - 1;
-
-		return palette32[paletteIndex];
-	}
-
-	// Step 33) Convert HSL to hex color
-	hslToHex(h, s, l) {
-		s /= 100;
-		l /= 100;
-
-		var c = (1 - Math.abs(2 * l - 1)) * s;
-		var x = c * (1 - Math.abs(h / 60 % 2 - 1));
-		var m = l - c / 2;
-		var r = 0,
-			g = 0,
-			b = 0;
-
-		if (0 <= h && h < 60) {
-			r = c;
-			g = x;
-			b = 0;
-		} else if (60 <= h && h < 120) {
-			r = x;
-			g = c;
-			b = 0;
-		} else if (120 <= h && h < 180) {
-			r = 0;
-			g = c;
-			b = x;
-		} else if (180 <= h && h < 240) {
-			r = 0;
-			g = x;
-			b = c;
-		} else if (240 <= h && h < 300) {
-			r = x;
-			g = 0;
-			b = c;
-		} else if (300 <= h && h < 360) {
-			r = c;
-			g = 0;
-			b = x;
-		}
-
-		var rHex = Math.round((r + m) * 255).toString(16).padStart(2, "0");
-		var gHex = Math.round((g + m) * 255).toString(16).padStart(2, "0");
-		var bHex = Math.round((b + m) * 255).toString(16).padStart(2, "0");
-
-		return "#" + rHex + gHex + bHex;
-	}
-
-	// Step 34) Detect if content is binary
+	// Step 64) Detect if content is binary
 	isBinaryContent(content) {
-		// Convert ArrayBuffer to Uint8Array for inspection
 		var bytes;
 		if (typeof content === "string") {
-			// String content - check directly
 			for (var i = 0; i < Math.min(content.length, 500); i++) {
 				var code = content.charCodeAt(i);
-				// Null bytes indicate binary
 				if (code === 0) return true;
 			}
 			return false;
 		} else if (content instanceof ArrayBuffer) {
-			// ArrayBuffer - need to inspect bytes
 			bytes = new Uint8Array(content);
 		} else {
-			// Unknown format
 			return false;
 		}
 
-		// Check first 1000 bytes for binary patterns
 		var checkLength = Math.min(bytes.length, 1000);
 		var nullCount = 0;
 		var highByteCount = 0;
@@ -607,40 +674,78 @@ class SurpacSTRParser extends BaseParser {
 
 		for (var i = 0; i < checkLength; i++) {
 			var byte = bytes[i];
-
-			// Count null bytes
-			if (byte === 0x00) {
-				nullCount++;
-			}
-
-			// Count high bytes (>127)
-			if (byte > 127) {
-				highByteCount++;
-			}
-
-			// Count printable ASCII (space to ~, plus newlines/tabs)
+			if (byte === 0x00) nullCount++;
+			if (byte > 127) highByteCount++;
 			if ((byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13) {
 				printableCount++;
 			}
 		}
 
-		// If more than 5% null bytes, it's binary
-		if (nullCount > checkLength * 0.05) {
-			return true;
-		}
+		if (nullCount > checkLength * 0.05) return true;
+		if (printableCount > checkLength * 0.9) return false;
+		if (highByteCount > checkLength * 0.3) return true;
 
-		// If more than 90% printable ASCII, it's text
-		if (printableCount > checkLength * 0.9) {
-			return false;
-		}
-
-		// If more than 30% high bytes, it's binary
-		if (highByteCount > checkLength * 0.3) {
-			return true;
-		}
-
-		// Default: assume text
 		return false;
+	}
+
+	// Step 65) Find end of binary header
+	findBinaryHeaderEnd(buffer) {
+		var view = new Uint8Array(buffer);
+		var lineCount = 0;
+
+		for (var i = 0; i < Math.min(view.length, 500); i++) {
+			if (view[i] === 0x0A) {
+				lineCount++;
+				if (lineCount === 2) {
+					return i + 1;
+				}
+			}
+		}
+
+		return 200;
+	}
+
+	// Step 66) Pad number with leading zeros
+	padNumber(num, width) {
+		var str = num.toString();
+		while (str.length < width) {
+			str = "0" + str;
+		}
+		return str;
+	}
+
+	// Step 67) Convert string number to color
+	stringNumberToColor(stringNumber) {
+		if (stringNumber === 0) {
+			return "#000000";
+		}
+
+		var paletteIndex = Math.ceil(stringNumber / 32);
+
+		var palette32 = [
+			"#000000", "#770000", "#FF0000", "#FF9900", "#FFFF00",
+			"#00FF00", "#009900", "#00FFFF", "#0099FF", "#0000FF",
+			"#FF00FF", "#550000", "#AA0000", "#883300", "#BBBB00",
+			"#33AA00", "#006600", "#007F7F", "#002288", "#000099",
+			"#7F007F", "#010101", "#222222", "#333333", "#444444",
+			"#555555", "#777777", "#888888", "#AAAAAA", "#CCCCCC",
+			"#FEFEFE"
+		];
+
+		if (paletteIndex < 0) paletteIndex = 0;
+		if (paletteIndex >= palette32.length) paletteIndex = palette32.length - 1;
+
+		return palette32[paletteIndex];
+	}
+
+	// Step 68) Convert string to ArrayBuffer
+	stringToArrayBuffer(str) {
+		var buf = new ArrayBuffer(str.length);
+		var bufView = new Uint8Array(buf);
+		for (var i = 0; i < str.length; i++) {
+			bufView[i] = str.charCodeAt(i) & 0xFF;
+		}
+		return buf;
 	}
 }
 

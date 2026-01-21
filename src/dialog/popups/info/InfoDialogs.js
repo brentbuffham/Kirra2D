@@ -73,7 +73,44 @@ export function updatePopup() {
 		"<br>" +
 		'<label class="labelWhite12c">' +
 		"<br>" +
-		"🗓️ Jan26" +
+		"🗓️ Jan26 (Week of Jan 14-22)" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Orica SPF blast file parser implemented" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Surpac Binary STR parser export functionality added" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - LAS import performance fix 60fps restored" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - LAS Z centroid cursor visibility fixed" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - 3D Performance SceneManager architecture" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Performance Monitor FPS/draw calls overlay" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Instanced hole rendering 10k at 60fps" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Batched line rendering 100k segments" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - three-mesh-bvh raycasting performance" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Offset terminology consistency fixed" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - KAD offset live preview functionality" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Stadium connector 3D rendering fixed" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Shapefile Z-axis offset support added" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - LAS/Shapefile import/export complete" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Layer management context menu enhanced" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - BlastHole holeTime property CSV handling" +
+		"<br>" +
+		"</label>" +
+		'<label class="labelWhite12c">' +
+		"<br>" +
+		"🗓️ Jan26 (Week of Jan 7-13)" +
 		"<br>" +
 		"⠀⠀🔔 Jan26 - Print validation allows surfaces/images" +
 		"<br>" +

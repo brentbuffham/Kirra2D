@@ -11,7 +11,7 @@
 // Step 7) Created: 2026-01-05
 
 import BaseParser from "../BaseParser.js";
-import SurpacBinarySTRParser from "./SurpacBinarySTRParser.js";
+// NOTE: SurpacBinarySTRParser import removed - binary parsing now handled inline
 
 // Step 7) SurpacSurfaceParser class
 class SurpacSurfaceParser extends BaseParser {
@@ -36,8 +36,18 @@ class SurpacSurfaceParser extends BaseParser {
 		// Step 10) Parse vertices from STR file (may be async for binary)
 		var vertices = await this.parseVertices(strContent);
 
-		// Step 11) Text-only: build triangle groups from ASCII DTM; STR only supplies vertices
-		var triangleGroups = this.parseTriangles(dtmContent, vertices);
+		// Step 11) Parse triangles from DTM file (text or binary)
+		var isBinaryDTM = this.isBinaryContent(dtmContent);
+		var triangleGroups;
+
+		if (isBinaryDTM) {
+			console.log("Parsing binary DTM triangles");
+			var binaryTriangles = this.parseBinaryTriangles(dtmContent, vertices);
+			triangleGroups = binaryTriangles.length > 0 ? [binaryTriangles] : [];
+		} else {
+			console.log("Parsing text DTM triangles");
+			triangleGroups = this.parseTriangles(dtmContent, vertices);
+		}
 
 		// Step 12) Create surface objects fully in memory before exposing to UI
 		var baseName = data.surfaceName || "Surpac_Surface";
@@ -92,14 +102,18 @@ class SurpacSurfaceParser extends BaseParser {
 		};
 	}
 
-	// Step 14) Parse vertices from STR file (text only)
+	// Step 14) Parse vertices from STR file (text or binary)
 	async parseVertices(strContent) {
-		// Step 15) Binary detection disabled - only parse text format
-		// TODO: Re-enable binary detection once binary format is properly tested
-		// var isBinary = this.isBinaryContent(strContent);
+		// Step 15) Detect binary vs text format
+		var isBinary = this.isBinaryContent(strContent);
 
-		console.log("Parsing text STR vertices");
-		return this.parseTextVertices(strContent);
+		if (isBinary) {
+			console.log("Parsing binary STR vertices");
+			return await this.parseBinaryVertices(strContent);
+		} else {
+			console.log("Parsing text STR vertices");
+			return this.parseTextVertices(strContent);
+		}
 	}
 
 	// Step 16) Detect if content is binary
@@ -166,11 +180,97 @@ class SurpacSurfaceParser extends BaseParser {
 		return false;
 	}
 
-	// Step 17) Parse binary vertices using SurpacBinarySTRParser
+	// Step 17) Parse binary vertices for surface data
 	async parseBinaryVertices(strContent) {
-		var parser = new SurpacBinarySTRParser();
-		var data = await parser.parse(strContent);
-		return data.vertices || [];
+		// Step 17a) Convert to ArrayBuffer if needed
+		var buffer;
+		if (typeof strContent === "string") {
+			buffer = this.stringToArrayBuffer(strContent);
+		} else if (strContent instanceof ArrayBuffer) {
+			buffer = strContent;
+		} else {
+			console.warn("Invalid STR content type for binary parsing");
+			return [];
+		}
+
+		// Step 17b) Find header end
+		var headerEnd = this.findBinarySTRHeaderEnd(buffer);
+		console.log("Binary STR: headerEnd=" + headerEnd + ", totalSize=" + buffer.byteLength);
+
+		// Step 17c) Parse binary vertex data
+		// Binary STR format: skip null padding, then 1-byte string#, then Y,X,Z as big-endian doubles
+		var vertices = [];
+		var bytes = new Uint8Array(buffer, headerEnd);
+		var pos = 0;
+
+		try {
+			while (pos < bytes.length - 25) {
+				// Step 17d) Skip null padding to find next record
+				while (pos < bytes.length && bytes[pos] === 0x00) {
+					pos++;
+				}
+
+				if (pos >= bytes.length - 24) break;
+
+				// Step 17e) Read string number (1 byte)
+				// Surpac binary STR uses 1-byte string numbers
+				var stringNumber = bytes[pos];
+				pos++;
+
+				// Step 17f) String# 0 = null record, skip; validate range (1-255)
+				if (stringNumber === 0) {
+					continue;
+				}
+
+				// Step 17g) Read Y, X, Z as doubles (BIG-ENDIAN for Surpac)
+				if (pos + 24 > bytes.length) break;
+
+				var view = new DataView(bytes.buffer, bytes.byteOffset + pos);
+				var y = view.getFloat64(0, false); // big-endian
+				var x = view.getFloat64(8, false);
+				var z = view.getFloat64(16, false);
+				pos += 24;
+
+				// Step 17h) Validate coordinates - must be reasonable UTM-range values
+				if (isNaN(x) || isNaN(y) || isNaN(z)) {
+					continue;
+				}
+
+				// Step 17i) Additional validation: reject garbage values
+				if (Math.abs(x) > 1e12 || Math.abs(y) > 1e12 || Math.abs(z) > 1e12) {
+					continue;
+				}
+
+				// Step 17j) Add vertex
+				vertices.push({
+					x: x,
+					y: y,
+					z: z
+				});
+			}
+		} catch (error) {
+			console.warn("Error parsing binary STR vertices at position " + pos + ":", error);
+		}
+
+		console.log("Parsed " + vertices.length + " vertices from binary STR file");
+		return vertices;
+	}
+
+	// Step 17k) Find end of binary STR header
+	findBinarySTRHeaderEnd(buffer) {
+		var view = new Uint8Array(buffer);
+		var lineCount = 0;
+
+		for (var i = 0; i < Math.min(view.length, 500); i++) {
+			if (view[i] === 0x0A) {
+				lineCount++;
+				if (lineCount === 2) {
+					return i + 1;
+				}
+			}
+		}
+
+		return 200;
 	}
 
 	// Step 18) Parse text vertices
@@ -357,24 +457,21 @@ class SurpacSurfaceParser extends BaseParser {
 		var view = new DataView(buffer, headerEnd);
 		var pos = 0;
 
-		// Step 35) Binary DTM format (based on text format analysis):
-		// Format: triangle_id, v1_index, v2_index, v3_index, neighbor1, neighbor2, neighbor3
-		// 7 integers (4 bytes each) = 28 bytes per triangle
-		var recordSize = 28;
+		// Step 35) Binary DTM format:
+		// Format: triangle_id, v1_index, v2_index, v3_index, neighbor1, neighbor2, neighbor3, padding
+		// 7 integers (4 bytes each) = 28 bytes + 5 bytes padding = 33 bytes per record
+		var recordSize = 33;
 
 		try {
 			while (pos + recordSize <= view.byteLength) {
 				// Read triangle indices (1-based in Surpac, convert to 0-based)
-				var triangleId = view.getInt32(pos, true);
-				pos += 4;
-				var v1Index = view.getInt32(pos, true) - 1;
-				pos += 4;
-				var v2Index = view.getInt32(pos, true) - 1;
-				pos += 4;
-				var v3Index = view.getInt32(pos, true) - 1;
-				pos += 4;
-				// Skip neighbor triangle IDs (we don't need topology for rendering)
-				pos += 12; // Skip 3 more integers (neighbor1, neighbor2, neighbor3)
+				// Surpac binary uses BIG-ENDIAN
+				var triangleId = view.getInt32(pos, false);
+				var v1Index = view.getInt32(pos + 4, false) - 1;
+				var v2Index = view.getInt32(pos + 8, false) - 1;
+				var v3Index = view.getInt32(pos + 12, false) - 1;
+				// Skip to next record (neighbor IDs at pos+16, +20, +24, then 5 bytes padding)
+				pos += recordSize;
 
 				// Step 36) Validate indices
 				if (v1Index < 0 || v1Index >= vertices.length || v2Index < 0 || v2Index >= vertices.length || v3Index < 0 || v3Index >= vertices.length) {
@@ -397,27 +494,63 @@ class SurpacSurfaceParser extends BaseParser {
 		return triangles;
 	}
 
-	// Step 38) Find end of binary DTM header
+	// Step 38) Find end of binary DTM header and start of triangle data
 	findBinaryHeaderEnd(buffer) {
 		var view = new Uint8Array(buffer);
 
-		// Look for double newline or first null byte sequence
-		for (var i = 0; i < Math.min(view.length, 1000); i++) {
-			// Check for \r\n pattern followed by binary data
-			if (view[i] === 0x0d && view[i + 1] === 0x0a) {
-				// Check if next byte looks like binary data
-				if (i + 2 < view.length && (view[i + 2] === 0x00 || view[i + 2] < 0x20)) {
-					return i + 2;
+		// Step 38a) Binary DTM structure:
+		// - Text header (STR filename, checksum, algorithm info)
+		// - Null padding
+		// - "END" marker
+		// - Metadata (neighbours=yes,validated=true,...)
+		// - Binary triangle data (7 x 4-byte BIG-ENDIAN integers per triangle)
+
+		// Step 38b) Search for first valid triangle record (triangle ID = 1)
+		// Triangle format: triID, v1, v2, v3, n1, n2, n3 (7 x 4-byte int32 big-endian)
+		// Scan byte-by-byte to find where triangle data starts (offset may not be 4-byte aligned)
+		for (var scanPos = 50; scanPos < Math.min(view.length - 28, 500); scanPos++) {
+			try {
+				var testView = new DataView(buffer, scanPos);
+				// Read as big-endian (Surpac binary format)
+				var triId = testView.getInt32(0, false);
+				var v1 = testView.getInt32(4, false);
+				var v2 = testView.getInt32(8, false);
+				var v3 = testView.getInt32(12, false);
+				
+				// Step 38c) Valid first triangle: ID = 1, vertices are small positive numbers
+				if (triId === 1 && v1 > 0 && v1 < 100000 && v2 > 0 && v2 < 100000 && v3 > 0 && v3 < 100000) {
+					console.log("Found binary triangle data start at offset " + scanPos + 
+						": tri=" + triId + ", v1=" + v1 + ", v2=" + v2 + ", v3=" + v3);
+					return scanPos;
 				}
-			}
-			// Check for null byte
-			if (view[i] === 0x00) {
-				return i;
+			} catch (e) {
+				// Continue scanning
 			}
 		}
 
-		// Default: assume header is first 100 bytes
-		return 100;
+		// Step 38d) Fallback: look for "END" marker and skip past it
+		for (var i = 0; i < Math.min(view.length, 500); i++) {
+			if (view[i] === 0x45 && view[i+1] === 0x4E && view[i+2] === 0x44) { // "END"
+				// Skip past END and any padding
+				var pos = i + 3;
+				while (pos < view.length && view[pos] === 0x00) {
+					pos++;
+				}
+				// Skip metadata text
+				while (pos < view.length && view[pos] >= 0x20 && view[pos] <= 0x7E) {
+					pos++;
+				}
+				// Skip any trailing nulls
+				while (pos < view.length && view[pos] === 0x00) {
+					pos++;
+				}
+				console.log("Using END marker fallback, triangle data at offset " + pos);
+				return pos;
+			}
+		}
+
+		console.warn("Could not find triangle data start, using default offset 200");
+		return 200;
 	}
 
 	// Step 39) Convert string to ArrayBuffer

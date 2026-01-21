@@ -2,6 +2,23 @@
 //=============================================================
 // SURPAC BINARY STR PARSER - STRING FILE (BINARY)
 //=============================================================
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// @deprecated 2026-01-21 - USE SurpacSTRParser.js INSTEAD
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//
+// REASON FOR DEPRECATION:
+// SurpacSTRParser.js now handles BOTH text and binary formats
+// with automatic detection. It includes:
+//   - Correct NULL RECORD delimiter handling (per specification)
+//   - Unique entity naming (baseName_NNNN format)
+//   - Blast hole detection and parsing
+//   - Binary vertex/geometry parsing
+//
+// RECOMMENDED:
+// Use SurpacSTRParser.js for all STR file parsing.
+//
+// This file is kept for backward compatibility but may be removed in future.
+//=============================================================
 // Step 1) Parses binary Surpac STR files (vertices)
 // Step 2) Format: Text header (2 lines) + binary vertex data
 // Step 3) Binary format: separator + flag + Y + X + Z + description
@@ -98,25 +115,27 @@ class SurpacBinarySTRParser extends BaseParser {
 				// Step 16) Check if we have enough bytes left
 				if (pos >= view.byteLength - 40) break;
 
-				// Step 17) Read string number byte (should be 1-255)
-				var stringNumber = bytes[pos];
-				pos += 1;
+				// Step 17) Read string number (2 bytes, big-endian uint16)
+				if (pos + 2 > view.byteLength) break;
+				var stringNumber = view.getUint16(pos, false); // big-endian
+				pos += 2;
 
 				// Skip if string number is 0 or too high (invalid/separator)
-				if (stringNumber === 0 || stringNumber > 255) {
+				if (stringNumber === 0 || stringNumber > 32000) {
 					continue;
 				}
 
-				// Step 18) Read Y, X, Z as doubles (little-endian)
+				// Step 18) Read Y, X, Z as doubles (BIG-ENDIAN)
 				if (pos + 24 > view.byteLength) break;
 
-				var y = view.getFloat64(pos, true);
+				// Surpac binary uses BIG-ENDIAN
+				var y = view.getFloat64(pos, false);
 				pos += 8;
 
-				var x = view.getFloat64(pos, true);
+				var x = view.getFloat64(pos, false);
 				pos += 8;
 
-				var z = view.getFloat64(pos, true);
+				var z = view.getFloat64(pos, false);
 				pos += 8;
 
 				// Step 19) Validate coordinates
@@ -124,46 +143,34 @@ class SurpacBinarySTRParser extends BaseParser {
 					continue;
 				}
 
-				// Step 20) Read description string (variable length, null-terminated or until next separator)
-				var description = "";
-				var descStart = pos;
-				var maxDescLength = 500;
-
-				for (var j = 0; j < maxDescLength && pos < bytes.length; j++) {
-					var byte = bytes[pos];
-
-					// Stop at null byte or if we find 8 consecutive nulls (next separator)
-					if (byte === 0x00) {
-						// Check if this is start of next separator (8 nulls)
-						var isNextSeparator = true;
-						for (var k = 0; k < 8 && pos + k < bytes.length; k++) {
-							if (bytes[pos + k] !== 0x00) {
-								isNextSeparator = false;
-								break;
-							}
-						}
-
-						if (isNextSeparator) {
-							// Found next separator, stop here
-							break;
-						}
+				// Step 20) Skip padding nulls before description (but not 8+ which is separator)
+				while (pos < bytes.length && bytes[pos] === 0x00) {
+					var nullRun = 0;
+					var checkPos = pos;
+					while (checkPos < bytes.length && bytes[checkPos] === 0x00) {
+						nullRun++;
+						checkPos++;
 					}
+					if (nullRun >= 8) break;
+					pos++;
+				}
 
+				// Step 20a) Read description (printable ASCII until null terminator)
+				var description = "";
+				var maxDescLength = 500;
+				while (pos < bytes.length && description.length < maxDescLength) {
+					var byte = bytes[pos];
 					if (byte >= 0x20 && byte <= 0x7E) {
-						// Printable ASCII character
 						description += String.fromCharCode(byte);
 						pos++;
-					} else if (byte === 0x00 || byte === 0x0D || byte === 0x0A) {
-						// Null, CR, or LF terminator
-						pos++;
-						if (byte === 0x0D && pos < bytes.length && bytes[pos] === 0x0A) {
-							pos++; // Skip LF after CR
-						}
-						break;
 					} else {
-						// Non-printable, stop
 						break;
 					}
+				}
+
+				// Step 20b) Skip the null terminator if present
+				if (pos < bytes.length && bytes[pos] === 0x00) {
+					pos++;
 				}
 
 				// Step 21) Process based on string number

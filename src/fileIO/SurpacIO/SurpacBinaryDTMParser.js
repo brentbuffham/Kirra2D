@@ -2,9 +2,32 @@
 //=============================================================
 // SURPAC BINARY DTM PARSER - DIGITAL TERRAIN MODEL (BINARY)
 //=============================================================
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// @deprecated 2026-01-21 - DO NOT USE THIS PARSER
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+//
+// REASON FOR DEPRECATION:
+// This parser is INCORRECT. DTM files contain TRIANGLE INDICES
+// (as 7 x 4-byte int32 per triangle), NOT point coordinates.
+//
+// Binary DTM file structure:
+//   - Text header (references STR file)
+//   - OBJECT, TRISOLATION metadata
+//   - Binary triangle data: triangleID, v1, v2, v3, n1, n2, n3 (7 x int32 LE)
+//
+// CORRECT USAGE:
+// Use SurpacSurfaceParser.js which correctly parses:
+//   - Binary STR files (vertex coordinates)
+//   - Binary DTM files (triangle connectivity with proper header finding)
+//
+// Reference: https://www.cse.unr.edu/~fredh/papers/working/vr-mining/string.html
+//
+// This file is kept for backward compatibility but may be removed in future.
+//=============================================================
+// ORIGINAL DESCRIPTION (INCORRECT):
 // Step 1) Parses binary Surpac DTM files
-// Step 2) Format: Text header + binary point data
-// Step 3) Binary data: double-precision floats (8 bytes each)
+// Step 2) Format: Text header + binary point data <-- WRONG!
+// Step 3) Binary data: double-precision floats (8 bytes each) <-- WRONG!
 // Step 4) Reference: mka_pd_stg4_202406_v1.dtm
 // Step 5) Created: 2026-01-05
 
@@ -102,13 +125,14 @@ class SurpacBinaryDTMParser extends BaseParser {
 				}
 
 				// Read Y, X, Z as doubles (little-endian)
-				var y = view.getFloat64(pos, true);
+				// Surpac binary uses BIG-ENDIAN
+				var y = view.getFloat64(pos, false);
 				pos += 8;
 
-				var x = view.getFloat64(pos, true);
+				var x = view.getFloat64(pos, false);
 				pos += 8;
 
-				var z = view.getFloat64(pos, true);
+				var z = view.getFloat64(pos, false);
 				pos += 8;
 
 				// Validate coordinates (check for NaN or unreasonable values)

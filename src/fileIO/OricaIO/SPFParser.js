@@ -8,6 +8,7 @@
 // Step 4) Created: 2026-01-21
 
 import BaseParser from "../BaseParser.js";
+import JSZip from "jszip";
 
 // Step 5) SPFParser class
 class SPFParser extends BaseParser {
@@ -22,12 +23,7 @@ class SPFParser extends BaseParser {
 
 	// Step 7) Main parse method
 	async parse(file) {
-		// Step 8) SPF files are ZIP archives - need JSZip
-		if (!window.JSZip) {
-			throw new Error("JSZip library required for SPF parsing. Include from https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js");
-		}
-
-		// Step 9) Read file as ArrayBuffer
+		// Step 8) Read file as ArrayBuffer
 		var arrayBuffer = await this.readAsArrayBuffer(file);
 
 		// Step 10) Extract ZIP contents
@@ -146,7 +142,7 @@ class SPFParser extends BaseParser {
 
 		for (var i = 0; i < holeElements.length; i++) {
 			var holeElem = holeElements[i];
-			var hole = this.parseHoleElement(holeElem, ns);
+			var hole = this.parseHoleElement(holeElem, ns, i === 0);
 			if (hole) {
 				result.holes.push(hole);
 			}
@@ -156,7 +152,12 @@ class SPFParser extends BaseParser {
 	}
 
 	// Step 22) Parse individual Hole element
-	parseHoleElement(holeElem, ns) {
+	parseHoleElement(holeElem, ns, isFirstHole) {
+		// Debug: Dump XML for first hole to see coordinate structure
+		if (isFirstHole) {
+			console.log("SPF First hole XML:", holeElem.outerHTML ? holeElem.outerHTML.substring(0, 2000) : "No outerHTML");
+		}
+
 		var hole = {
 			index: this.getElementIntNS(holeElem, ns, "Index"),
 			guid: this.getElementTextNS(holeElem, ns, "Guid"),
@@ -189,18 +190,50 @@ class SPFParser extends BaseParser {
 
 		// Step 23) Parse DesignCoordinates
 		var designCoords = holeElem.getElementsByTagNameNS(ns, "DesignCoordinates")[0];
+		if (!designCoords) {
+			// Try without namespace
+			designCoords = holeElem.getElementsByTagName("DesignCoordinates")[0];
+		}
 		if (designCoords) {
-			hole.designX = this.getElementFloatNS(designCoords, ns, "X");
-			hole.designY = this.getElementFloatNS(designCoords, ns, "Y");
-			hole.designZ = this.getElementFloatNS(designCoords, ns, "Z");
+			// Try with namespace first, then without namespace
+			hole.designX = this.getElementFloatNS(designCoords, ns, "X") || this.getElementFloat(designCoords, "X");
+			hole.designY = this.getElementFloatNS(designCoords, ns, "Y") || this.getElementFloat(designCoords, "Y");
+			hole.designZ = this.getElementFloatNS(designCoords, ns, "Z") || this.getElementFloat(designCoords, "Z");
+
+			// Also try Easting/Northing/Elevation naming convention
+			if (hole.designX == null) {
+				hole.designX = this.getElementFloatNS(designCoords, ns, "Easting") || this.getElementFloat(designCoords, "Easting");
+			}
+			if (hole.designY == null) {
+				hole.designY = this.getElementFloatNS(designCoords, ns, "Northing") || this.getElementFloat(designCoords, "Northing");
+			}
+			if (hole.designZ == null) {
+				hole.designZ = this.getElementFloatNS(designCoords, ns, "Elevation") || this.getElementFloat(designCoords, "Elevation") || this.getElementFloatNS(designCoords, ns, "RL") || this.getElementFloat(designCoords, "RL");
+			}
 		}
 
 		// Step 24) Parse ActualCoordinates
 		var actualCoords = holeElem.getElementsByTagNameNS(ns, "ActualCoordinates")[0];
+		if (!actualCoords) {
+			// Try without namespace
+			actualCoords = holeElem.getElementsByTagName("ActualCoordinates")[0];
+		}
 		if (actualCoords) {
-			hole.actualX = this.getElementFloatNS(actualCoords, ns, "X");
-			hole.actualY = this.getElementFloatNS(actualCoords, ns, "Y");
-			hole.actualZ = this.getElementFloatNS(actualCoords, ns, "Z");
+			// Try with namespace first, then without namespace
+			hole.actualX = this.getElementFloatNS(actualCoords, ns, "X") || this.getElementFloat(actualCoords, "X");
+			hole.actualY = this.getElementFloatNS(actualCoords, ns, "Y") || this.getElementFloat(actualCoords, "Y");
+			hole.actualZ = this.getElementFloatNS(actualCoords, ns, "Z") || this.getElementFloat(actualCoords, "Z");
+
+			// Also try Easting/Northing/Elevation naming convention
+			if (hole.actualX == null) {
+				hole.actualX = this.getElementFloatNS(actualCoords, ns, "Easting") || this.getElementFloat(actualCoords, "Easting");
+			}
+			if (hole.actualY == null) {
+				hole.actualY = this.getElementFloatNS(actualCoords, ns, "Northing") || this.getElementFloat(actualCoords, "Northing");
+			}
+			if (hole.actualZ == null) {
+				hole.actualZ = this.getElementFloatNS(actualCoords, ns, "Elevation") || this.getElementFloat(actualCoords, "Elevation") || this.getElementFloatNS(actualCoords, ns, "RL") || this.getElementFloat(actualCoords, "RL");
+			}
 		}
 
 		// Step 25) Parse DesignLoading (decks)
@@ -239,107 +272,246 @@ class SPFParser extends BaseParser {
 		var kirraHoles = [];
 		var offsetX = this.offsetX;
 		var offsetY = this.offsetY;
-		var blastName = blastHeader ? (blastHeader.location || blastHeader.mine || "SPF_Blast") : "SPF_Blast";
+
+		// Step 27a) Try to extract blast name from first hole's comment field
+		// Format observed: "CH01_5420_114_:::1" where blast name is before ":::"
+		var blastName = "SPF_Blast";
+		if (spfHoles.length > 0 && spfHoles[0].comment) {
+			var comment = spfHoles[0].comment;
+			var separatorIndex = comment.indexOf(":::");
+			if (separatorIndex > 0) {
+				blastName = comment.substring(0, separatorIndex);
+				// Remove trailing underscore if present
+				if (blastName.endsWith("_")) {
+					blastName = blastName.substring(0, blastName.length - 1);
+				}
+				console.log("SPF Extracted blast name from comment:", blastName);
+			}
+		}
+
+		// Step 27b) Fall back to blast header if no name extracted from comment
+		if (blastName === "SPF_Blast" && blastHeader) {
+			blastName = blastHeader.location || blastHeader.mine || blastName;
+		}
+
+		// Debug: Log first hole to check coordinate structure
+		if (spfHoles.length > 0) {
+			console.log("SPF First hole raw data:", JSON.stringify(spfHoles[0], null, 2));
+		}
+
+		var skippedDummy = 0;
+		var skippedNoCoords = 0;
 
 		for (var i = 0; i < spfHoles.length; i++) {
 			var spf = spfHoles[i];
 
-			// Skip dummy holes
-			if (spf.isDummy) continue;
+			// Step 28) Skip dummy holes
+			if (spf.isDummy) {
+				skippedDummy++;
+				continue;
+			}
 
-			// Use design coordinates, fall back to actual
-			var collarX = spf.designX !== null ? spf.designX : spf.actualX;
-			var collarY = spf.designY !== null ? spf.designY : spf.actualY;
-			var collarZ = spf.designZ !== null ? spf.designZ : spf.actualZ;
+			// Step 29) Use design coordinates, fall back to actual
+			// Check for both null AND undefined using != instead of !==
+			var collarX = spf.designX != null ? spf.designX : spf.actualX;
+			var collarY = spf.designY != null ? spf.designY : spf.actualY;
+			var collarZ = spf.designZ != null ? spf.designZ : spf.actualZ;
 
-			if (collarX === null || collarY === null) continue;
+			// Step 30) Skip holes without valid coordinates (check for null, undefined, or NaN)
+			if (collarX == null || collarY == null || isNaN(collarX) || isNaN(collarY)) {
+				skippedNoCoords++;
+				if (skippedNoCoords <= 3) {
+					console.log("SPF Skipped hole " + i + " - no coords. designX:", spf.designX, "actualX:", spf.actualX, "designY:", spf.designY, "actualY:", spf.actualY);
+				}
+				continue;
+			}
 
-			// Calculate toe position from bearing/angle/depth
+			// Step 31) Get hole geometry parameters
 			var depth = spf.designLength || 0;
 			var angle = spf.designAngle || 0; // Angle from vertical (0 = vertical down)
 			var bearing = spf.designBearing || 0; // Azimuth in degrees
 
+			// Step 31a) SPF subdrill is used directly
+			// Negative subdrill means hole stops above grade (valid)
+			// Positive subdrill means hole extends below grade
+			var subdrillAmount = spf.subdrill || 0;
+
+			// Step 31b) Calculate benchHeight from depth and subdrill
+			// benchHeight = vertical distance from collar to grade
+			// For positive subdrill (toe below grade): benchHeight = depth - subdrill
+			// For negative subdrill (toe above grade): benchHeight = depth - subdrill (same formula)
+			// Example: depth=5.5, subdrill=+0.5 => benchHeight = 5.0m, grade 5m below collar, toe 5.5m below
+			// Example: depth=5.5, subdrill=-0.5 => benchHeight = 6.0m, grade 6m below collar, toe 5.5m below (above grade)
+			var benchHeight = depth - subdrillAmount;
+
+			// Step 32) Convert angle and bearing to radians
+			var angleRad = angle * Math.PI / 180;
+			var bearingRad = bearing * Math.PI / 180;
+
+			// Step 33) Calculate toe position from collar + bearing/angle/depth
 			var toeX = collarX;
 			var toeY = collarY;
-			var toeZ = (collarZ || 0) - depth * Math.cos(angle * Math.PI / 180);
+			var toeZ = (collarZ || 0) - depth * Math.cos(angleRad);
 
-			// If angle > 0, calculate horizontal offset
+			// Step 34) If angle > 0, calculate horizontal offset for toe
 			if (angle !== 0) {
-				var horizontalDist = depth * Math.sin(angle * Math.PI / 180);
-				toeX = collarX + horizontalDist * Math.sin(bearing * Math.PI / 180);
-				toeY = collarY + horizontalDist * Math.cos(bearing * Math.PI / 180);
+				var horizontalDist = depth * Math.sin(angleRad);
+				toeX = collarX + horizontalDist * Math.sin(bearingRad);
+				toeY = collarY + horizontalDist * Math.cos(bearingRad);
 			}
 
+			// Step 35) Calculate grade position
+			// Grade is at floor level, toe is below grade by subdrill amount
+			// So: gradeZ = toeZ + subdrill (vertical component)
+			var gradeX = collarX;
+			var gradeY = collarY;
+			var gradeZ;
+
+			// Step 35a) Use gradeRL from SPF if it's a valid elevation (not 0 or null)
+			if (spf.gradeRL != null && spf.gradeRL !== 0) {
+				gradeZ = spf.gradeRL;
+				console.log("SPF Using gradeRL directly:", gradeZ);
+			} else {
+				// Step 35b) Calculate grade from toe + subdrill
+				// Per README: SubdrillAmount = GradeZ - EndZ
+				// Therefore: GradeZ = EndZ + SubdrillAmount (toe is below grade, add to go up)
+				gradeZ = toeZ + subdrillAmount;
+				console.log("SPF Calculated gradeZ from toeZ + subdrill:", toeZ, "+", subdrillAmount, "=", gradeZ);
+			}
+
+			// Step 35c) Calculate benchHeight from collar to grade (vertical)
+			benchHeight = Math.abs((collarZ || 0) - gradeZ);
+
+			// Step 36) If angle > 0, calculate horizontal offset for grade
+			if (angle !== 0 && benchHeight > 0) {
+				var benchDrillLength = benchHeight / Math.cos(angleRad);
+				var horizontalToGrade = benchDrillLength * Math.sin(angleRad);
+				gradeX = collarX + horizontalToGrade * Math.sin(bearingRad);
+				gradeY = collarY + horizontalToGrade * Math.cos(bearingRad);
+			}
+
+			// Step 37) Calculate subdrillLength (3D distance from grade to toe)
+			var subdrillLength = Math.sqrt(Math.pow(toeX - gradeX, 2) + Math.pow(toeY - gradeY, 2) + Math.pow(toeZ - gradeZ, 2));
+
+			// Step 38) Calculate total charge mass from all decks (for measuredMass)
+			var totalChargeMass = 0;
+			if (spf.decks && spf.decks.length > 0) {
+				for (var d = 0; d < spf.decks.length; d++) {
+					var deck = spf.decks[d];
+					if (deck.weight !== null && deck.weight !== undefined) {
+						totalChargeMass += deck.weight;
+					}
+				}
+			}
+
+			// Step 39) Create Kirra blast hole object
 			var kirraHole = {
+				entityName: blastName,
+				entityType: "hole",
 				holeID: spf.holeId || String(i + 1),
-				holeName: blastName + "_" + (spf.holeId || String(i + 1)),
-				collarX: collarX - offsetX,
-				collarY: collarY - offsetY,
-				collarZ: collarZ || 0,
-				toeX: toeX - offsetX,
-				toeY: toeY - offsetY,
-				toeZ: toeZ,
-				designDepth: depth,
-				actualDepth: depth,
-				diameter: spf.diameter || 127,
-				angle: angle,
-				bearing: bearing,
-				benchHeight: spf.benchHeight || 0,
-				subdrill: spf.subdrill || 0,
-				stemming: spf.stemming || 0,
-				backfill: spf.backfill || 0,
-				delay: spf.firingTime || 0,
-				sequence: spf.sequence || i + 1,
-				waterStatus: spf.waterState || "Unknown",
-				powderFactor: spf.powderFactor || 0,
-				comment: spf.comment || "",
-				isLoaded: spf.isLoaded,
-				isBoreTracked: spf.isBoreTracked,
-				ruleName: spf.ruleName || "",
+				startXLocation: collarX - offsetX,
+				startYLocation: collarY - offsetY,
+				startZLocation: collarZ || 0,
+				endXLocation: toeX - offsetX,
+				endYLocation: toeY - offsetY,
+				endZLocation: toeZ,
+				gradeXLocation: gradeX - offsetX,
+				gradeYLocation: gradeY - offsetY,
+				gradeZLocation: gradeZ,
+				subdrillAmount: subdrillAmount,
+				subdrillLength: subdrillLength,
+				benchHeight: benchHeight,
+				holeDiameter: spf.diameter || 127,
+				holeType: "Production",
+				holeLengthCalculated: depth,
+				holeAngle: angle,
+				holeBearing: bearing,
+				fromHoleID: this.parseFromHoleID(spf.comment, blastName, spf.holeId || String(i + 1)),
+				timingDelayMilliseconds: Math.round(spf.firingTime || 0), // SPF firingTime rounded to integer milliseconds
+				colorHexDecimal: "#00FF00",
+				measuredLength: 0,
+				measuredLengthTimeStamp: "09/05/1975 00:00:00",
+				measuredMass: Math.round(totalChargeMass * 10) / 10, // Round to 1 decimal place
+				measuredMassTimeStamp: totalChargeMass > 0 ? new Date().toISOString() : "09/05/1975 00:00:00",
+				measuredComment: "None", // SPF comment field contains fromHoleID, not actual comment
+				measuredCommentTimeStamp: "09/05/1975 00:00:00",
+				rowID: null,
+				posID: null,
 				visible: true,
-				selected: false,
-				color: "#00FF00"
+				burden: 0,
+				spacing: 0,
+				connectorCurve: 0
 			};
 
-			// Add deck information if available
-			if (spf.decks && spf.decks.length > 0) {
-				kirraHole.decks = spf.decks;
+			// Debug: Log first hole geometry
+			if (kirraHoles.length === 0) {
+				console.log("SPF First hole geometry - depth:", depth, "angle:", angle, "subdrill:", subdrillAmount, "calculated benchHeight:", benchHeight, "subdrillLength:", subdrillLength);
 			}
 
 			kirraHoles.push(kirraHole);
 		}
 
+		// Debug: Log conversion summary
+		console.log("SPF Conversion: " + spfHoles.length + " input holes, " + kirraHoles.length + " converted, " + skippedDummy + " dummy, " + skippedNoCoords + " no coords");
+
 		return kirraHoles;
 	}
 
-	// Step 28) Helper: Get element text content
+	// Step 40) Helper: Get element text content
 	getElementText(parent, tagName) {
 		var elem = parent.querySelector(tagName);
 		return elem ? elem.textContent : null;
 	}
 
-	// Step 29) Helper: Get element float value
+	// Step 41) Helper: Get element float value
 	getElementFloat(parent, tagName) {
 		var text = this.getElementText(parent, tagName);
 		return text ? parseFloat(text) : null;
 	}
 
-	// Step 30) Helper: Get element text with namespace
+	// Step 42) Helper: Get element text with namespace
 	getElementTextNS(parent, ns, tagName) {
 		var elem = parent.getElementsByTagNameNS(ns, tagName)[0];
 		return elem ? elem.textContent : null;
 	}
 
-	// Step 31) Helper: Get element float with namespace
+	// Step 43) Helper: Get element float with namespace
 	getElementFloatNS(parent, ns, tagName) {
 		var text = this.getElementTextNS(parent, ns, tagName);
 		return text ? parseFloat(text) : null;
 	}
 
-	// Step 32) Helper: Get element int with namespace
+	// Step 44) Helper: Get element int with namespace
 	getElementIntNS(parent, ns, tagName) {
 		var text = this.getElementTextNS(parent, ns, tagName);
 		return text ? parseInt(text, 10) : null;
+	}
+
+	// Step 45) Helper: Parse fromHoleID from SPF comment field
+	// Format: "CH01_5420_114_:::1" where "1" is the fromHoleID
+	// Returns combined format: "blastName:::holeID"
+	// If no connection found, connects to self (blastName:::currentHoleID)
+	parseFromHoleID(comment, blastName, currentHoleID) {
+		var fromHoleNum = null;
+
+		// Step 45a) Try to extract fromHoleID from comment
+		if (comment && typeof comment === "string") {
+			var separatorIndex = comment.indexOf(":::");
+			if (separatorIndex >= 0 && separatorIndex < comment.length - 3) {
+				var extracted = comment.substring(separatorIndex + 3);
+				if (extracted && extracted.trim() !== "") {
+					fromHoleNum = extracted.trim();
+				}
+			}
+		}
+
+		// Step 45b) If no connection found, connect to self
+		if (!fromHoleNum) {
+			fromHoleNum = String(currentHoleID);
+		}
+
+		// Step 45c) Return combined format: blastName:::holeID
+		return blastName + ":::" + fromHoleNum;
 	}
 }
 
