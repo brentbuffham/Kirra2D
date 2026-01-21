@@ -3099,17 +3099,17 @@ function handle3DMouseMove(event) {
 		var mouseZ = currentMouseWorldZ || startZ;
 		// Step 13f.9.5a) Draw leading line from start point to mouse cursor
 		drawKADLeadingLineThreeJSV2(
-			patternStartPoint.x, 
-			patternStartPoint.y, 
+			patternStartPoint.x,
+			patternStartPoint.y,
 			startZ,
-			currentMouseIndicatorX, 
-			currentMouseIndicatorY, 
+			currentMouseIndicatorX,
+			currentMouseIndicatorY,
 			currentMouseIndicatorZ,
 			"rgba(0, 255, 0, 0.5)" // Green to match 2D
 		);
 		// Also redraw markers (green start, red end) and triangle via the visual function
 		drawPatternInPolygon3DVisual();
-		
+
 		// Step 13f.9.5c) Show distance overlay at line midpoint
 		var midWorldX = (patternStartPoint.x + currentMouseIndicatorX) / 2;
 		var midWorldY = (patternStartPoint.y + currentMouseIndicatorY) / 2;
@@ -3140,19 +3140,19 @@ function handle3DMouseMove(event) {
 		// Step 13f.9.6a) Use snapped Z values - check for undefined, not falsy (Z=0 is valid)
 		var startZ = lineStartPoint.z !== undefined ? lineStartPoint.z : (currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : 0);
 		var mouseZ = currentMouseIndicatorZ !== undefined ? currentMouseIndicatorZ : startZ;
-		
+
 		// Step 13f.9.6b) Draw leading line from start point to mouse cursor
 		drawKADLeadingLineThreeJSV2(
-			lineStartPoint.x, 
-			lineStartPoint.y, 
+			lineStartPoint.x,
+			lineStartPoint.y,
 			startZ,
-			currentMouseIndicatorX, 
-			currentMouseIndicatorY, 
+			currentMouseIndicatorX,
+			currentMouseIndicatorY,
 			mouseZ,
 			"rgba(0, 255, 0, 0.5)"
 		);
 		drawHolesAlongLine3DVisual();
-		
+
 		// Step 13f.9.6c) Show distance marker at line midpoint
 		var midWorldX = (lineStartPoint.x + currentMouseIndicatorX) / 2;
 		var midWorldY = (lineStartPoint.y + currentMouseIndicatorY) / 2;
@@ -3950,6 +3950,14 @@ let isModifyingPoint = false;
 let isOffsetLinePoly = false;
 //offset kad tool booleans
 let isOffsetKAD = false;
+
+// Step #) OFFSET PREVIEW STATE - Live preview for offset dialog
+// These variables store the preview data for real-time visualization
+let offsetPreviewEnabled = false;
+let offsetPreviewOriginalEntity = null;
+let offsetPreviewEntities = []; // Array of preview offset results (not saved to map)
+let offsetPreviewParams = {}; // Current preview parameters
+
 //radii holes or kads tool booleans
 let isRadiiHolesOrKADs = false;
 //Record Measurements booleans
@@ -19322,8 +19330,9 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 						p1ZDelta = elevationLimit - p1OrigZ;
 						const verticalDrop = p1OrigZ - elevationLimit;
 						const horizontalDistance = verticalDrop / tanAngle;
-						perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-						perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						// FIX: Use same perpendicular direction (-dy, dx) as normal offset
+						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
 					} else {
 						// Point is at or below limit - no offset
 						p1ZDelta = 0;
@@ -19337,8 +19346,9 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 						p1ZDelta = elevationLimit - p1OrigZ;
 						const verticalRise = elevationLimit - p1OrigZ;
 						const horizontalDistance = verticalRise / tanAngle;
-						perpX1 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-						perpY1 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						// FIX: Use same perpendicular direction (-dy, dx) as normal offset
+						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
 					} else {
 						// Point is at or above limit - no offset
 						p1ZDelta = 0;
@@ -19357,8 +19367,9 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 						p2ZDelta = elevationLimit - p2OrigZ;
 						const verticalDrop = p2OrigZ - elevationLimit;
 						const horizontalDistance = verticalDrop / tanAngle;
-						perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-						perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						// FIX: Use same perpendicular direction (-dy, dx) as normal offset
+						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
 					} else {
 						// Point is at or below limit - no offset
 						p2ZDelta = 0;
@@ -19372,8 +19383,9 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 						p2ZDelta = elevationLimit - p2OrigZ;
 						const verticalRise = elevationLimit - p2OrigZ;
 						const horizontalDistance = verticalRise / tanAngle;
-						perpX2 = (dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
-						perpY2 = (-dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						// FIX: Use same perpendicular direction (-dy, dx) as normal offset
+						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
 					} else {
 						// Point is at or above limit - no offset
 						p2ZDelta = 0;
@@ -19952,6 +19964,778 @@ function performKADOffset(entity, params) {
 		updateStatusMessage("Error creating offsets: " + error.message);
 	}
 }
+
+// ================================
+// OFFSET PREVIEW FUNCTIONALITY - START
+// ================================
+// Step #) Calculate offset preview WITHOUT saving to allKADDrawingsMap
+// This function mirrors createOffsetEntity but returns data arrays instead of persisting
+function calculateOffsetPreview(originalEntity, params) {
+	try {
+		var previewResults = [];
+
+		for (var i = 1; i <= params.numberOfOffsets; i++) {
+			var offsetAmount = params.baseAmount * i;
+			var previewEntity = calculateSingleOffsetPreview(
+				originalEntity,
+				offsetAmount,
+				params.projectionAngle,
+				params.color,
+				i,
+				params.handleCrossovers,
+				params.priorityMode,
+				params.keepElevations,
+				params.limitElevation,
+				params.elevationLimit
+			);
+
+			if (previewEntity && previewEntity.data && previewEntity.data.length > 0) {
+				previewResults.push(previewEntity);
+			}
+		}
+
+		return previewResults;
+	} catch (error) {
+		console.error("Error in calculateOffsetPreview:", error);
+		return [];
+	}
+}
+
+// Step #) Calculate a single offset preview (mirrors createLineOffsetCustom logic)
+// This properly creates offset segments and finds intersections for crossover handling
+function calculateSingleOffsetPreview(originalEntity, offsetAmount, projectionAngle, color, offsetIndex, handleCrossovers, priorityMode, keepElevations, limitElevation, elevationLimit) {
+	try {
+		var originalPoints = originalEntity.data;
+		if (!originalPoints || originalPoints.length < 2) {
+			return null;
+		}
+
+		// Step 1) Calculate offset components based on priority mode
+		var horizontalOffset, zDelta;
+
+		if (priorityMode === "distance") {
+			var angleRad = (projectionAngle * Math.PI) / 180;
+			horizontalOffset = offsetAmount * Math.cos(angleRad);
+			var verticalOffset = Math.abs(offsetAmount) * Math.sin(angleRad);
+			zDelta = verticalOffset;
+		} else {
+			// Vertical Priority
+			var verticalOffset = 0;
+			if (projectionAngle > 0) {
+				zDelta = Math.abs(offsetAmount);
+				verticalOffset = Math.abs(offsetAmount);
+			} else if (projectionAngle < 0) {
+				zDelta = -Math.abs(offsetAmount);
+				verticalOffset = Math.abs(offsetAmount);
+			} else {
+				zDelta = 0;
+			}
+
+			if (projectionAngle !== 0) {
+				var angleRad = (projectionAngle * Math.PI) / 180;
+				var tanAngle = Math.tan(angleRad);
+				if (Math.abs(tanAngle) > 0.001) {
+					horizontalOffset = Math.sign(offsetAmount) * (Math.abs(verticalOffset) / Math.abs(tanAngle));
+				} else {
+					horizontalOffset = offsetAmount;
+				}
+			} else {
+				horizontalOffset = offsetAmount;
+			}
+		}
+
+		// Step 2) Determine entity type
+		var isClosedPolygon = originalEntity.entityType === "poly" || (originalPoints[0] && originalPoints[0].closed === true);
+
+		// Step 3) For polygons with 0 angle, use ClipperLib (handles complex polygons well)
+		if (isClosedPolygon && projectionAngle === 0 && !limitElevation) {
+			return calculatePolygonOffsetPreview(originalEntity, horizontalOffset, zDelta, color, offsetIndex, keepElevations);
+		}
+
+		// Step 4) Create offset SEGMENTS (not points) - each segment has start and end
+		var offsetSegments = [];
+		var numSegments = isClosedPolygon ? originalPoints.length : originalPoints.length - 1;
+
+		for (var i = 0; i < numSegments; i++) {
+			var p1 = originalPoints[i];
+			var p2 = originalPoints[(i + 1) % originalPoints.length];
+
+			var dx = p2.pointXLocation - p1.pointXLocation;
+			var dy = p2.pointYLocation - p1.pointYLocation;
+			var length = Math.sqrt(dx * dx + dy * dy);
+
+			if (length === 0) continue;
+
+			// Step 5) Calculate perpendicular vectors for each point
+			// Using (-dy, dx) for left-hand perpendicular when going from p1 to p2
+			var perpX1 = (-dy / length) * horizontalOffset;
+			var perpY1 = (dx / length) * horizontalOffset;
+			var perpX2 = perpX1;
+			var perpY2 = perpY1;
+
+			// Step 6) Calculate Z deltas for each point
+			var p1ZDelta = parseFloat(zDelta);
+			var p2ZDelta = parseFloat(zDelta);
+
+			// Step 6a) Apply elevation limit if enabled
+			if (limitElevation && projectionAngle !== 0) {
+				var angleRadAbs = Math.abs(projectionAngle * Math.PI / 180);
+				var tanAngle = Math.tan(angleRadAbs);
+
+				// Handle p1 (start point)
+				var p1OrigZ = parseFloat(p1.pointZLocation || 0);
+
+				if (projectionAngle < 0) {
+					// Projecting downward
+					if (p1OrigZ > elevationLimit) {
+						// Point is above limit - project down to limit
+						p1ZDelta = elevationLimit - p1OrigZ;
+						var verticalDrop = p1OrigZ - elevationLimit;
+						var horizontalDistance = verticalDrop / tanAngle;
+						// Use same perpendicular direction (-dy, dx) as normal offset
+						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+					} else {
+						// Point is at or below limit - no offset
+						p1ZDelta = 0;
+						perpX1 = 0;
+						perpY1 = 0;
+					}
+				} else if (projectionAngle > 0) {
+					// Projecting upward
+					if (p1OrigZ < elevationLimit) {
+						// Point is below limit - project up to limit
+						p1ZDelta = elevationLimit - p1OrigZ;
+						var verticalRise = elevationLimit - p1OrigZ;
+						var horizontalDistance = verticalRise / tanAngle;
+						// Use same perpendicular direction (-dy, dx) as normal offset
+						perpX1 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY1 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+					} else {
+						// Point is at or above limit - no offset
+						p1ZDelta = 0;
+						perpX1 = 0;
+						perpY1 = 0;
+					}
+				}
+
+				// Handle p2 (end point)
+				var p2OrigZ = parseFloat(p2.pointZLocation || 0);
+
+				if (projectionAngle < 0) {
+					// Projecting downward
+					if (p2OrigZ > elevationLimit) {
+						// Point is above limit - project down to limit
+						p2ZDelta = elevationLimit - p2OrigZ;
+						var verticalDrop = p2OrigZ - elevationLimit;
+						var horizontalDistance = verticalDrop / tanAngle;
+						// Use same perpendicular direction (-dy, dx) as normal offset
+						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+					} else {
+						// Point is at or below limit - no offset
+						p2ZDelta = 0;
+						perpX2 = 0;
+						perpY2 = 0;
+					}
+				} else if (projectionAngle > 0) {
+					// Projecting upward
+					if (p2OrigZ < elevationLimit) {
+						// Point is below limit - project up to limit
+						p2ZDelta = elevationLimit - p2OrigZ;
+						var verticalRise = elevationLimit - p2OrigZ;
+						var horizontalDistance = verticalRise / tanAngle;
+						// Use same perpendicular direction (-dy, dx) as normal offset
+						perpX2 = (-dy / length) * Math.sign(horizontalOffset) * horizontalDistance;
+						perpY2 = (dx / length) * Math.sign(horizontalOffset) * horizontalDistance;
+					} else {
+						// Point is at or above limit - no offset
+						p2ZDelta = 0;
+						perpX2 = 0;
+						perpY2 = 0;
+					}
+				}
+			}
+
+			// Step 7) Calculate final Z values
+			var p1Z = parseFloat(p1.pointZLocation || 0) + p1ZDelta;
+			var p2Z = parseFloat(p2.pointZLocation || 0) + p2ZDelta;
+
+			// Step 8) Create the offset segment
+			offsetSegments.push({
+				start: {
+					x: p1.pointXLocation + perpX1,
+					y: p1.pointYLocation + perpY1,
+					z: p1Z
+				},
+				end: {
+					x: p2.pointXLocation + perpX2,
+					y: p2.pointYLocation + perpY2,
+					z: p2Z
+				}
+			});
+		}
+
+		if (offsetSegments.length === 0) {
+			return null;
+		}
+
+		// Step 8) Handle crossovers - find intersections between consecutive segments
+		if (handleCrossovers && offsetSegments.length > 1) {
+			offsetSegments = handlePreviewSegmentCrossovers(offsetSegments, isClosedPolygon);
+		}
+
+		// Step 9) Convert segments to points array
+		var offsetPoints = [];
+		for (var i = 0; i < offsetSegments.length; i++) {
+			var seg = offsetSegments[i];
+
+			// Add start point of first segment
+			if (i === 0) {
+				offsetPoints.push({
+					pointXLocation: seg.start.x,
+					pointYLocation: seg.start.y,
+					pointZLocation: seg.start.z
+				});
+			}
+
+			// Add end point of each segment
+			offsetPoints.push({
+				pointXLocation: seg.end.x,
+				pointYLocation: seg.end.y,
+				pointZLocation: seg.end.z
+			});
+		}
+
+		// Step 10) Build preview entity data
+		var previewData = offsetPoints.map(function (pt, index) {
+			return {
+				pointXLocation: pt.pointXLocation,
+				pointYLocation: pt.pointYLocation,
+				pointZLocation: pt.pointZLocation,
+				lineWidth: originalPoints[0].lineWidth || 1,
+				color: color,
+				closed: isClosedPolygon
+			};
+		});
+
+		return {
+			entityType: originalEntity.entityType,
+			data: previewData,
+			color: color,
+			isPreview: true,
+			offsetIndex: offsetIndex
+		};
+	} catch (error) {
+		console.error("Error in calculateSingleOffsetPreview:", error);
+		return null;
+	}
+}
+
+// Step #) Calculate polygon offset preview using ClipperLib
+function calculatePolygonOffsetPreview(originalEntity, horizontalOffset, zDelta, color, offsetIndex, keepElevations) {
+	try {
+		var scale = 100000;
+		var originalPoints = originalEntity.data;
+
+		var clipperPath = originalPoints.map(function (pt) {
+			return {
+				X: Math.round(pt.pointXLocation * scale),
+				Y: Math.round(pt.pointYLocation * scale)
+			};
+		});
+
+		var clipperOffset = new ClipperLib.ClipperOffset();
+		clipperOffset.AddPath(clipperPath, ClipperLib.JoinType.jtMiter, ClipperLib.EndType.etClosedPolygon);
+
+		var offsetPaths = [];
+		clipperOffset.Execute(offsetPaths, horizontalOffset * scale);
+
+		if (offsetPaths.length === 0) {
+			return null;
+		}
+
+		var offsetPath = offsetPaths[0];
+		var previewData = offsetPath.map(function (pt, index) {
+			var worldX = pt.X / scale;
+			var worldY = pt.Y / scale;
+
+			// Determine Z based on keepElevations
+			var worldZ;
+			if (keepElevations) {
+				// Find closest original point for Z interpolation
+				var closestPoint = originalPoints[0];
+				var minDist = Infinity;
+				for (var i = 0; i < originalPoints.length; i++) {
+					var dx = worldX - originalPoints[i].pointXLocation;
+					var dy = worldY - originalPoints[i].pointYLocation;
+					var dist = Math.sqrt(dx * dx + dy * dy);
+					if (dist < minDist) {
+						minDist = dist;
+						closestPoint = originalPoints[i];
+					}
+				}
+				worldZ = parseFloat(closestPoint.pointZLocation || 0) + parseFloat(zDelta);
+			} else {
+				worldZ = parseFloat(originalPoints[0].pointZLocation || 0) + parseFloat(zDelta);
+			}
+
+			return {
+				pointXLocation: worldX,
+				pointYLocation: worldY,
+				pointZLocation: worldZ,
+				lineWidth: originalPoints[0].lineWidth || 1,
+				color: color,
+				closed: true
+			};
+		});
+
+		return {
+			entityType: "poly",
+			data: previewData,
+			color: color,
+			isPreview: true,
+			offsetIndex: offsetIndex
+		};
+	} catch (error) {
+		console.error("Error in calculatePolygonOffsetPreview:", error);
+		return null;
+	}
+}
+
+// Step #) Handle crossovers between offset segments for preview
+// Finds intersections between consecutive segments and extends/trims them to meet
+function handlePreviewSegmentCrossovers(segments, isClosedPolygon) {
+	if (segments.length < 2) return segments;
+
+	var cleanedSegments = [];
+	for (var i = 0; i < segments.length; i++) {
+		cleanedSegments.push({
+			start: { x: segments[i].start.x, y: segments[i].start.y, z: segments[i].start.z },
+			end: { x: segments[i].end.x, y: segments[i].end.y, z: segments[i].end.z }
+		});
+	}
+
+	// Step 1) Find intersections between consecutive segments and extend/trim
+	for (var i = 0; i < cleanedSegments.length - 1; i++) {
+		var seg1 = cleanedSegments[i];
+		var seg2 = cleanedSegments[i + 1];
+
+		// Find intersection between the two line segments (extended as rays)
+		var intersection = findPreviewLineIntersection(
+			seg1.start.x, seg1.start.y, seg1.end.x, seg1.end.y,
+			seg2.start.x, seg2.start.y, seg2.end.x, seg2.end.y
+		);
+
+		if (intersection) {
+			// Interpolate Z at intersection point
+			var t1 = 0;
+			var dx1 = seg1.end.x - seg1.start.x;
+			var dy1 = seg1.end.y - seg1.start.y;
+			var len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+			if (len1 > 0.001) {
+				var dxI1 = intersection.x - seg1.start.x;
+				var dyI1 = intersection.y - seg1.start.y;
+				t1 = Math.sqrt(dxI1 * dxI1 + dyI1 * dyI1) / len1;
+				if ((dx1 !== 0 && Math.sign(dxI1) !== Math.sign(dx1)) ||
+					(dy1 !== 0 && Math.sign(dyI1) !== Math.sign(dy1))) {
+					t1 = -t1;
+				}
+			}
+			var intersectionZ = seg1.start.z + t1 * (seg1.end.z - seg1.start.z);
+
+			// Extend/trim segments to meet at intersection
+			seg1.end.x = intersection.x;
+			seg1.end.y = intersection.y;
+			seg1.end.z = intersectionZ;
+			seg2.start.x = intersection.x;
+			seg2.start.y = intersection.y;
+			seg2.start.z = intersectionZ;
+		}
+	}
+
+	// Step 2) For closed polygons, handle intersection between last and first segment
+	if (isClosedPolygon && cleanedSegments.length > 2) {
+		var lastSeg = cleanedSegments[cleanedSegments.length - 1];
+		var firstSeg = cleanedSegments[0];
+
+		var intersection = findPreviewLineIntersection(
+			lastSeg.start.x, lastSeg.start.y, lastSeg.end.x, lastSeg.end.y,
+			firstSeg.start.x, firstSeg.start.y, firstSeg.end.x, firstSeg.end.y
+		);
+
+		if (intersection) {
+			// Interpolate Z
+			var t1 = 0;
+			var dx1 = lastSeg.end.x - lastSeg.start.x;
+			var dy1 = lastSeg.end.y - lastSeg.start.y;
+			var len1 = Math.sqrt(dx1 * dx1 + dy1 * dy1);
+			if (len1 > 0.001) {
+				var dxI1 = intersection.x - lastSeg.start.x;
+				var dyI1 = intersection.y - lastSeg.start.y;
+				t1 = Math.sqrt(dxI1 * dxI1 + dyI1 * dyI1) / len1;
+			}
+			var intersectionZ = lastSeg.start.z + t1 * (lastSeg.end.z - lastSeg.start.z);
+
+			lastSeg.end.x = intersection.x;
+			lastSeg.end.y = intersection.y;
+			lastSeg.end.z = intersectionZ;
+			firstSeg.start.x = intersection.x;
+			firstSeg.start.y = intersection.y;
+			firstSeg.start.z = intersectionZ;
+		}
+	}
+
+	// Step 3) Filter out segments that became too short (less than 0.1m)
+	return cleanedSegments.filter(function (seg) {
+		var dx = seg.end.x - seg.start.x;
+		var dy = seg.end.y - seg.start.y;
+		var length = Math.sqrt(dx * dx + dy * dy);
+		return length > 0.1;
+	});
+}
+
+// Step #) Find intersection point between two lines (extended as infinite lines)
+function findPreviewLineIntersection(x1, y1, x2, y2, x3, y3, x4, y4) {
+	var denom = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+
+	if (Math.abs(denom) < 1e-10) {
+		return null; // Lines are parallel
+	}
+
+	var t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denom;
+	var u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denom;
+
+	// Check if intersection is within reasonable extension range
+	// Allow more extension than the actual function for preview visualization
+	if (t >= -2.0 && t <= 3.0 && u >= -2.0 && u <= 3.0) {
+		return {
+			x: x1 + t * (x2 - x1),
+			y: y1 + t * (y2 - y1)
+		};
+	}
+
+	return null; // No valid intersection within range
+}
+
+// Step #) Update the offset preview with current form parameters
+function updateOffsetPreview(entity, params) {
+	if (!entity || !params) {
+		clearOffsetPreview();
+		return;
+	}
+
+	// Step 1) Enable preview mode
+	offsetPreviewEnabled = true;
+	offsetPreviewOriginalEntity = entity;
+	offsetPreviewParams = params;
+
+	// Step 2) Calculate preview entities
+	offsetPreviewEntities = calculateOffsetPreview(entity, params);
+
+	// Step 3) Trigger redraw to show preview
+	// Use requestAnimationFrame for smooth updates
+	requestAnimationFrame(function () {
+		if (onlyShowThreeJS) {
+			// In 3D mode, redraw the 3D scene
+			draw3DOffsetPreview();
+			if (threeRenderer) {
+				threeRenderer.render();
+			}
+		} else {
+			// In 2D mode, redraw the canvas
+			drawData(allBlastHoles, selectedHole);
+		}
+	});
+}
+
+// Step #) Clear the offset preview
+function clearOffsetPreview() {
+	// Step 1) Clear all preview state
+	offsetPreviewEnabled = false;
+	offsetPreviewOriginalEntity = null;
+	offsetPreviewEntities = [];
+	offsetPreviewParams = {};
+
+	// Step 2) Clear 3D preview meshes if they exist
+	clear3DOffsetPreview();
+
+	// Step 3) Force a full redraw to clear both 2D and 3D
+	// Use redraw3D which sets threeDataNeedsRebuild and calls drawData
+	if (typeof window.redraw3D === "function") {
+		window.redraw3D();
+	} else {
+		drawData(allBlastHoles, selectedHole);
+	}
+}
+
+// Step #) Draw 2D offset preview on canvas
+function draw2DOffsetPreview() {
+	if (!offsetPreviewEnabled || !ctx || offsetPreviewEntities.length === 0) {
+		return;
+	}
+
+	ctx.save();
+
+	// Step 1) Draw each preview entity with dashed lines and semi-transparency
+	for (var e = 0; e < offsetPreviewEntities.length; e++) {
+		var previewEntity = offsetPreviewEntities[e];
+		if (!previewEntity || !previewEntity.data || previewEntity.data.length < 2) continue;
+
+		var points = previewEntity.data;
+		var color = previewEntity.color || "#FF0000";
+		var lineWidth = points[0].lineWidth || 2;
+		var isClosed = previewEntity.entityType === "poly";
+
+		// Step 2) Set preview styling
+		ctx.strokeStyle = color;
+		ctx.globalAlpha = 0.7;
+		ctx.setLineDash([8, 4]); // Dashed line for preview
+		ctx.lineWidth = Math.max(lineWidth, 2);
+		ctx.lineCap = "round";
+		ctx.lineJoin = "round";
+
+		// Step 3) Draw the preview line/polygon
+		ctx.beginPath();
+		for (var i = 0; i < points.length; i++) {
+			var screenCoords = worldToCanvas(points[i].pointXLocation, points[i].pointYLocation);
+			if (i === 0) {
+				ctx.moveTo(screenCoords[0], screenCoords[1]);
+			} else {
+				ctx.lineTo(screenCoords[0], screenCoords[1]);
+			}
+		}
+
+		// Close polygon if needed
+		if (isClosed && points.length > 2) {
+			ctx.closePath();
+		}
+
+		ctx.stroke();
+
+		// Step 4) Draw start point indicator (green dot) for direction reference
+		if (points.length > 0) {
+			var startScreen = worldToCanvas(points[0].pointXLocation, points[0].pointYLocation);
+			ctx.globalAlpha = 1.0;
+			ctx.setLineDash([]);
+			ctx.fillStyle = "#00FF00";
+			ctx.beginPath();
+			ctx.arc(startScreen[0], startScreen[1], 6, 0, Math.PI * 2);
+			ctx.fill();
+			ctx.strokeStyle = "#006600";
+			ctx.lineWidth = 2;
+			ctx.stroke();
+		}
+
+		// Step 5) Draw direction arrows along the preview line
+		if (points.length >= 2) {
+			drawPreviewDirectionArrows(points, color);
+		}
+	}
+
+	// Step 6) Draw original entity start point indicator
+	if (offsetPreviewOriginalEntity && offsetPreviewOriginalEntity.data && offsetPreviewOriginalEntity.data.length > 0) {
+		var origStart = offsetPreviewOriginalEntity.data[0];
+		var origScreen = worldToCanvas(origStart.pointXLocation, origStart.pointYLocation);
+		ctx.globalAlpha = 1.0;
+		ctx.setLineDash([]);
+		ctx.fillStyle = "#00FFFF"; // Cyan for original start
+		ctx.beginPath();
+		ctx.arc(origScreen[0], origScreen[1], 8, 0, Math.PI * 2);
+		ctx.fill();
+		ctx.strokeStyle = "#006666";
+		ctx.lineWidth = 2;
+		ctx.stroke();
+
+		// Draw "START" label
+		ctx.fillStyle = darkModeEnabled ? "#FFFFFF" : "#000000";
+		ctx.font = "bold 10px Arial";
+		ctx.textAlign = "center";
+		ctx.fillText("START", origScreen[0], origScreen[1] - 12);
+	}
+
+	ctx.restore();
+}
+
+// Step #) Draw direction arrows on preview lines
+function drawPreviewDirectionArrows(points, color) {
+	if (points.length < 2) return;
+
+	ctx.save();
+	ctx.fillStyle = color;
+	ctx.globalAlpha = 0.9;
+	ctx.setLineDash([]);
+
+	// Draw arrows at 25%, 50%, 75% along the line
+	var arrowPositions = [0.25, 0.5, 0.75];
+
+	for (var a = 0; a < arrowPositions.length; a++) {
+		var t = arrowPositions[a];
+		var totalLength = 0;
+		var segmentLengths = [];
+
+		// Calculate total length and segment lengths
+		for (var i = 0; i < points.length - 1; i++) {
+			var dx = points[i + 1].pointXLocation - points[i].pointXLocation;
+			var dy = points[i + 1].pointYLocation - points[i].pointYLocation;
+			var segLen = Math.sqrt(dx * dx + dy * dy);
+			segmentLengths.push(segLen);
+			totalLength += segLen;
+		}
+
+		// Find position at t along the line
+		var targetDist = t * totalLength;
+		var accDist = 0;
+
+		for (var i = 0; i < segmentLengths.length; i++) {
+			if (accDist + segmentLengths[i] >= targetDist) {
+				var segT = (targetDist - accDist) / segmentLengths[i];
+				var p1 = points[i];
+				var p2 = points[i + 1];
+
+				// Interpolate position
+				var x = p1.pointXLocation + segT * (p2.pointXLocation - p1.pointXLocation);
+				var y = p1.pointYLocation + segT * (p2.pointYLocation - p1.pointYLocation);
+
+				// Calculate direction angle
+				var dx = p2.pointXLocation - p1.pointXLocation;
+				var dy = p2.pointYLocation - p1.pointYLocation;
+				var angle = Math.atan2(-dy, dx); // Negative dy for canvas Y inversion
+
+				// Convert to screen coordinates
+				var screenCoords = worldToCanvas(x, y);
+
+				// Draw arrow
+				var arrowSize = 8;
+				ctx.save();
+				ctx.translate(screenCoords[0], screenCoords[1]);
+				ctx.rotate(-angle);
+
+				ctx.beginPath();
+				ctx.moveTo(arrowSize, 0);
+				ctx.lineTo(-arrowSize / 2, -arrowSize / 2);
+				ctx.lineTo(-arrowSize / 2, arrowSize / 2);
+				ctx.closePath();
+				ctx.fill();
+
+				ctx.restore();
+				break;
+			}
+			accDist += segmentLengths[i];
+		}
+	}
+
+	ctx.restore();
+}
+
+// Step #) Track 3D preview meshes for cleanup
+var offsetPreview3DMeshes = [];
+
+// Step #) Draw 3D offset preview
+function draw3DOffsetPreview() {
+	// Step 0) Always clear existing preview meshes first
+	// This ensures meshes are removed when preview is disabled
+	clear3DOffsetPreview();
+
+	// Step 1) Return early if preview is not enabled or no entities
+	if (!threeRenderer || !offsetPreviewEnabled || offsetPreviewEntities.length === 0) {
+		return;
+	}
+
+	// Step 2) Create preview meshes for each offset entity
+	for (var e = 0; e < offsetPreviewEntities.length; e++) {
+		var previewEntity = offsetPreviewEntities[e];
+		if (!previewEntity || !previewEntity.data || previewEntity.data.length < 2) continue;
+
+		var points = previewEntity.data;
+		var color = previewEntity.color || "#FF0000";
+		var lineWidth = points[0].lineWidth || 2;
+		var isClosed = previewEntity.entityType === "poly";
+
+		// Step 3) Create line geometry
+		var positions = [];
+
+		for (var i = 0; i < points.length; i++) {
+			var local = worldToThreeLocal(points[i].pointXLocation, points[i].pointYLocation);
+			var z = points[i].pointZLocation || 0;
+			positions.push(local.x, local.y, z);
+		}
+
+		// Close polygon if needed
+		if (isClosed && points.length > 2) {
+			var firstLocal = worldToThreeLocal(points[0].pointXLocation, points[0].pointYLocation);
+			positions.push(firstLocal.x, firstLocal.y, points[0].pointZLocation || 0);
+		}
+
+		// Step 4) Create THREE.js line with dashed material
+		var geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+
+		var material = new THREE.LineDashedMaterial({
+			color: new THREE.Color(color),
+			transparent: true,
+			opacity: 0.7,
+			dashSize: 2,
+			gapSize: 1,
+			linewidth: lineWidth
+		});
+
+		var line = new THREE.Line(geometry, material);
+		line.computeLineDistances(); // Required for dashed lines
+		line.name = "offsetPreview_" + e;
+		line.userData = { isPreview: true };
+
+		// Add to scene
+		if (threeRenderer.scene) {
+			threeRenderer.scene.add(line);
+			offsetPreview3DMeshes.push(line);
+		}
+	}
+
+	// Step 5) Add start point indicator in 3D
+	if (offsetPreviewOriginalEntity && offsetPreviewOriginalEntity.data && offsetPreviewOriginalEntity.data.length > 0) {
+		var origStart = offsetPreviewOriginalEntity.data[0];
+		var startLocal = worldToThreeLocal(origStart.pointXLocation, origStart.pointYLocation);
+		var startZ = origStart.pointZLocation || 0;
+
+		// Create cyan sphere for original start point
+		var sphereGeom = new THREE.SphereGeometry(1.5, 16, 16);
+		var sphereMat = new THREE.MeshBasicMaterial({
+			color: 0x00FFFF,
+			transparent: true,
+			opacity: 0.9
+		});
+		var startSphere = new THREE.Mesh(sphereGeom, sphereMat);
+		startSphere.position.set(startLocal.x, startLocal.y, startZ);
+		startSphere.name = "offsetPreviewStart";
+		startSphere.userData = { isPreview: true };
+
+		if (threeRenderer.scene) {
+			threeRenderer.scene.add(startSphere);
+			offsetPreview3DMeshes.push(startSphere);
+		}
+	}
+}
+
+// Step #) Clear 3D offset preview meshes
+function clear3DOffsetPreview() {
+	if (!threeRenderer || !threeRenderer.scene) return;
+
+	for (var i = 0; i < offsetPreview3DMeshes.length; i++) {
+		var mesh = offsetPreview3DMeshes[i];
+		if (mesh) {
+			threeRenderer.scene.remove(mesh);
+			if (mesh.geometry) mesh.geometry.dispose();
+			if (mesh.material) mesh.material.dispose();
+		}
+	}
+	offsetPreview3DMeshes = [];
+}
+
+// ================================
+// OFFSET PREVIEW FUNCTIONALITY - END
+// ================================
+
 // ================================
 // OFFSET KAD FUNCTIONALITY - ENDED
 // ================================
@@ -22990,6 +23774,31 @@ window.resetFloatingToolbarButtons = resetFloatingToolbarButtons;
 window.getEntityFromKADObject = getEntityFromKADObject;
 window.handleOffsetKADClick = handleOffsetKADClick;
 
+// Expose offset preview functions for KADDialogs.js live preview
+window.updateOffsetPreview = updateOffsetPreview;
+window.clearOffsetPreview = clearOffsetPreview;
+window.calculateOffsetPreview = calculateOffsetPreview;
+window.clear3DOffsetPreview = clear3DOffsetPreview;
+
+// Expose offset preview state variables for direct manipulation in dialogs
+// These need to be accessed directly for proper cleanup ordering
+Object.defineProperty(window, "offsetPreviewEnabled", {
+	get: function () { return offsetPreviewEnabled; },
+	set: function (val) { offsetPreviewEnabled = val; }
+});
+Object.defineProperty(window, "offsetPreviewOriginalEntity", {
+	get: function () { return offsetPreviewOriginalEntity; },
+	set: function (val) { offsetPreviewOriginalEntity = val; }
+});
+Object.defineProperty(window, "offsetPreviewEntities", {
+	get: function () { return offsetPreviewEntities; },
+	set: function (val) { offsetPreviewEntities = val; }
+});
+Object.defineProperty(window, "offsetPreviewParams", {
+	get: function () { return offsetPreviewParams; },
+	set: function (val) { offsetPreviewParams = val; }
+});
+
 // Expose KAD tool variables for KADDialogs.js
 window.offsetKADButton = offsetKADButton;
 window.isOffsetKAD = isOffsetKAD;
@@ -25722,7 +26531,7 @@ function completePolygonSelection() {
 					const point2 = entity.data[(i + 1) % numPoints];
 					// Step 4b) Skip segments where either endpoint is hidden
 					if (point1.visible === false || point2.visible === false) continue;
-					
+
 					const p1x = point1.pointXLocation;
 					const p1y = point1.pointYLocation;
 					const p2x = point2.pointXLocation;
@@ -26213,7 +27022,14 @@ function calculateHoleGeometry(clickedHole, newValue, modeLAB) {
 		hole.endZLocation = startZ - hole.holeLengthCalculated * cosAngle;
 	}
 	debouncedUpdateTreeView(); // Use debounced version
-	// No need to reassign allBlastHoles[index] since we're working on the original object
+	if (typeof debouncedSaveHoles === "function") {
+		debouncedSaveHoles(); // Save changes to IndexedDB
+	}
+	if (typeof window.redraw3D === "function") {
+		window.redraw3D();
+	} else {
+		window.drawData(window.allBlastHoles, window.selectedHole);
+	}
 }
 
 let isUpdatingTimeChart = false;
@@ -27176,6 +27992,10 @@ function drawData(allBlastHoles, selectedHole) {
 				}
 			}
 		}
+
+		// Step #) Draw offset preview overlay if active (2D mode)
+		// This draws the live preview of offset operations on top of KAD drawings
+		draw2DOffsetPreview();
 
 		// Voronoi Powder Factor
 		if (displayOptions.voronoiPF) {
@@ -28738,6 +29558,10 @@ function drawData(allBlastHoles, selectedHole) {
 
 		// Step 6) Highlight selected KAD objects in Three.js (after KAD drawing)
 		highlightSelectedKADThreeJS();
+
+		// Step 6a) Draw offset preview in 3D if active
+		// This draws the live preview of offset operations in 3D mode
+		draw3DOffsetPreview();
 	}
 
 	// Step 7) RESET REBUILD FLAG - After all geometry (holes AND KAD) is drawn
@@ -38932,7 +39756,7 @@ patternInPolygonTool.addEventListener("change", function () {
 		selectedKADObject = null;
 		selectedKADPolygon = null;
 		window.selectedKADObject = null;
-		
+
 		// Clear 3D visuals (leading line and markers)
 		clearKADLeadingLineThreeJS();
 		if (window.patternTool3DGroup && threeRenderer && threeRenderer.scene) {
@@ -39267,7 +40091,7 @@ holesAlongLineTool.addEventListener("change", function () {
 		window.lineStartPoint = lineStartPoint; // Keep window in sync
 		lineEndPoint = null;
 		window.lineEndPoint = lineEndPoint; // Keep window in sync
-		
+
 		// Clear 3D visuals (leading line and markers)
 		clearKADLeadingLineThreeJS();
 		if (window.holesAlongLine3DGroup && threeRenderer && threeRenderer.scene) {

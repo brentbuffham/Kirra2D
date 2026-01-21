@@ -583,9 +583,14 @@ export function processTriangulationFormData(formData) {
 
 //! SHOW OFFSET KAD POPUP
 // Step 21) Dialog for offsetting KAD entities (lines and polygons)
+// Step 21a) ENHANCED with live preview functionality
 export function showOffsetKADPopup(kadObject) {
 	const entity = window.getEntityFromKADObject(kadObject);
 	if (!entity) return;
+
+	// Step 21b) Debounce timer for preview updates
+	let previewDebounceTimer = null;
+	const PREVIEW_DEBOUNCE_MS = 150;
 
 	// Step 22) Create form content using the helper function
 	const fields = [
@@ -672,25 +677,49 @@ export function showOffsetKADPopup(kadObject) {
 
 	const formContent = window.createEnhancedFormContent(fields, false, false);
 
-	// Step 23) Add notes section
+	// Step 22a) Function to get current preview parameters from form
+	function getPreviewParams() {
+		var formData = window.getFormData(formContent);
+		return {
+			baseAmount: parseFloat(formData.offsetAmount) || 0,
+			projectionAngle: parseFloat(formData.projectionAngle) || 0,
+			numberOfOffsets: parseInt(formData.numberOfOffsets) || 1,
+			priorityMode: formData.priorityMode || "distance",
+			color: formData.offsetColor || "#FF0000",
+			handleCrossovers: formData.handleCrossovers === "true",
+			keepElevations: formData.keepElevations === "true",
+			limitElevation: formData.limitElevation === "true",
+			elevationLimit: parseFloat(formData.elevationLimit) || 0.0
+		};
+	}
+
+	// Step 22b) Function to trigger debounced preview update
+	function triggerPreviewUpdate() {
+		if (previewDebounceTimer) {
+			clearTimeout(previewDebounceTimer);
+		}
+		previewDebounceTimer = setTimeout(function() {
+			var params = getPreviewParams();
+			if (window.updateOffsetPreview) {
+				window.updateOffsetPreview(entity, params);
+			}
+		}, PREVIEW_DEBOUNCE_MS);
+	}
+
+	// Step 22c) Add event listeners to all form inputs for live preview
+	var allInputs = formContent.querySelectorAll("input, select");
+	allInputs.forEach(function(input) {
+		input.addEventListener("input", triggerPreviewUpdate);
+		input.addEventListener("change", triggerPreviewUpdate);
+	});
+
+	// Step 23) Add notes section with preview info
 	const notesDiv = document.createElement("div");
 	notesDiv.style.gridColumn = "1 / -1";
 	notesDiv.style.marginTop = "10px";
 	notesDiv.style.fontSize = "10px";
 	notesDiv.style.color = "#888";
-	notesDiv.innerHTML = `
-                <strong>Notes:</strong><br>
-                • Lines: +ve offsets left (facing forward), -ve offsets right<br>
-                • Polygons: +ve expands outward, -ve contracts inward<br>
-                • Projection: 0° = horizontal, +° = up slope, -° = down slope<br>
-                • Combinations: +ve offset +ve angle = expand up, -ve offset -ve angle = contract down<br>
-                • Distance Priority: total distance from line<br>
-                • Vertical Priority: vertical offset (may be >total distance)<br>
-                • Multiple offsets create lines at distance × 1, × 2, etc.<br>
-                • Handle Crossovers creates clean connections at intersections<br>
-                • Keep Elevations: maintains original point elevations (unchecked = set to max RL)<br>
-                • Limit to Elevation: modulates offset distance based on point elevation difference
-    `;
+	notesDiv.innerHTML = "\n                <strong>Notes:</strong><br>\n                \u2022 Lines: +ve offsets left (facing forward), -ve offsets right<br>\n                \u2022 Polygons: +ve expands outward, -ve contracts inward<br>\n                \u2022 Projection: 0\u00B0 = horizontal, +\u00B0 = up slope, -\u00B0 = down slope<br>\n                \u2022 <span style=\"color: #00FFFF;\">&#9679;</span> CYAN dot = original START point (direction reference)<br>\n                \u2022 <span style=\"color: #00FF00;\">&#9679;</span> GREEN dots = preview offset START points<br>\n                \u2022 Arrows show direction of travel along lines<br>\n                \u2022 Dashed lines = live preview (updates as you change values)\n    ";
 	formContent.appendChild(notesDiv);
 
 	const dialog = new window.FloatingDialog({
@@ -698,13 +727,23 @@ export function showOffsetKADPopup(kadObject) {
 		content: formContent,
 		layoutType: "wide",
 		width: 400,
-		height: 400,
+		height: 430,
 		showConfirm: true,
 		showCancel: true,
 		confirmText: "Offset",
 		cancelText: "Cancel",
 		onConfirm: () => {
-			// Step 24) Get form values
+			// Step 24) Clear preview FIRST using the function (this properly clears module-level state)
+			if (typeof window.clearOffsetPreview === "function") {
+				window.clearOffsetPreview();
+			}
+
+			// Step 24a) Clear all selection state BEFORE performKADOffset
+			window.selectedKADPolygon = null;
+			window.selectedKADObject = null;
+			window.selectedPoint = null;
+
+			// Step 24b) Get form values
 			const formData = window.getFormData(formContent);
 
 			const offsetParams = {
@@ -720,11 +759,10 @@ export function showOffsetKADPopup(kadObject) {
 				originalEntityName: kadObject.entityName,
 			};
 
-			// Step 25) Perform the offset operation
+			// Step 25) Perform the offset operation (this triggers another redraw)
 			window.performKADOffset(entity, offsetParams);
-			window.selectedKADPolygon = null;
-			window.selectedKADObject = null;
-			window.selectedPoint = null;
+
+			// Step 25a) Clean up tool state
 			window.offsetKADButton.checked = false;
 			window.isOffsetKAD = false;
 			window.canvas.removeEventListener("click", window.handleOffsetKADClick);
@@ -732,22 +770,35 @@ export function showOffsetKADPopup(kadObject) {
 			window.updateStatusMessage("");
 		},
 		onCancel: () => {
-			// Step 26) After popup closes, deactivate the offset tool
+			// Step 26) Clear preview using the function (this properly clears and redraws)
+			if (typeof window.clearOffsetPreview === "function") {
+				window.clearOffsetPreview();
+			}
+
+			// Step 26a) Clear all selection state
+			window.selectedKADPolygon = null;
+			window.selectedKADObject = null;
+			window.selectedPoint = null;
+
+			// Step 26b) Deactivate the offset tool
 			window.offsetKADButton.checked = false;
 			window.isOffsetKAD = false;
 			window.canvas.removeEventListener("click", window.handleOffsetKADClick);
 			window.canvas.removeEventListener("touchstart", window.handleOffsetKADClick);
 			window.updateStatusMessage("");
-			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
-			window.selectedKADPolygon = null;
-			window.selectedKADObject = null;
-			window.selectedPoint = null;
+
+			// Step 26c) Trigger additional redraw to ensure selections are cleared
+			if (typeof window.redraw3D === "function") {
+				window.redraw3D();
+			} else {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
 		},
 	});
 
 	dialog.show();
 
-	// Step 27) Initialize JSColor after dialog shows
+	// Step 27) Initialize JSColor and trigger initial preview after dialog shows
 	setTimeout(() => {
 		jscolor.install();
 		// Force z-index on any JSColor elements
@@ -755,8 +806,15 @@ export function showOffsetKADPopup(kadObject) {
 		colorInputs.forEach((input) => {
 			if (input.jscolor) {
 				input.jscolor.option("zIndex", 20000);
+				// Step 27a) Add change listener for JSColor picker
+				input.jscolor.onFineChange = function() {
+					triggerPreviewUpdate();
+				};
 			}
 		});
+
+		// Step 27b) Trigger initial preview with default values
+		triggerPreviewUpdate();
 	}, 100);
 }
 
