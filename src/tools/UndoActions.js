@@ -218,20 +218,44 @@ class MoveHoleAction extends UndoableAction {
             }.bind(this));
             
             if (hole) {
-                // Apply collar position
-                if (position.startXLocation !== undefined) hole.startXLocation = position.startXLocation;
-                if (position.startYLocation !== undefined) hole.startYLocation = position.startYLocation;
-                if (position.startZLocation !== undefined) hole.startZLocation = position.startZLocation;
+                // Step 5b.1) Apply collar position using calculateHoleGeometry if available
+                // This ensures toe/grade positions are recalculated correctly
+                // Mode 4 = X position, Mode 5 = Y position, Mode 6 = Z position
+                if (typeof window.calculateHoleGeometry === "function") {
+                    if (position.startXLocation !== undefined) {
+                        window.calculateHoleGeometry(hole, position.startXLocation, 4); // 4 = X position
+                    }
+                    if (position.startYLocation !== undefined) {
+                        window.calculateHoleGeometry(hole, position.startYLocation, 5); // 5 = Y position
+                    }
+                    if (position.startZLocation !== undefined) {
+                        window.calculateHoleGeometry(hole, position.startZLocation, 6); // 6 = Z position
+                    }
+                } else {
+                    // Step 5b.2) Fallback: Apply positions directly if calculateHoleGeometry not available
+                    if (position.startXLocation !== undefined) hole.startXLocation = position.startXLocation;
+                    if (position.startYLocation !== undefined) hole.startYLocation = position.startYLocation;
+                    if (position.startZLocation !== undefined) hole.startZLocation = position.startZLocation;
+                    
+                    // Apply toe position
+                    if (position.endXLocation !== undefined) hole.endXLocation = position.endXLocation;
+                    if (position.endYLocation !== undefined) hole.endYLocation = position.endYLocation;
+                    if (position.endZLocation !== undefined) hole.endZLocation = position.endZLocation;
+                    
+                    // Apply grade position
+                    if (position.gradeXLocation !== undefined) hole.gradeXLocation = position.gradeXLocation;
+                    if (position.gradeYLocation !== undefined) hole.gradeYLocation = position.gradeYLocation;
+                    if (position.gradeZLocation !== undefined) hole.gradeZLocation = position.gradeZLocation;
+                }
                 
-                // Apply toe position
-                if (position.endXLocation !== undefined) hole.endXLocation = position.endXLocation;
-                if (position.endYLocation !== undefined) hole.endYLocation = position.endYLocation;
-                if (position.endZLocation !== undefined) hole.endZLocation = position.endZLocation;
-                
-                // Apply grade position
-                if (position.gradeXLocation !== undefined) hole.gradeXLocation = position.gradeXLocation;
-                if (position.gradeYLocation !== undefined) hole.gradeYLocation = position.gradeYLocation;
-                if (position.gradeZLocation !== undefined) hole.gradeZLocation = position.gradeZLocation;
+                // Step 5b.3) Trigger 3D rebuild and redraw
+                window.threeDataNeedsRebuild = true;
+                if (typeof window.drawData === "function") {
+                    window.drawData(window.allBlastHoles, null);
+                }
+                if (typeof window.debouncedSaveHoles === "function") {
+                    window.debouncedSaveHoles();
+                }
             }
         }
     }
@@ -258,11 +282,27 @@ class MoveMultipleHolesAction extends UndoableAction {
         for (var i = 0; i < this.moveData.length; i++) {
             this._applyPosition(this.moveData[i], this.moveData[i].newPosition);
         }
+        // Trigger redraw after all holes moved
+        window.threeDataNeedsRebuild = true;
+        if (typeof window.drawData === "function") {
+            window.drawData(window.allBlastHoles, null);
+        }
+        if (typeof window.debouncedSaveHoles === "function") {
+            window.debouncedSaveHoles();
+        }
     }
     
     undo() {
         for (var i = 0; i < this.moveData.length; i++) {
             this._applyPosition(this.moveData[i], this.moveData[i].originalPosition);
+        }
+        // Trigger redraw after all holes moved
+        window.threeDataNeedsRebuild = true;
+        if (typeof window.drawData === "function") {
+            window.drawData(window.allBlastHoles, null);
+        }
+        if (typeof window.debouncedSaveHoles === "function") {
+            window.debouncedSaveHoles();
         }
     }
     
@@ -277,15 +317,30 @@ class MoveMultipleHolesAction extends UndoableAction {
             });
             
             if (hole) {
-                if (position.startXLocation !== undefined) hole.startXLocation = position.startXLocation;
-                if (position.startYLocation !== undefined) hole.startYLocation = position.startYLocation;
-                if (position.startZLocation !== undefined) hole.startZLocation = position.startZLocation;
-                if (position.endXLocation !== undefined) hole.endXLocation = position.endXLocation;
-                if (position.endYLocation !== undefined) hole.endYLocation = position.endYLocation;
-                if (position.endZLocation !== undefined) hole.endZLocation = position.endZLocation;
-                if (position.gradeXLocation !== undefined) hole.gradeXLocation = position.gradeXLocation;
-                if (position.gradeYLocation !== undefined) hole.gradeYLocation = position.gradeYLocation;
-                if (position.gradeZLocation !== undefined) hole.gradeZLocation = position.gradeZLocation;
+                // Step #) Apply collar position using calculateHoleGeometry if available
+                // Mode 4 = X position, Mode 5 = Y position, Mode 6 = Z position
+                if (typeof window.calculateHoleGeometry === "function") {
+                    if (position.startXLocation !== undefined) {
+                        window.calculateHoleGeometry(hole, position.startXLocation, 4); // 4 = X position
+                    }
+                    if (position.startYLocation !== undefined) {
+                        window.calculateHoleGeometry(hole, position.startYLocation, 5); // 5 = Y position
+                    }
+                    if (position.startZLocation !== undefined) {
+                        window.calculateHoleGeometry(hole, position.startZLocation, 6); // 6 = Z position
+                    }
+                } else {
+                    // Fallback: Apply positions directly
+                    if (position.startXLocation !== undefined) hole.startXLocation = position.startXLocation;
+                    if (position.startYLocation !== undefined) hole.startYLocation = position.startYLocation;
+                    if (position.startZLocation !== undefined) hole.startZLocation = position.startZLocation;
+                    if (position.endXLocation !== undefined) hole.endXLocation = position.endXLocation;
+                    if (position.endYLocation !== undefined) hole.endYLocation = position.endYLocation;
+                    if (position.endZLocation !== undefined) hole.endZLocation = position.endZLocation;
+                    if (position.gradeXLocation !== undefined) hole.gradeXLocation = position.gradeXLocation;
+                    if (position.gradeYLocation !== undefined) hole.gradeYLocation = position.gradeYLocation;
+                    if (position.gradeZLocation !== undefined) hole.gradeZLocation = position.gradeZLocation;
+                }
             }
         }
     }
@@ -321,10 +376,23 @@ class EditHolePropsAction extends UndoableAction {
             }.bind(this));
             
             if (hole) {
+                // Step 7a) Special handling for bearing - use calculateHoleGeometry
+                if (props.holeBearing !== undefined && typeof window.calculateHoleGeometry === "function") {
+                    window.calculateHoleGeometry(hole, props.holeBearing, 3); // 3 = bearing parameter
+                }
+                // Step 7b) Apply other properties directly
                 for (var key in props) {
-                    if (props.hasOwnProperty(key)) {
+                    if (props.hasOwnProperty(key) && key !== "holeBearing") {
                         hole[key] = props[key];
                     }
+                }
+                // Step 7c) Trigger redraw
+                window.threeDataNeedsRebuild = true;
+                if (typeof window.drawData === "function") {
+                    window.drawData(window.allBlastHoles, null);
+                }
+                if (typeof window.debouncedSaveHoles === "function") {
+                    window.debouncedSaveHoles();
                 }
             }
         }
@@ -351,12 +419,14 @@ class EditMultipleHolesPropsAction extends UndoableAction {
         for (var i = 0; i < this.editData.length; i++) {
             this._applyProps(this.editData[i], this.editData[i].newProps);
         }
+        this._triggerRedraw();
     }
     
     undo() {
         for (var i = 0; i < this.editData.length; i++) {
             this._applyProps(this.editData[i], this.editData[i].originalProps);
         }
+        this._triggerRedraw();
     }
     
     redo() {
@@ -370,12 +440,27 @@ class EditMultipleHolesPropsAction extends UndoableAction {
             });
             
             if (hole) {
+                // Step 8a) Special handling for bearing - use calculateHoleGeometry
+                if (props.holeBearing !== undefined && typeof window.calculateHoleGeometry === "function") {
+                    window.calculateHoleGeometry(hole, props.holeBearing, 3); // 3 = bearing parameter
+                }
+                // Step 8b) Apply other properties directly
                 for (var key in props) {
-                    if (props.hasOwnProperty(key)) {
+                    if (props.hasOwnProperty(key) && key !== "holeBearing") {
                         hole[key] = props[key];
                     }
                 }
             }
+        }
+    }
+    
+    _triggerRedraw() {
+        window.threeDataNeedsRebuild = true;
+        if (typeof window.drawData === "function") {
+            window.drawData(window.allBlastHoles, null);
+        }
+        if (typeof window.debouncedSaveHoles === "function") {
+            window.debouncedSaveHoles();
         }
     }
 }
@@ -653,14 +738,17 @@ class MoveKADVertexAction extends UndoableAction {
     
     execute() {
         this._applyPosition(this.newPosition);
+        this._triggerRedraw();
     }
     
     undo() {
         this._applyPosition(this.originalPosition);
+        this._triggerRedraw();
     }
     
     redo() {
         this._applyPosition(this.newPosition);
+        this._triggerRedraw();
     }
     
     _applyPosition(position) {
@@ -677,6 +765,16 @@ class MoveKADVertexAction extends UndoableAction {
                     if (position.pointZLocation !== undefined) vertex.pointZLocation = position.pointZLocation;
                 }
             }
+        }
+    }
+    
+    _triggerRedraw() {
+        window.threeDataNeedsRebuild = true;
+        if (typeof window.drawData === "function") {
+            window.drawData(window.allBlastHoles, null);
+        }
+        if (typeof window.debouncedSaveKAD === "function") {
+            window.debouncedSaveKAD();
         }
     }
 }
@@ -701,12 +799,14 @@ class MoveMultipleKADVerticesAction extends UndoableAction {
         for (var i = 0; i < this.moveData.length; i++) {
             this._applyPosition(this.moveData[i], this.moveData[i].newPosition);
         }
+        this._triggerRedraw();
     }
     
     undo() {
         for (var i = 0; i < this.moveData.length; i++) {
             this._applyPosition(this.moveData[i], this.moveData[i].originalPosition);
         }
+        this._triggerRedraw();
     }
     
     redo() {
@@ -727,6 +827,16 @@ class MoveMultipleKADVerticesAction extends UndoableAction {
                     if (position.pointZLocation !== undefined) vertex.pointZLocation = position.pointZLocation;
                 }
             }
+        }
+    }
+    
+    _triggerRedraw() {
+        window.threeDataNeedsRebuild = true;
+        if (typeof window.drawData === "function") {
+            window.drawData(window.allBlastHoles, null);
+        }
+        if (typeof window.debouncedSaveKAD === "function") {
+            window.debouncedSaveKAD();
         }
     }
 }

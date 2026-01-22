@@ -339,9 +339,7 @@ class SurpacSTRParser extends BaseParser {
 			var last = vertices[vertices.length - 1];
 			var tolerance = 0.001;
 
-			isClosed = Math.abs(first.x - last.x) < tolerance &&
-					   Math.abs(first.y - last.y) < tolerance &&
-					   Math.abs(first.z - last.z) < tolerance;
+			isClosed = Math.abs(first.x - last.x) < tolerance && Math.abs(first.y - last.y) < tolerance && Math.abs(first.z - last.z) < tolerance;
 
 			entityType = isClosed ? "poly" : "line";
 		}
@@ -370,7 +368,7 @@ class SurpacSTRParser extends BaseParser {
 				pointZLocation: v.z,
 				lineWidth: 1,
 				color: color,
-				closed: (isClosed && i === vertices.length - 1),
+				closed: isClosed && i === vertices.length - 1,
 				visible: true
 			};
 
@@ -406,9 +404,7 @@ class SurpacSTRParser extends BaseParser {
 
 		// Step 37) If no meaningful name found, use type + string number
 		if (!baseName) {
-			var typePrefix = entityType === "poly" ? "Polygon" : 
-							 entityType === "line" ? "Line" : 
-							 entityType === "point" ? "Point" : "String";
+			var typePrefix = entityType === "poly" ? "Polygon" : entityType === "line" ? "Line" : entityType === "point" ? "Point" : "String";
 			baseName = typePrefix + "_" + stringNumber;
 		}
 
@@ -416,7 +412,11 @@ class SurpacSTRParser extends BaseParser {
 		var uniqueName = baseName + "_" + this.padNumber(this.entityCounter, 4);
 
 		// Step 39) Double-check uniqueness (safety)
-		while (kadEntities.some(function(e) { return e.entityName === uniqueName; })) {
+		while (
+			kadEntities.some(function(e) {
+				return e.entityName === uniqueName;
+			})
+		) {
 			this.entityCounter++;
 			uniqueName = baseName + "_" + this.padNumber(this.entityCounter, 4);
 		}
@@ -447,48 +447,65 @@ class SurpacSTRParser extends BaseParser {
 		console.log("Binary STR header:", header.substring(0, 100));
 
 		// Step 43) Parse binary data
-		var view = new DataView(buffer, headerEnd);
 		var bytes = new Uint8Array(buffer, headerEnd);
 		var kadEntities = [];
 		var blastHoles = [];
 		var currentString = [];
 		var currentHole = null;
 		var holeCounter = 1;
+
+		// Step 44) AUTO-DETECT: Determine if file uses 1-byte or 2-byte string numbers
+		var use2ByteStringNum = this.detectStringNumberFormat(bytes);
+		console.log("Binary STR format: " + (use2ByteStringNum ? "2-byte" : "1-byte") + " string numbers");
+
 		var pos = 0;
 
 		try {
-			while (pos < view.byteLength - 25) {
-				// Step 44) Skip null padding to find next record
+			while (pos < bytes.length - 26) {
+				// Step 45) Skip null padding to find next record
 				var nullCount = 0;
-				while (pos < view.byteLength && bytes[pos] === 0x00) {
+				while (pos < bytes.length && bytes[pos] === 0x00) {
 					pos++;
 					nullCount++;
 				}
 
-				// Step 45) 8+ nulls indicates separator (end of string)
+				// Step 46) 8+ nulls indicates separator (end of string)
 				if (nullCount >= 8 && currentString.length > 0) {
 					this.finalizeString(kadEntities, currentString);
 					currentString = [];
 				}
 
-				if (pos >= view.byteLength - 25) break;
+				// Step 47) Check remaining bytes
+				var minBytes = use2ByteStringNum ? 26 : 25;
+				if (pos >= bytes.length - minBytes) break;
 
-				// Step 46) Read string number (1 byte)
-				// Surpac binary STR uses 1-byte string numbers
-				var stringNumber = bytes[pos];
-				pos++;
+				// Step 48) Read string number (1-byte or 2-byte based on detection)
+				var stringNumber;
+				if (use2ByteStringNum) {
+					// 2-byte big-endian uint16 (supports string# 1-32000)
+					stringNumber = (bytes[pos] << 8) | bytes[pos + 1];
+					pos += 2;
 
-				// Step 47) String# 0 = null record (end of string)
-				if (stringNumber === 0) {
-					if (currentString.length > 0) {
-						this.finalizeString(kadEntities, currentString);
-						currentString = [];
+					// Skip invalid/separator values
+					if (stringNumber === 0 || stringNumber > 32000) {
+						continue;
 					}
-					continue;
+				} else {
+					// 1-byte (supports string# 1-255)
+					stringNumber = bytes[pos];
+					pos++;
+
+					if (stringNumber === 0) {
+						if (currentString.length > 0) {
+							this.finalizeString(kadEntities, currentString);
+							currentString = [];
+						}
+						continue;
+					}
 				}
 
-				// Step 48) Read Y, X, Z as doubles (BIG-ENDIAN for Surpac)
-				if (pos + 24 > view.byteLength) break;
+				// Step 49) Read Y, X, Z as doubles (BIG-ENDIAN for Surpac)
+				if (pos + 24 > bytes.length) break;
 
 				var coordView = new DataView(bytes.buffer, bytes.byteOffset + pos);
 				var y = coordView.getFloat64(0, false); // big-endian
@@ -500,7 +517,7 @@ class SurpacSTRParser extends BaseParser {
 				if (isNaN(x) || isNaN(y) || isNaN(z)) {
 					continue;
 				}
-				
+
 				// Step 50b) Reject garbage values (outside UTM range)
 				if (Math.abs(x) > 1e12 || Math.abs(y) > 1e12 || Math.abs(z) > 1e12) {
 					continue;
@@ -508,7 +525,6 @@ class SurpacSTRParser extends BaseParser {
 
 				// Step 51) Skip any padding nulls before description (but not 8+ which is separator)
 				while (pos < bytes.length && bytes[pos] === 0x00) {
-					// Check if this is a separator (8+ nulls)
 					var nullRun = 0;
 					var checkPos = pos;
 					while (checkPos < bytes.length && bytes[checkPos] === 0x00) {
@@ -524,7 +540,7 @@ class SurpacSTRParser extends BaseParser {
 				var maxDescLength = 512;
 				while (pos < bytes.length && description.length < maxDescLength) {
 					var byte = bytes[pos];
-					if (byte >= 0x20 && byte <= 0x7E) {
+					if (byte >= 0x20 && byte <= 0x7e) {
 						description += String.fromCharCode(byte);
 						pos++;
 					} else {
@@ -547,8 +563,9 @@ class SurpacSTRParser extends BaseParser {
 						blastHoles.push(currentHole);
 					}
 					// Step 56) Parse collar from binary metadata
-					var metaParts = desc.split(",").map(function(p) { return p.trim(); });
-					// Reconstruct full parts array for parseBlastHoleCollar
+					var metaParts = desc.split(",").map(function(p) {
+						return p.trim();
+					});
 					var fullParts = ["1", y.toString(), x.toString(), z.toString()].concat(metaParts);
 					currentHole = this.parseBlastHoleCollar(x, y, z, fullParts, holeCounter++);
 				} else if (stringNumber === 1 && currentHole && !desc) {
@@ -570,7 +587,7 @@ class SurpacSTRParser extends BaseParser {
 				}
 			}
 
-			// Step 58) Finalize remaining data
+			// Step 59) Finalize remaining data
 			if (currentString.length > 0) {
 				this.finalizeString(kadEntities, currentString);
 			}
@@ -578,12 +595,11 @@ class SurpacSTRParser extends BaseParser {
 				this.recalculateHoleGeometry(currentHole);
 				blastHoles.push(currentHole);
 			}
-
 		} catch (error) {
 			console.warn("Error parsing binary STR at position " + pos + ":", error);
 		}
 
-		// Step 59) Return appropriate format
+		// Step 60z) Return appropriate format
 		if (blastHoles.length > 0) {
 			console.log("Parsed " + blastHoles.length + " blast holes from binary STR");
 			return {
@@ -601,11 +617,89 @@ class SurpacSTRParser extends BaseParser {
 	// =========================================================================
 	// UTILITY METHODS
 	// =========================================================================
+	// Step 61) Detect if binary uses 1-byte or 2-byte string numbers
+	detectStringNumberFormat(bytes) {
+		// Step 62) Find first non-null position after any initial padding
+		var pos = 0;
+		while (pos < bytes.length && bytes[pos] === 0x00) {
+			pos++;
+		}
 
+		if (pos >= bytes.length - 26) {
+			return true; // Default to 2-byte (standard format)
+		}
+
+		// Step 63) Try 2-byte string number, read coordinates
+		var stringNum2Byte = (bytes[pos] << 8) | bytes[pos + 1];
+		var valid2Byte = false;
+
+		if (stringNum2Byte > 0 && stringNum2Byte <= 32000 && pos + 26 <= bytes.length) {
+			var view2 = new DataView(bytes.buffer, bytes.byteOffset + pos + 2);
+			var y2 = view2.getFloat64(0, false);
+			var x2 = view2.getFloat64(8, false);
+			var z2 = view2.getFloat64(16, false);
+			valid2Byte = this.isValidUTMCoordinate(x2, y2, z2);
+		}
+
+		// Step 64) Try 1-byte string number, read coordinates
+		var stringNum1Byte = bytes[pos];
+		var valid1Byte = false;
+
+		if (stringNum1Byte > 0 && stringNum1Byte <= 255 && pos + 25 <= bytes.length) {
+			var view1 = new DataView(bytes.buffer, bytes.byteOffset + pos + 1);
+			var y1 = view1.getFloat64(0, false);
+			var x1 = view1.getFloat64(8, false);
+			var z1 = view1.getFloat64(16, false);
+			valid1Byte = this.isValidUTMCoordinate(x1, y1, z1);
+		}
+
+		// Step 65) Prefer 2-byte (supports full range), fall back to 1-byte
+		if (valid2Byte) {
+			return true; // Use 2-byte
+		} else if (valid1Byte) {
+			return false; // Use 1-byte
+		} else {
+			console.warn("Could not auto-detect string number format, defaulting to 2-byte");
+			return true; // Default to 2-byte
+		}
+	}
+
+	// Step 66) Check if coordinates are valid (any coordinate system)
+	isValidCoordinate(x, y, z) {
+		// Step 66a) Must be valid numbers
+		if (isNaN(x) || isNaN(y) || isNaN(z)) {
+			return false;
+		}
+
+		// Step 66b) Must not be infinity
+		if (!isFinite(x) || !isFinite(y) || !isFinite(z)) {
+			return false;
+		}
+
+		// Step 66c) Must be within reasonable range (not garbage from misaligned reads)
+		// Most coordinate systems are within +/- 10 billion
+		if (Math.abs(x) > 1e10 || Math.abs(y) > 1e10 || Math.abs(z) > 1e10) {
+			return false;
+		}
+
+		// Step 66d) X and Y should have similar magnitude (within factor of 10000)
+		// This catches misaligned reads where one value is garbage
+		var xMag = Math.abs(x) > 1 ? Math.abs(x) : 1;
+		var yMag = Math.abs(y) > 1 ? Math.abs(y) : 1;
+		var ratio = xMag > yMag ? xMag / yMag : yMag / xMag;
+		if (ratio > 10000) {
+			return false;
+		}
+
+		// Step 66e) Z (elevation) should be much smaller than X/Y typically
+		// But don't enforce this strictly - just check it's not wildly different
+		// Skip this check as some mine grids have large Z values
+
+		return true;
+	}
 	// Step 60) Recalculate hole geometry from collar-toe vector
 	recalculateHoleGeometry(hole) {
-		if (!hole.endXLocation || !hole.endYLocation || !hole.endZLocation ||
-			(hole.endXLocation === 0 && hole.endYLocation === 0 && hole.endZLocation === 0)) {
+		if (!hole.endXLocation || !hole.endYLocation || !hole.endZLocation || (hole.endXLocation === 0 && hole.endYLocation === 0 && hole.endZLocation === 0)) {
 			return;
 		}
 
@@ -635,7 +729,7 @@ class SurpacSTRParser extends BaseParser {
 		var radAngle = angle * (Math.PI / 180);
 		var cosAngle = Math.cos(radAngle);
 		var sinAngle = Math.sin(radAngle);
-		var radBearing = ((450 - bearing) % 360) * (Math.PI / 180);
+		var radBearing = (450 - bearing) % 360 * (Math.PI / 180);
 
 		if (Math.abs(cosAngle) > 1e-9) {
 			hole.subdrillLength = hole.subdrillAmount / cosAngle;
@@ -694,7 +788,7 @@ class SurpacSTRParser extends BaseParser {
 		var lineCount = 0;
 
 		for (var i = 0; i < Math.min(view.length, 500); i++) {
-			if (view[i] === 0x0A) {
+			if (view[i] === 0x0a) {
 				lineCount++;
 				if (lineCount === 2) {
 					return i + 1;
@@ -722,15 +816,7 @@ class SurpacSTRParser extends BaseParser {
 
 		var paletteIndex = Math.ceil(stringNumber / 32);
 
-		var palette32 = [
-			"#000000", "#770000", "#FF0000", "#FF9900", "#FFFF00",
-			"#00FF00", "#009900", "#00FFFF", "#0099FF", "#0000FF",
-			"#FF00FF", "#550000", "#AA0000", "#883300", "#BBBB00",
-			"#33AA00", "#006600", "#007F7F", "#002288", "#000099",
-			"#7F007F", "#010101", "#222222", "#333333", "#444444",
-			"#555555", "#777777", "#888888", "#AAAAAA", "#CCCCCC",
-			"#FEFEFE"
-		];
+		var palette32 = ["#000000", "#770000", "#FF0000", "#FF9900", "#FFFF00", "#00FF00", "#009900", "#00FFFF", "#0099FF", "#0000FF", "#FF00FF", "#550000", "#AA0000", "#883300", "#BBBB00", "#33AA00", "#006600", "#007F7F", "#002288", "#000099", "#7F007F", "#010101", "#222222", "#333333", "#444444", "#555555", "#777777", "#888888", "#AAAAAA", "#CCCCCC", "#FEFEFE"];
 
 		if (paletteIndex < 0) paletteIndex = 0;
 		if (paletteIndex >= palette32.length) paletteIndex = palette32.length - 1;
@@ -743,7 +829,7 @@ class SurpacSTRParser extends BaseParser {
 		var buf = new ArrayBuffer(str.length);
 		var bufView = new Uint8Array(buf);
 		for (var i = 0; i < str.length; i++) {
-			bufView[i] = str.charCodeAt(i) & 0xFF;
+			bufView[i] = str.charCodeAt(i) & 0xff;
 		}
 		return buf;
 	}

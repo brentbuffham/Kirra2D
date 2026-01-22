@@ -120,6 +120,7 @@ import {
 	highlightSelectedKADPointThreeJS,
 	drawToolPromptThreeJS,
 	drawConnectStadiumZoneThreeJS,
+	drawConnectorDelayTextThreeJS,
 	drawMousePositionIndicatorThreeJS,
 	drawSlopeMapThreeJS,
 	drawBurdenReliefMapThreeJS,
@@ -133,6 +134,7 @@ import {
 	drawProtractorThreeJS,
 	clearProtractorThreeJS,
 	disposeKADThreeJS,
+	invalidate3DAnalysisCaches,
 } from "./draw/canvas3DDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
@@ -149,6 +151,38 @@ import "./dialog/popups/export/DXFExportDialog.js";
 // Helper Modules
 import { exportImagesAsGeoTIFF, exportSurfacesAsElevationGeoTIFF } from "./helpers/GeoTIFFExporter.js";
 import { CoordinateDebugger } from "./helpers/CoordinateDebugger.js";
+// Analysis Caching System - Two-level cache for Voronoi, Slope, Relief maps
+import {
+	bumpDataVersion,
+	getDataVersion,
+	getHoleDataHash,
+	getTimingHash,
+	isVoronoiPreCacheValid,
+	isTriangulationPreCacheValid,
+	preCacheVoronoiCalculations,
+	preCacheTriangulation,
+	getCachedVoronoiCells,
+	getCachedTriangulation,
+	isVoronoiCanvasCacheValid,
+	isSlopeCanvasCacheValid,
+	isReliefCanvasCacheValid,
+	renderVoronoiToCache,
+	drawCachedVoronoi,
+	renderSlopeToCache,
+	drawCachedSlope,
+	renderReliefToCache,
+	drawCachedRelief,
+	getSlopeColor,
+	getReliefColor,
+	calculateBurdenRelief,
+	invalidateAllAnalysisCaches,
+	invalidateVoronoiCaches,
+	invalidateSlopeCache,
+	invalidateReliefCache,
+	invalidateTriangulationCaches,
+	preCacheAllAnalysis,
+	ANALYSIS_CACHE_ZOOM_THRESHOLD
+} from "./helpers/AnalysisCache.js";
 //=================================================
 // Dialog Modules - Converted to ES Modules for Vite bundling 2025-12-26
 // These are imported as side-effect imports - the modules set window globals
@@ -531,6 +565,11 @@ function exposeGlobalsToWindow() {
 	window.fromHoleStore = fromHoleStore;
 	window.isAddingMultiConnector = isAddingMultiConnector;
 	window.connectAmount = connectAmount;
+	
+	// Step 4a) Initialize connector rebuild flag (separate from general 3D rebuild for performance)
+	if (window.threeConnectorsNeedRebuild === undefined) {
+		window.threeConnectorsNeedRebuild = false;
+	}
 
 	// Step 5) Helper functions
 	window.elevationToColor = elevationToColor;
@@ -598,6 +637,7 @@ function exposeGlobalsToWindow() {
 	window.getClickedHole3DWithTolerance = getClickedHole3DWithTolerance;
 	window.getClickedKADObject = getClickedKADObject;
 	window.getClickedKADObject3D = getClickedKADObject3D;
+	window.getClickedKADVertex3DWithTolerance = getClickedKADVertex3DWithTolerance;
 	window.getSnapToleranceInWorldUnits = getSnapToleranceInWorldUnits;
 	window.canvasToWorld = canvasToWorld;
 	window.isKADObjectSelected = isKADObjectSelected;
@@ -3509,7 +3549,7 @@ document.addEventListener("DOMContentLoaded", function () {
 						// Step 1cd.3a) Now set the orbit center (threeRenderer now exists)
 						if (threeRenderer && typeof threeRenderer.setOrbitCenter === "function") {
 							var fullCentroid = calculateDataCentroid();
-							threeRenderer.setOrbitCenterZ(centroid.z);
+							threeRenderer.setOrbitCenterZ(fullCentroid.z);
 							console.log("🎯 Orbit center set after init: X=" + fullCentroid.x.toFixed(2) + " Y=" + fullCentroid.y.toFixed(2) + " Z=" + fullCentroid.z.toFixed(2));
 						}
 
@@ -3961,6 +4001,7 @@ let isBearingToolActive = false;
 
 // Add this declaration around line 99 (after bearingToolSelectedHole declaration)
 let bearingToolSelectedHole = null;
+let bearingToolInitialBearings = null; // Step #) Store initial bearings for undo support
 let moveToolSelectedHole = null; // Add this declaration
 let bearingToolStartAngle = 0;
 let bearingToolStartMouseAngle = 0;
@@ -11626,6 +11667,8 @@ document.addEventListener("DOMContentLoaded", function () {
 		// Update the label with the calculated toe size
 		toeLabel.textContent = "Toe Size: " + toeSizeInMeters.toFixed(2) + "m";
 
+		// Step #) Trigger 3D rebuild when toe size changes
+		window.threeDataNeedsRebuild = true;
 		// Call the drawData function with the updated toe size in meters
 		drawData(allBlastHoles, selectedHole, toeSizeInMeters);
 	});
@@ -11634,6 +11677,8 @@ document.addEventListener("DOMContentLoaded", function () {
 		////console.log('Slider value:', this.value);
 		holeScale = document.getElementById("holeSlider").value;
 		holeLabel.textContent = "Hole Adjust : " + parseFloat(holeScale).toFixed(1);
+		// Step #) Trigger 3D rebuild when hole size changes
+		window.threeDataNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
 	});
 	// Access the slider element and add an event listener to track changes
@@ -22003,103 +22048,46 @@ function drawKADTESTPreviewLine(ctx) {
 // Note: drawArrow moved to src/draw/canvas2DDrawing.js
 
 // Note: drawArrowDelayText moved to src/draw/canvas2DDrawing.js
+// Draws slope map triangles directly to canvas (crisp edges)
 function drawDelauanySlopeMap(triangles, centroid, strokeColor) {
 	if (!triangles || !Array.isArray(triangles) || triangles.length === 0) return;
+	
 	ctx.strokeStyle = strokeColor;
 	ctx.fillStyle = fillColor;
 	ctx.lineWidth = 1;
-	console.log("drawDelauanySlopeMap: " + triangles.length);
-	for (let i = 0; i < triangles.length; i++) {
-		const triangle = triangles[i];
-		const tAX = triangle[0][0];
-		const tAY = triangle[0][1];
-		const tAZ = triangle[0][2];
-		const tBX = triangle[1][0];
-		const tBY = triangle[1][1];
-		const tBZ = triangle[1][2];
-		const tCX = triangle[2][0];
-		const tCY = triangle[2][1];
-		const tCZ = triangle[2][2];
-
-		const edge1 = {
-			x: tBX - tAX,
-			y: tBY - tAY,
-			z: tBZ - tAZ,
-		};
-		const edge2 = {
-			x: tCX - tAX,
-			y: tCY - tAY,
-			z: tCZ - tAZ,
-		};
-		const edge3 = {
-			x: tCX - tBX,
-			y: tCY - tBY,
-			z: tCZ - tBZ,
-		};
+	
+	for (var i = 0; i < triangles.length; i++) {
+		var triangle = triangles[i];
+		var tAX = triangle[0][0];
+		var tAY = triangle[0][1];
+		var tBX = triangle[1][0];
+		var tBY = triangle[1][1];
+		var tCX = triangle[2][0];
+		var tCY = triangle[2][1];
 
 		// Calculate the maximum absolute slope angle for this triangle
-		//const slopeAngles = [Math.abs(getEdgeSlopeAngle(triangle[0], triangle[1])), Math.abs(getEdgeSlopeAngle(triangle[1], triangle[2])), Math.abs(getEdgeSlopeAngle(triangle[2], triangle[0]))];
-		//let maxSlopeAngle = Math.max(...slopeAngles);
+		var maxSlopeAngle = getDipAngle(triangle);
 
-		let maxSlopeAngle = getDipAngle(triangle);
+		// Create a triangle array - convert to canvas coords
+		var aAX = (tAX - centroid.x) * currentScale + canvas.width / 2;
+		var aAY = (-tAY + centroid.y) * currentScale + canvas.height / 2;
+		var aBX = (tBX - centroid.x) * currentScale + canvas.width / 2;
+		var aBY = (-tBY + centroid.y) * currentScale + canvas.height / 2;
+		var aCX = (tCX - centroid.x) * currentScale + canvas.width / 2;
+		var aCY = (-tCY + centroid.y) * currentScale + canvas.height / 2;
 
-		// Create a triangle array
-		const aAX = (tAX - centroid.x) * currentScale + canvas.width / 2;
-		const aAY = (-tAY + centroid.y) * currentScale + canvas.height / 2;
-		const aAZ = tAZ;
-		const aBX = (tBX - centroid.x) * currentScale + canvas.width / 2;
-		const aBY = (-tBY + centroid.y) * currentScale + canvas.height / 2;
-		const aBZ = tBZ;
-		const aCX = (tCX - centroid.x) * currentScale + canvas.width / 2;
-		const aCY = (-tCY + centroid.y) * currentScale + canvas.height / 2;
-		const aCZ = tCZ;
-
-		// Define the minimum and maximum RGB values (rgb(50, 50, 50) and rgb(200, 200, 200))
-		const minRGB = [225, 225, 225];
-		const maxRGB = [100, 100, 100];
+		// Define the minimum and maximum RGB values
+		var minRGB = [225, 225, 225];
+		var maxRGB = [100, 100, 100];
 
 		// Calculate the RGB values based on maxSlopeAngle using linear interpolation
-		const r = Math.round(minRGB[0] + (maxRGB[0] - minRGB[0]) * (maxSlopeAngle / 50));
-		const g = Math.round(minRGB[1] + (maxRGB[1] - minRGB[1]) * (maxSlopeAngle / 50));
-		const b = Math.round(minRGB[2] + (maxRGB[2] - minRGB[2]) * (maxSlopeAngle / 50));
+		var r = Math.round(minRGB[0] + (maxRGB[0] - minRGB[0]) * (maxSlopeAngle / 50));
+		var g = Math.round(minRGB[1] + (maxRGB[1] - minRGB[1]) * (maxSlopeAngle / 50));
+		var b = Math.round(minRGB[2] + (maxRGB[2] - minRGB[2]) * (maxSlopeAngle / 50));
 
-		const ir = 255 - Math.round(minRGB[0] + (maxRGB[0] - minRGB[0]) * (maxSlopeAngle / 50));
-		const ig = 255 - Math.round(minRGB[1] + (maxRGB[1] - minRGB[1]) * (maxSlopeAngle / 50));
-		const ib = 255 - Math.round(minRGB[2] + (maxRGB[2] - minRGB[2]) * (maxSlopeAngle / 50));
-
-		// Define the color ranges and corresponding RGB values
-		let triangleFillColor;
-		if (maxSlopeAngle >= 0 && maxSlopeAngle < 5) {
-			// Cornflower blue for angles in the range [0, 4)
-			triangleFillColor = "rgb(51, 139, 255)";
-		} else if (maxSlopeAngle >= 5 && maxSlopeAngle < 7) {
-			// Green for angles in the range [7, 10]
-			triangleFillColor = "rgb(0, 102, 204)";
-		} else if (maxSlopeAngle >= 7 && maxSlopeAngle < 9) {
-			// Green for angles in the range [7, 10]
-			triangleFillColor = "rgb(0, 204, 204)";
-		} else if (maxSlopeAngle >= 9 && maxSlopeAngle < 12) {
-			// Green for angles in the range [7, 10]
-			triangleFillColor = "rgb(102, 204, 0)";
-		} else if (maxSlopeAngle >= 12 && maxSlopeAngle < 15) {
-			// Green for angles in the range [7, 10]
-			triangleFillColor = "rgb(204, 204, 0)";
-		} else if (maxSlopeAngle >= 15 && maxSlopeAngle < 17) {
-			// Green for angles in the range [7, 10]
-			triangleFillColor = "rgb(255, 128, 0)";
-		} else if (maxSlopeAngle >= 17 && maxSlopeAngle < 20) {
-			// Green for angles in the range [7, 10]
-			triangleFillColor = "rgb(255, 0, 0)";
-		} else {
-			// Default to grey for all other angles
-			triangleFillColor = "rgb(153, 0, 76)";
-		}
-
-		// Combine the calculated RGB values into the final fill color
-		// triangleFillColor = `rgb(${r}, ${g}, ${b})`;
-		const triangleStrokeColor = `rgb(${r}, ${g}, ${b})`;
-		// Invert the color by subtracting each channel value from 255
-		const invertedColor = `rgb(${ir}, ${ig}, ${ib})`;
+		// Get fill color based on slope angle
+		var triangleFillColor = getSlopeColor(maxSlopeAngle);
+		var triangleStrokeColor = "rgb(" + r + ", " + g + ", " + b + ")";
 
 		ctx.strokeStyle = triangleStrokeColor;
 		ctx.fillStyle = triangleFillColor;
@@ -22112,118 +22100,43 @@ function drawDelauanySlopeMap(triangles, centroid, strokeColor) {
 		ctx.closePath();
 		ctx.stroke();
 		ctx.fill();
-
-		ctx.lineWidth = 1;
 	}
 }
 
+// Draws burden relief map triangles directly to canvas (crisp edges)
 function drawDelauanyBurdenRelief(triangles, centroid, strokeColor) {
 	if (!triangles || !Array.isArray(triangles) || triangles.length === 0) return;
+	
 	ctx.strokeStyle = strokeColor;
 	ctx.lineWidth = 1;
-	//console.log("drawDelauanyBurdenRelief: " + triangles.length);
-	// const reliefResults = delaunayContourBurdenRelief(triangles, 20, 0);
-	// console.log("Relief Results:", reliefResults);
-	for (let i = 0; i < triangles.length; i++) {
-		const triangle = triangles[i];
-		const tAX = triangle[0][0];
-		const tAY = triangle[0][1];
-		const tAZ = triangle[0][2];
-		const tBX = triangle[1][0];
-		const tBY = triangle[1][1];
-		const tBZ = triangle[1][2];
-		const tCX = triangle[2][0];
-		const tCY = triangle[2][1];
-		const tCZ = triangle[2][2];
+	
+	for (var i = 0; i < triangles.length; i++) {
+		var triangle = triangles[i];
+		var tAX = triangle[0][0];
+		var tAY = triangle[0][1];
+		var tAZ = triangle[0][2];
+		var tBX = triangle[1][0];
+		var tBY = triangle[1][1];
+		var tBZ = triangle[1][2];
+		var tCX = triangle[2][0];
+		var tCY = triangle[2][1];
+		var tCZ = triangle[2][2];
 
-		// Find the earliest and latest times
-		const earliestTime = Math.min(tAZ, tBZ, tCZ);
-		const latestTime = Math.max(tAZ, tBZ, tCZ);
-
-		// Calculate the time difference
-		const timeDifference = latestTime - earliestTime; // ms
-
-		// Determine which points correspond to the earliest and latest times
-		let p1, p2;
-		if (earliestTime === tAZ) {
-			p1 = {
-				x: tAX,
-				y: tAY,
-			};
-		} else if (earliestTime === tBZ) {
-			p1 = {
-				x: tBX,
-				y: tBY,
-			};
-		} else {
-			p1 = {
-				x: tCX,
-				y: tCY,
-			};
-		}
-
-		if (latestTime === tAZ) {
-			p2 = {
-				x: tAX,
-				y: tAY,
-			};
-		} else if (latestTime === tBZ) {
-			p2 = {
-				x: tBX,
-				y: tBY,
-			};
-		} else {
-			p2 = {
-				x: tCX,
-				y: tCY,
-			};
-		}
-
-		// Calculate the distance between the two points (earliest and latest)
-		const distance = Math.sqrt(Math.pow(p2.x - p1.x, 2) + Math.pow(p2.y - p1.y, 2));
-
-		// Calculate burden relief in ms/m
-		const burdenRelief = timeDifference / distance;
-
-		//console.log("Time Difference (ms):", timeDifference);
-		//console.log("Distance (m):", distance);
-		//console.log("Burden Relief (ms/m):", burdenRelief);
-
-		// Color mapping based on timing relief (adjust values as needed)
-		let triangleFillColor;
-		if (burdenRelief < 4) {
-			triangleFillColor = "rgb(75, 20, 20)"; // fast
-		} else if (burdenRelief < 7) {
-			triangleFillColor = "rgb(255, 40, 40)";
-		} else if (burdenRelief < 10) {
-			triangleFillColor = "rgb(255, 120, 50)"; //
-		} else if (burdenRelief < 13) {
-			triangleFillColor = "rgb(255, 255, 50)"; //
-		} else if (burdenRelief < 16) {
-			triangleFillColor = "rgb(50, 255, 70)"; //
-		} else if (burdenRelief < 19) {
-			triangleFillColor = "rgb(50, 255, 200)"; //
-		} else if (burdenRelief < 22) {
-			triangleFillColor = "rgb(50, 230, 255)"; //
-		} else if (burdenRelief < 25) {
-			triangleFillColor = "rgb(50, 180, 255)"; //
-		} else if (burdenRelief < 30) {
-			triangleFillColor = "rgb(50, 100, 255)"; // Blue
-		} else if (burdenRelief < 40) {
-			triangleFillColor = "rgb(0, 0, 180)"; // Navy (actual dark blue)
-		} else {
-			triangleFillColor = "rgb(75, 0, 150)"; // Purple - slow
-		}
+		// Calculate burden relief using the imported function
+		var burdenRelief = calculateBurdenRelief(triangle);
+		
+		// Get fill color using the imported function
+		var triangleFillColor = getReliefColor(burdenRelief);
 
 		ctx.fillStyle = triangleFillColor;
 
 		// Draw triangle
-		const aAX = (tAX - centroid.x) * currentScale + canvas.width / 2;
-		const aAY = (-tAY + centroid.y) * currentScale + canvas.height / 2;
-		const aBX = (tBX - centroid.x) * currentScale + canvas.width / 2;
-		const aBY = (-tBY + centroid.y) * currentScale + canvas.height / 2;
-		const aCX = (tCX - centroid.x) * currentScale + canvas.width / 2;
-		const aCY = (-tCY + centroid.y) * currentScale + canvas.height / 2;
+		var aAX = (tAX - centroid.x) * currentScale + canvas.width / 2;
+		var aAY = (-tAY + centroid.y) * currentScale + canvas.height / 2;
+		var aBX = (tBX - centroid.x) * currentScale + canvas.width / 2;
+		var aBY = (-tBY + centroid.y) * currentScale + canvas.height / 2;
+		var aCX = (tCX - centroid.x) * currentScale + canvas.width / 2;
+		var aCY = (-tCY + centroid.y) * currentScale + canvas.height / 2;
 
 		ctx.beginPath();
 		ctx.moveTo(aAX, aAY);
@@ -22690,39 +22603,20 @@ function getClickedHole3DWithTolerance(event) {
 	}
 
 	// Step 2) Get canvas and mouse position
-	const canvas3D = threeRenderer.getCanvas();
+	var canvas3D = threeRenderer.getCanvas();
 	if (!canvas3D) return null;
 
-	const rect = canvas3D.getBoundingClientRect();
-	const mouseScreenX = event.clientX - rect.left;
-	const mouseScreenY = event.clientY - rect.top;
-	const canvasWidth = rect.width;
-	const canvasHeight = rect.height;
+	var rect = canvas3D.getBoundingClientRect();
+	var mouseScreenX = event.clientX - rect.left;
+	var mouseScreenY = event.clientY - rect.top;
 
 	// Step 3) Get snap tolerance in pixels
-	const tolerancePixels = snapRadiusPixels || 20;
+	var tolerancePixels = snapRadiusPixels || 20;
 
-	// Step 4) Get camera for projection
-	const camera = threeRenderer.camera;
+	// Step 4) Use global worldToScreen function (properly handles coordinate conversion)
+	// This function is defined at the top of kirra.js and uses threeLocalOriginX/Y correctly
 
-	// Step 5) Helper function to project world position to screen pixels
-	var worldToScreen = function (worldX, worldY, worldZ) {
-		// Convert world to Three.js local coordinates
-		var localX = worldX - (window.threeLocalOriginX || window.dataCentroidX || 0);
-		var localY = worldY - (window.threeLocalOriginY || window.dataCentroidY || 0);
-
-		// Create vector and project to normalized device coordinates
-		var vector = new THREE.Vector3(localX, localY, worldZ);
-		vector.project(camera);
-
-		// Convert NDC (-1 to +1) to screen pixels (0 to width/height)
-		var screenX = ((vector.x + 1) * canvasWidth) / 2;
-		var screenY = ((-vector.y + 1) * canvasHeight) / 2; // Invert Y for screen coords
-
-		return { x: screenX, y: screenY };
-	};
-
-	// Step 6) Search all holes for closest one within tolerance
+	// Step 5) Search all holes for closest one within tolerance
 	var closestHole = null;
 	var closestDistance = Infinity;
 
@@ -22731,19 +22625,22 @@ function getClickedHole3DWithTolerance(event) {
 			// Skip hidden holes
 			if (!isHoleVisible(hole)) return;
 
-			// Step 6a) Project hole collar to screen space
+			// Step 5a) Project hole collar to screen space
 			var collarScreen = worldToScreen(
 				hole.startXLocation,
 				hole.startYLocation,
 				hole.startZLocation || 0
 			);
 
-			// Step 6b) Calculate screen distance to mouse
+			// Step 5b) Skip if projection failed
+			if (!collarScreen) return;
+
+			// Step 5c) Calculate screen distance to mouse
 			var dx = collarScreen.x - mouseScreenX;
 			var dy = collarScreen.y - mouseScreenY;
 			var screenDistance = Math.sqrt(dx * dx + dy * dy);
 
-			// Step 6c) Check if within tolerance and closer than previous best
+			// Step 5d) Check if within tolerance and closer than previous best
 			if (screenDistance <= tolerancePixels && screenDistance < closestDistance) {
 				closestDistance = screenDistance;
 				closestHole = hole;
@@ -22761,6 +22658,92 @@ function getClickedHole3DWithTolerance(event) {
 
 	return null;
 }
+
+//-------------------------SELECTION OF KAD VERTICES IN 3D (with tolerance)----------------------//
+// Step #) This function uses screen-space distance to find KAD vertices within tolerance
+function getClickedKADVertex3DWithTolerance(event) {
+	// Step 1) Check if we're in 3D mode with required components
+	if (!onlyShowThreeJS || !threeRenderer || !threeRenderer.camera) {
+		return null;
+	}
+
+	// Step 2) Get canvas and mouse position
+	var canvas3D = threeRenderer.getCanvas();
+	if (!canvas3D) return null;
+
+	var rect = canvas3D.getBoundingClientRect();
+	var mouseScreenX = event.clientX - rect.left;
+	var mouseScreenY = event.clientY - rect.top;
+
+	// Step 3) Get snap tolerance in pixels
+	var tolerancePixels = snapRadiusPixels || 20;
+
+	// Step 4) Use global worldToScreen function (properly handles coordinate conversion)
+	// This function is defined at the top of kirra.js and uses threeLocalOriginX/Y correctly
+
+	// Step 5) Search all KAD entities for closest vertex within tolerance
+	var closestVertex = null;
+	var closestDistance = Infinity;
+	var closestEntityName = null;
+	var closestElementIndex = -1;
+
+	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+		allKADDrawingsMap.forEach(function(entity, entityName) {
+			// Skip hidden entities
+			if (!isEntityVisible(entityName)) return;
+			if (!entity.data || entity.data.length === 0) return;
+
+			// Check each vertex in the entity
+			for (var i = 0; i < entity.data.length; i++) {
+				var point = entity.data[i];
+				// Skip hidden points
+				if (point.visible === false) continue;
+
+				// Project vertex to screen space
+				var vertexScreen = worldToScreen(
+					point.pointXLocation,
+					point.pointYLocation,
+					point.pointZLocation || 0
+				);
+
+				// Skip if projection failed
+				if (!vertexScreen) continue;
+
+				// Calculate screen distance to mouse
+				var dx = vertexScreen.x - mouseScreenX;
+				var dy = vertexScreen.y - mouseScreenY;
+				var screenDistance = Math.sqrt(dx * dx + dy * dy);
+
+				// Check if within tolerance and closer than previous best
+				if (screenDistance <= tolerancePixels && screenDistance < closestDistance) {
+					closestDistance = screenDistance;
+					closestVertex = point;
+					closestEntityName = entityName;
+					closestElementIndex = i;
+				}
+			}
+		});
+	}
+
+	// Step 7) Return closest vertex if found within tolerance
+	if (closestVertex && closestEntityName) {
+		var entity = allKADDrawingsMap.get(closestEntityName);
+		if (developerModeEnabled) {
+			console.log("⬇️ [3D KAD VERTEX] Found vertex " + closestElementIndex + " in '" + closestEntityName + "' at screen distance " + closestDistance.toFixed(1) + "px");
+		}
+		return {
+			entityName: closestEntityName,
+			elementIndex: closestElementIndex,
+			dataPoint: closestVertex,
+			entityType: entity ? entity.entityType : "unknown"
+		};
+	}
+
+	return null;
+}
+
+// Expose the new function
+window.getClickedKADVertex3DWithTolerance = getClickedKADVertex3DWithTolerance;
 
 //------------------MULTIPLE SELECTION OF BLAST HOLES----------------------//
 function getMultipleClickedHoles(clickX, clickY) {
@@ -28486,18 +28469,19 @@ function drawData(allBlastHoles, selectedHole) {
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Powder Factor (kg/m\u00b3)", minPF, maxPF);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
-						var voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-						var clippedCells = clipVoronoiCells(voronoiMetrics);
 						drawVoronoiCellsThreeJS(
-							clippedCells,
 							function (value) {
 								return getPFColor(value, minPF, maxPF);
 							},
 							allBlastHoles,
 							0.2,
 							useToeLocation,
-							"powderFactor"
+							"powderFactor",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
 						);
 					}
 					break;
@@ -28540,18 +28524,19 @@ function drawData(allBlastHoles, selectedHole) {
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Mass (kg)", minMass, maxMass);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
-						var voronoiMetricsMass = getVoronoiMetrics(allBlastHoles, useToeLocation);
-						var clippedCellsMass = clipVoronoiCells(voronoiMetricsMass);
 						drawVoronoiCellsThreeJS(
-							clippedCellsMass,
 							function (value) {
 								return getMassColor(value, minMass, maxMass);
 							},
 							allBlastHoles,
 							0.2,
 							useToeLocation,
-							"mass"
+							"mass",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
 						);
 					}
 					break;
@@ -28592,18 +28577,19 @@ function drawData(allBlastHoles, selectedHole) {
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Volume (m\u00b3)", minVol, maxVol);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
-						var voronoiMetricsVol = getVoronoiMetrics(allBlastHoles, useToeLocation);
-						var clippedCellsVol = clipVoronoiCells(voronoiMetricsVol);
 						drawVoronoiCellsThreeJS(
-							clippedCellsVol,
 							function (value) {
 								return getVolumeColor(value, minVol, maxVol);
 							},
 							allBlastHoles,
 							0.2,
 							useToeLocation,
-							"volume"
+							"volume",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
 						);
 					}
 					break;
@@ -28645,18 +28631,19 @@ function drawData(allBlastHoles, selectedHole) {
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Area (m\u00b2)", minArea, maxArea);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
-						var voronoiMetricsArea = getVoronoiMetrics(allBlastHoles, useToeLocation);
-						var clippedCellsArea = clipVoronoiCells(voronoiMetricsArea);
 						drawVoronoiCellsThreeJS(
-							clippedCellsArea,
 							function (value) {
 								return getAreaColor(value, minArea, maxArea);
 							},
 							allBlastHoles,
 							0.2,
 							useToeLocation,
-							"area"
+							"area",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
 						);
 					}
 					break;
@@ -28706,18 +28693,19 @@ function drawData(allBlastHoles, selectedHole) {
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Measured Length (m)", minMLen, maxMLen);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
-						var voronoiMetricsMLen = getVoronoiMetrics(allBlastHoles, useToeLocation);
-						var clippedCellsMLen = clipVoronoiCells(voronoiMetricsMLen);
 						drawVoronoiCellsThreeJS(
-							clippedCellsMLen,
 							function (value) {
 								return getLengthColor(value, minMLen, maxMLen);
 							},
 							allBlastHoles,
 							0.2,
 							useToeLocation,
-							"measuredLength"
+							"measuredLength",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
 						);
 					}
 					break;
@@ -28767,18 +28755,19 @@ function drawData(allBlastHoles, selectedHole) {
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Designed Length (m)", minDLen, maxDLen);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
-						var voronoiMetricsDLen = getVoronoiMetrics(allBlastHoles, useToeLocation);
-						var clippedCellsDLen = clipVoronoiCells(voronoiMetricsDLen);
 						drawVoronoiCellsThreeJS(
-							clippedCellsDLen,
 							function (value) {
 								return getLengthColor(value, minDLen, maxDLen);
 							},
 							allBlastHoles,
 							0.2,
 							useToeLocation,
-							"designedLength"
+							"designedLength",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
 						);
 					}
 					break;
@@ -28820,18 +28809,19 @@ function drawData(allBlastHoles, selectedHole) {
 					// HUD: Show Voronoi legend
 					showVoronoiLegend("Hole Firing Time (ms)", minHTime, maxHTime);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
-						var voronoiMetricsHTime = getVoronoiMetrics(allBlastHoles, useToeLocation);
-						var clippedCellsHTime = clipVoronoiCells(voronoiMetricsHTime);
 						drawVoronoiCellsThreeJS(
-							clippedCellsHTime,
 							function (value) {
 								return getHoleFiringTimeColor(value, minHTime, maxHTime);
 							},
 							allBlastHoles,
 							0.2,
 							useToeLocation,
-							"holeFiringTime"
+							"holeFiringTime",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
 						);
 					}
 					break;
@@ -29308,9 +29298,9 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 
 		// Step 3.3) Draw Voronoi cells in Three.js (3D-only mode)
+		// OPTIMIZED: Use Level 1 cache to avoid recalculating every frame
 		if (displayOptions3D.voronoiPF && allBlastHoles && allBlastHoles.length > 0) {
-			var voronoiMetrics3D = getVoronoiMetrics(allBlastHoles, useToeLocation);
-			var clippedCells3D = clipVoronoiCells(voronoiMetrics3D);
+			var clippedCells3D = getCachedVoronoiCells(allBlastHoles, useToeLocation, getVoronoiMetrics, clipVoronoiCells);
 			if (clippedCells3D && clippedCells3D.length > 0) {
 				// Step 3.3a) Use the selected voronoi metric for coloring
 				var selectedMetric3D = selectedVoronoiMetric || "powder_factor";
@@ -29484,7 +29474,17 @@ function drawData(allBlastHoles, selectedHole) {
 						};
 						cellPropertyName = "powderFactor";
 				}
-				drawVoronoiCellsThreeJS(clippedCells3D, colorFunction3D, allBlastHoles, 0.2, useToeLocation, cellPropertyName);
+				// OPTIMIZED: Pass cache functions - skip check happens inside
+				drawVoronoiCellsThreeJS(
+					colorFunction3D,
+					allBlastHoles,
+					0.2,
+					useToeLocation,
+					cellPropertyName,
+					getCachedVoronoiCells,
+					getVoronoiMetrics,
+					clipVoronoiCells
+				);
 
 				// HUD: Show appropriate Voronoi legend in 3D mode
 				switch (selectedMetric3D) {
@@ -29602,33 +29602,43 @@ function drawData(allBlastHoles, selectedHole) {
 				// NOTE: threeDataNeedsRebuild flag reset moved to AFTER KAD drawing (Step 3 below)
 			}
 
-			// Step 3.5) Clear and redraw connectors when data changes (rebuild is true)
-			// NOTE: Highlight clearing moved to Step 3.4 (outside holes block) so it runs even with 0 holes
+			// Step 3.5) Clear and redraw connectors when CONNECTOR data changes
+			// NOTE: Uses separate flag to avoid rebuilding connectors for unrelated changes
+			// threeConnectorsNeedRebuild is set when: timing changes, connector toggle, delay display, etc.
 
-			// Step 3.5a) Clear connectors when rebuild is needed so they can be redrawn
-			if (window.threeDataNeedsRebuild && threeRenderer && threeRenderer.connectorsGroup) {
+			// Step 3.5a) Clear connectors AND standalone delay text when rebuild is needed
+			var shouldRebuildConnectors = window.threeConnectorsNeedRebuild || window.threeDataNeedsRebuild;
+			if (shouldRebuildConnectors && threeRenderer && threeRenderer.connectorsGroup) {
 				var connectorsToRemove = [];
 				threeRenderer.connectorsGroup.children.forEach(function (child) {
-					if (child.userData && child.userData.type === "connector") {
+					// Clear both connectors and standalone delay text
+					if (child.userData && (child.userData.type === "connector" || child.userData.type === "standaloneDelayText")) {
 						connectorsToRemove.push(child);
 					}
 				});
 				connectorsToRemove.forEach(function (child) {
 					threeRenderer.connectorsGroup.remove(child);
-					if (child.geometry) child.geometry.dispose();
-					if (child.material) {
-						if (Array.isArray(child.material)) {
-							child.material.forEach(function (m) { m.dispose(); });
-						} else {
-							child.material.dispose();
+					// Properly dispose Troika text children
+					child.traverse(function (obj) {
+						if (obj.dispose) obj.dispose(); // Troika text dispose
+						if (obj.geometry) obj.geometry.dispose();
+						if (obj.material) {
+							if (Array.isArray(obj.material)) {
+								obj.material.forEach(function (m) { m.dispose(); });
+							} else {
+								obj.material.dispose();
+							}
 						}
-					}
+					});
 				});
+				// Reset connector rebuild flag
+				window.threeConnectorsNeedRebuild = false;
 			}
 
-			// Step 4) Build hole map ONCE for connector lookup (moved outside loop for O(n) vs O(n²))
+			// Step 4) Build hole map ONCE for connector/delay lookup (moved outside loop for O(n) vs O(n²))
+			// Build map if EITHER connector OR delayValue is enabled (both need fromHole lookup)
 			const holeMap3D = new Map();
-			if (displayOptions3D.connector) {
+			if (displayOptions3D.connector || displayOptions3D.delayValue) {
 				allBlastHoles.forEach(function (h) {
 					holeMap3D.set(h.entityName + ":::" + h.holeID, h);
 				});
@@ -29638,15 +29648,27 @@ function drawData(allBlastHoles, selectedHole) {
 				var hole = allBlastHoles[holeIdx];
 				if (hole.visible === false) continue;
 
-				// Step 4a) Draw connectors in Three.js (only when rebuild needed or first time)
+				// Step 4a) Draw connectors in Three.js (connector arrows/lines)
+				// Connector and delay text are SEPARATE options (like 2D)
 				if (threeInitialized && displayOptions3D.connector && hole.fromHoleID) {
 					const [splitEntityName, splitFromHoleID] = hole.fromHoleID.split(":::");
 					const fromHole = holeMap3D.get(splitEntityName + ":::" + splitFromHoleID);
 					if (fromHole) {
 						const connColor = hole.colorHexDecimal || hole.holeColor || "#FF0000";
-						const delayText = displayOptions3D.delayValue ? hole.timingDelayMilliseconds : null;
+						// Pass null for delayText - text is handled separately below
 						const connScale3D = document.getElementById("connSlider") ? document.getElementById("connSlider").value : 100;
-						drawConnectorThreeJS(fromHole, hole, connColor, hole.connectorCurve || 0, delayText, connScale3D);
+						drawConnectorThreeJS(fromHole, hole, connColor, hole.connectorCurve || 0, null, connScale3D);
+					}
+				}
+				
+				// Step 4b) Draw delay text in Three.js (SEPARATE from connectors - like 2D)
+				// This allows showing delay values even when connector arrows are hidden
+				if (threeInitialized && displayOptions3D.delayValue && hole.fromHoleID) {
+					const [splitEntityName2, splitFromHoleID2] = hole.fromHoleID.split(":::");
+					const fromHole2 = holeMap3D.get(splitEntityName2 + ":::" + splitFromHoleID2);
+					if (fromHole2) {
+						const delayColor = hole.colorHexDecimal || hole.holeColor || "#FF0000";
+						drawConnectorDelayTextThreeJS(fromHole2, hole, delayColor, hole.connectorCurve || 0, hole.timingDelayMilliseconds);
 					}
 				}
 
@@ -30140,21 +30162,63 @@ function drawKADCoordinates(kadPoint, screenX, screenY) {
 }
 
 // Draws Voronoi cells only - legend is now in HUD overlay
+// Uses two-level caching for performance:
+// Level 1: Pre-computed clipped cells (survives data changes only)
+// Level 2: Pre-rendered canvas (fast blit during pan/zoom/hover)
 function drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, getColorForMetric, legendLabel, minValue, maxValue, step) {
-	// Legend drawing removed - now using HUD overlay (showVoronoiLegend)
-
-	const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
-	const clippedCells = clipVoronoiCells(voronoiMetrics);
-
-	for (const cell of clippedCells) {
-		const value = cell[selectedVoronoiMetric];
+	// Step 1) Check Level 2 cache (canvas) - fastest path (no console.log for speed)
+	if (isVoronoiCanvasCacheValid(selectedVoronoiMetric, currentScale, allBlastHoles)) {
+		// Step 1a) Just blit the cached canvas image - SILENT for performance
+		var voronoiCache = window.voronoi2DCache ? window.voronoi2DCache.get(selectedVoronoiMetric) : null;
+		if (voronoiCache && drawCachedVoronoi(voronoiCache, ctx, canvas, currentScale, centroidX, centroidY)) {
+			return; // Fast path - no logging
+		}
+	}
+	
+	// Step 2) Get clipped cells from Level 1 cache or compute
+	var clippedCells = getCachedVoronoiCells(allBlastHoles, useToeLocation, getVoronoiMetrics, clipVoronoiCells);
+	
+	// Step 3) Early return if no cells
+	if (!clippedCells || clippedCells.length === 0) {
+		return;
+	}
+	
+	// Step 4) Render to Level 2 cache (canvas)
+	var cacheEntry = renderVoronoiToCache(
+		selectedVoronoiMetric,
+		clippedCells,
+		allBlastHoles,
+		currentScale,
+		centroidX,
+		centroidY,
+		getColorForMetric
+	);
+	
+	// Step 5) Store cache reference for validation
+	if (!window.voronoi2DCache) {
+		window.voronoi2DCache = new Map();
+	}
+	if (cacheEntry) {
+		window.voronoi2DCache.set(selectedVoronoiMetric, cacheEntry);
+	}
+	
+	// Step 6) Draw from cache or fallback to direct draw
+	if (cacheEntry && drawCachedVoronoi(cacheEntry, ctx, canvas, currentScale, centroidX, centroidY)) {
+		// Cache created and drawn - silent for performance
+		return;
+	}
+	
+	// Step 7) Fallback: direct drawing (if cache creation failed) - rare, ok to log
+	for (var i = 0; i < clippedCells.length; i++) {
+		var cell = clippedCells[i];
+		var value = cell[selectedVoronoiMetric];
 		if (!cell.polygon || value == null) continue;
 		ctx.beginPath();
-		for (let j = 0; j < cell.polygon.length; j++) {
-			const pt = cell.polygon[j];
-			const [x, y] = worldToCanvas(pt.x !== undefined ? pt.x : pt[0], pt.y !== undefined ? pt.y : pt[1]);
-			if (j === 0) ctx.moveTo(x, y);
-			else ctx.lineTo(x, y);
+		for (var j = 0; j < cell.polygon.length; j++) {
+			var pt = cell.polygon[j];
+			var coords = worldToCanvas(pt.x !== undefined ? pt.x : pt[0], pt.y !== undefined ? pt.y : pt[1]);
+			if (j === 0) ctx.moveTo(coords[0], coords[1]);
+			else ctx.lineTo(coords[0], coords[1]);
 		}
 		ctx.closePath();
 		ctx.fillStyle = getColorForMetric(value);
@@ -31136,6 +31200,15 @@ function loadHolesFromDB() {
 // Staged saving for large files as these can't be saved on instant quit of window close
 let holesSaveTimeout;
 function debouncedSaveHoles() {
+	// Step 3.0) IMMEDIATELY bump data version to invalidate all 2D analysis caches
+	// This ensures any in-progress renders will miss the cache and recalculate
+	bumpDataVersion();
+	
+	// Step 3.0a) Also invalidate 3D analysis caches so they rebuild on next frame
+	if (typeof invalidate3DAnalysisCaches === "function") {
+		invalidate3DAnalysisCaches();
+	}
+	
 	// Clear any existing pending save
 	clearTimeout(holesSaveTimeout);
 	// Set a new save to trigger after 2 seconds
@@ -31144,6 +31217,20 @@ function debouncedSaveHoles() {
 		// Only save if DB is initialized
 		if (db) {
 			saveHolesToDB(allBlastHoles);
+			
+			// Step 3a) Trigger background pre-caching for analysis overlays (Voronoi, Slope, Relief)
+			// This runs asynchronously to not block the UI
+			preCacheAllAnalysis(
+				allBlastHoles,
+				useToeLocation,
+				maxEdgeLength,
+				getVoronoiMetrics,
+				clipVoronoiCells,
+				delaunayTriangles,
+				displayVoronoiCells,
+				displaySlope,
+				displayRelief
+			);
 		} else {
 			console.log("DB not ready, skipping auto-save");
 		}
@@ -33821,6 +33908,14 @@ function handleMoveToolMouseDown(event) {
 		// Step 2b) Perform raycast once for both KAD and hole detection
 		const intersects = interactionManager.raycast();
 		console.log("🎯 [MOVE TOOL 3D] Raycast found " + intersects.length + " intersects, selectingKAD: " + selectingKAD + ", selectingHoles: " + selectingHoles);
+		// Step 2b.debug) Log details of first few intersects for debugging
+		if (intersects.length > 0) {
+			for (var dbgI = 0; dbgI < Math.min(3, intersects.length); dbgI++) {
+				var dbgObj = intersects[dbgI].object;
+				var dbgUD = dbgObj.userData || {};
+				console.log("  [" + dbgI + "] type=" + dbgUD.type + ", holeId=" + dbgUD.holeId + ", kadId=" + dbgUD.kadId + ", name=" + dbgObj.name + ", dist=" + intersects[dbgI].distance.toFixed(2));
+			}
+		}
 
 		if (selectingKAD) {
 			// Step 2b.1) Check if we have existing multiple selections
@@ -33858,31 +33953,10 @@ function handleMoveToolMouseDown(event) {
 				return;
 			}
 
-			// Step 2c) Try to find a KAD vertex in raycast intersects
-			let foundKAD = null;
-
-			// Traverse intersects looking for userData.kadId
-			for (let i = 0; i < intersects.length; i++) {
-				const obj = intersects[i].object;
-				if (obj.userData && obj.userData.kadId) {
-					// Parse kadId: "entityName:::vertexIndex" or similar
-					const parts = obj.userData.kadId.split(":::");
-					if (parts.length >= 2) {
-						const entityName = parts[0];
-						const elementIndex = parseInt(parts[1], 10);
-						const entity = allKADDrawingsMap.get(entityName);
-
-						if (entity && entity.data && entity.data[elementIndex]) {
-							foundKAD = {
-								entityName: entityName,
-								elementIndex: elementIndex,
-								dataPoint: entity.data[elementIndex],
-							};
-							break;
-						}
-					}
-				}
-			}
+			// Step 2c) Try to find a KAD vertex using screen-space tolerance (like 2D mode)
+			// This allows clicking near a vertex, not just directly on its mesh
+			let foundKAD = getClickedKADVertex3DWithTolerance(event);
+			console.log("👋 [MOVE TOOL 3D] getClickedKADVertex3DWithTolerance result:", foundKAD);
 
 			if (foundKAD) {
 				// Step 2c) Check if Shift key held for multiple selection
@@ -33995,11 +34069,13 @@ function handleMoveToolMouseDown(event) {
 				}
 
 				dragPlaneZ = selectedMultipleHoles[0].startZLocation || 0;
+				console.log("👋 [MOVE TOOL 3D] Set dragPlaneZ to collar Z:", dragPlaneZ);
 				dragInitialPositions = selectedMultipleHoles.map(function (hole) {
 					return {
 						hole: hole,
 						x: hole.startXLocation,
 						y: hole.startYLocation,
+						z: hole.startZLocation || 0
 					};
 				});
 				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
@@ -34025,11 +34101,13 @@ function handleMoveToolMouseDown(event) {
 				}
 
 				dragPlaneZ = selectedHole.startZLocation || 0;
+				console.log("👋 [MOVE TOOL 3D] Set dragPlaneZ to collar Z:", dragPlaneZ);
 				dragInitialPositions = [
 					{
 						hole: selectedHole,
 						x: selectedHole.startXLocation,
 						y: selectedHole.startYLocation,
+						z: selectedHole.startZLocation || 0
 					},
 				];
 				targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
@@ -34039,9 +34117,10 @@ function handleMoveToolMouseDown(event) {
 				updateStatusMessage("Moving hole " + selectedHole.holeID + " (3D)");
 				return;
 			} else {
-				// Step 2h) No existing selection - try to find a hole in raycast intersects
-				const clickedHole = interactionManager.findClickedHole(intersects, allBlastHoles || []);
-				console.log("👋 [MOVE TOOL 3D] findClickedHole result:", clickedHole);
+				// Step 2h) No existing selection - try to find a hole using screen-space tolerance (like 2D mode)
+				// This allows clicking near a hole, not just directly on its mesh
+				const clickedHole = getClickedHole3DWithTolerance(event);
+				console.log("👋 [MOVE TOOL 3D] getClickedHole3DWithTolerance result:", clickedHole);
 				if (clickedHole) {
 					console.log("👋 [MOVE TOOL 3D] Starting drag for hole: " + clickedHole.holeID + " in " + clickedHole.entityName);
 
@@ -34061,11 +34140,13 @@ function handleMoveToolMouseDown(event) {
 					}
 
 					dragPlaneZ = clickedHole.startZLocation || 0;
+					console.log("👋 [MOVE TOOL 3D] Set dragPlaneZ to collar Z:", dragPlaneZ);
 					dragInitialPositions = [
 						{
 							hole: clickedHole,
 							x: clickedHole.startXLocation,
 							y: clickedHole.startYLocation,
+							z: clickedHole.startZLocation || 0
 						},
 					];
 					targetCanvas.addEventListener("mousemove", handleMoveToolMouseMove);
@@ -34221,11 +34302,14 @@ function handleMoveToolMouseDown(event) {
 			isDraggingHole = true;
 			dragStartX = clientX;
 			dragStartY = clientY;
-			dragInitialPositions = selectedMultipleHoles.map((hole) => ({
-				hole: hole,
-				x: hole.startXLocation,
-				y: hole.startYLocation,
-			}));
+			dragInitialPositions = selectedMultipleHoles.map(function(hole) {
+				return {
+					hole: hole,
+					x: hole.startXLocation,
+					y: hole.startYLocation,
+					z: hole.startZLocation || 0
+				};
+			});
 			canvas.addEventListener("mousemove", handleMoveToolMouseMove);
 			canvas.addEventListener("touchmove", handleMoveToolMouseMove);
 			canvas.addEventListener("mouseup", handleMoveToolMouseUp);
@@ -34245,6 +34329,7 @@ function handleMoveToolMouseDown(event) {
 					hole: selectedHole,
 					x: selectedHole.startXLocation,
 					y: selectedHole.startYLocation,
+					z: selectedHole.startZLocation || 0
 				},
 			];
 			canvas.addEventListener("mousemove", handleMoveToolMouseMove);
@@ -34271,6 +34356,7 @@ function handleMoveToolMouseDown(event) {
 						hole: clickedHole,
 						x: clickedHole.startXLocation,
 						y: clickedHole.startYLocation,
+						z: clickedHole.startZLocation || 0
 					},
 				];
 				canvas.addEventListener("mousemove", handleMoveToolMouseMove);
@@ -34437,51 +34523,35 @@ function handleMoveToolMouseMove(event) {
 				if (threeRenderer) {
 					var holeId = hole.entityName + ":::" + hole.holeID;
 
-					// Step 4h.1a) Check if using instanced rendering
+					// Step 4h.1a) Calculate delta for positioning
+					// Delta is from ORIGINAL position (stored at drag start) to NEW position
+					var originalLocal = worldToThreeLocal(item.x, item.y);
+					var newLocal = worldToThreeLocal(newX, newY);
+					var deltaLocalX = newLocal.x - originalLocal.x;
+					var deltaLocalY = newLocal.y - originalLocal.y;
+
+					// Step 4h.1b) Check if using instanced rendering
 					if (threeRenderer.isUsingInstancedHoles && threeRenderer.isUsingInstancedHoles()) {
-						// Use updateHolePosition() for instanced holes
+						// Use updateHolePosition() for instanced holes (sets absolute position via matrix)
 						threeRenderer.updateHolePosition(holeId, newX, newY, hole.startZLocation || 0);
-
-						// Also update highlight position
-						var originalLocal = worldToThreeLocal(item.x, item.y);
-						var newLocal = worldToThreeLocal(newX, newY);
-						var deltaLocalX = newLocal.x - originalLocal.x;
-						var deltaLocalY = newLocal.y - originalLocal.y;
-
-						threeRenderer.holesGroup.children.forEach(function (child) {
-							if (child.userData && child.userData.type === "selectionHighlight" && child.userData.holeId === holeId) {
-								child.position.set(deltaLocalX, deltaLocalY, 0);
-							}
-						});
 					} else if (threeRenderer.holeMeshMap) {
-						// Step 4h.1b) Use traditional holeMeshMap approach for non-instanced holes
+						// Step 4h.1c) Use traditional holeMeshMap approach for non-instanced holes
 						var holeGroup = threeRenderer.holeMeshMap.get(hole.holeID);
 						if (holeGroup) {
-							// CRITICAL: Calculate DELTA in local coords, not absolute position
-							// Hole geometry is already positioned at original collar location
-							// We need to OFFSET the group by the movement delta
-							var originalLocal = worldToThreeLocal(item.x, item.y);
-							var newLocal = worldToThreeLocal(newX, newY);
-							var deltaLocalX = newLocal.x - originalLocal.x;
-							var deltaLocalY = newLocal.y - originalLocal.y;
-
 							console.log("    3D offset: delta (", deltaLocalX.toFixed(3), deltaLocalY.toFixed(3), ") - was at (", holeGroup.position.x.toFixed(3), holeGroup.position.y.toFixed(3), ")");
 
 							// Update hole group position by DELTA (not absolute position)
+							// Hole geometry is at original local coords, group offset moves it
 							holeGroup.position.set(deltaLocalX, deltaLocalY, 0);
-
-							// Step 4h.1c) Also update highlight position (find and move it)
-							threeRenderer.holesGroup.children.forEach(function (child) {
-								if (child.userData && child.userData.type === "selectionHighlight" && child.userData.holeId === holeId) {
-									// Move highlight by same delta
-									child.position.set(deltaLocalX, deltaLocalY, 0);
-								}
-							});
 
 							// Mark that we need to update connectors/labels after drag completes
 							holeGroup.userData.needsUpdate = true;
 						}
 					}
+
+					// Step 4h.1d) Highlights are recreated by the render loop at the updated hole position
+					// No manual delta update needed - highlightSelectedHoleThreeJS uses hole.startXLocation/Y
+					// which are already updated by calculateHoleGeometry above
 				}
 			});
 
@@ -34737,7 +34807,50 @@ function handleMoveToolMouseUp(event) {
 			// Step 7a) 3D Mode: Clear drag plane Z
 			dragPlaneZ = 0;
 
-			// Step 7b) Persist KAD changes if applicable
+			// Step 7b) Create undo action for KAD vertex move (3D mode)
+			if (dragInitialKADPositions && dragInitialKADPositions.length > 0) {
+				var kadMoveData = [];
+				for (var i = 0; i < dragInitialKADPositions.length; i++) {
+					var item = dragInitialKADPositions[i];
+					var entity = allKADDrawingsMap.get(item.entityName);
+					if (entity && entity.data && item.elementIndex < entity.data.length) {
+						var vertex = entity.data[item.elementIndex];
+						kadMoveData.push({
+							entityName: item.entityName,
+							pointID: vertex.pointID,
+							originalPosition: {
+								pointXLocation: item.x,
+								pointYLocation: item.y,
+								pointZLocation: item.z || 0
+							},
+							newPosition: {
+								pointXLocation: vertex.pointXLocation,
+								pointYLocation: vertex.pointYLocation,
+								pointZLocation: vertex.pointZLocation || 0
+							}
+						});
+					}
+				}
+				// Step 7b.1) Create undo action if we have valid move data
+				if (kadMoveData.length > 0 && undoManager) {
+					if (kadMoveData.length === 1) {
+						var kadAction = new MoveKADVertexAction(
+							kadMoveData[0].entityName,
+							kadMoveData[0].pointID,
+							kadMoveData[0].originalPosition,
+							kadMoveData[0].newPosition
+						);
+						undoManager.pushAction(kadAction);
+						console.log("✅ [UNDO] Created MoveKADVertexAction for vertex in '" + kadMoveData[0].entityName + "'");
+					} else {
+						var kadAction = new MoveMultipleKADVerticesAction(kadMoveData);
+						undoManager.pushAction(kadAction);
+						console.log("✅ [UNDO] Created MoveMultipleKADVerticesAction for " + kadMoveData.length + " vertices");
+					}
+				}
+			}
+
+			// Step 7b.2) Persist KAD changes if applicable
 			if (moveToolSelectedKAD || dragInitialKADPositions) {
 				debouncedSaveKAD();
 				debouncedUpdateTreeView();
@@ -34745,7 +34858,49 @@ function handleMoveToolMouseUp(event) {
 				dragInitialKADPositions = null;
 			}
 
-			// Step 7c) Save hole changes
+			// Step 7c) Create undo action for hole move (3D mode)
+			if (dragInitialPositions && dragInitialPositions.length > 0) {
+				var holeMoveData = [];
+				for (var i = 0; i < dragInitialPositions.length; i++) {
+					var item = dragInitialPositions[i];
+					var hole = item.hole;
+					if (hole) {
+						holeMoveData.push({
+							holeId: hole.holeID,
+							entityName: hole.entityName,
+							originalPosition: {
+								startXLocation: item.x,
+								startYLocation: item.y,
+								startZLocation: item.z || hole.startZLocation
+							},
+							newPosition: {
+								startXLocation: hole.startXLocation,
+								startYLocation: hole.startYLocation,
+								startZLocation: hole.startZLocation
+							}
+						});
+					}
+				}
+				// Step 7c.1) Create undo action if we have valid move data
+				if (holeMoveData.length > 0 && undoManager) {
+					if (holeMoveData.length === 1) {
+						var holeAction = new MoveHoleAction(
+							holeMoveData[0].holeId,
+							holeMoveData[0].entityName,
+							holeMoveData[0].originalPosition,
+							holeMoveData[0].newPosition
+						);
+						undoManager.pushAction(holeAction);
+						console.log("✅ [UNDO] Created MoveHoleAction for hole " + holeMoveData[0].holeId);
+					} else {
+						var holeAction = new MoveMultipleHolesAction(holeMoveData);
+						undoManager.pushAction(holeAction);
+						console.log("✅ [UNDO] Created MoveMultipleHolesAction for " + holeMoveData.length + " holes");
+					}
+				}
+			}
+
+			// Step 7c.2) Save hole changes
 			if (moveToolSelectedHole) {
 				debouncedSaveHoles(); // Auto-save holes to IndexedDB
 			}
@@ -34809,6 +34964,49 @@ function handleMoveToolMouseUp(event) {
 		}
 
 		// Step 8) 2D Mode Logic (existing code)
+		
+		// Step 8a) Create undo action for hole move (2D mode)
+		if (dragInitialPositions && dragInitialPositions.length > 0) {
+			var holeMoveData2D = [];
+			for (var i = 0; i < dragInitialPositions.length; i++) {
+				var item = dragInitialPositions[i];
+				var hole = item.hole;
+				if (hole) {
+					holeMoveData2D.push({
+						holeId: hole.holeID,
+						entityName: hole.entityName,
+						originalPosition: {
+							startXLocation: item.x,
+							startYLocation: item.y,
+							startZLocation: item.z || hole.startZLocation
+						},
+						newPosition: {
+							startXLocation: hole.startXLocation,
+							startYLocation: hole.startYLocation,
+							startZLocation: hole.startZLocation
+						}
+					});
+				}
+			}
+			// Step 8a.1) Create undo action if we have valid move data
+			if (holeMoveData2D.length > 0 && undoManager) {
+				if (holeMoveData2D.length === 1) {
+					var holeAction2D = new MoveHoleAction(
+						holeMoveData2D[0].holeId,
+						holeMoveData2D[0].entityName,
+						holeMoveData2D[0].originalPosition,
+						holeMoveData2D[0].newPosition
+					);
+					undoManager.pushAction(holeAction2D);
+					console.log("✅ [UNDO] Created MoveHoleAction (2D) for hole " + holeMoveData2D[0].holeId);
+				} else {
+					var holeAction2D = new MoveMultipleHolesAction(holeMoveData2D);
+					undoManager.pushAction(holeAction2D);
+					console.log("✅ [UNDO] Created MoveMultipleHolesAction (2D) for " + holeMoveData2D.length + " holes");
+				}
+			}
+		}
+
 		// Step 13) Persist KAD changes if applicable
 		if (moveToolSelectedKAD) {
 			debouncedSaveKAD();
@@ -34986,6 +35184,14 @@ function handleBearingToolMouseDown(event) {
 	if (selectedMultipleHoles && selectedMultipleHoles.length > 0) {
 		// Use multiple selected holes - start dragging immediately
 		bearingToolSelectedHole = selectedMultipleHoles;
+		// Step #) Capture initial bearings for undo support
+		bearingToolInitialBearings = bearingToolSelectedHole.map(function(hole) {
+			return {
+				holeId: hole.holeID,
+				entityName: hole.entityName,
+				bearing: hole.holeBearing
+			};
+		});
 		isDraggingBearing = true;
 		canvas.addEventListener("mousemove", handleBearingToolMouseMove);
 		canvas.addEventListener("touchmove", handleBearingToolMouseMove);
@@ -34994,6 +35200,12 @@ function handleBearingToolMouseDown(event) {
 	} else if (selectedHole) {
 		// Use single selected hole - start dragging immediately
 		bearingToolSelectedHole = [selectedHole];
+		// Step #) Capture initial bearing for undo support
+		bearingToolInitialBearings = [{
+			holeId: selectedHole.holeID,
+			entityName: selectedHole.entityName,
+			bearing: selectedHole.holeBearing
+		}];
 		isDraggingBearing = true;
 		canvas.addEventListener("mousemove", handleBearingToolMouseMove);
 		canvas.addEventListener("touchmove", handleBearingToolMouseMove);
@@ -35007,6 +35219,12 @@ function handleBearingToolMouseDown(event) {
 			// No holes selected but clicked on a hole - select it and start dragging
 			selectedHole = clickedHole;
 			bearingToolSelectedHole = [clickedHole];
+			// Step #) Capture initial bearing for undo support
+			bearingToolInitialBearings = [{
+				holeId: clickedHole.holeID,
+				entityName: clickedHole.entityName,
+				bearing: clickedHole.holeBearing
+			}];
 			isDraggingBearing = true;
 			canvas.addEventListener("mousemove", handleBearingToolMouseMove);
 			canvas.addEventListener("touchmove", handleBearingToolMouseMove);
@@ -35020,6 +35238,7 @@ function handleBearingToolMouseDown(event) {
 			//selectedMultiplePoints = []
 			selectedMultipleHoles = [];
 			bearingToolSelectedHole = null;
+			bearingToolInitialBearings = null;
 			drawData(allBlastHoles, selectedHole);
 		}
 	}
@@ -35086,11 +35305,47 @@ function handleBearingToolMouseUp(event) {
 		canvas.removeEventListener("mouseup", handleBearingToolMouseUp);
 		canvas.removeEventListener("touchend", handleBearingToolMouseUp);
 
+		// Step #) Create undo action for bearing rotation
+		if (bearingToolSelectedHole && bearingToolInitialBearings && undoManager) {
+			var bearingEditData = [];
+			for (var i = 0; i < bearingToolInitialBearings.length; i++) {
+				var initial = bearingToolInitialBearings[i];
+				var hole = bearingToolSelectedHole[i];
+				if (hole && initial.bearing !== hole.holeBearing) {
+					bearingEditData.push({
+						holeId: initial.holeId,
+						entityName: initial.entityName,
+						originalProps: { holeBearing: initial.bearing },
+						newProps: { holeBearing: hole.holeBearing }
+					});
+				}
+			}
+			// Step #) Create undo action if bearing actually changed
+			if (bearingEditData.length > 0) {
+				if (bearingEditData.length === 1) {
+					var bearingAction = new EditHolePropsAction(
+						bearingEditData[0].holeId,
+						bearingEditData[0].entityName,
+						bearingEditData[0].originalProps,
+						bearingEditData[0].newProps
+					);
+					undoManager.pushAction(bearingAction);
+					console.log("✅ [UNDO] Created EditHolePropsAction for bearing change on hole " + bearingEditData[0].holeId);
+				} else {
+					var bearingAction = new EditMultipleHolesPropsAction(bearingEditData);
+					undoManager.pushAction(bearingAction);
+					console.log("✅ [UNDO] Created EditMultipleHolesPropsAction for bearing change on " + bearingEditData.length + " holes");
+				}
+			}
+		}
+		// Step #) Clear initial bearings
+		bearingToolInitialBearings = null;
+
 		// Save changes
 		if (bearingToolSelectedHole) {
 			debouncedSaveHoles(); // Auto-save holes to IndexedDB
 		}
-		// Clear single selection and he multiple selection
+		// Clear single selection and the multiple selection
 		selectedHole = null;
 		selectedPoint = null;
 		//selectedMultiplePoints = []
@@ -43120,6 +43375,13 @@ function invalidateSurfaceCache(surfaceId) {
 // Step 0g) Export invalidate function for use in context menu
 window.invalidateSurfaceCache = invalidateSurfaceCache;
 
+// Step 0h) Export analysis cache functions for use in undo/redo and other modules
+window.invalidateAllAnalysisCaches = invalidateAllAnalysisCaches;
+window.invalidateVoronoiCaches = invalidateVoronoiCaches;
+window.invalidateSlopeCache = invalidateSlopeCache;
+window.invalidateReliefCache = invalidateReliefCache;
+window.invalidateTriangulationCaches = invalidateTriangulationCaches;
+
 const assignSurfaceToHolesTool = document.getElementById("assignSurfaceTool");
 const assignGradeTool = document.getElementById("assignGradeTool");
 let showSurfaceLegend = true; // Add legend visibility control
@@ -46413,18 +46675,18 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 
 	// Convert pixel radius to world units for point snapping (ray-based fat ray)
 	// Use actual camera scale to convert screen pixels to world units
-	const camera = tr ? tr.camera : null;
-	const canvas = tr ? tr.getCanvas() : null;
-	let snapRadiusWorld = snapRadiusPixels; // Fallback
+	var snapCamera = threeRenderer ? threeRenderer.camera : null;
+	var snapCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
+	var snapRadiusWorld = snapRadiusPixels; // Fallback
 
-	if (camera && camera.isOrthographicCamera && canvas) {
+	if (snapCamera && snapCamera.isOrthographicCamera && snapCanvas) {
 		// For orthographic camera: screen pixels to world units conversion
 		// Camera frustum width in world units = (right - left) / zoom
 		// Screen width in pixels = canvas.width
 		// Therefore: 1 pixel = frustumWidth / canvasWidth world units
-		const rect = canvas.getBoundingClientRect();
-		const frustumWidth = (camera.right - camera.left) / camera.zoom;
-		const pixelsToWorld = frustumWidth / rect.width;
+		var snapRect = snapCanvas.getBoundingClientRect();
+		var frustumWidth = (snapCamera.right - snapCamera.left) / snapCamera.zoom;
+		var pixelsToWorld = frustumWidth / snapRect.width;
 		snapRadiusWorld = snapRadiusPixels * pixelsToWorld;
 	}
 

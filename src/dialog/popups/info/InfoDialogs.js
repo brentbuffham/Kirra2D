@@ -69,11 +69,15 @@ export function updatePopup() {
 		window.buildVersion +
 		"</i></label>" +
 		'<div style="max-height: 350px; overflow-y: auto; border: 1px solid var(--light-mode-border); padding: 10px; text-align: center; width: 100%;">' +
-		'<label class="labelWhite18" style="text-align: center; font-weight: bold;">⭐ ⭐ September 2025 - January 2026 ⭐ ⭐</label>' +
+		'<label class="labelWhite18" style="text-align: center; font-weight: bold;">🇦🇺 🇦🇺 September 2025 - January 2026 🇦🇺 🇦🇺</label>' +
 		"<br>" +
 		'<label class="labelWhite12c">' +
 		"<br>" +
 		"🗓️ Jan26 (Week of Jan 14-22)" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Attempt to streamline and speed up Voronoi diagrams" +
+		"<br>" +
+		"⠀⠀🔔 Jan26 - Undo/Redo system with batch support for holes/KAD" +
 		"<br>" +
 		"⠀⠀🔔 Jan26 - Orica SPF blast file parser implemented" +
 		"<br>" +

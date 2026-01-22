@@ -7,6 +7,108 @@
 
 import * as THREE from "three";
 import { GeometryFactory } from "../three/GeometryFactory.js";
+
+//=================================================
+// 3D ANALYSIS CACHE - Prevents rebuilding geometry every frame
+//=================================================
+// Step 0.1) Version tracking for 3D caching
+// 3D geometry should ONLY be rebuilt when data actually changes
+var voronoi3DCache = {
+	dataVersion: -1,
+	metric: null,
+	useToeLocation: null,
+	exists: false
+};
+
+var slope3DCache = {
+	dataVersion: -1,
+	exists: false
+};
+
+var relief3DCache = {
+	dataVersion: -1,
+	exists: false
+};
+
+/**
+ * Step 0.2) Check if 3D Voronoi needs to be rebuilt
+ * Returns true if we should skip rebuilding
+ */
+function shouldSkipVoronoi3DRebuild(metric, useToeLocation) {
+	// Get current data version from AnalysisCache module
+	var currentVersion = window.analysisDataVersion || 0;
+
+	if (voronoi3DCache.exists && voronoi3DCache.dataVersion === currentVersion && voronoi3DCache.metric === metric && voronoi3DCache.useToeLocation === useToeLocation) {
+		return true; // Skip rebuild - geometry is still valid
+	}
+	return false;
+}
+
+/**
+ * Step 0.3) Mark 3D Voronoi as built
+ */
+function markVoronoi3DBuilt(metric, useToeLocation) {
+	var currentVersion = window.analysisDataVersion || 0;
+	voronoi3DCache = {
+		dataVersion: currentVersion,
+		metric: metric,
+		useToeLocation: useToeLocation,
+		exists: true
+	};
+}
+
+/**
+ * Step 0.4) Check if 3D Slope needs rebuild
+ */
+function shouldSkipSlope3DRebuild() {
+	var currentVersion = window.analysisDataVersion || 0;
+	if (slope3DCache.exists && slope3DCache.dataVersion === currentVersion) {
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Step 0.5) Mark 3D Slope as built
+ */
+function markSlope3DBuilt() {
+	slope3DCache = {
+		dataVersion: window.analysisDataVersion || 0,
+		exists: true
+	};
+}
+
+/**
+ * Step 0.6) Check if 3D Relief needs rebuild
+ */
+function shouldSkipRelief3DRebuild() {
+	var currentVersion = window.analysisDataVersion || 0;
+	if (relief3DCache.exists && relief3DCache.dataVersion === currentVersion) {
+		return true;
+	}
+	return false;
+}
+
+/**
+ * Step 0.7) Mark 3D Relief as built
+ */
+function markRelief3DBuilt() {
+	relief3DCache = {
+		dataVersion: window.analysisDataVersion || 0,
+		exists: true
+	};
+}
+
+/**
+ * Step 0.8) Invalidate all 3D analysis caches
+ * Call when data changes
+ */
+export function invalidate3DAnalysisCaches() {
+	voronoi3DCache = { dataVersion: -1, metric: null, useToeLocation: null, exists: false };
+	slope3DCache = { dataVersion: -1, exists: false };
+	relief3DCache = { dataVersion: -1, exists: false };
+	console.log("🗑️ 3D analysis caches invalidated");
+}
 // Note: LineSegmentsGeometry, LineMaterial, LineSegments2 are used by GeometryFactory for KAD lines
 // The leading line uses simple THREE.Line like the ruler tool for reliability
 
@@ -687,10 +789,10 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	// Check if mesh actually has textures
 	var hasTexture = false;
 	if (surfaceData && surfaceData.threeJSMesh) {
-		surfaceData.threeJSMesh.traverse(function (child) {
+		surfaceData.threeJSMesh.traverse(function(child) {
 			if (child.isMesh && child.material) {
 				if (Array.isArray(child.material)) {
-					hasTexture = child.material.some(function (mat) {
+					hasTexture = child.material.some(function(mat) {
 						return mat.map !== null && mat.map !== undefined;
 					});
 				} else {
@@ -729,7 +831,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 		// Step 12c.0) DIAGNOSTIC: Check original vertex positions BEFORE any transformation
 		var firstVertexOriginal = null;
-		texturedMesh.traverse(function (child) {
+		texturedMesh.traverse(function(child) {
 			if (!firstVertexOriginal && child.isMesh && child.geometry && child.geometry.attributes && child.geometry.attributes.position) {
 				var pos = child.geometry.attributes.position.array;
 				firstVertexOriginal = { x: pos[0], y: pos[1], z: pos[2] };
@@ -762,12 +864,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		texturedMesh.position.set(meshCenterLocalX, meshCenterLocalY, 0);
 
 		// Step 12c.2) Deep clone materials and preserve textures
-		texturedMesh.traverse(function (child) {
+		texturedMesh.traverse(function(child) {
 			if (child.isMesh) {
 				// Clone materials and preserve textures
 				if (child.material) {
 					if (Array.isArray(child.material)) {
-						child.material = child.material.map(function (mat) {
+						child.material = child.material.map(function(mat) {
 							var clonedMat = mat.clone();
 							if (mat.map) {
 								clonedMat.map = mat.map;
@@ -819,11 +921,9 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			if (child.isMesh && child.geometry) {
 				var posAttr = child.geometry.attributes.position;
 				if (posAttr) {
-					var triCount = child.geometry.index 
-						? child.geometry.index.count / 3 
-						: posAttr.count / 3;
+					var triCount = child.geometry.index ? child.geometry.index.count / 3 : posAttr.count / 3;
 					totalTriangles += triCount;
-					
+
 					// Add BVH to each child mesh if large enough
 					if (triCount >= BVH_MIN_TRIANGLES) {
 						try {
@@ -847,7 +947,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 		// Step 12f) Apply transparency if specified
 		if (transparency < 1.0) {
-			texturedMesh.traverse(function (child) {
+			texturedMesh.traverse(function(child) {
 				if (child.isMesh && child.material) {
 					child.material.transparent = true;
 					child.material.opacity = transparency;
@@ -869,7 +969,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			var minVertexZ = Infinity,
 				maxVertexZ = -Infinity;
 			var firstVertex = null;
-			texturedMesh.traverse(function (child) {
+			texturedMesh.traverse(function(child) {
 				if (child.isMesh && child.geometry && child.geometry.attributes.position) {
 					var positions = child.geometry.attributes.position.array;
 					for (var i = 0; i < positions.length; i += 3) {
@@ -903,7 +1003,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	var validTriangleCount = 0;
 	var invalidTriangleCount = 0;
 
-	var localTriangles = triangles.map(function (triangle, idx) {
+	var localTriangles = triangles.map(function(triangle, idx) {
 		if (!triangle.vertices || triangle.vertices.length !== 3) {
 			invalidTriangleCount++;
 			if (invalidTriangleCount <= 3 && developerModeEnabled) {
@@ -912,7 +1012,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			return triangle;
 		}
 
-		var localVertices = triangle.vertices.map(function (v) {
+		var localVertices = triangle.vertices.map(function(v) {
 			var local = window.worldToThreeLocal(v.x, v.y);
 			return { x: local.x, y: local.y, z: v.z }; // Keep elevation as-is
 		});
@@ -946,12 +1046,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		}
 		// Step 10b-1) Convert hex color to Three.js RGB format
 		var fixedColor = hexToThreeColor(hillshadeHex);
-		colorFunction = function (z) {
+		colorFunction = function(z) {
 			return fixedColor;
 		};
 	} else {
 		// Step 10c) Regular elevation-based color gradient with custom limits support
-		colorFunction = function (z) {
+		colorFunction = function(z) {
 			var rgbString = window.elevationToColor(z, minZ, maxZ, gradient, surfaceMinLimit, surfaceMaxLimit);
 			return window.rgbStringToThreeColor(rgbString);
 		};
@@ -986,7 +1086,7 @@ export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
 	if (!contourLinesArray || contourLinesArray.length === 0) return;
 
 	// Check if contours already exist to prevent duplicates
-	var hasExistingContours = window.threeRenderer.contoursGroup.children.some(function (child) {
+	var hasExistingContours = window.threeRenderer.contoursGroup.children.some(function(child) {
 		return child.userData && child.userData.type === "contourLines";
 	});
 	if (hasExistingContours) {
@@ -1055,7 +1155,7 @@ export function drawDirectionArrowsThreeJS(directionArrows, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	// Check if direction arrows already exist to prevent duplicates
-	var hasExistingArrows = window.threeRenderer.contoursGroup.children.some(function (child) {
+	var hasExistingArrows = window.threeRenderer.contoursGroup.children.some(function(child) {
 		return child.userData && child.userData.type === "directionArrows";
 	});
 	if (hasExistingArrows) {
@@ -1095,7 +1195,7 @@ export function drawBackgroundImageThreeJS(imageId, imageCanvas, bbox, transpare
 
 	// Check if image already exists to prevent duplicates
 	var existingImage = null;
-	window.threeRenderer.imagesGroup.children.forEach(function (child) {
+	window.threeRenderer.imagesGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.imageId === imageId) {
 			existingImage = child;
 		}
@@ -1149,7 +1249,7 @@ export function drawConnectorThreeJS(fromHole, toHole, color, curve, delayText, 
 	var toHoleKey = toHole.entityName + ":::" + toHole.holeID;
 
 	// Check if connector already exists for this hole pair to prevent duplicates
-	var hasExistingConnector = window.threeRenderer.connectorsGroup.children.some(function (child) {
+	var hasExistingConnector = window.threeRenderer.connectorsGroup.children.some(function(child) {
 		return child.userData && child.userData.type === "connector" && child.userData.fromHoleId === fromHoleKey && child.userData.toHoleId === toHoleKey;
 	});
 	if (hasExistingConnector) {
@@ -1164,6 +1264,47 @@ export function drawConnectorThreeJS(fromHole, toHole, color, curve, delayText, 
 
 	window.threeRenderer.connectorsGroup.add(connectorGroup);
 }
+
+// Step 16b) Draw connector delay text ONLY in Three.js (separate from connector line)
+// This allows showing delay values even when connector arrows are hidden
+export function drawConnectorDelayTextThreeJS(fromHole, toHole, color, curve, delayValue) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (!fromHole || !toHole) return;
+	if (delayValue === null || delayValue === undefined) return;
+
+	// Step 16b.1) Convert world coordinates to local Three.js coordinates
+	const fromLocal = window.worldToThreeLocal(fromHole.startXLocation, fromHole.startYLocation);
+	const toLocal = window.worldToThreeLocal(toHole.startXLocation, toHole.startYLocation);
+	const fromZ = fromHole.startZLocation || 0;
+	const toZ = toHole.startZLocation || 0;
+
+	// Step 16b.2) Create unique key for this delay text
+	var fromHoleKey = fromHole.entityName + ":::" + fromHole.holeID;
+	var toHoleKey = toHole.entityName + ":::" + toHole.holeID;
+	var textKey = "delayText_" + fromHoleKey + "_" + toHoleKey;
+
+	// Step 16b.3) Check if delay text already exists for this hole pair
+	var hasExistingText = window.threeRenderer.connectorsGroup.children.some(function(child) {
+		return child.userData && child.userData.type === "standaloneDelayText" && child.userData.textKey === textKey;
+	});
+	if (hasExistingText) {
+		return; // Prevent duplicate delay text
+	}
+
+	// Step 16b.4) Create delay text using GeometryFactory
+	const textGroup = GeometryFactory.createConnectorDelayText(fromLocal.x, fromLocal.y, fromZ, toLocal.x, toLocal.y, toZ, color, curve || 0, delayValue);
+
+	if (textGroup) {
+		textGroup.userData = {
+			type: "standaloneDelayText",
+			textKey: textKey,
+			fromHoleId: fromHoleKey,
+			toHoleId: toHoleKey
+		};
+		window.threeRenderer.connectorsGroup.add(textGroup);
+	}
+}
+
 //TODO: This is too verbose for it to be rendered in the scene! We should have a shared 2D canvas overlay that displays the selected holes and their IDs. That both 2D and 3D use.
 // Step 17) Draw tool prompt text in Three.js
 export function drawToolPromptThreeJS(text, position, color) {
@@ -1531,12 +1672,12 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 	}
 
 	var toRemove = [];
-	kadGroup.children.forEach(function (child) {
+	kadGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		kadGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1561,19 +1702,23 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 	// Step 19.6d) Create line using GeometryFactory.createKADLineSegment - SAME as visible KAD lines
 	// FIX: Use LineSegments2/LineMaterial (fat lines) instead of THREE.Line (1px invisible lines)
 	var line = GeometryFactory.createKADLineSegment(
-		fromLocal.x, fromLocal.y, fromZ,
-		toLocal.x, toLocal.y, toZ,
+		fromLocal.x,
+		fromLocal.y,
+		fromZ,
+		toLocal.x,
+		toLocal.y,
+		toZ,
 		3, // lineWidth in pixels (screen-space)
 		lineColorCSS
 	);
 	line.userData = { type: "kadLeadingLine" };
 	line.name = "kad-leading-line";
-	line.renderOrder = 9999;  // Render on top of everything else
-	line.frustumCulled = false;  // Prevent frustum culling from hiding the line
+	line.renderOrder = 9999; // Render on top of everything else
+	line.frustumCulled = false; // Prevent frustum culling from hiding the line
 
 	// FIX: Override material settings to render on TOP of other geometry (leading line should always be visible)
 	if (line.material) {
-		line.material.depthTest = false;  // Don't test depth - always render
+		line.material.depthTest = false; // Don't test depth - always render
 		line.material.depthWrite = false; // Don't write to depth buffer
 		line.material.transparent = true; // Required for proper renderOrder sorting
 	}
@@ -1601,12 +1746,12 @@ export function clearKADLeadingLineThreeJS() {
 	if (!kadGroup) return;
 
 	var toRemove = [];
-	kadGroup.children.forEach(function (child) {
+	kadGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		kadGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1636,12 +1781,12 @@ export function drawKADLeadingLineThreeJSV2(fromWorldX, fromWorldY, fromWorldZ, 
 
 	// Step 4) Remove existing leading lines - same pattern as ruler
 	var toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "kadLeadingLineV2") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1661,10 +1806,7 @@ export function drawKADLeadingLineThreeJSV2(fromWorldX, fromWorldY, fromWorldZ, 
 	}
 
 	// Step 6) Create line - EXACTLY like ruler (THREE.Line + LineBasicMaterial)
-	var points = [
-		new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ),
-		new THREE.Vector3(toLocal.x, toLocal.y, toZ)
-	];
+	var points = [new THREE.Vector3(fromLocal.x, fromLocal.y, fromZ), new THREE.Vector3(toLocal.x, toLocal.y, toZ)];
 	var geometry = new THREE.BufferGeometry().setFromPoints(points);
 	var material = new THREE.LineBasicMaterial({ color: lineColor, linewidth: 2 });
 	var line = new THREE.Line(geometry, material);
@@ -1684,12 +1826,12 @@ export function clearKADLeadingLineThreeJSV2() {
 	if (!connectorsGroup) return;
 
 	var toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "kadLeadingLineV2") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1715,12 +1857,12 @@ export function drawRulerThreeJS(startWorldX, startWorldY, startWorldZ, endWorld
 	// Step 19.8b) Remove existing ruler line if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "rulerLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1774,12 +1916,12 @@ export function clearRulerThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "rulerLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1798,12 +1940,12 @@ export function drawProtractorThreeJS(centerWorldX, centerWorldY, centerWorldZ, 
 	// Step 19.10b) Remove existing protractor lines if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "protractorLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1884,12 +2026,12 @@ export function clearProtractorThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function (child) {
+	connectorsGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "protractorLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function (obj) {
+	toRemove.forEach(function(obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -1897,16 +2039,24 @@ export function clearProtractorThreeJS() {
 }
 
 // Step 20) Draw slope map in Three.js
+// OPTIMIZED: Only rebuilds when data actually changes (not every frame)
 export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!triangles || triangles.length === 0) return;
 
-	// Check if slope map already exists to prevent duplicates
-	var hasExistingSlope = window.threeRenderer.surfacesGroup.children.some(function (child) {
+	// Step 20.0) FAST PATH: Skip rebuild if data hasn't changed
+	if (shouldSkipSlope3DRebuild()) {
+		return; // Geometry already exists and is valid
+	}
+
+	// Step 20.0a) Check if slope map already exists to prevent duplicates
+	var hasExistingSlope = window.threeRenderer.surfacesGroup.children.some(function(child) {
 		return child.userData && child.userData.type === "slopeMap";
 	});
 	if (hasExistingSlope) {
-		return; // CRITICAL: Prevent duplicate slope maps
+		// Mark as built and return (geometry exists)
+		markSlope3DBuilt();
+		return;
 	}
 
 	// Step 20a) Create slope surface geometry
@@ -1957,19 +2107,31 @@ export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
 			window.threeRenderer.surfacesGroup.add(textMesh);
 		}
 	}
+
+	// Step 20d) Mark as built for cache
+	markSlope3DBuilt();
+	console.log("📦 3D Slope map built with " + triangles.length + " triangles");
 }
 
 // Step 21) Draw burden relief map in Three.js
+// OPTIMIZED: Only rebuilds when data actually changes (not every frame)
 export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (!triangles || triangles.length === 0) return;
 
-	// Check if relief map already exists to prevent duplicates
-	var hasExistingRelief = window.threeRenderer.surfacesGroup.children.some(function (child) {
+	// Step 21.0) FAST PATH: Skip rebuild if data hasn't changed
+	if (shouldSkipRelief3DRebuild()) {
+		return; // Geometry already exists and is valid
+	}
+
+	// Step 21.0a) Check if relief map already exists to prevent duplicates
+	var hasExistingRelief = window.threeRenderer.surfacesGroup.children.some(function(child) {
 		return child.userData && child.userData.type === "burdenReliefMap";
 	});
 	if (hasExistingRelief) {
-		return; // CRITICAL: Prevent duplicate relief maps
+		// Mark as built and return (geometry exists)
+		markRelief3DBuilt();
+		return;
 	}
 
 	// Step 21a) Create relief surface geometry
@@ -2021,15 +2183,46 @@ export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
 			window.threeRenderer.surfacesGroup.add(textMesh);
 		}
 	}
+
+	// Step 21d) Mark as built for cache
+	markRelief3DBuilt();
+	console.log("📦 3D Relief map built with " + triangles.length + " triangles");
 }
 
 // Step 22) Draw Voronoi cells in Three.js
 // selectedMetric: the metric name to use for coloring (e.g., "powderFactor", "mass", "volume", "area", "measuredLength", "designedLength", "holeFiringTime")
-export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlastHoles, extrusionHeight, useToeLocation, selectedMetric) {
+// OPTIMIZED: Skip check FIRST, then only compute expensive operations if rebuild is needed
+// NEW SIGNATURE: Takes cache/calculation functions instead of pre-computed cells
+export function drawVoronoiCellsThreeJS(
+	getColorFunction,
+	allBlastHoles,
+	extrusionHeight,
+	useToeLocation,
+	selectedMetric,
+	getCachedVoronoiCells, // Function to get cached or compute voronoi cells
+	getVoronoiMetrics, // Function to compute voronoi metrics (expensive)
+	clipVoronoiCells // Function to clip voronoi cells (expensive)
+) {
+	// Step 22.0) Early returns for invalid state
 	if (!window.threeInitialized || !window.threeRenderer) return;
-	if (!clippedCells || clippedCells.length === 0) return;
+	if (!allBlastHoles || allBlastHoles.length === 0) return;
 
-	// Step 22.0) Clear existing Voronoi cells first to prevent accumulation
+	// Step 22.0a) FAST PATH: Skip rebuild if data hasn't changed
+	// This check MUST happen BEFORE any expensive calculations
+	if (shouldSkipVoronoi3DRebuild(selectedMetric, useToeLocation)) {
+		// Geometry already exists and is valid - THREE.js will render it automatically
+		return;
+	}
+
+	// Step 22.0b) ONLY NOW do we compute - get clipped cells from Level 1 cache or compute
+	var clippedCells = getCachedVoronoiCells(allBlastHoles, useToeLocation, getVoronoiMetrics, clipVoronoiCells);
+
+	// Step 22.0c) Check if we have valid cells
+	if (!clippedCells || clippedCells.length === 0) {
+		return;
+	}
+
+	// Step 22.0d) Clear existing Voronoi cells since we're rebuilding
 	clearVoronoiCellsThreeJS();
 
 	// Step 22a) Default extrusionHeight if not provided
@@ -2047,6 +2240,10 @@ export function drawVoronoiCellsThreeJS(clippedCells, getColorFunction, allBlast
 	};
 
 	window.threeRenderer.surfacesGroup.add(voronoiGroup);
+
+	// Step 22d) Mark as built for cache
+	markVoronoi3DBuilt(selectedMetric, useToeLocation);
+	console.log("📦 3D Voronoi built for metric: " + selectedMetric);
 }
 
 // Step 22.1) Clear Voronoi cells from 3D scene
@@ -2059,15 +2256,15 @@ export function clearVoronoiCellsThreeJS() {
 
 	// Step 22.1a) Find and remove all Voronoi cell groups
 	var toRemove = [];
-	surfacesGroup.children.forEach(function (child) {
+	surfacesGroup.children.forEach(function(child) {
 		if (child.userData && child.userData.type === "voronoiCells") {
 			toRemove.push(child);
 		}
 	});
 
 	// Step 22.1b) Dispose geometry, materials, and textures to prevent memory leaks
-	toRemove.forEach(function (voronoiGroup) {
-		voronoiGroup.traverse(function (object) {
+	toRemove.forEach(function(voronoiGroup) {
+		voronoiGroup.traverse(function(object) {
 			if (object.geometry) {
 				object.geometry.dispose();
 			}
@@ -2075,7 +2272,7 @@ export function clearVoronoiCellsThreeJS() {
 				// Step 22.1c) Dispose textures before disposing material
 				if (object.material.map) object.material.map.dispose();
 				if (Array.isArray(object.material)) {
-					object.material.forEach(function (mat) {
+					object.material.forEach(function(mat) {
 						mat.dispose();
 					});
 				} else {
@@ -2085,6 +2282,9 @@ export function clearVoronoiCellsThreeJS() {
 		});
 		surfacesGroup.remove(voronoiGroup);
 	});
+
+	// Step 22.1d) Invalidate 3D cache since geometry was removed
+	voronoi3DCache.exists = false;
 
 	if (toRemove.length > 0) {
 		console.log("🗑️ Cleared " + toRemove.length + " Voronoi cell group(s) from 3D scene");
@@ -2105,12 +2305,12 @@ export function disposeKADThreeJS() {
 
 	// Step 23a) Count objects for logging
 	var objectCount = 0;
-	kadGroup.traverse(function () {
+	kadGroup.traverse(function() {
 		objectCount++;
 	});
 
 	// Step 23b) Dispose all geometries and materials
-	kadGroup.traverse(function (object) {
+	kadGroup.traverse(function(object) {
 		if (object.geometry) {
 			object.geometry.dispose();
 		}
@@ -2118,7 +2318,7 @@ export function disposeKADThreeJS() {
 		// Only dispose if NOT using shared material cache
 		if (object.material && !GeometryFactory._lineMaterialCache) {
 			if (Array.isArray(object.material)) {
-				object.material.forEach(function (mat) {
+				object.material.forEach(function(mat) {
 					mat.dispose();
 				});
 			} else {

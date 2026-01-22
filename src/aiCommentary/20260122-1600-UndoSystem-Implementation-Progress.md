@@ -22,10 +22,10 @@ Implementing comprehensive undo/redo support across Kirra2D operations. The syst
 | `AddMultipleHolesAction` | Batch hole addition | ✅ Working |
 | `DeleteHoleAction` | Single hole deletion | ✅ Working |
 | `DeleteMultipleHolesAction` | Batch hole deletion | ✅ Working |
-| `MoveHoleAction` | Single hole move | ⚠️ Defined, not integrated |
-| `MoveMultipleHolesAction` | Batch hole move | ⚠️ Defined, not integrated |
-| `EditHolePropsAction` | Single hole property edit | ⚠️ Defined, not integrated |
-| `EditMultipleHolesPropsAction` | Batch hole property edit | ⚠️ Defined, not integrated |
+| `MoveHoleAction` | Single hole move | ✅ Integrated in handleMoveToolMouseUp |
+| `MoveMultipleHolesAction` | Batch hole move | ✅ Integrated in handleMoveToolMouseUp |
+| `EditHolePropsAction` | Single hole property edit | ✅ Integrated for bearing rotation |
+| `EditMultipleHolesPropsAction` | Batch hole property edit | ✅ Integrated for bearing rotation |
 
 #### KAD Actions
 | Class | Purpose | Status |
@@ -36,8 +36,8 @@ Implementing comprehensive undo/redo support across Kirra2D operations. The syst
 | `DeleteMultipleKADEntitiesAction` | Batch entity deletion | ✅ NEW |
 | `AddKADVertexAction` | Single vertex addition | ✅ Working |
 | `DeleteKADVertexAction` | Single vertex deletion | ✅ Working |
-| `MoveKADVertexAction` | Single vertex move | ⚠️ Defined, not integrated |
-| `MoveMultipleKADVerticesAction` | Batch vertex move | ⚠️ Defined, not integrated |
+| `MoveKADVertexAction` | Single vertex move | ✅ Integrated in handleMoveToolMouseUp (3D mode) |
+| `MoveMultipleKADVerticesAction` | Batch vertex move | ✅ Integrated in handleMoveToolMouseUp (3D mode) |
 | `EditKADPropsAction` | Entity/vertex property edit | ⚠️ Defined, not integrated |
 
 ---
@@ -91,35 +91,27 @@ All three pattern generation tools now use batch undo:
 
 ## In Progress 🔄
 
-*All immediate tasks completed!*
+### 3D Move Tool Investigation
+- Move tool in 3D mode may have issues with hole detection
+- Need to verify raycast is hitting hole meshes properly
 
 ---
 
 ## Remaining Items ❌
 
-### Medium Priority (Complex - Needs Refactoring)
+### Medium Priority
 
-#### 3. Move Tool - Holes
-**Challenge:** Drag-based interaction captures initial positions at mousedown, needs to create undo action at mouseup.
-**Location:** `handleMoveToolMouseDown`, `handleMoveToolMouseUp` (~33768-34820)
+#### 3. Move Tool - 3D Mode Issues
+**Status:** Needs investigation - 3D move tool may not be detecting holes properly
+**Location:** `handleMoveToolMouseDown` (~33798)
 
-**Variables tracking positions:**
-- `dragInitialPositions` - Array of original hole positions
-- `moveToolSelectedHole` - Currently selected hole(s)
-
-#### 4. Move Tool - KAD Vertices
-**Challenge:** Same drag interaction pattern
-**Variables:**
-- `dragInitialKADPositions` - Array of original vertex positions
-- `moveToolSelectedKAD` - Currently selected KAD object
-
-#### 5. Rotate Hole Tool
-**Challenge:** Similar to move tool, drag-based bearing rotation
-**Location:** Search for `bearingTool`, `isBearingToolActive`
+#### 4. Bearing Tool - 3D Mode Support
+**Challenge:** Bearing tool only works in 2D mode, needs 3D canvas support
+**Location:** `bearingTool.addEventListener`, `handleBearingToolMouseDown` (~34940-35170)
 
 ### Low Priority
 
-#### 6. Property Edits
+#### 5. Property Edits (Context Menu)
 - Hole property editor (HolesContextMenu.js)
 - KAD property editor (KADContextMenu.js)
 - These create many small changes - may want batch support
@@ -165,17 +157,18 @@ Proceeding with tool-level instrumentation for now. Pattern generation will use 
 | Holes along line | Generate → Ctrl+Z removes all (batch) | ✅ Implemented |
 | Holes along polyline | Generate → Ctrl+Z removes all (batch) | ✅ Implemented |
 | Pattern in polygon | Generate → Ctrl+Z removes all (batch) | ✅ Implemented |
-| Move hole | Move → Ctrl+Z restores position | ⬜ Needs work |
-| Move KAD vertex | Move → Ctrl+Z restores position | ⬜ Needs work |
-| Rotate hole | Rotate → Ctrl+Z restores bearing | ⬜ Needs work |
+| Move hole (2D) | Move → Ctrl+Z restores position | ✅ Implemented |
+| Move hole (3D) | Move → Ctrl+Z restores position | ⚠️ Needs testing |
+| Move KAD vertex (3D) | Move → Ctrl+Z restores position | ✅ Implemented |
+| Rotate hole (2D) | Rotate → Ctrl+Z restores bearing | ✅ Implemented |
+| Rotate hole (3D) | Rotate → Ctrl+Z restores bearing | ⬜ Not supported yet |
 
 ---
 
 ## Next Steps
 
-1. **Expose new classes on window** (quick fix)
-2. **Add union case to radii tool** (similar to non-union)
-3. **Pattern generation batch undo** (wrap with beginBatch/endBatch)
-4. **Verify DELETE key vertex deletion**
-5. **Move tool integration** (complex but well-defined)
-6. **Rotate tool integration** (follows move tool pattern)
+1. ✅ ~~Move tool integration~~ (completed 2026-01-22)
+2. ✅ ~~Rotate tool integration~~ (completed 2026-01-22)
+3. **Fix 3D move tool** - Investigate raycast/hole detection issues
+4. **Add 3D support for bearing tool**
+5. **Property edits in context menus** (HolesContextMenu.js, KADContextMenu.js)

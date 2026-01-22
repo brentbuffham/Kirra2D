@@ -375,12 +375,16 @@ export class InteractionManager {
 
 		if (!hasIntersection) {
 			// Step 7.4b.6) Fallback: project to plane center
+			// CRITICAL: Must convert planeCenter (LOCAL coords) to WORLD coords
+			// planeCenter is in Three.js local space, need to add origin offset
 			if (developerModeEnabled) {
-				console.warn("View plane intersection failed - using plane center");
+				console.warn("View plane intersection failed - using plane center (converted to world)");
 			}
+			const fallbackOriginX = window.threeLocalOriginX || 0;
+			const fallbackOriginY = window.threeLocalOriginY || 0;
 			return {
-				x: planeCenter.x,
-				y: planeCenter.y,
+				x: planeCenter.x + fallbackOriginX,
+				y: planeCenter.y + fallbackOriginY,
 				z: planeCenter.z,
 			};
 		}

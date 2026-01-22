@@ -2518,29 +2518,173 @@ export class GeometryFactory {
 			group.add(arrowMesh);
 		}
 
-		// Step 20.5i) Add delay text if provided
-		// Previously moved to HUD, but restored for 3D consistency with 2D view
+		// Step 20.5i) Add delay text if provided (matching 2D drawArrowDelayText behavior)
+		// NOTE: Cannot use createKADText cache here because connector groups are cleared/rebuilt
+		// and cached text would get orphaned. Use fresh Troika text for connectors.
 		if (delayText !== null && delayText !== undefined) {
-			// Step 20.5i.1) Calculate midpoint of connector for text placement
-			const midX = (fromX + toX) / 2;
-			const midY = (fromY + toY) / 2;
-			const midZ = Math.max(fromZ, toZ) + 0.5; // Slightly above connector
+			// Step 20.5i.1) Calculate text position and angle based on curve
+			let textX, textY, textAngle;
+			const dx = toX - fromX;
+			const dy = toY - fromY;
+			const distance = Math.sqrt(dx * dx + dy * dy);
 			
-			// Step 20.5i.2) Create delay text using Troika
-			const delayString = String(delayText);
-			const textColor = "#FFFFFF"; // White text for visibility
-			
-			// Step 20.5i.3) Get camera zoom for fixed screen-space text size
-			const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
-			const fontSize = 10 / cameraZoom; // 10 pixels on screen
-			
-			const textMesh = this.createKADText(midX, midY, midZ, delayString, fontSize * cameraZoom, textColor, null, "center");
-			if (textMesh) {
-				textMesh.userData = { type: "connectorDelayText" };
-				group.add(textMesh);
+			if (curve === 0 || distance < 0.001) {
+				// Step 20.5i.2) Straight connector - use midpoint
+				textX = (fromX + toX) / 2;
+				textY = (fromY + toY) / 2;
+				textAngle = Math.atan2(dy, dx);
+			} else {
+				// Step 20.5i.3) Curved connector - calculate point on curve at t=0.5
+				const curveFactor = (curve / 90) * distance * 0.5;
+				const perpX = -dy / distance;
+				const perpY = dx / distance;
+				
+				// Control point for quadratic bezier
+				const controlX = (fromX + toX) / 2 + perpX * curveFactor;
+				const controlY = (fromY + toY) / 2 + perpY * curveFactor;
+				
+				// Calculate actual point on curve at t=0.5
+				const t = 0.5;
+				const oneMinusT = 1 - t;
+				textX = oneMinusT * oneMinusT * fromX + 2 * oneMinusT * t * controlX + t * t * toX;
+				textY = oneMinusT * oneMinusT * fromY + 2 * oneMinusT * t * controlY + t * t * toY;
+				
+				// Calculate tangent angle at t=0.5 for text rotation
+				const tangentX = 2 * oneMinusT * (controlX - fromX) + 2 * t * (toX - controlX);
+				const tangentY = 2 * oneMinusT * (controlY - fromY) + 2 * t * (toY - controlY);
+				textAngle = Math.atan2(tangentY, tangentX);
 			}
+			
+			// Step 20.5i.4) Offset text perpendicular to line (above it)
+			const perpAngle = textAngle - Math.PI / 2;
+			const offsetDistance = 0.3;
+			textX += Math.cos(perpAngle) * offsetDistance;
+			textY += Math.sin(perpAngle) * offsetDistance;
+			
+			// Step 20.5i.5) Z position slightly above connector
+			const textZ = Math.max(fromZ, toZ) + 0.2;
+			
+			// Step 20.5i.6) Create Troika text for delay (NOT cached - connectors are rebuilt)
+			const delayString = String(delayText);
+			const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+			const fontSizeWorldUnits = 10 / cameraZoom;
+			
+			const textMesh = new Text();
+			textMesh.text = delayString;
+			textMesh.fontSize = fontSizeWorldUnits;
+			textMesh.color = color;
+			textMesh.anchorX = "center";
+			textMesh.anchorY = "middle";
+			textMesh.position.set(textX, textY, textZ);
+			
+			// Step 20.5i.7) Rotate text to align with connector shaft
+			textMesh.rotation.z = textAngle;
+			
+			textMesh.renderOrder = 100;
+			
+			// Step 20.5i.8) Load font
+			try {
+				const robotoFontUrl = new URL("../fonts/Roboto-Regular.ttf", import.meta.url).href;
+				textMesh.font = robotoFontUrl;
+			} catch (error) {
+				textMesh.font = "Arial";
+			}
+			
+			// Step 20.5i.9) Sync and configure material
+			textMesh.sync();
+			if (textMesh.material) {
+				textMesh.material.depthTest = true;
+				textMesh.material.depthWrite = false;
+				textMesh.material.transparent = true;
+			}
+			
+			textMesh.userData = { type: "connectorDelayText", isTroikaText: true };
+			group.add(textMesh);
 		}
 
+		return group;
+	}
+
+	// Step 20.6) Create standalone connector delay text (without connector line)
+	// Used when delay values are shown but connectors are hidden
+	static createConnectorDelayText(fromX, fromY, fromZ, toX, toY, toZ, color, curve, delayValue) {
+		if (delayValue === null || delayValue === undefined) return null;
+		
+		const group = new THREE.Group();
+		
+		// Step 20.6a) Calculate text position and angle based on curve
+		let textX, textY, textAngle;
+		const dx = toX - fromX;
+		const dy = toY - fromY;
+		const distance = Math.sqrt(dx * dx + dy * dy);
+		
+		if (curve === 0 || distance < 0.001) {
+			// Step 20.6b) Straight path - use midpoint
+			textX = (fromX + toX) / 2;
+			textY = (fromY + toY) / 2;
+			textAngle = Math.atan2(dy, dx);
+		} else {
+			// Step 20.6c) Curved path - calculate point on curve at t=0.5
+			const curveFactor = (curve / 90) * distance * 0.5;
+			const perpX = -dy / distance;
+			const perpY = dx / distance;
+			
+			const controlX = (fromX + toX) / 2 + perpX * curveFactor;
+			const controlY = (fromY + toY) / 2 + perpY * curveFactor;
+			
+			const t = 0.5;
+			const oneMinusT = 1 - t;
+			textX = oneMinusT * oneMinusT * fromX + 2 * oneMinusT * t * controlX + t * t * toX;
+			textY = oneMinusT * oneMinusT * fromY + 2 * oneMinusT * t * controlY + t * t * toY;
+			
+			const tangentX = 2 * oneMinusT * (controlX - fromX) + 2 * t * (toX - controlX);
+			const tangentY = 2 * oneMinusT * (controlY - fromY) + 2 * t * (toY - controlY);
+			textAngle = Math.atan2(tangentY, tangentX);
+		}
+		
+		// Step 20.6d) Offset text perpendicular to line
+		const perpAngle = textAngle - Math.PI / 2;
+		const offsetDistance = 0.3;
+		textX += Math.cos(perpAngle) * offsetDistance;
+		textY += Math.sin(perpAngle) * offsetDistance;
+		
+		// Step 20.6e) Z position
+		const textZ = Math.max(fromZ, toZ) + 0.2;
+		
+		// Step 20.6f) Create Troika text
+		const delayString = String(delayValue);
+		const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+		const fontSizeWorldUnits = 10 / cameraZoom;
+		
+		const textMesh = new Text();
+		textMesh.text = delayString;
+		textMesh.fontSize = fontSizeWorldUnits;
+		textMesh.color = color;
+		textMesh.anchorX = "center";
+		textMesh.anchorY = "middle";
+		textMesh.position.set(textX, textY, textZ);
+		textMesh.rotation.z = textAngle;
+		textMesh.renderOrder = 100;
+		
+		// Step 20.6g) Load font
+		try {
+			const robotoFontUrl = new URL("../fonts/Roboto-Regular.ttf", import.meta.url).href;
+			textMesh.font = robotoFontUrl;
+		} catch (error) {
+			textMesh.font = "Arial";
+		}
+		
+		// Step 20.6h) Sync and configure material
+		textMesh.sync();
+		if (textMesh.material) {
+			textMesh.material.depthTest = true;
+			textMesh.material.depthWrite = false;
+			textMesh.material.transparent = true;
+		}
+		
+		textMesh.userData = { type: "standaloneDelayText", isTroikaText: true };
+		group.add(textMesh);
+		
 		return group;
 	}
 

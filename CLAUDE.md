@@ -28,6 +28,44 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **If documentation contradicts your understanding, the documentation is correct.**
 
+## CRITICAL RULE: Minimize Draw Calls and Object Creation
+
+**Performance is critical in this application. Follow these rules:**
+
+1. ✅ **NEVER create new Three.js objects (meshes, materials, textures) inside draw loops**
+   - Use caching mechanisms like `textCache` in GeometryFactory
+   - Reuse existing geometry and materials where possible
+
+2. ✅ **Use existing factory methods** - GeometryFactory has cached text creation:
+   - `createKADText()` - Cached Troika text for labels (USE THIS for any text)
+   - `createContourLabel()` - Billboarded contour labels
+   - Never create raw `new Text()` objects in draw calls
+
+3. ✅ **Check for existing objects before creating new ones**
+   - Connectors check `hasExistingConnector` before adding
+   - Update existing objects instead of delete+recreate
+
+4. ✅ **Avoid expensive operations in render loops:**
+   - No `new THREE.CanvasTexture()` per frame
+   - No font loading per frame
+   - No `sync()` calls that aren't necessary
+
+**Example - WRONG (creates new text every frame):**
+```javascript
+// BAD - creates expensive Troika text in draw loop
+const textMesh = new Text();
+textMesh.text = delayString;
+textMesh.sync();
+group.add(textMesh);
+```
+
+**Example - CORRECT (uses cached factory method):**
+```javascript
+// GOOD - uses cached createKADText
+const textMesh = GeometryFactory.createKADText(x, y, z, text, fontSize, color);
+group.add(textMesh);
+```
+
 ## Build Commands
 
 ```bash
