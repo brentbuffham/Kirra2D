@@ -392,15 +392,35 @@ export function showHolePropertyEditor(hole) {
 							// Step 10c.2) Delete holes manually and renumber with starting value
 							const entitiesToRenumber = new Set();
 
+							// Step #) Capture holes for undo BEFORE deletion
+							var holesToDeleteForUndo = [];
 							holes.forEach((hole) => {
 								const index = window.allBlastHoles.findIndex(h =>
 									h.holeID === hole.holeID && h.entityName === hole.entityName
 								);
 								if (index !== -1) {
+									holesToDeleteForUndo.push({
+										holeData: JSON.parse(JSON.stringify(window.allBlastHoles[index])),
+										originalIndex: index
+									});
 									window.allBlastHoles.splice(index, 1);
 									entitiesToRenumber.add(hole.entityName);
 								}
 							});
+
+							// Step #) Create undo action for deleted holes
+							if (window.undoManager && holesToDeleteForUndo.length > 0) {
+								var deleteAction;
+								if (holesToDeleteForUndo.length === 1) {
+									deleteAction = new window.DeleteHoleAction(
+										holesToDeleteForUndo[0].holeData,
+										holesToDeleteForUndo[0].originalIndex
+									);
+								} else {
+									deleteAction = new window.DeleteMultipleHolesAction(holesToDeleteForUndo);
+								}
+								window.undoManager.pushAction(deleteAction);
+							}
 
 							// Renumber each affected entity with user-specified starting number (USE FACTORY CODE)
 							entitiesToRenumber.forEach(entityName => {
@@ -423,14 +443,35 @@ export function showHolePropertyEditor(hole) {
 				},
 				() => {
 					// Step 10c.4) No - Delete without renumbering
+
+					// Step #) Capture holes for undo BEFORE deletion
+					var holesToDeleteForUndo = [];
 					holes.forEach((hole) => {
 						const index = window.allBlastHoles.findIndex(h =>
 							h.holeID === hole.holeID && h.entityName === hole.entityName
 						);
 						if (index !== -1) {
+							holesToDeleteForUndo.push({
+								holeData: JSON.parse(JSON.stringify(window.allBlastHoles[index])),
+								originalIndex: index
+							});
 							window.allBlastHoles.splice(index, 1);
 						}
 					});
+
+					// Step #) Create undo action for deleted holes
+					if (window.undoManager && holesToDeleteForUndo.length > 0) {
+						var deleteAction;
+						if (holesToDeleteForUndo.length === 1) {
+							deleteAction = new window.DeleteHoleAction(
+								holesToDeleteForUndo[0].holeData,
+								holesToDeleteForUndo[0].originalIndex
+							);
+						} else {
+							deleteAction = new window.DeleteMultipleHolesAction(holesToDeleteForUndo);
+						}
+						window.undoManager.pushAction(deleteAction);
+					}
 
 					// Debounced save and updates (USE FACTORY CODE)
 					window.debouncedSaveHoles();

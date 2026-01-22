@@ -733,7 +733,13 @@ export function showOffsetKADPopup(kadObject) {
 		confirmText: "Offset",
 		cancelText: "Cancel",
 		onConfirm: () => {
-			// Step 24) Clear preview FIRST using the function (this properly clears module-level state)
+			// Step 24) Cancel any pending debounced preview updates FIRST
+			if (previewDebounceTimer) {
+				clearTimeout(previewDebounceTimer);
+				previewDebounceTimer = null;
+			}
+
+			// Step 24a) Clear preview using the function (this properly clears module-level state)
 			if (typeof window.clearOffsetPreview === "function") {
 				window.clearOffsetPreview();
 			}
@@ -770,7 +776,13 @@ export function showOffsetKADPopup(kadObject) {
 			window.updateStatusMessage("");
 		},
 		onCancel: () => {
-			// Step 26) Clear preview using the function (this properly clears and redraws)
+			// Step 26) Cancel any pending debounced preview updates FIRST
+			if (previewDebounceTimer) {
+				clearTimeout(previewDebounceTimer);
+				previewDebounceTimer = null;
+			}
+
+			// Step 26a) Clear preview using the function (this properly clears and redraws)
 			if (typeof window.clearOffsetPreview === "function") {
 				window.clearOffsetPreview();
 			}

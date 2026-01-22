@@ -332,8 +332,18 @@ export function showKADPropertyEditorPopup(kadObject) {
 				deletionIndex = isPoly ? (deletionIndex + 1) % numPoints : deletionIndex + 1;
 			}
 
+			// Step #) Capture vertex data for undo BEFORE deletion
+			var vertexDataForUndo = JSON.parse(JSON.stringify(entity.data[deletionIndex]));
+			var entityNameForUndo = kadObject.entityName;
+
 			// Remove the point/vertex
 			entity.data.splice(deletionIndex, 1);
+
+			// Step #) Create undo action for deleted vertex
+			if (window.undoManager) {
+				var deleteVertexAction = new window.DeleteKADVertexAction(entityNameForUndo, vertexDataForUndo, deletionIndex);
+				window.undoManager.pushAction(deleteVertexAction);
+			}
 
 			// Handle edge cases
 			if (entity.data.length === 0) {

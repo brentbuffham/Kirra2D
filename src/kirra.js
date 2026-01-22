@@ -25,6 +25,29 @@ import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { evaluate } from "mathjs";
 //=================================================
+// Undo/Redo System
+//=================================================
+import { UndoManager, UndoableAction, BatchAction, ActionTypes } from "./tools/UndoManager.js";
+import {
+    AddHoleAction,
+    AddMultipleHolesAction,
+    DeleteHoleAction,
+    DeleteMultipleHolesAction,
+    MoveHoleAction,
+    MoveMultipleHolesAction,
+    EditHolePropsAction,
+    EditMultipleHolesPropsAction,
+    AddKADEntityAction,
+    AddMultipleKADEntitiesAction,
+    DeleteKADEntityAction,
+    DeleteMultipleKADEntitiesAction,
+    AddKADVertexAction,
+    DeleteKADVertexAction,
+    MoveKADVertexAction,
+    MoveMultipleKADVerticesAction,
+    EditKADPropsAction
+} from "./tools/UndoActions.js";
+//=================================================
 // Three.js Renderer Selection (MUST BE EARLY!)
 //=================================================
 // CRITICAL: Load renderer preference from localStorage IMMEDIATELY
@@ -617,6 +640,26 @@ function exposeGlobalsToWindow() {
 	window.saveSurfaceToDB = saveSurfaceToDB;
 	window.deleteImageFromDB = deleteImageFromDB;
 	window.deleteAllImagesFromDB = deleteAllImagesFromDB;
+
+	// Step 6g) Expose UndoManager and action classes for undo/redo operations
+	window.undoManager = undoManager;
+	window.AddHoleAction = AddHoleAction;
+	window.AddMultipleHolesAction = AddMultipleHolesAction;
+	window.DeleteHoleAction = DeleteHoleAction;
+	window.DeleteMultipleHolesAction = DeleteMultipleHolesAction;
+	window.MoveHoleAction = MoveHoleAction;
+	window.MoveMultipleHolesAction = MoveMultipleHolesAction;
+	window.EditHolePropsAction = EditHolePropsAction;
+	window.EditMultipleHolesPropsAction = EditMultipleHolesPropsAction;
+	window.AddKADEntityAction = AddKADEntityAction;
+	window.AddMultipleKADEntitiesAction = AddMultipleKADEntitiesAction;
+	window.DeleteKADEntityAction = DeleteKADEntityAction;
+	window.DeleteMultipleKADEntitiesAction = DeleteMultipleKADEntitiesAction;
+	window.AddKADVertexAction = AddKADVertexAction;
+	window.DeleteKADVertexAction = DeleteKADVertexAction;
+	window.MoveKADVertexAction = MoveKADVertexAction;
+	window.MoveMultipleKADVerticesAction = MoveMultipleKADVerticesAction;
+	window.EditKADPropsAction = EditKADPropsAction;
 }
 
 // Step 3) Set local origin from first hole, surface, or current centroid
@@ -3774,6 +3817,22 @@ class BlastHole {
 let allBlastHoles = [];
 let dxfEntities = [];
 let countAllBlastHoles = allBlastHoles.length;
+
+// Step #) Initialize UndoManager for undo/redo operations
+var undoManager = new UndoManager({
+    maxLevels: 20,
+    onStatusMessage: function(message) {
+        if (typeof updateStatusMessage === "function") {
+            updateStatusMessage(message);
+            // Clear status message after 3 seconds
+            setTimeout(function() {
+                if (typeof updateStatusMessage === "function") {
+                    updateStatusMessage("");
+                }
+            }, 3000);
+        }
+    }
+});
 let sumMeters = 0;
 let currentScale = scale; // declare a variable to store the current scale
 let currentFontSize = fontSize; // declare a variable to store the current font size
@@ -19054,6 +19113,9 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 	});
 
 	// Step 8: Handle non-union case (multiple separate polygons)
+	// Step #) Track created entity names for undo support
+	var createdEntityNames = [];
+
 	if (!union) {
 		if (addToMaps) {
 			// Step 30d) Get active layer for enhanced radii polygons
@@ -19098,8 +19160,18 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 				});
 				if (activeLayer) activeLayer.entities.add(entityName);
 
+				// Step #) Track created entity for undo
+				createdEntityNames.push(entityName);
+
 				console.log("✅ Created enhanced polygon: " + entityName + " in layer:", activeLayerId);
 			});
+
+			// Step #) Create undo action for all created radii entities
+			if (undoManager && createdEntityNames.length > 0) {
+				var radiiUndoAction = new AddMultipleKADEntitiesAction(createdEntityNames);
+				undoManager.pushAction(radiiUndoAction);
+				console.log("✅ [UNDO] Created batch undo action for " + createdEntityNames.length + " radii polygon(s)");
+			}
 		}
 		return rawPolygons;
 	}
@@ -19172,6 +19244,9 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 		}
 		var activeLayer = window.allDrawingLayers.get(activeLayerId);
 
+		// Step #) Track created union entity names for undo
+		var createdUnionEntityNames = [];
+
 		unionedPolygons.forEach((polygon, index) => {
 			let entityName = (useToeLocation ? "RAD-END" : "RAD-SRT") + "-UNION";
 			if (rotationOffset !== 0) {
@@ -19205,8 +19280,18 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 			});
 			if (activeLayer) activeLayer.entities.add(entityName);
 
+			// Step #) Track for undo
+			createdUnionEntityNames.push(entityName);
+
 			console.log("✅ Created enhanced union polygon: " + entityName + " with " + polygon.length + " points");
 		});
+
+		// Step #) Create undo action for union radii entities
+		if (undoManager && createdUnionEntityNames.length > 0) {
+			var radiiUnionUndoAction = new AddMultipleKADEntitiesAction(createdUnionEntityNames);
+			undoManager.pushAction(radiiUnionUndoAction);
+			console.log("✅ [UNDO] Created batch undo action for " + createdUnionEntityNames.length + " union radii polygon(s)");
+		}
 	}
 
 	return unionedPolygons;
@@ -20186,6 +20271,11 @@ function performKADOffset(entity, params) {
 	try {
 		const results = [];
 
+		// Step #) Begin batch for multiple offset operations
+		if (undoManager && params.numberOfOffsets > 1) {
+			undoManager.beginBatch("Offset " + params.numberOfOffsets + " entities");
+		}
+
 		for (let i = 1; i <= params.numberOfOffsets; i++) {
 			const offsetAmount = params.baseAmount * i;
 
@@ -20193,7 +20283,21 @@ function performKADOffset(entity, params) {
 
 			if (offsetEntity) {
 				results.push(offsetEntity);
+
+				// Step #) Create undo action for the newly created offset entity
+				if (undoManager) {
+					var entityData = allKADDrawingsMap.get(offsetEntity);
+					if (entityData) {
+						var addAction = new AddKADEntityAction(offsetEntity, JSON.parse(JSON.stringify(entityData)));
+						undoManager.pushAction(addAction);
+					}
+				}
 			}
+		}
+
+		// Step #) End batch if started
+		if (undoManager && params.numberOfOffsets > 1) {
+			undoManager.endBatch();
 		}
 
 		if (results.length > 0) {
@@ -20204,12 +20308,16 @@ function performKADOffset(entity, params) {
 			drawData(allBlastHoles, selectedHole);
 
 			updateStatusMessage("Created " + results.length + " offset(s) successfully");
-			setTimeout(() => updateStatusMessage(""), 3000);
+			setTimeout(function() { updateStatusMessage(""); }, 3000);
 		} else {
 			updateStatusMessage("Failed to create offsets - check parameters");
 		}
 	} catch (error) {
 		console.error("Error in performKADOffset:", error);
+		// Step #) Cancel batch on error
+		if (undoManager && undoManager.isInBatch()) {
+			undoManager.cancelBatch();
+		}
 		updateStatusMessage("Error creating offsets: " + error.message);
 	}
 }
@@ -23486,12 +23594,25 @@ function deleteSelectedHoles() {
 		const entitiesToRenumber = new Set(); // Store unique entity names that need renumbering
 		const deletedCombinedIDs = new Set(); // Track deleted holes for fromHoleID cleanup
 
+		// Step #) Capture holes for undo before deletion
+		var holesToDeleteForUndo = [];
+
 		if (selectedMultipleHoles.length > 0) {
 			console.log("Processing deletion for " + selectedMultipleHoles.length + " selected holes.");
 			const originalPointsLength = allBlastHoles.length;
 
 			// Create a Set of hole references for efficient filtering
 			const holesToDeleteReferences = new Set(selectedMultipleHoles);
+
+			// Step #) Capture holes with original indices for undo
+			for (var i = 0; i < allBlastHoles.length; i++) {
+				if (holesToDeleteReferences.has(allBlastHoles[i])) {
+					holesToDeleteForUndo.push({
+						holeData: allBlastHoles[i],
+						originalIndex: i
+					});
+				}
+			}
 
 			allBlastHoles = allBlastHoles.filter((hole) => {
 				if (holesToDeleteReferences.has(hole)) {
@@ -23520,6 +23641,15 @@ function deleteSelectedHoles() {
 			deletedCombinedIDs.add(holeToRemove.entityName + ":::" + holeToRemove.holeID);
 			const originalPointsLength = allBlastHoles.length;
 
+			// Step #) Capture hole with original index for undo
+			var holeIndex = allBlastHoles.indexOf(holeToRemove);
+			if (holeIndex !== -1) {
+				holesToDeleteForUndo.push({
+					holeData: holeToRemove,
+					originalIndex: holeIndex
+				});
+			}
+
 			allBlastHoles = allBlastHoles.filter((hole) => hole !== holeToRemove);
 
 			if (allBlastHoles.length < originalPointsLength) {
@@ -23535,6 +23665,21 @@ function deleteSelectedHoles() {
 		}
 
 		if (holesWereActuallyDeleted) {
+			// Step #) Create undo action for deleted holes
+			if (holesToDeleteForUndo.length > 0 && undoManager) {
+				var deleteAction;
+				if (holesToDeleteForUndo.length === 1) {
+					deleteAction = new DeleteHoleAction(
+						holesToDeleteForUndo[0].holeData,
+						holesToDeleteForUndo[0].originalIndex
+					);
+				} else {
+					deleteAction = new DeleteMultipleHolesAction(holesToDeleteForUndo);
+				}
+				// Push without executing since deletion already happened
+				undoManager.pushAction(deleteAction);
+			}
+
 			// Clean up orphaned fromHoleID references before renumbering
 			allBlastHoles.forEach((hole) => {
 				if (deletedCombinedIDs.has(hole.fromHoleID)) {
@@ -24360,6 +24505,13 @@ function addKADPoint() {
 
 		allKADDrawingsMap.get(entityName).data.push(pointObject);
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
+
+		// Step #) Create undo action for added KAD point vertex
+		if (undoManager) {
+			var addVertexAction = new AddKADVertexAction(entityName, JSON.parse(JSON.stringify(pointObject)), allKADDrawingsMap.get(entityName).data.length - 1);
+			undoManager.pushAction(addVertexAction);
+		}
+
 		window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD point
 		drawData(allBlastHoles, selectedHole);
 		debouncedSaveKAD();
@@ -24467,6 +24619,12 @@ function addKADLine() {
 		}
 		allKADDrawingsMap.get(entityName).data.push(lineObject); // Changed map
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
+
+		// Step #) Create undo action for added KAD line vertex
+		if (undoManager) {
+			var addVertexAction = new AddKADVertexAction(entityName, JSON.parse(JSON.stringify(lineObject)), allKADDrawingsMap.get(entityName).data.length - 1);
+			undoManager.pushAction(addVertexAction);
+		}
 	}
 	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD line
 	drawData(allBlastHoles, selectedHole);
@@ -24576,6 +24734,12 @@ function addKADPoly() {
 		allKADDrawingsMap.get(entityName).data.push(polyObject);
 		// Add this line to update the last draw point
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
+
+		// Step #) Create undo action for added KAD polygon vertex
+		if (undoManager) {
+			var addVertexAction = new AddKADVertexAction(entityName, JSON.parse(JSON.stringify(polyObject)), allKADDrawingsMap.get(entityName).data.length - 1);
+			undoManager.pushAction(addVertexAction);
+		}
 	}
 	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD polygon
 	drawData(allBlastHoles, selectedHole);
@@ -24688,6 +24852,13 @@ function addKADCircle() {
 		}
 		allKADDrawingsMap.get(entityName).data.push(circleObject);
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
+
+		// Step #) Create undo action for added KAD circle vertex
+		if (undoManager) {
+			var addVertexAction = new AddKADVertexAction(entityName, JSON.parse(JSON.stringify(circleObject)), allKADDrawingsMap.get(entityName).data.length - 1);
+			undoManager.pushAction(addVertexAction);
+		}
+
 		console.log("Added circle", pointID, "to", entityName);
 	}
 	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD circle
@@ -24941,6 +25112,13 @@ async function addKADText() {
 
 		allKADDrawingsMap.get(entityName).data.push(textObject);
 		updateLastKADDrawPoint(pointXLocation, pointYLocation);
+
+		// Step #) Create undo action for added KAD text vertex
+		if (undoManager) {
+			var addVertexAction = new AddKADVertexAction(entityName, JSON.parse(JSON.stringify(textObject)), allKADDrawingsMap.get(entityName).data.length - 1);
+			undoManager.pushAction(addVertexAction);
+		}
+
 		window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD text
 		drawData(allBlastHoles, selectedHole);
 		debouncedUpdateTreeView();
@@ -26389,7 +26567,8 @@ function addHoleToAllBlastHoles(
 	spacing,
 	connectorCurve
 ) {
-	allBlastHoles.push({
+	// Step #) Create the hole object
+	var newHole = {
 		entityName: entityName,
 		entityType: entityType,
 		holeID: newHoleID.toString(),
@@ -26425,7 +26604,20 @@ function addHoleToAllBlastHoles(
 		burden: burden,
 		spacing: spacing,
 		connectorCurve: connectorCurve,
-	});
+	};
+
+	// Step #) Add to allBlastHoles array
+	allBlastHoles.push(newHole);
+
+	// Step #) Create undo action for added hole (only if not in batch mode - batches handle their own undo)
+	if (undoManager && !undoManager.isInBatch()) {
+		var addAction = new AddHoleAction(newHole);
+		undoManager.pushAction(addAction);
+	} else if (undoManager && undoManager.isInBatch()) {
+		// In batch mode, add to current batch
+		var addAction = new AddHoleAction(newHole);
+		undoManager.currentBatch.addAction(addAction);
+	}
 
 	//console.log("Added Hole: " + newHoleID + " (Row: " + rowID + ", Pos: " + posID + ")");
 }
@@ -32728,6 +32920,30 @@ window.onload = function () {
 
 	// --- Key Listeners ---
 	document.addEventListener("keydown", (event) => {
+		// Step #) Handle Ctrl+Z for Undo
+		if ((event.ctrlKey || event.metaKey) && event.key === "z" && !event.shiftKey) {
+			// Don't undo if user is typing in an input field
+			if (!event.target.matches('input, textarea, [contenteditable="true"]')) {
+				event.preventDefault();
+				if (undoManager && undoManager.canUndo()) {
+					undoManager.undo();
+				}
+				return;
+			}
+		}
+
+		// Step #) Handle Ctrl+Y or Ctrl+Shift+Z for Redo
+		if ((event.ctrlKey || event.metaKey) && (event.key === "y" || (event.key === "z" && event.shiftKey))) {
+			// Don't redo if user is typing in an input field
+			if (!event.target.matches('input, textarea, [contenteditable="true"]')) {
+				event.preventDefault();
+				if (undoManager && undoManager.canRedo()) {
+					undoManager.redo();
+				}
+				return;
+			}
+		}
+
 		// Handle drawing key events (delete/backspace) when drawing tools are active
 		// BUT only if user is not typing in an input field
 		if ((isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText) && !event.target.matches('input, textarea, [contenteditable="true"]')) {
@@ -32813,6 +33029,10 @@ window.onload = function () {
 					if (entity && entity.data) {
 						const elementIndex = entity.data.findIndex(function (el) { return el.pointID === selectedPoint.pointID; });
 						if (elementIndex !== -1) {
+							// Step #) Capture vertex data for undo BEFORE deletion
+							const vertexDataForUndo = JSON.parse(JSON.stringify(entity.data[elementIndex]));
+							const entityNameForUndo = selectedKADObject.entityName;
+
 							// Show confirmation dialog asking vertex or entity
 							const vertexText = selectedKADObject.entityType + " vertex " + selectedPoint.pointID;
 							const entityText = selectedKADObject.entityType + " '" + selectedKADObject.entityName + "'";
@@ -32829,6 +33049,12 @@ window.onload = function () {
 									const deletedPointID = selectedPoint.pointID;
 									entity.data.splice(elementIndex, 1);
 									console.log("❌🔑 [DELETE KEY] Deleted vertex:", deletedPointID);
+
+									// Step #) Create undo action for deleted vertex
+									if (undoManager) {
+										var deleteVertexAction = new DeleteKADVertexAction(entityNameForUndo, vertexDataForUndo, elementIndex);
+										undoManager.pushAction(deleteVertexAction);
+									}
 
 									// Delete entity if empty
 									if (entity.data.length === 0) {
@@ -32853,10 +33079,19 @@ window.onload = function () {
 									updateStatusMessage("Deleted vertex " + deletedPointID);
 									setTimeout(function () { updateStatusMessage(""); }, 2000);
 								} else if (result === 2) {
-									// Delete entire entity - capture values before clearing
+									// Step #) Capture entire entity data for undo BEFORE deletion
+									const entityDataForUndo = JSON.parse(JSON.stringify(entity));
 									const deletedEntityName = selectedKADObject.entityName;
+
+									// Delete entire entity
 									allKADDrawingsMap.delete(deletedEntityName);
 									console.log("❌🔑 [DELETE KEY] Deleted entity:", deletedEntityName);
+
+									// Step #) Create undo action for deleted entity
+									if (undoManager) {
+										var deleteEntityAction = new DeleteKADEntityAction(deletedEntityName, entityDataForUndo);
+										undoManager.pushAction(deleteEntityAction);
+									}
 
 									selectedPoint = null;
 									selectedKADObject = null;
@@ -32880,6 +33115,11 @@ window.onload = function () {
 				// Step 3) Handle entity deletion with confirmation
 				else if (selectedKADObject) {
 					if (allKADDrawingsMap.has(selectedKADObject.entityName)) {
+						// Step #) Capture entity data for undo BEFORE showing dialog
+						const entityForUndo = allKADDrawingsMap.get(selectedKADObject.entityName);
+						const entityDataForUndo = JSON.parse(JSON.stringify(entityForUndo));
+						const entityNameForUndo = selectedKADObject.entityName;
+
 						showConfirmationDialog(
 							"Delete Confirmation",
 							"Are you sure you want to delete " + selectedKADObject.entityType + " '" + selectedKADObject.entityName + "'?",
@@ -32887,8 +33127,14 @@ window.onload = function () {
 							"Cancel"
 						).then(function (confirmed) {
 							if (confirmed) {
-								allKADDrawingsMap.delete(selectedKADObject.entityName);
-								console.log("❌🔑 [DELETE KEY] Deleted entity:", selectedKADObject.entityName);
+								allKADDrawingsMap.delete(entityNameForUndo);
+								console.log("❌🔑 [DELETE KEY] Deleted entity:", entityNameForUndo);
+
+								// Step #) Create undo action for deleted entity
+								if (undoManager) {
+									var deleteEntityAction = new DeleteKADEntityAction(entityNameForUndo, entityDataForUndo);
+									undoManager.pushAction(deleteEntityAction);
+								}
 
 								selectedKADObject = null;
 								selectedMultipleKADObjects = [];
@@ -32909,6 +33155,19 @@ window.onload = function () {
 				// Step 4) Handle multiple entity deletion with confirmation
 				else if (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0) {
 					const count = selectedMultipleKADObjects.length;
+
+					// Step #) Capture all entity data for undo BEFORE showing dialog
+					var entitiesToDeleteForUndo = [];
+					selectedMultipleKADObjects.forEach(function (kadObj) {
+						if (allKADDrawingsMap.has(kadObj.entityName)) {
+							var entityData = allKADDrawingsMap.get(kadObj.entityName);
+							entitiesToDeleteForUndo.push({
+								entityName: kadObj.entityName,
+								entityData: JSON.parse(JSON.stringify(entityData))
+							});
+						}
+					});
+
 					showConfirmationDialog(
 						"Delete Confirmation",
 						"Are you sure you want to delete " + count + " KAD entities?",
@@ -32916,12 +33175,26 @@ window.onload = function () {
 						"Cancel"
 					).then(function (confirmed) {
 						if (confirmed) {
+							// Step #) Begin batch for multiple deletions
+							if (undoManager) {
+								undoManager.beginBatch("Delete " + count + " KAD entities");
+							}
+
 							selectedMultipleKADObjects.forEach(function (kadObj) {
 								if (allKADDrawingsMap.has(kadObj.entityName)) {
 									allKADDrawingsMap.delete(kadObj.entityName);
 								}
 							});
 							console.log("❌🔑 [DELETE KEY] Deleted", count, "entities");
+
+							// Step #) Create undo actions for each deleted entity
+							if (undoManager) {
+								entitiesToDeleteForUndo.forEach(function (item) {
+									var deleteEntityAction = new DeleteKADEntityAction(item.entityName, item.entityData);
+									undoManager.pushAction(deleteEntityAction);
+								});
+								undoManager.endBatch();
+							}
 
 							selectedMultipleKADObjects = [];
 							selectedKADObject = null;
@@ -33255,6 +33528,31 @@ let toolbarPanel;
 // Step 2) Update the DOMContentLoaded section around line 21376
 document.addEventListener("DOMContentLoaded", () => {
 	toolbarPanel = new ToolbarPanel();
+
+	// Step #) Initialize Undo/Redo button click handlers
+	var undoBtn = document.getElementById("undoBtn");
+	var redoBtn = document.getElementById("redoBtn");
+
+	if (undoBtn) {
+		undoBtn.addEventListener("click", function() {
+			if (undoManager && undoManager.canUndo()) {
+				undoManager.undo();
+			}
+		});
+	}
+
+	if (redoBtn) {
+		redoBtn.addEventListener("click", function() {
+			if (undoManager && undoManager.canRedo()) {
+				undoManager.redo();
+			}
+		});
+	}
+
+	// Step #) Update undo/redo button states on initialization
+	if (undoManager) {
+		undoManager.updateButtonStates();
+	}
 });
 
 //==============================================================//
@@ -40859,6 +41157,11 @@ function generatePatternInPolygon(patternSettings) {
 	window.holeGenerationCancelled = false; // Reset for new pattern
 	window.holeGenerationStartCount = allBlastHoles ? allBlastHoles.length : 0; // Track starting count
 
+	// Step #) Begin batch undo for pattern generation
+	if (undoManager) {
+		undoManager.beginBatch("Generate pattern in polygon (" + holesInPolygon.length + " holes)");
+	}
+
 	// Process rows from first (lowest row letter) to last (highest row letter)
 	for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
 		// Check for cancellation before each row
@@ -40933,10 +41236,19 @@ function generatePatternInPolygon(patternSettings) {
 			console.log("Removing " + (currentCount - startCount) + " holes added during cancelled polygon pattern generation");
 			allBlastHoles.splice(startCount, currentCount - startCount);
 			holesWereRemoved = true;
+			// Step #) Cancel the batch (discard undo actions) since holes were removed
+			if (undoManager) {
+				undoManager.cancelBatch();
+			}
 			// Save to IndexedDB to persist the removal
 			if (typeof debouncedSaveHoles === "function") {
 				debouncedSaveHoles();
 			}
+		}
+	} else {
+		// Step #) End batch undo for successful pattern generation
+		if (undoManager) {
+			undoManager.endBatch();
 		}
 	}
 
@@ -41026,6 +41338,11 @@ function generateHolesAlongLine(params) {
 	window.holeGenerationCancelled = false; // Reset for new pattern
 	window.holeGenerationStartCount = allBlastHoles ? allBlastHoles.length : 0; // Track starting count
 
+	// Step #) Begin batch undo for pattern generation
+	if (undoManager) {
+		undoManager.beginBatch("Generate " + numHoles + " holes along line");
+	}
+
 	// Generate holes starting from the first point
 	for (let i = 0; i < numHoles; i++) {
 		// Check for cancellation before each hole
@@ -41090,10 +41407,19 @@ function generateHolesAlongLine(params) {
 			console.log("Removing " + (currentCount - startCount) + " holes added during cancelled line pattern generation");
 			allBlastHoles.splice(startCount, currentCount - startCount);
 			holesWereRemoved = true;
+			// Step #) Cancel the batch (discard undo actions) since holes were removed
+			if (undoManager) {
+				undoManager.cancelBatch();
+			}
 			// Save to IndexedDB to persist the removal
 			if (typeof debouncedSaveHoles === "function") {
 				debouncedSaveHoles();
 			}
+		}
+	} else {
+		// Step #) End batch undo for successful pattern generation
+		if (undoManager) {
+			undoManager.endBatch();
 		}
 	}
 
@@ -42455,6 +42781,7 @@ function generateHolesAlongPolyline(params, vertices) {
 		window.holeGenerationCancelled = false;
 	}
 	window.holeGenerationCancelled = false; // Reset for new pattern
+	window.holeGenerationStartCount = allBlastHoles ? allBlastHoles.length : 0; // Track starting count
 
 	// Calculate total length of the polyline for progress tracking
 	let totalLength = 0;
@@ -42462,6 +42789,12 @@ function generateHolesAlongPolyline(params, vertices) {
 		const dx = vertices[i + 1].x - vertices[i].x;
 		const dy = vertices[i + 1].y - vertices[i].y;
 		totalLength += Math.sqrt(dx * dx + dy * dy);
+	}
+
+	// Step #) Begin batch undo for polyline pattern generation
+	var estimatedHoles = Math.floor(totalLength / params.spacing) + 1;
+	if (undoManager) {
+		undoManager.beginBatch("Generate ~" + estimatedHoles + " holes along polyline");
 	}
 
 	// Process each segment of the polyline
@@ -42573,10 +42906,19 @@ function generateHolesAlongPolyline(params, vertices) {
 			console.log("Removing " + (currentCount - startCount) + " holes added during cancelled polyline pattern generation");
 			allBlastHoles.splice(startCount, currentCount - startCount);
 			holesWereRemoved = true;
+			// Step #) Cancel the batch (discard undo actions) since holes were removed
+			if (undoManager) {
+				undoManager.cancelBatch();
+			}
 			// Save to IndexedDB to persist the removal
 			if (typeof debouncedSaveHoles === "function") {
 				debouncedSaveHoles();
 			}
+		}
+	} else {
+		// Step #) End batch undo for successful polyline pattern generation
+		if (undoManager) {
+			undoManager.endBatch();
 		}
 	}
 
@@ -48306,6 +48648,11 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 		// Delete KAD elements (vertices/points)
 		const entitiesToRenumber = new Set();
 
+		// Step #) Begin batch for multiple element deletions
+		if (undoManager && nodeIds.length > 1) {
+			undoManager.beginBatch("Delete " + nodeIds.length + " KAD vertices");
+		}
+
 		nodeIds.forEach(function (nodeId) {
 			const parts = nodeId.split("⣿");
 			if (parts.length >= 4 && parts[2] === "element") {
@@ -48316,8 +48663,17 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 				if (entity && entity.data) {
 					const elementIndex = entity.data.findIndex(function (el) { return el.pointID == elementId; });
 					if (elementIndex !== -1) {
+						// Step #) Capture vertex data for undo BEFORE deletion
+						var vertexDataForUndo = JSON.parse(JSON.stringify(entity.data[elementIndex]));
+
 						entity.data.splice(elementIndex, 1);
 						entitiesToRenumber.add(entityName);
+
+						// Step #) Create undo action for deleted vertex
+						if (undoManager) {
+							var deleteVertexAction = new DeleteKADVertexAction(entityName, vertexDataForUndo, elementIndex);
+							undoManager.pushAction(deleteVertexAction);
+						}
 
 						if (entity.data.length === 0) {
 							allKADDrawingsMap.delete(entityName);
@@ -48328,6 +48684,11 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 			}
 		});
 
+		// Step #) End batch if started
+		if (undoManager && nodeIds.length > 1) {
+			undoManager.endBatch();
+		}
+
 		// Renumber affected entities
 		entitiesToRenumber.forEach(function (entityName) {
 			const entity = allKADDrawingsMap.get(entityName);
@@ -48336,34 +48697,66 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 			}
 		});
 
+		// Step #) Clear selection state after TreeView delete
+		selectedPoint = null;
+		selectedKADObject = null;
+		selectedMultipleKADObjects = [];
+
 		if (typeof debouncedSaveKAD === "function") {
 			debouncedSaveKAD();
 		}
 
-		treeViewInstance.updateTreeData();
 		// Step #) Trigger 3D rebuild when KAD elements are deleted via TreeView
 		window.threeDataNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
+		// Step #) Update TreeView AFTER drawData to ensure data is consistent
+		treeViewInstance.updateTreeData();
 	} else if (hasKADEntities) {
 		// Delete entire KAD entities
+
+		// Step #) Begin batch for multiple entity deletions
+		if (undoManager && nodeIds.length > 1) {
+			undoManager.beginBatch("Delete " + nodeIds.length + " KAD entities");
+		}
+
 		nodeIds.forEach(function (nodeId) {
 			const parts = nodeId.split("⣿");
 			if (parts.length === 2) {
 				const entityName = parts[1];
 				if (allKADDrawingsMap.has(entityName)) {
+					// Step #) Capture entity data for undo BEFORE deletion
+					var entityDataForUndo = JSON.parse(JSON.stringify(allKADDrawingsMap.get(entityName)));
+
 					allKADDrawingsMap.delete(entityName);
+
+					// Step #) Create undo action for deleted entity
+					if (undoManager) {
+						var deleteEntityAction = new DeleteKADEntityAction(entityName, entityDataForUndo);
+						undoManager.pushAction(deleteEntityAction);
+					}
 				}
 			}
 		});
+
+		// Step #) End batch if started
+		if (undoManager && nodeIds.length > 1) {
+			undoManager.endBatch();
+		}
+
+		// Step #) Clear selection state after TreeView delete
+		selectedPoint = null;
+		selectedKADObject = null;
+		selectedMultipleKADObjects = [];
 
 		if (typeof debouncedSaveKAD === "function") {
 			debouncedSaveKAD();
 		}
 
-		treeViewInstance.updateTreeData();
 		// Step #) Trigger 3D rebuild when KAD entities are deleted via TreeView
 		window.threeDataNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
+		// Step #) Update TreeView AFTER drawData to ensure data is consistent
+		treeViewInstance.updateTreeData();
 	} else if (hasSurfaces) {
 		// Delete surfaces
 		nodeIds.forEach(function (nodeId) {
@@ -48429,12 +48822,25 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 						// Step 2a.3) Delete and renumber with starting value
 						const entitiesToRenumber = new Set();
 
+						// Step #) Capture holes for undo BEFORE deletion
+						var holesToDeleteForUndo = [];
+
 						if (hasEntities) {
 							// Delete entire blast entities (all holes in that entity)
 							nodeIds.forEach(function (nodeId) {
 								const parts = nodeId.split("⣿");
 								if (parts[0] === "entity" && parts.length === 2) {
 									const entityName = parts[1];
+
+									// Step #) Capture all holes in entity for undo
+									allBlastHoles.forEach(function (hole, idx) {
+										if (hole.entityName === entityName) {
+											holesToDeleteForUndo.push({
+												holeData: JSON.parse(JSON.stringify(hole)),
+												originalIndex: idx
+											});
+										}
+									});
 
 									// Remove all holes with this entityName
 									const holesRemoved = allBlastHoles.filter(function (hole) { return hole.entityName === entityName; }).length;
@@ -48456,12 +48862,31 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 									// Find and remove the specific hole
 									const index = allBlastHoles.findIndex(function (h) { return h.entityName === entityName && h.holeID === holeID; });
 									if (index !== -1) {
+										// Step #) Capture hole for undo
+										holesToDeleteForUndo.push({
+											holeData: JSON.parse(JSON.stringify(allBlastHoles[index])),
+											originalIndex: index
+										});
 										allBlastHoles.splice(index, 1);
 										entitiesToRenumber.add(entityName);
 										console.log("❌ Deleted hole: " + entityName + ":" + holeID);
 									}
 								}
 							});
+						}
+
+						// Step #) Create undo action for deleted holes
+						if (undoManager && holesToDeleteForUndo.length > 0) {
+							var deleteAction;
+							if (holesToDeleteForUndo.length === 1) {
+								deleteAction = new DeleteHoleAction(
+									holesToDeleteForUndo[0].holeData,
+									holesToDeleteForUndo[0].originalIndex
+								);
+							} else {
+								deleteAction = new DeleteMultipleHolesAction(holesToDeleteForUndo);
+							}
+							undoManager.pushAction(deleteAction);
 						}
 
 						// Renumber affected entities with starting number (USE FACTORY CODE)
@@ -48492,12 +48917,26 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 			},
 			function () {
 				// Step 2a.5) No - Delete without renumbering
+
+				// Step #) Capture holes for undo BEFORE deletion
+				var holesToDeleteForUndo = [];
+
 				if (hasEntities) {
 					// Delete entire blast entities (all holes in that entity)
 					nodeIds.forEach(function (nodeId) {
 						const parts = nodeId.split("⣿");
 						if (parts[0] === "entity" && parts.length === 2) {
 							const entityName = parts[1];
+
+							// Step #) Capture all holes in entity for undo
+							allBlastHoles.forEach(function (hole, idx) {
+								if (hole.entityName === entityName) {
+									holesToDeleteForUndo.push({
+										holeData: JSON.parse(JSON.stringify(hole)),
+										originalIndex: idx
+									});
+								}
+							});
 
 							// Remove all holes with this entityName
 							const holesRemoved = allBlastHoles.filter(function (hole) { return hole.entityName === entityName; }).length;
@@ -48519,11 +48958,30 @@ window.handleTreeViewDelete = function (nodeIds, treeViewInstance) {
 							// Find and remove the specific hole
 							const index = allBlastHoles.findIndex(function (h) { return h.entityName === entityName && h.holeID === holeID; });
 							if (index !== -1) {
+								// Step #) Capture hole for undo
+								holesToDeleteForUndo.push({
+									holeData: JSON.parse(JSON.stringify(allBlastHoles[index])),
+									originalIndex: index
+								});
 								allBlastHoles.splice(index, 1);
 								console.log("❌ Deleted hole: " + entityName + ":" + holeID);
 							}
 						}
 					});
+				}
+
+				// Step #) Create undo action for deleted holes
+				if (undoManager && holesToDeleteForUndo.length > 0) {
+					var deleteAction;
+					if (holesToDeleteForUndo.length === 1) {
+						deleteAction = new DeleteHoleAction(
+							holesToDeleteForUndo[0].holeData,
+							holesToDeleteForUndo[0].originalIndex
+						);
+					} else {
+						deleteAction = new DeleteMultipleHolesAction(holesToDeleteForUndo);
+					}
+					undoManager.pushAction(deleteAction);
 				}
 
 				// Step 6) CRITICAL FIX: Save to IndexedDB after deletion without renumbering
