@@ -400,7 +400,13 @@ export function showHolePropertyEditor(hole) {
 							// Step 10c.2) Delete holes manually and renumber with starting value
 							const entitiesToRenumber = new Set();
 
-							// Step #) Capture holes for undo BEFORE deletion
+							// Step 10c.2a) Build set of deleted hole combined IDs for orphan detection
+							const deletedHoleIDs = new Set();
+							holes.forEach(hole => {
+								deletedHoleIDs.add(hole.entityName + ":::" + hole.holeID);
+							});
+
+							// Step 10c.2b) Capture holes for undo BEFORE deletion
 							var holesToDeleteForUndo = [];
 							holes.forEach(hole => {
 								const index = window.allBlastHoles.findIndex(h => h.holeID === hole.holeID && h.entityName === hole.entityName);
@@ -414,7 +420,16 @@ export function showHolePropertyEditor(hole) {
 								}
 							});
 
-							// Step #) Create undo action for deleted holes
+							// Step 10c.2c) Fix orphaned fromHoleID references pointing to deleted holes
+							// This must happen BEFORE renumbering so renumberHolesFunction can update them properly
+							window.allBlastHoles.forEach(h => {
+								if (h.fromHoleID && deletedHoleIDs.has(h.fromHoleID)) {
+									// Set orphaned fromHoleID to point to itself (self-connected)
+									h.fromHoleID = h.entityName + ":::" + h.holeID;
+								}
+							});
+
+							// Step 10c.2d) Create undo action for deleted holes
 							if (window.undoManager && holesToDeleteForUndo.length > 0) {
 								var deleteAction;
 								if (holesToDeleteForUndo.length === 1) {
@@ -425,7 +440,8 @@ export function showHolePropertyEditor(hole) {
 								window.undoManager.pushAction(deleteAction);
 							}
 
-							// Renumber each affected entity with user-specified starting number (USE FACTORY CODE)
+							// Step 10c.2e) Renumber each affected entity with user-specified starting number (USE FACTORY CODE)
+							// renumberHolesFunction will update fromHoleID references as holeIDs change
 							entitiesToRenumber.forEach(entityName => {
 								window.renumberHolesFunction(startNumber, entityName);
 							});
@@ -451,7 +467,13 @@ export function showHolePropertyEditor(hole) {
 				() => {
 					// Step 10c.4) No - Delete without renumbering
 
-					// Step #) Capture holes for undo BEFORE deletion
+					// Step 10c.4a) Build set of deleted hole combined IDs for orphan detection
+					const deletedHoleIDs = new Set();
+					holes.forEach(hole => {
+						deletedHoleIDs.add(hole.entityName + ":::" + hole.holeID);
+					});
+
+					// Step 10c.4b) Capture holes for undo BEFORE deletion
 					var holesToDeleteForUndo = [];
 					holes.forEach(hole => {
 						const index = window.allBlastHoles.findIndex(h => h.holeID === hole.holeID && h.entityName === hole.entityName);
@@ -464,7 +486,15 @@ export function showHolePropertyEditor(hole) {
 						}
 					});
 
-					// Step #) Create undo action for deleted holes
+					// Step 10c.4c) Fix orphaned fromHoleID references pointing to deleted holes
+					window.allBlastHoles.forEach(h => {
+						if (h.fromHoleID && deletedHoleIDs.has(h.fromHoleID)) {
+							// Set orphaned fromHoleID to point to itself (self-connected)
+							h.fromHoleID = h.entityName + ":::" + h.holeID;
+						}
+					});
+
+					// Step 10c.4d) Create undo action for deleted holes
 					if (window.undoManager && holesToDeleteForUndo.length > 0) {
 						var deleteAction;
 						if (holesToDeleteForUndo.length === 1) {
@@ -517,7 +547,7 @@ export function showHolePropertyEditor(hole) {
 				"",
 				// onBefore callback - Insert BEFORE the selected hole
 				customID => {
-					// Validate custom hole ID
+					// Step 1) Validate custom hole ID
 					if (customID && customID.trim()) {
 						const trimmedID = customID.trim();
 						const existingHole = window.allBlastHoles.find(h => h.entityName === sourceHole.entityName && h.holeID === trimmedID);
@@ -527,7 +557,7 @@ export function showHolePropertyEditor(hole) {
 						}
 					}
 
-					// Calculate insert position BEFORE source hole
+					// Step 2) Calculate insert position BEFORE source hole
 					let insertX, insertY, insertZ;
 					const prevHole = sourceIndex > 0 ? holesInRow[sourceIndex - 1] : null;
 
@@ -551,6 +581,7 @@ export function showHolePropertyEditor(hole) {
 						insertZ = sourceHole.startZLocation;
 					}
 
+					// Step 3) Create new hole - DO NOT copy fromHoleID from source
 					const newHole = {
 						...sourceHole,
 						holeID: customID && customID.trim() ? customID.trim() : "TEMP_ID",
@@ -559,10 +590,12 @@ export function showHolePropertyEditor(hole) {
 						startZLocation: insertZ,
 						posID: sourceHole.posID ? String(parseInt(sourceHole.posID)) : "1",
 						visible: true,
-						hasCustomID: customID && customID.trim() ? true : false
+						hasCustomID: customID && customID.trim() ? true : false,
+						// Step 3a) Clear fromHoleID - will be set to self after final holeID is assigned
+						fromHoleID: ""
 					};
 
-					// Remove copied geometry properties so they'll be recalculated
+					// Step 4) Remove copied geometry properties so they'll be recalculated
 					delete newHole.endXLocation;
 					delete newHole.endYLocation;
 					delete newHole.endZLocation;
@@ -574,33 +607,59 @@ export function showHolePropertyEditor(hole) {
 					const globalIndex = window.allBlastHoles.findIndex(h => h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName);
 
 					if (globalIndex !== -1) {
-						// Insert hole into array FIRST (calculateHoleGeometry needs it to exist in array)
+						// Step 5) Insert hole into array FIRST (calculateHoleGeometry needs it to exist in array)
 						window.allBlastHoles.splice(globalIndex, 0, newHole);
 
-						// Now recalculate geometry based on new collar position using mode 1 (Length)
+						// Step 6) Recalculate geometry based on new collar position using mode 1 (Length)
 						if (typeof window.calculateHoleGeometry === "function") {
 							window.calculateHoleGeometry(newHole, newHole.holeLengthCalculated, 1);
 						}
+
+						// Step 7) Build oldToNewHoleIDMap BEFORE renumbering to track changes
+						const oldToNewHoleIDMap = new Map();
 
 						if (!customID || !customID.trim()) {
 							const sourceNum = sourceHole.holeID.match(/\d+/);
 							const sourceNumber = sourceNum ? parseInt(sourceNum[0]) : 1;
 							const prefix = sourceHole.holeID.replace(/\d+/g, "");
+							
+							// Step 7a) Assign new hole its ID
 							newHole.holeID = prefix + sourceNumber;
-							// Renumber from source hole onwards, skip holes with custom IDs
+							
+							// Step 7b) Renumber from source hole onwards, building the mapping
 							let nextNum = sourceNumber + 1;
 							for (let i = globalIndex + 1; i < window.allBlastHoles.length; i++) {
 								const h = window.allBlastHoles[i];
 								if (h.entityName === sourceHole.entityName) {
 									if (!h.hasCustomID) {
-										h.holeID = prefix + nextNum;
+										const oldID = h.holeID;
+										const newID = prefix + nextNum;
+										oldToNewHoleIDMap.set(oldID, newID);
+										h.holeID = newID;
 									}
 									nextNum++;
 								}
 							}
 						}
 
-						// Increment posID for all holes from insertion point onwards
+						// Step 8) Set new hole's fromHoleID to point to itself (self-connected)
+						newHole.fromHoleID = sourceHole.entityName + ":::" + newHole.holeID;
+
+						// Step 9) Update fromHoleID references for all holes in this entity
+						window.allBlastHoles.forEach(h => {
+							if (h.fromHoleID && h !== newHole) {
+								const parts = h.fromHoleID.split(":::");
+								if (parts.length === 2) {
+									const entity = parts[0];
+									const oldHoleID = parts[1];
+									if (entity === sourceHole.entityName && oldToNewHoleIDMap.has(oldHoleID)) {
+										h.fromHoleID = entity + ":::" + oldToNewHoleIDMap.get(oldHoleID);
+									}
+								}
+							}
+						});
+
+						// Step 10) Increment posID for all holes from insertion point onwards
 						for (let i = globalIndex + 1; i < window.allBlastHoles.length; i++) {
 							const h = window.allBlastHoles[i];
 							if (h.entityName === sourceHole.entityName && h.rowID === sourceHole.rowID) {
@@ -621,7 +680,7 @@ export function showHolePropertyEditor(hole) {
 				},
 				// onAfter callback - Insert AFTER the selected hole
 				customID => {
-					// Validate custom hole ID
+					// Step 1) Validate custom hole ID
 					if (customID && customID.trim()) {
 						const trimmedID = customID.trim();
 						const existingHole = window.allBlastHoles.find(h => h.entityName === sourceHole.entityName && h.holeID === trimmedID);
@@ -631,7 +690,7 @@ export function showHolePropertyEditor(hole) {
 						}
 					}
 
-					// Calculate insert position AFTER source hole
+					// Step 2) Calculate insert position AFTER source hole
 					let insertX, insertY, insertZ;
 					const nextHole = sourceIndex < holesInRow.length - 1 ? holesInRow[sourceIndex + 1] : null;
 
@@ -656,6 +715,7 @@ export function showHolePropertyEditor(hole) {
 						insertZ = sourceHole.startZLocation;
 					}
 
+					// Step 3) Create new hole - DO NOT copy fromHoleID from source
 					const newHole = {
 						...sourceHole,
 						holeID: customID && customID.trim() ? customID.trim() : "TEMP_ID",
@@ -664,10 +724,12 @@ export function showHolePropertyEditor(hole) {
 						startZLocation: insertZ,
 						posID: sourceHole.posID ? String(parseInt(sourceHole.posID) + 1) : "1",
 						visible: true,
-						hasCustomID: customID && customID.trim() ? true : false
+						hasCustomID: customID && customID.trim() ? true : false,
+						// Step 3a) Clear fromHoleID - will be set to self after final holeID is assigned
+						fromHoleID: ""
 					};
 
-					// Remove copied geometry properties so they'll be recalculated
+					// Step 4) Remove copied geometry properties so they'll be recalculated
 					delete newHole.endXLocation;
 					delete newHole.endYLocation;
 					delete newHole.endZLocation;
@@ -679,33 +741,59 @@ export function showHolePropertyEditor(hole) {
 					const globalIndex = window.allBlastHoles.findIndex(h => h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName);
 
 					if (globalIndex !== -1) {
-						// Insert hole into array FIRST (calculateHoleGeometry needs it to exist in array)
+						// Step 5) Insert hole into array FIRST (calculateHoleGeometry needs it to exist in array)
 						window.allBlastHoles.splice(globalIndex + 1, 0, newHole);
 
-						// Now recalculate geometry based on new collar position using mode 1 (Length)
+						// Step 6) Recalculate geometry based on new collar position using mode 1 (Length)
 						if (typeof window.calculateHoleGeometry === "function") {
 							window.calculateHoleGeometry(newHole, newHole.holeLengthCalculated, 1);
 						}
+
+						// Step 7) Build oldToNewHoleIDMap BEFORE renumbering to track changes
+						const oldToNewHoleIDMap = new Map();
 
 						if (!customID || !customID.trim()) {
 							const sourceNum = sourceHole.holeID.match(/\d+/);
 							const sourceNumber = sourceNum ? parseInt(sourceNum[0]) : 1;
 							const prefix = sourceHole.holeID.replace(/\d+/g, "");
+							
+							// Step 7a) Assign new hole its ID
 							newHole.holeID = prefix + (sourceNumber + 1);
-							// Renumber ONLY holes after the inserted one, skip holes with custom IDs
+							
+							// Step 7b) Renumber ONLY holes after the inserted one, building the mapping
 							let nextNum = sourceNumber + 2;
 							for (let i = globalIndex + 2; i < window.allBlastHoles.length; i++) {
 								const h = window.allBlastHoles[i];
 								if (h.entityName === sourceHole.entityName) {
 									if (!h.hasCustomID) {
-										h.holeID = prefix + nextNum;
+										const oldID = h.holeID;
+										const newID = prefix + nextNum;
+										oldToNewHoleIDMap.set(oldID, newID);
+										h.holeID = newID;
 									}
 									nextNum++;
 								}
 							}
 						}
 
-						// Increment posID for all holes after insertion
+						// Step 8) Set new hole's fromHoleID to point to itself (self-connected)
+						newHole.fromHoleID = sourceHole.entityName + ":::" + newHole.holeID;
+
+						// Step 9) Update fromHoleID references for all holes in this entity
+						window.allBlastHoles.forEach(h => {
+							if (h.fromHoleID && h !== newHole) {
+								const parts = h.fromHoleID.split(":::");
+								if (parts.length === 2) {
+									const entity = parts[0];
+									const oldHoleID = parts[1];
+									if (entity === sourceHole.entityName && oldToNewHoleIDMap.has(oldHoleID)) {
+										h.fromHoleID = entity + ":::" + oldToNewHoleIDMap.get(oldHoleID);
+									}
+								}
+							}
+						});
+
+						// Step 10) Increment posID for all holes after insertion
 						for (let i = globalIndex + 2; i < window.allBlastHoles.length; i++) {
 							const h = window.allBlastHoles[i];
 							if (h.entityName === sourceHole.entityName && h.rowID === sourceHole.rowID) {
