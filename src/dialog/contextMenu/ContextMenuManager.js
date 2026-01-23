@@ -535,6 +535,7 @@ export function closeAllContextMenus() {
     // Find all elements that could be context menus
     const existingMenus = document.querySelectorAll('.context-menu, [style*="position: absolute"][style*="background"], div[onclick]');
 
+    let menusClosed = false;
     existingMenus.forEach((menu) => {
         // Check if it looks like a context menu (has background and position styling)
         const style = menu.style;
@@ -542,6 +543,7 @@ export function closeAllContextMenus() {
             try {
                 document.body.removeChild(menu);
                 console.log("🗑️ Removed existing context menu");
+                menusClosed = true;
                 if (typeof window.debouncedUpdateTreeView === "function") {
                     window.debouncedUpdateTreeView(); // Use debounced version
                 }
@@ -550,6 +552,15 @@ export function closeAllContextMenus() {
             }
         }
     });
+
+    // Step 4a) Trigger 3D redraw after closing menus to ensure geometry updates are visible
+    if (menusClosed) {
+        if (typeof window.redraw3D === "function") {
+            window.redraw3D();
+        } else if (typeof window.drawData === "function") {
+            window.drawData(window.allBlastHoles, window.selectedHole);
+        }
+    }
 }
 
 // Step 5) KAD context menu for when KAD tools are active

@@ -321,7 +321,7 @@ export function showHolePropertyEditor(hole) {
 	noteDiv.style.marginTop = "10px";
 	noteDiv.style.fontSize = "10px";
 	noteDiv.style.color = "#888";
-	noteDiv.textContent = isMultiple ? "Note: Use +/- for relative changes (e.g., +0.3, -0.2). Only changed values will be applied." : "Note: Use +/- for relative changes (e.g., +0.3, -0.2). Select hole type from dropdown or choose 'Other' for custom. Curved connectors are made by seting connector curve to (45° to 120°, -45° to -120°) Straight connctors are 0°";
+	noteDiv.textContent = isMultiple ? "Note: Use = prefix for calculations (e.g., =+0.3 to add, =-0.2 to subtract). Plain numbers set absolute values. Only changed values will be applied." : "Note: Use = prefix for calculations (e.g., =+0.3 to add, =-0.2 to subtract). Plain numbers (including negatives like -0.3) set absolute values. Curved connectors: 45° to 120° or -45° to -120°. Straight: 0°";
 	formContent.appendChild(noteDiv);
 
 	// Step 10) Create dialog
@@ -744,20 +744,25 @@ export function showHolePropertyEditor(hole) {
 // Step 11) Process hole property updates (extracted from original logic)
 export function processHolePropertyUpdates(holes, formData, originalValues, isMultiple) {
 	// Step 11a) Helper function to handle relative/absolute value changes
+	// Uses "=" prefix for calculations: =+1 adds 1, =-1 subtracts 1
+	// Plain numbers (including negatives like -0.3) are treated as absolute/literal values
 	function processNumericValue(inputValue, originalValue, currentHoleValue) {
 		if (inputValue === "" || inputValue === originalValue) {
 			return null; // No change
 		}
 
-		if (inputValue.startsWith("+") || inputValue.startsWith("-")) {
-			// Relative adjustment
-			const delta = parseFloat(inputValue);
+		// Step 11a.1) Check for formula/calculation mode (starts with =)
+		if (inputValue.startsWith("=")) {
+			// Step 11a.2) Parse the expression after the = sign
+			// e.g., "=+1" -> "+1" -> adds 1, "=-0.3" -> "-0.3" -> subtracts 0.3
+			var expression = inputValue.substring(1);
+			var delta = parseFloat(expression);
 			if (!isNaN(delta)) {
 				return currentHoleValue + delta;
 			}
 		} else {
-			// Absolute value
-			const absoluteValue = parseFloat(inputValue);
+			// Step 11a.3) Absolute/literal value (including negative numbers like -0.3)
+			var absoluteValue = parseFloat(inputValue);
 			if (!isNaN(absoluteValue)) {
 				return absoluteValue;
 			}

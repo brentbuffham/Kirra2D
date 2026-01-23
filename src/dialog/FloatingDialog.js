@@ -137,7 +137,11 @@ class FloatingDialog {
 		closeBtn.onmouseout = () => {
 			closeBtn.style.color = "inherit";
 		};
-		closeBtn.onclick = () => this.close();
+		// Step 11a) X button triggers onCancel before closing (for cleanup/redraw)
+		closeBtn.onclick = () => {
+			if (this.options.onCancel) this.options.onCancel();
+			this.close();
+		};
 
 		header.appendChild(closeBtn);
 
@@ -304,12 +308,16 @@ class FloatingDialog {
 		// Step 1) Guard against null element (dialog may already be closed)
 		if (!this.element) return;
 		if (!this.element.contains(e.target)) {
+			// Step 1a) Trigger onCancel before closing (for cleanup/redraw)
+			if (this.options.onCancel) this.options.onCancel();
 			this.close();
 		}
 	}
 
 	handleKeydown(e) {
 		if (e.key === "Escape" && this.element) {
+			// Step 1b) Trigger onCancel before closing (for cleanup/redraw)
+			if (this.options.onCancel) this.options.onCancel();
 			this.close();
 		}
 	}

@@ -408,7 +408,10 @@ class SurpacSTRParser extends BaseParser {
 			baseName = typePrefix + "_" + stringNumber;
 		}
 
-		// Step 38) Always append unique counter to guarantee uniqueness
+		// Step 38) Sanitize baseName - remove characters invalid in CSS selectors
+		baseName = baseName.replace(/[^a-zA-Z0-9_-]/g, "_");
+
+		// Step 38b) Always append unique counter to guarantee uniqueness
 		var uniqueName = baseName + "_" + this.padNumber(this.entityCounter, 4);
 
 		// Step 39) Double-check uniqueness (safety)
@@ -454,9 +457,11 @@ class SurpacSTRParser extends BaseParser {
 		var currentHole = null;
 		var holeCounter = 1;
 
-		// Step 44) AUTO-DETECT: Determine if file uses 1-byte or 2-byte string numbers
-		var use2ByteStringNum = this.detectStringNumberFormat(bytes);
-		console.log("Binary STR format: " + (use2ByteStringNum ? "2-byte" : "1-byte") + " string numbers");
+		// Step 44) AUTO-DETECT: Determine format (1-byte vs 2-byte string#, and endianness)
+		var format = this.detectBinaryFormat(bytes);
+		var use2ByteStringNum = format.use2Byte;
+		var littleEndian = format.littleEndian;
+		console.log("Binary STR format: " + (use2ByteStringNum ? "2-byte" : "1-byte") + " string numbers, " + (littleEndian ? "little" : "big") + "-endian");
 
 		var pos = 0;
 
@@ -479,11 +484,15 @@ class SurpacSTRParser extends BaseParser {
 				var minBytes = use2ByteStringNum ? 26 : 25;
 				if (pos >= bytes.length - minBytes) break;
 
-				// Step 48) Read string number (1-byte or 2-byte based on detection)
+				// Step 48) Read string number (1-byte or 2-byte, with correct endianness)
 				var stringNumber;
 				if (use2ByteStringNum) {
-					// 2-byte big-endian uint16 (supports string# 1-32000)
-					stringNumber = (bytes[pos] << 8) | bytes[pos + 1];
+					// 2-byte uint16 (supports string# 1-32000)
+					if (littleEndian) {
+						stringNumber = bytes[pos] | (bytes[pos + 1] << 8);
+					} else {
+						stringNumber = (bytes[pos] << 8) | bytes[pos + 1];
+					}
 					pos += 2;
 
 					// Skip invalid/separator values
@@ -504,56 +513,82 @@ class SurpacSTRParser extends BaseParser {
 					}
 				}
 
-				// Step 49) Read Y, X, Z as doubles (BIG-ENDIAN for Surpac)
+				// Step 49) Read Y, X, Z as doubles (endianness from auto-detection)
 				if (pos + 24 > bytes.length) break;
 
 				var coordView = new DataView(bytes.buffer, bytes.byteOffset + pos);
-				var y = coordView.getFloat64(0, false); // big-endian
-				var x = coordView.getFloat64(8, false);
-				var z = coordView.getFloat64(16, false);
+				var y = coordView.getFloat64(0, littleEndian);
+				var x = coordView.getFloat64(8, littleEndian);
+				var z = coordView.getFloat64(16, littleEndian);
 				pos += 24;
 
-				// Step 50) Validate coordinates - must be reasonable UTM-range values
-				if (isNaN(x) || isNaN(y) || isNaN(z)) {
-					continue;
-				}
+			// Step 50) Validate coordinates - must be reasonable values
+			if (isNaN(x) || isNaN(y) || isNaN(z)) {
+				continue;
+			}
 
-				// Step 50b) Reject garbage values (outside UTM range)
-				if (Math.abs(x) > 1e12 || Math.abs(y) > 1e12 || Math.abs(z) > 1e12) {
-					continue;
-				}
-
-				// Step 51) Skip any padding nulls before description (but not 8+ which is separator)
-				while (pos < bytes.length && bytes[pos] === 0x00) {
+			// Step 50b) Reject garbage values - use full coordinate validation
+			// This catches misaligned reads that produce denormalized floats (e-100, etc.)
+			if (!this.isValidCoordinate(x, y, z)) {
+				console.warn("Garbage coordinates at pos " + (pos - 24) + ", attempting re-sync...");
+				// Step 50c) Re-sync: back up and scan for next 8+ null separator
+				pos = pos - 24; // Go back to before the bad coordinates
+				var resyncFound = false;
+				while (pos < bytes.length - 32) {
+					// Look for 8+ consecutive nulls (record separator)
 					var nullRun = 0;
-					var checkPos = pos;
-					while (checkPos < bytes.length && bytes[checkPos] === 0x00) {
+					while (pos + nullRun < bytes.length && bytes[pos + nullRun] === 0x00) {
 						nullRun++;
-						checkPos++;
 					}
-					if (nullRun >= 8) break; // Leave separator for outer loop
-					pos++; // Skip padding null
-				}
-
-				// Step 52) Read description (printable ASCII until null terminator)
-				var description = "";
-				var maxDescLength = 512;
-				while (pos < bytes.length && description.length < maxDescLength) {
-					var byte = bytes[pos];
-					if (byte >= 0x20 && byte <= 0x7e) {
-						description += String.fromCharCode(byte);
-						pos++;
-					} else {
-						break; // Hit null terminator or non-printable
+					if (nullRun >= 8) {
+						pos += nullRun; // Skip past the nulls
+						resyncFound = true;
+						console.log("Re-synced at position " + pos);
+						break;
 					}
-				}
-
-				// Step 53) Skip the null terminator if present
-				if (pos < bytes.length && bytes[pos] === 0x00) {
 					pos++;
 				}
+				if (!resyncFound) {
+					console.warn("Could not re-sync, stopping binary parse");
+					break;
+				}
+				continue;
+			}
 
-				var desc = description.trim();
+				// Step 51) Read description safely - look for pattern: nulls + printable text + null
+				var desc = "";
+				
+				// Step 51a) Check if there's a description (non-null byte within reasonable distance)
+				var descStart = pos;
+				var foundDesc = false;
+				
+				// Skip up to 8 padding nulls looking for description start
+				while (descStart < bytes.length && descStart < pos + 8 && bytes[descStart] === 0x00) {
+					descStart++;
+				}
+				
+				// Step 51b) If we found a printable byte, read description
+				if (descStart < bytes.length && bytes[descStart] >= 0x20 && bytes[descStart] <= 0x7e) {
+					var descEnd = descStart;
+					// Read printable ASCII until null or non-printable
+					while (descEnd < bytes.length && descEnd < descStart + 512) {
+						var byte = bytes[descEnd];
+						if (byte >= 0x20 && byte <= 0x7e) {
+							descEnd++;
+						} else {
+							break;
+						}
+					}
+					desc = String.fromCharCode.apply(null, bytes.slice(descStart, descEnd)).trim();
+					pos = descEnd;
+					// Skip the null terminator
+					if (pos < bytes.length && bytes[pos] === 0x00) {
+						pos++;
+					}
+					foundDesc = true;
+				}
+				
+				// Step 51c) If no description found, don't advance pos - let outer loop handle nulls
 
 				// Step 54) Check if this is a blast hole (string# 1 with metadata)
 				if (stringNumber === 1 && desc && desc.indexOf(",") !== -1 && desc.indexOf("DrillBlast") !== -1) {
@@ -617,8 +652,9 @@ class SurpacSTRParser extends BaseParser {
 	// =========================================================================
 	// UTILITY METHODS
 	// =========================================================================
-	// Step 61) Detect if binary uses 1-byte or 2-byte string numbers
-	detectStringNumberFormat(bytes) {
+	// Step 61) Detect binary format: string number size (1 or 2 bytes) AND endianness
+	// Returns: { use2Byte: boolean, littleEndian: boolean }
+	detectBinaryFormat(bytes) {
 		// Step 62) Find first non-null position after any initial padding
 		var pos = 0;
 		while (pos < bytes.length && bytes[pos] === 0x00) {
@@ -626,42 +662,54 @@ class SurpacSTRParser extends BaseParser {
 		}
 
 		if (pos >= bytes.length - 26) {
-			return true; // Default to 2-byte (standard format)
+			return { use2Byte: true, littleEndian: false }; // Default
 		}
 
-		// Step 63) Try 2-byte string number, read coordinates
-		var stringNum2Byte = (bytes[pos] << 8) | bytes[pos + 1];
-		var valid2Byte = false;
+		// Step 63) Try all 4 combinations and find which produces valid coordinates
+		var combinations = [
+			{ use2Byte: true, littleEndian: false, name: "2-byte big-endian" },
+			{ use2Byte: true, littleEndian: true, name: "2-byte little-endian" },
+			{ use2Byte: false, littleEndian: false, name: "1-byte big-endian" },
+			{ use2Byte: false, littleEndian: true, name: "1-byte little-endian" }
+		];
 
-		if (stringNum2Byte > 0 && stringNum2Byte <= 32000 && pos + 26 <= bytes.length) {
-			var view2 = new DataView(bytes.buffer, bytes.byteOffset + pos + 2);
-			var y2 = view2.getFloat64(0, false);
-			var x2 = view2.getFloat64(8, false);
-			var z2 = view2.getFloat64(16, false);
-			valid2Byte = this.isValidUTMCoordinate(x2, y2, z2);
+		for (var i = 0; i < combinations.length; i++) {
+			var combo = combinations[i];
+			var offset = combo.use2Byte ? 2 : 1;
+			var minBytes = combo.use2Byte ? 26 : 25;
+
+			if (pos + minBytes > bytes.length) continue;
+
+			// Step 64) Read string number
+			var stringNum;
+			if (combo.use2Byte) {
+				if (combo.littleEndian) {
+					stringNum = bytes[pos] | (bytes[pos + 1] << 8);
+				} else {
+					stringNum = (bytes[pos] << 8) | bytes[pos + 1];
+				}
+			} else {
+				stringNum = bytes[pos];
+			}
+
+			// Step 65) Validate string number range
+			if (stringNum <= 0 || stringNum > 32000) continue;
+
+			// Step 66) Read coordinates with this endianness
+			var view = new DataView(bytes.buffer, bytes.byteOffset + pos + offset);
+			var y = view.getFloat64(0, combo.littleEndian);
+			var x = view.getFloat64(8, combo.littleEndian);
+			var z = view.getFloat64(16, combo.littleEndian);
+
+			// Step 67) Check if coordinates are valid
+			if (this.isValidCoordinate(x, y, z)) {
+				console.log("Detected binary format: " + combo.name + " (string#=" + stringNum + ", coords: " + y.toFixed(3) + ", " + x.toFixed(3) + ", " + z.toFixed(3) + ")");
+				return { use2Byte: combo.use2Byte, littleEndian: combo.littleEndian };
+			}
 		}
 
-		// Step 64) Try 1-byte string number, read coordinates
-		var stringNum1Byte = bytes[pos];
-		var valid1Byte = false;
-
-		if (stringNum1Byte > 0 && stringNum1Byte <= 255 && pos + 25 <= bytes.length) {
-			var view1 = new DataView(bytes.buffer, bytes.byteOffset + pos + 1);
-			var y1 = view1.getFloat64(0, false);
-			var x1 = view1.getFloat64(8, false);
-			var z1 = view1.getFloat64(16, false);
-			valid1Byte = this.isValidUTMCoordinate(x1, y1, z1);
-		}
-
-		// Step 65) Prefer 2-byte (supports full range), fall back to 1-byte
-		if (valid2Byte) {
-			return true; // Use 2-byte
-		} else if (valid1Byte) {
-			return false; // Use 1-byte
-		} else {
-			console.warn("Could not auto-detect string number format, defaulting to 2-byte");
-			return true; // Default to 2-byte
-		}
+		console.warn("Could not auto-detect binary format, defaulting to 2-byte big-endian");
+		return { use2Byte: true, littleEndian: false };
 	}
 
 	// Step 66) Check if coordinates are valid (any coordinate system)
