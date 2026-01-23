@@ -502,6 +502,15 @@ function worldToThreeLocal(worldX, worldY) {
 	};
 }
 
+// Step 2.1) Helper to convert local Three.js coordinates back to world coordinates
+// This is the REVERSE of worldToThreeLocal - adds origin offset back
+function threeLocalToWorld(localX, localY) {
+	return {
+		x: localX + threeLocalOriginX,
+		y: localY + threeLocalOriginY,
+	};
+}
+
 // Step 2a) Helper to project 3D world position to 2D screen pixels (for selection and raycasting)
 function worldToScreen(worldX, worldY, worldZ) {
 	// Step 2a.1) Early return if Three.js not initialized
@@ -531,6 +540,7 @@ function worldToScreen(worldX, worldY, worldZ) {
 
 // Expose globals for canvas3DDrawing.js module
 window.worldToThreeLocal = worldToThreeLocal;
+window.threeLocalToWorld = threeLocalToWorld;
 window.worldToScreen = worldToScreen;
 // Note: getSnapRadiusInWorldUnits3D exposed near its definition (line ~36617)
 
@@ -3447,6 +3457,10 @@ document.addEventListener("DOMContentLoaded", function () {
 				if (cameraControls && cameraControls.resetPanState) {
 					cameraControls.resetPanState();
 				}
+				// Step 1cb.1) Reset snap Z cache for clean 3D initialization
+				if (typeof resetSnapZCache === "function") {
+					resetSnapZCache();
+				}
 				console.log("🧊 3D-ONLY Mode: ON (cube icon active, 2D canvas hidden)");
 
 				// Step 1cc.0b) Clear text cache to ensure text renders at correct scale
@@ -3536,49 +3550,19 @@ document.addEventListener("DOMContentLoaded", function () {
 							directionArrows = result.directionArrows;
 						}
 					}
-					// Step 1cd.2) Now draw the data with populated contours/arrows
-					// Step 1cd.2a) Store Three.js initialization state BEFORE drawData()
-					drawData(allBlastHoles, selectedHole);
+				}
 
-					// Step 1cd.3) CRITICAL FIX: Complete 3D setup AFTER drawData() initializes Three.js
-					// This ensures threeRenderer and cameraControls exist
-					if (threeInitialized) {
-						// Three.js was just initialized during drawData()
-						console.log("📷 Three.js just initialized - completing 3D mode setup");
+				// Step 1cd.2) Update centroids FIRST to set orbit center Z correctly
+				// This MUST happen BEFORE drawData() or any camera sync
+				updateCentroids();
 
-						// Step 1cd.3a) Now set the orbit center (threeRenderer now exists)
-						if (threeRenderer && typeof threeRenderer.setOrbitCenter === "function") {
-							var fullCentroid = calculateDataCentroid();
-							threeRenderer.setOrbitCenterZ(fullCentroid.z);
-							console.log("🎯 Orbit center set after init: X=" + fullCentroid.x.toFixed(2) + " Y=" + fullCentroid.y.toFixed(2) + " Z=" + fullCentroid.z.toFixed(2));
-						}
+				// Step 1cd.3) Draw data (this may initialize Three.js if not already done)
+				drawData(allBlastHoles, selectedHole);
 
-						// Step 1cd.3b) Sync camera with proper state
-						syncCameraToThreeJS();
-						console.log("📷 Camera synced after Three.js initialization on 3D mode switch");
-						// Step 1cd.3c) Force a mouse move event to initialize the torus indicator
-						requestAnimationFrame(function () {
-							if (threeRenderer) {
-								var threeCanvas = threeRenderer.getCanvas();
-								if (threeCanvas) {
-									var rect = threeCanvas.getBoundingClientRect();
-									var centerX = rect.left + rect.width / 2;
-									var centerY = rect.top + rect.height / 2;
-									var syntheticEvent = new MouseEvent("mousemove", {
-										bubbles: true,
-										cancelable: true,
-										clientX: centerX,
-										clientY: centerY,
-										button: 0,
-										buttons: 0
-									});
-									// Synthetic Events is killing the GPU and destroying performance.  
-									// document.dispatchEvent(syntheticEvent);
-									// console.log("🖱️ Synthetic mouse move dispatched to initialize cursor");
-								}
-							}
-						});
-					}
+				// Step 1cd.4) Sync camera state (preserves current position/zoom, just applies orbit center Z)
+				if (threeInitialized && cameraControls) {
+					syncCameraToThreeJS();
+					console.log("📷 Camera synced on 3D mode switch (position preserved)");
 				}
 				console.log("🔄 3D mode setup complete");
 				console.log("🔄 threeInitialized:", threeInitialized);
@@ -32732,9 +32716,10 @@ function updateCentroids() {
 	centroidNeedsRecalculation = false;
 	window.centroidNeedsRecalculation = false;
 
-	// Step 5c) CRITICAL FIX: Update threeRenderer orbit center when centroids change
+	// Step 5c) CRITICAL FIX: Update threeRenderer orbit center Z when centroids change
 	// Without this, the 3D cursor (torus) disappears when orbiting because the view plane
 	// is positioned at the old orbitCenterZ (often 0) instead of the actual data Z elevation
+	// NOTE: Only Z is set because X/Y data is translated to local coords (0,0)
 	if (threeRenderer && typeof threeRenderer.setOrbitCenterZ === "function") {
 		threeRenderer.setOrbitCenterZ(fullCentroid.z);
 		if (developerModeEnabled) {
@@ -46824,72 +46809,81 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 		});
 	}
 
-	// Step 3c) Search Surface Points (from all loaded surfaces)
-	if (loadedSurfaces && loadedSurfaces.size > 0) {
-		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
-			if (surface.visible && surface.points && surface.points.length > 0) {
-				surface.points.forEach(function (surfacePoint, index) {
-					// Convert world coords to local for ray comparison
-					const pointLocal = worldToLocal(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0);
-					const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
-
-					if (pointResult.distance <= snapRadiusWorld && pointResult.rayT > 0) {
-						// Return actual object world coordinates
-						snapCandidates.push({
-							distance: pointResult.distance,
-							rayT: pointResult.rayT,
-							point: { x: surfacePoint.x, y: surfacePoint.y, z: surfacePoint.z || 0 },
-							type: "SURFACE_POINT",
-							priority: MOVE_SNAP_PRIORITIES.SURFACE_POINT,
-							description: surface.name + " point " + index,
-						});
-					}
-				});
+	// Step 3c) Search Surface Points and Faces using BVH-accelerated raycast
+	// BVH is built on surface meshes in GeometryFactory.createSurface() - this uses it automatically
+	if (loadedSurfaces && loadedSurfaces.size > 0 && tr && tr.surfaceMeshMap) {
+		// Step 3c.1) Collect visible surface meshes with BVH
+		var surfaceMeshes = [];
+		tr.surfaceMeshMap.forEach(function(mesh, surfaceId) {
+			var surface = loadedSurfaces.get(surfaceId);
+			if (mesh && mesh.visible && surface && surface.visible) {
+				surfaceMeshes.push({ mesh: mesh, surfaceId: surfaceId, surface: surface });
 			}
-
-			// Step 3d) Search Surface Faces (triangulated mesh) with ray intersection and Z interpolation
-			if (surface.visible && surface.triangles && surface.triangles.length > 0) {
-				surface.triangles.forEach(function (triangle, triIndex) {
-					if (!triangle.vertices || triangle.vertices.length !== 3) return;
-
-					const v1 = triangle.vertices[0];
-					const v2 = triangle.vertices[1];
-					const v3 = triangle.vertices[2];
-
-					// Convert triangle vertices to local coords for ray comparison
-					const v1Local = worldToLocal(v1.x, v1.y, v1.z || 0);
-					const v2Local = worldToLocal(v2.x, v2.y, v2.z || 0);
-					const v3Local = worldToLocal(v3.x, v3.y, v3.z || 0);
-
-					// Perform ray-triangle intersection
-					const intersection = rayTriangleIntersection(rayOrigin, rayDirection, v1Local, v2Local, v3Local);
-
-					if (intersection && intersection.t > 0) {
-						// Calculate perpendicular distance from ray to intersection point
-						const dist = 0; // Ray intersects triangle, so distance is 0
-
-						if (dist <= snapRadius) {
-							// Convert intersection point back to world coordinates
-							// Use barycentric coordinates to interpolate world position
-							const u = intersection.u;
-							const v = intersection.v;
-							const w = 1 - u - v;
-
-							const worldX = w * v1.x + u * v2.x + v * v3.x;
-							const worldY = w * v1.y + u * v2.y + v * v3.y;
-							const worldZ = w * v1.z + u * v2.z + v * v3.z;
-
+		});
+		
+		// Step 3c.2) Raycast against surface meshes (BVH-accelerated via three-mesh-bvh)
+		if (surfaceMeshes.length > 0 && im && im.raycaster) {
+			// Step 3c.2a) CRITICAL: Set raycaster ray to match the passed-in ray parameters
+			// The raycaster's internal ray may be stale or different from the ray we're snapping with
+			im.raycaster.ray.origin.set(rayOrigin.x, rayOrigin.y, rayOrigin.z);
+			im.raycaster.ray.direction.set(rayDirection.x, rayDirection.y, rayDirection.z);
+			
+			var meshArray = surfaceMeshes.map(function(item) { return item.mesh; });
+			var surfaceHits = im.raycaster.intersectObjects(meshArray, true);
+			
+			// Step 3c.3) Process hits - add SURFACE_FACE and SURFACE_POINT candidates
+			for (var hi = 0; hi < surfaceHits.length && hi < 5; hi++) {
+				var hit = surfaceHits[hi];
+				var hitMesh = hit.object;
+				
+				// Step 3c.4) Find surfaceId - check hit mesh and parents
+				var surfaceId = hitMesh.userData ? hitMesh.userData.surfaceId : null;
+				if (!surfaceId && hitMesh.parent && hitMesh.parent.userData) {
+					surfaceId = hitMesh.parent.userData.surfaceId;
+				}
+				var surface = surfaceId ? loadedSurfaces.get(surfaceId) : null;
+				if (!surface) continue;
+				
+				// Step 3d) SURFACE_FACE: Use ray-surface intersection point with interpolated Z
+				// Convert hit point from local to world coordinates
+				var hitWorld = localToWorld(hit.point.x, hit.point.y, hit.point.z);
+				snapCandidates.push({
+					distance: 0, // Ray hit surface directly
+					rayT: hit.distance,
+					point: { x: hitWorld.x, y: hitWorld.y, z: hitWorld.z },
+					type: "SURFACE_FACE",
+					priority: MOVE_SNAP_PRIORITIES.SURFACE_FACE,
+					description: surface.name + " face"
+				});
+				
+				// Step 3e) SURFACE_POINT: Find nearest vertex of hit triangle
+				// Check vertices of the hit face for potential vertex snap
+				if (hit.face && surface.triangles && hit.faceIndex !== undefined) {
+					var tri = surface.triangles[hit.faceIndex];
+					if (tri && tri.vertices) {
+						var nearestVertex = null;
+						var nearestDist = snapRadiusWorld;
+						for (var vi = 0; vi < tri.vertices.length; vi++) {
+							var v = tri.vertices[vi];
+							var vLocal = worldToLocal(v.x, v.y, v.z || 0);
+							var vResult = distanceFromPointToRay(vLocal, rayOrigin, rayDirection);
+							if (vResult.distance < nearestDist && vResult.rayT > 0) {
+								nearestDist = vResult.distance;
+								nearestVertex = { point: v, distance: vResult.distance, rayT: vResult.rayT };
+							}
+						}
+						if (nearestVertex) {
 							snapCandidates.push({
-								distance: dist,
-								rayT: intersection.t,
-								point: { x: worldX, y: worldY, z: worldZ },
-								type: "SURFACE_FACE",
-								priority: MOVE_SNAP_PRIORITIES.SURFACE_FACE,
-								description: surface.name + " face " + triIndex,
+								distance: nearestVertex.distance,
+								rayT: nearestVertex.rayT,
+								point: { x: nearestVertex.point.x, y: nearestVertex.point.y, z: nearestVertex.point.z || 0 },
+								type: "SURFACE_POINT",
+								priority: MOVE_SNAP_PRIORITIES.SURFACE_POINT,
+								description: surface.name + " vertex"
 							});
 						}
 					}
-				});
+				}
 			}
 		}
 	}
@@ -47472,6 +47466,18 @@ var MAX_SNAP_ENTITIES = 500; // Max KAD entities checked for snap (raycaster pre
 var MAX_SNAP_POINTS_PER_ENTITY = 200; // Max points per entity checked (raycaster pre-filters to visible only)
 var MAX_SNAP_SEGMENTS_PER_ENTITY = 20; // NEW: Max segments per entity checked
 
+// Step: Cache last snapped Z value to reduce BVH raycast calls
+// When mouse moves but no new surface hit, reuse the last known Z level
+var lastSnapZValue = null; // null = no cached value yet
+var lastSnapSurfaceId = null; // Track which surface the Z came from
+
+// Step: Reset the cached snap Z value (call when surfaces change)
+function resetSnapZCache() {
+	lastSnapZValue = null;
+	lastSnapSurfaceId = null;
+}
+window.resetSnapZCache = resetSnapZCache; // Expose for surface load/unload
+
 function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mouseScreenX, mouseScreenY) {
 	if (!snapEnabled) {
 		return {
@@ -47876,74 +47882,124 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 		});
 	}
 
-	// Step 5) Search Surface Points (if surfaces are loaded) - OPTIMIZED: Only check visible surfaces
-	// CRITICAL FIX: Use mouse world position as search hint instead of checking first N points
-	// This ensures we search for surface vertices near where the user is actually pointing
-	if (loadedSurfaces && loadedSurfaces.size > 0) {
-		// Step 5a) Get approximate mouse world position for spatial filtering
-		// Use view plane intersection to find where the mouse is pointing in world space
-		var mouseHintX = null, mouseHintY = null;
-		if (im && typeof im.getMouseWorldPositionOnViewPlane === "function") {
-			var viewPlanePos = im.getMouseWorldPositionOnViewPlane();
-			if (viewPlanePos && isFinite(viewPlanePos.x) && isFinite(viewPlanePos.y)) {
-				mouseHintX = viewPlanePos.x;
-				mouseHintY = viewPlanePos.y;
+	// Step 5) Search Surface Points and Faces using BVH-accelerated raycast
+	// BVH is built on surface meshes in GeometryFactory.createSurface() - this uses it automatically
+	var surfaceHitFound = false; // Track if we got a surface hit this frame
+	if (loadedSurfaces && loadedSurfaces.size > 0 && tr && tr.surfaceMeshMap) {
+		// Step 5a) Collect visible surface meshes with BVH
+		var surfaceMeshes = [];
+		tr.surfaceMeshMap.forEach(function(mesh, surfaceId) {
+			var surface = loadedSurfaces.get(surfaceId);
+			if (mesh && mesh.visible && surface && surface.visible) {
+				surfaceMeshes.push({ mesh: mesh, surfaceId: surfaceId, surface: surface });
 			}
+		});
+		
+		if (developerModeEnabled && surfaceMeshes.length > 0) {
+			console.log("🏔️ [BVH SNAP] Found " + surfaceMeshes.length + " visible surface meshes for raycast");
 		}
-		// Fallback: use current centroid if view plane intersection fails
-		if (mouseHintX === null) {
-			mouseHintX = window.centroidX || 0;
-			mouseHintY = window.centroidY || 0;
-		}
-
-		// Step 5b) Calculate search radius in world units (generous to catch nearby vertices)
-		// Use 5x the snap radius to ensure we find vertices within snap distance
-		var surfaceSearchRadius = snapRadiusWorld * 5;
-		var surfaceSearchRadiusSq = surfaceSearchRadius * surfaceSearchRadius;
-
-		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
-			if (surface.visible && surface.points && surface.points.length > 0) {
-				// Step 5c) PERFORMANCE: Pre-filter points by XY distance from mouse hint
-				// This is O(n) but with simple distance check, much faster than ray math
-				var nearbyPoints = [];
-				var MAX_NEARBY_POINTS = 200; // Max points to collect near mouse
-
-				for (var pi = 0; pi < surface.points.length && nearbyPoints.length < MAX_NEARBY_POINTS; pi++) {
-					var sp = surface.points[pi];
-					var dxHint = sp.x - mouseHintX;
-					var dyHint = sp.y - mouseHintY;
-					var distSqFromHint = dxHint * dxHint + dyHint * dyHint;
-
-					// Only consider points within search radius of mouse hint
-					if (distSqFromHint <= surfaceSearchRadiusSq) {
-						nearbyPoints.push({ point: sp, index: pi });
+		
+		// Step 5b) Raycast against surface meshes (BVH-accelerated via three-mesh-bvh)
+		if (surfaceMeshes.length > 0 && im && im.raycaster) {
+			// Step 5b.1) CRITICAL: Set raycaster ray to match the passed-in ray parameters
+			// The raycaster's internal ray may be stale or different from the ray we're snapping with
+			im.raycaster.ray.origin.set(rayOrigin.x, rayOrigin.y, rayOrigin.z);
+			im.raycaster.ray.direction.set(rayDirection.x, rayDirection.y, rayDirection.z);
+			
+			var meshArray = surfaceMeshes.map(function(item) { return item.mesh; });
+			var surfaceHits = im.raycaster.intersectObjects(meshArray, true);
+			
+			if (developerModeEnabled && surfaceHits.length > 0) {
+				console.log("🏔️ [BVH SNAP] Raycast hit " + surfaceHits.length + " surfaces, first hit distance: " + surfaceHits[0].distance.toFixed(2));
+			}
+			
+			// Step 5c) Process hits - add SURFACE_FACE and SURFACE_POINT candidates
+			for (var hi = 0; hi < surfaceHits.length && hi < 5; hi++) {
+				var hit = surfaceHits[hi];
+				var hitMesh = hit.object;
+				
+				// Step 5c.1) Find surfaceId - check hit mesh and parents
+				var surfaceId = hitMesh.userData ? hitMesh.userData.surfaceId : null;
+				if (!surfaceId && hitMesh.parent && hitMesh.parent.userData) {
+					surfaceId = hitMesh.parent.userData.surfaceId;
+				}
+				var surface = surfaceId ? loadedSurfaces.get(surfaceId) : null;
+				if (!surface) continue;
+				
+				// Step 5d) SURFACE_FACE: Use ray-surface intersection point
+				// Convert hit point from local to world coordinates
+				var hitWorld = localToWorld(hit.point.x, hit.point.y, hit.point.z);
+				
+				// Step 5d.1) Cache the Z value for future frames (reduces raycast calls)
+				lastSnapZValue = hitWorld.z;
+				lastSnapSurfaceId = surfaceId;
+				surfaceHitFound = true;
+				
+				snapCandidates.push({
+					distance: 0, // Ray hit surface directly
+					rayT: hit.distance,
+					point: { x: hitWorld.x, y: hitWorld.y, z: hitWorld.z },
+					type: "SURFACE_FACE",
+					priority: SNAP_PRIORITIES.SURFACE_FACE,
+					description: surface.name + " face"
+				});
+				
+				// Step 5e) SURFACE_POINT: Find nearest vertex of hit triangle
+				// Check vertices of the hit face for potential vertex snap
+				if (hit.face && surface.triangles && hit.faceIndex !== undefined) {
+					var tri = surface.triangles[hit.faceIndex];
+					if (tri && tri.vertices) {
+						var nearestVertex = null;
+						var nearestDist = snapRadiusWorld;
+						for (var vi = 0; vi < tri.vertices.length; vi++) {
+							var v = tri.vertices[vi];
+							var vLocal = worldToLocal(v.x, v.y, v.z || 0);
+							var vResult = distanceFromPointToRay(vLocal, rayOrigin, rayDirection);
+							if (vResult.distance < nearestDist && vResult.rayT > 0) {
+								nearestDist = vResult.distance;
+								nearestVertex = { point: v, distance: vResult.distance, rayT: vResult.rayT };
+							}
+						}
+						if (nearestVertex) {
+							snapCandidates.push({
+								distance: nearestVertex.distance,
+								rayT: nearestVertex.rayT,
+								point: { x: nearestVertex.point.x, y: nearestVertex.point.y, z: nearestVertex.point.z || 0 },
+								type: "SURFACE_POINT",
+								priority: SNAP_PRIORITIES.SURFACE_POINT,
+								description: surface.name + " vertex"
+							});
+						}
 					}
 				}
-
-				// Step 5d) Now do detailed snap check on just the nearby points
-				nearbyPoints.forEach(function (item) {
-					var surfacePoint = item.point;
-					var index = item.index;
-
-					// PERFORMANCE: Skip surface points not in frustum
-					if (!isPointInFrustum(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0)) return;
-
-					// Convert world coords to local for ray comparison
-					const pointLocal = worldToLocal(surfacePoint.x, surfacePoint.y, surfacePoint.z || 0);
-					const pointResult = distanceFromPointToRay(pointLocal, rayOrigin, rayDirection);
-
-					if (pointResult.distance <= snapRadiusWorld && pointResult.rayT > 0) {
-						// IMPORTANT: Return the ACTUAL object world coordinates, NOT the ray projection point
-						snapCandidates.push({
-							distance: pointResult.distance,
-							rayT: pointResult.rayT,
-							point: { x: surfacePoint.x, y: surfacePoint.y, z: surfacePoint.z || 0 },
-							type: "SURFACE_POINT",
-							priority: SNAP_PRIORITIES.SURFACE_POINT,
-							description: surface.name + " point " + index,
-						});
-					}
-				});
+			}
+		}
+		
+		// Step 5f) If no surface hit but we have a cached Z, use it for SURFACE_FACE_CACHED
+		// This reduces expensive BVH raycasts when moving mouse across same elevation
+		if (!surfaceHitFound && lastSnapZValue !== null && surfaceMeshes.length > 0) {
+			// Use the cached Z value with current mouse XY (converted to world coords)
+			// The ray direction points from camera through mouse - we need the XY at cached Z level
+			// For orthographic camera with -Z looking down, the XY is at ray origin
+			var cachedSurface = lastSnapSurfaceId ? loadedSurfaces.get(lastSnapSurfaceId) : null;
+			var cachedSurfaceName = cachedSurface ? cachedSurface.name : "surface";
+			
+			// Calculate XY intersection at the cached Z level
+			// For orthographic camera looking down (-Z), ray origin XY is the mouse world XY
+			var cachedWorldX = rayOrigin.x + window.threeLocalOriginX;
+			var cachedWorldY = rayOrigin.y + window.threeLocalOriginY;
+			
+			snapCandidates.push({
+				distance: 0,
+				rayT: 1, // Arbitrary distance since we're using cached Z
+				point: { x: cachedWorldX, y: cachedWorldY, z: lastSnapZValue },
+				type: "SURFACE_FACE",
+				priority: SNAP_PRIORITIES.SURFACE_FACE + 1, // Slightly lower priority than actual hit
+				description: cachedSurfaceName + " face (cached Z)"
+			});
+			
+			if (developerModeEnabled) {
+				console.log("🏔️ [BVH SNAP] Using cached Z: " + lastSnapZValue.toFixed(2));
 			}
 		}
 	}
@@ -50631,10 +50687,11 @@ function apply3DSettings(settings) {
 		}
 	}
 
-	// Step 17d) Update orbit center (needed for camera controls, removed grid-specific code)
+	// Step 17d) Update orbit center Z (needed for camera controls, removed grid-specific code)
+	// NOTE: Only Z is set because X/Y data is translated to local coords (0,0)
 	if (threeRenderer) {
 		const centroid = calculateDataCentroid();
-		if (typeof threeRenderer.setOrbitCenter === "function") {
+		if (typeof threeRenderer.setOrbitCenterZ === "function") {
 			threeRenderer.setOrbitCenterZ(centroid.z);
 		}
 	}

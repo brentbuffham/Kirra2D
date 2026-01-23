@@ -67,9 +67,12 @@ class SurpacSurfaceParser extends BaseParser {
 
 			// Step 12a.1) Calculate meshBounds from vertices for centroid calculation
 			// CRITICAL: Without meshBounds, centroid calculation cannot use this surface data
-			var minX = Infinity, maxX = -Infinity;
-			var minY = Infinity, maxY = -Infinity;
-			var minZ = Infinity, maxZ = -Infinity;
+			var minX = Infinity,
+				maxX = -Infinity;
+			var minY = Infinity,
+				maxY = -Infinity;
+			var minZ = Infinity,
+				maxZ = -Infinity;
 			for (var vi = 0; vi < vertices.length; vi++) {
 				var v = vertices[vi];
 				if (v.x < minX) minX = v.x;
@@ -272,7 +275,7 @@ class SurpacSurfaceParser extends BaseParser {
 		var lineCount = 0;
 
 		for (var i = 0; i < Math.min(view.length, 500); i++) {
-			if (view[i] === 0x0A) {
+			if (view[i] === 0x0a) {
 				lineCount++;
 				if (lineCount === 2) {
 					return i + 1;
@@ -464,9 +467,7 @@ class SurpacSurfaceParser extends BaseParser {
 		var hasEmbeddedVertices = headerInfo.hasEmbeddedVertices;
 		var vertexDataEnd = headerInfo.vertexDataEnd;
 
-		console.log("Binary DTM: headerEnd=" + headerEnd + ", hasRecordType=" + hasRecordType + 
-			", hasEmbeddedVertices=" + hasEmbeddedVertices + ", totalSize=" + buffer.byteLength + 
-			", strVertices=" + vertices.length);
+		console.log("Binary DTM: headerEnd=" + headerEnd + ", hasRecordType=" + hasRecordType + ", hasEmbeddedVertices=" + hasEmbeddedVertices + ", totalSize=" + buffer.byteLength + ", strVertices=" + vertices.length);
 
 		// Step 33b) If DTM has embedded vertices, try parsing them as they may be different from STR
 		var useVertices = vertices;
@@ -492,7 +493,7 @@ class SurpacSurfaceParser extends BaseParser {
 		// Format B (without record type): tri_id(4), v1(4), v2(4), v3(4), n1(4), n2(4), n3(4), padding(5) = 33 bytes
 		// Both formats use 33-byte records!
 		var recordSize = 33;
-		var idOffset = hasRecordType ? 4 : 0;  // Offset to triangle ID within record
+		var idOffset = hasRecordType ? 4 : 0; // Offset to triangle ID within record
 		var invalidCount = 0;
 
 		try {
@@ -503,7 +504,7 @@ class SurpacSurfaceParser extends BaseParser {
 				var v1Index = view.getInt32(pos + idOffset + 4, false) - 1;
 				var v2Index = view.getInt32(pos + idOffset + 8, false) - 1;
 				var v3Index = view.getInt32(pos + idOffset + 12, false) - 1;
-				
+
 				pos += recordSize;
 
 				// Step 36) Validate indices
@@ -532,27 +533,36 @@ class SurpacSurfaceParser extends BaseParser {
 		if (invalidCount > 0) {
 			var invalidRatio = invalidCount / totalAttempted;
 			console.warn("Skipped " + invalidCount + " of " + totalAttempted + " triangles with invalid vertex indices (" + Math.round(invalidRatio * 100) + "% invalid)");
-			
+
 			// Step 37c) If more than 30% invalid, this file likely has format issues
 			if (invalidRatio > 0.3 && typeof FloatingDialog !== "undefined") {
 				var darkMode = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : false;
 				var textColor = darkMode ? "#ffffff" : "#000000";
-				var warningContent = 
+				var warningContent =
 					'<div style="text-align: center; padding: 10px;">' +
 					'<div style="color: #ff9800; font-size: 32px; margin-bottom: 15px;">⚠️</div>' +
-					'<div style="color: ' + textColor + '; font-size: 14px; font-weight: bold; margin-bottom: 15px;">' +
-					Math.round(invalidRatio * 100) + '% of triangles have invalid vertex references.</div>' +
-					'<div style="color: ' + textColor + '; font-size: 12px; margin-bottom: 15px; line-height: 1.6;">' +
-					'This binary STR+DTM pair may be from an unsupported<br>Surpac version (e.g., 7.x binary format).</div>' +
-					'<div style="color: ' + textColor + '; font-size: 12px; text-align: left; margin: 15px 20px; line-height: 1.8;">' +
-					'<b>Suggestions:</b><br>' +
-					'&nbsp;&nbsp;• Export as <b>ASCII text format</b> from Surpac<br>' +
-					'&nbsp;&nbsp;• Use Surpac 6.x output format if available<br>' +
-					'&nbsp;&nbsp;• Verify STR and DTM files are from same export</div>' +
+					'<div style="color: ' +
+					textColor +
+					'; font-size: 14px; font-weight: bold; margin-bottom: 15px;">' +
+					Math.round(invalidRatio * 100) +
+					"% of triangles have invalid vertex references.</div>" +
+					'<div style="color: ' +
+					textColor +
+					'; font-size: 12px; margin-bottom: 15px; line-height: 1.6;">' +
+					"This binary STR+DTM pair may be from an unsupported<br>Surpac version (e.g., 7.x binary format).</div>" +
+					'<div style="color: ' +
+					textColor +
+					'; font-size: 12px; text-align: left; margin: 15px 20px; line-height: 1.8;">' +
+					"<b>Suggestions:</b><br>" +
+					"&nbsp;&nbsp;• Export as <b>ASCII text format</b> from Surpac<br>" +
+					"&nbsp;&nbsp;• Use Surpac 6.x output format if available<br>" +
+					"&nbsp;&nbsp;• Verify STR and DTM files are from same export</div>" +
 					'<div style="color: #888; font-size: 11px; font-style: italic; margin-top: 15px;">' +
-					'Imported ' + triangles.length + ' valid triangles (partial surface may be visible).</div>' +
-					'</div>';
-				
+					"Imported " +
+					triangles.length +
+					" valid triangles (partial surface may be visible).</div>" +
+					"</div>";
+
 				var warningDialog = new FloatingDialog({
 					title: "Surface Import Warning",
 					content: warningContent,
@@ -577,36 +587,38 @@ class SurpacSurfaceParser extends BaseParser {
 	parseEmbeddedDTMVertices(buffer, endMarkerPos) {
 		var vertices = [];
 		var view = new Uint8Array(buffer);
-		
+
 		// Step 31c) Find header end (skip text header line ending with CRLF)
 		var headerEnd = 0;
 		for (var i = 0; i < Math.min(view.length, 500); i++) {
-			if (view[i] === 0x0A || view[i] === 0x0D) { // Line feed or carriage return
+			if (view[i] === 0x0a || view[i] === 0x0d) {
+				// Line feed or carriage return
 				headerEnd = i + 1;
 				// Skip additional line ending characters and null padding
-				while (headerEnd < view.length && (view[headerEnd] === 0x0A || view[headerEnd] === 0x0D || view[headerEnd] === 0x00)) {
+				while (headerEnd < view.length && (view[headerEnd] === 0x0a || view[headerEnd] === 0x0d || view[headerEnd] === 0x00)) {
 					headerEnd++;
 				}
 				break;
 			}
 		}
-		
+
 		if (headerEnd === 0) {
 			headerEnd = 80; // Typical header size fallback
 		}
-		
+
 		console.log("Parsing embedded DTM vertices from offset " + headerEnd + " to " + endMarkerPos);
-		
+
 		// Step 31d) Parse vertices: 1-byte string# + 24-byte coords + 4-byte padding = 29 bytes per record
 		var dataView = new DataView(buffer);
 		var pos = headerEnd;
 		var vertexRecordSize = 29; // 1 + 24 + 4 (with null padding)
 		var consecutiveNulls = 0;
-		
+
 		try {
-			while (pos + 25 <= endMarkerPos) { // At least string# + coords
+			while (pos + 25 <= endMarkerPos) {
+				// At least string# + coords
 				var stringNum = view[pos];
-				
+
 				// Step 31e) Check for end of vertex data (multiple consecutive nulls)
 				if (stringNum === 0) {
 					consecutiveNulls++;
@@ -619,21 +631,20 @@ class SurpacSurfaceParser extends BaseParser {
 					continue;
 				}
 				consecutiveNulls = 0;
-				
+
 				// Validate string number (should be small positive number)
 				if (stringNum > 100) {
 					pos++;
 					continue;
 				}
-				
+
 				// Step 31f) Read coordinates as big-endian doubles
 				var y = dataView.getFloat64(pos + 1, false);
 				var x = dataView.getFloat64(pos + 9, false);
 				var z = dataView.getFloat64(pos + 17, false);
-				
+
 				// Validate coordinates (should be reasonable numbers)
-				if (isFinite(x) && isFinite(y) && isFinite(z) && 
-					Math.abs(x) < 1e10 && Math.abs(y) < 1e10 && Math.abs(z) < 1e6) {
+				if (isFinite(x) && isFinite(y) && isFinite(z) && Math.abs(x) < 1e10 && Math.abs(y) < 1e10 && Math.abs(z) < 1e6) {
 					vertices.push({ x: x, y: y, z: z });
 					// Move to next record (skip 4-byte padding after coordinates)
 					pos += vertexRecordSize;
@@ -645,7 +656,7 @@ class SurpacSurfaceParser extends BaseParser {
 		} catch (error) {
 			console.warn("Error parsing embedded DTM vertices:", error);
 		}
-		
+
 		console.log("Parsed " + vertices.length + " embedded vertices from DTM");
 		return vertices;
 	}
@@ -662,7 +673,8 @@ class SurpacSurfaceParser extends BaseParser {
 		// Step 38b) First, search for "END" marker (indicates embedded vertex format)
 		var endMarkerPos = -1;
 		for (var i = 0; i < view.length - 3; i++) {
-			if (view[i] === 0x45 && view[i+1] === 0x4E && view[i+2] === 0x44) { // "END"
+			if (view[i] === 0x45 && view[i + 1] === 0x4e && view[i + 2] === 0x44) {
+				// "END"
 				endMarkerPos = i;
 				console.log("Found END marker at offset " + endMarkerPos + " - DTM has embedded vertices");
 				break;
@@ -672,21 +684,20 @@ class SurpacSurfaceParser extends BaseParser {
 		if (endMarkerPos !== -1) {
 			// Step 38c) Format 2: Scan for triangle start pattern after END marker
 			// Pattern A: 00 00 00 03 00 00 00 01 (record_type=3, tri_id=1)
-			
+
 			var scanStart = endMarkerPos + 3;
 			var scanEnd = Math.min(view.length - 32, endMarkerPos + 500);
-			
+
 			// Step 38d) Look for the byte pattern 00 00 00 03 00 00 00 01
 			for (var pos = scanStart; pos < scanEnd; pos++) {
-				if (view[pos] === 0x00 && view[pos+1] === 0x00 && view[pos+2] === 0x00 && view[pos+3] === 0x03 &&
-					view[pos+4] === 0x00 && view[pos+5] === 0x00 && view[pos+6] === 0x00 && view[pos+7] === 0x01) {
+				if (view[pos] === 0x00 && view[pos + 1] === 0x00 && view[pos + 2] === 0x00 && view[pos + 3] === 0x03 && view[pos + 4] === 0x00 && view[pos + 5] === 0x00 && view[pos + 6] === 0x00 && view[pos + 7] === 0x01) {
 					// Found the pattern, verify vertex indices
 					try {
 						var testView = new DataView(buffer, pos);
 						var v1 = testView.getInt32(8, false);
 						var v2 = testView.getInt32(12, false);
 						var v3 = testView.getInt32(16, false);
-						
+
 						if (v1 > 0 && v1 < 100000 && v2 > 0 && v2 < 100000 && v3 > 0 && v3 < 100000) {
 							console.log("Found triangle data with record type at offset " + pos);
 							return { offset: pos, hasRecordType: true, hasEmbeddedVertices: true, vertexDataEnd: endMarkerPos };
@@ -696,17 +707,17 @@ class SurpacSurfaceParser extends BaseParser {
 					}
 				}
 			}
-			
+
 			// Step 38e) Also try pattern without record type after END marker
 			for (var pos = scanStart; pos < scanEnd; pos++) {
-				if (view[pos] === 0x00 && view[pos+1] === 0x00 && view[pos+2] === 0x00 && view[pos+3] === 0x01) {
+				if (view[pos] === 0x00 && view[pos + 1] === 0x00 && view[pos + 2] === 0x00 && view[pos + 3] === 0x01) {
 					try {
 						var testView = new DataView(buffer, pos);
 						var triId = testView.getInt32(0, false);
 						var v1 = testView.getInt32(4, false);
 						var v2 = testView.getInt32(8, false);
 						var v3 = testView.getInt32(12, false);
-						
+
 						if (triId === 1 && v1 > 0 && v1 < 100000 && v2 > 0 && v2 < 100000 && v3 > 0 && v3 < 100000) {
 							console.log("Found triangle data without record type at offset " + pos);
 							return { offset: pos, hasRecordType: false, hasEmbeddedVertices: true, vertexDataEnd: endMarkerPos };
@@ -716,7 +727,7 @@ class SurpacSurfaceParser extends BaseParser {
 					}
 				}
 			}
-			
+
 			console.warn("Could not find triangle pattern after END marker");
 		}
 
@@ -728,7 +739,7 @@ class SurpacSurfaceParser extends BaseParser {
 				var v1 = testView.getInt32(4, false);
 				var v2 = testView.getInt32(8, false);
 				var v3 = testView.getInt32(12, false);
-				
+
 				if (triId === 1 && v1 > 0 && v1 < 100000 && v2 > 0 && v2 < 100000 && v3 > 0 && v3 < 100000) {
 					console.log("Found binary triangle data at offset " + scanPos + " (simple format)");
 					return { offset: scanPos, hasRecordType: false, hasEmbeddedVertices: false, vertexDataEnd: 0 };

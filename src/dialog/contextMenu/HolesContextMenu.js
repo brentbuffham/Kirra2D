@@ -7,7 +7,7 @@
 // Step 1) Show hole property editor for single or multiple holes
 export function showHolePropertyEditor(hole) {
 	// Step 1a) CHECK VISIBILITY FIRST - Filter out hidden holes
-	const visibleHoles = window.allBlastHoles.filter((hole) => window.isHoleVisible(hole));
+	const visibleHoles = window.allBlastHoles.filter(hole => window.isHoleVisible(hole));
 
 	if (visibleHoles.length === 0) {
 		console.log("❌ No visible holes to edit");
@@ -28,7 +28,7 @@ export function showHolePropertyEditor(hole) {
 		candidateHoles = [hole];
 	}
 	// Step 1c) Filter candidate holes to only include visible ones
-	const holes = candidateHoles.filter((h) => window.isHoleVisible(h));
+	const holes = candidateHoles.filter(h => window.isHoleVisible(h));
 
 	const isMultiple = holes.length > 1;
 	const isArrayInput = Array.isArray(hole);
@@ -53,7 +53,7 @@ export function showHolePropertyEditor(hole) {
 	let burdenSum = 0;
 	let spacingSum = 0;
 
-	holes.forEach((h) => {
+	holes.forEach(h => {
 		// Basic properties
 		const currentDelay = h.holeDelay !== undefined ? h.holeDelay : h.timingDelayMilliseconds || 0;
 		const currentColor = h.holeDelayColor || h.colorHexDecimal || "#FF0000";
@@ -127,7 +127,7 @@ export function showHolePropertyEditor(hole) {
 
 	// Step 4) Create combined hole types list (standard + any custom types from selection)
 	const standardHoleTypes = ["Angled", "Batter", "Buffer", "Infill", "Production", "Stab", "Toe", "Trim"];
-	const customTypesFromSelection = Array.from(uniqueHoleTypes).filter((type) => !standardHoleTypes.includes(type));
+	const customTypesFromSelection = Array.from(uniqueHoleTypes).filter(type => !standardHoleTypes.includes(type));
 	const allHoleTypes = [...standardHoleTypes, ...customTypesFromSelection].sort();
 	// Step 4a) Calculate averages (add after existing averages around line 37240)
 	const avgConnectorCurve = connectorCurveSum / count;
@@ -161,22 +161,22 @@ export function showHolePropertyEditor(hole) {
 		// Step 5b) Add new original values
 		connectorCurve: avgConnectorCurve.toFixed(0),
 		burden: avgBurden.toFixed(2),
-		spacing: avgSpacing.toFixed(2),
+		spacing: avgSpacing.toFixed(2)
 	};
 
 	// Step 6) Add display values around line 37285
-	const displayConnectorCurve = isMultiple && new Set(holes.map((h) => h.connectorCurve || 0)).size > 1 ? "varies (avg: " + avgConnectorCurve.toFixed(0) + "°)" : avgConnectorCurve.toFixed(0) + "°";
-	const displayBurden = isMultiple && new Set(holes.map((h) => h.burden || 0)).size > 1 ? "varies (avg: " + avgBurden.toFixed(2) + ")" : avgBurden.toFixed(2);
-	const displaySpacing = isMultiple && new Set(holes.map((h) => h.spacing || 0)).size > 1 ? "varies (avg: " + avgSpacing.toFixed(2) + ")" : avgSpacing.toFixed(2);
+	const displayConnectorCurve = isMultiple && new Set(holes.map(h => h.connectorCurve || 0)).size > 1 ? "varies (avg: " + avgConnectorCurve.toFixed(0) + "°)" : avgConnectorCurve.toFixed(0) + "°";
+	const displayBurden = isMultiple && new Set(holes.map(h => h.burden || 0)).size > 1 ? "varies (avg: " + avgBurden.toFixed(2) + ")" : avgBurden.toFixed(2);
+	const displaySpacing = isMultiple && new Set(holes.map(h => h.spacing || 0)).size > 1 ? "varies (avg: " + avgSpacing.toFixed(2) + ")" : avgSpacing.toFixed(2);
 
 	// Step 6a) Create display values with indicators for varying values
 	const displayDelay = isMultiple && uniqueDelays.size > 1 ? "varies (avg: " + avgDelay.toFixed(1) + ")" : avgDelay.toFixed(1);
-	const displayDiameter = isMultiple && new Set(holes.map((h) => h.holeDiameter)).size > 1 ? "varies (avg: " + avgDiameter.toFixed(0) + ")" : avgDiameter.toFixed(0);
-	const displayBearing = isMultiple && new Set(holes.map((h) => h.holeBearing)).size > 1 ? "varies (avg: " + avgBearing.toFixed(1) + ")" : avgBearing.toFixed(1);
-	const displayAngle = isMultiple && new Set(holes.map((h) => h.holeAngle)).size > 1 ? "varies (avg: " + avgAngle.toFixed(0) + ")" : avgAngle.toFixed(0);
-	const displaySubdrill = isMultiple && new Set(holes.map((h) => h.subdrillAmount)).size > 1 ? "varies (avg: " + avgSubdrill.toFixed(1) + ")" : avgSubdrill.toFixed(1);
-	const displayCollarZ = isMultiple && new Set(holes.map((h) => h.startZLocation)).size > 1 ? "varies (avg: " + avgCollarZ.toFixed(2) + ")" : avgCollarZ.toFixed(2);
-	const displayGradeZ = isMultiple && new Set(holes.map((h) => h.gradeZLocation || h.endZLocation)).size > 1 ? "varies (avg: " + avgGradeZ.toFixed(2) + ")" : avgGradeZ.toFixed(2);
+	const displayDiameter = isMultiple && new Set(holes.map(h => h.holeDiameter)).size > 1 ? "varies (avg: " + avgDiameter.toFixed(0) + ")" : avgDiameter.toFixed(0);
+	const displayBearing = isMultiple && new Set(holes.map(h => h.holeBearing)).size > 1 ? "varies (avg: " + avgBearing.toFixed(1) + ")" : avgBearing.toFixed(1);
+	const displayAngle = isMultiple && new Set(holes.map(h => h.holeAngle)).size > 1 ? "varies (avg: " + avgAngle.toFixed(0) + ")" : avgAngle.toFixed(0);
+	const displaySubdrill = isMultiple && new Set(holes.map(h => h.subdrillAmount)).size > 1 ? "varies (avg: " + avgSubdrill.toFixed(1) + ")" : avgSubdrill.toFixed(1);
+	const displayCollarZ = isMultiple && new Set(holes.map(h => h.startZLocation)).size > 1 ? "varies (avg: " + avgCollarZ.toFixed(2) + ")" : avgCollarZ.toFixed(2);
+	const displayGradeZ = isMultiple && new Set(holes.map(h => h.gradeZLocation || h.endZLocation)).size > 1 ? "varies (avg: " + avgGradeZ.toFixed(2) + ")" : avgGradeZ.toFixed(2);
 
 	// Step 6b) Create notes for multiple values
 	const delayNote = isMultiple && uniqueDelays.size > 1 ? " (varying)" : "";
@@ -192,20 +192,20 @@ export function showHolePropertyEditor(hole) {
 			name: "delay",
 			type: "text",
 			value: originalValues.delay,
-			placeholder: displayDelay,
+			placeholder: displayDelay
 		},
 		{
 			label: "Delay Color" + colorNote,
 			name: "delayColor",
 			type: "color",
-			value: normalizeColorValue(firstDelayColor),
+			value: normalizeColorValue(firstDelayColor)
 		},
 		{
 			label: "Connector Curve (°)",
 			name: "connectorCurve",
 			type: "number",
 			value: originalValues.connectorCurve,
-			placeholder: displayConnectorCurve,
+			placeholder: displayConnectorCurve
 		},
 		{
 			label: "Hole Type",
@@ -215,81 +215,81 @@ export function showHolePropertyEditor(hole) {
 			options: [
 				{
 					value: "",
-					text: "-- No Change --",
+					text: "-- No Change --"
 				},
-				...allHoleTypes.map((type) => ({
+				...allHoleTypes.map(type => ({
 					value: type,
-					text: type,
+					text: type
 				})),
 				{
 					value: "__CUSTOM__",
-					text: "Other (custom)...",
-				},
-			],
+					text: "Other (custom)..."
+				}
+			]
 		},
 		{
 			label: "Custom Type",
 			name: "customType",
 			type: "text",
 			placeholder: "Enter custom hole type",
-			disabled: true,
+			disabled: true
 		},
 		{
 			label: "Diameter (mm)",
 			name: "diameter",
 			type: "text",
 			value: originalValues.diameter,
-			placeholder: displayDiameter,
+			placeholder: displayDiameter
 		},
 		{
 			label: "Bearing (°)",
 			name: "bearing",
 			type: "text",
 			value: originalValues.bearing,
-			placeholder: displayBearing,
+			placeholder: displayBearing
 		},
 		{
 			label: "Dip/Angle (°)",
 			name: "angle",
 			type: "text",
 			value: originalValues.angle,
-			placeholder: displayAngle,
+			placeholder: displayAngle
 		},
 		{
 			label: "Subdrill (m)",
 			name: "subdrill",
 			type: "text",
 			value: originalValues.subdrill,
-			placeholder: displaySubdrill,
+			placeholder: displaySubdrill
 		},
 		{
 			label: "Collar Z RL (m)",
 			name: "collarZ",
 			type: "text",
 			value: originalValues.collarZ,
-			placeholder: displayCollarZ,
+			placeholder: displayCollarZ
 		},
 		{
 			label: "Grade Z RL (m)",
 			name: "gradeZ",
 			type: "text",
 			value: originalValues.gradeZ,
-			placeholder: displayGradeZ,
+			placeholder: displayGradeZ
 		},
 		{
 			label: "Burden (m)",
 			name: "burden",
 			type: "text",
 			value: originalValues.burden,
-			placeholder: displayBurden,
+			placeholder: displayBurden
 		},
 		{
 			label: "Spacing (m)",
 			name: "spacing",
 			type: "text",
 			value: originalValues.spacing,
-			placeholder: displaySpacing,
-		},
+			placeholder: displaySpacing
+		}
 	];
 
 	// Step 8) Add Row ID and Pos ID fields only for single hole edits
@@ -300,14 +300,14 @@ export function showHolePropertyEditor(hole) {
 				name: "rowID",
 				type: "text",
 				value: firstRowID,
-				placeholder: "Row identifier",
+				placeholder: "Row identifier"
 			},
 			{
 				label: "Pos ID",
 				name: "posID",
 				type: "text",
 				value: firstPosID,
-				placeholder: "Position identifier",
+				placeholder: "Position identifier"
 			}
 		);
 	}
@@ -358,14 +358,22 @@ export function showHolePropertyEditor(hole) {
 			if (typeof window.longPressTimeout !== "undefined") clearTimeout(window.longPressTimeout);
 
 			// Redraw canvas when dialog closes
-			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+			if (typeof window.redraw3D === "function") {
+				window.redraw3D();
+			} else {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
 		},
 		onOption1: () => {
 			// Step 10b) Hide holes - just set visible flag
-			holes.forEach((hole) => {
+			holes.forEach(hole => {
 				hole.visible = false;
 			});
-			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+			if (typeof window.redraw3D === "function") {
+				window.redraw3D();
+			} else {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
 		},
 		onOption2: () => {
 			// Step 10c) Delete holes using Factory Code with renumber prompt
@@ -388,16 +396,14 @@ export function showHolePropertyEditor(hole) {
 						"1",
 						"OK",
 						"Cancel",
-						(startNumber) => {
+						startNumber => {
 							// Step 10c.2) Delete holes manually and renumber with starting value
 							const entitiesToRenumber = new Set();
 
 							// Step #) Capture holes for undo BEFORE deletion
 							var holesToDeleteForUndo = [];
-							holes.forEach((hole) => {
-								const index = window.allBlastHoles.findIndex(h =>
-									h.holeID === hole.holeID && h.entityName === hole.entityName
-								);
+							holes.forEach(hole => {
+								const index = window.allBlastHoles.findIndex(h => h.holeID === hole.holeID && h.entityName === hole.entityName);
 								if (index !== -1) {
 									holesToDeleteForUndo.push({
 										holeData: JSON.parse(JSON.stringify(window.allBlastHoles[index])),
@@ -412,10 +418,7 @@ export function showHolePropertyEditor(hole) {
 							if (window.undoManager && holesToDeleteForUndo.length > 0) {
 								var deleteAction;
 								if (holesToDeleteForUndo.length === 1) {
-									deleteAction = new window.DeleteHoleAction(
-										holesToDeleteForUndo[0].holeData,
-										holesToDeleteForUndo[0].originalIndex
-									);
+									deleteAction = new window.DeleteHoleAction(holesToDeleteForUndo[0].holeData, holesToDeleteForUndo[0].originalIndex);
 								} else {
 									deleteAction = new window.DeleteMultipleHolesAction(holesToDeleteForUndo);
 								}
@@ -430,7 +433,11 @@ export function showHolePropertyEditor(hole) {
 							// Debounced save and updates (USE FACTORY CODE)
 							window.debouncedSaveHoles();
 							window.debouncedUpdateTreeView();
-							if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+							if (typeof window.redraw3D === "function") {
+								window.redraw3D();
+							} else {
+								window.drawData(window.allBlastHoles, window.selectedHole);
+							}
 							window.updateStatusMessage("Deleted " + holes.length + " hole(s) and renumbered from " + startNumber);
 							setTimeout(() => window.updateStatusMessage(""), 2000);
 						},
@@ -446,10 +453,8 @@ export function showHolePropertyEditor(hole) {
 
 					// Step #) Capture holes for undo BEFORE deletion
 					var holesToDeleteForUndo = [];
-					holes.forEach((hole) => {
-						const index = window.allBlastHoles.findIndex(h =>
-							h.holeID === hole.holeID && h.entityName === hole.entityName
-						);
+					holes.forEach(hole => {
+						const index = window.allBlastHoles.findIndex(h => h.holeID === hole.holeID && h.entityName === hole.entityName);
 						if (index !== -1) {
 							holesToDeleteForUndo.push({
 								holeData: JSON.parse(JSON.stringify(window.allBlastHoles[index])),
@@ -463,10 +468,7 @@ export function showHolePropertyEditor(hole) {
 					if (window.undoManager && holesToDeleteForUndo.length > 0) {
 						var deleteAction;
 						if (holesToDeleteForUndo.length === 1) {
-							deleteAction = new window.DeleteHoleAction(
-								holesToDeleteForUndo[0].holeData,
-								holesToDeleteForUndo[0].originalIndex
-							);
+							deleteAction = new window.DeleteHoleAction(holesToDeleteForUndo[0].holeData, holesToDeleteForUndo[0].originalIndex);
 						} else {
 							deleteAction = new window.DeleteMultipleHolesAction(holesToDeleteForUndo);
 						}
@@ -476,7 +478,11 @@ export function showHolePropertyEditor(hole) {
 					// Debounced save and updates (USE FACTORY CODE)
 					window.debouncedSaveHoles();
 					window.debouncedUpdateTreeView();
-					if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+					if (typeof window.redraw3D === "function") {
+						window.redraw3D();
+					} else {
+						window.drawData(window.allBlastHoles, window.selectedHole);
+					}
 					window.updateStatusMessage("Deleted " + holes.length + " hole(s)");
 					setTimeout(() => window.updateStatusMessage(""), 2000);
 				}
@@ -489,10 +495,7 @@ export function showHolePropertyEditor(hole) {
 			const sourceHole = holes[0]; // Single hole only
 
 			// Find holes in same entity and row
-			const holesInRow = window.allBlastHoles.filter(h =>
-				h.entityName === sourceHole.entityName &&
-				h.rowID === sourceHole.rowID
-			).sort((a, b) => parseInt(a.posID) - parseInt(b.posID));
+			const holesInRow = window.allBlastHoles.filter(h => h.entityName === sourceHole.entityName && h.rowID === sourceHole.rowID).sort((a, b) => parseInt(a.posID) - parseInt(b.posID));
 
 			const sourceIndex = holesInRow.findIndex(h => h.holeID === sourceHole.holeID);
 
@@ -513,19 +516,13 @@ export function showHolePropertyEditor(hole) {
 				"text",
 				"",
 				// onBefore callback - Insert BEFORE the selected hole
-				(customID) => {
+				customID => {
 					// Validate custom hole ID
 					if (customID && customID.trim()) {
 						const trimmedID = customID.trim();
-						const existingHole = window.allBlastHoles.find(h =>
-							h.entityName === sourceHole.entityName && h.holeID === trimmedID
-						);
+						const existingHole = window.allBlastHoles.find(h => h.entityName === sourceHole.entityName && h.holeID === trimmedID);
 						if (existingHole) {
-							window.showErrorDialog(
-								"Duplicate Hole ID",
-								"Hole ID '" + trimmedID + "' already exists in entity '" + sourceHole.entityName + "'.\n\nPlease choose a different ID or leave blank to auto-renumber.",
-								"OK"
-							);
+							window.showErrorDialog("Duplicate Hole ID", "Hole ID '" + trimmedID + "' already exists in entity '" + sourceHole.entityName + "'.\n\nPlease choose a different ID or leave blank to auto-renumber.", "OK");
 							return;
 						}
 					}
@@ -574,9 +571,7 @@ export function showHolePropertyEditor(hole) {
 					delete newHole.gradeZLocation;
 					delete newHole.benchHeight;
 
-					const globalIndex = window.allBlastHoles.findIndex(h =>
-						h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName
-					);
+					const globalIndex = window.allBlastHoles.findIndex(h => h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName);
 
 					if (globalIndex !== -1) {
 						// Insert hole into array FIRST (calculateHoleGeometry needs it to exist in array)
@@ -590,8 +585,8 @@ export function showHolePropertyEditor(hole) {
 						if (!customID || !customID.trim()) {
 							const sourceNum = sourceHole.holeID.match(/\d+/);
 							const sourceNumber = sourceNum ? parseInt(sourceNum[0]) : 1;
-							const prefix = sourceHole.holeID.replace(/\d+/g, '');
-							newHole.holeID = prefix + (sourceNumber);
+							const prefix = sourceHole.holeID.replace(/\d+/g, "");
+							newHole.holeID = prefix + sourceNumber;
 							// Renumber from source hole onwards, skip holes with custom IDs
 							let nextNum = sourceNumber + 1;
 							for (let i = globalIndex + 1; i < window.allBlastHoles.length; i++) {
@@ -615,25 +610,23 @@ export function showHolePropertyEditor(hole) {
 
 						window.debouncedSaveHoles();
 						window.debouncedUpdateTreeView();
-						if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+						if (typeof window.redraw3D === "function") {
+							window.redraw3D();
+						} else {
+							window.drawData(window.allBlastHoles, window.selectedHole);
+						}
 						window.updateStatusMessage("Inserted hole before " + sourceHole.holeID);
 						setTimeout(() => window.updateStatusMessage(""), 2000);
 					}
 				},
 				// onAfter callback - Insert AFTER the selected hole
-				(customID) => {
+				customID => {
 					// Validate custom hole ID
 					if (customID && customID.trim()) {
 						const trimmedID = customID.trim();
-						const existingHole = window.allBlastHoles.find(h =>
-							h.entityName === sourceHole.entityName && h.holeID === trimmedID
-						);
+						const existingHole = window.allBlastHoles.find(h => h.entityName === sourceHole.entityName && h.holeID === trimmedID);
 						if (existingHole) {
-							window.showErrorDialog(
-								"Duplicate Hole ID",
-								"Hole ID '" + trimmedID + "' already exists in entity '" + sourceHole.entityName + "'.\n\nPlease choose a different ID or leave blank to auto-renumber.",
-								"OK"
-							);
+							window.showErrorDialog("Duplicate Hole ID", "Hole ID '" + trimmedID + "' already exists in entity '" + sourceHole.entityName + "'.\n\nPlease choose a different ID or leave blank to auto-renumber.", "OK");
 							return;
 						}
 					}
@@ -683,9 +676,7 @@ export function showHolePropertyEditor(hole) {
 					delete newHole.gradeZLocation;
 					delete newHole.benchHeight;
 
-					const globalIndex = window.allBlastHoles.findIndex(h =>
-						h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName
-					);
+					const globalIndex = window.allBlastHoles.findIndex(h => h.holeID === sourceHole.holeID && h.entityName === sourceHole.entityName);
 
 					if (globalIndex !== -1) {
 						// Insert hole into array FIRST (calculateHoleGeometry needs it to exist in array)
@@ -699,7 +690,7 @@ export function showHolePropertyEditor(hole) {
 						if (!customID || !customID.trim()) {
 							const sourceNum = sourceHole.holeID.match(/\d+/);
 							const sourceNumber = sourceNum ? parseInt(sourceNum[0]) : 1;
-							const prefix = sourceHole.holeID.replace(/\d+/g, '');
+							const prefix = sourceHole.holeID.replace(/\d+/g, "");
 							newHole.holeID = prefix + (sourceNumber + 1);
 							// Renumber ONLY holes after the inserted one, skip holes with custom IDs
 							let nextNum = sourceNumber + 2;
@@ -724,7 +715,11 @@ export function showHolePropertyEditor(hole) {
 
 						window.debouncedSaveHoles();
 						window.debouncedUpdateTreeView();
-						if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+						if (typeof window.redraw3D === "function") {
+							window.redraw3D();
+						} else {
+							window.drawData(window.allBlastHoles, window.selectedHole);
+						}
 						window.updateStatusMessage("Inserted hole after " + sourceHole.holeID);
 						setTimeout(() => window.updateStatusMessage(""), 2000);
 					}
@@ -735,7 +730,7 @@ export function showHolePropertyEditor(hole) {
 					setTimeout(() => window.updateStatusMessage(""), 1500);
 				}
 			);
-		},
+		}
 	});
 
 	dialog.show();
@@ -817,7 +812,7 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 	let timingChanged = false;
 	let geometryChanged = false;
 
-	holes.forEach((h) => {
+	holes.forEach(h => {
 		// Step 11d.1) ONLY process fields that were actually modified
 		if (modifiedFields.has("delay")) {
 			const processedDelay = processNumericValue(formData.delay, originalValues.delay, h.holeDelay !== undefined ? h.holeDelay : h.timingDelayMilliseconds || 0);
@@ -880,12 +875,12 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 			if (processedCollarZ !== null) {
 				// Step 1) Calculate the delta (shift amount)
 				const deltaZ = processedCollarZ - h.startZLocation;
-				
+
 				// Step 2) Shift all Z coordinates by the same delta to maintain hole geometry
 				h.startZLocation = processedCollarZ;
 				h.gradeZLocation += deltaZ;
 				h.endZLocation += deltaZ;
-				
+
 				geometryChanged = true;
 			}
 		}
@@ -896,10 +891,10 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 				// Step 1) Calculate new benchHeight from the new gradeZ
 				// The grade point slides along the hole vector, maintaining angle and bearing
 				const newBenchHeight = h.startZLocation - processedGradeZ;
-				
+
 				// Step 2) Use mode 9 (BenchHeight) to recalculate all geometry properly
 				window.calculateHoleGeometry(h, newBenchHeight, 9);
-				
+
 				geometryChanged = true;
 			}
 		}
@@ -958,7 +953,11 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 	}
 
 	// Redraw and save
-	if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+	if (typeof window.redraw3D === "function") {
+		window.redraw3D();
+	} else {
+		window.drawData(window.allBlastHoles, window.selectedHole);
+	}
 	window.debouncedUpdateTreeView();
 	window.debouncedSaveHoles();
 
