@@ -5035,6 +5035,8 @@ document.addEventListener("DOMContentLoaded", function () {
 		createBlastBoundaryPolygon: createBlastBoundaryPolygon,
 		offsetPolygonClipper: offsetPolygonClipper,
 		getAverageDistance: getAverageDistance,
+		getBlastEntityVolume: getBlastEntityVolume,
+		invalidateBlastEntityVolumeCache: invalidateBlastEntityVolumeCache,
 		selectedVoronoiMetric: selectedVoronoiMetric,
 		isVoronoiLegendFixed: isVoronoiLegendFixed,
 		getVoronoiMetrics: getVoronoiMetrics,
@@ -18859,6 +18861,177 @@ function createBlastBoundaryPolygon(triangles) {
 
 	return blastBoundaryPolygon;
 }
+
+//===========================
+//#region BLAST ENTITY VOLUME CALCULATION
+//===========================
+
+// Step 1) Volume cache for blast entities (keyed by entityName)
+var blastEntityVolumeCache = new Map();
+
+/**
+ * Invalidates the volume cache for one or all blast entities.
+ * Call this when hole positions, benchHeight, or hole count changes.
+ * @param {string|null} entityName - Entity to invalidate, or null to invalidate all
+ */
+function invalidateBlastEntityVolumeCache(entityName) {
+	if (entityName) {
+		// Step 2) Invalidate specific entity
+		blastEntityVolumeCache.delete(entityName);
+		console.log("📊 [Volume] Invalidated cache for entity: " + entityName);
+	} else {
+		// Step 3) Invalidate all entities
+		blastEntityVolumeCache.clear();
+		console.log("📊 [Volume] Invalidated all entity volume cache");
+	}
+}
+
+/**
+ * Calculates the volume for a blast entity using unioned radii polygons.
+ * Handles "donut" topology (voids in the middle) correctly.
+ * Uses collar-to-grade (benchHeight) for the depth component.
+ * 
+ * @param {Array} entityHoles - Array of blast holes for this entity
+ * @param {string} entityName - Name of the entity (for caching)
+ * @returns {number} Volume in cubic meters
+ */
+function getBlastEntityVolume(entityHoles, entityName) {
+	console.log("📊 [Volume] getBlastEntityVolume called for: " + entityName + " with " + (entityHoles ? entityHoles.length : 0) + " holes");
+	
+	// Step 4) Early return for insufficient holes
+	if (!entityHoles || entityHoles.length === 0) {
+		console.log("📊 [Volume] No holes, returning 0");
+		return 0;
+	}
+	
+	// Step 5) Check cache first
+	if (entityName && blastEntityVolumeCache.has(entityName)) {
+		var cachedVolume = blastEntityVolumeCache.get(entityName);
+		console.log("📊 [Volume] Returning cached volume: " + cachedVolume.toFixed(1) + "m³");
+		return cachedVolume;
+	}
+	
+	// Step 5a) Debug: Check first hole's benchHeight
+	if (entityHoles.length > 0) {
+		var firstHole = entityHoles[0];
+		console.log("📊 [Volume] First hole benchHeight: " + firstHole.benchHeight + ", collarZ: " + firstHole.startZLocation + ", gradeZ: " + firstHole.gradeZLocation);
+	}
+	
+	// Step 6) For 1-2 holes, use simple circular area estimate
+	if (entityHoles.length < 3) {
+		var simpleVolume = 0;
+		entityHoles.forEach(function(h) {
+			// Use burden or spacing as radius estimate, fallback to 3m
+			var nn = parseFloat(h.burden) || parseFloat(h.spacing) || 3;
+			var circleArea = Math.PI * (nn * 0.5) * (nn * 0.5);
+			var benchHeight = parseFloat(h.benchHeight) || 0;
+			simpleVolume += circleArea * benchHeight;
+		});
+		
+		if (entityName) {
+			blastEntityVolumeCache.set(entityName, simpleVolume);
+		}
+		return simpleVolume;
+	}
+	
+	// Step 7) Calculate nearest neighbor distance for this entity
+	var avgNN = 0;
+	if (entityHoles.length >= 2) {
+		var nnDistances = [];
+		for (var i = 0; i < entityHoles.length; i++) {
+			var minDist = Infinity;
+			var hi = entityHoles[i];
+			for (var j = 0; j < entityHoles.length; j++) {
+				if (i === j) continue;
+				var hj = entityHoles[j];
+				var dx = parseFloat(hj.startXLocation) - parseFloat(hi.startXLocation);
+				var dy = parseFloat(hj.startYLocation) - parseFloat(hi.startYLocation);
+				var dist = Math.sqrt(dx * dx + dy * dy);
+				if (dist < minDist) minDist = dist;
+			}
+			if (minDist < Infinity) nnDistances.push(minDist);
+		}
+		// Use mode-like aggregation (most common distance)
+		if (nnDistances.length > 0) {
+			nnDistances.sort(function(a, b) { return a - b; });
+			avgNN = nnDistances[Math.floor(nnDistances.length / 2)]; // Median
+		}
+	}
+	
+	// Step 8) Fallback if no valid NN distance
+	if (avgNN <= 0) {
+		avgNN = parseFloat(entityHoles[0].burden) || parseFloat(entityHoles[0].spacing) || 3;
+	}
+	
+	var offset = avgNN * 0.5;
+	console.log("📊 [Volume] NN distance: " + avgNN.toFixed(2) + "m, offset: " + offset.toFixed(2) + "m");
+	
+	// Step 9) Create unioned radii polygons (handles donuts automatically)
+	// getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWidth, useToeLocation)
+	var unionedPolygons = getRadiiPolygons(entityHoles, 24, offset, true, false, null, 1, false);
+	
+	console.log("📊 [Volume] Unioned polygons count: " + (unionedPolygons ? unionedPolygons.length : 0));
+	
+	if (!unionedPolygons || unionedPolygons.length === 0) {
+		console.warn("📊 [Volume] No polygons generated for entity: " + entityName);
+		return 0;
+	}
+	
+	// Step 10) Calculate NET area (outer boundaries - inner holes)
+	// ClipperLib uses winding direction: CCW = positive (outer), CW = negative (hole)
+	var netArea = 0;
+	for (var p = 0; p < unionedPolygons.length; p++) {
+		var polygon = unionedPolygons[p];
+		if (!polygon || polygon.length < 3) continue;
+		
+		// Shoelace formula - sign indicates winding direction
+		var signedArea = 0;
+		for (var k = 0; k < polygon.length; k++) {
+			var kNext = (k + 1) % polygon.length;
+			signedArea += polygon[k].x * polygon[kNext].y;
+			signedArea -= polygon[kNext].x * polygon[k].y;
+		}
+		signedArea = signedArea / 2;
+		
+		// Add signed area (positive for outer, negative for holes)
+		netArea += signedArea;
+	}
+	
+	// Step 11) Take absolute value of net area
+	netArea = Math.abs(netArea);
+	
+	// Step 12) Calculate average benchHeight (collar to grade)
+	var totalBenchHeight = 0;
+	var validBenchCount = 0;
+	for (var b = 0; b < entityHoles.length; b++) {
+		var bh = parseFloat(entityHoles[b].benchHeight);
+		if (!isNaN(bh) && bh > 0) {
+			totalBenchHeight += bh;
+			validBenchCount++;
+		}
+	}
+	var avgBenchHeight = validBenchCount > 0 ? totalBenchHeight / validBenchCount : 0;
+	
+	// Step 13) Volume = Net Area × Average BenchHeight
+	var volume = netArea * avgBenchHeight;
+	
+	// Step 14) Cache the result
+	if (entityName) {
+		blastEntityVolumeCache.set(entityName, volume);
+	}
+	
+	console.log("📊 [Volume] Entity: " + entityName + ", Area: " + netArea.toFixed(1) + "m², AvgBench: " + avgBenchHeight.toFixed(2) + "m, Volume: " + volume.toFixed(1) + "m³");
+	
+	return volume;
+}
+
+// Step 15) IMMEDIATE EXPORT - Expose to window scope as soon as file is parsed
+// This ensures TreeView can access these functions before DOMContentLoaded
+window.getBlastEntityVolume = getBlastEntityVolume;
+window.invalidateBlastEntityVolumeCache = invalidateBlastEntityVolumeCache;
+
+//#endregion BLAST ENTITY VOLUME CALCULATION
+
 //#endregion DELAUNAY TRIANGLES END
 
 //===========================
@@ -31193,6 +31366,9 @@ function debouncedSaveHoles() {
 		invalidate3DAnalysisCaches();
 	}
 	
+	// Step 3.0b) Invalidate blast entity volume cache for TreeView
+	invalidateBlastEntityVolumeCache(null); // null = invalidate ALL entities
+	
 	// Clear any existing pending save
 	clearTimeout(holesSaveTimeout);
 	// Set a new save to trigger after 2 seconds
@@ -39006,8 +39182,98 @@ function calculateBurdenAndSpacingForHoles(holes) {
 			delete hole.burdenProjection;
 		});
 
+		// Step 179a) FALLBACK: If all holes have burden=0, use nearest neighbor calculation
+		// This happens when HDBSCAN detects only 1 row or row detection failed
+		var holesWithZeroBurden = entityHoles.filter(function(h) { return h.burden === 0; });
+		if (holesWithZeroBurden.length > 0 && holesWithZeroBurden.length === entityHoles.length) {
+			console.log("Row-based burden calculation failed for " + entityName + " - using nearest neighbor fallback");
+			calculateBurdenFromNearestNeighbors(entityHoles, entityName);
+		}
+
 		console.log("Calculated burden and spacing for " + entityHoles.length + " holes in entity: " + entityName);
 	});
+}
+
+/**
+ * CALCULATE BURDEN FROM NEAREST NEIGHBORS
+ *
+ * Fallback function when row-based burden calculation fails (all holes in same row).
+ * Uses the 2nd nearest neighbor distance as burden estimate (1st neighbor is usually
+ * the hole in the same row, 2nd neighbor is typically in the adjacent row).
+ *
+ * @param {Array} entityHoles - Array of holes in the same entity
+ * @param {string} entityName - Name of the entity (for logging)
+ */
+function calculateBurdenFromNearestNeighbors(entityHoles, entityName) {
+	if (!entityHoles || entityHoles.length < 3) return;
+
+	// Step 1) Find nearest and 2nd nearest neighbor for each hole
+	entityHoles.forEach(function(hole) {
+		var distances = [];
+
+		// Step 2) Calculate distances to all other holes
+		entityHoles.forEach(function(other) {
+			if (other === hole) return;
+			var dx = other.startXLocation - hole.startXLocation;
+			var dy = other.startYLocation - hole.startYLocation;
+			var dist = Math.sqrt(dx * dx + dy * dy);
+			distances.push(dist);
+		});
+
+		// Step 3) Sort distances to find nearest neighbors
+		distances.sort(function(a, b) { return a - b; });
+
+		// Step 4) Use spacing as 1st nearest neighbor (if not already set)
+		if (hole.spacing === 0 && distances.length >= 1) {
+			hole.spacing = Math.round(distances[0] * 1000) / 1000;
+		}
+
+		// Step 5) Use burden as 2nd nearest neighbor distance
+		// The assumption is: 1st NN = spacing (same row), 2nd NN = burden (different row)
+		if (distances.length >= 2) {
+			// Use 2nd nearest as burden estimate
+			hole.burden = Math.round(distances[1] * 1000) / 1000;
+		} else if (distances.length >= 1) {
+			// If only 1 other hole, use same value for both
+			hole.burden = Math.round(distances[0] * 1000) / 1000;
+		}
+	});
+
+	// Step 6) Calculate mode burden/spacing to assign consistent values
+	var allBurdens = entityHoles.map(function(h) { return h.burden; }).filter(function(v) { return v > 0; });
+	var allSpacings = entityHoles.map(function(h) { return h.spacing; }).filter(function(v) { return v > 0; });
+
+	// Step 7) Get mode values with 0.1m tolerance
+	var modeBurden = getModeWithToleranceGeneric(allBurdens, 0.1) || 0;
+	var modeSpacing = getModeWithToleranceGeneric(allSpacings, 0.1) || 0;
+
+	console.log("Nearest neighbor fallback: mode burden=" + modeBurden.toFixed(2) + "m, mode spacing=" + modeSpacing.toFixed(2) + "m for " + entityName);
+}
+
+/**
+ * GET MODE WITH TOLERANCE (Generic helper)
+ *
+ * Helper function to find the most common value in an array, with tolerance binning.
+ * @param {Array} values - Array of numeric values
+ * @param {number} tolerance - Tolerance for binning values
+ * @returns {number|null} The mode value, or null if no values
+ */
+function getModeWithToleranceGeneric(values, tolerance) {
+	if (!values || values.length === 0) return null;
+	var bins = {};
+	values.forEach(function(val) {
+		var bin = Math.round(val / tolerance) * tolerance;
+		bins[bin] = (bins[bin] || 0) + 1;
+	});
+	var mode = null;
+	var maxCount = 0;
+	for (var bin in bins) {
+		if (bins[bin] > maxCount) {
+			maxCount = bins[bin];
+			mode = parseFloat(bin);
+		}
+	}
+	return mode;
 }
 
 /**
@@ -39596,7 +39862,9 @@ function assignClustersToRows(holesData, clusters, entityName) {
  * UPDATED SMART ROW DETECTION WITH SEQUENCE PRIORITY
  *
  * This maintains the priority of sequential hole numbering while using
- * better algorithms when sequence-based detection fails
+ * better algorithms when sequence-based detection fails.
+ * 
+ * Priority order matches reference file for-reference-kirra.js
  */
 function improvedSmartRowDetection(holesData, entityName) {
 	if (!holesData || holesData.length === 0) return;
@@ -39605,6 +39873,7 @@ function improvedSmartRowDetection(holesData, entityName) {
 
 	// METHOD 1: ALWAYS TRY SEQUENCE-BASED DETECTION FIRST (HIGHEST PRIORITY)
 	// This respects the drilling order and numbered patterns which are most reliable
+	// Uses line fitting algorithm to detect collinear sequences of holes
 	if (trySequenceBasedDetection(holesData, entityName)) {
 		console.log("Used sequence-based row detection (PRIORITY METHOD)");
 		return;
@@ -39629,7 +39898,7 @@ function improvedSmartRowDetection(holesData, entityName) {
 		return;
 	}
 
-	// METHOD 5: Fallback to your existing bearing-based detection
+	// METHOD 5: Fallback to bearing-based detection
 	useBearingBasedDetection(holesData, entityName);
 	console.log("Used bearing-based spatial detection as fallback");
 }

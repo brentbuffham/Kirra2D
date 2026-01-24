@@ -1303,8 +1303,13 @@ export class TreeView {
 			});
 
 			const totalLength = holes.reduce((sum, hole) => sum + (hole.holeLengthCalculated || 0), 0);
-			const metrics = typeof window.getVoronoiMetrics === "function" ? window.getVoronoiMetrics(holes) : null;
-			const volume = metrics && metrics.length > 0 ? metrics.reduce((sum, cell) => sum + (cell.volume || 0), 0) : 0;
+			// Step 1305) Use new donut-aware volume calculation with caching
+			var volume = 0;
+			if (typeof window.getBlastEntityVolume === "function") {
+				volume = window.getBlastEntityVolume(holes, entityName);
+			} else {
+				console.warn("📊 [TreeView] getBlastEntityVolume not available yet for entity: " + entityName);
+			}
 
 			return {
 				id: "entity⣿" + entityName,
