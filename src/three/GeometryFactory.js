@@ -12,6 +12,8 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 // Step A2) BVH for accelerated raycasting on large surfaces
 import { MeshBVH, acceleratedRaycast } from "three-mesh-bvh";
+// Step A2b) Vector Font for high-performance text rendering (Hershey Simplex)
+import * as VectorFont from "./VectorFont.js";
 
 // Step A3) BVH configuration - minimum triangles to enable BVH acceleration
 const BVH_MIN_TRIANGLES = 1000;
@@ -1495,19 +1497,21 @@ export class GeometryFactory {
 	// Matches 2D canvas drawKADLines() - each segment has its own lineWidth and color
 	static createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color) {
 		// Step 10a) Use pixel width directly (matches 2D canvas)
-		const pixelWidth = lineWidth || 2;
+		const pixelWidth = lineWidth || 1;
 
 		// Step 10b) Create LineSegmentsGeometry with flat position array
 		const geometry = new LineSegmentsGeometry();
 		geometry.setPositions([startX, startY, startZ, endX, endY, endZ]);
 
 		// Step 10c) Create LineMaterial with screen-space linewidth
+		// worldUnits: false ensures line width is in screen pixels (not world units)
 		const material = new LineMaterial({
 			color: new THREE.Color(color),
 			linewidth: pixelWidth, // Pixel width (screen-space)
+			worldUnits: false, // CRITICAL: Line width in screen pixels, not world units
 			resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
 			dashed: false,
-			alphaToCoverage: true
+			alphaToCoverage: false
 		});
 		material.transparent = true;
 		material.depthTest = true;
@@ -1531,7 +1535,7 @@ export class GeometryFactory {
 	// Step 12) Create KAD circle with LineMaterial/LineSegments2 (fat lines)
 	static createKADCircle(worldX, worldY, worldZ, radius, lineWidth, color) {
 		// Step 12a) Use pixel width directly (matches 2D canvas)
-		const pixelWidth = lineWidth || 2;
+		const pixelWidth = lineWidth || 1;
 
 		// Step 12b) Create circle points as line segments (pairs of points)
 		const segments = 64;
@@ -1550,12 +1554,14 @@ export class GeometryFactory {
 		geometry.setPositions(positions);
 
 		// Step 12d) Create LineMaterial with screen-space linewidth
+		// worldUnits: false ensures line width is in screen pixels (not world units)
 		const material = new LineMaterial({
 			color: new THREE.Color(color),
 			linewidth: pixelWidth, // Pixel width (screen-space)
+			worldUnits: false, // CRITICAL: Line width in screen pixels, not world units
 			resolution: new THREE.Vector2(window.innerWidth, window.innerHeight),
 			dashed: false,
-			alphaToCoverage: true
+			alphaToCoverage: false
 		});
 		material.transparent = true;
 		material.depthTest = true;
@@ -1570,18 +1576,17 @@ export class GeometryFactory {
 	}
 
 	// Step 12b) Create KAD text using troika-three-text (crisp SDF rendering)
-	// FIX: Text should use FIXED PIXEL SIZE on screen, matching 2D canvas behavior
-	// 2D canvas draws text at fixed pixel size regardless of zoom - 3D should match this
+	// 3D text ALWAYS uses fixed screen pixel size (fontSize / cameraZoom)
+	// This ensures text appears at consistent size regardless of zoom level
+	// fontLock checkbox only affects 2D canvas behavior, not 3D
 	static createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, anchorX = "center") {
 		// Step 1) Calculate world units that give consistent PIXEL size on screen
 		// With orthographic camera: screenPixels = worldUnits * camera.zoom
 		// So: worldUnits = screenPixels / camera.zoom
-		// This makes text appear the SAME SIZE on screen regardless of zoom or data extent
 		const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
 		const fontSizeWorldUnits = fontSize / cameraZoom;
 		
 		// Step 1a) Create cache key WITHOUT zoom - zoom changes just update fontSize
-		// This prevents memory bloat from creating new cache entries on every zoom
 		const cacheKey = worldX.toFixed(2) + "," + worldY.toFixed(2) + "," + worldZ.toFixed(2) + "," + String(text) + "," + fontSize + "," + color + "," + anchorX;
 
 		// Step 1b) Return cached text if it exists
@@ -1619,13 +1624,13 @@ export class GeometryFactory {
 		textMesh.glyphSize = 256;     // Texture size for glyph rendering (default: 256)
 		textMesh.glyphResolution = 1; // Glyph detail level (1=normal, higher=more detail)
 
-		// Step 3) Convert pixel-based fontSize to world units based on camera zoom
-		// This ensures text appears at consistent PIXEL SIZE on screen (like 2D canvas)
-		// fontSize is in pixels (e.g. 6px, 12px) - divide by camera zoom to get world units
+		// Step 3) Apply fontSize based on fontLock setting
+		// When fontLock enabled: divide by zoom for consistent screen pixel size
+		// When fontLock disabled: use raw fontSize so text scales with zoom (like 2D behavior)
 
 		// Step 3a) Set text content and properties
 		textMesh.text = String(text);
-		textMesh.fontSize = fontSizeWorldUnits; // Scaled to give consistent screen pixels
+		textMesh.fontSize = fontSizeWorldUnits; // Respects fontLock setting
 		textMesh.color = color;
 		textMesh.anchorX = anchorX; // Left, center, or right alignment
 		textMesh.anchorY = "middle"; // Center vertically
@@ -1713,6 +1718,183 @@ export class GeometryFactory {
 		textMesh.userData.isTroikaText = true;
 
 		return textMesh;
+	}
+
+	// Step 12.3) Create Vector Text using Hershey Simplex font (high performance)
+	// Returns LineSegments2 with LineMaterial for proper line thickness
+	// Benefits: No textures, no sync(), instant render, batchable, consistent 2D/3D look
+	// 3D text ALWAYS uses fixed screen pixel size (fontSize / cameraZoom)
+	static createVectorText(worldX, worldY, worldZ, text, fontSize, color, anchorX = "center") {
+		// Step 1) Calculate font size in world units for fixed screen pixel size
+		// With orthographic camera: screenPixels = worldUnits * camera.zoom
+		// So: worldUnits = screenPixels / camera.zoom
+		const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+		const fontSizeWorldUnits = fontSize / cameraZoom;
+		
+		// Step 2) Get line segments from VectorFont (flipY=false for 3D Y-up coordinate system)
+		const segments = VectorFont.getTextLineSegments(String(text), fontSizeWorldUnits, anchorX, "middle", false);
+		
+		if (segments.length === 0) {
+			return null;
+		}
+		
+		// Step 3) Create positions array for LineSegmentsGeometry (uses pairs of points)
+		const positions = [];
+		
+		for (let i = 0; i < segments.length; i++) {
+			const seg = segments[i];
+			// Add start point
+			positions.push(seg.x1, seg.y1, 0);
+			// Add end point
+			positions.push(seg.x2, seg.y2, 0);
+		}
+		
+		// Step 4) Create LineSegmentsGeometry for fat lines
+		const geometry = new LineSegmentsGeometry();
+		geometry.setPositions(positions);
+		
+		// Step 5) Create LineMaterial with thin crisp lines (matching 2D canvas)
+		// Use screen pixels (worldUnits: false) for consistent thin appearance
+		const lineWidth = 1; // 1 pixel width for crisp lines like 2D canvas
+		const threeColor = new THREE.Color(color || "#000000");
+		
+		const material = new LineMaterial({
+			color: threeColor,
+			linewidth: lineWidth,
+			worldUnits: false, // Line width in screen pixels (crisp like 2D)
+			dashed: false,
+			alphaToCoverage: false,
+			depthTest: true,
+			depthWrite: true,
+			transparent: false
+		});
+		
+		// Step 5a) Set resolution for LineMaterial (required for screen-space line width)
+		material.resolution.set(window.innerWidth || 1920, window.innerHeight || 1080);
+		
+		// Step 6) Create LineSegments2 mesh
+		const lineSegments = new LineSegments2(geometry, material);
+		
+		// Step 7) Position in 3D space
+		lineSegments.position.set(worldX, worldY, worldZ);
+		
+		// Step 8) Compute line distances for proper rendering
+		lineSegments.computeLineDistances();
+		
+		// Step 9) Mark as vector text for identification and billboard handling
+		lineSegments.userData.isVectorText = true;
+		lineSegments.userData.text = text;
+		lineSegments.userData.originalFontSize = fontSize;
+		lineSegments.userData.lineWidth = lineWidth;
+		lineSegments.renderOrder = 100; // Render on top
+		
+		return lineSegments;
+	}
+
+	// Step 12.3b) Create Vector Text with fixed screen size (doesn't scale with zoom)
+	// Use this for labels that should maintain constant screen pixel size
+	static createVectorTextFixed(worldX, worldY, worldZ, text, screenPixelSize, color, anchorX = "center") {
+		// Step 1) Get current camera zoom
+		const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+		
+		// Step 2) Calculate world units for desired screen pixel size
+		const fontSizeWorldUnits = screenPixelSize / cameraZoom;
+		
+		// Step 3) Get line segments (flipY=false for 3D Y-up coordinate system)
+		const segments = VectorFont.getTextLineSegments(String(text), fontSizeWorldUnits, anchorX, "middle", false);
+		
+		if (segments.length === 0) {
+			return null;
+		}
+		
+		// Step 4) Create positions array for LineSegmentsGeometry
+		const positions = [];
+		
+		for (let i = 0; i < segments.length; i++) {
+			const seg = segments[i];
+			positions.push(seg.x1, seg.y1, 0);
+			positions.push(seg.x2, seg.y2, 0);
+		}
+		
+		// Step 5) Create LineSegmentsGeometry for fat lines
+		const geometry = new LineSegmentsGeometry();
+		geometry.setPositions(positions);
+		
+		// Step 6) Create LineMaterial with thin crisp lines (matching 2D canvas)
+		const lineWidth = 1; // 1 pixel width for crisp lines like 2D canvas
+		const threeColor = new THREE.Color(color || "#000000");
+		
+		const material = new LineMaterial({
+			color: threeColor,
+			linewidth: lineWidth,
+			worldUnits: false, // Line width in screen pixels (crisp like 2D)
+			dashed: false,
+			alphaToCoverage: false,
+			depthTest: true,
+			depthWrite: true,
+			transparent: false
+		});
+		
+		material.resolution.set(window.innerWidth || 1920, window.innerHeight || 1080);
+		
+		// Step 7) Create LineSegments2
+		const lineSegments = new LineSegments2(geometry, material);
+		lineSegments.position.set(worldX, worldY, worldZ);
+		lineSegments.computeLineDistances();
+		
+		// Step 8) Mark for zoom-based scaling updates
+		lineSegments.userData.isVectorText = true;
+		lineSegments.userData.isFixedScreenSize = true;
+		lineSegments.userData.text = text;
+		lineSegments.userData.screenPixelSize = screenPixelSize;
+		lineSegments.userData.anchorX = anchorX;
+		lineSegments.userData.lineWidth = lineWidth;
+		lineSegments.renderOrder = 100;
+		
+		return lineSegments;
+	}
+
+	// Step 12.3c) Update vector text geometry for new zoom level
+	// Call this when camera zoom changes to maintain fixed screen size
+	// Works with LineSegments2 / LineSegmentsGeometry
+	static updateVectorTextForZoom(lineSegments) {
+		if (!lineSegments || !lineSegments.userData.isVectorText || !lineSegments.userData.isFixedScreenSize) {
+			return;
+		}
+		
+		const screenPixelSize = lineSegments.userData.screenPixelSize;
+		const text = lineSegments.userData.text;
+		const anchorX = lineSegments.userData.anchorX || "center";
+		
+		// Step 1) Get current camera zoom
+		const cameraZoom = (window.threeRenderer && window.threeRenderer.camera) ? window.threeRenderer.camera.zoom : 1;
+		
+		// Step 2) Calculate new world units
+		const fontSizeWorldUnits = screenPixelSize / cameraZoom;
+		
+		// Step 3) Get new line segments (flipY=false for 3D)
+		const segments = VectorFont.getTextLineSegments(String(text), fontSizeWorldUnits, anchorX, "middle", false);
+		
+		if (segments.length === 0) {
+			return;
+		}
+		
+		// Step 4) Create new positions array for LineSegmentsGeometry
+		const positions = [];
+		for (let i = 0; i < segments.length; i++) {
+			const seg = segments[i];
+			positions.push(seg.x1, seg.y1, 0);
+			positions.push(seg.x2, seg.y2, 0);
+		}
+		
+		// Step 5) Update geometry using setPositions (LineSegmentsGeometry method)
+		lineSegments.geometry.setPositions(positions);
+		
+		// Step 6) Line width stays at 1 pixel (screen space) - no update needed
+		// The text geometry scales but line thickness remains crisp
+		
+		// Step 7) Recompute line distances
+		lineSegments.computeLineDistances();
 	}
 
 	// Step 12.4) Create contour label (billboarded, italic, no background)

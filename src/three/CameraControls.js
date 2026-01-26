@@ -65,6 +65,9 @@ export class CameraControls {
 		// Step 1b) Axis lock mode (for constraining orbit)
 		this.axisLock = "none"; // "none", "pitch", "roll", "yaw"
 
+		// Step 1c) Cursor zoom setting (zoom to mouse position vs center)
+		this.cursorZoom = true; // Default to enabled
+
 		// Step 2) Camera state
 		this.centroidX = 0;
 		this.centroidY = 0;
@@ -307,76 +310,70 @@ export class CameraControls {
 		const oldScale = this.scale;
 		const newScale = Math.max(0.01, Math.min(1000, oldScale * zoomFactor));
 
-		// Step 16) Cursor zoom - adjust centroid to keep cursor position fixed in world space
-		// Works in both 2D and 3D modes
-		if (this.orbitX === 0 && this.orbitY === 0) {
-			// 2D mode - perfect cursor zoom
-			const worldX = (mouseX - canvas.width / 2) / oldScale + this.centroidX;
-			const worldY = -((mouseY - canvas.height / 2) / oldScale) + this.centroidY;
-
-			this.centroidX = worldX - (mouseX - canvas.width / 2) / newScale;
-			this.centroidY = worldY + (mouseY - canvas.height / 2) / newScale;
+		// Step 16) Check if cursor zoom is enabled
+		if (!this.cursorZoom) {
+			// Step 16.0) Simple center zoom - no cursor tracking
 			this.scale = newScale;
-		} else {
-			// 3D orbit mode - raycast to mouse position and adjust centroid for cursor zoom
-			const groundZ = this.threeRenderer.orbitCenterZ || 0;
-			const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -groundZ); // Z-up plane
-
-			// Step 16a) Raycast mouse position to ground plane at old scale
-			const ndcX = (mouseX - rect.left) / rect.width * 2 - 1;
-			const ndcY = -((mouseY - rect.top) / rect.height) * 2 + 1;
-			const raycasterOld = new THREE.Raycaster();
-			raycasterOld.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.threeRenderer.camera);
-			const targetOld = new THREE.Vector3();
-			const hitOld = raycasterOld.ray.intersectPlane(plane, targetOld);
-
-			if (hitOld) {
-				// Step 16b) Get world point under mouse at old scale
-				const worldPointOld = targetOld.clone();
-
-				// Step 16c) Update scale and camera to new scale (skip render during zoom)
-				this.scale = newScale;
-				this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
-
-				// Step 16d) Raycast again at new scale
-				const raycasterNew = new THREE.Raycaster();
-				raycasterNew.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.threeRenderer.camera);
-				const targetNew = new THREE.Vector3();
-				const hitNew = raycasterNew.ray.intersectPlane(plane, targetNew);
-
-				if (hitNew) {
-					// Step 16e) Adjust centroid so the world point stays under the mouse
-					const worldPointNew = targetNew.clone();
-					const deltaX = worldPointOld.x - worldPointNew.x;
-					const deltaY = worldPointOld.y - worldPointNew.y;
-
-					this.centroidX += deltaX;
-					this.centroidY += deltaY;
-
-					// Step 16f) Update camera again with adjusted centroid (skip render during zoom)
-					this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
-				} else {
-					// If raycast fails at new scale, just update scale (skip render during zoom)
-					this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
-				}
-			} else {
-				// If raycast fails, just update scale (skip render during zoom)
-				this.scale = newScale;
-				this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
-			}
-
-			// Early return since camera was already updated in 3D mode
-			// Step 17) Update gizmo display during zoom
+			this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
+			
+			// Step 16.0a) Update gizmo display
 			if (this.gizmoDisplayMode !== "always") {
 				this.threeRenderer.showAxisHelper(false);
 			}
-
-			// Step 19) Re-show gizmo if always mode
 			if (this.gizmoDisplayMode === "always") {
 				this.updateGizmoDisplayForControls();
 			}
-
 			return { centroidX: this.centroidX, centroidY: this.centroidY, scale: this.scale, rotation: this.rotation, orbitX: this.orbitX, orbitY: this.orbitY };
+		}
+
+		// Step 16.1) Cursor zoom enabled - use raycasting for BOTH Plan View and 3D orbit mode
+		// This unified approach fixes the Plan View cursor zoom bug (was using canvas.width instead of rect.width)
+		const groundZ = this.threeRenderer.orbitCenterZ || 0;
+		const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -groundZ); // Z-up plane
+
+		// Step 16.2) Calculate NDC coordinates (FIX: mouseX/Y are already canvas-relative)
+		const ndcX = (mouseX / rect.width) * 2 - 1;
+		const ndcY = -(mouseY / rect.height) * 2 + 1;
+		
+		// Step 16.3) Raycast mouse position to ground plane at old scale
+		const raycasterOld = new THREE.Raycaster();
+		raycasterOld.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.threeRenderer.camera);
+		const targetOld = new THREE.Vector3();
+		const hitOld = raycasterOld.ray.intersectPlane(plane, targetOld);
+
+		if (hitOld) {
+			// Step 16.4) Get world point under mouse at old scale
+			const worldPointOld = targetOld.clone();
+
+			// Step 16.5) Update scale and camera to new scale (skip render during zoom)
+			this.scale = newScale;
+			this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
+
+			// Step 16.6) Raycast again at new scale
+			const raycasterNew = new THREE.Raycaster();
+			raycasterNew.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.threeRenderer.camera);
+			const targetNew = new THREE.Vector3();
+			const hitNew = raycasterNew.ray.intersectPlane(plane, targetNew);
+
+			if (hitNew) {
+				// Step 16.7) Adjust centroid so the world point stays under the mouse
+				const worldPointNew = targetNew.clone();
+				const deltaX = worldPointOld.x - worldPointNew.x;
+				const deltaY = worldPointOld.y - worldPointNew.y;
+
+				this.centroidX += deltaX;
+				this.centroidY += deltaY;
+
+				// Step 16.8) Update camera again with adjusted centroid (skip render during zoom)
+				this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
+			} else {
+				// Step 16.9) If raycast fails at new scale, just update scale (skip render during zoom)
+				this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
+			}
+		} else {
+			// Step 16.10) If raycast fails, just update scale (skip render during zoom)
+			this.scale = newScale;
+			this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
 		}
 
 		// Step 17) Update gizmo display during zoom
@@ -384,10 +381,7 @@ export class CameraControls {
 			this.threeRenderer.showAxisHelper(false);
 		}
 
-		// Step 18) Update camera with preserved orbit state (skip render during zoom)
-		this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
-
-		// Step 19) Re-show gizmo if always mode
+		// Step 18) Re-show gizmo if always mode
 		if (this.gizmoDisplayMode === "always") {
 			this.updateGizmoDisplayForControls();
 		}
@@ -1013,6 +1007,11 @@ export class CameraControls {
 		// Update damping factor
 		if (settings.dampingFactor !== undefined) {
 			this.damping = Math.max(0, Math.min(1, settings.dampingFactor));
+		}
+
+		// Step 34a) Update cursor zoom setting
+		if (settings.cursorZoom !== undefined) {
+			this.cursorZoom = settings.cursorZoom;
 		}
 
 		if (developerModeEnabled) {

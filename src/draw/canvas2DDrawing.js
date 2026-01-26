@@ -11,6 +11,9 @@
 // - holeScale, toeSizeInMeters, connScale, firstMovementSize
 // - darkModeEnabled, worldToCanvas()
 
+// Step 0) Import VectorFont for optional Hershey Simplex text rendering
+import * as VectorFont from "../three/VectorFont.js";
+
 //=================================================
 // Canvas Utilities
 //=================================================
@@ -33,18 +36,39 @@ export function clearCanvas() {
 // Text Drawing Functions
 //=================================================
 
+// Step T1) Draw text - supports both native canvas text and vector font
+// When window.useVectorText is true, uses Hershey Simplex vector font
 export function drawText(x, y, text, color) {
-	window.ctx.font = parseInt(window.currentFontSize - 2) + "px Arial";
-	window.ctx.fillStyle = color;
-	window.ctx.fillText(text, x, y);
+	const fontSize = parseInt(window.currentFontSize - 2);
+	
+	// Step T1a) Check if vector text mode is enabled
+	if (window.useVectorText) {
+		// Step T1b) Use Hershey Simplex vector font
+		VectorFont.drawText2D(window.ctx, x, y, String(text), fontSize, color, "left", "top", 0);
+	} else {
+		// Step T1c) Use native canvas text (default)
+		window.ctx.font = fontSize + "px Arial";
+		window.ctx.fillStyle = color;
+		window.ctx.fillText(text, x, y);
+	}
 }
 
+// Step T2) Draw right-aligned text - supports both native and vector font
 export function drawRightAlignedText(x, y, text, color) {
-	window.ctx.font = parseInt(window.currentFontSize - 2) + "px Arial";
-	const textWidth = window.ctx.measureText(text).width;
-	window.ctx.fillStyle = color;
-	// Draw the text at an x position minus the text width for right alignment
-	drawText(x - textWidth, y, text, color);
+	const fontSize = parseInt(window.currentFontSize - 2);
+	
+	// Step T2a) Check if vector text mode is enabled
+	if (window.useVectorText) {
+		// Step T2b) Use Hershey Simplex vector font with right anchor
+		VectorFont.drawText2D(window.ctx, x, y, String(text), fontSize, color, "right", "top", 0);
+	} else {
+		// Step T2c) Use native canvas text (default)
+		window.ctx.font = fontSize + "px Arial";
+		const textWidth = window.ctx.measureText(text).width;
+		window.ctx.fillStyle = color;
+		// Draw the text at an x position minus the text width for right alignment
+		window.ctx.fillText(text, x - textWidth, y);
+	}
 }
 
 export function drawMultilineText(ctx, text, x, y, lineHeight = 16, alignment = "left", textColor, boxColor, showBox = false) {
@@ -290,10 +314,23 @@ export function drawKADCircles(x, y, z, radius, lineWidth, strokeColor) {
 export function drawKADTexts(x, y, z, text, color, fontHeight) {
 	// Step B2) Use fontHeight if provided, otherwise fall back to window.currentFontSize
 	var fontSize = fontHeight || window.currentFontSize || 12;
-	window.ctx.font = parseInt(fontSize) + "px Arial";
-	window.ctx.save(); // Save the context state before setting shadow
-	drawMultilineText(window.ctx, text, x, y, fontSize, "left", color, color, false);
-	window.ctx.restore(); // Restore context state
+	
+	// Step B3) Check if vector text mode is enabled
+	if (window.useVectorText) {
+		// Step B3a) Use Hershey Simplex vector font for KAD text
+		// Handle multiline text by splitting on newlines
+		var lines = String(text).split("\n");
+		var lineHeight = fontSize * 1.2;
+		for (var i = 0; i < lines.length; i++) {
+			VectorFont.drawText2D(window.ctx, x, y + i * lineHeight, lines[i], parseInt(fontSize), color, "left", "top", 0);
+		}
+	} else {
+		// Step B3b) Use native canvas text (default)
+		window.ctx.font = parseInt(fontSize) + "px Arial";
+		window.ctx.save(); // Save the context state before setting shadow
+		drawMultilineText(window.ctx, text, x, y, fontSize, "left", color, color, false);
+		window.ctx.restore(); // Restore context state
+	}
 }
 
 //=================================================

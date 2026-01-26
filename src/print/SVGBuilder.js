@@ -1,6 +1,9 @@
 ///------------------ SVG BUILDER MODULE ------------------///
 // This module provides SVG string generation functions for vector PDF rendering
 
+// Step 0) Import VectorFont for optional Hershey Simplex text rendering
+import * as VectorFont from "../three/VectorFont.js";
+
 /**
  * Creates an SVG circle element
  * @param {number} cx - Center X coordinate
@@ -106,6 +109,46 @@ export function createSVGText(x, y, text, fill = "black", fontSize = "12", fontF
     // Escape XML special characters
     const escapedText = textStr.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
     return "<text x=\"" + x + "\" y=\"" + y + "\" fill=\"" + fill + "\" font-size=\"" + fontSize + "\" font-family=\"" + fontFamily + "\" font-weight=\"" + fontWeight + "\" text-anchor=\"" + textAnchor + "\" dominant-baseline=\"" + dominantBaseline + "\">" + escapedText + "</text>";
+}
+
+/**
+ * Creates an SVG vector text element using Hershey Simplex font
+ * Text is rendered as SVG path strokes instead of font glyphs
+ * Benefits: No font embedding needed, scales perfectly, editable as paths in CAD software
+ * @param {number} x - X coordinate
+ * @param {number} y - Y coordinate
+ * @param {string} text - Text content
+ * @param {string} stroke - Stroke color (CSS color)
+ * @param {string} fontSize - Font size (e.g., "12" or 12)
+ * @param {string} textAnchor - Text anchor ("start", "middle", "end") maps to ("left", "center", "right")
+ * @param {number} strokeWidth - Stroke width (optional, defaults to fontSize/15)
+ * @returns {string} SVG path element string
+ */
+export function createSVGVectorText(x, y, text, stroke = "black", fontSize = "12", textAnchor = "start", strokeWidth = null) {
+    // Step 1) Parse fontSize to number
+    var size = parseFloat(fontSize) || 12;
+    
+    // Step 2) Map SVG textAnchor to VectorFont anchorX
+    var anchorX = "left";
+    if (textAnchor === "middle") {
+        anchorX = "center";
+    } else if (textAnchor === "end") {
+        anchorX = "right";
+    }
+    
+    // Step 3) Calculate stroke width (default to fontSize/15 for good proportion)
+    var sw = strokeWidth || Math.max(0.5, size / 15);
+    
+    // Step 4) Get SVG path from VectorFont
+    // Note: VectorFont.getTextSVGPath returns path data string
+    var pathData = VectorFont.getTextSVGPath(String(text), x, y, size, anchorX, "top");
+    
+    if (!pathData) {
+        return "";
+    }
+    
+    // Step 5) Return SVG path element
+    return "<path d=\"" + pathData + "\" fill=\"none\" stroke=\"" + stroke + "\" stroke-width=\"" + sw + "\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>";
 }
 
 /**

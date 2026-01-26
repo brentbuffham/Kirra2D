@@ -3,6 +3,26 @@
 // InteractionManager.js - 3D Object Interaction & Selection
 //=================================================
 // Handles raycasting, object picking, and interaction for Three.js canvas
+//
+//=============================================================================
+// ⚠️ CRITICAL: DO NOT REMOVE camera.updateMatrixWorld() CALLS! ⚠️
+//=============================================================================
+// Every raycasting function in this file MUST call:
+//   currentCamera.updateMatrixWorld(true);
+//   currentCamera.updateProjectionMatrix();
+// BEFORE calling raycaster.setFromCamera().
+//
+// WITHOUT these calls, raycasting FAILS when the camera faces certain 
+// directions (especially South). This bug has been reintroduced multiple
+// times during development.
+//
+// The root cause: Camera matrices may be stale if raycasting happens
+// before the render loop updates them. Forcing the update ensures
+// the matrices reflect the current camera position/orientation.
+//
+// If you see raycasting working when facing North but failing when
+// facing South, CHECK THAT THE MATRIX UPDATES ARE STILL PRESENT!
+//=============================================================================
 
 import * as THREE from "three";
 
@@ -46,6 +66,12 @@ export class InteractionManager {
 		// Step 4a) Use current camera state from threeRenderer (not stored reference)
 		// This ensures raycasting works with current camera orientation/orbit/rotation
 		const currentCamera = this.threeRenderer.camera;
+		
+		// CRITICAL FIX: Ensure camera matrices are up-to-date before raycasting
+		// This fixes the "facing south" bug where raycasting fails due to stale matrices
+		currentCamera.updateMatrixWorld(true);
+		currentCamera.updateProjectionMatrix();
+		
 		this.raycaster.setFromCamera(this.mouse, currentCamera);
 
 		// Step 4a.1) Set raycaster threshold for detecting lines/points
@@ -337,6 +363,12 @@ export class InteractionManager {
 	getMouseWorldPositionOnViewPlane(centerPoint = null) {
 		// Step 7.4b.1) Use current camera for raycasting
 		const currentCamera = this.threeRenderer.camera;
+		
+		// CRITICAL FIX: Ensure camera matrices are up-to-date before raycasting
+		// This fixes the "facing south" bug where raycasting fails due to stale matrices
+		currentCamera.updateMatrixWorld(true);
+		currentCamera.updateProjectionMatrix();
+		
 		this.raycaster.setFromCamera(this.mouse, currentCamera);
 
 		// Step 7.4b.2) Get camera view direction (normal to the view plane)
@@ -345,20 +377,18 @@ export class InteractionManager {
 
 		// Step 7.4b.3) Determine the center point the plane passes through
 		// CRITICAL: Use 3D orbit center in LOCAL coordinates (Three.js space)
+		// BUG FIX: orbitCenterX/Y are ALREADY in LOCAL coords (always 0,0 because
+		// X/Y data is translated to local coords). DO NOT subtract origin!
+		// Only orbitCenterZ is in "world" Z coordinates.
 		let planeCenter = new THREE.Vector3();
 		if (centerPoint && isFinite(centerPoint.x) && isFinite(centerPoint.y) && isFinite(centerPoint.z)) {
 			planeCenter.set(centerPoint.x, centerPoint.y, centerPoint.z);
 		} else if (this.threeRenderer) {
-			// Orbit center is stored in WORLD coordinates, must convert to LOCAL
-			const orbitCenterWorldX = this.threeRenderer.orbitCenterX || 0;
-			const orbitCenterWorldY = this.threeRenderer.orbitCenterY || 0;
+			// orbitCenterX/Y are LOCAL coordinates (always ~0 because data is translated)
+			// orbitCenterZ is the actual Z elevation (world Z)
+			const orbitCenterLocalX = this.threeRenderer.orbitCenterX || 0;
+			const orbitCenterLocalY = this.threeRenderer.orbitCenterY || 0;
 			const orbitCenterZ = this.threeRenderer.orbitCenterZ || 0;
-
-			// Convert world XY to local XY (Z stays the same)
-			const originX = window.threeLocalOriginX || 0;
-			const originY = window.threeLocalOriginY || 0;
-			const orbitCenterLocalX = orbitCenterWorldX - originX;
-			const orbitCenterLocalY = orbitCenterWorldY - originY;
 
 			planeCenter.set(orbitCenterLocalX, orbitCenterLocalY, orbitCenterZ);
 		} else {
@@ -412,6 +442,12 @@ export class InteractionManager {
 	getMouseWorldPositionOnPlane(zLevel = null) {
 		// Step 7.5a) Use current camera for raycasting
 		const currentCamera = this.threeRenderer.camera;
+		
+		// CRITICAL FIX: Ensure camera matrices are up-to-date before raycasting
+		// This fixes the "facing south" bug where raycasting fails due to stale matrices
+		currentCamera.updateMatrixWorld(true);
+		currentCamera.updateProjectionMatrix();
+		
 		this.raycaster.setFromCamera(this.mouse, currentCamera);
 
 		// Step 7.5b) Determine Z level for the plane

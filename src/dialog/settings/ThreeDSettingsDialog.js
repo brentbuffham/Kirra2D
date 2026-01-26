@@ -20,23 +20,46 @@ export function show3DSettingsDialog() {
     const currentSettings = load3DSettings();
 
     // Step 5c) Create form fields (removed Grid and Clipping Plane settings)
+    // Step 5c.1) Helper to find closest damping value for dropdown
+    const dampingOptions = [0, 0.3, 0.5, 0.7, 1];
+    const currentDamping = currentSettings.dampingFactor !== undefined ? currentSettings.dampingFactor : 0;
+    const closestDamping = dampingOptions.reduce((prev, curr) => 
+        Math.abs(curr - currentDamping) < Math.abs(prev - currentDamping) ? curr : prev
+    );
+    
     const fields = [
         {
-            type: "slider",
+            type: "select",
             name: "dampingFactor",
             label: "Damping Factor:",
-            value: currentSettings.dampingFactor !== undefined ? currentSettings.dampingFactor : 0.05,
-            min: 0,
-            max: 1,
-            step: 0.1,
-            minLabel: "No Spin",
-            maxLabel: "Spin"
+            value: String(closestDamping),
+            options: [
+                { value: "0", text: "No Spin (0)" },
+                { value: "0.3", text: "Low (0.3)" },
+                { value: "0.5", text: "Medium (0.5)" },
+                { value: "0.7", text: "High (0.7)" },
+                { value: "1", text: "Max Spin (1)" }
+            ]
         },
         {
-            type: "checkbox",
+            type: "select",
             name: "cursorZoom",
             label: "Cursor Zoom:",
-            checked: currentSettings.cursorZoom !== false
+            value: currentSettings.cursorZoom !== false ? "on" : "off",
+            options: [
+                { value: "on", text: "On" },
+                { value: "off", text: "Off" }
+            ]
+        },
+        {
+            type: "select",
+            name: "plumbLineDisplay",
+            label: "Display Plumb Line to Drawing Z:",
+            value: currentSettings.plumbLineDisplay || "off",
+            options: [
+                { value: "on", text: "On" },
+                { value: "off", text: "Off" }
+            ]
         },
         {
             type: "number",
@@ -133,7 +156,7 @@ export function show3DSettingsDialog() {
         title: "3D Scene, Camera and Lighting Settings",
         content: formContent,
         width: 520,
-        height: 420,
+        height: 480,
         layoutType: "default",
         draggable: true,
         resizable: true,
@@ -147,19 +170,14 @@ export function show3DSettingsDialog() {
             const formData = getFormData(formContent);
 
             // Step 5g) Convert form data types
-            // Step 5g.1) Parse dampingFactor and round to 0.1 increments (slider step)
-            formData.dampingFactor = parseFloat(formData.dampingFactor);
-            if (isNaN(formData.dampingFactor)) {
-                formData.dampingFactor = 0.05;
-            } else {
-                // Round to nearest 0.1 increment
-                formData.dampingFactor = Math.round(formData.dampingFactor * 10) / 10;
-                // Clamp to 0-1 range
-                formData.dampingFactor = Math.max(0, Math.min(1, formData.dampingFactor));
-            }
+            // Step 5g.1) Parse dampingFactor from dropdown (string to number)
+            formData.dampingFactor = parseFloat(formData.dampingFactor) || 0;
 
-            // Step 5h) Parse checkbox values (come as strings "true" or "false")
-            formData.cursorZoom = formData.cursorZoom === "true" || formData.cursorZoom === true;
+            // Step 5h) Parse cursorZoom from dropdown (string "on"/"off" to boolean)
+            formData.cursorZoom = formData.cursorZoom === "on";
+            
+            // Step 5h.1) Parse plumbLineDisplay from dropdown
+            formData.plumbLineDisplay = formData.plumbLineDisplay || "off";
 
             // Step 5i) Parse number fields
             formData.lightBearing = parseInt(formData.lightBearing) || 135;

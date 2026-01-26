@@ -127,7 +127,11 @@ import {
 	drawVoronoiCellsThreeJS,
 	clearVoronoiCellsThreeJS,
 	clearKADLeadingLineThreeJS,
+	drawKADLeadingLineThreeJS,
 	drawKADLeadingLineThreeJSV2,
+	drawPlumbLineThreeJS,
+	clearPlumbLineThreeJS,
+	drawPlumbLineMarkerThreeJS,
 	clearKADLeadingLineThreeJSV2,
 	drawRulerThreeJS,
 	clearRulerThreeJS,
@@ -580,6 +584,14 @@ function exposeGlobalsToWindow() {
 	if (window.threeConnectorsNeedRebuild === undefined) {
 		window.threeConnectorsNeedRebuild = false;
 	}
+	
+	// Step 4b) Initialize hole rebuild context flag (controls whether progress dialog shows)
+	// "creation" = show progress dialog (pattern gen, add hole, import)
+	// "move" = no dialog, just status indicator (hole moves)
+	// "other" / undefined = no dialog (display toggles, etc.)
+	if (window.threeHoleRebuildContext === undefined) {
+		window.threeHoleRebuildContext = null;
+	}
 
 	// Step 5) Helper functions
 	window.elevationToColor = elevationToColor;
@@ -633,6 +645,14 @@ function exposeGlobalsToWindow() {
 	// Use this instead of just drawData() when changing: transparency, gradient, color, visibility, etc.
 	window.redraw3D = function () {
 		window.threeDataNeedsRebuild = true;
+		drawData(window.allBlastHoles, window.selectedHole);
+	};
+	
+	// Step 6b.2) Helper function for KAD-ONLY 3D rebuild (no holes rebuild)
+	// Use this during drawing operations to avoid expensive hole rebuilds
+	// Holes remain visible unchanged, only KAD geometry updates
+	window.redraw3DKAD = function () {
+		window.threeKADNeedsRebuild = true;
 		drawData(window.allBlastHoles, window.selectedHole);
 	};
 	window.updateStatusMessage = updateStatusMessage;
@@ -978,6 +998,11 @@ function initializeThreeJS() {
 		if (settings.cursorOpacity !== undefined) {
 			window.cursorOpacity3D = settings.cursorOpacity;
 		}
+		
+		// Step 2d.1) Apply plumb line display setting
+		if (settings.plumbLineDisplay !== undefined) {
+			window.plumbLineDisplay = settings.plumbLineDisplay;
+		}
 
 		// Step 2a) Create base canvas for background color (bottom layer)
 		const baseCanvas = document.createElement("canvas");
@@ -1040,7 +1065,8 @@ function initializeThreeJS() {
 		const cameraSettings = {
 			gizmoDisplay: settings.gizmoDisplay || "only_when_orbit_or_rotate",
 			axisLock: settings.axisLock || "none",
-			dampingFactor: settings.dampingFactor || 0.05,
+			dampingFactor: settings.dampingFactor !== undefined ? settings.dampingFactor : 0,
+			cursorZoom: settings.cursorZoom !== false, // Default to true if not specified
 		};
 		cameraControls.updateSettings(cameraSettings);
 
@@ -2081,7 +2107,9 @@ function handle3DClick(event) {
 		// Redraw to show selection (ONLY for non-connector modes)
 		// Connector modes handle their own drawData calls with proper timing
 		if (!isAddingConnector && !isAddingMultiConnector) {
-			console.log("⬇️ [3D CLICK] Calling drawData with selectedHole:", selectedHole ? selectedHole.holeID : null);
+			if (developerModeEnabled) {
+				console.log("⬇️ [3D CLICK] Calling drawData with selectedHole:", selectedHole ? selectedHole.holeID : null);
+			}
 			drawData(allBlastHoles, selectedHole);
 			syncCanvasToTreeView(); // Sync selection to TreeView
 		}
@@ -2914,81 +2942,40 @@ function handle3DMouseMove(event) {
 		);
 	}
 
-	// Step 13f.7) Always draw mouse position indicator at mouse position
-	// Special case: During orbit mode, lock torus to orbit focal point to prevent jumping
-	// CRITICAL: Must use torusWorldPos (view plane) for screen-space tracking, NOT mouseWorldPos
-	// Priority: 1) Snapped position (if snapping), 2) Orbit center (if orbiting), 3) torusWorldPos (view plane), 4) mouseWorldPos, 5) Camera centroid
+	// Step 13f.7) Draw mouse position indicator - SIMPLIFIED
+	// Grey cursor follows mouse position on view plane
+	// When snapped: cursor at snap point
+	// When orbiting: cursor at orbit center
+	// Otherwise: cursor follows mouse on view plane
 	let indicatorPos = null;
+	var isSnappedToTarget = snapResult && snapResult.snapped && snapResult.snapTarget;
+	var isOrbitingNow = window.cameraControls && window.cameraControls.isOrbiting;
 
-	// Step 13f.7a) Check if we have a snap target - highest priority for cursor display
-	if (snapResult && snapResult.snapped && snapResult.snapTarget) {
-		// Show cursor at snap target position
-		indicatorPos = {
-			x: snapResult.worldX,
-			y: snapResult.worldY,
-			z: snapResult.worldZ,
-		};
-		if (developerModeEnabled) {
-			console.log("  ➜ Indicator Branch 1: SNAP TARGET", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+	if (isSnappedToTarget) {
+		// Step 13f.7a) Snapped - show cursor at snap target
+		indicatorPos = { x: snapResult.worldX, y: snapResult.worldY, z: snapResult.worldZ };
+	} else if (isOrbitingNow) {
+		// Step 13f.7b) Orbiting - lock cursor to orbit center
+		var cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
+		if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
+			var originX = window.threeLocalOriginX || 0;
+			var originY = window.threeLocalOriginY || 0;
+			var orbitZ = window.threeRenderer ? window.threeRenderer.orbitCenterZ || 0 : window.dataCentroidZ || 0;
+			indicatorPos = { x: cameraState.centroidX + originX, y: cameraState.centroidY + originY, z: orbitZ };
 		}
-	} else {
-		// Step 13f.7b) Check if orbit mode is active via CameraControls
-		const isOrbitingNow = window.cameraControls && window.cameraControls.isOrbiting;
-
-		if (isOrbitingNow) {
-			// Step 13f.7c) During orbit: Lock torus to orbit focal point (centroid + orbitCenterZ)
-			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
-			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
-				const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
-				const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
-				const orbitZ = window.threeRenderer ? window.threeRenderer.orbitCenterZ || 0 : window.dataCentroidZ || 0;
-				indicatorPos = {
-					x: cameraState.centroidX + originX,
-					y: cameraState.centroidY + originY,
-					z: orbitZ,
-				};
-				if (developerModeEnabled) {
-					console.log("  ➜ Indicator Branch 2: ORBITING", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
-				}
-			}
-		} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y) && isFinite(torusWorldPos.z)) {
-			// Step 13f.7d) Use torusWorldPos (view plane) - ensures screen-space cursor tracking
-			// This is CRITICAL for cursor to follow mouse in 3D regardless of camera angle
-			indicatorPos = torusWorldPos;
-			if (developerModeEnabled) {
-				console.log("  ➜ Indicator Branch 3: VIEW PLANE (torusWorldPos)", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
-			}
-		} else if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
-			// Step 13f.7e) Fallback to mouseWorldPos if view plane not available
-			indicatorPos = mouseWorldPos;
-			if (developerModeEnabled) {
-				console.log("  ➜ Indicator Branch 4: MOUSE WORLD POS (fallback)", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
-			}
-		} else {
-			// Step 13f.7f) Final fallback: camera centroid
-			const fallbackZ = window.dataCentroidZ || 0;
-			const cameraState = window.cameraControls ? window.cameraControls.getCameraState() : null;
-			if (cameraState && isFinite(cameraState.centroidX) && isFinite(cameraState.centroidY)) {
-				const originX = window.threeLocalOriginX !== undefined && isFinite(window.threeLocalOriginX) ? window.threeLocalOriginX : 0;
-				const originY = window.threeLocalOriginY !== undefined && isFinite(window.threeLocalOriginY) ? window.threeLocalOriginY : 0;
-				indicatorPos = {
-					x: cameraState.centroidX + originX,
-					y: cameraState.centroidY + originY,
-					z: fallbackZ,
-				};
-				if (developerModeEnabled) {
-					console.log("  ➜ Indicator Branch 5: CAMERA CENTROID", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
-				}
-			} else if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
-				indicatorPos = {
-					x: centroidX,
-					y: centroidY,
-					z: fallbackZ,
-				};
-				if (developerModeEnabled) {
-					console.log("  ➜ Indicator Branch 6: GLOBAL CENTROID", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
-				}
-			}
+	} else if (torusWorldPos && isFinite(torusWorldPos.x) && isFinite(torusWorldPos.y)) {
+		// Step 13f.7c) Normal - use view plane position (follows mouse in screen space)
+		indicatorPos = torusWorldPos;
+	} else if (mouseWorldPos && isFinite(mouseWorldPos.x) && isFinite(mouseWorldPos.y)) {
+		// Step 13f.7d) Fallback - use raycast position
+		indicatorPos = mouseWorldPos;
+	}
+	
+	// Step 13f.7e) Final fallback - data centroid
+	if (!indicatorPos) {
+		var fallbackZ = window.dataCentroidZ || 0;
+		if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined") {
+			indicatorPos = { x: centroidX, y: centroidY, z: fallbackZ };
 		}
 	}
 
@@ -2997,8 +2984,16 @@ function handle3DMouseMove(event) {
 		if (developerModeEnabled) {
 			window._debugIndicatorPos = indicatorPos;
 		}
-		// DEBUG: Disabled excessive logging on mouse move
-		// console.log("🔴 SLOW PATH cursor:", indicatorPos.x.toFixed(2), indicatorPos.y.toFixed(2), indicatorPos.z.toFixed(2));
+		
+		// Step 13f.7e.0) Update performance monitor with cursor debug info
+		if (window.perfMonitor && typeof window.perfMonitor.updateCursorDebug === "function") {
+			// Determine which branch was used
+			var branchName = snapResult && snapResult.snapped ? "SNAP" : 
+				(window.cameraControls && window.cameraControls.isOrbiting) ? "ORBIT" :
+				(indicatorPos === torusWorldPos) ? "VIEW_PLANE" :
+				(indicatorPos === mouseWorldPos) ? "RAYCAST" : "FALLBACK";
+			window.perfMonitor.updateCursorDebug(indicatorPos.x, indicatorPos.y, indicatorPos.z, branchName);
+		}
 
 		// Step 13f.7e) Determine cursor color based on active tool or snap state
 		var torusColor = "rgba(128, 128, 128, 0.4)"; // Default grey
@@ -3029,6 +3024,27 @@ function handle3DMouseMove(event) {
 			}
 		}
 		drawMousePositionIndicatorThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z, torusColor);
+
+		// Step 13f.7f.0) Draw plumb line to Drawing Z Level if enabled
+		// Shows the user where the Drawing Z plane is relative to the cursor position
+		var plumbLineEnabled = window.plumbLineDisplay === "on";
+		var drawingRL = parseFloat(document.getElementById("drawingElevation").value) || window.dataCentroidZ || 0;
+		
+		if (plumbLineEnabled) {
+			// Update performance monitor
+			if (window.perfMonitor && window.perfMonitor.updatePlumbDebug) {
+				window.perfMonitor.updatePlumbDebug(indicatorPos.z, drawingRL, true);
+			}
+			// Draw plumb line from cursor to Drawing Z
+			drawPlumbLineThreeJS(indicatorPos.x, indicatorPos.y, indicatorPos.z, drawingRL);
+			// Draw marker at Drawing Z level
+			drawPlumbLineMarkerThreeJS(indicatorPos.x, indicatorPos.y, drawingRL, "rgba(255, 165, 0, 0.7)");
+		} else {
+			if (window.perfMonitor && window.perfMonitor.updatePlumbDebug) {
+				window.perfMonitor.updatePlumbDebug(null, null, false);
+			}
+			clearPlumbLineThreeJS();
+		}
 
 		// Step 13f.7f.1) Store indicator position for use in drawData (stadium zone)
 		currentMouseIndicatorX = indicatorPos.x;
@@ -4101,6 +4117,39 @@ developerModeCheckbox.addEventListener("change", function () {
 	developerModeEnabled = developerModeCheckbox.checked;
 	console.log("Developer mode enabled:", developerModeEnabled);
 });
+///////////////////////////
+
+///////////////////////////
+// VECTOR TEXT TOGGLE (Developer Feature)
+// Uses Hershey Simplex vector font instead of Troika SDF for 2D/3D text
+// Benefits: 10-40x faster rendering, consistent 2D/3D/print appearance, batchable geometry
+let useVectorText = true; // Default to true - Hershey Simplex is ON by default
+window.useVectorText = useVectorText; // Expose globally for canvas3DDrawing.js
+
+// Step VT1) Check for toggle element (may not exist yet)
+const vectorTextCheckbox = document.getElementById("vectorTextEnabled");
+if (vectorTextCheckbox) {
+	useVectorText = vectorTextCheckbox.checked;
+	window.useVectorText = useVectorText;
+	
+	vectorTextCheckbox.addEventListener("change", function () {
+		useVectorText = vectorTextCheckbox.checked;
+		window.useVectorText = useVectorText;
+		console.log("Vector Text " + (useVectorText ? "enabled (Hershey Simplex)" : "disabled (Troika SDF)"));
+		
+		// Step VT2) Re-render 3D scene with new text mode
+		if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+			// Clear text cache to force recreation
+			if (typeof clearTextCache === "function") {
+				clearTextCache();
+			}
+			window.threeRenderer.requestRender();
+		}
+		
+		// Step VT3) Re-draw 2D canvas with new text mode
+		requestAnimationFrame(draw);
+	});
+}
 ///////////////////////////
 
 ///////////////////////////
@@ -11646,36 +11695,57 @@ canvasContainer.addEventListener(
 document.addEventListener("DOMContentLoaded", function () {
 	// Access the slider element and add an event listener to track changes
 	const toeSlider = document.getElementById("toeSlider");
+	
+	// Step #) Debounced toe slider handler to prevent race conditions in 3D rebuild
+	let toeSliderTimeout = null;
 	toeSlider.addEventListener("input", function () {
-		// Calculate the toe size in meters by using the slider value directly
+		// Step 1) Immediately update label (responsive UI)
 		const toeSizeInMeters = parseFloat(this.value);
-
-		// Update the label with the calculated toe size
 		toeLabel.textContent = "Toe Size: " + toeSizeInMeters.toFixed(2) + "m";
 
-		// Step #) Trigger 3D rebuild when toe size changes
-		window.threeDataNeedsRebuild = true;
-		// Call the drawData function with the updated toe size in meters
-		drawData(allBlastHoles, selectedHole, toeSizeInMeters);
+		// Step 2) Debounce the expensive 3D rebuild (150ms delay)
+		clearTimeout(toeSliderTimeout);
+		toeSliderTimeout = setTimeout(function () {
+			// Step 3) Trigger 3D rebuild when toe size changes
+			window.threeDataNeedsRebuild = true;
+			drawData(allBlastHoles, selectedHole, toeSizeInMeters);
+		}, 150);
 	});
+	
 	const holeSlider = document.getElementById("holeSlider");
+	
+	// Step #) Debounced hole slider handler to prevent race conditions in 3D rebuild
+	let holeSliderTimeout = null;
 	holeSlider.addEventListener("input", function () {
-		////console.log('Slider value:', this.value);
+		// Step 1) Immediately update label (responsive UI)
 		holeScale = document.getElementById("holeSlider").value;
 		holeLabel.textContent = "Hole Adjust : " + parseFloat(holeScale).toFixed(1);
-		// Step #) Trigger 3D rebuild when hole size changes
-		window.threeDataNeedsRebuild = true;
-		drawData(allBlastHoles, selectedHole);
+		
+		// Step 2) Debounce the expensive 3D rebuild (150ms delay)
+		clearTimeout(holeSliderTimeout);
+		holeSliderTimeout = setTimeout(function () {
+			// Step 3) Trigger 3D rebuild when hole size changes
+			window.threeDataNeedsRebuild = true;
+			drawData(allBlastHoles, selectedHole);
+		}, 150);
 	});
 	// Access the slider element and add an event listener to track changes
 	const connSlider = document.getElementById("connSlider");
+	
+	// Step #) Debounced connector slider handler to prevent race conditions in 3D rebuild
+	let connSliderTimeout = null;
 	connSlider.addEventListener("input", function () {
-		////console.log('Connector value:', this.value);
+		// Step 1) Immediately update label (responsive UI)
 		connScale = document.getElementById("connSlider").value;
 		connLabel.textContent = "Tie Size : " + parseFloat(connScale).toFixed(1);
-		// Step #) Trigger 3D rebuild when connector size changes
-		window.threeDataNeedsRebuild = true;
-		drawData(allBlastHoles, selectedHole);
+		
+		// Step 2) Debounce the expensive 3D rebuild (150ms delay)
+		clearTimeout(connSliderTimeout);
+		connSliderTimeout = setTimeout(function () {
+			// Step 3) Trigger 3D rebuild when connector size changes
+			window.threeDataNeedsRebuild = true;
+			drawData(allBlastHoles, selectedHole);
+		}, 150);
 	});
 	// Access the slider element and add an event listener to track changes
 	// Step #) Font lock checkbox event listener
@@ -11684,23 +11754,33 @@ document.addEventListener("DOMContentLoaded", function () {
 
 	fontLock.addEventListener("change", function () {
 		// Step #) Enable/disable slider based on checkbox state
+		// fontLock only affects 2D canvas behavior - 3D always uses fixed screen pixel size
 		fontSlider.disabled = this.checked;
 	});
 
 	fontSlider.min = "0";
 	fontSlider.max = "100";
+	
+	// Step #) Debounced font slider handler to prevent race conditions in 3D rebuild
+	// The input event fires rapidly during slider drag - debouncing prevents incomplete rebuilds
+	let fontSliderTimeout = null;
 	fontSlider.addEventListener("input", function () {
+		// Step 1) Immediately update font size display (responsive UI)
 		currentFontSize = this.value;
-		currentFontSize = document.getElementById("fontSlider").value;
-		window.currentFontSize = currentFontSize; // Step #) Update global for 3D text rendering
+		window.currentFontSize = currentFontSize;
 		fontLabel.textContent = "Font Size : " + currentFontSize + "px";
-		// Step #) Clear text cache when font size changes so new text is created with new size
-		if (window.threeRenderer && typeof window.threeRenderer.clearTextCacheOnDataChange === "function") {
-			window.threeRenderer.clearTextCacheOnDataChange();
-		}
-		// Step #) Trigger 3D rebuild to update text with new font size
-		window.threeDataNeedsRebuild = true;
-		drawData(allBlastHoles, selectedHole);
+		
+		// Step 2) Debounce the expensive 3D rebuild (150ms delay)
+		clearTimeout(fontSliderTimeout);
+		fontSliderTimeout = setTimeout(function () {
+			// Step 3) Clear text cache when font size changes
+			if (window.threeRenderer && typeof window.threeRenderer.clearTextCacheOnDataChange === "function") {
+				window.threeRenderer.clearTextCacheOnDataChange();
+			}
+			// Step 4) Trigger 3D rebuild to update text with new font size
+			window.threeDataNeedsRebuild = true;
+			drawData(allBlastHoles, selectedHole);
+		}, 150);
 	});
 
 	// Access the slider element and add an event listener to track changes
@@ -11910,13 +11990,39 @@ if (drawingKADSizeToolbar) {
 			sidebarLineWidth.value = drawingKADSizeToolbar.value;
 		}
 	});
-
-	// Step #) Initial sync to ensure values match on load
-	const sidebarLineWidth = document.getElementById("drawingLineWidth");
-	if (sidebarLineWidth && sidebarLineWidth.value !== drawingKADSizeToolbar.value) {
-		sidebarLineWidth.value = drawingKADSizeToolbar.value;
-	}
 }
+
+// Step #) Initial LineWidth sync on DOMContentLoaded (toolbar may not exist at script parse time)
+// TOOLBAR is the source of truth (value="1" in HTML) - sync SIDEBAR from TOOLBAR
+// This ensures consistent default regardless of any cached/stale sidebar values
+document.addEventListener("DOMContentLoaded", function () {
+	const sidebarLineWidth = document.getElementById("drawingLineWidth");
+	const toolbarLineWidth = document.getElementById("drawingKADSizeToolbar");
+	if (sidebarLineWidth && toolbarLineWidth) {
+		// Step 1) Use toolbar's HTML default (1) as the authoritative value
+		var defaultLineWidth = toolbarLineWidth.value || "1";
+		
+		// Step 2) Force both inputs to the same value
+		sidebarLineWidth.value = defaultLineWidth;
+		toolbarLineWidth.value = defaultLineWidth;
+		
+		console.log("📐 LineWidth synced on load: both set to " + defaultLineWidth);
+	}
+});
+
+// Step #) Additional sync on window load (fires after DOMContentLoaded, catches late initialization)
+window.addEventListener("load", function () {
+	const sidebarLineWidth = document.getElementById("drawingLineWidth");
+	const toolbarLineWidth = document.getElementById("drawingKADSizeToolbar");
+	if (sidebarLineWidth && toolbarLineWidth) {
+		// Step 1) If values differ, sync sidebar to toolbar (toolbar is source of truth)
+		if (sidebarLineWidth.value !== toolbarLineWidth.value) {
+			console.log("📐 LineWidth mismatch detected on window.load: sidebar=" + sidebarLineWidth.value + ", toolbar=" + toolbarLineWidth.value);
+			sidebarLineWidth.value = toolbarLineWidth.value;
+			console.log("📐 LineWidth synced: sidebar now=" + sidebarLineWidth.value);
+		}
+	}
+});
 
 const circleRadius = document.getElementById("drawingRadius");
 circleRadius.addEventListener("change", function () {
@@ -21043,14 +21149,14 @@ function draw2DOffsetPreview() {
 
 		var points = previewEntity.data;
 		var color = previewEntity.color || "#FF0000";
-		var lineWidth = points[0].lineWidth || 2;
+		var lineWidth = points[0].lineWidth || 1;
 		var isClosed = previewEntity.entityType === "poly";
 
 		// Step 2) Set preview styling
 		ctx.strokeStyle = color;
 		ctx.globalAlpha = 0.7;
 		ctx.setLineDash([8, 4]); // Dashed line for preview
-		ctx.lineWidth = Math.max(lineWidth, 2);
+		ctx.lineWidth = lineWidth;
 		ctx.lineCap = "round";
 		ctx.lineJoin = "round";
 
@@ -21208,7 +21314,7 @@ function draw3DOffsetPreview() {
 
 		var points = previewEntity.data;
 		var color = previewEntity.color || "#FF0000";
-		var lineWidth = points[0].lineWidth || 2;
+		var lineWidth = points[0].lineWidth || 1;
 		var isClosed = previewEntity.entityType === "poly";
 
 		// Step 3) Create line geometry
@@ -24589,7 +24695,7 @@ function addKADPoint() {
 		const pointXLocation = worldX;
 		const pointYLocation = worldY;
 		const pointZLocation = worldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
-		const lineWidth = document.getElementById("drawingLineWidth").value || 1;
+		const lineWidth = parseFloat(document.getElementById("drawingLineWidth").value) || 1;
 
 		// Create new entity name if needed (like other tools)
 		if (createNewEntity) {
@@ -24652,7 +24758,9 @@ function addKADPoint() {
 			undoManager.pushAction(addVertexAction);
 		}
 
-		window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD point
+		// Step #) KAD-only 3D rebuild (immediate, no hole flicker)
+		// Uses threeKADNeedsRebuild flag - holes remain unchanged
+		window.threeKADNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
 		debouncedSaveKAD();
 		debouncedSaveLayers();
@@ -24706,7 +24814,7 @@ function addKADLine() {
 		const pointXLocation = worldX;
 		const pointYLocation = worldY;
 		const pointZLocation = worldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
-		const lineWidth = document.getElementById("drawingLineWidth").value || 1;
+		const lineWidth = parseFloat(document.getElementById("drawingLineWidth").value) || 1;
 		const color = getJSColorHexDrawing();
 
 		if (createNewEntity) {
@@ -24766,7 +24874,9 @@ function addKADLine() {
 			undoManager.pushAction(addVertexAction);
 		}
 	}
-	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD line
+	// Step #) KAD-only 3D rebuild (immediate, no hole flicker)
+	// Uses threeKADNeedsRebuild flag - holes remain unchanged
+	window.threeKADNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
 	debouncedSaveLayers();
@@ -24819,7 +24929,7 @@ function addKADPoly() {
 		const pointXLocation = worldX;
 		const pointYLocation = worldY;
 		const pointZLocation = worldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
-		const lineWidth = document.getElementById("drawingLineWidth").value || 1;
+		const lineWidth = parseFloat(document.getElementById("drawingLineWidth").value) || 1;
 		const color = getJSColorHexDrawing();
 		const closed = true; // Default to closed polygon
 
@@ -24881,7 +24991,9 @@ function addKADPoly() {
 			undoManager.pushAction(addVertexAction);
 		}
 	}
-	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD polygon
+	// Step #) KAD-only 3D rebuild (immediate, no hole flicker)
+	// Uses threeKADNeedsRebuild flag - holes remain unchanged
+	window.threeKADNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
 	debouncedSaveLayers();
@@ -24937,7 +25049,7 @@ function addKADCircle() {
 		const pointXLocation = worldX;
 		const pointYLocation = worldY;
 		const pointZLocation = worldZ || drawingZValue || document.getElementById("drawingElevation").value || 0;
-		const lineWidth = document.getElementById("drawingLineWidth").value || 1;
+		const lineWidth = parseFloat(document.getElementById("drawingLineWidth").value) || 1;
 
 		// Create new entity name if needed (like other tools)
 		if (createNewEntity) {
@@ -25001,7 +25113,9 @@ function addKADCircle() {
 
 		console.log("Added circle", pointID, "to", entityName);
 	}
-	window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD circle
+	// Step #) KAD-only 3D rebuild (immediate, no hole flicker)
+	// Uses threeKADNeedsRebuild flag - holes remain unchanged
+	window.threeKADNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 	debouncedSaveKAD();
 	debouncedSaveLayers();
@@ -25259,7 +25373,9 @@ async function addKADText() {
 			undoManager.pushAction(addVertexAction);
 		}
 
-		window.threeDataNeedsRebuild = true; // Trigger 3D rebuild for new KAD text
+		// Step #) KAD-only 3D rebuild (immediate, no hole flicker)
+		// Uses threeKADNeedsRebuild flag - holes remain unchanged
+		window.threeKADNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
 		debouncedUpdateTreeView();
 		console.log("Added text", pointID, "to", entityName);
@@ -26195,6 +26311,8 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 	addPatternSwitch.checked = false;
 	resetZoom();
 	// Step #) Trigger 3D rebuild to show newly generated pattern
+	// Set context to "creation" to show progress dialog for >500 holes
+	window.threeHoleRebuildContext = "creation";
 	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 
@@ -26775,14 +26893,15 @@ function handleMeasuredLengthClick(event) {
 		// console.log("ClickedX = " + clickX);
 		// console.log("ClickedY = " + clickY);
 		// console.log("ClickedHole = " + clickedHole.holeID);
-		if (clickedHole && measuredLengthSwitch.checked == false) {
-			if (!fromHoleStore) {
-				// Set the selected fromHole
-				fromHoleStore = clickedHole;
-				selectedHole = clickedHole;
-				drawData(allBlastHoles, selectedHole);
-			}
-		} else if (clickedHole && measuredLengthSwitch.checked == true) {
+		
+		// Step 1) When switch is ON and a hole is clicked, select the hole and show popup
+		if (clickedHole && measuredLengthSwitch.checked == true) {
+			// Step 2) Set the selected hole first
+			fromHoleStore = clickedHole;
+			selectedHole = clickedHole;
+			drawData(allBlastHoles, selectedHole);
+			debouncedUpdateTreeView();
+			// Step 3) Show the popup to record the length
 			measuredLengthPopup();
 		}
 	}
@@ -26801,15 +26920,15 @@ function handleMeasuredMassClick(event) {
 		// console.log("ClickedX = " + clickX);
 		// console.log("ClickedY = " + clickY);
 		// console.log("ClickedHole = " + clickedHole);
-		if (clickedHole && measuredMassSwitch.checked == false) {
-			if (!fromHoleStore) {
-				// Set the selected fromHole
-				fromHoleStore = clickedHole;
-				selectedHole = clickedHole;
-				drawData(allBlastHoles, selectedHole);
-				debouncedUpdateTreeView();
-			}
-		} else if (clickedHole && measuredMassSwitch.checked == true) {
+		
+		// Step 1) When switch is ON and a hole is clicked, select the hole and show popup
+		if (clickedHole && measuredMassSwitch.checked == true) {
+			// Step 2) Set the selected hole first
+			fromHoleStore = clickedHole;
+			selectedHole = clickedHole;
+			drawData(allBlastHoles, selectedHole);
+			debouncedUpdateTreeView();
+			// Step 3) Show the popup to record the mass
 			measuredMassPopup();
 		}
 	}
@@ -26828,15 +26947,15 @@ function handleMeasuredCommentClick(event) {
 		// console.log("ClickedX = " + clickX);
 		// console.log("ClickedY = " + clickY);
 		// console.log("ClickedHole = " + clickedHole);
-		if (clickedHole && measuredCommentSwitch.checked == false) {
-			if (!fromHoleStore) {
-				// Set the selected fromHole
-				fromHoleStore = clickedHole;
-				selectedHole = clickedHole;
-				drawData(allBlastHoles, selectedHole);
-				debouncedUpdateTreeView();
-			}
-		} else if (clickedHole && measuredCommentSwitch.checked == true) {
+		
+		// Step 1) When switch is ON and a hole is clicked, select the hole and show popup
+		if (clickedHole && measuredCommentSwitch.checked == true) {
+			// Step 2) Set the selected hole first
+			fromHoleStore = clickedHole;
+			selectedHole = clickedHole;
+			drawData(allBlastHoles, selectedHole);
+			debouncedUpdateTreeView();
+			// Step 3) Show the popup to record the comment
 			measuredCommentPopup();
 		}
 	}
@@ -28250,6 +28369,378 @@ function drawMouseCrossHairs(mouseX, mouseY, snapRadiusPixels, showSnapRadius = 
 		ctx.strokeStyle = darkModeEnabled ? "rgba(200, 200, 200, 0.6)" : "rgba(100, 100, 100, 0.6)";
 		ctx.stroke();
 		ctx.closePath();
+	}
+}
+
+// =============================================
+// 3D REBUILD CANCELLATION AND QUEUEING SYSTEM
+// =============================================
+// Step 0) Manages async hole drawing cancellation and rebuild queueing
+// Prevents incomplete renders when user interacts during rebuild
+
+// Cancellation token - incremented when a new rebuild is requested
+window._holeDrawingCancelToken = 0;
+// Queue flag - if true, a rebuild was requested during drawing and should run after current completes
+window._holeDrawingQueuedRebuild = false;
+// Store queued parameters
+window._holeDrawingQueuedParams = null;
+// Throttle timestamp - prevents rapid repeated cancel requests
+window._lastCancelRequestTime = 0;
+
+// Function to request cancellation of current drawing and queue a new rebuild
+function cancelAndQueueHoleRebuild(allBlastHoles, toeSizeInMeters3D, displayOptions3D, threeInitialized, threeRenderer, developerModeEnabled) {
+	if (window._holeDrawingInProgress) {
+		// Step 0a) Throttle cancel requests - only allow one every 200ms
+		var now = Date.now();
+		if (now - window._lastCancelRequestTime < 200) {
+			// Silently update params without logging (already queued)
+			window._holeDrawingQueuedParams = {
+				allBlastHoles: allBlastHoles,
+				toeSizeInMeters3D: toeSizeInMeters3D,
+				displayOptions3D: displayOptions3D,
+				threeInitialized: threeInitialized,
+				threeRenderer: threeRenderer,
+				developerModeEnabled: developerModeEnabled
+			};
+			return true; // Already queued
+		}
+		window._lastCancelRequestTime = now;
+		
+		console.log("⚠️ [CANCEL] Requesting cancellation of current hole drawing");
+		window._holeDrawingCancelToken++; // Increment to signal cancellation
+		window._holeDrawingQueuedRebuild = true;
+		window._holeDrawingQueuedParams = {
+			allBlastHoles: allBlastHoles,
+			toeSizeInMeters3D: toeSizeInMeters3D,
+			displayOptions3D: displayOptions3D,
+			threeInitialized: threeInitialized,
+			threeRenderer: threeRenderer,
+			developerModeEnabled: developerModeEnabled
+		};
+		return true; // Queued
+	}
+	return false; // Not queued, can start immediately
+}
+
+// =============================================
+// 3D REBUILD STATUS INDICATOR (CSS-based)
+// =============================================
+// Step 0) Non-intrusive status indicator for 3D rebuilds during hole moves and other operations
+// Shows a small label in the corner instead of a blocking dialog
+
+function show3DRebuildStatusIndicator(message) {
+	// Step 0a) Check if indicator already exists
+	var existingIndicator = document.getElementById("threeRebuildStatusIndicator");
+	if (existingIndicator) {
+		// Step 0a.1) Update message if indicator exists
+		var textSpan = existingIndicator.querySelector("span");
+		if (textSpan) textSpan.textContent = message || "Rebuilding 3D...";
+		return;
+	}
+	
+	// Step 0b) Create status indicator element
+	var indicator = document.createElement("div");
+	indicator.id = "threeRebuildStatusIndicator";
+	indicator.style.cssText = 
+		"position: fixed;" +
+		"bottom: 60px;" +
+		"left: 50%;" +
+		"transform: translateX(-50%);" +
+		"background: rgba(0, 120, 215, 0.9);" +
+		"color: white;" +
+		"padding: 8px 16px;" +
+		"border-radius: 4px;" +
+		"font-size: 13px;" +
+		"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;" +
+		"z-index: 9999;" +
+		"display: flex;" +
+		"align-items: center;" +
+		"gap: 8px;" +
+		"box-shadow: 0 2px 8px rgba(0,0,0,0.3);" +
+		"pointer-events: none;" +
+		"animation: pulse3DRebuild 1.5s ease-in-out infinite;";
+	
+	// Step 0c) Add spinner and text
+	indicator.innerHTML = 
+		'<div style="width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin3DRebuild 0.8s linear infinite;"></div>' +
+		'<span>' + (message || "Rebuilding 3D...") + '</span>';
+	
+	// Step 0d) Add CSS animation if not already added
+	if (!document.getElementById("threeRebuildStatusStyles")) {
+		var style = document.createElement("style");
+		style.id = "threeRebuildStatusStyles";
+		style.textContent = 
+			"@keyframes spin3DRebuild { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }" +
+			"@keyframes pulse3DRebuild { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }";
+		document.head.appendChild(style);
+	}
+	
+	// Step 0e) Add to body
+	document.body.appendChild(indicator);
+}
+
+function hide3DRebuildStatusIndicator() {
+	// Step 0f) Remove indicator element
+	var indicator = document.getElementById("threeRebuildStatusIndicator");
+	if (indicator) {
+		indicator.remove();
+	}
+}
+
+// =============================================
+// ASYNC HOLE DRAWING WITH PROGRESS DIALOG
+// =============================================
+// Step 1) Async function to draw holes with progress feedback for large datasets
+// Shows progress dialog only when > 500 holes AND context is "creation" (pattern gen, add hole, import)
+// For hole moves and other operations, shows a status indicator instead (no dialog popup)
+async function drawHolesAsync(allBlastHoles, toeSizeInMeters3D, displayOptions3D, threeInitialized, threeRenderer, developerModeEnabled) {
+	var HOLE_PROGRESS_THRESHOLD = 500;
+	var BATCH_SIZE = 100; // Process holes in batches of 100 for smooth progress updates
+	var totalHoles = allBlastHoles.length;
+	
+	// Step 1a) Get rebuild context - only show dialog for "creation" operations
+	// "creation" = pattern gen, add hole, import -> show dialog
+	// "move" = hole moves -> status indicator only (no dialog)
+	// other/null = display toggles, etc. -> no dialog, no indicator
+	var rebuildContext = window.threeHoleRebuildContext;
+	var isCreationContext = rebuildContext === "creation";
+	var isMoveContext = rebuildContext === "move";
+	
+	// Step 1b) Only show dialog for creation operations with > 500 holes
+	var showProgressDialog = totalHoles > HOLE_PROGRESS_THRESHOLD && isCreationContext;
+	
+	// Step 1c) Show status indicator for non-dialog rebuilds (moves, display changes)
+	var showStatusIndicator = totalHoles > HOLE_PROGRESS_THRESHOLD && !isCreationContext;
+
+	console.log("🚀 drawHolesAsync started: " + totalHoles + " holes, context: " + rebuildContext + ", showDialog: " + showProgressDialog + ", showStatus: " + showStatusIndicator);
+	var progressDialog = null;
+	var progressBar = null;
+	var progressText = null;
+	
+	// Step 1d) Show CSS status indicator for non-dialog operations
+	if (showStatusIndicator) {
+		show3DRebuildStatusIndicator("Rebuilding 3D View...");
+	}
+
+	// Step 2) Create and show progress dialog for large datasets (> 500 holes) AND creation context
+	// FloatingDialog is imported at top of file, so we can use it directly
+	if (showProgressDialog) {
+		try {
+			console.log("🔄 Creating hole progress dialog for " + totalHoles + " holes");
+
+			// Step 2a) Create progress content with unique IDs to avoid conflicts
+			var uniqueId = "holeProgress_" + Date.now();
+			var progressContent = document.createElement("div");
+			progressContent.style.textAlign = "center";
+			progressContent.innerHTML = "<p style=\"margin: 10px 0;\">Building 3D Holes</p>" +
+				"<p style=\"margin: 5px 0; font-size: 14px; color: #888;\">" + totalHoles + " holes to process</p>" +
+				'<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 15px 0; overflow: hidden;">' +
+				'<div id="' + uniqueId + '_bar" style="width: 0%; height: 24px; background-color: #4CAF50; border-radius: 5px; transition: width 0.15s ease-out;"></div>' +
+				"</div>" +
+				'<p id="' + uniqueId + '_text" style="margin: 5px 0; font-size: 13px;">Initializing...</p>';
+
+			progressDialog = new FloatingDialog({
+				title: "Building 3D View",
+				content: progressContent,
+				layoutType: "default",
+				width: 380,
+				height: 180,
+				showConfirm: false,
+				showCancel: false,
+				allowOutsideClick: false
+			});
+
+			progressDialog.show();
+			console.log("🔄 Progress dialog shown");
+
+			// Step 2b) Wait for DOM to render the dialog before continuing
+			// Use multiple frames to ensure dialog is visible
+			await new Promise(function(resolve) { setTimeout(resolve, 100); });
+			progressBar = document.getElementById(uniqueId + "_bar");
+			progressText = document.getElementById(uniqueId + "_text");
+			console.log("🔄 Progress elements found: bar=" + !!progressBar + ", text=" + !!progressText);
+
+			// Step 2c) Another yield to ensure dialog is painted before processing starts
+			await new Promise(function(resolve) { requestAnimationFrame(resolve); });
+		} catch (err) {
+			console.error("❌ Failed to create progress dialog:", err);
+		}
+	}
+
+	// Step 2d) Store current cancellation token - if it changes, we should abort
+	var myCancelToken = window._holeDrawingCancelToken;
+	var wasCancelled = false;
+
+	// Step 3) Process holes in batches to allow UI updates
+	var processedCount = 0;
+	var visibleCount = 0;
+
+	// Step 3a) Use smaller batches when showing progress for smoother updates
+	var actualBatchSize = showProgressDialog ? Math.min(BATCH_SIZE, Math.ceil(totalHoles / 20)) : BATCH_SIZE;
+	actualBatchSize = Math.max(actualBatchSize, 50); // Minimum 50 holes per batch
+
+	// Step 3b) Collect visible holes for text pass (separate from geometry pass for performance)
+	var visibleHolesForText = [];
+
+	// PASS 1: GEOMETRY ONLY (instanced - very fast)
+	for (var batchStart = 0; batchStart < totalHoles; batchStart += actualBatchSize) {
+		// Step 3b.1) Check for cancellation before each batch
+		if (window._holeDrawingCancelToken !== myCancelToken) {
+			console.log("⚠️ [CANCELLED] Hole drawing cancelled after " + processedCount + " holes (token changed)");
+			wasCancelled = true;
+			break;
+		}
+
+		var batchEnd = Math.min(batchStart + actualBatchSize, totalHoles);
+
+		// Step 3c) Process this batch of holes - GEOMETRY ONLY
+		for (var holeIdx = batchStart; holeIdx < batchEnd; holeIdx++) {
+			var hole = allBlastHoles[holeIdx];
+			if (hole.visible === false) continue;
+
+			visibleCount++;
+			visibleHolesForText.push(hole);
+
+			// Step 3d) Use instanced rendering (includes collar, grade, toe automatically)
+			// Text is deferred to a separate pass for better performance
+			drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
+		}
+
+		processedCount = batchEnd;
+
+		// Step 3e) Update progress dialog if shown
+		if (showProgressDialog && progressBar && progressText) {
+			var percent = Math.round((processedCount / totalHoles) * 70 / 100); // 0-70% for geometry
+			progressBar.style.width = percent + "%";
+			progressText.textContent = "Geometry: " + processedCount + " / " + totalHoles + " holes (" + percent + "%)";
+		}
+
+		// Step 3f) Yield to browser to allow UI repaint (use setTimeout for reliable repaint)
+		if (batchEnd < totalHoles) {
+			await new Promise(function(resolve) {
+				setTimeout(resolve, 10); // 10ms delay allows browser to repaint
+			});
+		}
+	}
+
+	// Step 4) FLUSH BATCHED LINES - Creates single draw call for all hole body lines
+	// This is the key performance optimization: 1644 lines -> ~5 draw calls
+	if (threeRenderer && threeRenderer.instancedMeshManager) {
+		threeRenderer.instancedMeshManager.flushLineBatches(threeRenderer.holesGroup);
+	}
+
+	// PASS 2: TEXT RENDERING (separate pass for batched sync)
+	// Only render text if any text display options are enabled AND not cancelled
+	var hasTextOptions = displayOptions3D.holeID || displayOptions3D.holeDia || displayOptions3D.holeLen ||
+		displayOptions3D.holeType || displayOptions3D.holeAng || displayOptions3D.holeBea ||
+		displayOptions3D.holeSubdrill || displayOptions3D.initiationTime || displayOptions3D.delayValue ||
+		displayOptions3D.xValue || displayOptions3D.yValue || displayOptions3D.zValue ||
+		displayOptions3D.displayRowAndPosId || displayOptions3D.measuredLength || displayOptions3D.measuredMass ||
+		displayOptions3D.measuredComment || displayOptions3D.holeDip;
+
+	if (!wasCancelled && hasTextOptions && threeInitialized && visibleHolesForText.length > 0) {
+		// Update progress for text phase
+		if (showProgressDialog && progressBar && progressText) {
+			progressText.textContent = "Adding text labels...";
+			progressBar.style.width = "75%";
+		}
+
+		// Yield before text rendering
+		await new Promise(function(resolve) { setTimeout(resolve, 10); });
+
+		// Step 4b) Render all text in one pass (allows Troika to batch internally)
+		var textBatchSize = 200; // Larger batches for text since it's lighter per item
+		for (var textIdx = 0; textIdx < visibleHolesForText.length; textIdx += textBatchSize) {
+			// Step 4b.1) Check for cancellation before each text batch
+			if (window._holeDrawingCancelToken !== myCancelToken) {
+				console.log("⚠️ [CANCELLED] Text rendering cancelled");
+				wasCancelled = true;
+				break;
+			}
+
+			var textBatchEnd = Math.min(textIdx + textBatchSize, visibleHolesForText.length);
+
+			for (var ti = textIdx; ti < textBatchEnd; ti++) {
+				drawHoleTextsAndConnectorsThreeJS(visibleHolesForText[ti], displayOptions3D);
+			}
+
+			// Update progress
+			if (showProgressDialog && progressBar && progressText) {
+				var textPercent = 75 + Math.round((textBatchEnd / visibleHolesForText.length) * 25);
+				progressBar.style.width = textPercent + "%";
+				progressText.textContent = "Text: " + textBatchEnd + " / " + visibleHolesForText.length + " labels";
+			}
+
+			// Yield every batch for UI update
+			if (textBatchEnd < visibleHolesForText.length) {
+				await new Promise(function(resolve) { setTimeout(resolve, 5); });
+			}
+		}
+	}
+
+	// Step 5) Update progress to completion (or show cancelled message)
+	if (showProgressDialog && progressBar && progressText) {
+		if (wasCancelled) {
+			progressBar.style.width = "100%";
+			progressBar.style.backgroundColor = "#FFA500"; // Orange for cancelled
+			progressText.textContent = "Cancelled - rebuilding...";
+		} else {
+			progressBar.style.width = "100%";
+			progressBar.style.backgroundColor = "#2196F3"; // Blue for complete
+			progressText.textContent = "Complete: " + visibleCount + " holes rendered";
+		}
+	}
+
+	// Step 6) Log completion in developer mode
+	if (developerModeEnabled) {
+		if (wasCancelled) {
+			console.log("⚠️ Hole rendering was cancelled, queued rebuild will start");
+		} else {
+			console.log("🚀 Instanced rendering complete: " + totalHoles + " holes (" + visibleCount + " visible)");
+			if (threeRenderer && threeRenderer.instancedMeshManager) {
+				console.log("📊 Instance stats:", threeRenderer.instancedMeshManager.getStats());
+			}
+		}
+	}
+
+	// Step 7) Close progress dialog after showing completion message
+	if (progressDialog) {
+		// Wait shorter time if cancelled, longer if complete
+		var waitTime = wasCancelled ? 200 : 800;
+		await new Promise(function(resolve) { setTimeout(resolve, waitTime); });
+		progressDialog.close();
+	}
+	
+	// Step 7a) Hide status indicator if it was shown
+	if (showStatusIndicator) {
+		hide3DRebuildStatusIndicator();
+	}
+	
+	// Step 7b) Reset rebuild context flag (one-time use per rebuild trigger)
+	window.threeHoleRebuildContext = null;
+
+	// Step 8) Reset drawing in progress flag
+	window._holeDrawingInProgress = false;
+
+	// Step 9) Process queued rebuild if one was requested during this draw
+	if (window._holeDrawingQueuedRebuild && window._holeDrawingQueuedParams) {
+		console.log("🔄 [QUEUE] Starting queued rebuild");
+		window._holeDrawingQueuedRebuild = false;
+		var qp = window._holeDrawingQueuedParams;
+		window._holeDrawingQueuedParams = null;
+		
+		// Short delay before starting queued rebuild
+		await new Promise(function(resolve) { setTimeout(resolve, 50); });
+		
+		// Start the queued rebuild
+		window._holeDrawingInProgress = true;
+		drawHolesAsync(qp.allBlastHoles, qp.toeSizeInMeters3D, qp.displayOptions3D, qp.threeInitialized, qp.threeRenderer, qp.developerModeEnabled);
+		return; // Don't render yet, let queued rebuild handle it
+	}
+
+	// Step 10) Trigger a render to show the completed holes (only if not cancelled)
+	if (!wasCancelled && typeof renderThreeJS === "function") {
+		renderThreeJS();
 	}
 }
 
@@ -29725,36 +30216,25 @@ function drawData(allBlastHoles, selectedHole) {
 		// Draw holes - ONLY rebuild geometry when data changes
 		var toeSizeInMeters3D = document.getElementById("toeSlider") ? parseFloat(document.getElementById("toeSlider").value) : 1;
 		if (blastGroupVisible && allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
-			// Step 3.1) ONLY REBUILD GEOMETRY when threeDataNeedsRebuild is true
-			// This prevents rebuilding geometry every frame (which was causing 1 FPS!)
-			if (window.threeDataNeedsRebuild) {
-				// NEW INSTANCED RENDERING: Use InstancedMeshManager for 10-50x performance improvement
-				// Automatically groups holes by diameter/type and batches rendering
-				for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
-					var hole = allBlastHoles[holeIdx];
-					if (hole.visible === false) continue;
-
-					// Use instanced rendering (includes collar, grade, toe automatically)
-					// Pass toe slider radius so all toes use the same size
-					drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
-
-					// Draw hole text labels (labels are still individual sprites for flexibility)
-					if (threeInitialized) {
-						drawHoleTextsAndConnectorsThreeJS(hole, displayOptions3D);
+			// Step 3.0) Check if any KAD drawing tool is active (skip expensive hole rebuild during drawing)
+			var isAnyKADToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
+			
+			// Step 3.1) ONLY REBUILD GEOMETRY when threeDataNeedsRebuild is true AND no drawing tool active
+			// Skip hole rebuild during KAD drawing to prevent flicker (holes remain visible unchanged)
+			// KAD-only rebuild (threeKADNeedsRebuild) does NOT trigger hole rebuild
+			if (window.threeDataNeedsRebuild && !isAnyKADToolActive) {
+				// Step 3.1a) Use async hole drawing for all datasets
+				// Shows progress dialog only for > 500 holes, but async allows UI to remain responsive
+				if (!window._holeDrawingInProgress) {
+					if (developerModeEnabled) {
+						console.log("📍 Starting async hole drawing: " + allBlastHoles.length + " holes");
 					}
-				}
-
-				// Step 3.2) FLUSH BATCHED LINES - Creates single draw call for all hole body lines
-				// This is the key performance optimization: 1644 lines -> ~5 draw calls
-				if (threeRenderer && threeRenderer.instancedMeshManager) {
-					threeRenderer.instancedMeshManager.flushLineBatches(threeRenderer.holesGroup);
-				}
-
-				if (developerModeEnabled) {
-					console.log("🚀 Instanced rendering complete: " + allBlastHoles.length + " holes");
-					if (threeRenderer && threeRenderer.instancedMeshManager) {
-						console.log("📊 Instance stats:", threeRenderer.instancedMeshManager.getStats());
-					}
+					window._holeDrawingInProgress = true;
+					drawHolesAsync(allBlastHoles, toeSizeInMeters3D, displayOptions3D, threeInitialized, threeRenderer, developerModeEnabled);
+				} else {
+					// Step 3.1b) Drawing already in progress - queue new rebuild (throttled)
+					// cancelAndQueueHoleRebuild handles throttling and only logs occasionally
+					cancelAndQueueHoleRebuild(allBlastHoles, toeSizeInMeters3D, displayOptions3D, threeInitialized, threeRenderer, developerModeEnabled);
 				}
 				// NOTE: threeDataNeedsRebuild flag reset moved to AFTER KAD drawing (Step 3 below)
 			}
@@ -29882,9 +30362,11 @@ function drawData(allBlastHoles, selectedHole) {
 		}
 
 		// Step 3) Draw KAD entities in Three.js
-		// CRITICAL: Only rebuild KAD geometry when threeDataNeedsRebuild is true
+		// CRITICAL: Only rebuild KAD geometry when threeDataNeedsRebuild OR threeKADNeedsRebuild is true
+		// threeKADNeedsRebuild allows KAD-only updates (no expensive hole rebuild)
 		// This was the cause of 17k+ scene objects - KAD was adding every frame without clearing!
-		if (drawingsGroupVisible && window.threeDataNeedsRebuild) {
+		var shouldRebuildKAD = window.threeDataNeedsRebuild || window.threeKADNeedsRebuild;
+		if (drawingsGroupVisible && shouldRebuildKAD) {
 
 			// Step 3.1) SUPER-BATCH: For large DXF files, merge ALL lines/polys into ONE geometry
 			// This reduces 3799 draw calls to just 1 - massive performance improvement!
@@ -30184,12 +30666,19 @@ function drawData(allBlastHoles, selectedHole) {
 		draw3DOffsetPreview();
 	}
 
-	// Step 7) RESET REBUILD FLAG - After all geometry (holes AND KAD) is drawn
+	// Step 7) RESET REBUILD FLAGS - After all geometry (holes AND KAD) is drawn
 	// This MUST be after both blocks to prevent partial rebuilds
 	if (window.threeDataNeedsRebuild) {
 		window.threeDataNeedsRebuild = false;
 		if (developerModeEnabled) {
 			console.log("✅ 3D geometry rebuild complete - flag reset");
+		}
+	}
+	// Step 7a) Reset KAD-only rebuild flag
+	if (window.threeKADNeedsRebuild) {
+		window.threeKADNeedsRebuild = false;
+		if (developerModeEnabled) {
+			console.log("✅ 3D KAD-only rebuild complete - flag reset");
 		}
 	}
 
@@ -30394,10 +30883,10 @@ function drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj) {
 		drawText(rightSideCollar, topSideCollar, hole.holeID, textFillColor);
 	}
 	if (displayOptions.holeDia) {
-		drawText(rightSideCollar, middleSideCollar, parseFloat(hole.holeDiameter).toFixed(0), "green");
+		drawText(rightSideCollar, bottomSideCollar, parseFloat(hole.holeDiameter).toFixed(0), "green");
 	}
 	if (displayOptions.holeLen) {
-		drawText(rightSideCollar, bottomSideCollar, parseFloat(hole.holeLengthCalculated).toFixed(1), depthColor);
+		drawText(rightSideCollar, middleSideCollar, parseFloat(hole.holeLengthCalculated).toFixed(1), depthColor);
 	}
 	if (displayOptions.holeAng) {
 		drawRightAlignedText(leftSideCollar, topSideCollar, parseFloat(hole.holeAngle).toFixed(0), angleDipColor);
@@ -31094,6 +31583,32 @@ function debouncedSaveKAD() {
 	}, 2000);
 }
 
+// Step #) Debounced 3D rebuild - prevents flicker during rapid drawing
+// 3D rebuild is expensive, so we debounce it during drawing operations
+let threeRebuildTimeout;
+function debouncedThreeRebuild() {
+	// Clear any pending rebuild
+	clearTimeout(threeRebuildTimeout);
+	// Set rebuild to trigger after 500ms of inactivity (increased from 300ms)
+	threeRebuildTimeout = setTimeout(function() {
+		console.log("🔄 [DEBOUNCED] 3D rebuild triggered after idle");
+		window.threeDataNeedsRebuild = true;
+		drawData(allBlastHoles, selectedHole);
+	}, 500);
+}
+
+// Step #) Lightweight 2D-only redraw for responsive drawing
+// Does NOT trigger 3D rebuild - just refreshes the 2D canvas
+function drawData2DOnly() {
+	console.log("⚡ [2D-ONLY] Lightweight redraw (skip 3D rebuild)");
+	// Skip 3D rebuild by NOT setting threeDataNeedsRebuild
+	// The drawData function checks this flag
+	var savedFlag = window.threeDataNeedsRebuild;
+	window.threeDataNeedsRebuild = false;
+	drawData(allBlastHoles, selectedHole);
+	window.threeDataNeedsRebuild = savedFlag; // Restore flag
+}
+
 function saveKADToDB(mapData) {
 	if (!db) {
 		console.error("DB not initialized. Cannot save.");
@@ -31356,18 +31871,30 @@ function loadHolesFromDB() {
 // Step 3) Debounced save function for blast holes
 // Staged saving for large files as these can't be saved on instant quit of window close
 let holesSaveTimeout;
+// Step #) Track if cache invalidation is pending (prevents multiple invalidations)
+let _cacheInvalidationPending = false;
+
 function debouncedSaveHoles() {
-	// Step 3.0) IMMEDIATELY bump data version to invalidate all 2D analysis caches
-	// This ensures any in-progress renders will miss the cache and recalculate
-	bumpDataVersion();
-	
-	// Step 3.0a) Also invalidate 3D analysis caches so they rebuild on next frame
-	if (typeof invalidate3DAnalysisCaches === "function") {
-		invalidate3DAnalysisCaches();
+	// Step 3.0) Only invalidate caches ONCE per batch of changes
+	// Multiple rapid calls should not trigger repeated invalidations
+	if (!_cacheInvalidationPending) {
+		_cacheInvalidationPending = true;
+		
+		// Step 3.0a) Bump data version ONCE (deferred slightly to batch multiple calls)
+		setTimeout(function() {
+			bumpDataVersion();
+			
+			// Step 3.0b) Also invalidate 3D analysis caches so they rebuild on next frame
+			if (typeof invalidate3DAnalysisCaches === "function") {
+				invalidate3DAnalysisCaches();
+			}
+			
+			// Step 3.0c) Invalidate blast entity volume cache for TreeView
+			invalidateBlastEntityVolumeCache(null); // null = invalidate ALL entities
+			
+			_cacheInvalidationPending = false;
+		}, 100); // 100ms delay batches rapid calls
 	}
-	
-	// Step 3.0b) Invalidate blast entity volume cache for TreeView
-	invalidateBlastEntityVolumeCache(null); // null = invalidate ALL entities
 	
 	// Clear any existing pending save
 	clearTimeout(holesSaveTimeout);
@@ -35110,6 +35637,8 @@ function handleMoveToolMouseUp(event) {
 			// This ensures no other code recreates highlights after we remove them
 			if (typeof drawData === "function") {
 				// Step #) Trigger 3D rebuild to reflect moved hole positions
+				// Set context to "move" to show status indicator instead of dialog
+				window.threeHoleRebuildContext = "move";
 				window.threeDataNeedsRebuild = true;
 				drawData(allBlastHoles, null);
 			}
@@ -35204,6 +35733,8 @@ function handleMoveToolMouseUp(event) {
 		moveToolSelectedHole = null;
 		dragInitialPositions = null; // CRITICAL: Clear to prevent wrong hole moving next time
 		// Step #) Trigger 3D rebuild to reflect moved hole positions
+		// Set context to "move" to show status indicator instead of dialog
+		window.threeHoleRebuildContext = "move";
 		window.threeDataNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
 	}
@@ -41475,7 +42006,7 @@ function toBearing(degrees) {
 	return (degrees + 90) % 360;
 }
 // ADDED ROWID AND POSID
-function generatePatternInPolygon(patternSettings) {
+async function generatePatternInPolygon(patternSettings) {
 	if (!selectedPolygon || !patternStartPoint || !patternEndPoint || !patternReferencePoint) {
 		console.error("Missing pattern data");
 		return;
@@ -41671,6 +42202,51 @@ function generatePatternInPolygon(patternSettings) {
 		undoManager.beginBatch("Generate pattern in polygon (" + holesInPolygon.length + " holes)");
 	}
 
+	// Step #) Show progress dialog for large patterns (> 500 holes)
+	var PATTERN_PROGRESS_THRESHOLD = 500;
+	var totalHolesToGenerate = holesInPolygon.length;
+	var showPatternProgress = totalHolesToGenerate > PATTERN_PROGRESS_THRESHOLD;
+	var patternProgressDialog = null;
+	var patternProgressBar = null;
+	var patternProgressText = null;
+	var holesProcessed = 0;
+
+	if (showPatternProgress) {
+		try {
+			console.log("🔄 Creating pattern progress dialog for " + totalHolesToGenerate + " holes");
+			var patternProgressId = "patternProgress_" + Date.now();
+			var patternProgressContent = document.createElement("div");
+			patternProgressContent.style.textAlign = "center";
+			patternProgressContent.innerHTML = "<p style=\"margin: 10px 0;\">Generating Blast Pattern</p>" +
+				"<p style=\"margin: 5px 0; font-size: 14px; color: #888;\">" + totalHolesToGenerate + " holes in " + rows.length + " rows</p>" +
+				'<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 15px 0; overflow: hidden;">' +
+				'<div id="' + patternProgressId + '_bar" style="width: 0%; height: 24px; background-color: #FF9800; border-radius: 5px; transition: width 0.1s ease-out;"></div>' +
+				"</div>" +
+				'<p id="' + patternProgressId + '_text" style="margin: 5px 0; font-size: 13px;">Starting...</p>';
+
+			patternProgressDialog = new FloatingDialog({
+				title: "Generating Pattern",
+				content: patternProgressContent,
+				layoutType: "default",
+				width: 400,
+				height: 180,
+				showConfirm: false,
+				showCancel: false,
+				allowOutsideClick: false
+			});
+
+			patternProgressDialog.show();
+
+			// Wait for DOM to render
+			await new Promise(function(resolve) { setTimeout(resolve, 100); });
+			patternProgressBar = document.getElementById(patternProgressId + "_bar");
+			patternProgressText = document.getElementById(patternProgressId + "_text");
+			await new Promise(function(resolve) { requestAnimationFrame(resolve); });
+		} catch (err) {
+			console.error("Failed to create pattern progress dialog:", err);
+		}
+	}
+
 	// Process rows from first (lowest row letter) to last (highest row letter)
 	for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
 		// Check for cancellation before each row
@@ -41732,8 +42308,32 @@ function generatePatternInPolygon(patternSettings) {
 			}
 
 			// Add hole using existing addHole function with rowID and posID
-			addHole(true, useGradeZ, blastName, holeID, hole.x, hole.y, collarZ, gradeZ, diameter, type, length, subdrill, angle, bearing, currentRowID, posID, burden, spacing);
+			await addHole(true, useGradeZ, blastName, holeID, hole.x, hole.y, collarZ, gradeZ, diameter, type, length, subdrill, angle, bearing, currentRowID, posID, burden, spacing);
+			holesProcessed++;
 		}
+
+		// Step #) Update progress after each row (not each hole, to reduce overhead)
+		if (showPatternProgress && patternProgressBar && patternProgressText) {
+			var percent = Math.round((holesProcessed / totalHolesToGenerate) * 100);
+			patternProgressBar.style.width = percent + "%";
+			patternProgressText.textContent = "Row " + (rowIndex + 1) + "/" + rows.length + " - " + holesProcessed + "/" + totalHolesToGenerate + " holes (" + percent + "%)";
+
+			// Yield to browser every few rows to allow UI update
+			if (rowIndex % 5 === 0) {
+				await new Promise(function(resolve) { setTimeout(resolve, 10); });
+			}
+		}
+	}
+
+	// Step #) Close progress dialog
+	if (patternProgressDialog) {
+		if (patternProgressBar && patternProgressText) {
+			patternProgressBar.style.width = "100%";
+			patternProgressBar.style.backgroundColor = "#4CAF50"; // Green for complete
+			patternProgressText.textContent = "Complete: " + holesProcessed + " holes generated";
+		}
+		await new Promise(function(resolve) { setTimeout(resolve, 500); });
+		patternProgressDialog.close();
 	}
 
 	// Check if generation was cancelled and remove added holes
@@ -41783,6 +42383,8 @@ function generatePatternInPolygon(patternSettings) {
 
 	// Update display
 	// Step #) Trigger 3D rebuild to show newly generated pattern in polygon
+	// Set context to "creation" to show progress dialog for >500 holes
+	window.threeHoleRebuildContext = "creation";
 	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 	if (!window.holeGenerationCancelled) {
@@ -41935,6 +42537,8 @@ function generateHolesAlongLine(params) {
 	// Redraw
 	debouncedUpdateTreeView(); // Use debounced version
 	// Step #) Trigger 3D rebuild to show newly generated holes along line
+	// Set context to "creation" to show progress dialog for >500 holes
+	window.threeHoleRebuildContext = "creation";
 	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 
@@ -43433,6 +44037,8 @@ function generateHolesAlongPolyline(params, vertices) {
 
 	// Redraw
 	// Step #) Trigger 3D rebuild to show newly generated holes along polyline
+	// Set context to "creation" to show progress dialog for >500 holes
+	window.threeHoleRebuildContext = "creation";
 	window.threeDataNeedsRebuild = true;
 	drawData(allBlastHoles, selectedHole);
 
@@ -48244,32 +48850,17 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 			}
 		}
 		
-		// Step 5f) If no surface hit but we have a cached Z, use it for SURFACE_FACE_CACHED
-		// This reduces expensive BVH raycasts when moving mouse across same elevation
-		if (!surfaceHitFound && lastSnapZValue !== null && surfaceMeshes.length > 0) {
-			// Use the cached Z value with current mouse XY (converted to world coords)
-			// The ray direction points from camera through mouse - we need the XY at cached Z level
-			// For orthographic camera with -Z looking down, the XY is at ray origin
-			var cachedSurface = lastSnapSurfaceId ? loadedSurfaces.get(lastSnapSurfaceId) : null;
-			var cachedSurfaceName = cachedSurface ? cachedSurface.name : "surface";
-			
-			// Calculate XY intersection at the cached Z level
-			// For orthographic camera looking down (-Z), ray origin XY is the mouse world XY
-			var cachedWorldX = rayOrigin.x + window.threeLocalOriginX;
-			var cachedWorldY = rayOrigin.y + window.threeLocalOriginY;
-			
-			snapCandidates.push({
-				distance: 0,
-				rayT: 1, // Arbitrary distance since we're using cached Z
-				point: { x: cachedWorldX, y: cachedWorldY, z: lastSnapZValue },
-				type: "SURFACE_FACE",
-				priority: SNAP_PRIORITIES.SURFACE_FACE + 1, // Slightly lower priority than actual hit
-				description: cachedSurfaceName + " face (cached Z)"
-			});
-			
-			if (developerModeEnabled) {
-				console.log("🏔️ [BVH SNAP] Using cached Z: " + lastSnapZValue.toFixed(2));
-			}
+		// Step 5f) DISABLED: Cached Z feature was causing false snaps
+		// When mouse is NOT over the surface, this would create snap points using old data
+		// This made the cursor "think everywhere is a snap" even when off the surface
+		// The proper fix is to only snap when the ray actually hits the surface
+		// 
+		// If performance becomes an issue, we could re-enable this with proper bounds checking:
+		// - Check if mouse XY is within surface bounding box
+		// - Check if the projected point is actually on a surface triangle
+		// For now, we rely on actual raycast hits only
+		if (developerModeEnabled && !surfaceHitFound && lastSnapZValue !== null && surfaceMeshes.length > 0) {
+			console.log("🏔️ [BVH SNAP] No surface hit this frame (cached Z disabled to prevent false snaps)");
 		}
 	}
 
@@ -50863,8 +51454,9 @@ window.handleTreeViewResetConnections = function (holeNodeIds) {
 // Step 14) Load 3D settings from localStorage
 function load3DSettings() {
 	const defaultSettings = {
-		dampingFactor: 0.05,
+		dampingFactor: 0, // Step 14.1) Default to no spin (was 0.05)
 		cursorZoom: true,
+		plumbLineDisplay: "off", // Step 14.2) Display plumb line from cursor to Drawing Z Level
 		cursorOpacity: 0.2,
 		lightBearing: 135,
 		lightElevation: 15,
@@ -50926,6 +51518,7 @@ function apply3DSettings(settings) {
 			gizmoDisplay: settings.gizmoDisplay,
 			axisLock: settings.axisLock,
 			dampingFactor: settings.dampingFactor,
+			cursorZoom: settings.cursorZoom, // Step 17a.0) Pass cursorZoom to CameraControls
 		};
 		cameraControls.updateSettings(cameraSettings);
 
@@ -50938,6 +51531,11 @@ function apply3DSettings(settings) {
 	// Step 17b) Update cursor opacity
 	if (settings.cursorOpacity !== undefined) {
 		window.cursorOpacity3D = settings.cursorOpacity;
+	}
+	
+	// Step 17b.1) Update plumb line display setting globally
+	if (settings.plumbLineDisplay !== undefined) {
+		window.plumbLineDisplay = settings.plumbLineDisplay;
 	}
 
 	// Step 17c) Update lighting

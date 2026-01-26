@@ -808,11 +808,11 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                     }
                     if (displayOptions.holeDia) {
                         pdf.setTextColor(0, 128, 0); // Green
-                        pdf.text(parseFloat(hole.holeDiameter).toFixed(0), collarCoords[0] + textOffset, collarCoords[1]);
+                        pdf.text(parseFloat(hole.holeDiameter).toFixed(0), collarCoords[0] + textOffset, collarCoords[1] + textOffset);
                     }
                     if (displayOptions.holeLen) {
                         pdf.setTextColor(0, 0, 255); // Blue (depthColor equivalent)
-                        pdf.text(parseFloat(hole.holeLengthCalculated).toFixed(1), collarCoords[0] + textOffset, collarCoords[1] + textOffset);
+                        pdf.text(parseFloat(hole.holeLengthCalculated).toFixed(1), collarCoords[0] + textOffset, collarCoords[1]);
                     }
                 }
                 

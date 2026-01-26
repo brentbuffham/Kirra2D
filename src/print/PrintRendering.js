@@ -1572,10 +1572,10 @@ export function printHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, prin
         printText(rightSideCollar, topSideCollar, hole.holeID, "black", context);
     }
     if (displayOptions.holeDia) {
-        printText(rightSideCollar, middleSideCollar, parseFloat(hole.holeDiameter).toFixed(0), "rgb(0, 50, 0)", context);
+        printText(rightSideCollar, bottomSideCollar, parseFloat(hole.holeDiameter).toFixed(0), "rgb(0, 50, 0)", context);
     }
     if (displayOptions.holeLen) {
-        printText(rightSideCollar, bottomSideCollar, parseFloat(hole.holeLengthCalculated).toFixed(1), "rgb(0, 0, 67)", context);
+        printText(rightSideCollar, middleSideCollar, parseFloat(hole.holeLengthCalculated).toFixed(1), "rgb(0, 0, 67)", context);
     }
     if (displayOptions.holeAng) {
         printRightAlignedText(leftSideCollar, topSideCollar, parseFloat(hole.holeAngle).toFixed(0) + "°", "rgb(67, 30, 0)", context);

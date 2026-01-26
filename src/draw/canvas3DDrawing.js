@@ -312,33 +312,19 @@ export function drawHoleThreeJS_Instanced(hole, toeSliderRadius) {
 	};
 
 	if (holeLength === 0 || isNaN(holeLength)) {
-		// Dummy hole - draw cross/X (keep as individual geometry)
+		// Step 4a) Dummy hole - use BATCHED X-shape (not individual geometry)
+		// This reduces thousands of draw calls to just 1-2 for all dummy holes
 		const crossSize = 0.2 * window.holeScale;
-		const dummyGroup = GeometryFactory.createDummyHole(collarLocal.x, collarLocal.y, collarZ, crossSize, collarColor);
-		dummyGroup.userData = {
-			type: "hole",
-			holeId: uniqueHoleId,
-			entityName: hole.entityName,
-			holeID: hole.holeID,
-			holeData: hole
-		};
-		window.threeRenderer.holesGroup.add(dummyGroup);
-		window.threeRenderer.holeMeshMap.set(hole.holeID, dummyGroup);
-		return; // Don't use instancing for dummy holes
+		manager.addDummyHoleToBatch(uniqueHoleId, collarLocal.x, collarLocal.y, collarZ, crossSize, collarColor);
+		// Note: No individual mesh to add to holeMeshMap - tracking is in manager.dummyHoleIndexMap
+		return; // Batched - no further processing needed
 	} else if (holeDiameter === 0 || isNaN(holeDiameter)) {
-		// Zero diameter hole - draw square (keep as individual geometry)
+		// Step 4b) Zero diameter hole - use BATCHED square + track lines
+		// This reduces thousands of draw calls to just 1-2 for all zero-diameter holes
 		const squareSize = 10 / window.currentScale;
-		const zeroGroup = GeometryFactory.createZeroDiameterHole(collarLocal.x, collarLocal.y, collarZ, gradeLocal.x, gradeLocal.y, gradeZ, toeLocal.x, toeLocal.y, toeZ, squareSize, subdrillAmount, window.darkModeEnabled);
-		zeroGroup.userData = {
-			type: "hole",
-			holeId: uniqueHoleId,
-			entityName: hole.entityName,
-			holeID: hole.holeID,
-			holeData: hole
-		};
-		window.threeRenderer.holesGroup.add(zeroGroup);
-		window.threeRenderer.holeMeshMap.set(hole.holeID, zeroGroup);
-		return; // Don't use instancing for zero-diameter holes
+		manager.addZeroDiameterHoleToBatch(uniqueHoleId, collarLocal.x, collarLocal.y, collarZ, gradeLocal.x, gradeLocal.y, gradeZ, toeLocal.x, toeLocal.y, toeZ, squareSize, subdrillAmount, window.darkModeEnabled);
+		// Note: No individual mesh to add to holeMeshMap - tracking is in manager.zeroDiameterIndexMap
+		return; // Batched - no further processing needed
 	}
 
 	// Step 5) Normal hole - use instancing for circles, BATCHED lines for body
@@ -447,16 +433,28 @@ export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId
 }
 
 // Step 5) Draw hole label text in Three.js
+// Supports both Troika SDF text (default) and Hershey Simplex vector text (when window.useVectorText is true)
 export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, anchorX = "center") {
 	if (!window.threeInitialized || !window.threeRenderer) return;
-	if (!text || text === "" || text === "null" || text === "undefined") return;
+	// Step 5a) Allow numeric 0 to display - only skip truly empty/invalid values
+	if (text === null || text === undefined || text === "" || text === "null" || text === "undefined") return;
 
 	const local = window.worldToThreeLocal(worldX, worldY);
-	const textSprite = GeometryFactory.createKADText(local.x, local.y, worldZ, String(text), fontSize, color, null, anchorX);
-
-	// Step 5a) Only add if not already in group (cached objects might already be there)
-	if (!textSprite.parent) {
-		window.threeRenderer.holesGroup.add(textSprite); // Hole text goes to holesGroup
+	
+	// Step 5a) Check if vector text mode is enabled
+	if (window.useVectorText) {
+		// Step 5b) Use Hershey Simplex vector font (high performance, line-based)
+		const vectorText = GeometryFactory.createVectorText(local.x, local.y, worldZ, String(text), fontSize, color, anchorX);
+		if (vectorText) {
+			window.threeRenderer.holesGroup.add(vectorText);
+		}
+	} else {
+		// Step 5c) Use Troika SDF text (default, high quality)
+		const textSprite = GeometryFactory.createKADText(local.x, local.y, worldZ, String(text), fontSize, color, null, anchorX);
+		// Step 5d) Only add if not already in group (cached objects might already be there)
+		if (!textSprite.parent) {
+			window.threeRenderer.holesGroup.add(textSprite); // Hole text goes to holesGroup
+		}
 	}
 }
 
@@ -540,10 +538,10 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 		drawHoleTextThreeJS(rightSideCollarWorld.x, rightSideCollarWorld.y, collarZ, hole.holeID, fontSize / 1.5, window.textFillColor, "left");
 	}
 	if (displayOptions.holeDia) {
-		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, parseFloat(hole.holeDiameter).toFixed(0), fontSize / 1.5, "green", "left");
+		drawHoleTextThreeJS(bottomSideCollarWorld.x, bottomSideCollarWorld.y, collarZ, parseFloat(hole.holeDiameter).toFixed(0), fontSize / 1.5, "green", "left");
 	}
 	if (displayOptions.holeLen) {
-		drawHoleTextThreeJS(bottomSideCollarWorld.x, bottomSideCollarWorld.y, collarZ, parseFloat(hole.holeLengthCalculated).toFixed(1), fontSize / 1.5, window.depthColor, "left");
+		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, parseFloat(hole.holeLengthCalculated).toFixed(1), fontSize / 1.5, window.depthColor, "left");
 	}
 	if (displayOptions.holeType) {
 		drawHoleTextThreeJS(middleSideCollarWorld.x, middleSideCollarWorld.y, collarZ, hole.holeType, fontSize / 1.5, "green", "left");
@@ -570,7 +568,7 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	}
 	// Step 5) Additional coordinate and measurement labels
 	if (displayOptions.xValue) {
-		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, parseFloat(hole.startXLocation).toFixed(2), fontSize, window.textFillColor, "right");
+		drawHoleTextThreeJS(leftSideCollarWorld.x, leftSideCollarWorld.y, collarZ, parseFloat(hole.startXLocation).toFixed(2), fontSize / 1.5, window.textFillColor, "right");
 	}
 	if (displayOptions.yValue) {
 		const yPosWorld = canvasToWorld(leftSideCollar, middleSideCollar);
@@ -589,7 +587,8 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 		drawHoleTextThreeJS(lenPosWorld.x, lenPosWorld.y, collarZ, hole.measuredLength, fontSize / 1.5, "#FF4400", "right");
 	}
 	if (displayOptions.measuredMass) {
-		const massPosWorld = canvasToWorld(leftSideCollar, topSideCollar - BASE_FONT_SIZE);
+		// Step 5a) Use topSideToe for Y position to match 2D layout (left side, toe vertical position)
+		const massPosWorld = canvasToWorld(leftSideCollar, topSideToe);
 		drawHoleTextThreeJS(massPosWorld.x, massPosWorld.y, collarZ, hole.measuredMass, fontSize / 1.5, "#FF6600", "right");
 	}
 }
@@ -748,6 +747,7 @@ export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, 
 
 // Step 11) Draw KAD text in Three.js
 // anchorX defaults to "left" to match 2D canvas text alignment
+// Supports both Troika SDF text (default) and Hershey Simplex vector text (when window.useVectorText is true)
 export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, kadId = null, anchorX = "left") {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
@@ -755,25 +755,44 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
 		console.log("🔧 [drawKADTextThreeJS] kadId:", kadId);
 	}
 
-	// Step 11a) Create text with left alignment to match 2D canvas rendering
-	const textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor, anchorX);
-
-	// Step 11a) Add metadata for selection
-	if (kadId) {
-		// Preserve existing userData if it exists (for cached objects)
-		if (!textSprite.userData) {
-			textSprite.userData = {};
+	// Step 11a) Check if vector text mode is enabled
+	// Note: Vector text doesn't support background colors - fall back to Troika for those
+	if (window.useVectorText && !backgroundColor) {
+		// Step 11b) Use Hershey Simplex vector font (high performance, line-based)
+		const vectorText = GeometryFactory.createVectorText(worldX, worldY, worldZ, String(text), fontSize, color, anchorX);
+		
+		if (vectorText) {
+			// Step 11c) Add metadata for selection
+			if (kadId) {
+				vectorText.userData.type = "kadText";
+				vectorText.userData.kadId = kadId;
+				if (developerModeEnabled) {
+					console.log("✅ [drawKADTextThreeJS] Vector text userData set:", vectorText.userData);
+				}
+			}
+			window.threeRenderer.kadGroup.add(vectorText);
 		}
-		textSprite.userData.type = "kadText";
-		textSprite.userData.kadId = kadId;
-		if (developerModeEnabled) {
-			console.log("✅ [drawKADTextThreeJS] userData set:", textSprite.userData);
-		}
-	}
+	} else {
+		// Step 11d) Use Troika SDF text (default, high quality, supports backgrounds)
+		const textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor, anchorX);
 
-	// Step 11b) Only add if not already in group (cached objects might already be there)
-	if (!textSprite.parent) {
-		window.threeRenderer.kadGroup.add(textSprite);
+		// Step 11e) Add metadata for selection
+		if (kadId) {
+			// Preserve existing userData if it exists (for cached objects)
+			if (!textSprite.userData) {
+				textSprite.userData = {};
+			}
+			textSprite.userData.type = "kadText";
+			textSprite.userData.kadId = kadId;
+			if (developerModeEnabled) {
+				console.log("✅ [drawKADTextThreeJS] Troika text userData set:", textSprite.userData);
+			}
+		}
+
+		// Step 11f) Only add if not already in group (cached objects might already be there)
+		if (!textSprite.parent) {
+			window.threeRenderer.kadGroup.add(textSprite);
+		}
 	}
 }
 
@@ -1539,19 +1558,9 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	if (worldX === undefined || worldY === undefined || worldZ === undefined) return;
 
-	// DEBUG: Log what we receive
-	if (window.developerModeEnabled) {
-		console.log("📍 drawMouseIndicator called with world:", worldX.toFixed(2), worldY.toFixed(2), worldZ.toFixed(2));
-	}
-
 	// Step 19.5a) Convert world coordinates to local Three.js coordinates
 	const local = window.worldToThreeLocal(worldX, worldY);
 	const z = worldZ || 0;
-
-	// DEBUG: Log local coordinates
-	if (window.developerModeEnabled) {
-		console.log("📍 drawMouseIndicator local coords:", local.x.toFixed(2), local.y.toFixed(2), z.toFixed(2));
-	}
 
 	// Step 19.5a.1) Use provided color or apply cursor opacity setting
 	const cursorOpacity = 0.2;
@@ -1613,11 +1622,6 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	// Step 19.5c.2) Use calculated world size (no minimum clamp - let it scale properly)
 	const indicatorSize = snapRadiusWorld;
 
-	// DEBUG: Log indicator size with more detail
-	if (window.developerModeEnabled) {
-		console.log("📍 Indicator size: snapRadiusPixels=" + snapRadiusPixels + "px, cameraZoom=" + cameraZoom.toFixed(4) + ", indicatorSize=" + indicatorSize.toFixed(2) + "m");
-		console.log("📍 Camera distance check - threeRenderer.camera.position.z:", window.threeRenderer ? window.threeRenderer.camera.position.z.toFixed(2) : "N/A");
-	}
 	const indicatorGroup = GeometryFactory.createMousePositionIndicator(
 		local.x,
 		local.y,
@@ -1637,6 +1641,165 @@ export function drawMousePositionIndicatorThreeJS(worldX, worldY, worldZ, indica
 	connectorsGroup.add(indicatorGroup);
 
 	// Request render to display the mouse indicator
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
+}
+
+// Step 19.5.1) Draw plumb line from cursor to Drawing Z Level
+// Uses connectorsGroup (same as mouse indicator) so it doesn't get cleared with KAD leading lines
+// Uses simple THREE.Line for reliable vertical line rendering
+export function drawPlumbLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, toWorldZ, color) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (fromWorldX === undefined || fromWorldY === undefined || fromWorldZ === undefined) return;
+	if (toWorldZ === undefined) return;
+
+	// Step 19.5.1a) Convert world coordinates to local Three.js coordinates
+	const fromLocal = window.worldToThreeLocal(fromWorldX, fromWorldY);
+
+	// Step 19.5.1b) Remove existing plumb line from connectorsGroup
+	const connectorsGroup = window.threeRenderer.connectorsGroup;
+	const toRemove = [];
+	connectorsGroup.children.forEach(child => {
+		if (child.userData && child.userData.type === "plumbLine") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(obj => {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) obj.material.dispose();
+	});
+
+	// Step 19.5.1c) Define gradient colors for visibility on both light and dark backgrounds
+	// Grey (#777777) at cursor/centroid end, Orange (#FFA500) at drawing plane end
+	const greyColor = new THREE.Color(0x777777);   // Grey at cursor
+	const orangeColor = new THREE.Color(0xFFA500); // Orange at drawing plane
+
+	// Step 19.5.1d) Create simple vertical line using BufferGeometry with VERTEX COLORS
+	// This creates a gradient from grey (cursor) to orange (drawing plane)
+	const geometry = new THREE.BufferGeometry();
+	const positions = new Float32Array([
+		fromLocal.x, fromLocal.y, fromWorldZ,  // Start point (cursor position) - GREY
+		fromLocal.x, fromLocal.y, toWorldZ     // End point (Drawing Z) - ORANGE
+	]);
+	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+	
+	// Step 19.5.1e) Add vertex colors for gradient effect
+	const colors = new Float32Array([
+		greyColor.r, greyColor.g, greyColor.b,     // Start vertex - Grey
+		orangeColor.r, orangeColor.g, orangeColor.b // End vertex - Orange
+	]);
+	geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+
+	const material = new THREE.LineBasicMaterial({
+		vertexColors: true, // Enable vertex colors for gradient
+		linewidth: 2, // Note: linewidth > 1 only works on some platforms
+		transparent: true,
+		opacity: 0.8, // Slightly higher opacity for better visibility
+		depthTest: false,
+		depthWrite: false
+	});
+
+	const line = new THREE.Line(geometry, material);
+	line.userData = { type: "plumbLine" };
+	line.name = "plumb-line";
+	line.renderOrder = 9998;
+	line.frustumCulled = false;
+
+	connectorsGroup.add(line);
+
+	// Request render
+	if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
+}
+
+// Step 19.5.2) Clear plumb line from scene
+export function clearPlumbLineThreeJS() {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	const connectorsGroup = window.threeRenderer.connectorsGroup;
+	if (!connectorsGroup) return;
+
+	const toRemove = [];
+	connectorsGroup.children.forEach(child => {
+		if (child.userData && (child.userData.type === "plumbLine" || child.userData.type === "plumbLineMarker")) {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(obj => {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) {
+			if (Array.isArray(obj.material)) {
+				obj.material.forEach(mat => mat.dispose());
+			} else {
+				obj.material.dispose();
+			}
+		}
+	});
+}
+
+// Step 19.5.3) Draw plumb line marker (small indicator at Drawing Z intersection)
+export function drawPlumbLineMarkerThreeJS(worldX, worldY, worldZ, color) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (worldX === undefined || worldY === undefined || worldZ === undefined) return;
+
+	const local = window.worldToThreeLocal(worldX, worldY);
+	const connectorsGroup = window.threeRenderer.connectorsGroup;
+
+	// Remove existing plumb line marker
+	const toRemove = [];
+	connectorsGroup.children.forEach(child => {
+		if (child.userData && child.userData.type === "plumbLineMarker") {
+			toRemove.push(child);
+		}
+	});
+	toRemove.forEach(obj => {
+		connectorsGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) {
+			if (Array.isArray(obj.material)) {
+				obj.material.forEach(mat => mat.dispose());
+			} else {
+				obj.material.dispose();
+			}
+		}
+		if (obj.isGroup) {
+			obj.traverse(child => {
+				if (child.geometry) child.geometry.dispose();
+				if (child.material) {
+					if (Array.isArray(child.material)) {
+						child.material.forEach(mat => mat.dispose());
+					} else {
+						child.material.dispose();
+					}
+				}
+			});
+		}
+	});
+
+	// Create smaller indicator for the plumb line endpoint
+	const snapRadiusPixels = window.snapRadiusPixels !== undefined ? window.snapRadiusPixels : 15;
+	const cameraZoom = window.threeRenderer && window.threeRenderer.camera ? window.threeRenderer.camera.zoom : 1;
+	const indicatorSize = (snapRadiusPixels * 0.6) / cameraZoom; // 60% of normal cursor size
+
+	const indicatorGroup = GeometryFactory.createMousePositionIndicator(
+		local.x,
+		local.y,
+		worldZ,
+		indicatorSize,
+		color || "rgba(255, 165, 0, 0.4)",
+		false
+	);
+
+	indicatorGroup.userData = { type: "plumbLineMarker" };
+	connectorsGroup.add(indicatorGroup);
+
+	// Request render
 	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
 		window.threeRenderer.requestRender();
 	} else if (window.threeRenderer) {

@@ -48,7 +48,15 @@ export class PerformanceMonitor {
 			sceneObjects: 0,
 			holesCount: 0,
 			kadCount: 0,
-			surfacesCount: 0
+			surfacesCount: 0,
+			// Cursor debug info
+			cursorX: null,
+			cursorY: null,
+			cursorZ: null,
+			cursorBranch: null,
+			plumbFromZ: null,
+			plumbToZ: null,
+			plumbEnabled: false
 		};
 		
 		// Step 5) Performance thresholds for color coding
@@ -211,6 +219,41 @@ export class PerformanceMonitor {
 		// Separator
 		html += "<div style='border-top: 1px solid rgba(255,255,255,0.1); margin: 6px 0;'></div>";
 		
+		// Cursor debug info section
+		html += "<div style='color: #ff88ff; font-size: 11px; font-weight: bold;'>🎯 Cursor Debug</div>";
+		if (s.cursorX !== null && s.cursorY !== null) {
+			html += "<div style='color: #ff88ff; font-size: 10px;'>";
+			html += "Pos: " + s.cursorX.toFixed(2) + ", " + s.cursorY.toFixed(2) + ", " + (s.cursorZ !== null ? s.cursorZ.toFixed(2) : "?");
+			html += "</div>";
+			if (s.cursorBranch) {
+				html += "<div style='color: #cc66cc; font-size: 9px;'>";
+				html += "Branch: " + s.cursorBranch;
+				html += "</div>";
+			}
+		} else {
+			html += "<div style='color: #666; font-size: 10px;'>Cursor: N/A</div>";
+		}
+		
+		// Plumb line debug info
+		html += "<div style='color: #ffaa00; font-size: 11px; font-weight: bold; margin-top: 4px;'>📍 Plumb Line</div>";
+		if (s.plumbEnabled) {
+			html += "<div style='color: #ffaa00; font-size: 10px;'>";
+			html += "From Z: " + (s.plumbFromZ !== null ? s.plumbFromZ.toFixed(2) : "?");
+			html += " → To Z: " + (s.plumbToZ !== null ? s.plumbToZ.toFixed(2) : "?");
+			html += "</div>";
+			if (s.plumbFromZ !== null && s.plumbToZ !== null) {
+				var diff = Math.abs(s.plumbFromZ - s.plumbToZ);
+				html += "<div style='color: #cc8800; font-size: 9px;'>";
+				html += "Diff: " + diff.toFixed(2) + "m";
+				html += "</div>";
+			}
+		} else {
+			html += "<div style='color: #666; font-size: 10px;'>Plumb: Disabled</div>";
+		}
+		
+		// Separator
+		html += "<div style='border-top: 1px solid rgba(255,255,255,0.1); margin: 6px 0;'></div>";
+		
 		// Renderer version
 		var rendererName = window.currentRendererVersion || "Unknown";
 		html += "<div style='color: #888; font-size: 10px;'>";
@@ -348,6 +391,21 @@ export class PerformanceMonitor {
 	// Step 18) Get current stats (for external use)
 	getStats() {
 		return Object.assign({}, this.stats);
+	}
+	
+	// Step 18b) Update cursor debug info (called from handle3DMouseMove)
+	updateCursorDebug(x, y, z, branch) {
+		this.stats.cursorX = x;
+		this.stats.cursorY = y;
+		this.stats.cursorZ = z;
+		this.stats.cursorBranch = branch;
+	}
+	
+	// Step 18c) Update plumb line debug info (called from drawPlumbLineThreeJS)
+	updatePlumbDebug(fromZ, toZ, enabled) {
+		this.stats.plumbFromZ = fromZ;
+		this.stats.plumbToZ = toZ;
+		this.stats.plumbEnabled = enabled;
 	}
 	
 	// Step 19) Reset stats history

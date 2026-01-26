@@ -46,6 +46,24 @@ export class InstancedMeshManager {
 		this.lineMeshes = new Map();
 		// Flag to track if batches need rebuilding
 		this.linesDirty = false;
+
+		// =============================================
+		// DUMMY HOLE BATCHING - Batch X-shapes into single draw call
+		// =============================================
+		// Format: { "dummy_white": [x1,y1,z1, x2,y2,z2, ...], "dummy_black": [...] }
+		this.dummyHoleBatches = new Map();
+		// Track which line indices belong to which dummy hole for selection
+		// Format: { "entityName:::holeID": { batchKey: "dummy_white", startIndex: 0, lineCount: 2 } }
+		this.dummyHoleIndexMap = new Map();
+
+		// =============================================
+		// ZERO-DIAMETER HOLE BATCHING - Batch squares + tracks into single draw calls
+		// =============================================
+		// Format: { "zero_white": [x1,y1,z1, x2,y2,z2, ...], "zero_black": [...] }
+		this.zeroDiameterBatches = new Map();
+		// Track which line indices belong to which zero-diameter hole for selection
+		// Format: { "entityName:::holeID": { batchKey: "zero_white", startIndex: 0, lineCount: 4 } }
+		this.zeroDiameterIndexMap = new Map();
 	}
 
 	/**
@@ -278,15 +296,154 @@ export class InstancedMeshManager {
 		this.linesDirty = true;
 	}
 
+	// =============================================
+	// DUMMY HOLE BATCHING METHODS (X-shapes)
+	// =============================================
+
+	/**
+	 * Step 1) Add a dummy hole X-shape to batch (instead of creating individual Line objects)
+	 * Creates 2 line segments forming an X at the specified position
+	 * @param {string} holeId - Unique hole ID (entityName:::holeID)
+	 * @param {number} x - Center X position
+	 * @param {number} y - Center Y position
+	 * @param {number} z - Center Z position
+	 * @param {number} size - Half-size of the X (radius)
+	 * @param {number} color - Color as hex number (0xffffff, 0x000000, etc.)
+	 */
+	addDummyHoleToBatch(holeId, x, y, z, size, color) {
+		// Step 2) Determine batch key based on color
+		var batchKey = "dummy_" + this.colorToKey(color);
+
+		if (!this.dummyHoleBatches.has(batchKey)) {
+			this.dummyHoleBatches.set(batchKey, []);
+		}
+
+		var batch = this.dummyHoleBatches.get(batchKey);
+		var startIndex = batch.length / 6; // Each line segment = 6 floats (2 vertices * 3 coords)
+
+		// Step 3) Add X-shape lines (2 line segments)
+		// Line 1: top-left to bottom-right
+		batch.push(x - size, y + size, z, x + size, y - size, z);
+		// Line 2: top-right to bottom-left
+		batch.push(x + size, y + size, z, x - size, y - size, z);
+
+		// Step 4) Track for selection/identification
+		this.dummyHoleIndexMap.set(holeId, {
+			batchKey: batchKey,
+			startIndex: startIndex,
+			lineCount: 2
+		});
+
+		this.linesDirty = true;
+	}
+
+	// =============================================
+	// ZERO-DIAMETER HOLE BATCHING METHODS (squares + tracks)
+	// =============================================
+
+	/**
+	 * Step 1) Add a zero-diameter hole to batch (square at collar + track lines)
+	 * @param {string} holeId - Unique hole ID (entityName:::holeID)
+	 * @param {number} collarX - Collar X position
+	 * @param {number} collarY - Collar Y position
+	 * @param {number} collarZ - Collar Z position
+	 * @param {number} gradeX - Grade X position
+	 * @param {number} gradeY - Grade Y position
+	 * @param {number} gradeZ - Grade Z position
+	 * @param {number} toeX - Toe X position
+	 * @param {number} toeY - Toe Y position
+	 * @param {number} toeZ - Toe Z position
+	 * @param {number} squareSize - Size of the square at collar
+	 * @param {number} subdrillAmount - Subdrill amount (negative = negative subdrill)
+	 * @param {boolean} isDarkMode - Dark mode flag
+	 */
+	addZeroDiameterHoleToBatch(holeId, collarX, collarY, collarZ, gradeX, gradeY, gradeZ, toeX, toeY, toeZ, squareSize, subdrillAmount, isDarkMode) {
+		// Step 2) Determine batch key based on dark mode
+		var lineColor = isDarkMode ? 0xffffff : 0x000000;
+		var batchKey = "zero_" + (isDarkMode ? "white" : "black");
+		var hasNegativeSubdrill = subdrillAmount < 0;
+
+		if (!this.zeroDiameterBatches.has(batchKey)) {
+			this.zeroDiameterBatches.set(batchKey, []);
+		}
+
+		var batch = this.zeroDiameterBatches.get(batchKey);
+		var startIndex = batch.length / 6;
+		var lineCount = 0;
+
+		// Step 3) Add square at collar (4 line segments for LineSegments format)
+		var halfSide = squareSize / 2;
+		// Bottom edge
+		batch.push(collarX - halfSide, collarY - halfSide, collarZ, collarX + halfSide, collarY - halfSide, collarZ);
+		// Right edge
+		batch.push(collarX + halfSide, collarY - halfSide, collarZ, collarX + halfSide, collarY + halfSide, collarZ);
+		// Top edge
+		batch.push(collarX + halfSide, collarY + halfSide, collarZ, collarX - halfSide, collarY + halfSide, collarZ);
+		// Left edge
+		batch.push(collarX - halfSide, collarY + halfSide, collarZ, collarX - halfSide, collarY - halfSide, collarZ);
+		lineCount += 4;
+
+		// Step 4) Add track lines based on subdrill type
+		if (hasNegativeSubdrill) {
+			// NEGATIVE SUBDRILL: collar to toe (solid)
+			batch.push(collarX, collarY, collarZ, toeX, toeY, toeZ);
+			lineCount += 1;
+			// Note: toe to grade (red transparent) goes in separate batch - handled below
+		} else {
+			// POSITIVE SUBDRILL: collar to grade (solid)
+			batch.push(collarX, collarY, collarZ, gradeX, gradeY, gradeZ);
+			lineCount += 1;
+			// Note: grade to toe (red transparent) goes in separate batch - handled below
+		}
+
+		// Step 5) Track for selection/identification
+		this.zeroDiameterIndexMap.set(holeId, {
+			batchKey: batchKey,
+			startIndex: startIndex,
+			lineCount: lineCount
+		});
+
+		// Step 6) Add transparent red track segment to line batch (reuse existing line batching)
+		if (hasNegativeSubdrill) {
+			// Red line from toe to grade (20% opacity)
+			this.addLineToBatch("transparent_red", toeX, toeY, toeZ, gradeX, gradeY, gradeZ);
+		} else {
+			// Red line from grade to toe (20% opacity)
+			this.addLineToBatch("transparent_red", gradeX, gradeY, gradeZ, toeX, toeY, toeZ);
+		}
+
+		this.linesDirty = true;
+	}
+
+	/**
+	 * Helper: Convert color hex to batch key string
+	 * @param {number} color - Color as hex number
+	 * @returns {string} Color key for batching
+	 */
+	colorToKey(color) {
+		switch (color) {
+			case 0xffffff: return "white";
+			case 0x000000: return "black";
+			case 0xff0000: return "red";
+			case 0x00ff00: return "green";
+			case 0x0000ff: return "blue";
+			case 0xffff00: return "yellow";
+			case 0xff00ff: return "magenta";
+			case 0x00ffff: return "cyan";
+			default: return color.toString(16).padStart(6, "0"); // Fallback to hex string
+		}
+	}
+
 	/**
 	 * Build all batched lines into LineSegments meshes
 	 * Call this ONCE after all holes are added
+	 * Includes: hole body lines, dummy hole X-shapes, zero-diameter hole squares
 	 * @param {THREE.Group} targetGroup - Group to add line meshes to (e.g., holesGroup)
 	 */
 	flushLineBatches(targetGroup) {
 		if (!this.linesDirty) return;
 
-		// Clear old line meshes
+		// Step 1) Clear old line meshes
 		this.lineMeshes.forEach(function(mesh) {
 			if (mesh.parent) mesh.parent.remove(mesh);
 			if (mesh.geometry) mesh.geometry.dispose();
@@ -295,8 +452,10 @@ export class InstancedMeshManager {
 		this.lineMeshes.clear();
 
 		var self = this;
+		var totalLines = 0;
+		var totalDrawCalls = 0;
 
-		// Build each batch
+		// Step 2) Build regular hole body line batches
 		this.lineBatches.forEach(function(positions, batchKey) {
 			if (positions.length === 0) return;
 
@@ -336,52 +495,179 @@ export class InstancedMeshManager {
 
 			targetGroup.add(mesh);
 			self.lineMeshes.set(batchKey, mesh);
+			totalLines += positions.length / 6;
+			totalDrawCalls++;
+		});
+
+		// Step 3) Build dummy hole X-shape batches
+		this.dummyHoleBatches.forEach(function(positions, batchKey) {
+			if (positions.length === 0) return;
+
+			// Parse batch key: "dummy_white", "dummy_black", etc.
+			var colorName = batchKey.split("_")[1];
+
+			// Determine color
+			var color = self.keyToColor(colorName);
+
+			// Create geometry from positions
+			var geometry = new THREE.BufferGeometry();
+			geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+
+			// Create material (solid, no transparency)
+			var material = new THREE.LineBasicMaterial({
+				color: color,
+				transparent: false,
+				opacity: 1.0,
+				depthWrite: true
+			});
+
+			// Create LineSegments
+			var mesh = new THREE.LineSegments(geometry, material);
+			mesh.userData = {
+				type: "batchedDummyHoles",
+				batchKey: batchKey,
+				lineCount: positions.length / 6,
+				holeIndexMap: self.dummyHoleIndexMap // Reference to index map for selection
+			};
+
+			targetGroup.add(mesh);
+			self.lineMeshes.set(batchKey, mesh);
+			totalLines += positions.length / 6;
+			totalDrawCalls++;
+		});
+
+		// Step 4) Build zero-diameter hole batches (squares + solid track lines)
+		this.zeroDiameterBatches.forEach(function(positions, batchKey) {
+			if (positions.length === 0) return;
+
+			// Parse batch key: "zero_white", "zero_black", etc.
+			var colorName = batchKey.split("_")[1];
+
+			// Determine color
+			var color = self.keyToColor(colorName);
+
+			// Create geometry from positions
+			var geometry = new THREE.BufferGeometry();
+			geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+
+			// Create material (solid, no transparency)
+			var material = new THREE.LineBasicMaterial({
+				color: color,
+				transparent: false,
+				opacity: 1.0,
+				depthWrite: true
+			});
+
+			// Create LineSegments
+			var mesh = new THREE.LineSegments(geometry, material);
+			mesh.userData = {
+				type: "batchedZeroDiameterHoles",
+				batchKey: batchKey,
+				lineCount: positions.length / 6,
+				holeIndexMap: self.zeroDiameterIndexMap // Reference to index map for selection
+			};
+
+			targetGroup.add(mesh);
+			self.lineMeshes.set(batchKey, mesh);
+			totalLines += positions.length / 6;
+			totalDrawCalls++;
 		});
 
 		this.linesDirty = false;
 
-		// Log batching stats (only once, not every frame)
-		var totalLines = 0;
-		this.lineBatches.forEach(function(positions) {
-			totalLines += positions.length / 6;
-		});
-		// Only log if we actually built new lines
+		// Step 5) Log batching stats (only once, not every frame)
 		if (totalLines > 0) {
-			console.log("🚀 Line batching: " + totalLines + " lines in " + this.lineMeshes.size + " draw calls");
+			var dummyCount = this.dummyHoleIndexMap.size;
+			var zeroCount = this.zeroDiameterIndexMap.size;
+			console.log("🚀 Line batching: " + totalLines + " lines in " + totalDrawCalls + " draw calls" +
+				(dummyCount > 0 ? " (incl. " + dummyCount + " dummy holes)" : "") +
+				(zeroCount > 0 ? " (incl. " + zeroCount + " zero-diameter holes)" : ""));
+		}
+	}
+
+	/**
+	 * Helper: Convert batch key string back to color hex
+	 * @param {string} colorKey - Color key string
+	 * @returns {number} Color as hex number
+	 */
+	keyToColor(colorKey) {
+		switch (colorKey) {
+			case "white": return 0xffffff;
+			case "black": return 0x000000;
+			case "red": return 0xff0000;
+			case "green": return 0x00ff00;
+			case "blue": return 0x0000ff;
+			case "yellow": return 0xffff00;
+			case "magenta": return 0xff00ff;
+			case "cyan": return 0x00ffff;
+			default:
+				// Try to parse as hex string
+				var parsed = parseInt(colorKey, 16);
+				return isNaN(parsed) ? 0xffffff : parsed;
 		}
 	}
 
 	/**
 	 * Clear line batches (call before redrawing all holes)
+	 * Includes: hole body lines, dummy hole X-shapes, zero-diameter hole squares
 	 */
 	clearLineBatches() {
+		// Step 1) Clear regular line batches
 		this.lineBatches.forEach(function(batch) {
 			batch.length = 0; // Clear array without creating new one
 		});
+
+		// Step 2) Clear dummy hole batches and tracking
+		this.dummyHoleBatches.forEach(function(batch) {
+			batch.length = 0;
+		});
+		this.dummyHoleIndexMap.clear();
+
+		// Step 3) Clear zero-diameter hole batches and tracking
+		this.zeroDiameterBatches.forEach(function(batch) {
+			batch.length = 0;
+		});
+		this.zeroDiameterIndexMap.clear();
+
 		this.linesDirty = true;
 	}
 
 	/**
 	 * Clear all instances and reset
+	 * Includes: instanced meshes, line batches, dummy holes, zero-diameter holes
 	 */
 	clearAll() {
-		// Dispose all instanced meshes
+		// Step 1) Dispose all instanced meshes
 		this.instancedMeshes.forEach((mesh, key) => {
 			this.scene.remove(mesh);
 			mesh.geometry.dispose();
 			mesh.material.dispose();
 		});
 
-		// Clear maps
+		// Step 2) Clear instanced mesh maps
 		this.instancedMeshes.clear();
 		this.holeInstanceMap.clear();
 		this.nextIndexMap.clear();
 		this.instanceCounts.clear();
 
-		// Clear line batches
+		// Step 3) Clear regular line batches
 		this.lineBatches.forEach(function(batch) {
 			batch.length = 0;
 		});
+
+		// Step 4) Clear dummy hole batches and tracking
+		this.dummyHoleBatches.forEach(function(batch) {
+			batch.length = 0;
+		});
+		this.dummyHoleIndexMap.clear();
+
+		// Step 5) Clear zero-diameter hole batches and tracking
+		this.zeroDiameterBatches.forEach(function(batch) {
+			batch.length = 0;
+		});
+		this.zeroDiameterIndexMap.clear();
+
+		// Step 6) Dispose all line meshes
 		this.lineMeshes.forEach(function(mesh) {
 			if (mesh.parent) mesh.parent.remove(mesh);
 			if (mesh.geometry) mesh.geometry.dispose();
