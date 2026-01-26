@@ -3465,6 +3465,14 @@ document.addEventListener("DOMContentLoaded", function () {
 			if (show3D) {
 				// Step 1c) 3D-only mode - show only 3D canvas, hide 2D canvas
 				onlyShowThreeJS = true;
+				
+				// Step 1c.0) START 3D render loop when switching to 3D mode
+				// Performance: Render loop was stopped in 2D mode to save CPU/GPU
+				if (threeInitialized && threeRenderer) {
+					threeRenderer.startRenderLoop();
+					console.log("▶️ 3D render loop started (3D mode active)");
+				}
+				
 				// Reset mouse indicator flag so it initializes when switching to 3D mode
 				mouseIndicatorInitialized = false;
 				// Step 1ca) Reset initialization failure flag to allow retry
@@ -3593,6 +3601,15 @@ document.addEventListener("DOMContentLoaded", function () {
 			} else {
 				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
 				onlyShowThreeJS = false;
+				
+				// Step 1d.0) STOP 3D render loop when switching to 2D mode
+				// Performance: Saves CPU/GPU resources - 3D canvas is hidden anyway
+				// CameraControls.animate() continues independently for damping state
+				if (threeInitialized && threeRenderer) {
+					threeRenderer.stopRenderLoop();
+					console.log("⏹️ 3D render loop stopped (2D mode active)");
+				}
+				
 				// Step 1da) SYNC CAMERA: Get 3D camera state and apply to 2D view
 				if (cameraControls) {
 					var cameraState = cameraControls.getCameraState();
@@ -28373,376 +28390,24 @@ function drawMouseCrossHairs(mouseX, mouseY, snapRadiusPixels, showSnapRadius = 
 }
 
 // =============================================
-// 3D REBUILD CANCELLATION AND QUEUEING SYSTEM
+// ASYNC HOLE DRAWING REMOVED - REVERTED TO SYNCHRONOUS
 // =============================================
-// Step 0) Manages async hole drawing cancellation and rebuild queueing
-// Prevents incomplete renders when user interacts during rebuild
-
-// Cancellation token - incremented when a new rebuild is requested
-window._holeDrawingCancelToken = 0;
-// Queue flag - if true, a rebuild was requested during drawing and should run after current completes
-window._holeDrawingQueuedRebuild = false;
-// Store queued parameters
-window._holeDrawingQueuedParams = null;
-// Throttle timestamp - prevents rapid repeated cancel requests
-window._lastCancelRequestTime = 0;
-
-// Function to request cancellation of current drawing and queue a new rebuild
-function cancelAndQueueHoleRebuild(allBlastHoles, toeSizeInMeters3D, displayOptions3D, threeInitialized, threeRenderer, developerModeEnabled) {
-	if (window._holeDrawingInProgress) {
-		// Step 0a) Throttle cancel requests - only allow one every 200ms
-		var now = Date.now();
-		if (now - window._lastCancelRequestTime < 200) {
-			// Silently update params without logging (already queued)
-			window._holeDrawingQueuedParams = {
-				allBlastHoles: allBlastHoles,
-				toeSizeInMeters3D: toeSizeInMeters3D,
-				displayOptions3D: displayOptions3D,
-				threeInitialized: threeInitialized,
-				threeRenderer: threeRenderer,
-				developerModeEnabled: developerModeEnabled
-			};
-			return true; // Already queued
-		}
-		window._lastCancelRequestTime = now;
-		
-		console.log("⚠️ [CANCEL] Requesting cancellation of current hole drawing");
-		window._holeDrawingCancelToken++; // Increment to signal cancellation
-		window._holeDrawingQueuedRebuild = true;
-		window._holeDrawingQueuedParams = {
-			allBlastHoles: allBlastHoles,
-			toeSizeInMeters3D: toeSizeInMeters3D,
-			displayOptions3D: displayOptions3D,
-			threeInitialized: threeInitialized,
-			threeRenderer: threeRenderer,
-			developerModeEnabled: developerModeEnabled
-		};
-		return true; // Queued
-	}
-	return false; // Not queued, can start immediately
-}
-
-// =============================================
-// 3D REBUILD STATUS INDICATOR (CSS-based)
-// =============================================
-// Step 0) Non-intrusive status indicator for 3D rebuilds during hole moves and other operations
-// Shows a small label in the corner instead of a blocking dialog
-
-function show3DRebuildStatusIndicator(message) {
-	// Step 0a) Check if indicator already exists
-	var existingIndicator = document.getElementById("threeRebuildStatusIndicator");
-	if (existingIndicator) {
-		// Step 0a.1) Update message if indicator exists
-		var textSpan = existingIndicator.querySelector("span");
-		if (textSpan) textSpan.textContent = message || "Rebuilding 3D...";
-		return;
-	}
-	
-	// Step 0b) Create status indicator element
-	var indicator = document.createElement("div");
-	indicator.id = "threeRebuildStatusIndicator";
-	indicator.style.cssText = 
-		"position: fixed;" +
-		"bottom: 60px;" +
-		"left: 50%;" +
-		"transform: translateX(-50%);" +
-		"background: rgba(0, 120, 215, 0.9);" +
-		"color: white;" +
-		"padding: 8px 16px;" +
-		"border-radius: 4px;" +
-		"font-size: 13px;" +
-		"font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;" +
-		"z-index: 9999;" +
-		"display: flex;" +
-		"align-items: center;" +
-		"gap: 8px;" +
-		"box-shadow: 0 2px 8px rgba(0,0,0,0.3);" +
-		"pointer-events: none;" +
-		"animation: pulse3DRebuild 1.5s ease-in-out infinite;";
-	
-	// Step 0c) Add spinner and text
-	indicator.innerHTML = 
-		'<div style="width: 14px; height: 14px; border: 2px solid rgba(255,255,255,0.3); border-top-color: white; border-radius: 50%; animation: spin3DRebuild 0.8s linear infinite;"></div>' +
-		'<span>' + (message || "Rebuilding 3D...") + '</span>';
-	
-	// Step 0d) Add CSS animation if not already added
-	if (!document.getElementById("threeRebuildStatusStyles")) {
-		var style = document.createElement("style");
-		style.id = "threeRebuildStatusStyles";
-		style.textContent = 
-			"@keyframes spin3DRebuild { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }" +
-			"@keyframes pulse3DRebuild { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }";
-		document.head.appendChild(style);
-	}
-	
-	// Step 0e) Add to body
-	document.body.appendChild(indicator);
-}
-
-function hide3DRebuildStatusIndicator() {
-	// Step 0f) Remove indicator element
-	var indicator = document.getElementById("threeRebuildStatusIndicator");
-	if (indicator) {
-		indicator.remove();
-	}
-}
-
-// =============================================
-// ASYNC HOLE DRAWING WITH PROGRESS DIALOG
-// =============================================
-// Step 1) Async function to draw holes with progress feedback for large datasets
-// Shows progress dialog only when > 500 holes AND context is "creation" (pattern gen, add hole, import)
-// For hole moves and other operations, shows a status indicator instead (no dialog popup)
-async function drawHolesAsync(allBlastHoles, toeSizeInMeters3D, displayOptions3D, threeInitialized, threeRenderer, developerModeEnabled) {
-	var HOLE_PROGRESS_THRESHOLD = 500;
-	var BATCH_SIZE = 100; // Process holes in batches of 100 for smooth progress updates
-	var totalHoles = allBlastHoles.length;
-	
-	// Step 1a) Get rebuild context - only show dialog for "creation" operations
-	// "creation" = pattern gen, add hole, import -> show dialog
-	// "move" = hole moves -> status indicator only (no dialog)
-	// other/null = display toggles, etc. -> no dialog, no indicator
-	var rebuildContext = window.threeHoleRebuildContext;
-	var isCreationContext = rebuildContext === "creation";
-	var isMoveContext = rebuildContext === "move";
-	
-	// Step 1b) Only show dialog for creation operations with > 500 holes
-	var showProgressDialog = totalHoles > HOLE_PROGRESS_THRESHOLD && isCreationContext;
-	
-	// Step 1c) Show status indicator for non-dialog rebuilds (moves, display changes)
-	var showStatusIndicator = totalHoles > HOLE_PROGRESS_THRESHOLD && !isCreationContext;
-
-	console.log("🚀 drawHolesAsync started: " + totalHoles + " holes, context: " + rebuildContext + ", showDialog: " + showProgressDialog + ", showStatus: " + showStatusIndicator);
-	var progressDialog = null;
-	var progressBar = null;
-	var progressText = null;
-	
-	// Step 1d) Show CSS status indicator for non-dialog operations
-	if (showStatusIndicator) {
-		show3DRebuildStatusIndicator("Rebuilding 3D View...");
-	}
-
-	// Step 2) Create and show progress dialog for large datasets (> 500 holes) AND creation context
-	// FloatingDialog is imported at top of file, so we can use it directly
-	if (showProgressDialog) {
-		try {
-			console.log("🔄 Creating hole progress dialog for " + totalHoles + " holes");
-
-			// Step 2a) Create progress content with unique IDs to avoid conflicts
-			var uniqueId = "holeProgress_" + Date.now();
-			var progressContent = document.createElement("div");
-			progressContent.style.textAlign = "center";
-			progressContent.innerHTML = "<p style=\"margin: 10px 0;\">Building 3D Holes</p>" +
-				"<p style=\"margin: 5px 0; font-size: 14px; color: #888;\">" + totalHoles + " holes to process</p>" +
-				'<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 15px 0; overflow: hidden;">' +
-				'<div id="' + uniqueId + '_bar" style="width: 0%; height: 24px; background-color: #4CAF50; border-radius: 5px; transition: width 0.15s ease-out;"></div>' +
-				"</div>" +
-				'<p id="' + uniqueId + '_text" style="margin: 5px 0; font-size: 13px;">Initializing...</p>';
-
-			progressDialog = new FloatingDialog({
-				title: "Building 3D View",
-				content: progressContent,
-				layoutType: "default",
-				width: 380,
-				height: 180,
-				showConfirm: false,
-				showCancel: false,
-				allowOutsideClick: false
-			});
-
-			progressDialog.show();
-			console.log("🔄 Progress dialog shown");
-
-			// Step 2b) Wait for DOM to render the dialog before continuing
-			// Use multiple frames to ensure dialog is visible
-			await new Promise(function(resolve) { setTimeout(resolve, 100); });
-			progressBar = document.getElementById(uniqueId + "_bar");
-			progressText = document.getElementById(uniqueId + "_text");
-			console.log("🔄 Progress elements found: bar=" + !!progressBar + ", text=" + !!progressText);
-
-			// Step 2c) Another yield to ensure dialog is painted before processing starts
-			await new Promise(function(resolve) { requestAnimationFrame(resolve); });
-		} catch (err) {
-			console.error("❌ Failed to create progress dialog:", err);
-		}
-	}
-
-	// Step 2d) Store current cancellation token - if it changes, we should abort
-	var myCancelToken = window._holeDrawingCancelToken;
-	var wasCancelled = false;
-
-	// Step 3) Process holes in batches to allow UI updates
-	var processedCount = 0;
-	var visibleCount = 0;
-
-	// Step 3a) Use smaller batches when showing progress for smoother updates
-	var actualBatchSize = showProgressDialog ? Math.min(BATCH_SIZE, Math.ceil(totalHoles / 20)) : BATCH_SIZE;
-	actualBatchSize = Math.max(actualBatchSize, 50); // Minimum 50 holes per batch
-
-	// Step 3b) Collect visible holes for text pass (separate from geometry pass for performance)
-	var visibleHolesForText = [];
-
-	// PASS 1: GEOMETRY ONLY (instanced - very fast)
-	for (var batchStart = 0; batchStart < totalHoles; batchStart += actualBatchSize) {
-		// Step 3b.1) Check for cancellation before each batch
-		if (window._holeDrawingCancelToken !== myCancelToken) {
-			console.log("⚠️ [CANCELLED] Hole drawing cancelled after " + processedCount + " holes (token changed)");
-			wasCancelled = true;
-			break;
-		}
-
-		var batchEnd = Math.min(batchStart + actualBatchSize, totalHoles);
-
-		// Step 3c) Process this batch of holes - GEOMETRY ONLY
-		for (var holeIdx = batchStart; holeIdx < batchEnd; holeIdx++) {
-			var hole = allBlastHoles[holeIdx];
-			if (hole.visible === false) continue;
-
-			visibleCount++;
-			visibleHolesForText.push(hole);
-
-			// Step 3d) Use instanced rendering (includes collar, grade, toe automatically)
-			// Text is deferred to a separate pass for better performance
-			drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
-		}
-
-		processedCount = batchEnd;
-
-		// Step 3e) Update progress dialog if shown
-		if (showProgressDialog && progressBar && progressText) {
-			var percent = Math.round((processedCount / totalHoles) * 70 / 100); // 0-70% for geometry
-			progressBar.style.width = percent + "%";
-			progressText.textContent = "Geometry: " + processedCount + " / " + totalHoles + " holes (" + percent + "%)";
-		}
-
-		// Step 3f) Yield to browser to allow UI repaint (use setTimeout for reliable repaint)
-		if (batchEnd < totalHoles) {
-			await new Promise(function(resolve) {
-				setTimeout(resolve, 10); // 10ms delay allows browser to repaint
-			});
-		}
-	}
-
-	// Step 4) FLUSH BATCHED LINES - Creates single draw call for all hole body lines
-	// This is the key performance optimization: 1644 lines -> ~5 draw calls
-	if (threeRenderer && threeRenderer.instancedMeshManager) {
-		threeRenderer.instancedMeshManager.flushLineBatches(threeRenderer.holesGroup);
-	}
-
-	// PASS 2: TEXT RENDERING (separate pass for batched sync)
-	// Only render text if any text display options are enabled AND not cancelled
-	var hasTextOptions = displayOptions3D.holeID || displayOptions3D.holeDia || displayOptions3D.holeLen ||
-		displayOptions3D.holeType || displayOptions3D.holeAng || displayOptions3D.holeBea ||
-		displayOptions3D.holeSubdrill || displayOptions3D.initiationTime || displayOptions3D.delayValue ||
-		displayOptions3D.xValue || displayOptions3D.yValue || displayOptions3D.zValue ||
-		displayOptions3D.displayRowAndPosId || displayOptions3D.measuredLength || displayOptions3D.measuredMass ||
-		displayOptions3D.measuredComment || displayOptions3D.holeDip;
-
-	if (!wasCancelled && hasTextOptions && threeInitialized && visibleHolesForText.length > 0) {
-		// Update progress for text phase
-		if (showProgressDialog && progressBar && progressText) {
-			progressText.textContent = "Adding text labels...";
-			progressBar.style.width = "75%";
-		}
-
-		// Yield before text rendering
-		await new Promise(function(resolve) { setTimeout(resolve, 10); });
-
-		// Step 4b) Render all text in one pass (allows Troika to batch internally)
-		var textBatchSize = 200; // Larger batches for text since it's lighter per item
-		for (var textIdx = 0; textIdx < visibleHolesForText.length; textIdx += textBatchSize) {
-			// Step 4b.1) Check for cancellation before each text batch
-			if (window._holeDrawingCancelToken !== myCancelToken) {
-				console.log("⚠️ [CANCELLED] Text rendering cancelled");
-				wasCancelled = true;
-				break;
-			}
-
-			var textBatchEnd = Math.min(textIdx + textBatchSize, visibleHolesForText.length);
-
-			for (var ti = textIdx; ti < textBatchEnd; ti++) {
-				drawHoleTextsAndConnectorsThreeJS(visibleHolesForText[ti], displayOptions3D);
-			}
-
-			// Update progress
-			if (showProgressDialog && progressBar && progressText) {
-				var textPercent = 75 + Math.round((textBatchEnd / visibleHolesForText.length) * 25);
-				progressBar.style.width = textPercent + "%";
-				progressText.textContent = "Text: " + textBatchEnd + " / " + visibleHolesForText.length + " labels";
-			}
-
-			// Yield every batch for UI update
-			if (textBatchEnd < visibleHolesForText.length) {
-				await new Promise(function(resolve) { setTimeout(resolve, 5); });
-			}
-		}
-	}
-
-	// Step 5) Update progress to completion (or show cancelled message)
-	if (showProgressDialog && progressBar && progressText) {
-		if (wasCancelled) {
-			progressBar.style.width = "100%";
-			progressBar.style.backgroundColor = "#FFA500"; // Orange for cancelled
-			progressText.textContent = "Cancelled - rebuilding...";
-		} else {
-			progressBar.style.width = "100%";
-			progressBar.style.backgroundColor = "#2196F3"; // Blue for complete
-			progressText.textContent = "Complete: " + visibleCount + " holes rendered";
-		}
-	}
-
-	// Step 6) Log completion in developer mode
-	if (developerModeEnabled) {
-		if (wasCancelled) {
-			console.log("⚠️ Hole rendering was cancelled, queued rebuild will start");
-		} else {
-			console.log("🚀 Instanced rendering complete: " + totalHoles + " holes (" + visibleCount + " visible)");
-			if (threeRenderer && threeRenderer.instancedMeshManager) {
-				console.log("📊 Instance stats:", threeRenderer.instancedMeshManager.getStats());
-			}
-		}
-	}
-
-	// Step 7) Close progress dialog after showing completion message
-	if (progressDialog) {
-		// Wait shorter time if cancelled, longer if complete
-		var waitTime = wasCancelled ? 200 : 800;
-		await new Promise(function(resolve) { setTimeout(resolve, waitTime); });
-		progressDialog.close();
-	}
-	
-	// Step 7a) Hide status indicator if it was shown
-	if (showStatusIndicator) {
-		hide3DRebuildStatusIndicator();
-	}
-	
-	// Step 7b) Reset rebuild context flag (one-time use per rebuild trigger)
-	window.threeHoleRebuildContext = null;
-
-	// Step 8) Reset drawing in progress flag
-	window._holeDrawingInProgress = false;
-
-	// Step 9) Process queued rebuild if one was requested during this draw
-	if (window._holeDrawingQueuedRebuild && window._holeDrawingQueuedParams) {
-		console.log("🔄 [QUEUE] Starting queued rebuild");
-		window._holeDrawingQueuedRebuild = false;
-		var qp = window._holeDrawingQueuedParams;
-		window._holeDrawingQueuedParams = null;
-		
-		// Short delay before starting queued rebuild
-		await new Promise(function(resolve) { setTimeout(resolve, 50); });
-		
-		// Start the queued rebuild
-		window._holeDrawingInProgress = true;
-		drawHolesAsync(qp.allBlastHoles, qp.toeSizeInMeters3D, qp.displayOptions3D, qp.threeInitialized, qp.threeRenderer, qp.developerModeEnabled);
-		return; // Don't render yet, let queued rebuild handle it
-	}
-
-	// Step 10) Trigger a render to show the completed holes (only if not cancelled)
-	if (!wasCancelled && typeof renderThreeJS === "function") {
-		renderThreeJS();
-	}
-}
+// NOTE: Async batching with cancellation/queueing was removed due to redraw race conditions.
+// The synchronous implementation in drawData() is now used instead.
+// See Step 3.1a-3.1d in drawData() for the synchronous hole drawing logic.
+// 
+// Removed functions:
+// - cancelAndQueueHoleRebuild() - caused race conditions with queued rebuilds
+// - show3DRebuildStatusIndicator() - no longer needed without async batching
+// - hide3DRebuildStatusIndicator() - no longer needed without async batching
+// - drawHolesAsync() - replaced with synchronous loop for consistency
+//
+// Removed global state:
+// - window._holeDrawingCancelToken
+// - window._holeDrawingQueuedRebuild
+// - window._holeDrawingQueuedParams
+// - window._holeDrawingInProgress
+// - window._lastCancelRequestTime
 
 // Main draw function
 function drawData(allBlastHoles, selectedHole) {
@@ -30223,18 +29888,163 @@ function drawData(allBlastHoles, selectedHole) {
 			// Skip hole rebuild during KAD drawing to prevent flicker (holes remain visible unchanged)
 			// KAD-only rebuild (threeKADNeedsRebuild) does NOT trigger hole rebuild
 			if (window.threeDataNeedsRebuild && !isAnyKADToolActive) {
-				// Step 3.1a) Use async hole drawing for all datasets
-				// Shows progress dialog only for > 500 holes, but async allows UI to remain responsive
-				if (!window._holeDrawingInProgress) {
-					if (developerModeEnabled) {
-						console.log("📍 Starting async hole drawing: " + allBlastHoles.length + " holes");
+				// Step 3.1a) SYNCHRONOUS hole drawing with PIXEL-BASED LOD
+				// LOD bands reduce geometry complexity for distant/zoomed-out holes
+				// Performance note: Async batching was reverted due to redraw race conditions
+				if (developerModeEnabled) {
+					console.log("📍 Starting LOD-based hole drawing: " + allBlastHoles.length + " holes");
+				}
+				
+				// Step 3.1b) Get LOD manager and set canvas reference for pixel calculations
+				// LOD levels based on SCREEN PIXEL SIZE of hole bounding box:
+				// POINT_ONLY (<10px): Just a 2px point, no labels
+				// POINT_TRACK (10-20px): Point + track line, no labels
+				// SIMPLE (20-50px): Collar circle + track + labels
+				// FULL (>50px): Complete geometry + labels
+				var lodManager = threeRenderer && threeRenderer.lodManager ? threeRenderer.lodManager : null;
+				var threeCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
+				
+				if (lodManager && threeCanvas) {
+					lodManager.setCanvas(threeCanvas);
+				}
+				
+				// Step 3.1c) Group holes by LOD level for batch processing
+				// Import LOD constants from LODManager
+				var LOD_POINT_ONLY = 0;   // < 10px
+				var LOD_POINT_TRACK = 1;  // 10-20px
+				var LOD_SIMPLE = 2;       // 20-50px
+				var LOD_FULL = 3;         // > 50px
+				
+				var pointOnlyHoles = [];   // Will be batched into single Points object
+				var pointTrackHoles = [];  // Will be batched into Points + Lines
+				var simpleHoles = [];      // Individual circle + track
+				var fullHoles = [];        // Full geometry
+				
+				// Step 3.1d) Categorize visible holes by LOD level
+				for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
+					var hole = allBlastHoles[holeIdx];
+					if (hole.visible === false) continue;
+					
+					// Get LOD level for this hole (based on screen pixel size)
+					var holeLOD = LOD_FULL; // Default to full if no LOD manager
+					if (lodManager) {
+						holeLOD = lodManager.getHoleLODLevel(hole);
 					}
-					window._holeDrawingInProgress = true;
-					drawHolesAsync(allBlastHoles, toeSizeInMeters3D, displayOptions3D, threeInitialized, threeRenderer, developerModeEnabled);
-				} else {
-					// Step 3.1b) Drawing already in progress - queue new rebuild (throttled)
-					// cancelAndQueueHoleRebuild handles throttling and only logs occasionally
-					cancelAndQueueHoleRebuild(allBlastHoles, toeSizeInMeters3D, displayOptions3D, threeInitialized, threeRenderer, developerModeEnabled);
+					
+					// Group by LOD level
+					switch (holeLOD) {
+						case LOD_POINT_ONLY:
+							pointOnlyHoles.push(hole);
+							break;
+						case LOD_POINT_TRACK:
+							pointTrackHoles.push(hole);
+							break;
+						case LOD_SIMPLE:
+							simpleHoles.push(hole);
+							break;
+						case LOD_FULL:
+						default:
+							fullHoles.push(hole);
+							break;
+					}
+				}
+				
+				if (developerModeEnabled) {
+					console.log("📊 LOD distribution: POINT_ONLY=" + pointOnlyHoles.length + 
+						", POINT_TRACK=" + pointTrackHoles.length + 
+						", SIMPLE=" + simpleHoles.length + 
+						", FULL=" + fullHoles.length);
+				}
+				
+				// Step 3.1e) PASS 1a: Render POINT_ONLY holes as batched points (1 draw call)
+				// These holes are tiny on screen - just show 2px colored dots
+				if (pointOnlyHoles.length > 0) {
+					// Remove any existing LOD point batch
+					if (threeRenderer && threeRenderer.holesGroup) {
+						var existingPointBatch = threeRenderer.holesGroup.getObjectByName("hole-lod-points-batch");
+						if (existingPointBatch) {
+							threeRenderer.holesGroup.remove(existingPointBatch);
+							if (existingPointBatch.geometry) existingPointBatch.geometry.dispose();
+							if (existingPointBatch.material) existingPointBatch.material.dispose();
+						}
+					}
+					
+					// Create batched points (1 draw call for all POINT_ONLY holes)
+					var pointBatchResult = GeometryFactory.createHoleLODPoints(pointOnlyHoles, worldToThreeLocal, 2);
+					if (pointBatchResult && pointBatchResult.points && threeRenderer) {
+						threeRenderer.holesGroup.add(pointBatchResult.points);
+					}
+				}
+				
+				// Step 3.1f) PASS 1b: Render POINT_TRACK holes as batched points + lines (2 draw calls)
+				// These holes are small - show point at collar + track line to toe
+				if (pointTrackHoles.length > 0) {
+					// Remove any existing LOD point-track batches
+					if (threeRenderer && threeRenderer.holesGroup) {
+						var existingPTPoints = threeRenderer.holesGroup.getObjectByName("hole-lod-points-track-batch");
+						var existingPTLines = threeRenderer.holesGroup.getObjectByName("hole-lod-tracklines-batch");
+						if (existingPTPoints) {
+							threeRenderer.holesGroup.remove(existingPTPoints);
+							if (existingPTPoints.geometry) existingPTPoints.geometry.dispose();
+							if (existingPTPoints.material) existingPTPoints.material.dispose();
+						}
+						if (existingPTLines) {
+							threeRenderer.holesGroup.remove(existingPTLines);
+							if (existingPTLines.geometry) existingPTLines.geometry.dispose();
+							if (existingPTLines.material) existingPTLines.material.dispose();
+						}
+					}
+					
+					// Create batched points + track lines (2 draw calls for all POINT_TRACK holes)
+					var trackBatchResult = GeometryFactory.createHoleLODPointsWithTrack(pointTrackHoles, worldToThreeLocal, 2);
+					if (trackBatchResult && threeRenderer) {
+						if (trackBatchResult.points) {
+							threeRenderer.holesGroup.add(trackBatchResult.points);
+						}
+						if (trackBatchResult.lines) {
+							threeRenderer.holesGroup.add(trackBatchResult.lines);
+						}
+					}
+				}
+				
+				// Step 3.1g) PASS 1c: Render SIMPLE and FULL holes with individual geometry
+				// These holes are large enough on screen to need proper geometry
+				var individualHoles = simpleHoles.concat(fullHoles);
+				for (var holeIdx = 0; holeIdx < individualHoles.length; holeIdx++) {
+					var hole = individualHoles[holeIdx];
+					drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
+				}
+				
+				// Step 3.1h) FLUSH BATCHED LINES - Creates single draw call for all hole body lines
+				if (threeRenderer && threeRenderer.instancedMeshManager) {
+					threeRenderer.instancedMeshManager.flushLineBatches(threeRenderer.holesGroup);
+				}
+				
+				// Step 3.1i) PASS 2: Draw TEXT AND CONNECTORS only for SIMPLE and FULL LOD
+				// POINT_ONLY and POINT_TRACK don't show labels (too small to read)
+				var hasTextOptions = displayOptions3D.holeID || displayOptions3D.holeDia || displayOptions3D.holeLen ||
+					displayOptions3D.holeType || displayOptions3D.holeAng || displayOptions3D.holeBea ||
+					displayOptions3D.holeSubdrill || displayOptions3D.initiationTime || displayOptions3D.delayValue ||
+					displayOptions3D.xValue || displayOptions3D.yValue || displayOptions3D.zValue ||
+					displayOptions3D.displayRowAndPosId || displayOptions3D.measuredLength || displayOptions3D.measuredMass ||
+					displayOptions3D.measuredComment || displayOptions3D.holeDip;
+				
+				if (hasTextOptions) {
+					// Only render text for SIMPLE and FULL LOD holes
+					for (var holeIdx2 = 0; holeIdx2 < individualHoles.length; holeIdx2++) {
+						var hole2 = individualHoles[holeIdx2];
+						drawHoleTextsAndConnectorsThreeJS(hole2, displayOptions3D);
+					}
+				}
+				
+				if (developerModeEnabled) {
+					console.log("📍 LOD-based hole drawing complete: " + allBlastHoles.length + " holes");
+					console.log("📊 LOD draw calls: POINT_ONLY=" + (pointOnlyHoles.length > 0 ? 1 : 0) + 
+						", POINT_TRACK=" + (pointTrackHoles.length > 0 ? 2 : 0) + 
+						", Individual=" + individualHoles.length);
+					if (threeRenderer && threeRenderer.instancedMeshManager) {
+						console.log("📊 Instance stats:", threeRenderer.instancedMeshManager.getStats());
+					}
 				}
 				// NOTE: threeDataNeedsRebuild flag reset moved to AFTER KAD drawing (Step 3 below)
 			}

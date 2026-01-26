@@ -5,6 +5,7 @@
 import * as THREE from "three";
 import { clearTextCache } from "./GeometryFactory.js";
 import { InstancedMeshManager } from "./InstancedMeshManager.js";
+import { LODManager } from "./LODManager.js";
 
 export class ThreeRenderer {
 	constructor(containerElement, width, height) {
@@ -195,6 +196,12 @@ export class ThreeRenderer {
 		// Provides 10-50x performance improvement for large blasts (500+ holes)
 		this.instancedMeshManager = new InstancedMeshManager(this.holesGroup);
 		this.useInstancing = true; // Enable by default for all rendering
+
+		// Step 8d) LOD Manager for pixel-based level-of-detail on blast holes
+		// Reduces geometry complexity for distant/zoomed-out holes
+		// LOD bands based on screen pixel size (see LODManager.js for thresholds)
+		this.lodManager = new LODManager(this.camera, this.renderer.domElement);
+		console.log("🔭 LODManager initialized in ThreeRenderer");
 
 		// Step 9) Raycaster for selection
 		this.raycaster = new THREE.Raycaster();

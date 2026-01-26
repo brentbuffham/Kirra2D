@@ -1270,6 +1270,252 @@ export class GeometryFactory {
 		return { lineSegments: lineSegments, entityMetadata: entityMetadata, totalCircles: totalCircles };
 	}
 
+	// ========================================
+	// HOLE LOD BATCH METHODS - For pixel-based LOD rendering
+	// ========================================
+	// These methods create batched geometry for holes at lower LOD levels
+	// Used when holes are small on screen (< 20px) to reduce draw calls
+
+	/**
+	 * Step LOD-BATCH1) Create batched points for POINT_ONLY LOD level
+	 * Used when hole screen size < 10px
+	 * Creates a single THREE.Points object for all holes = 1 draw call
+	 * 
+	 * @param {Array} holes - Array of blast hole objects
+	 * @param {Function} worldToThreeLocal - Coordinate transform function
+	 * @param {number} pointSize - Point size in pixels (default 2)
+	 * @returns {Object} { points: THREE.Points, holeCount: number }
+	 */
+	static createHoleLODPoints(holes, worldToThreeLocal, pointSize) {
+		// Step LOD-BATCH1a) Validate input
+		if (!holes || holes.length === 0) return null;
+		
+		// Step LOD-BATCH1b) Default point size is 2 pixels (constant screen size)
+		var finalPointSize = pointSize !== undefined ? pointSize : 2;
+		
+		// Step LOD-BATCH1c) Count visible holes for array pre-allocation
+		var visibleCount = 0;
+		for (var i = 0; i < holes.length; i++) {
+			if (holes[i].visible !== false) {
+				visibleCount++;
+			}
+		}
+		
+		if (visibleCount === 0) return null;
+		
+		// Step LOD-BATCH1d) Pre-allocate typed arrays (1 point per hole)
+		var positions = new Float32Array(visibleCount * 3);
+		var colors = new Float32Array(visibleCount * 3);
+		
+		// Step LOD-BATCH1e) Fill position and color arrays
+		var posIdx = 0;
+		var colorIdx = 0;
+		var holeMetadata = []; // For selection support
+		
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			if (hole.visible === false) continue;
+			
+			// Step LOD-BATCH1f) Transform collar position to local coords
+			var local = worldToThreeLocal(hole.startXLocation, hole.startYLocation);
+			positions[posIdx++] = local.x;
+			positions[posIdx++] = local.y;
+			positions[posIdx++] = hole.startZLocation || 0;
+			
+			// Step LOD-BATCH1g) Parse hole color
+			var colorHex = hole.colorHexDecimal || hole.holeColor || "#FF0000";
+			var threeColor = new THREE.Color(colorHex);
+			colors[colorIdx++] = threeColor.r;
+			colors[colorIdx++] = threeColor.g;
+			colors[colorIdx++] = threeColor.b;
+			
+			// Step LOD-BATCH1h) Store metadata for selection
+			holeMetadata.push({
+				index: holeMetadata.length,
+				holeID: hole.holeID,
+				entityName: hole.entityName
+			});
+		}
+		
+		// Step LOD-BATCH1i) Create BufferGeometry
+		var geometry = new THREE.BufferGeometry();
+		geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+		geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+		
+		// Step LOD-BATCH1j) Create PointsMaterial with vertex colors
+		// sizeAttenuation: false = constant screen pixel size
+		var material = new THREE.PointsMaterial({
+			vertexColors: true,
+			size: finalPointSize,
+			sizeAttenuation: false, // KEY: Constant 2px regardless of zoom
+			depthTest: true,
+			depthWrite: true
+		});
+		
+		// Step LOD-BATCH1k) Create Points object
+		var points = new THREE.Points(geometry, material);
+		points.name = "hole-lod-points-batch";
+		points.userData = {
+			type: "holeLODPoints",
+			lodLevel: "POINT_ONLY",
+			holeMetadata: holeMetadata,
+			holeCount: visibleCount
+		};
+		
+		return {
+			points: points,
+			holeMetadata: holeMetadata,
+			holeCount: visibleCount
+		};
+	}
+
+	/**
+	 * Step LOD-BATCH2) Create batched points + track lines for POINT_TRACK LOD level
+	 * Used when hole screen size 10-20px
+	 * Creates TWO objects: points batch + lines batch = 2 draw calls
+	 * 
+	 * @param {Array} holes - Array of blast hole objects
+	 * @param {Function} worldToThreeLocal - Coordinate transform function
+	 * @param {number} pointSize - Point size in pixels (default 2)
+	 * @returns {Object} { points: THREE.Points, lines: THREE.LineSegments, holeCount: number }
+	 */
+	static createHoleLODPointsWithTrack(holes, worldToThreeLocal, pointSize) {
+		// Step LOD-BATCH2a) Validate input
+		if (!holes || holes.length === 0) return null;
+		
+		// Step LOD-BATCH2b) Default point size is 2 pixels
+		var finalPointSize = pointSize !== undefined ? pointSize : 2;
+		
+		// Step LOD-BATCH2c) Count visible holes
+		var visibleCount = 0;
+		for (var i = 0; i < holes.length; i++) {
+			if (holes[i].visible !== false) {
+				visibleCount++;
+			}
+		}
+		
+		if (visibleCount === 0) return null;
+		
+		// Step LOD-BATCH2d) Pre-allocate arrays for points (collar position)
+		var pointPositions = new Float32Array(visibleCount * 3);
+		var pointColors = new Float32Array(visibleCount * 3);
+		
+		// Step LOD-BATCH2e) Pre-allocate arrays for lines (collar to toe)
+		// Each line has 2 vertices (start and end)
+		var linePositions = new Float32Array(visibleCount * 6); // 2 vertices * 3 coords
+		var lineColors = new Float32Array(visibleCount * 6);
+		
+		// Step LOD-BATCH2f) Fill arrays
+		var pointPosIdx = 0;
+		var pointColorIdx = 0;
+		var linePosIdx = 0;
+		var lineColorIdx = 0;
+		var holeMetadata = [];
+		
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			if (hole.visible === false) continue;
+			
+			// Step LOD-BATCH2g) Transform positions
+			var collarLocal = worldToThreeLocal(hole.startXLocation, hole.startYLocation);
+			var toeLocal = worldToThreeLocal(hole.endXLocation, hole.endYLocation);
+			
+			var collarX = collarLocal.x;
+			var collarY = collarLocal.y;
+			var collarZ = hole.startZLocation || 0;
+			
+			var toeX = toeLocal.x;
+			var toeY = toeLocal.y;
+			var toeZ = hole.endZLocation || 0;
+			
+			// Step LOD-BATCH2h) Parse color
+			var colorHex = hole.colorHexDecimal || hole.holeColor || "#FF0000";
+			var threeColor = new THREE.Color(colorHex);
+			
+			// Step LOD-BATCH2i) Fill point arrays (collar position)
+			pointPositions[pointPosIdx++] = collarX;
+			pointPositions[pointPosIdx++] = collarY;
+			pointPositions[pointPosIdx++] = collarZ;
+			
+			pointColors[pointColorIdx++] = threeColor.r;
+			pointColors[pointColorIdx++] = threeColor.g;
+			pointColors[pointColorIdx++] = threeColor.b;
+			
+			// Step LOD-BATCH2j) Fill line arrays (collar to toe)
+			// Start vertex (collar)
+			linePositions[linePosIdx++] = collarX;
+			linePositions[linePosIdx++] = collarY;
+			linePositions[linePosIdx++] = collarZ;
+			// End vertex (toe)
+			linePositions[linePosIdx++] = toeX;
+			linePositions[linePosIdx++] = toeY;
+			linePositions[linePosIdx++] = toeZ;
+			
+			// Line colors (same for both vertices)
+			lineColors[lineColorIdx++] = threeColor.r;
+			lineColors[lineColorIdx++] = threeColor.g;
+			lineColors[lineColorIdx++] = threeColor.b;
+			lineColors[lineColorIdx++] = threeColor.r;
+			lineColors[lineColorIdx++] = threeColor.g;
+			lineColors[lineColorIdx++] = threeColor.b;
+			
+			// Step LOD-BATCH2k) Store metadata
+			holeMetadata.push({
+				index: holeMetadata.length,
+				holeID: hole.holeID,
+				entityName: hole.entityName
+			});
+		}
+		
+		// Step LOD-BATCH2l) Create points geometry and mesh
+		var pointGeometry = new THREE.BufferGeometry();
+		pointGeometry.setAttribute("position", new THREE.BufferAttribute(pointPositions, 3));
+		pointGeometry.setAttribute("color", new THREE.BufferAttribute(pointColors, 3));
+		
+		var pointMaterial = new THREE.PointsMaterial({
+			vertexColors: true,
+			size: finalPointSize,
+			sizeAttenuation: false, // Constant screen pixel size
+			depthTest: true,
+			depthWrite: true
+		});
+		
+		var points = new THREE.Points(pointGeometry, pointMaterial);
+		points.name = "hole-lod-points-track-batch";
+		points.userData = {
+			type: "holeLODPointsTrack",
+			lodLevel: "POINT_TRACK",
+			holeMetadata: holeMetadata,
+			holeCount: visibleCount
+		};
+		
+		// Step LOD-BATCH2m) Create lines geometry and mesh
+		var lineGeometry = new THREE.BufferGeometry();
+		lineGeometry.setAttribute("position", new THREE.BufferAttribute(linePositions, 3));
+		lineGeometry.setAttribute("color", new THREE.BufferAttribute(lineColors, 3));
+		
+		var lineMaterial = new THREE.LineBasicMaterial({
+			vertexColors: true,
+			depthTest: true,
+			depthWrite: true
+		});
+		
+		var lines = new THREE.LineSegments(lineGeometry, lineMaterial);
+		lines.name = "hole-lod-tracklines-batch";
+		lines.userData = {
+			type: "holeLODTrackLines",
+			lodLevel: "POINT_TRACK",
+			holeCount: visibleCount
+		};
+		
+		return {
+			points: points,
+			lines: lines,
+			holeMetadata: holeMetadata,
+			holeCount: visibleCount
+		};
+	}
+
 	// Step 9.7) HYBRID SUPER-BATCH for CIRCLES: Thin circles use LineBasic, thick use FatLines
 	// Splits circles by lineWidth: <=1 goes to fast LineSegments, >1 goes to LineSegments2
 	static createHybridSuperBatchedCircles(allCircleEntities, worldToThreeLocal, resolution) {
