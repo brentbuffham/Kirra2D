@@ -442,18 +442,23 @@ export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, colo
 	const local = window.worldToThreeLocal(worldX, worldY);
 	
 	// Step 5a) Check if vector text mode is enabled
+	// Step 5a.1) Determine target group - use labelsGroup if available (for LOD control)
+	var targetGroup = window.threeRenderer.labelsGroup || window.threeRenderer.holesGroup;
+	
 	if (window.useVectorText) {
 		// Step 5b) Use Hershey Simplex vector font (high performance, line-based)
 		const vectorText = GeometryFactory.createVectorText(local.x, local.y, worldZ, String(text), fontSize, color, anchorX);
 		if (vectorText) {
-			window.threeRenderer.holesGroup.add(vectorText);
+			vectorText.userData.isHoleLabel = true;
+			targetGroup.add(vectorText);
 		}
 	} else {
 		// Step 5c) Use Troika SDF text (default, high quality)
 		const textSprite = GeometryFactory.createKADText(local.x, local.y, worldZ, String(text), fontSize, color, null, anchorX);
 		// Step 5d) Only add if not already in group (cached objects might already be there)
 		if (!textSprite.parent) {
-			window.threeRenderer.holesGroup.add(textSprite); // Hole text goes to holesGroup
+			textSprite.userData.isHoleLabel = true;
+			targetGroup.add(textSprite); // Hole text goes to labelsGroup for LOD control
 		}
 	}
 }

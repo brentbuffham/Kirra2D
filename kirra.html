@@ -2235,6 +2235,23 @@
 						<small style="color: #888;">Requires page reload to take effect.</small>
 						<br>
 						<hr>
+						LOD Controls (3D Only):
+						<br>
+						<label for="lodOverrideSelect" style="margin-right: 4px;">Override:</label>
+						<select id="lodOverrideSelect" style="padding: 2px 4px; border-radius: 4px; font-size: 11px;">
+							<option value="auto">Auto (Frustum-based)</option>
+							<option value="0">FULL (< 750m)</option>
+							<option value="1">SIMPLE (< 1250m)</option>
+							<option value="2">MEDIUM (< 3000m)</option>
+							<option value="3">LOW (< 10000m)</option>
+							<option value="4">MINIMAL (> 10000m)</option>
+						</select>
+						<br>
+						<small style="color: #888;">Frustum: <span id="frustumWidthDisplay">-</span></small>
+						<br>
+						<small style="color: #888;">Current LOD: <span id="currentLODDisplay">-</span></small>
+						<br>
+						<hr>
 						GPU Memory Management:
 						<br>
 						<button class="button-norm" id="freeGPUMemoryButton" title="Free GPU memory used by CAD drawings">

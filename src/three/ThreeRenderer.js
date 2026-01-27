@@ -153,6 +153,12 @@ export class ThreeRenderer {
 		this.holesGroup.name = "Holes";
 		this.scene.add(this.holesGroup);
 
+		// Step 7a) Create separate group for hole labels (for LOD visibility control)
+		// Text labels are expensive (1 draw call each) - hiding them at distance gives huge perf boost
+		this.labelsGroup = new THREE.Group();
+		this.labelsGroup.name = "HoleLabels";
+		this.scene.add(this.labelsGroup);
+
 		this.surfacesGroup = new THREE.Group();
 		this.surfacesGroup.name = "Surfaces";
 		this.scene.add(this.surfacesGroup);
@@ -1010,6 +1016,10 @@ export class ThreeRenderer {
 
 		// Step 21a) Dispose all groups to prevent memory leaks
 		this.disposeGroup(this.holesGroup);
+		// Step 21a.1) Also clear labels group (text labels for holes)
+		if (this.labelsGroup) {
+			this.disposeGroup(this.labelsGroup);
+		}
 		this.disposeGroup(this.surfacesGroup);
 		this.disposeGroup(this.kadGroup);
 		this.disposeGroup(this.contoursGroup);
@@ -1068,6 +1078,10 @@ export class ThreeRenderer {
 			case "holes":
 				this.clearInstancedHoles(); // Clear BEFORE disposing group
 				this.disposeGroup(this.holesGroup);
+				// Step 22b.1) Also clear labels group (text labels for holes)
+				if (this.labelsGroup) {
+					this.disposeGroup(this.labelsGroup);
+				}
 				this.holeMeshMap.clear();
 				break;
 			case "surfaces":
@@ -1213,6 +1227,17 @@ export class ThreeRenderer {
 		if (this.contextLost) {
 			console.warn("⚠️ Skipping render - WebGL context lost");
 			return;
+		}
+
+		// Step 23a.0b) Update LOD visibility based on frustum width
+		// This is nearly free - just toggles .visible properties
+		// LODManager decides which layers to show based on camera zoom level
+		if (this.lodManager) {
+			var lodChanged = this.lodManager.updateVisibility();
+			if (lodChanged) {
+				// LOD level changed - ensure we render the change
+				this.needsRender = true;
+			}
 		}
 
 		// Step 23a) PERFORMANCE FIX: Only update billboards when camera rotation changed

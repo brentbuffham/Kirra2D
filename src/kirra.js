@@ -155,6 +155,8 @@ import "./dialog/popups/export/DXFExportDialog.js";
 // Helper Modules
 import { exportImagesAsGeoTIFF, exportSurfacesAsElevationGeoTIFF } from "./helpers/GeoTIFFExporter.js";
 import { CoordinateDebugger } from "./helpers/CoordinateDebugger.js";
+// ProcessingIndicator - Shows "Please Wait" overlay during heavy operations
+import "./helpers/ProcessingIndicator.js"; // Attaches to window.ProcessingIndicator
 // Analysis Caching System - Two-level cache for Voronoi, Slope, Relief maps
 import {
 	bumpDataVersion,
@@ -1150,8 +1152,15 @@ function initializeThreeJS() {
 			console.log("📷 Camera initialized - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
 		}
 
-		// Step 9) Start render loop
-		threeRenderer.startRenderLoop();
+		// Step 9) Start render loop ONLY if in 3D mode
+		// In 2D mode (default), render loop wastes CPU/GPU resources
+		// The render loop will be started when user switches to 3D mode
+		if (onlyShowThreeJS) {
+			threeRenderer.startRenderLoop();
+			console.log("▶️ Render loop started (3D mode active at init)");
+		} else {
+			console.log("⏸️ Render loop NOT started (2D mode default - saves CPU/GPU)");
+		}
 
 		// Step 10) Set initial background color based on current dark mode
 		threeRenderer.setBackgroundColor(darkModeEnabled);
@@ -2412,7 +2421,8 @@ function handle3DClick(event) {
 							entity.data.forEach((circle, index) => {
 								const centerX = circle.pointXLocation || circle.centerX;
 								const centerY = circle.pointYLocation || circle.centerY;
-								const centerZ = circle.pointZLocation || dataCentroidZ || 0;
+								// FIX: Z=0 is a valid elevation - use explicit undefined/null check instead of || which treats 0 as falsy
+								const centerZ = (circle.pointZLocation !== undefined && circle.pointZLocation !== null) ? circle.pointZLocation : (dataCentroidZ || 0);
 
 								const screenCenter = worldToScreen(centerX, centerY, centerZ);
 								const dx = screenCenter.x - mouseScreenX;
@@ -4137,10 +4147,78 @@ developerModeCheckbox.addEventListener("change", function () {
 ///////////////////////////
 
 ///////////////////////////
+// LOD OVERRIDE CONTROLS (Developer Feature)
+// Step LOD-DEV1) Get LOD override dropdown
+var lodOverrideSelect = document.getElementById("lodOverrideSelect");
+var frustumWidthDisplay = document.getElementById("frustumWidthDisplay");
+var currentLODDisplay = document.getElementById("currentLODDisplay");
+
+// Step LOD-DEV2) Handle LOD override change
+if (lodOverrideSelect) {
+	lodOverrideSelect.addEventListener("change", function() {
+		var value = lodOverrideSelect.value;
+		console.log("📊 LOD Override dropdown changed to: " + value);
+		
+		// Debug: Check if threeRenderer and lodManager exist
+		if (!threeRenderer) {
+			console.warn("⚠️ LOD Override: threeRenderer is null/undefined");
+			return;
+		}
+		if (!threeRenderer.lodManager) {
+			console.warn("⚠️ LOD Override: threeRenderer.lodManager is null/undefined");
+			return;
+		}
+		
+		if (value === "auto") {
+			console.log("📊 Setting LOD override to AUTO");
+			threeRenderer.lodManager.setOverride(null);
+		} else {
+			var numValue = parseInt(value);
+			console.log("📊 Setting LOD override to level " + numValue);
+			threeRenderer.lodManager.setOverride(numValue);
+		}
+		
+		// Debug: Log current layer status
+		if (threeRenderer.lodManager.lodLayers) {
+			var layers = threeRenderer.lodManager.lodLayers;
+			console.log("📊 LOD layers after override:", {
+				labels: layers.labels ? (layers.labels.visible ? "VISIBLE" : "HIDDEN") : "NULL",
+				fullCircles: layers.fullCircles ? "exists" : "NULL",
+				simpleCircles: layers.simpleCircles ? "exists" : "NULL"
+			});
+		}
+		
+		// Force render to show change
+		if (threeRenderer.requestRender) {
+			threeRenderer.requestRender();
+		}
+	});
+}
+
+// Step LOD-DEV3) Update LOD display periodically (only when developer mode enabled)
+setInterval(function() {
+	if (developerModeEnabled && threeRenderer && threeRenderer.lodManager) {
+		var stats = threeRenderer.lodManager.getStats();
+		// Step LOD-DEV3a) Get elements fresh (they might not exist at module load time)
+		var fwDisplay = document.getElementById("frustumWidthDisplay");
+		var lodDisplay = document.getElementById("currentLODDisplay");
+		if (fwDisplay) {
+			fwDisplay.textContent = stats.frustumWidth;
+		}
+		if (lodDisplay) {
+			lodDisplay.textContent = stats.lodLevel + " (" + stats.lodOverride + ")";
+		}
+	}
+}, 500); // Update every 500ms
+///////////////////////////
+
+///////////////////////////
 // VECTOR TEXT TOGGLE (Developer Feature)
 // Uses Hershey Simplex vector font instead of Troika SDF for 2D/3D text
-// Benefits: 10-40x faster rendering, consistent 2D/3D/print appearance, batchable geometry
-let useVectorText = true; // Default to true - Hershey Simplex is ON by default
+// Benefits for 3D: Consistent appearance, infinite zoom quality, batchable geometry
+// WARNING: Vector text in 2D is SLOW - uses moveTo/lineTo per character vs native fillText
+// For 2D: Native canvas text is 100x+ faster and should be used for performance
+let useVectorText = false; // Default to FALSE - native canvas text for 2D performance
 window.useVectorText = useVectorText; // Expose globally for canvas3DDrawing.js
 
 // Step VT1) Check for toggle element (may not exist yet)
@@ -11687,20 +11765,38 @@ canvasContainer.addEventListener(
 			// Ensure the currentScale does not go below a minimum value
 			currentScale = Math.max(currentScale, 0.000001);
 
-			// Recalculate contours when zoom changes to keep worker in sync
-			if (allBlastHoles && allBlastHoles.length > 0) {
-				const result = recalculateContours(allBlastHoles, deltaX, deltaY);
-				if (result && result.contourLinesArray) {
-					contourLinesArray = result.contourLinesArray;
-					directionArrows = result.directionArrows;
+			// PERFORMANCE FIX: Do NOT recalculate contours on every wheel event
+			// Contours are already calculated and just need to be redrawn at new scale
+			// The reference file (for-reference-kirra.js) doesn't recalculate on zoom
+			// Only recalculate contours when data CHANGES (add/delete/edit holes)
+
+			// Step #) Use lightweight 2D-only draw for zoom (skip 3D rebuild)
+			// This is much faster than full drawData() which checks 3D geometry
+			if (onlyShowThreeJS) {
+				// In 3D mode, sync camera and request render (no 2D redraw needed)
+				syncCameraToThreeJS();
+				if (threeRenderer && threeRenderer.requestRender) {
+					threeRenderer.requestRender();
 				}
+			} else {
+				// In 2D mode, use debounced lightweight draw
+				// This prevents excessive redraws on rapid scroll
+				if (window._wheelDrawTimeout) {
+					cancelAnimationFrame(window._wheelDrawTimeout);
+				}
+				window._wheelDrawTimeout = requestAnimationFrame(function() {
+					drawData(allBlastHoles, selectedHole);
+				});
 			}
 
-			drawData(allBlastHoles, selectedHole);
-
-			// Step #) Update contour overlay after zoom - this ensures contours redraw with new scale
+			// Step #) Update contour overlay after zoom - debounced
 			if (typeof updateOverlayColorsForTheme === "function") {
-				updateOverlayColorsForTheme();
+				if (window._overlayUpdateTimeout) {
+					clearTimeout(window._overlayUpdateTimeout);
+				}
+				window._overlayUpdateTimeout = setTimeout(function() {
+					updateOverlayColorsForTheme();
+				}, 100);
 			}
 		}
 	},
@@ -26205,14 +26301,17 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 	// If useGradeZ: use the user-provided gradeZ directly
 	// Otherwise: calculate from length and subdrill
 	let gradeZLocation = useGradeToCalcLength ? parseFloat(gradeZ) : parseFloat(startZLocation - (length - subdrill) * Math.cos(angle * (Math.PI / 180)));
-	// Step 2) Calculate hole length (bench height - collar to grade)
-	// BUG FIX 2025-12-28: When using gradeZ, calculate bench height as (CollarZ - GradeZ) / cos(angle)
-	// Previously was calculating total length which caused subdrill to be counted twice
+	// Step 2) Calculate hole length (total hole length from collar to toe)
+	// BUG FIX 2026-01-27: When using gradeZ, MUST add subdrill to get total hole length
+	// holeLength = benchLength + subdrillLength = (benchHeight + subdrillAmount) / cos(angle)
+	// Previously was calculating only bench height which meant subdrill was not being applied
 	let angleRad = parseFloat(angle) * (Math.PI / 180);
 	let cosAngle = Math.cos(angleRad);
 	// Protect against division by zero for horizontal holes
 	if (Math.abs(cosAngle) < 0.001) cosAngle = 0.001;
-	let holeLength = useGradeToCalcLength ? parseFloat((startZLocation - gradeZLocation) / cosAngle) : parseFloat(length);
+	// When useGradeZ is true: total length = (collarZ - gradeZ + subdrillAmount) / cos(angle)
+	// When useGradeZ is false: length already includes subdrill (user-specified total length)
+	let holeLength = useGradeToCalcLength ? parseFloat((startZLocation - gradeZLocation + subdrill) / cosAngle) : parseFloat(length);
 	let holeDiameter = parseFloat(diameter);
 	let holeType = type;
 	let holeAngle = parseFloat(angle);
@@ -29888,19 +29987,20 @@ function drawData(allBlastHoles, selectedHole) {
 			// Skip hole rebuild during KAD drawing to prevent flicker (holes remain visible unchanged)
 			// KAD-only rebuild (threeKADNeedsRebuild) does NOT trigger hole rebuild
 			if (window.threeDataNeedsRebuild && !isAnyKADToolActive) {
-				// Step 3.1a) SYNCHRONOUS hole drawing with PIXEL-BASED LOD
-				// LOD bands reduce geometry complexity for distant/zoomed-out holes
-				// Performance note: Async batching was reverted due to redraw race conditions
+				// Step 3.1a) NEW VISIBILITY-BASED LOD SYSTEM
+				// Create ALL LOD representations at load time, then toggle visibility on zoom
+				// This eliminates geometry rebuild on zoom - just toggles .visible properties
 				if (developerModeEnabled) {
-					console.log("📍 Starting LOD-based hole drawing: " + allBlastHoles.length + " holes");
+					console.log("📍 Starting visibility-based LOD hole drawing: " + allBlastHoles.length + " holes");
 				}
 				
-				// Step 3.1b) Get LOD manager and set canvas reference for pixel calculations
-				// LOD levels based on SCREEN PIXEL SIZE of hole bounding box:
-				// POINT_ONLY (<10px): Just a 2px point, no labels
-				// POINT_TRACK (10-20px): Point + track line, no labels
-				// SIMPLE (20-50px): Collar circle + track + labels
-				// FULL (>50px): Complete geometry + labels
+				// Step 3.1b) Show processing indicator for large datasets
+				var visibleHoleCount = allBlastHoles.filter(function(h) { return h.visible !== false; }).length;
+				if (visibleHoleCount > 2000 && window.ProcessingIndicator) {
+					window.ProcessingIndicator.show("Generating " + visibleHoleCount + " holes with LOD layers...");
+				}
+				
+				// Step 3.1c) Get LOD manager and set canvas reference
 				var lodManager = threeRenderer && threeRenderer.lodManager ? threeRenderer.lodManager : null;
 				var threeCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
 				
@@ -29908,110 +30008,61 @@ function drawData(allBlastHoles, selectedHole) {
 					lodManager.setCanvas(threeCanvas);
 				}
 				
-				// Step 3.1c) Group holes by LOD level for batch processing
-				// Import LOD constants from LODManager
-				var LOD_POINT_ONLY = 0;   // < 10px
-				var LOD_POINT_TRACK = 1;  // 10-20px
-				var LOD_SIMPLE = 2;       // 20-50px
-				var LOD_FULL = 3;         // > 50px
+				// Step 3.1d) Filter visible holes once
+				var visibleHoles = allBlastHoles.filter(function(h) { return h.visible !== false; });
 				
-				var pointOnlyHoles = [];   // Will be batched into single Points object
-				var pointTrackHoles = [];  // Will be batched into Points + Lines
-				var simpleHoles = [];      // Individual circle + track
-				var fullHoles = [];        // Full geometry
-				
-				// Step 3.1d) Categorize visible holes by LOD level
-				for (var holeIdx = 0; holeIdx < allBlastHoles.length; holeIdx++) {
-					var hole = allBlastHoles[holeIdx];
-					if (hole.visible === false) continue;
-					
-					// Get LOD level for this hole (based on screen pixel size)
-					var holeLOD = LOD_FULL; // Default to full if no LOD manager
-					if (lodManager) {
-						holeLOD = lodManager.getHoleLODLevel(hole);
+				// Step 3.1e) LAYER 1: Create POINTS batch for ALL visible holes (for LOW/MINIMAL LOD)
+				// This is used when zoomed far out - single draw call for all holes
+				if (threeRenderer && threeRenderer.holesGroup) {
+					// Remove existing points batch
+					var existingPointsAll = threeRenderer.holesGroup.getObjectByName("lod-points-all");
+					if (existingPointsAll) {
+						threeRenderer.holesGroup.remove(existingPointsAll);
+						if (existingPointsAll.geometry) existingPointsAll.geometry.dispose();
+						if (existingPointsAll.material) existingPointsAll.material.dispose();
 					}
 					
-					// Group by LOD level
-					switch (holeLOD) {
-						case LOD_POINT_ONLY:
-							pointOnlyHoles.push(hole);
-							break;
-						case LOD_POINT_TRACK:
-							pointTrackHoles.push(hole);
-							break;
-						case LOD_SIMPLE:
-							simpleHoles.push(hole);
-							break;
-						case LOD_FULL:
-						default:
-							fullHoles.push(hole);
-							break;
+					// Create points for ALL visible holes
+					var pointsResult = GeometryFactory.createHoleLODPoints(visibleHoles, worldToThreeLocal, 3);
+					if (pointsResult && pointsResult.points) {
+						pointsResult.points.name = "lod-points-all";
+						pointsResult.points.visible = false; // Start hidden - LODManager controls visibility
+						pointsResult.points.userData.lodLayer = "pointsAll";
+						threeRenderer.holesGroup.add(pointsResult.points);
 					}
 				}
 				
-				if (developerModeEnabled) {
-					console.log("📊 LOD distribution: POINT_ONLY=" + pointOnlyHoles.length + 
-						", POINT_TRACK=" + pointTrackHoles.length + 
-						", SIMPLE=" + simpleHoles.length + 
-						", FULL=" + fullHoles.length);
-				}
-				
-				// Step 3.1e) PASS 1a: Render POINT_ONLY holes as batched points (1 draw call)
-				// These holes are tiny on screen - just show 2px colored dots
-				if (pointOnlyHoles.length > 0) {
-					// Remove any existing LOD point batch
-					if (threeRenderer && threeRenderer.holesGroup) {
-						var existingPointBatch = threeRenderer.holesGroup.getObjectByName("hole-lod-points-batch");
-						if (existingPointBatch) {
-							threeRenderer.holesGroup.remove(existingPointBatch);
-							if (existingPointBatch.geometry) existingPointBatch.geometry.dispose();
-							if (existingPointBatch.material) existingPointBatch.material.dispose();
-						}
-					}
+				// Step 3.1f) LAYER 2: Create 8-SEGMENT circles for ALL holes (for SIMPLE/MEDIUM LOD)
+				// These are cheaper than 32-segment circles
+				if (threeRenderer && threeRenderer.instancedMeshManager) {
+					// Clear existing simple LOD meshes
+					threeRenderer.instancedMeshManager.clearSimpleLODMeshes();
 					
-					// Create batched points (1 draw call for all POINT_ONLY holes)
-					var pointBatchResult = GeometryFactory.createHoleLODPoints(pointOnlyHoles, worldToThreeLocal, 2);
-					if (pointBatchResult && pointBatchResult.points && threeRenderer) {
-						threeRenderer.holesGroup.add(pointBatchResult.points);
+					// Add each visible hole to the simple LOD pool
+					for (var sIdx = 0; sIdx < visibleHoles.length; sIdx++) {
+						var sHole = visibleHoles[sIdx];
+						var sDiameter = sHole.holeDiameter || 115;
+						var sRadiusMeters = (sDiameter / 1000) / 2;
+						var sLocalPos = worldToThreeLocal(sHole.startXLocation, sHole.startYLocation);
+						var sColor = darkModeEnabled ? 0xffffff : 0x000000;
+						
+						threeRenderer.instancedMeshManager.addSimpleLODInstance(
+							sHole.entityName + ":::" + sHole.holeID,
+							sLocalPos.x,
+							sLocalPos.y,
+							sHole.startZLocation || 0,
+							sDiameter,
+							sRadiusMeters,
+							sColor,
+							darkModeEnabled
+						);
 					}
 				}
 				
-				// Step 3.1f) PASS 1b: Render POINT_TRACK holes as batched points + lines (2 draw calls)
-				// These holes are small - show point at collar + track line to toe
-				if (pointTrackHoles.length > 0) {
-					// Remove any existing LOD point-track batches
-					if (threeRenderer && threeRenderer.holesGroup) {
-						var existingPTPoints = threeRenderer.holesGroup.getObjectByName("hole-lod-points-track-batch");
-						var existingPTLines = threeRenderer.holesGroup.getObjectByName("hole-lod-tracklines-batch");
-						if (existingPTPoints) {
-							threeRenderer.holesGroup.remove(existingPTPoints);
-							if (existingPTPoints.geometry) existingPTPoints.geometry.dispose();
-							if (existingPTPoints.material) existingPTPoints.material.dispose();
-						}
-						if (existingPTLines) {
-							threeRenderer.holesGroup.remove(existingPTLines);
-							if (existingPTLines.geometry) existingPTLines.geometry.dispose();
-							if (existingPTLines.material) existingPTLines.material.dispose();
-						}
-					}
-					
-					// Create batched points + track lines (2 draw calls for all POINT_TRACK holes)
-					var trackBatchResult = GeometryFactory.createHoleLODPointsWithTrack(pointTrackHoles, worldToThreeLocal, 2);
-					if (trackBatchResult && threeRenderer) {
-						if (trackBatchResult.points) {
-							threeRenderer.holesGroup.add(trackBatchResult.points);
-						}
-						if (trackBatchResult.lines) {
-							threeRenderer.holesGroup.add(trackBatchResult.lines);
-						}
-					}
-				}
-				
-				// Step 3.1g) PASS 1c: Render SIMPLE and FULL holes with individual geometry
-				// These holes are large enough on screen to need proper geometry
-				var individualHoles = simpleHoles.concat(fullHoles);
-				for (var holeIdx = 0; holeIdx < individualHoles.length; holeIdx++) {
-					var hole = individualHoles[holeIdx];
+				// Step 3.1g) LAYER 3: Create 32-SEGMENT circles for ALL holes (for FULL LOD)
+				// This is the existing instanced mesh system - full detail
+				for (var holeIdx = 0; holeIdx < visibleHoles.length; holeIdx++) {
+					var hole = visibleHoles[holeIdx];
 					drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
 				}
 				
@@ -30020,8 +30071,8 @@ function drawData(allBlastHoles, selectedHole) {
 					threeRenderer.instancedMeshManager.flushLineBatches(threeRenderer.holesGroup);
 				}
 				
-				// Step 3.1i) PASS 2: Draw TEXT AND CONNECTORS only for SIMPLE and FULL LOD
-				// POINT_ONLY and POINT_TRACK don't show labels (too small to read)
+				// Step 3.1i) LAYER 4: Create TEXT labels for ALL holes (for FULL/SIMPLE LOD)
+				// Labels are hidden at MEDIUM/LOW/MINIMAL levels
 				var hasTextOptions = displayOptions3D.holeID || displayOptions3D.holeDia || displayOptions3D.holeLen ||
 					displayOptions3D.holeType || displayOptions3D.holeAng || displayOptions3D.holeBea ||
 					displayOptions3D.holeSubdrill || displayOptions3D.initiationTime || displayOptions3D.delayValue ||
@@ -30030,18 +30081,83 @@ function drawData(allBlastHoles, selectedHole) {
 					displayOptions3D.measuredComment || displayOptions3D.holeDip;
 				
 				if (hasTextOptions) {
-					// Only render text for SIMPLE and FULL LOD holes
-					for (var holeIdx2 = 0; holeIdx2 < individualHoles.length; holeIdx2++) {
-						var hole2 = individualHoles[holeIdx2];
+					for (var holeIdx2 = 0; holeIdx2 < visibleHoles.length; holeIdx2++) {
+						var hole2 = visibleHoles[holeIdx2];
 						drawHoleTextsAndConnectorsThreeJS(hole2, displayOptions3D);
 					}
 				}
 				
+				// Step 3.1j) REGISTER LOD LAYERS with LODManager for visibility control
+				if (lodManager && threeRenderer) {
+					// Step 3.1j.0) DEBUG: Log what's in the instanced mesh maps
+					if (threeRenderer.instancedMeshManager) {
+						var imm = threeRenderer.instancedMeshManager;
+						console.log("🔍 LOD REGISTRATION DEBUG:");
+						console.log("  instancedMeshes keys:", Array.from(imm.instancedMeshes.keys()));
+						console.log("  simpleLODMeshes keys:", Array.from(imm.simpleLODMeshes.keys()));
+						console.log("  lineMeshes keys:", imm.lineMeshes ? Array.from(imm.lineMeshes.keys()) : "NULL");
+						
+						// Step 3.1j.1) Separate collar meshes from grade/toe meshes
+						var collarMeshes = new Map();
+						var gradeMeshes = new Map();
+						var toeMeshes = new Map();
+						
+						imm.instancedMeshes.forEach(function(mesh, key) {
+							if (key.startsWith("collar_")) {
+								collarMeshes.set(key, mesh);
+							} else if (key.startsWith("grade")) {
+								gradeMeshes.set(key, mesh);
+							} else if (key.startsWith("toe")) {
+								toeMeshes.set(key, mesh);
+							}
+						});
+						
+						console.log("  Separated: collars=" + collarMeshes.size + ", grades=" + gradeMeshes.size + ", toes=" + toeMeshes.size);
+					}
+					
+					var lodLayers = {
+						// Full detail 32-segment circles (from instancedMeshManager)
+						fullCircles: threeRenderer.instancedMeshManager ? threeRenderer.instancedMeshManager.instancedMeshes : null,
+						// Simple 8-segment circles
+						simpleCircles: threeRenderer.instancedMeshManager ? threeRenderer.instancedMeshManager.simpleLODMeshes : null,
+						// Grade circles (subset of instanced meshes with "grade" in key)
+						gradeCircles: null, // Will be set via separate tracking if needed
+						// Toe circles (subset of instanced meshes with "toe" in key)
+						toeCircles: null, // Will be set via separate tracking if needed
+						// Track lines (from lineMeshes)
+						trackLines: threeRenderer.instancedMeshManager ? threeRenderer.instancedMeshManager.lineMeshes : null,
+						// Points for all holes
+						pointsAll: threeRenderer.holesGroup ? threeRenderer.holesGroup.getObjectByName("lod-points-all") : null,
+						// Labels group - CRITICAL: This controls text visibility for LOD
+						// Hiding labels at MEDIUM/LOW/MINIMAL saves ~10,000 draw calls
+						labels: threeRenderer.labelsGroup ? threeRenderer.labelsGroup : null
+					};
+					
+					console.log("🔍 LOD layers being registered:", {
+						fullCircles: lodLayers.fullCircles ? "Map(" + lodLayers.fullCircles.size + ")" : "NULL",
+						simpleCircles: lodLayers.simpleCircles ? "Map(" + lodLayers.simpleCircles.size + ")" : "NULL",
+						trackLines: lodLayers.trackLines ? "Map(" + lodLayers.trackLines.size + ")" : "NULL",
+						pointsAll: lodLayers.pointsAll ? lodLayers.pointsAll.name : "NULL",
+						labels: lodLayers.labels ? "Group" : "NULL"
+					});
+					
+					lodManager.setLayers(lodLayers);
+					
+					// Step 3.1k) Initialize visibility based on current frustum
+					lodManager.updateVisibility();
+				}
+				
+				// Step 3.1l) Hide processing indicator
+				if (window.ProcessingIndicator && window.ProcessingIndicator.isShowing()) {
+					window.ProcessingIndicator.hide();
+				}
+				
 				if (developerModeEnabled) {
-					console.log("📍 LOD-based hole drawing complete: " + allBlastHoles.length + " holes");
-					console.log("📊 LOD draw calls: POINT_ONLY=" + (pointOnlyHoles.length > 0 ? 1 : 0) + 
-						", POINT_TRACK=" + (pointTrackHoles.length > 0 ? 2 : 0) + 
-						", Individual=" + individualHoles.length);
+					console.log("📍 Visibility-based LOD hole drawing complete: " + visibleHoles.length + " holes");
+					console.log("📊 LOD layers created: points, 8-seg circles, 32-seg circles, labels");
+					if (lodManager) {
+						console.log("📊 Current LOD: " + lodManager.stats.lodLevel + " (frustum: " + lodManager.stats.frustumWidth + ")");
+					}
 					if (threeRenderer && threeRenderer.instancedMeshManager) {
 						console.log("📊 Instance stats:", threeRenderer.instancedMeshManager.getStats());
 					}
@@ -30447,7 +30563,9 @@ function drawData(allBlastHoles, selectedHole) {
 						if (circleData.visible === false) continue;
 						const centerX = circleData.centerX || circleData.pointXLocation;
 						const centerY = circleData.centerY || circleData.pointYLocation;
-						const centerZ = circleData.centerZ || circleData.pointZLocation || 0;
+						// FIX: Z=0 is valid elevation (-27000m to +16000m range). Use explicit null/undefined check.
+						const centerZ = (circleData.centerZ !== undefined && circleData.centerZ !== null) ? circleData.centerZ : 
+						                ((circleData.pointZLocation !== undefined && circleData.pointZLocation !== null) ? circleData.pointZLocation : 0);
 						const radius = circleData.radius || 10; // Radius in world units
 						const local = worldToThreeLocal(centerX, centerY);
 						const vertexIndex = entity.data.indexOf(circleData);

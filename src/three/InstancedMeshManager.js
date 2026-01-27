@@ -64,6 +64,15 @@ export class InstancedMeshManager {
 		// Track which line indices belong to which zero-diameter hole for selection
 		// Format: { "entityName:::holeID": { batchKey: "zero_white", startIndex: 0, lineCount: 4 } }
 		this.zeroDiameterIndexMap = new Map();
+
+		// =============================================
+		// LOD SIMPLE CIRCLES - 8-segment circles for LOD SIMPLE/MEDIUM levels
+		// =============================================
+		// Separate pool from main instancedMeshes to allow independent visibility control
+		// Format: { "simple_collar_115": InstancedMesh, "simple_collar_200": InstancedMesh, ... }
+		this.simpleLODMeshes = new Map();
+		this.simpleLODNextIndex = new Map();
+		this.simpleLODCounts = new Map();
 	}
 
 	/**
@@ -733,6 +742,7 @@ export class InstancedMeshManager {
 		const stats = {
 			totalMeshes: this.instancedMeshes.size,
 			totalHoles: this.holeInstanceMap.size,
+			simpleLODMeshes: this.simpleLODMeshes.size,
 			meshDetails: []
 		};
 
@@ -746,5 +756,170 @@ export class InstancedMeshManager {
 		});
 
 		return stats;
+	}
+
+	// =============================================
+	// LOD SIMPLE CIRCLES - 8-segment circles for LOD
+	// =============================================
+
+	/**
+	 * Step LOD1) Get or create a simple LOD InstancedMesh (8 segments)
+	 * @param {number} diameter - Hole diameter in mm
+	 * @param {number} radiusMeters - Radius in meters
+	 * @param {number} color - THREE color (hex)
+	 * @param {boolean} isDarkMode - Dark mode flag
+	 * @returns {string} meshKey for tracking
+	 */
+	getOrCreateSimpleLODMesh(diameter, radiusMeters, color, isDarkMode) {
+		var meshKey = "simple_collar_" + diameter;
+
+		if (!this.simpleLODMeshes.has(meshKey)) {
+			// Step LOD1a) Create 8-segment circle geometry (cheaper than 32)
+			var geometry = new THREE.CircleGeometry(radiusMeters, 8);
+
+			// Step LOD1b) Create material
+			var material = new THREE.MeshBasicMaterial({
+				color: color,
+				side: THREE.DoubleSide,
+				transparent: false,
+				opacity: 1.0,
+				depthTest: true,
+				depthWrite: true,
+				vertexColors: false
+			});
+
+			// Step LOD1c) Create instanced mesh
+			var instancedMesh = new THREE.InstancedMesh(geometry, material, this.defaultCapacity);
+			instancedMesh.count = 0;
+			instancedMesh.visible = false; // Start hidden (LOD will control visibility)
+
+			// Step LOD1d) Set userData for identification
+			instancedMesh.userData = {
+				type: "instancedHolesSimpleLOD",
+				holeType: "simple_collar",
+				diameter: diameter,
+				segments: 8
+			};
+
+			// Step LOD1e) Add to scene
+			this.scene.add(instancedMesh);
+
+			// Step LOD1f) Track it
+			this.simpleLODMeshes.set(meshKey, instancedMesh);
+			this.simpleLODNextIndex.set(meshKey, 0);
+			this.simpleLODCounts.set(meshKey, { count: 0, capacity: this.defaultCapacity });
+		}
+
+		return meshKey;
+	}
+
+	/**
+	 * Step LOD2) Add a hole to the simple LOD pool
+	 * @param {string} holeId - Unique hole ID
+	 * @param {number} x - X position (local coords)
+	 * @param {number} y - Y position (local coords)
+	 * @param {number} z - Z position (elevation)
+	 * @param {number} diameter - Hole diameter in mm
+	 * @param {number} radiusMeters - Radius in meters
+	 * @param {number} color - THREE color (hex)
+	 * @param {boolean} isDarkMode - Dark mode flag
+	 */
+	addSimpleLODInstance(holeId, x, y, z, diameter, radiusMeters, color, isDarkMode) {
+		// Step LOD2a) Get or create the mesh
+		var meshKey = this.getOrCreateSimpleLODMesh(diameter, radiusMeters, color, isDarkMode);
+		var instancedMesh = this.simpleLODMeshes.get(meshKey);
+
+		// Step LOD2b) Get next index
+		var index = this.simpleLODNextIndex.get(meshKey);
+		var counts = this.simpleLODCounts.get(meshKey);
+
+		// Step LOD2c) Grow if needed
+		if (index >= counts.capacity) {
+			this._growSimpleLODMesh(meshKey);
+			counts.capacity = this.simpleLODCounts.get(meshKey).capacity;
+		}
+
+		// Step LOD2d) Set instance matrix
+		this.tempMatrix.identity();
+		this.tempMatrix.setPosition(x, y, z);
+		instancedMesh.setMatrixAt(index, this.tempMatrix);
+		instancedMesh.instanceMatrix.needsUpdate = true;
+
+		// Step LOD2e) Update count
+		instancedMesh.count = Math.max(instancedMesh.count, index + 1);
+
+		// Step LOD2f) Update tracking
+		this.simpleLODNextIndex.set(meshKey, index + 1);
+		counts.count++;
+
+		return { meshKey: meshKey, index: index };
+	}
+
+	/**
+	 * Step LOD3) Grow a simple LOD mesh when capacity is reached
+	 * @param {string} meshKey - Key of mesh to grow
+	 */
+	_growSimpleLODMesh(meshKey) {
+		var oldMesh = this.simpleLODMeshes.get(meshKey);
+		if (!oldMesh) return;
+
+		var oldCapacity = this.simpleLODCounts.get(meshKey).capacity;
+		var newCapacity = oldCapacity * 2;
+
+		// Step LOD3a) Create new larger mesh
+		var newMesh = new THREE.InstancedMesh(oldMesh.geometry, oldMesh.material, newCapacity);
+		newMesh.visible = oldMesh.visible;
+
+		// Step LOD3b) Copy existing instances
+		for (var i = 0; i < oldCapacity; i++) {
+			oldMesh.getMatrixAt(i, this.tempMatrix);
+			newMesh.setMatrixAt(i, this.tempMatrix);
+		}
+
+		newMesh.instanceMatrix.needsUpdate = true;
+		newMesh.userData = Object.assign({}, oldMesh.userData);
+
+		// Step LOD3c) Replace in scene
+		this.scene.remove(oldMesh);
+		this.scene.add(newMesh);
+
+		// Step LOD3d) Update tracking
+		this.simpleLODMeshes.set(meshKey, newMesh);
+		this.simpleLODCounts.get(meshKey).capacity = newCapacity;
+
+		console.log("LOD mesh grown: " + meshKey + " -> " + newCapacity + " capacity");
+	}
+
+	/**
+	 * Step LOD4) Get all simple LOD meshes (for LODManager visibility control)
+	 * @returns {Map} Map of simple LOD instanced meshes
+	 */
+	getSimpleLODMeshes() {
+		return this.simpleLODMeshes;
+	}
+
+	/**
+	 * Step LOD5) Set visibility of all simple LOD meshes
+	 * @param {boolean} visible - Visibility state
+	 */
+	setSimpleLODVisibility(visible) {
+		this.simpleLODMeshes.forEach(function(mesh) {
+			mesh.visible = visible;
+		});
+	}
+
+	/**
+	 * Step LOD6) Clear simple LOD meshes
+	 */
+	clearSimpleLODMeshes() {
+		var self = this;
+		this.simpleLODMeshes.forEach(function(mesh, key) {
+			self.scene.remove(mesh);
+			mesh.geometry.dispose();
+			mesh.material.dispose();
+		});
+		this.simpleLODMeshes.clear();
+		this.simpleLODNextIndex.clear();
+		this.simpleLODCounts.clear();
 	}
 }

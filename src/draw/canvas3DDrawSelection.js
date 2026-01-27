@@ -515,13 +515,15 @@ function drawKADEntityHighlight(kadObject, entity, selectedSegmentColor, nonSele
 			}
 			break;
 
-		case "circle":
-			// Step 4e) Highlight circles
-			entity.data.forEach((circle, index) => {
-				const centerX = circle.centerX || circle.pointXLocation;
-				const centerY = circle.centerY || circle.pointYLocation;
-				const centerZ = circle.centerZ || circle.pointZLocation || dataCentroidZ || 0;
-				const radius = circle.radius * 1.1 || 1;
+	case "circle":
+		// Step 4e) Highlight circles
+		entity.data.forEach((circle, index) => {
+			const centerX = circle.centerX || circle.pointXLocation;
+			const centerY = circle.centerY || circle.pointYLocation;
+			// FIX: Z=0 is valid elevation (-27000m to +16000m range). Use explicit null/undefined check.
+			const centerZ = (circle.centerZ !== undefined && circle.centerZ !== null) ? circle.centerZ :
+			                ((circle.pointZLocation !== undefined && circle.pointZLocation !== null) ? circle.pointZLocation : (dataCentroidZ || 0));
+			const radius = circle.radius * 1.1 || 1;
 
 				const local = worldToThreeLocal(centerX, centerY);
 
