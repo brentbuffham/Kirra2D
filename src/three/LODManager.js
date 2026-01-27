@@ -263,11 +263,17 @@ export class LODManager {
 	updateVisibility() {
 		var newLevel = this.getLODLevelFromFrustum();
 		var frustumWidth = this.getFrustumWidth();
-		
+
 		// Step 16a) Update stats
 		this.stats.frustumWidth = frustumWidth;
 		this.stats.lodLevel = this.getLODLevelName(newLevel);
-		
+
+		// DEBUG: Log every call to see if it's running
+		if (window.lodDebugCounter === undefined) window.lodDebugCounter = 0;
+		if (++window.lodDebugCounter % 60 === 0) { // Log every 60 frames (~1 second at 60fps)
+			console.log("🔍 LOD Update: frustum=" + frustumWidth.toFixed(0) + "m, level=" + this.getLODLevelName(newLevel));
+		}
+
 		// Step 16b) Skip if no change
 		if (newLevel === this.currentLODLevel) {
 			return false;

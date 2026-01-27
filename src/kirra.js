@@ -6734,7 +6734,8 @@ addPatternSwitch.addEventListener("change", function () {
 		});
 		setAllBoolsToFalse();
 		setMultipleSelectionModeToFalse();
-		resetFloatingToolbarButtons("rulerTool", "bearingTool");
+		// Reset all floating toolbar buttons (don't exclude any)
+		resetFloatingToolbarButtons();
 		resetSwitchesTogglesOptionalDisplay(true);
 		if (currentFontSize < 14) {
 			currentFontSize = 14;
@@ -26305,38 +26306,63 @@ function showProximityWarning(proximityHoles, newHoleInfo) {
 // Function to generate the pattern of holes
 // added rowid and posid 14 july 2025
 function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrientation, x, y, z, gradeZ, diameter, type, angle, bearing, length, subdrill, burden, spacing, rows, holesPerRow) {
+	console.log("🔍 addPattern called with:", {
+		useGradeZ: useGradeZ,
+		useGradeZ_type: typeof useGradeZ,
+		gradeZ: gradeZ,
+		length: length,
+		subdrill: subdrill,
+		z: z
+	});
+
+	// Step 0) Convert all parameters to proper types FIRST (before any calculations)
+	// This handles string values from form inputs (e.g., "4" → 4, "true" → true)
 	let entityType = "hole";
-	let useGradeToCalcLength = useGradeZ;
+	let useGradeToCalcLength = useGradeZ === "true" || useGradeZ === true;
+	let patternoffset = parseFloat(offset);
+	let patternnameTypeIsNumerical = nameTypeIsNumerical === "true" || nameTypeIsNumerical === true;
+	let patternrowOrientation = parseFloat(rowOrientation);
 	let startXLocation = parseFloat(x);
 	let startYLocation = parseFloat(y);
 	let startZLocation = parseFloat(z);
-	// Step 1) Calculate gradeZLocation based on mode
-	// If useGradeZ: use the user-provided gradeZ directly
-	// Otherwise: calculate from length and subdrill
-	let gradeZLocation = useGradeToCalcLength ? parseFloat(gradeZ) : parseFloat(startZLocation - (length - subdrill) * Math.cos(angle * (Math.PI / 180)));
-	// Step 2) Calculate hole length (total hole length from collar to toe)
-	// BUG FIX 2026-01-27: When using gradeZ, MUST add subdrill to get total hole length
-	// holeLength = benchLength + subdrillLength = (benchHeight + subdrillAmount) / cos(angle)
-	// Previously was calculating only bench height which meant subdrill was not being applied
-	let angleRad = parseFloat(angle) * (Math.PI / 180);
-	let cosAngle = Math.cos(angleRad);
-	// Protect against division by zero for horizontal holes
-	if (Math.abs(cosAngle) < 0.001) cosAngle = 0.001;
-	// When useGradeZ is true: total length = (collarZ - gradeZ + subdrillAmount) / cos(angle)
-	// When useGradeZ is false: length already includes subdrill (user-specified total length)
-	let holeLength = useGradeToCalcLength ? parseFloat((startZLocation - gradeZLocation + subdrill) / cosAngle) : parseFloat(length);
+	let gradeZValue = parseFloat(gradeZ);
 	let holeDiameter = parseFloat(diameter);
 	let holeType = type;
 	let holeAngle = parseFloat(angle);
 	let holeBearing = parseFloat(bearing);
+	let lengthValue = parseFloat(length);
 	let subdrillAmount = parseFloat(subdrill);
 	let patternburden = parseFloat(burden);
 	let patternspacing = parseFloat(spacing);
 	let patternrows = parseInt(rows);
 	let patternholesPerRow = parseInt(holesPerRow);
-	let patternoffset = parseFloat(offset);
-	let patternnameTypeIsNumerical = nameTypeIsNumerical;
-	let patternrowOrientation = parseFloat((90 - rowOrientation) * (Math.PI / 180));
+	// Step 1) Calculate gradeZLocation based on mode
+	// If useGradeZ: use the user-provided gradeZ directly
+	// Otherwise: calculate from length and subdrill
+	let gradeZLocation = useGradeToCalcLength ? gradeZValue : (startZLocation - (lengthValue - subdrillAmount) * Math.cos(holeAngle * (Math.PI / 180)));
+	// Step 2) Calculate hole length (total hole length from collar to toe)
+	// BUG FIX 2026-01-27: When using gradeZ, MUST add subdrill to get total hole length
+	// holeLength = benchLength + subdrillLength = (benchHeight + subdrillAmount) / cos(angle)
+	// Previously was calculating only bench height which meant subdrill was not being applied
+	let angleRad = holeAngle * (Math.PI / 180);
+	let cosAngle = Math.cos(angleRad);
+	// Protect against division by zero for horizontal holes
+	if (Math.abs(cosAngle) < 0.001) cosAngle = 0.001;
+	// When useGradeZ is true: total length = (collarZ - gradeZ + subdrillAmount) / cos(angle)
+	// When useGradeZ is false: length already includes subdrill (user-specified total length)
+	let holeLength = useGradeToCalcLength ? ((startZLocation - gradeZLocation + subdrillAmount) / cosAngle) : lengthValue;
+	console.log("🔍 addPattern calculated holeLength:", holeLength, "from:", {
+		useGradeToCalcLength: useGradeToCalcLength,
+		startZLocation: startZLocation,
+		gradeZLocation: gradeZLocation,
+		subdrillAmount: subdrillAmount,
+		subdrill_type: typeof subdrillAmount,
+		cosAngle: cosAngle,
+		calculation: useGradeToCalcLength ? `(${startZLocation} - ${gradeZLocation} + ${subdrillAmount}) / ${cosAngle}` : `length=${lengthValue}`
+	});
+
+	// Convert row orientation to radians (90 - rowOrientation because of coordinate system)
+	patternrowOrientation = (90 - patternrowOrientation) * (Math.PI / 180);
 
 	let referenceX = startXLocation;
 	let referenceY = startYLocation;
@@ -26354,6 +26380,11 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 	}
 	window.holeGenerationCancelled = false; // Reset for new pattern
 	window.holeGenerationStartCount = allBlastHoles ? allBlastHoles.length : 0; // Track starting count
+
+	// Begin batch undo for pattern generation
+	if (undoManager) {
+		undoManager.beginBatch("Generate pattern (" + (patternrows * patternholesPerRow) + " holes)");
+	}
 
 	for (let i = 0; i < patternrows; i++) {
 		// Check for cancellation before each row
@@ -26404,7 +26435,8 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 				break;
 			}
 
-			addHole(useCustomHoleID, useGradeZ, entityName, holeID, parseFloat(finalX), parseFloat(finalY), parseFloat(startZLocation), parseFloat(gradeZLocation), parseFloat(holeDiameter), holeType, parseFloat(holeLength), parseFloat(subdrillAmount), parseFloat(holeAngle), parseFloat(holeBearing), currentRowID, posID, patternburden, patternspacing);
+			// Use already-converted variables (no need to parseFloat again)
+			addHole(useCustomHoleID, useGradeToCalcLength, entityName, holeID, finalX, finalY, startZLocation, gradeZLocation, holeDiameter, holeType, holeLength, subdrillAmount, holeAngle, holeBearing, currentRowID, posID, patternburden, patternspacing);
 		}
 
 		// Increment the current letter for the next row ONLY IF alphanumeric naming is used
@@ -26428,10 +26460,19 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 			console.log("Removing " + (currentCount - startCount) + " holes added during cancelled pattern generation");
 			allBlastHoles.splice(startCount, currentCount - startCount);
 			holesWereRemoved = true;
+			// Cancel the batch (discard undo actions) since holes were removed
+			if (undoManager) {
+				undoManager.cancelBatch();
+			}
 			// Save to IndexedDB to persist the removal
 			if (typeof debouncedSaveHoles === "function") {
 				debouncedSaveHoles();
 			}
+		}
+	} else {
+		// End batch undo for successful pattern generation
+		if (undoManager) {
+			undoManager.endBatch();
 		}
 	}
 
@@ -26457,6 +26498,11 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 		showModalMessage("Pattern Generation Cancelled", "Hole generation was stopped by user action. No holes were added.", "warning");
 	} else {
 		console.log("Generated pattern with " + patternrows + " rows (rowIDs " + startingRowID + "-" + (startingRowID + patternrows - 1) + ")");
+	}
+
+	// Save holes to IndexedDB after successful generation (only if not cancelled)
+	if (!window.holeGenerationCancelled) {
+		debouncedSaveHoles();
 	}
 }
 

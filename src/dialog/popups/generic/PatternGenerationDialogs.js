@@ -23,13 +23,13 @@ export function showPatternDialog(mode, worldX, worldY) {
 		z: savedSettings.z || 100,
 		collarZ: savedSettings.collarZ || 0,
 		useGradeZ: savedSettings.useGradeZ !== undefined ? savedSettings.useGradeZ : !isAddPattern,
-		gradeZ: savedSettings.gradeZ || (isAddPattern ? 94 : -10),
+		gradeZ: savedSettings.gradeZ || (isAddPattern ? 94 : 1),
 		diameter: savedSettings.diameter || 115,
 		type: savedSettings.type || "Production",
 		angle: savedSettings.angle || 0,
 		bearing: savedSettings.bearing || 180,
 		length: savedSettings.length || (isAddPattern ? 6.2 : 10),
-		subdrill: savedSettings.subdrill || (isAddPattern ? 0 : 1),
+		subdrill: savedSettings.subdrill || (isAddPattern ? 1 : 1),
 		spacingOffset: savedSettings.spacingOffset || 0.5,
 		burden: savedSettings.burden || 3.0,
 		spacing: savedSettings.spacing || 3.3,
@@ -194,7 +194,11 @@ export function showPatternDialog(mode, worldX, worldY) {
 
 			// Redraw to clear any visual indicators
 			if (typeof window.drawData === "function" && window.allBlastHoles && window.selectedHole !== undefined) {
-				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+				if (typeof window.redraw3D === "function") {
+					window.redraw3D();
+				} else {
+					window.drawData(window.allBlastHoles, window.selectedHole);
+				}
 			}
 
 			dialog.close();
@@ -488,7 +492,11 @@ export function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 				window.debouncedUpdateTreeView();
 			}
 			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
-				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+				if (typeof window.redraw3D === "function") {
+					window.redraw3D();
+				} else {
+					window.drawData(window.allBlastHoles, window.selectedHole);
+				}
 			}
 
 			// Step 8s) Deactivate tool
@@ -528,7 +536,11 @@ export function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 
 			// Step 8w) Redraw to clear any visual indicators
 			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
-				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+				if (typeof window.redraw3D === "function") {
+					window.redraw3D();
+				} else {
+					window.drawData(window.allBlastHoles, window.selectedHole);
+				}
 			}
 
 			// Step 8x) Reset tool
@@ -864,7 +876,11 @@ export function showHolesAlongLinePopup() {
 
 			// Step 10w) Redraw to clear any visual indicators
 			if (typeof window.drawData === "function" && window.allBlastHoles !== undefined && window.selectedHole !== undefined) {
-				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+				if (typeof window.redraw3D === "function") {
+					window.redraw3D();
+				} else {
+					window.drawData(window.allBlastHoles, window.selectedHole);
+				}
 			}
 
 			// Step 10x) Reset tool

@@ -1233,11 +1233,15 @@ export class ThreeRenderer {
 		// This is nearly free - just toggles .visible properties
 		// LODManager decides which layers to show based on camera zoom level
 		if (this.lodManager) {
+			console.log("🔍 render() calling LOD updateVisibility()");
 			var lodChanged = this.lodManager.updateVisibility();
 			if (lodChanged) {
 				// LOD level changed - ensure we render the change
 				this.needsRender = true;
+				console.log("🔍 LOD changed - requesting another render");
 			}
+		} else {
+			console.warn("⚠️ render() called but lodManager is null!");
 		}
 
 		// Step 23a) PERFORMANCE FIX: Only update billboards when camera rotation changed
@@ -1352,6 +1356,9 @@ export class ThreeRenderer {
 
 	// Step 24) Start animation loop (only renders when needed)
 	startRenderLoop() {
+		// DEBUG: Add frame counter
+		if (window.renderLoopCounter === undefined) window.renderLoopCounter = 0;
+
 		const animate = () => {
 			// Step 24a) Update arcball controls if active
 			if (window.cameraControls && window.cameraControls.controlMode === "arcball") {
@@ -1359,11 +1366,18 @@ export class ThreeRenderer {
 			}
 
 			this.animationFrameId = requestAnimationFrame(animate);
+
+			// DEBUG: Log every 60 frames to verify loop is running
+			if (++window.renderLoopCounter % 60 === 0) {
+				console.log("🎬 Render loop tick:", window.renderLoopCounter, "needsRender:", this.needsRender);
+			}
+
 			if (this.needsRender) {
 				this.render();
 			}
 		};
 		animate();
+		console.log("✅ startRenderLoop() called - animation loop started");
 	}
 
 	// Step 25) Stop animation loop

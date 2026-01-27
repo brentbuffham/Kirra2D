@@ -700,6 +700,10 @@ export class InstancedMeshManager {
 		// Create new larger InstancedMesh
 		const newMesh = new THREE.InstancedMesh(oldMesh.geometry, oldMesh.material, newCapacity);
 
+		// CRITICAL: Copy the count from old mesh to prevent rendering uninitialized instances
+		// Without this, Three.js renders ALL instances up to capacity at (0,0,0)
+		newMesh.count = oldMesh.count;
+
 		// Copy existing instances
 		for (let i = 0; i < oldCapacity; i++) {
 			oldMesh.getMatrixAt(i, this.tempMatrix);
@@ -869,6 +873,10 @@ export class InstancedMeshManager {
 		// Step LOD3a) Create new larger mesh
 		var newMesh = new THREE.InstancedMesh(oldMesh.geometry, oldMesh.material, newCapacity);
 		newMesh.visible = oldMesh.visible;
+
+		// CRITICAL: Copy the count from old mesh to prevent rendering uninitialized instances
+		// Without this, Three.js renders ALL instances up to capacity at (0,0,0)
+		newMesh.count = oldMesh.count;
 
 		// Step LOD3b) Copy existing instances
 		for (var i = 0; i < oldCapacity; i++) {
