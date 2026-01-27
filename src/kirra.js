@@ -1006,6 +1006,14 @@ function initializeThreeJS() {
 			window.plumbLineDisplay = settings.plumbLineDisplay;
 		}
 
+		// Step 2d.2) Apply scroll wheel inversion setting (applies to both 2D and 3D)
+		if (settings.scrollWheelInverted !== undefined) {
+			window.scrollWheelInverted = settings.scrollWheelInverted;
+		} else {
+			// Step 2d.2a) Initialize to default (false = normal scroll)
+			window.scrollWheelInverted = false;
+		}
+
 		// Step 2a) Create base canvas for background color (bottom layer)
 		const baseCanvas = document.createElement("canvas");
 		baseCanvas.id = "baseCanvas";
@@ -1236,7 +1244,6 @@ function syncCameraToThreeJS() {
 	if (threeInitialized && cameraControls) {
 		const localCentroid = worldToThreeLocal(centroidX, centroidY);
 		cameraControls.setCameraState(localCentroid.x, localCentroid.y, currentScale, currentRotation || 0, cameraControls.orbitX || 0, cameraControls.orbitY || 0);
-		console.log("📷 Synced camera TO Three.js - World:", centroidX.toFixed(2), centroidY.toFixed(2), "Local:", localCentroid.x.toFixed(2), localCentroid.y.toFixed(2), "Scale:", currentScale);
 
 		// After camera sync, redraw mouse indicator at current position (or camera center)
 		// This ensures the grey torus stays visible after camera changes
@@ -11695,7 +11702,11 @@ canvasContainer.addEventListener(
 
 		if (isMouseInsideCanvas) {
 			event.preventDefault();
-			const wheelDelta = event.deltaY;
+			// Step 1) Apply scroll wheel inversion setting if enabled
+			let wheelDelta = event.deltaY;
+			if (window.scrollWheelInverted === true) {
+				wheelDelta = -wheelDelta; // Invert scroll direction
+			}
 
 			const zoomFactor = wheelDelta > 0 ? 0.95 : 1.05;
 
@@ -11773,8 +11784,10 @@ canvasContainer.addEventListener(
 			// Step #) Use lightweight 2D-only draw for zoom (skip 3D rebuild)
 			// This is much faster than full drawData() which checks 3D geometry
 			if (onlyShowThreeJS) {
-				// In 3D mode, sync camera and request render (no 2D redraw needed)
-				syncCameraToThreeJS();
+				// In 3D mode, DON'T sync camera - CameraControls is already handling zoom
+				// syncCameraToThreeJS() would overwrite the camera position with stale global centroidX/Y
+				// CameraControls.handleWheel() already updated the camera correctly
+				// Just request a render to show the zoom result
 				if (threeRenderer && threeRenderer.requestRender) {
 					threeRenderer.requestRender();
 				}
@@ -51384,6 +51397,7 @@ function load3DSettings() {
 	const defaultSettings = {
 		dampingFactor: 0, // Step 14.1) Default to no spin (was 0.05)
 		cursorZoom: true,
+		scrollWheelInverted: false, // Step 14.1a) Default to normal scroll (pull = zoom in, push = zoom out)
 		plumbLineDisplay: "off", // Step 14.2) Display plumb line from cursor to Drawing Z Level
 		cursorOpacity: 0.2,
 		lightBearing: 135,
@@ -51464,6 +51478,11 @@ function apply3DSettings(settings) {
 	// Step 17b.1) Update plumb line display setting globally
 	if (settings.plumbLineDisplay !== undefined) {
 		window.plumbLineDisplay = settings.plumbLineDisplay;
+	}
+
+	// Step 17b.2) Update scroll wheel inversion setting globally (applies to both 2D and 3D)
+	if (settings.scrollWheelInverted !== undefined) {
+		window.scrollWheelInverted = settings.scrollWheelInverted;
 	}
 
 	// Step 17c) Update lighting

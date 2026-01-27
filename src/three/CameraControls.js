@@ -305,17 +305,26 @@ export class CameraControls {
 		const mouseX = event.clientX - rect.left;
 		const mouseY = event.clientY - rect.top;
 
-		// Step 15) Calculate zoom factor
-		const zoomFactor = event.deltaY > 0 ? 0.9 : 1.1;
-		const oldScale = this.scale;
-		const newScale = Math.max(0.01, Math.min(1000, oldScale * zoomFactor));
+		// Step 14.1) Apply scroll wheel inversion setting if enabled
+		// Get inversion setting from window (set by 3D settings)
+		const scrollWheelInverted = window.scrollWheelInverted === true;
+		let deltaY = event.deltaY;
+		if (scrollWheelInverted) {
+			deltaY = -deltaY; // Invert scroll direction
+		}
+
+		// Step 15) Calculate zoom factor (will be applied to scale after sync)
+		const zoomFactor = deltaY > 0 ? 0.9 : 1.1;
 
 		// Step 16) Check if cursor zoom is enabled
 		if (!this.cursorZoom) {
 			// Step 16.0) Simple center zoom - no cursor tracking
+			// For simple zoom, calculate directly without sync (no cursor position dependency)
+			const oldScale = this.scale;
+			const newScale = Math.max(0.01, Math.min(1000, oldScale * zoomFactor));
 			this.scale = newScale;
 			this.threeRenderer.updateCamera(this.centroidX, this.centroidY, this.scale, this.rotation, this.orbitX, this.orbitY, 0, true);
-			
+
 			// Step 16.0a) Update gizmo display
 			if (this.gizmoDisplayMode !== "always") {
 				this.threeRenderer.showAxisHelper(false);
@@ -328,13 +337,36 @@ export class CameraControls {
 
 		// Step 16.1) Cursor zoom enabled - use raycasting for BOTH Plan View and 3D orbit mode
 		// This unified approach fixes the Plan View cursor zoom bug (was using canvas.width instead of rect.width)
+		// Step 16.1a) CRITICAL FIX: Sync camera state from ThreeRenderer to ensure we use actual current position
+		// After panning, the ThreeRenderer's camera state is the source of truth, so we read from it
+		// This prevents the scene from jumping to an old pan position on first zoom after pan
+		const currentCameraState = this.threeRenderer.cameraState;
+		if (currentCameraState) {
+			// Step 16.1a.1) Sync our local state to match ThreeRenderer's actual camera state
+			// CRITICAL: Use nullish coalescing or explicit checks - don't use || as it treats 0 as falsy!
+			this.centroidX = currentCameraState.centroidX !== undefined ? currentCameraState.centroidX : this.centroidX;
+			this.centroidY = currentCameraState.centroidY !== undefined ? currentCameraState.centroidY : this.centroidY;
+			this.scale = currentCameraState.scale !== undefined ? currentCameraState.scale : this.scale;
+			this.rotation = currentCameraState.rotation !== undefined ? currentCameraState.rotation : this.rotation;
+			this.orbitX = currentCameraState.orbitX !== undefined ? currentCameraState.orbitX : this.orbitX;
+			this.orbitY = currentCameraState.orbitY !== undefined ? currentCameraState.orbitY : this.orbitY;
+		}
+
+		// Step 16.1b) NOW calculate old and new scale AFTER sync
+		// This ensures we're zooming from the current actual scale, not a stale value
+		const oldScale = this.scale;
+		const newScale = Math.max(0.01, Math.min(1000, oldScale * zoomFactor));
+		// Step 16.1a.2) Ensure camera matrices are updated for accurate raycasting
+		this.threeRenderer.camera.updateProjectionMatrix();
+		this.threeRenderer.camera.updateMatrixWorld(true);
+
 		const groundZ = this.threeRenderer.orbitCenterZ || 0;
 		const plane = new THREE.Plane(new THREE.Vector3(0, 0, 1), -groundZ); // Z-up plane
 
 		// Step 16.2) Calculate NDC coordinates (FIX: mouseX/Y are already canvas-relative)
-		const ndcX = (mouseX / rect.width) * 2 - 1;
+		const ndcX = mouseX / rect.width * 2 - 1;
 		const ndcY = -(mouseY / rect.height) * 2 + 1;
-		
+
 		// Step 16.3) Raycast mouse position to ground plane at old scale
 		const raycasterOld = new THREE.Raycaster();
 		raycasterOld.setFromCamera(new THREE.Vector2(ndcX, ndcY), this.threeRenderer.camera);
