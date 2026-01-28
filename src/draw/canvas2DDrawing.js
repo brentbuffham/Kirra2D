@@ -36,34 +36,35 @@ export function clearCanvas() {
 // Text Drawing Functions
 //=================================================
 
-// Step T1) Draw text - supports both native canvas text and vector font
-// When window.useVectorText is true, uses Hershey Simplex vector font
+// Step T1) Draw text - supports both native TTF and vector font for 2D
+// When window.useVectorText is true, uses Hershey Simplex vector strokes (slower but matches 3D exactly)
+// When window.useVectorText is false (default), uses HersheySimplex TTF (faster native canvas)
 export function drawText(x, y, text, color) {
 	const fontSize = parseInt(window.currentFontSize - 2);
-	
-	// Step T1a) Check if vector text mode is enabled
+
+	// Step T1a) Check if vector text mode is enabled (developer option for 2D only)
 	if (window.useVectorText) {
-		// Step T1b) Use Hershey Simplex vector font
+		// Step T1b) Use Hershey Simplex vector strokes (matches 3D exactly)
 		VectorFont.drawText2D(window.ctx, x, y, String(text), fontSize, color, "left", "top", 0);
 	} else {
-		// Step T1c) Use native canvas text (default)
-		window.ctx.font = fontSize + "px Arial";
+		// Step T1c) Use HersheySimplex TTF (fast native canvas rendering)
+		window.ctx.font = fontSize + "px HersheySimplex, Arial";
 		window.ctx.fillStyle = color;
 		window.ctx.fillText(text, x, y);
 	}
 }
 
-// Step T2) Draw right-aligned text - supports both native and vector font
+// Step T2) Draw right-aligned text - supports both native TTF and vector font for 2D
 export function drawRightAlignedText(x, y, text, color) {
 	const fontSize = parseInt(window.currentFontSize - 2);
-	
-	// Step T2a) Check if vector text mode is enabled
+
+	// Step T2a) Check if vector text mode is enabled (developer option for 2D only)
 	if (window.useVectorText) {
-		// Step T2b) Use Hershey Simplex vector font with right anchor
+		// Step T2b) Use Hershey Simplex vector strokes with right anchor
 		VectorFont.drawText2D(window.ctx, x, y, String(text), fontSize, color, "right", "top", 0);
 	} else {
-		// Step T2c) Use native canvas text (default)
-		window.ctx.font = fontSize + "px Arial";
+		// Step T2c) Use HersheySimplex TTF (fast native canvas rendering)
+		window.ctx.font = fontSize + "px HersheySimplex, Arial";
 		const textWidth = window.ctx.measureText(text).width;
 		window.ctx.fillStyle = color;
 		// Draw the text at an x position minus the text width for right alignment
@@ -314,10 +315,10 @@ export function drawKADCircles(x, y, z, radius, lineWidth, strokeColor) {
 export function drawKADTexts(x, y, z, text, color, fontHeight) {
 	// Step B2) Use fontHeight if provided, otherwise fall back to window.currentFontSize
 	var fontSize = fontHeight || window.currentFontSize || 12;
-	
-	// Step B3) Check if vector text mode is enabled
+
+	// Step B3) Check if vector text mode is enabled (developer option for 2D only)
 	if (window.useVectorText) {
-		// Step B3a) Use Hershey Simplex vector font for KAD text
+		// Step B3a) Use Hershey Simplex vector strokes for KAD text
 		// Handle multiline text by splitting on newlines
 		var lines = String(text).split("\n");
 		var lineHeight = fontSize * 1.2;
@@ -325,8 +326,8 @@ export function drawKADTexts(x, y, z, text, color, fontHeight) {
 			VectorFont.drawText2D(window.ctx, x, y + i * lineHeight, lines[i], parseInt(fontSize), color, "left", "top", 0);
 		}
 	} else {
-		// Step B3b) Use native canvas text (default)
-		window.ctx.font = parseInt(fontSize) + "px Arial";
+		// Step B3b) Use HersheySimplex TTF (fast native canvas rendering)
+		window.ctx.font = parseInt(fontSize) + "px HersheySimplex, Arial";
 		window.ctx.save(); // Save the context state before setting shadow
 		drawMultilineText(window.ctx, text, x, y, fontSize, "left", color, color, false);
 		window.ctx.restore(); // Restore context state
@@ -554,7 +555,7 @@ export function drawArrowDelayText(startX, startY, endX, endY, color, text, conn
 	ctx.rotate(textAngle);
 
 	ctx.fillStyle = color;
-	ctx.font = parseInt(fontSize - 2) + "px Arial";
+	ctx.font = parseInt(fontSize - 2) + "px HersheySimplex, Arial";
 
 	// Center the text horizontally and position baseline properly
 	const textWidth = ctx.measureText(text).width;

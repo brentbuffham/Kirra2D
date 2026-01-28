@@ -4,6 +4,15 @@
     Last Modified: "20250816.0140AWST"
 */
 
+/* Hershey Simplex font family for 2D canvas text rendering */
+@font-face {
+    font-family: 'HersheySimplex';
+    src: url('./fonts/AVHersheySimplexMedium.ttf') format('truetype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
 :root {
     --default-background-color: #d9d9d9;
     /* Default Background Color */

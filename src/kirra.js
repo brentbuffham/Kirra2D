@@ -4222,24 +4222,25 @@ setInterval(function() {
 ///////////////////////////
 // VECTOR TEXT TOGGLE (Developer Feature)
 // Uses Hershey Simplex vector font instead of Troika SDF for 2D/3D text
-// Benefits for 3D: Consistent appearance, infinite zoom quality, batchable geometry
-// WARNING: Vector text in 2D is SLOW - uses moveTo/lineTo per character vs native fillText
-// For 2D: Native canvas text is 100x+ faster and should be used for performance
-let useVectorText = false; // Default to FALSE - native canvas text for 2D performance
-window.useVectorText = useVectorText; // Expose globally for canvas3DDrawing.js
+// Vector Text Toggle - Developer option for 2D canvas only
+// 3D ALWAYS uses vector text (LineSegments2) for export consistency
+// 2D default (OFF): HersheySimplex TTF with native fillText (fast)
+// 2D developer (ON): Hershey vector strokes with moveTo/lineTo (slow but matches 3D exactly)
+let useVectorText = false; // Default to FALSE - HersheySimplex TTF for 2D performance
+window.useVectorText = useVectorText; // Expose globally for canvas2DDrawing.js (2D only)
 
 // Step VT1) Check for toggle element (may not exist yet)
 const vectorTextCheckbox = document.getElementById("vectorTextEnabled");
 if (vectorTextCheckbox) {
 	useVectorText = vectorTextCheckbox.checked;
 	window.useVectorText = useVectorText;
-	
+
 	vectorTextCheckbox.addEventListener("change", function () {
 		useVectorText = vectorTextCheckbox.checked;
 		window.useVectorText = useVectorText;
-		console.log("Vector Text " + (useVectorText ? "enabled (Hershey Simplex)" : "disabled (Troika SDF)"));
-		
-		// Step VT2) Re-render 3D scene with new text mode
+		console.log("2D Vector Text " + (useVectorText ? "enabled (vector strokes)" : "disabled (HersheySimplex TTF)"));
+
+		// Step VT2) Re-render to apply new 2D text mode
 		if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
 			// Clear text cache to force recreation
 			if (typeof clearTextCache === "function") {

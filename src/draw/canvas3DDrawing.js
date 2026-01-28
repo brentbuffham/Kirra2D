@@ -433,33 +433,23 @@ export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId
 }
 
 // Step 5) Draw hole label text in Three.js
-// Supports both Troika SDF text (default) and Hershey Simplex vector text (when window.useVectorText is true)
+// 3D always uses Hershey Simplex vector text (LineSegments2) for consistency with export
+// The window.useVectorText toggle only affects 2D canvas rendering
 export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, anchorX = "center") {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 	// Step 5a) Allow numeric 0 to display - only skip truly empty/invalid values
 	if (text === null || text === undefined || text === "" || text === "null" || text === "undefined") return;
 
 	const local = window.worldToThreeLocal(worldX, worldY);
-	
-	// Step 5a) Check if vector text mode is enabled
+
 	// Step 5a.1) Determine target group - use labelsGroup if available (for LOD control)
 	var targetGroup = window.threeRenderer.labelsGroup || window.threeRenderer.holesGroup;
-	
-	if (window.useVectorText) {
-		// Step 5b) Use Hershey Simplex vector font (high performance, line-based)
-		const vectorText = GeometryFactory.createVectorText(local.x, local.y, worldZ, String(text), fontSize, color, anchorX);
-		if (vectorText) {
-			vectorText.userData.isHoleLabel = true;
-			targetGroup.add(vectorText);
-		}
-	} else {
-		// Step 5c) Use Troika SDF text (default, high quality)
-		const textSprite = GeometryFactory.createKADText(local.x, local.y, worldZ, String(text), fontSize, color, null, anchorX);
-		// Step 5d) Only add if not already in group (cached objects might already be there)
-		if (!textSprite.parent) {
-			textSprite.userData.isHoleLabel = true;
-			targetGroup.add(textSprite); // Hole text goes to labelsGroup for LOD control
-		}
+
+	// Step 5b) Always use Hershey Simplex vector font in 3D (high performance, line-based, matches export)
+	const vectorText = GeometryFactory.createVectorText(local.x, local.y, worldZ, String(text), fontSize, color, anchorX);
+	if (vectorText) {
+		vectorText.userData.isHoleLabel = true;
+		targetGroup.add(vectorText);
 	}
 }
 
@@ -752,7 +742,9 @@ export function drawKADCircleThreeJS(worldX, worldY, worldZ, radius, lineWidth, 
 
 // Step 11) Draw KAD text in Three.js
 // anchorX defaults to "left" to match 2D canvas text alignment
-// Supports both Troika SDF text (default) and Hershey Simplex vector text (when window.useVectorText is true)
+// 3D always uses Hershey Simplex vector text (LineSegments2) for consistency with export
+// The window.useVectorText toggle only affects 2D canvas rendering
+// Note: Vector text doesn't support background colors - falls back to Troika SDF for those
 export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color, backgroundColor = null, kadId = null, anchorX = "left") {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
@@ -760,30 +752,13 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
 		console.log("🔧 [drawKADTextThreeJS] kadId:", kadId);
 	}
 
-	// Step 11a) Check if vector text mode is enabled
-	// Note: Vector text doesn't support background colors - fall back to Troika for those
-	if (window.useVectorText && !backgroundColor) {
-		// Step 11b) Use Hershey Simplex vector font (high performance, line-based)
-		const vectorText = GeometryFactory.createVectorText(worldX, worldY, worldZ, String(text), fontSize, color, anchorX);
-		
-		if (vectorText) {
-			// Step 11c) Add metadata for selection
-			if (kadId) {
-				vectorText.userData.type = "kadText";
-				vectorText.userData.kadId = kadId;
-				if (developerModeEnabled) {
-					console.log("✅ [drawKADTextThreeJS] Vector text userData set:", vectorText.userData);
-				}
-			}
-			window.threeRenderer.kadGroup.add(vectorText);
-		}
-	} else {
-		// Step 11d) Use Troika SDF text (default, high quality, supports backgrounds)
+	// Step 11a) Vector text doesn't support background colors - use Troika for those
+	if (backgroundColor) {
+		// Step 11b) Use Troika SDF text for background support
 		const textSprite = GeometryFactory.createKADText(worldX, worldY, worldZ, text, fontSize, color, backgroundColor, anchorX);
 
-		// Step 11e) Add metadata for selection
+		// Step 11c) Add metadata for selection
 		if (kadId) {
-			// Preserve existing userData if it exists (for cached objects)
 			if (!textSprite.userData) {
 				textSprite.userData = {};
 			}
@@ -794,9 +769,24 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
 			}
 		}
 
-		// Step 11f) Only add if not already in group (cached objects might already be there)
+		// Step 11d) Only add if not already in group (cached objects might already be there)
 		if (!textSprite.parent) {
 			window.threeRenderer.kadGroup.add(textSprite);
+		}
+	} else {
+		// Step 11e) Use Hershey Simplex vector font (default for 3D, matches export)
+		const vectorText = GeometryFactory.createVectorText(worldX, worldY, worldZ, String(text), fontSize, color, anchorX);
+
+		if (vectorText) {
+			// Step 11f) Add metadata for selection
+			if (kadId) {
+				vectorText.userData.type = "kadText";
+				vectorText.userData.kadId = kadId;
+				if (developerModeEnabled) {
+					console.log("✅ [drawKADTextThreeJS] Vector text userData set:", vectorText.userData);
+				}
+			}
+			window.threeRenderer.kadGroup.add(vectorText);
 		}
 	}
 }
