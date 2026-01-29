@@ -825,18 +825,30 @@ class CustomBlastHoleTextParser extends BaseParser {
 	}
 
 	// Step 64) Improved smart row detection (main entry point)
+	// UPDATED: Now delegates to the comprehensive RowDetection module
 	improvedSmartRowDetection(holesData, entityName) {
 		if (!holesData || holesData.length === 0) return;
 
-		console.log("Improved smart row detection for " + holesData.length + " holes in entity: " + entityName);
+		console.log("CustomBlastHoleTextParser: Delegating to RowDetection module for " + holesData.length + " holes");
 
-		// Step 65) METHOD 1: Try sequence-based detection first
-		if (this.trySequenceBasedDetection(holesData, entityName)) {
-			console.log("Used sequence-based row detection (PRIORITY METHOD)");
+		// Step 65) Use the global improvedSmartRowDetection from RowDetection module
+		// This includes: sequence-based, HDBSCAN, adaptive grid, and serpentine detection
+		if (typeof window.improvedSmartRowDetection === "function") {
+			var result = window.improvedSmartRowDetection(holesData, entityName);
+			console.log("RowDetection module result:", result);
 			return;
 		}
 
-		// Step 66) Fallback: Auto-assign rowID/posID for unassigned holes
+		// Step 66) Fallback if RowDetection module not available
+		console.warn("RowDetection module not available, using legacy fallback");
+
+		// Try local sequence-based detection
+		if (this.trySequenceBasedDetection(holesData, entityName)) {
+			console.log("Used local sequence-based row detection");
+			return;
+		}
+
+		// Step 67) Final fallback: Auto-assign rowID/posID for unassigned holes
 		holesData.forEach((hole) => {
 			if (!hole.rowID || hole.rowID === 0) {
 				hole.rowID = this.getNextRowID(entityName);

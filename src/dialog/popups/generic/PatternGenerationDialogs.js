@@ -34,7 +34,8 @@ export function showPatternDialog(mode, worldX, worldY) {
 		burden: savedSettings.burden || 3.0,
 		spacing: savedSettings.spacing || 3.3,
 		rows: savedSettings.rows || 6,
-		holesPerRow: savedSettings.holesPerRow || 10
+		holesPerRow: savedSettings.holesPerRow || 10,
+		rowDirection: savedSettings.rowDirection || "return"
 	};
 
 	// Step 1c) Calculate defaults for length/gradeZ based on useGradeZ
@@ -85,12 +86,14 @@ export function showPatternDialog(mode, worldX, worldY) {
 		fields.push({ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1 });
 		fields.push({ label: "Rows", name: "rows", type: "number", value: lastValues.rows, step: 1 });
 		fields.push({ label: "Holes Per Row", name: "holesPerRow", type: "number", value: lastValues.holesPerRow, step: 1 });
+		fields.push({ label: "Row Direction", name: "rowDirection", type: "select", options: [{ value: "return", label: "Return (Forward Only)" }, { value: "serpentine", label: "Serpentine (Forward & Back)" }], value: lastValues.rowDirection });
 	} else {
 		fields.push({ label: "Subdrill (m)", name: "subdrill", type: "number", value: lastValues.subdrill, step: 0.1 });
 		fields.push({ label: "Hole Angle (° from vertical)", name: "angle", type: "number", value: lastValues.angle, step: 1 });
 		fields.push({ label: "Hole Bearing (°)", name: "bearing", type: "number", value: lastValues.bearing, step: 0.1 });
 		fields.push({ label: "Diameter (mm)", name: "diameter", type: "number", value: lastValues.diameter, step: 1 });
 		fields.push({ label: "Hole Type", name: "type", type: "text", value: lastValues.type, placeholder: "Type" });
+		fields.push({ label: "Row Direction", name: "rowDirection", type: "select", options: [{ value: "return", label: "Return (Forward Only)" }, { value: "serpentine", label: "Serpentine (Forward & Back)" }], value: lastValues.rowDirection });
 	}
 
 	// Step 3) Create form content using createEnhancedFormContent
@@ -283,9 +286,10 @@ export function processPatternGeneration(formData, mode, worldX, worldY) {
 
 	// Step 7c) Call appropriate generation function
 	if (isAddPattern) {
-		// Call addPattern with all parameters
+		// Call addPattern with all parameters including rowDirection
 		console.log("patternnameTypeIsNumerical set to:", formData.nameTypeIsNumerical);
-		window.addPattern(formData.spacingOffset, formData.blastName, formData.nameTypeIsNumerical, formData.useGradeZ, formData.rowOrientation, formData.x, formData.y, formData.z, formData.gradeZ, formData.diameter, formData.type, formData.angle, formData.bearing, formData.length, formData.subdrill, formData.burden, formData.spacing, formData.rows, formData.holesPerRow);
+		console.log("rowDirection set to:", formData.rowDirection);
+		window.addPattern(formData.spacingOffset, formData.blastName, formData.nameTypeIsNumerical, formData.useGradeZ, formData.rowOrientation, formData.x, formData.y, formData.z, formData.gradeZ, formData.diameter, formData.type, formData.angle, formData.bearing, formData.length, formData.subdrill, formData.burden, formData.spacing, formData.rows, formData.holesPerRow, formData.rowDirection);
 
 		// Update TreeView after adding the pattern
 		if (typeof window.debouncedUpdateTreeView === "function") {
@@ -299,7 +303,7 @@ export function processPatternGeneration(formData, mode, worldX, worldY) {
 			window.allBlastHoles = [];
 		}
 
-		// Call generatePatternInPolygon with parameters object
+		// Call generatePatternInPolygon with parameters object including rowDirection
 		window.generatePatternInPolygon({
 			blastName: formData.blastName,
 			nameTypeIsNumerical: formData.nameTypeIsNumerical,
@@ -316,7 +320,8 @@ export function processPatternGeneration(formData, mode, worldX, worldY) {
 			bearing: formData.bearing,
 			diameter: formData.diameter,
 			type: formData.type,
-			patternType: formData.spacingOffset === 0 ? "square" : "staggered"
+			patternType: formData.spacingOffset === 0 ? "square" : "staggered",
+			rowDirection: formData.rowDirection || "return"
 		});
 
 		// Update TreeView
@@ -351,6 +356,7 @@ export function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 	let lastValues = {
 		blastName: savedHolesAlongPolylineSettings.blastName || blastNameValue,
 		spacing: savedHolesAlongPolylineSettings.spacing || 3.0,
+		burden: savedHolesAlongPolylineSettings.burden || 3.0,
 		collarZ: savedHolesAlongPolylineSettings.collarZ || 0,
 		gradeZ: savedHolesAlongPolylineSettings.gradeZ || -10,
 		subdrill: savedHolesAlongPolylineSettings.subdrill || 1,
@@ -382,6 +388,7 @@ export function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 		{ label: "Numerical Names", name: "nameTypeIsNumerical", type: "checkbox", checked: lastValues.nameTypeIsNumerical },
 		{ label: "Starting Hole Number", name: "startNumber", type: "number", value: lastValues.startNumber, step: 1, min: 1, max: 9999 },
 		{ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1, min: 0.1, max: 50 },
+		{ label: "Burden (m)", name: "burden", type: "number", value: lastValues.burden, step: 0.1, min: 0.1, max: 50 },
 		{ label: "Collar Elevation (m)", name: "collarZ", type: "number", value: lastValues.collarZ, step: 0.1, min: -1000, max: 5000 },
 		{ label: "Use Grade Z", name: "useGradeZ", type: "checkbox", checked: lastValues.useGradeZ },
 		{ label: "Grade Elevation (m)", name: "gradeZ", type: "number", value: gradeZValue, step: 0.1, min: -1000, max: 5000, disabled: !lastValues.useGradeZ },
@@ -442,6 +449,7 @@ export function showHolesAlongPolylinePopup(vertices, selectedPolyline) {
 				useLineBearing: toBool(formData.useLineBearing, true),
 				startNumber: parseInt(formData.startNumber) || 1,
 				spacing: parseFloat(formData.spacing) || 3.0,
+				burden: parseFloat(formData.burden) || 3.0,
 				collarZ: parseFloat(formData.collarZ) || 0,
 				gradeZ: parseFloat(formData.gradeZ) || -10,
 				length: parseFloat(formData.length) || 10,
@@ -663,6 +671,7 @@ export function showHolesAlongLinePopup() {
 	let lastValues = {
 		blastName: savedHolesAlongLineSettings.blastName || blastNameValue,
 		spacing: savedHolesAlongLineSettings.spacing || 3.0,
+		burden: savedHolesAlongLineSettings.burden || 3.0,
 		collarZ: savedHolesAlongLineSettings.collarZ || 0,
 		gradeZ: savedHolesAlongLineSettings.gradeZ || -10,
 		subdrill: savedHolesAlongLineSettings.subdrill || 1,
@@ -704,6 +713,7 @@ export function showHolesAlongLinePopup() {
 		{ label: "Numerical Names", name: "nameTypeIsNumerical", type: "checkbox", checked: lastValues.nameTypeIsNumerical },
 		{ label: "Starting Hole Number", name: "startNumber", type: "number", value: lastValues.startNumber, step: 1, min: 1, max: 9999 },
 		{ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1, min: 0.1, max: 50 },
+		{ label: "Burden (m)", name: "burden", type: "number", value: lastValues.burden, step: 0.1, min: 0.1, max: 50 },
 		{ label: "Collar Elevation (m)", name: "collarZ", type: "number", value: lastValues.collarZ, step: 0.1, min: -1000, max: 5000 },
 		{ label: "Use Grade Z", name: "useGradeZ", type: "checkbox", checked: lastValues.useGradeZ },
 		{ label: "Grade Elevation (m)", name: "gradeZ", type: "number", value: gradeZValue, step: 0.1, min: -1000, max: 5000, disabled: !lastValues.useGradeZ },
@@ -778,6 +788,7 @@ export function showHolesAlongLinePopup() {
 				useLineBearing: toBool(formData.useLineBearing, true),
 				startNumber: parseInt(formData.startNumber) || 1,
 				spacing: parseFloat(formData.spacing) || 3.0,
+				burden: parseFloat(formData.burden) || 3.0,
 				collarZ: parseFloat(formData.collarZ) || 0,
 				gradeZ: parseFloat(formData.gradeZ) || -10,
 				length: parseFloat(formData.length) || 10,
@@ -822,6 +833,7 @@ export function showHolesAlongLinePopup() {
 					useLineBearing: params.useLineBearing,
 					startNumber: params.startNumber,
 					spacing: params.spacing,
+					burden: params.burden,
 					collarZ: params.collarZ,
 					gradeZ: params.gradeZ,
 					length: params.length,

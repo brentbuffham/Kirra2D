@@ -235,10 +235,10 @@ export class TreeView {
 
 		// PERFORMANCE FIX 2025-12-28: Check if this is a lazy entity that needs loading
 		// Entity nodes: "line⣿entityName", "poly⣿entityName", "points⣿entityName", etc.
-		var isEntityNode = (nodeId.startsWith("line⣿") || nodeId.startsWith("poly⣿") || 
+		var isEntityNode = (nodeId.startsWith("line⣿") || nodeId.startsWith("poly⣿") ||
 			nodeId.startsWith("points⣿") || nodeId.startsWith("circle⣿") || nodeId.startsWith("text⣿")) &&
 			nodeId.split("⣿").length === 2;  // Only 2 parts = entity level
-		
+
 		if (isEntityNode && !this.loadedChunks.has(nodeId)) {
 			this.loadEntityChildren(nodeId, treeItem, children);
 		}
@@ -426,35 +426,35 @@ export class TreeView {
 	showContextMenu(x, y) {
 		var menu = document.getElementById("treeContextMenu");
 		var selectedNodeIds = Array.from(this.selectedNodes);
-		var isTopLevelParent = selectedNodeIds.some(function(nodeId) { 
-			return nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images"; 
+		var isTopLevelParent = selectedNodeIds.some(function (nodeId) {
+			return nodeId === "blast" || nodeId === "drawings" || nodeId === "surfaces" || nodeId === "images";
 		});
-		var hasHoles = selectedNodeIds.some(function(nodeId) { return nodeId.startsWith("hole⣿"); });
-		var isSubGroup = selectedNodeIds.some(function(nodeId) { 
-			return nodeId.startsWith("drawings⣿") && nodeId.split("⣿").length === 2; 
+		var hasHoles = selectedNodeIds.some(function (nodeId) { return nodeId.startsWith("hole⣿"); });
+		var isSubGroup = selectedNodeIds.some(function (nodeId) {
+			return nodeId.startsWith("drawings⣿") && nodeId.split("⣿").length === 2;
 		});
-		
+
 		// Step 8) Layer System 2026-01-16: Detect layer nodes and Drawings/Surfaces root
-		var isDrawingsRoot = selectedNodeIds.some(function(nodeId) { return nodeId === "drawings"; });
-		var isSurfacesRoot = selectedNodeIds.some(function(nodeId) { return nodeId === "surfaces"; });
-		var isLayerNode = selectedNodeIds.some(function(nodeId) {
+		var isDrawingsRoot = selectedNodeIds.some(function (nodeId) { return nodeId === "drawings"; });
+		var isSurfacesRoot = selectedNodeIds.some(function (nodeId) { return nodeId === "surfaces"; });
+		var isLayerNode = selectedNodeIds.some(function (nodeId) {
 			return nodeId.startsWith("layer-drawing⣿") || nodeId.startsWith("layer-surface⣿");
 		});
-		var isDrawingLayer = selectedNodeIds.some(function(nodeId) {
+		var isDrawingLayer = selectedNodeIds.some(function (nodeId) {
 			return nodeId.startsWith("layer-drawing⣿") && nodeId.split("⣿").length === 2;
 		});
-		var isSurfaceLayer = selectedNodeIds.some(function(nodeId) {
+		var isSurfaceLayer = selectedNodeIds.some(function (nodeId) {
 			return nodeId.startsWith("layer-surface⣿") && nodeId.split("⣿").length === 2;
 		});
-		
+
 		// Step 276c) Check if any selected node is an entity node (line⣿name, poly⣿name, etc.) or chunk node
-		var hasEntityOrChunk = selectedNodeIds.some(function(nodeId) {
+		var hasEntityOrChunk = selectedNodeIds.some(function (nodeId) {
 			var parts = nodeId.split("⣿");
 			var isEntityNode = (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
 			var isChunkNode = parts.length === 4 && parts[2] === "chunk";
 			return isEntityNode || isChunkNode;
 		});
-		
+
 		var addLayerItem = menu.querySelector("[data-action=\"add-layer\"]");
 		var makeActiveItem = menu.querySelector("[data-action=\"make-active\"]");
 		var renameItem = menu.querySelector("[data-action=\"rename\"]");
@@ -490,7 +490,7 @@ export class TreeView {
 		if (hideItem) {
 			hideItem.style.display = "flex";
 		}
-		
+
 		if (showItem) {
 			showItem.style.display = "flex";
 		}
@@ -499,7 +499,7 @@ export class TreeView {
 			// Show properties for entity nodes, chunk nodes, and regular elements 
 			// Hide for: top-level parents, subgroups, and surface layer nodes (but show for individual surfaces)
 			var hideProperties = (isTopLevelParent || isSubGroup || isSurfaceLayer) && !hasEntityOrChunk;
-			propertiesItem.style.display = hideProperties ? "none" : "flex";  
+			propertiesItem.style.display = hideProperties ? "none" : "flex";
 		}
 
 		var showRename = false;
@@ -531,7 +531,7 @@ export class TreeView {
 		// Step 276b) Allow renaming when multiple holes are selected (BlastName reassignment)
 		// Only show if ALL selected items are holes
 		if (selectedNodeIds.length > 1) {
-			var allAreHoles = selectedNodeIds.every(function(id) { return id.startsWith("hole⣿"); });
+			var allAreHoles = selectedNodeIds.every(function (id) { return id.startsWith("hole⣿"); });
 			if (allAreHoles) {
 				showRename = true;
 			}
@@ -669,7 +669,7 @@ export class TreeView {
 
 	hideSelected() {
 		var self = this;
-		this.selectedNodes.forEach(function(nodeId) {
+		this.selectedNodes.forEach(function (nodeId) {
 			var element = self.container.querySelector("[data-node-id=\"" + nodeId + "\"]");
 			if (element) {
 				element.style.opacity = "0.5";
@@ -741,7 +741,7 @@ export class TreeView {
 
 	showSelected() {
 		var self = this;
-		this.selectedNodes.forEach(function(nodeId) {
+		this.selectedNodes.forEach(function (nodeId) {
 			var element = self.container.querySelector("[data-node-id=\"" + nodeId + "\"]");
 			if (element) {
 				element.style.opacity = "1";
@@ -1131,7 +1131,7 @@ export class TreeView {
 			const allKAD = selectedNodeIds.every((nodeId) => {
 				const parts = nodeId.split("⣿");
 				return (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" ||
-						parts[0] === "circle" || parts[0] === "text");
+					parts[0] === "circle" || parts[0] === "text");
 			});
 
 			if (allKAD && window.selectedMultipleKADObjects && window.selectedMultipleKADObjects.length > 1) {
@@ -1159,7 +1159,7 @@ export class TreeView {
 	updateTreeData() {
 		var treePanel = document.getElementById("treePanel");
 		var isPanelVisible = treePanel && treePanel.style.display !== "none";
-		
+
 		// Prevent concurrent updates
 		if (this._isUpdating) {
 			this._pendingUpdate = true;
@@ -1191,7 +1191,7 @@ export class TreeView {
 
 			var surfaceData = this.buildSurfaceData();
 			var imageData = this.buildImageData();
-			
+
 			// Store tree data in cache even if panel is hidden
 			this._cachedTreeData = {
 				blastData: blastData,
@@ -1235,7 +1235,7 @@ export class TreeView {
 
 	// Helper to yield to UI thread
 	yieldToUI() {
-		return new Promise(function(resolve) { setTimeout(resolve, 0); });
+		return new Promise(function (resolve) { setTimeout(resolve, 0); });
 	}
 
 	buildTreeData() {
@@ -1384,6 +1384,18 @@ export class TreeView {
 							meta: hole.holeType || "Undefined",
 						},
 						{
+							id: (hole.holeID || index) + "⣿burden",
+							type: "property",
+							label: "Burden",
+							meta: hole.burden || 0,
+						},
+						{
+							id: (hole.holeID || index) + "⣿spacing",
+							type: "property",
+							label: "Spacing",
+							meta: hole.spacing || 0,
+						},
+						{
 							id: (hole.holeID || index) + "⣿rowid",
 							type: "property",
 							label: "Row ID",
@@ -1406,7 +1418,7 @@ export class TreeView {
 
 		// Step 1) Layer System 2026-01-16: Organize by layers, then by entity type within each layer
 		// Structure: Drawings -> Layer -> EntityType -> Entities
-		
+
 		if (typeof window.allKADDrawingsMap === "undefined" || !window.allKADDrawingsMap || window.allKADDrawingsMap.size === 0) {
 			return drawingChildren;
 		}
@@ -1470,7 +1482,7 @@ export class TreeView {
 
 		// Step 3) Build layer nodes from allDrawingLayers or from layerEntityMap keys
 		var layerIds = new Set(layerEntityMap.keys());
-		
+
 		// Also include layers from allDrawingLayers that may be empty
 		if (window.allDrawingLayers) {
 			for (var lid of window.allDrawingLayers.keys()) {
@@ -1570,10 +1582,10 @@ export class TreeView {
 		// Step 2) Build a map of layerId -> surfaces
 		var layerSurfaceMap = new Map(); // layerId -> [surfaces]
 
-		window.loadedSurfaces.forEach(function(surface, surfaceId) {
+		window.loadedSurfaces.forEach(function (surface, surfaceId) {
 			var layerId = surface.layerId || defaultLayerId;
 			var surfaceVisible = surface.visible !== false;
-			
+
 			// Step 28b) Determine surface icon type based on open/closed state
 			var isClosed = typeof window.isSurfaceClosed === "function" && window.isSurfaceClosed(surface);
 			var surfaceType = isClosed ? "surface-closed" : "surface-open";
@@ -1594,7 +1606,7 @@ export class TreeView {
 
 		// Step 3) Build layer nodes from allSurfaceLayers or from layerSurfaceMap keys
 		var layerIds = new Set(layerSurfaceMap.keys());
-		
+
 		// Also include layers from allSurfaceLayers that may be empty
 		if (window.allSurfaceLayers) {
 			for (var lid of window.allSurfaceLayers.keys()) {
@@ -1645,15 +1657,15 @@ export class TreeView {
 				// Step 1) Check if node has children OR is an entity node that can be lazy-loaded
 				var hasChildren = node.children && node.children.length > 0;
 				// Entity nodes with empty children arrays should still show expand button for lazy loading
-				var isEntityNode = (node.id && (node.id.startsWith("line⣿") || node.id.startsWith("poly⣿") || 
+				var isEntityNode = (node.id && (node.id.startsWith("line⣿") || node.id.startsWith("poly⣿") ||
 					node.id.startsWith("points⣿") || node.id.startsWith("circle⣿") || node.id.startsWith("text⣿")) &&
 					node.id.split("⣿").length === 2);
 				var isChunkNode = node.type === "point-chunk" || (node.id && node.id.includes("⣿chunk⣿"));
 				var shouldShowExpand = hasChildren || isEntityNode || isChunkNode;
-				
+
 				const isExpanded = this.expandedNodes.has(node.id) || node.expanded;
 				const isSelected = this.selectedNodes.has(node.id);
-				
+
 				// Step 20) Check if this is the active layer
 				var isActiveLayer = false;
 				if (node.id && node.id.startsWith("layer-drawing⣿")) {
@@ -1663,7 +1675,7 @@ export class TreeView {
 					var layerId = node.id.split("⣿")[1];
 					isActiveLayer = (layerId === window.activeSurfaceLayerId);
 				}
-				
+
 				// Step 20a) Check visibility state for hidden-node class
 				var isHidden = node.visible === false;
 
@@ -1672,7 +1684,7 @@ export class TreeView {
 					const color = node.elementData.color || "#777777";
 					colorSwatchHtml = "<span class=\"color-swatch\" style=\"background-color: " + color + ";\" data-element-id=\"" + node.id + "\" data-entity-name=\"" + node.elementData.entityName + "\" data-point-id=\"" + node.elementData.pointID + "\"></span>";
 				}
-				
+
 				// Step 20b) Build class list
 				var itemClasses = "tree-item";
 				if (isSelected) itemClasses += " selected";
@@ -1873,12 +1885,12 @@ export class TreeView {
 		var totalKADSelected = window.selectedMultipleKADObjects ? window.selectedMultipleKADObjects.length : 0;
 		var totalHolesSelected = window.selectedMultipleHoles ? window.selectedMultipleHoles.length : 0;
 		var totalSelected = totalKADSelected + totalHolesSelected;
-		
+
 		if (totalSelected > LARGE_SELECTION_WARNING_THRESHOLD) {
 			console.log("⚠️ [TreeView] Large selection: " + totalSelected + " items");
 			if (typeof window.updateStatusMessage === "function") {
 				window.updateStatusMessage("Large selection: " + totalSelected + " items (rendering may be limited)");
-				setTimeout(function() { window.updateStatusMessage(""); }, 3000);
+				setTimeout(function () { window.updateStatusMessage(""); }, 3000);
 			}
 		}
 
@@ -1901,7 +1913,7 @@ export class TreeView {
 			}
 			return;
 		}
-		
+
 		// Step 947b) Support multiple hole selection rename (BlastName reassignment)
 		if (this.selectedNodes.size > 1) {
 			const nodeIds = Array.from(this.selectedNodes);

@@ -29,23 +29,23 @@ import { evaluate } from "mathjs";
 //=================================================
 import { UndoManager, UndoableAction, BatchAction, ActionTypes } from "./tools/UndoManager.js";
 import {
-    AddHoleAction,
-    AddMultipleHolesAction,
-    DeleteHoleAction,
-    DeleteMultipleHolesAction,
-    MoveHoleAction,
-    MoveMultipleHolesAction,
-    EditHolePropsAction,
-    EditMultipleHolesPropsAction,
-    AddKADEntityAction,
-    AddMultipleKADEntitiesAction,
-    DeleteKADEntityAction,
-    DeleteMultipleKADEntitiesAction,
-    AddKADVertexAction,
-    DeleteKADVertexAction,
-    MoveKADVertexAction,
-    MoveMultipleKADVerticesAction,
-    EditKADPropsAction
+	AddHoleAction,
+	AddMultipleHolesAction,
+	DeleteHoleAction,
+	DeleteMultipleHolesAction,
+	MoveHoleAction,
+	MoveMultipleHolesAction,
+	EditHolePropsAction,
+	EditMultipleHolesPropsAction,
+	AddKADEntityAction,
+	AddMultipleKADEntitiesAction,
+	DeleteKADEntityAction,
+	DeleteMultipleKADEntitiesAction,
+	AddKADVertexAction,
+	DeleteKADVertexAction,
+	MoveKADVertexAction,
+	MoveMultipleKADVerticesAction,
+	EditKADPropsAction
 } from "./tools/UndoActions.js";
 //=================================================
 // Three.js Renderer Selection (MUST BE EARLY!)
@@ -189,6 +189,21 @@ import {
 	preCacheAllAnalysis,
 	ANALYSIS_CACHE_ZOOM_THRESHOLD
 } from "./helpers/AnalysisCache.js";
+// Row Detection Module - Smart row detection algorithms (HDBSCAN, MST, adaptive grid, etc.)
+// Note: calculateDistanceXY(x1,y1,x2,y2) is coordinate-based, calculateDistance(p1,p2) in kirra.js is object-based
+import {
+	improvedSmartRowDetection,
+	trySequenceBasedDetection,
+	detectRowsUsingLineFitting,
+	detectRowsUsingAdaptiveGrid,
+	detectRowsUsingHDBSCAN,
+	detectRowsUsingSequenceWeightedHDBSCAN,
+	buildMinimumSpanningTree,
+	buildMinimumSpanningTreeFromMatrix,
+	estimateRowDirection,
+	calculateDistanceXY,
+	normalizeAngle
+} from "./helpers/RowDetection/index.js";
 //=================================================
 // Dialog Modules - Converted to ES Modules for Vite bundling 2025-12-26
 // These are imported as side-effect imports - the modules set window globals
@@ -581,12 +596,12 @@ function exposeGlobalsToWindow() {
 	window.fromHoleStore = fromHoleStore;
 	window.isAddingMultiConnector = isAddingMultiConnector;
 	window.connectAmount = connectAmount;
-	
+
 	// Step 4a) Initialize connector rebuild flag (separate from general 3D rebuild for performance)
 	if (window.threeConnectorsNeedRebuild === undefined) {
 		window.threeConnectorsNeedRebuild = false;
 	}
-	
+
 	// Step 4b) Initialize hole rebuild context flag (controls whether progress dialog shows)
 	// "creation" = show progress dialog (pattern gen, add hole, import)
 	// "move" = no dialog, just status indicator (hole moves)
@@ -649,7 +664,7 @@ function exposeGlobalsToWindow() {
 		window.threeDataNeedsRebuild = true;
 		drawData(window.allBlastHoles, window.selectedHole);
 	};
-	
+
 	// Step 6b.2) Helper function for KAD-ONLY 3D rebuild (no holes rebuild)
 	// Use this during drawing operations to avoid expensive hole rebuilds
 	// Holes remain visible unchanged, only KAD geometry updates
@@ -1000,7 +1015,7 @@ function initializeThreeJS() {
 		if (settings.cursorOpacity !== undefined) {
 			window.cursorOpacity3D = settings.cursorOpacity;
 		}
-		
+
 		// Step 2d.1) Apply plumb line display setting
 		if (settings.plumbLineDisplay !== undefined) {
 			window.plumbLineDisplay = settings.plumbLineDisplay;
@@ -2987,7 +3002,7 @@ function handle3DMouseMove(event) {
 		// Step 13f.7d) Fallback - use raycast position
 		indicatorPos = mouseWorldPos;
 	}
-	
+
 	// Step 13f.7e) Final fallback - data centroid
 	if (!indicatorPos) {
 		var fallbackZ = window.dataCentroidZ || 0;
@@ -3001,14 +3016,14 @@ function handle3DMouseMove(event) {
 		if (developerModeEnabled) {
 			window._debugIndicatorPos = indicatorPos;
 		}
-		
+
 		// Step 13f.7e.0) Update performance monitor with cursor debug info
 		if (window.perfMonitor && typeof window.perfMonitor.updateCursorDebug === "function") {
 			// Determine which branch was used
-			var branchName = snapResult && snapResult.snapped ? "SNAP" : 
+			var branchName = snapResult && snapResult.snapped ? "SNAP" :
 				(window.cameraControls && window.cameraControls.isOrbiting) ? "ORBIT" :
-				(indicatorPos === torusWorldPos) ? "VIEW_PLANE" :
-				(indicatorPos === mouseWorldPos) ? "RAYCAST" : "FALLBACK";
+					(indicatorPos === torusWorldPos) ? "VIEW_PLANE" :
+						(indicatorPos === mouseWorldPos) ? "RAYCAST" : "FALLBACK";
 			window.perfMonitor.updateCursorDebug(indicatorPos.x, indicatorPos.y, indicatorPos.z, branchName);
 		}
 
@@ -3046,7 +3061,7 @@ function handle3DMouseMove(event) {
 		// Shows the user where the Drawing Z plane is relative to the cursor position
 		var plumbLineEnabled = window.plumbLineDisplay === "on";
 		var drawingRL = parseFloat(document.getElementById("drawingElevation").value) || window.dataCentroidZ || 0;
-		
+
 		if (plumbLineEnabled) {
 			// Update performance monitor
 			if (window.perfMonitor && window.perfMonitor.updatePlumbDebug) {
@@ -3482,14 +3497,14 @@ document.addEventListener("DOMContentLoaded", function () {
 			if (show3D) {
 				// Step 1c) 3D-only mode - show only 3D canvas, hide 2D canvas
 				onlyShowThreeJS = true;
-				
+
 				// Step 1c.0) START 3D render loop when switching to 3D mode
 				// Performance: Render loop was stopped in 2D mode to save CPU/GPU
 				if (threeInitialized && threeRenderer) {
 					threeRenderer.startRenderLoop();
 					console.log("▶️ 3D render loop started (3D mode active)");
 				}
-				
+
 				// Reset mouse indicator flag so it initializes when switching to 3D mode
 				mouseIndicatorInitialized = false;
 				// Step 1ca) Reset initialization failure flag to allow retry
@@ -3618,7 +3633,7 @@ document.addEventListener("DOMContentLoaded", function () {
 			} else {
 				// Step 1d) 2D-only mode - show only 2D canvas, hide 3D canvas
 				onlyShowThreeJS = false;
-				
+
 				// Step 1d.0) STOP 3D render loop when switching to 2D mode
 				// Performance: Saves CPU/GPU resources - 3D canvas is hidden anyway
 				// CameraControls.animate() continues independently for damping state
@@ -3626,7 +3641,7 @@ document.addEventListener("DOMContentLoaded", function () {
 					threeRenderer.stopRenderLoop();
 					console.log("⏹️ 3D render loop stopped (2D mode active)");
 				}
-				
+
 				// Step 1da) SYNC CAMERA: Get 3D camera state and apply to 2D view
 				if (cameraControls) {
 					var cameraState = cameraControls.getCameraState();
@@ -3894,18 +3909,18 @@ let countAllBlastHoles = allBlastHoles.length;
 
 // Step #) Initialize UndoManager for undo/redo operations
 var undoManager = new UndoManager({
-    maxLevels: 20,
-    onStatusMessage: function(message) {
-        if (typeof updateStatusMessage === "function") {
-            updateStatusMessage(message);
-            // Clear status message after 3 seconds
-            setTimeout(function() {
-                if (typeof updateStatusMessage === "function") {
-                    updateStatusMessage("");
-                }
-            }, 3000);
-        }
-    }
+	maxLevels: 20,
+	onStatusMessage: function (message) {
+		if (typeof updateStatusMessage === "function") {
+			updateStatusMessage(message);
+			// Clear status message after 3 seconds
+			setTimeout(function () {
+				if (typeof updateStatusMessage === "function") {
+					updateStatusMessage("");
+				}
+			}, 3000);
+		}
+	}
 });
 let sumMeters = 0;
 let currentScale = scale; // declare a variable to store the current scale
@@ -4162,10 +4177,10 @@ var currentLODDisplay = document.getElementById("currentLODDisplay");
 
 // Step LOD-DEV2) Handle LOD override change
 if (lodOverrideSelect) {
-	lodOverrideSelect.addEventListener("change", function() {
+	lodOverrideSelect.addEventListener("change", function () {
 		var value = lodOverrideSelect.value;
 		console.log("📊 LOD Override dropdown changed to: " + value);
-		
+
 		// Debug: Check if threeRenderer and lodManager exist
 		if (!threeRenderer) {
 			console.warn("⚠️ LOD Override: threeRenderer is null/undefined");
@@ -4175,7 +4190,7 @@ if (lodOverrideSelect) {
 			console.warn("⚠️ LOD Override: threeRenderer.lodManager is null/undefined");
 			return;
 		}
-		
+
 		if (value === "auto") {
 			console.log("📊 Setting LOD override to AUTO");
 			threeRenderer.lodManager.setOverride(null);
@@ -4184,7 +4199,7 @@ if (lodOverrideSelect) {
 			console.log("📊 Setting LOD override to level " + numValue);
 			threeRenderer.lodManager.setOverride(numValue);
 		}
-		
+
 		// Debug: Log current layer status
 		if (threeRenderer.lodManager.lodLayers) {
 			var layers = threeRenderer.lodManager.lodLayers;
@@ -4194,7 +4209,7 @@ if (lodOverrideSelect) {
 				simpleCircles: layers.simpleCircles ? "exists" : "NULL"
 			});
 		}
-		
+
 		// Force render to show change
 		if (threeRenderer.requestRender) {
 			threeRenderer.requestRender();
@@ -4203,7 +4218,7 @@ if (lodOverrideSelect) {
 }
 
 // Step LOD-DEV3) Update LOD display periodically (only when developer mode enabled)
-setInterval(function() {
+setInterval(function () {
 	if (developerModeEnabled && threeRenderer && threeRenderer.lodManager) {
 		var stats = threeRenderer.lodManager.getStats();
 		// Step LOD-DEV3a) Get elements fresh (they might not exist at module load time)
@@ -4248,9 +4263,35 @@ if (vectorTextCheckbox) {
 			}
 			window.threeRenderer.requestRender();
 		}
-		
+
 		// Step VT3) Re-draw 2D canvas with new text mode
 		requestAnimationFrame(draw);
+	});
+}
+///////////////////////////
+
+///////////////////////////
+// SNAKE ROW ANGLE SETTING (Developer Feature)
+// Threshold for detecting winding pattern row breaks
+// Lower values = more row breaks (more sensitive), Higher values = fewer row breaks
+let snakeRowAngle = 90; // Default 90 degrees
+window.snakeRowAngle = snakeRowAngle; // Expose globally for RowDetection module
+
+// Step SRA1) Get input element
+const snakeRowAngleInput = document.getElementById("snakeRowAngle");
+if (snakeRowAngleInput) {
+	snakeRowAngle = parseInt(snakeRowAngleInput.value) || 90;
+	window.snakeRowAngle = snakeRowAngle;
+
+	snakeRowAngleInput.addEventListener("change", function () {
+		var value = parseInt(snakeRowAngleInput.value);
+		// Clamp to valid range
+		if (value < 75) value = 75;
+		if (value > 105) value = 105;
+		snakeRowAngleInput.value = value;
+		snakeRowAngle = value;
+		window.snakeRowAngle = snakeRowAngle;
+		console.log("Snake Row Angle set to: " + snakeRowAngle + "°");
 	});
 }
 ///////////////////////////
@@ -8003,7 +8044,7 @@ document.querySelectorAll(".holes-output-btn").forEach(function (button) {
 			} else {
 				formatLabel = format.replace("column", "").toUpperCase();
 			}
-			var defaultFilename = "CSV_" + entityName + "_" + formatLabel + "COL_" + timestamp + ".csv";
+			var defaultFilename = "KAB_" + entityName + "_" + formatLabel + "COL_" + timestamp + ".csv";
 
 			// Step 8) Show filename dialog
 			showConfirmationDialogWithInput(
@@ -10672,7 +10713,7 @@ document.querySelector(".orica-input-btn")?.addEventListener("click", function (
 						// Step 4) Use entity name from parsed holes (extracted from comment field)
 						// Fall back to filename or blast header if not available
 						var entityName = "ShotPlus_Import";
-						
+
 						// Step 4a) First try to use entity name from first parsed hole
 						if (holes.length > 0 && holes[0].entityName && holes[0].entityName !== "SPF_Blast") {
 							entityName = holes[0].entityName;
@@ -11799,7 +11840,7 @@ canvasContainer.addEventListener(
 				if (window._wheelDrawTimeout) {
 					cancelAnimationFrame(window._wheelDrawTimeout);
 				}
-				window._wheelDrawTimeout = requestAnimationFrame(function() {
+				window._wheelDrawTimeout = requestAnimationFrame(function () {
 					drawData(allBlastHoles, selectedHole);
 				});
 			}
@@ -11809,7 +11850,7 @@ canvasContainer.addEventListener(
 				if (window._overlayUpdateTimeout) {
 					clearTimeout(window._overlayUpdateTimeout);
 				}
-				window._overlayUpdateTimeout = setTimeout(function() {
+				window._overlayUpdateTimeout = setTimeout(function () {
 					updateOverlayColorsForTheme();
 				}, 100);
 			}
@@ -11823,7 +11864,7 @@ canvasContainer.addEventListener(
 document.addEventListener("DOMContentLoaded", function () {
 	// Access the slider element and add an event listener to track changes
 	const toeSlider = document.getElementById("toeSlider");
-	
+
 	// Step #) Debounced toe slider handler to prevent race conditions in 3D rebuild
 	let toeSliderTimeout = null;
 	toeSlider.addEventListener("input", function () {
@@ -11839,16 +11880,16 @@ document.addEventListener("DOMContentLoaded", function () {
 			drawData(allBlastHoles, selectedHole, toeSizeInMeters);
 		}, 150);
 	});
-	
+
 	const holeSlider = document.getElementById("holeSlider");
-	
+
 	// Step #) Debounced hole slider handler to prevent race conditions in 3D rebuild
 	let holeSliderTimeout = null;
 	holeSlider.addEventListener("input", function () {
 		// Step 1) Immediately update label (responsive UI)
 		holeScale = document.getElementById("holeSlider").value;
 		holeLabel.textContent = "Hole Adjust : " + parseFloat(holeScale).toFixed(1);
-		
+
 		// Step 2) Debounce the expensive 3D rebuild (150ms delay)
 		clearTimeout(holeSliderTimeout);
 		holeSliderTimeout = setTimeout(function () {
@@ -11859,14 +11900,14 @@ document.addEventListener("DOMContentLoaded", function () {
 	});
 	// Access the slider element and add an event listener to track changes
 	const connSlider = document.getElementById("connSlider");
-	
+
 	// Step #) Debounced connector slider handler to prevent race conditions in 3D rebuild
 	let connSliderTimeout = null;
 	connSlider.addEventListener("input", function () {
 		// Step 1) Immediately update label (responsive UI)
 		connScale = document.getElementById("connSlider").value;
 		connLabel.textContent = "Tie Size : " + parseFloat(connScale).toFixed(1);
-		
+
 		// Step 2) Debounce the expensive 3D rebuild (150ms delay)
 		clearTimeout(connSliderTimeout);
 		connSliderTimeout = setTimeout(function () {
@@ -11888,7 +11929,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 	fontSlider.min = "0";
 	fontSlider.max = "100";
-	
+
 	// Step #) Debounced font slider handler to prevent race conditions in 3D rebuild
 	// The input event fires rapidly during slider drag - debouncing prevents incomplete rebuilds
 	let fontSliderTimeout = null;
@@ -11897,7 +11938,7 @@ document.addEventListener("DOMContentLoaded", function () {
 		currentFontSize = this.value;
 		window.currentFontSize = currentFontSize;
 		fontLabel.textContent = "Font Size : " + currentFontSize + "px";
-		
+
 		// Step 2) Debounce the expensive 3D rebuild (150ms delay)
 		clearTimeout(fontSliderTimeout);
 		fontSliderTimeout = setTimeout(function () {
@@ -12129,11 +12170,11 @@ document.addEventListener("DOMContentLoaded", function () {
 	if (sidebarLineWidth && toolbarLineWidth) {
 		// Step 1) Use toolbar's HTML default (1) as the authoritative value
 		var defaultLineWidth = toolbarLineWidth.value || "1";
-		
+
 		// Step 2) Force both inputs to the same value
 		sidebarLineWidth.value = defaultLineWidth;
 		toolbarLineWidth.value = defaultLineWidth;
-		
+
 		console.log("📐 LineWidth synced on load: both set to " + defaultLineWidth);
 	}
 });
@@ -13219,6 +13260,11 @@ async function parseK2Dcsv(data) {
 		window.holeGenerationCancelled = false;
 		var totalHoles = holes.length;
 
+		// Step 3b) Begin undo batch for CSV import (allows single undo for entire import)
+		if (undoManager) {
+			undoManager.beginBatch("Import " + totalHoles + " holes from CSV");
+		}
+
 		// Step 4) Call addHole() for each parsed hole
 		for (var i = 0; i < holes.length; i++) {
 			// Check if user cancelled the import
@@ -13290,6 +13336,11 @@ async function parseK2Dcsv(data) {
 					createdHole.measuredCommentTimeStamp = h.measuredCommentTimeStamp;
 				}
 			}
+		}
+
+		// Step 4b) End undo batch for CSV import
+		if (undoManager) {
+			undoManager.endBatch();
 		}
 
 		// Step 5) Get all imported holes for post-processing
@@ -19131,43 +19182,43 @@ function invalidateBlastEntityVolumeCache(entityName) {
  */
 function getBlastEntityVolume(entityHoles, entityName) {
 	console.log("📊 [Volume] getBlastEntityVolume called for: " + entityName + " with " + (entityHoles ? entityHoles.length : 0) + " holes");
-	
+
 	// Step 4) Early return for insufficient holes
 	if (!entityHoles || entityHoles.length === 0) {
 		console.log("📊 [Volume] No holes, returning 0");
 		return 0;
 	}
-	
+
 	// Step 5) Check cache first
 	if (entityName && blastEntityVolumeCache.has(entityName)) {
 		var cachedVolume = blastEntityVolumeCache.get(entityName);
 		console.log("📊 [Volume] Returning cached volume: " + cachedVolume.toFixed(1) + "m³");
 		return cachedVolume;
 	}
-	
+
 	// Step 5a) Debug: Check first hole's benchHeight
 	if (entityHoles.length > 0) {
 		var firstHole = entityHoles[0];
 		console.log("📊 [Volume] First hole benchHeight: " + firstHole.benchHeight + ", collarZ: " + firstHole.startZLocation + ", gradeZ: " + firstHole.gradeZLocation);
 	}
-	
+
 	// Step 6) For 1-2 holes, use simple circular area estimate
 	if (entityHoles.length < 3) {
 		var simpleVolume = 0;
-		entityHoles.forEach(function(h) {
+		entityHoles.forEach(function (h) {
 			// Use burden or spacing as radius estimate, fallback to 3m
 			var nn = parseFloat(h.burden) || parseFloat(h.spacing) || 3;
 			var circleArea = Math.PI * (nn * 0.5) * (nn * 0.5);
 			var benchHeight = parseFloat(h.benchHeight) || 0;
 			simpleVolume += circleArea * benchHeight;
 		});
-		
+
 		if (entityName) {
 			blastEntityVolumeCache.set(entityName, simpleVolume);
 		}
 		return simpleVolume;
 	}
-	
+
 	// Step 7) Calculate nearest neighbor distance for this entity
 	var avgNN = 0;
 	if (entityHoles.length >= 2) {
@@ -19187,37 +19238,37 @@ function getBlastEntityVolume(entityHoles, entityName) {
 		}
 		// Use mode-like aggregation (most common distance)
 		if (nnDistances.length > 0) {
-			nnDistances.sort(function(a, b) { return a - b; });
+			nnDistances.sort(function (a, b) { return a - b; });
 			avgNN = nnDistances[Math.floor(nnDistances.length / 2)]; // Median
 		}
 	}
-	
+
 	// Step 8) Fallback if no valid NN distance
 	if (avgNN <= 0) {
 		avgNN = parseFloat(entityHoles[0].burden) || parseFloat(entityHoles[0].spacing) || 3;
 	}
-	
+
 	var offset = avgNN * 0.5;
 	console.log("📊 [Volume] NN distance: " + avgNN.toFixed(2) + "m, offset: " + offset.toFixed(2) + "m");
-	
+
 	// Step 9) Create unioned radii polygons (handles donuts automatically)
 	// getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWidth, useToeLocation)
 	var unionedPolygons = getRadiiPolygons(entityHoles, 24, offset, true, false, null, 1, false);
-	
+
 	console.log("📊 [Volume] Unioned polygons count: " + (unionedPolygons ? unionedPolygons.length : 0));
-	
+
 	if (!unionedPolygons || unionedPolygons.length === 0) {
 		console.warn("📊 [Volume] No polygons generated for entity: " + entityName);
 		return 0;
 	}
-	
+
 	// Step 10) Calculate NET area (outer boundaries - inner holes)
 	// ClipperLib uses winding direction: CCW = positive (outer), CW = negative (hole)
 	var netArea = 0;
 	for (var p = 0; p < unionedPolygons.length; p++) {
 		var polygon = unionedPolygons[p];
 		if (!polygon || polygon.length < 3) continue;
-		
+
 		// Shoelace formula - sign indicates winding direction
 		var signedArea = 0;
 		for (var k = 0; k < polygon.length; k++) {
@@ -19226,14 +19277,14 @@ function getBlastEntityVolume(entityHoles, entityName) {
 			signedArea -= polygon[kNext].x * polygon[k].y;
 		}
 		signedArea = signedArea / 2;
-		
+
 		// Add signed area (positive for outer, negative for holes)
 		netArea += signedArea;
 	}
-	
+
 	// Step 11) Take absolute value of net area
 	netArea = Math.abs(netArea);
-	
+
 	// Step 12) Calculate average benchHeight (collar to grade)
 	var totalBenchHeight = 0;
 	var validBenchCount = 0;
@@ -19245,17 +19296,17 @@ function getBlastEntityVolume(entityHoles, entityName) {
 		}
 	}
 	var avgBenchHeight = validBenchCount > 0 ? totalBenchHeight / validBenchCount : 0;
-	
+
 	// Step 13) Volume = Net Area × Average BenchHeight
 	var volume = netArea * avgBenchHeight;
-	
+
 	// Step 14) Cache the result
 	if (entityName) {
 		blastEntityVolumeCache.set(entityName, volume);
 	}
-	
+
 	console.log("📊 [Volume] Entity: " + entityName + ", Area: " + netArea.toFixed(1) + "m², AvgBench: " + avgBenchHeight.toFixed(2) + "m, Volume: " + volume.toFixed(1) + "m³");
-	
+
 	return volume;
 }
 
@@ -20744,7 +20795,7 @@ function performKADOffset(entity, params) {
 			drawData(allBlastHoles, selectedHole);
 
 			updateStatusMessage("Created " + results.length + " offset(s) successfully");
-			setTimeout(function() { updateStatusMessage(""); }, 3000);
+			setTimeout(function () { updateStatusMessage(""); }, 3000);
 		} else {
 			updateStatusMessage("Failed to create offsets - check parameters");
 		}
@@ -22442,11 +22493,11 @@ function drawKADTESTPreviewLine(ctx) {
 // Draws slope map triangles directly to canvas (crisp edges)
 function drawDelauanySlopeMap(triangles, centroid, strokeColor) {
 	if (!triangles || !Array.isArray(triangles) || triangles.length === 0) return;
-	
+
 	ctx.strokeStyle = strokeColor;
 	ctx.fillStyle = fillColor;
 	ctx.lineWidth = 1;
-	
+
 	for (var i = 0; i < triangles.length; i++) {
 		var triangle = triangles[i];
 		var tAX = triangle[0][0];
@@ -22497,10 +22548,10 @@ function drawDelauanySlopeMap(triangles, centroid, strokeColor) {
 // Draws burden relief map triangles directly to canvas (crisp edges)
 function drawDelauanyBurdenRelief(triangles, centroid, strokeColor) {
 	if (!triangles || !Array.isArray(triangles) || triangles.length === 0) return;
-	
+
 	ctx.strokeStyle = strokeColor;
 	ctx.lineWidth = 1;
-	
+
 	for (var i = 0; i < triangles.length; i++) {
 		var triangle = triangles[i];
 		var tAX = triangle[0][0];
@@ -22515,7 +22566,7 @@ function drawDelauanyBurdenRelief(triangles, centroid, strokeColor) {
 
 		// Calculate burden relief using the imported function
 		var burdenRelief = calculateBurdenRelief(triangle);
-		
+
 		// Get fill color using the imported function
 		var triangleFillColor = getReliefColor(burdenRelief);
 
@@ -23079,7 +23130,7 @@ function getClickedKADVertex3DWithTolerance(event) {
 	var closestElementIndex = -1;
 
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
-		allKADDrawingsMap.forEach(function(entity, entityName) {
+		allKADDrawingsMap.forEach(function (entity, entityName) {
 			// Skip hidden entities
 			if (!isEntityVisible(entityName)) return;
 			if (!entity.data || entity.data.length === 0) return;
@@ -27069,7 +27120,7 @@ function handleMeasuredLengthClick(event) {
 		// console.log("ClickedX = " + clickX);
 		// console.log("ClickedY = " + clickY);
 		// console.log("ClickedHole = " + clickedHole.holeID);
-		
+
 		// Step 1) When switch is ON and a hole is clicked, select the hole and show popup
 		if (clickedHole && measuredLengthSwitch.checked == true) {
 			// Step 2) Set the selected hole first
@@ -27096,7 +27147,7 @@ function handleMeasuredMassClick(event) {
 		// console.log("ClickedX = " + clickX);
 		// console.log("ClickedY = " + clickY);
 		// console.log("ClickedHole = " + clickedHole);
-		
+
 		// Step 1) When switch is ON and a hole is clicked, select the hole and show popup
 		if (clickedHole && measuredMassSwitch.checked == true) {
 			// Step 2) Set the selected hole first
@@ -27123,7 +27174,7 @@ function handleMeasuredCommentClick(event) {
 		// console.log("ClickedX = " + clickX);
 		// console.log("ClickedY = " + clickY);
 		// console.log("ClickedHole = " + clickedHole);
-		
+
 		// Step 1) When switch is ON and a hole is clicked, select the hole and show popup
 		if (clickedHole && measuredCommentSwitch.checked == true) {
 			// Step 2) Set the selected hole first
@@ -30042,7 +30093,7 @@ function drawData(allBlastHoles, selectedHole) {
 		if (blastGroupVisible && allBlastHoles && Array.isArray(allBlastHoles) && allBlastHoles.length > 0) {
 			// Step 3.0) Check if any KAD drawing tool is active (skip expensive hole rebuild during drawing)
 			var isAnyKADToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
-			
+
 			// Step 3.1) ONLY REBUILD GEOMETRY when threeDataNeedsRebuild is true AND no drawing tool active
 			// Skip hole rebuild during KAD drawing to prevent flicker (holes remain visible unchanged)
 			// KAD-only rebuild (threeKADNeedsRebuild) does NOT trigger hole rebuild
@@ -30053,24 +30104,24 @@ function drawData(allBlastHoles, selectedHole) {
 				if (developerModeEnabled) {
 					console.log("📍 Starting visibility-based LOD hole drawing: " + allBlastHoles.length + " holes");
 				}
-				
+
 				// Step 3.1b) Show processing indicator for large datasets
-				var visibleHoleCount = allBlastHoles.filter(function(h) { return h.visible !== false; }).length;
+				var visibleHoleCount = allBlastHoles.filter(function (h) { return h.visible !== false; }).length;
 				if (visibleHoleCount > 2000 && window.ProcessingIndicator) {
 					window.ProcessingIndicator.show("Generating " + visibleHoleCount + " holes with LOD layers...");
 				}
-				
+
 				// Step 3.1c) Get LOD manager and set canvas reference
 				var lodManager = threeRenderer && threeRenderer.lodManager ? threeRenderer.lodManager : null;
 				var threeCanvas = threeRenderer ? threeRenderer.getCanvas() : null;
-				
+
 				if (lodManager && threeCanvas) {
 					lodManager.setCanvas(threeCanvas);
 				}
-				
+
 				// Step 3.1d) Filter visible holes once
-				var visibleHoles = allBlastHoles.filter(function(h) { return h.visible !== false; });
-				
+				var visibleHoles = allBlastHoles.filter(function (h) { return h.visible !== false; });
+
 				// Step 3.1e) LAYER 1: Create POINTS batch for ALL visible holes (for LOW/MINIMAL LOD)
 				// This is used when zoomed far out - single draw call for all holes
 				if (threeRenderer && threeRenderer.holesGroup) {
@@ -30081,7 +30132,7 @@ function drawData(allBlastHoles, selectedHole) {
 						if (existingPointsAll.geometry) existingPointsAll.geometry.dispose();
 						if (existingPointsAll.material) existingPointsAll.material.dispose();
 					}
-					
+
 					// Create points for ALL visible holes
 					var pointsResult = GeometryFactory.createHoleLODPoints(visibleHoles, worldToThreeLocal, 3);
 					if (pointsResult && pointsResult.points) {
@@ -30091,13 +30142,13 @@ function drawData(allBlastHoles, selectedHole) {
 						threeRenderer.holesGroup.add(pointsResult.points);
 					}
 				}
-				
+
 				// Step 3.1f) LAYER 2: Create 8-SEGMENT circles for ALL holes (for SIMPLE/MEDIUM LOD)
 				// These are cheaper than 32-segment circles
 				if (threeRenderer && threeRenderer.instancedMeshManager) {
 					// Clear existing simple LOD meshes
 					threeRenderer.instancedMeshManager.clearSimpleLODMeshes();
-					
+
 					// Add each visible hole to the simple LOD pool
 					for (var sIdx = 0; sIdx < visibleHoles.length; sIdx++) {
 						var sHole = visibleHoles[sIdx];
@@ -30105,7 +30156,7 @@ function drawData(allBlastHoles, selectedHole) {
 						var sRadiusMeters = (sDiameter / 1000) / 2;
 						var sLocalPos = worldToThreeLocal(sHole.startXLocation, sHole.startYLocation);
 						var sColor = darkModeEnabled ? 0xffffff : 0x000000;
-						
+
 						threeRenderer.instancedMeshManager.addSimpleLODInstance(
 							sHole.entityName + ":::" + sHole.holeID,
 							sLocalPos.x,
@@ -30118,19 +30169,19 @@ function drawData(allBlastHoles, selectedHole) {
 						);
 					}
 				}
-				
+
 				// Step 3.1g) LAYER 3: Create 32-SEGMENT circles for ALL holes (for FULL LOD)
 				// This is the existing instanced mesh system - full detail
 				for (var holeIdx = 0; holeIdx < visibleHoles.length; holeIdx++) {
 					var hole = visibleHoles[holeIdx];
 					drawHoleThreeJS_Instanced(hole, toeSizeInMeters3D);
 				}
-				
+
 				// Step 3.1h) FLUSH BATCHED LINES - Creates single draw call for all hole body lines
 				if (threeRenderer && threeRenderer.instancedMeshManager) {
 					threeRenderer.instancedMeshManager.flushLineBatches(threeRenderer.holesGroup);
 				}
-				
+
 				// Step 3.1i) LAYER 4: Create TEXT labels for ALL holes (for FULL/SIMPLE LOD)
 				// Labels are hidden at MEDIUM/LOW/MINIMAL levels
 				var hasTextOptions = displayOptions3D.holeID || displayOptions3D.holeDia || displayOptions3D.holeLen ||
@@ -30139,14 +30190,14 @@ function drawData(allBlastHoles, selectedHole) {
 					displayOptions3D.xValue || displayOptions3D.yValue || displayOptions3D.zValue ||
 					displayOptions3D.displayRowAndPosId || displayOptions3D.measuredLength || displayOptions3D.measuredMass ||
 					displayOptions3D.measuredComment || displayOptions3D.holeDip;
-				
+
 				if (hasTextOptions) {
 					for (var holeIdx2 = 0; holeIdx2 < visibleHoles.length; holeIdx2++) {
 						var hole2 = visibleHoles[holeIdx2];
 						drawHoleTextsAndConnectorsThreeJS(hole2, displayOptions3D);
 					}
 				}
-				
+
 				// Step 3.1j) REGISTER LOD LAYERS with LODManager for visibility control
 				if (lodManager && threeRenderer) {
 					// Step 3.1j.0) DEBUG: Log what's in the instanced mesh maps
@@ -30156,13 +30207,13 @@ function drawData(allBlastHoles, selectedHole) {
 						console.log("  instancedMeshes keys:", Array.from(imm.instancedMeshes.keys()));
 						console.log("  simpleLODMeshes keys:", Array.from(imm.simpleLODMeshes.keys()));
 						console.log("  lineMeshes keys:", imm.lineMeshes ? Array.from(imm.lineMeshes.keys()) : "NULL");
-						
+
 						// Step 3.1j.1) Separate collar meshes from grade/toe meshes
 						var collarMeshes = new Map();
 						var gradeMeshes = new Map();
 						var toeMeshes = new Map();
-						
-						imm.instancedMeshes.forEach(function(mesh, key) {
+
+						imm.instancedMeshes.forEach(function (mesh, key) {
 							if (key.startsWith("collar_")) {
 								collarMeshes.set(key, mesh);
 							} else if (key.startsWith("grade")) {
@@ -30171,10 +30222,10 @@ function drawData(allBlastHoles, selectedHole) {
 								toeMeshes.set(key, mesh);
 							}
 						});
-						
+
 						console.log("  Separated: collars=" + collarMeshes.size + ", grades=" + gradeMeshes.size + ", toes=" + toeMeshes.size);
 					}
-					
+
 					var lodLayers = {
 						// Full detail 32-segment circles (from instancedMeshManager)
 						fullCircles: threeRenderer.instancedMeshManager ? threeRenderer.instancedMeshManager.instancedMeshes : null,
@@ -30192,7 +30243,7 @@ function drawData(allBlastHoles, selectedHole) {
 						// Hiding labels at MEDIUM/LOW/MINIMAL saves ~10,000 draw calls
 						labels: threeRenderer.labelsGroup ? threeRenderer.labelsGroup : null
 					};
-					
+
 					console.log("🔍 LOD layers being registered:", {
 						fullCircles: lodLayers.fullCircles ? "Map(" + lodLayers.fullCircles.size + ")" : "NULL",
 						simpleCircles: lodLayers.simpleCircles ? "Map(" + lodLayers.simpleCircles.size + ")" : "NULL",
@@ -30200,18 +30251,18 @@ function drawData(allBlastHoles, selectedHole) {
 						pointsAll: lodLayers.pointsAll ? lodLayers.pointsAll.name : "NULL",
 						labels: lodLayers.labels ? "Group" : "NULL"
 					});
-					
+
 					lodManager.setLayers(lodLayers);
-					
+
 					// Step 3.1k) Initialize visibility based on current frustum
 					lodManager.updateVisibility();
 				}
-				
+
 				// Step 3.1l) Hide processing indicator
 				if (window.ProcessingIndicator && window.ProcessingIndicator.isShowing()) {
 					window.ProcessingIndicator.hide();
 				}
-				
+
 				if (developerModeEnabled) {
 					console.log("📍 Visibility-based LOD hole drawing complete: " + visibleHoles.length + " holes");
 					console.log("📊 LOD layers created: points, 8-seg circles, 32-seg circles, labels");
@@ -30283,7 +30334,7 @@ function drawData(allBlastHoles, selectedHole) {
 						drawConnectorThreeJS(fromHole, hole, connColor, hole.connectorCurve || 0, null, connScale3D);
 					}
 				}
-				
+
 				// Step 4b) Draw delay text in Three.js (SEPARATE from connectors - like 2D)
 				// This allows showing delay values even when connector arrows are hidden
 				if (threeInitialized && displayOptions3D.delayValue && hole.fromHoleID) {
@@ -30624,8 +30675,8 @@ function drawData(allBlastHoles, selectedHole) {
 						const centerX = circleData.centerX || circleData.pointXLocation;
 						const centerY = circleData.centerY || circleData.pointYLocation;
 						// FIX: Z=0 is valid elevation (-27000m to +16000m range). Use explicit null/undefined check.
-						const centerZ = (circleData.centerZ !== undefined && circleData.centerZ !== null) ? circleData.centerZ : 
-						                ((circleData.pointZLocation !== undefined && circleData.pointZLocation !== null) ? circleData.pointZLocation : 0);
+						const centerZ = (circleData.centerZ !== undefined && circleData.centerZ !== null) ? circleData.centerZ :
+							((circleData.pointZLocation !== undefined && circleData.pointZLocation !== null) ? circleData.pointZLocation : 0);
 						const radius = circleData.radius || 10; // Radius in world units
 						const local = worldToThreeLocal(centerX, centerY);
 						const vertexIndex = entity.data.indexOf(circleData);
@@ -30808,15 +30859,15 @@ function drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, getColo
 			return; // Fast path - no logging
 		}
 	}
-	
+
 	// Step 2) Get clipped cells from Level 1 cache or compute
 	var clippedCells = getCachedVoronoiCells(allBlastHoles, useToeLocation, getVoronoiMetrics, clipVoronoiCells);
-	
+
 	// Step 3) Early return if no cells
 	if (!clippedCells || clippedCells.length === 0) {
 		return;
 	}
-	
+
 	// Step 4) Render to Level 2 cache (canvas)
 	var cacheEntry = renderVoronoiToCache(
 		selectedVoronoiMetric,
@@ -30827,7 +30878,7 @@ function drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, getColo
 		centroidY,
 		getColorForMetric
 	);
-	
+
 	// Step 5) Store cache reference for validation
 	if (!window.voronoi2DCache) {
 		window.voronoi2DCache = new Map();
@@ -30835,13 +30886,13 @@ function drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, getColo
 	if (cacheEntry) {
 		window.voronoi2DCache.set(selectedVoronoiMetric, cacheEntry);
 	}
-	
+
 	// Step 6) Draw from cache or fallback to direct draw
 	if (cacheEntry && drawCachedVoronoi(cacheEntry, ctx, canvas, currentScale, centroidX, centroidY)) {
 		// Cache created and drawn - silent for performance
 		return;
 	}
-	
+
 	// Step 7) Fallback: direct drawing (if cache creation failed) - rare, ok to log
 	for (var i = 0; i < clippedCells.length; i++) {
 		var cell = clippedCells[i];
@@ -31578,7 +31629,7 @@ function debouncedThreeRebuild() {
 	// Clear any pending rebuild
 	clearTimeout(threeRebuildTimeout);
 	// Set rebuild to trigger after 500ms of inactivity (increased from 300ms)
-	threeRebuildTimeout = setTimeout(function() {
+	threeRebuildTimeout = setTimeout(function () {
 		console.log("🔄 [DEBOUNCED] 3D rebuild triggered after idle");
 		window.threeDataNeedsRebuild = true;
 		drawData(allBlastHoles, selectedHole);
@@ -31867,23 +31918,23 @@ function debouncedSaveHoles() {
 	// Multiple rapid calls should not trigger repeated invalidations
 	if (!_cacheInvalidationPending) {
 		_cacheInvalidationPending = true;
-		
+
 		// Step 3.0a) Bump data version ONCE (deferred slightly to batch multiple calls)
-		setTimeout(function() {
+		setTimeout(function () {
 			bumpDataVersion();
-			
+
 			// Step 3.0b) Also invalidate 3D analysis caches so they rebuild on next frame
 			if (typeof invalidate3DAnalysisCaches === "function") {
 				invalidate3DAnalysisCaches();
 			}
-			
+
 			// Step 3.0c) Invalidate blast entity volume cache for TreeView
 			invalidateBlastEntityVolumeCache(null); // null = invalidate ALL entities
-			
+
 			_cacheInvalidationPending = false;
 		}, 100); // 100ms delay batches rapid calls
 	}
-	
+
 	// Clear any existing pending save
 	clearTimeout(holesSaveTimeout);
 	// Set a new save to trigger after 2 seconds
@@ -31892,7 +31943,7 @@ function debouncedSaveHoles() {
 		// Only save if DB is initialized
 		if (db) {
 			saveHolesToDB(allBlastHoles);
-			
+
 			// Step 3a) Trigger background pre-caching for analysis overlays (Voronoi, Slope, Relief)
 			// This runs asynchronously to not block the UI
 			preCacheAllAnalysis(
@@ -34297,7 +34348,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	var redoBtn = document.getElementById("redoBtn");
 
 	if (undoBtn) {
-		undoBtn.addEventListener("click", function() {
+		undoBtn.addEventListener("click", function () {
 			if (undoManager && undoManager.canUndo()) {
 				undoManager.undo();
 			}
@@ -34305,7 +34356,7 @@ document.addEventListener("DOMContentLoaded", () => {
 	}
 
 	if (redoBtn) {
-		redoBtn.addEventListener("click", function() {
+		redoBtn.addEventListener("click", function () {
 			if (undoManager && undoManager.canRedo()) {
 				undoManager.redo();
 			}
@@ -34978,7 +35029,7 @@ function handleMoveToolMouseDown(event) {
 			isDraggingHole = true;
 			dragStartX = clientX;
 			dragStartY = clientY;
-			dragInitialPositions = selectedMultipleHoles.map(function(hole) {
+			dragInitialPositions = selectedMultipleHoles.map(function (hole) {
 				return {
 					hole: hole,
 					x: hole.startXLocation,
@@ -35642,7 +35693,7 @@ function handleMoveToolMouseUp(event) {
 		}
 
 		// Step 8) 2D Mode Logic (existing code)
-		
+
 		// Step 8a) Create undo action for hole move (2D mode)
 		if (dragInitialPositions && dragInitialPositions.length > 0) {
 			var holeMoveData2D = [];
@@ -35865,7 +35916,7 @@ function handleBearingToolMouseDown(event) {
 		// Use multiple selected holes - start dragging immediately
 		bearingToolSelectedHole = selectedMultipleHoles;
 		// Step #) Capture initial bearings for undo support
-		bearingToolInitialBearings = bearingToolSelectedHole.map(function(hole) {
+		bearingToolInitialBearings = bearingToolSelectedHole.map(function (hole) {
 			return {
 				holeId: hole.holeID,
 				entityName: hole.entityName,
@@ -38037,8 +38088,15 @@ function showCsvImportModal(csvData, fileName) {
 				// Step 4) Parse CSV data
 				const result = parser.processCsvData(csvData, columnOrder, fileName);
 				const importedHoles = result.holes;
+				const addedHoles = result.addedHoles || importedHoles; // Get newly added holes for undo
 
 				if (importedHoles && importedHoles.length > 0) {
+					// Step 4a) Create undo action for all added holes (single undo for entire import)
+					if (undoManager && addedHoles && addedHoles.length > 0) {
+						var addAction = new AddMultipleHolesAction(addedHoles);
+						undoManager.pushAction(addAction);
+						console.log("Custom CSV import: Created undo action for " + addedHoles.length + " holes");
+					}
 					// CRITICAL: Recalculate everything after import like existing code does
 					let sumX = 0,
 						sumY = 0;
@@ -39067,1821 +39125,6 @@ function initializeCsvColumnOrder(availableColumns, selectedColumns) {
 }
 
 //---------------- END CUSTOM STRUCTURED CSV IMPORTER ----------------//
-// ===================================================================
-// CONSOLIDATED SMART ROW DETECTION FUNCTIONS
-// ===================================================================
-// #region HDBSCAN-ROW-DETECTION
-
-/**
- * SEQUENCE-BASED ROW DETECTION
- *
- * This function attempts to detect rows based on the naming/numbering pattern of hole IDs.
- * It analyzes the hole ID patterns and determines the best approach for grouping holes into rows.
- *
- * HOLE ID PATTERN ANALYSIS:
- * - Pure numeric (1, 2, 3, 4...) - Sequential numbered holes
- * - Alphanumeric (A1, A2, B1, B2...) - Letter+number combinations
- * - Mixed patterns - Combination of both
- * - Other patterns - Random text, symbols, etc.
- *
- * @param {Array} holesData - Array of hole objects with holeID properties
- * @param {string} entityName - Name of blast entity for generating row IDs
- * @returns {boolean} - true if successful detection occurred, false if should fall back to spatial detection
- *
- * DETECTION CASES:
- * 1. All alphanumeric: Analyzes if letters represent rows (A1,A2,B1,B2) or types (I1,I2,B1,B2)
- * 2. Mixed numeric/alphanumeric: Sorts and applies spatial detection algorithms
- * 3. Pure numeric sequential: Applies geometric line-fitting or RDP algorithms
- */
-function trySequenceBasedDetection(holesData, entityName) {
-	// Initialize counters for different hole ID patterns
-	let numericCount = 0; // Pure numbers: "1", "2", "123"
-	let alphaNumericCount = 0; // Letter+number: "A1", "BUF5", "I23"
-	let otherCount = 0; // Everything else: "Hole-A", "X", symbols
-
-	// Analyze each hole ID to determine its pattern type
-	holesData.forEach((hole) => {
-		if (/^\d+$/.test(hole.holeID)) {
-			// Regex matches pure numeric strings
-			numericCount++;
-		} else if (/^[A-Z]+\d+$/i.test(hole.holeID)) {
-			// Regex matches one or more letters followed by one or more digits
-			alphaNumericCount++;
-		} else {
-			// Everything that doesn't fit the above patterns
-			otherCount++;
-		}
-	});
-
-	// Log the pattern analysis for debugging
-	console.log("Hole ID pattern analysis:", {
-		numeric: numericCount,
-		alphaNumeric: alphaNumericCount,
-		other: otherCount,
-	});
-
-	// CASE 1: ALL ALPHANUMERIC PATTERNS (A1, A2, B1, B2, etc.)
-	if (alphaNumericCount === holesData.length) {
-		console.log("All holes are alphanumeric - analyzing pattern");
-		// Delegate to specialized function that determines if letters are rows or hole types
-		return handleAlphaNumericHoles(holesData, entityName);
-	}
-
-	// CASE 2: MIXED NUMERIC AND ALPHANUMERIC PATTERNS
-	if (numericCount > 0 && alphaNumericCount > 0) {
-		console.log("Mixed numeric and alphanumeric pattern detected");
-
-		// Create a unified sequence for spatial detection since numbering is inconsistent
-		// Give each hole a sequential number for geometric analysis
-		const allHoles = holesData
-			.map((hole, index) => ({ hole, num: index + 1 }))
-			.sort((a, b) => {
-				// Custom sort: pure numbers first (in numeric order), then alphanumeric (alphabetically)
-				const aIsNum = /^\d+$/.test(a.hole.holeID);
-				const bIsNum = /^\d+$/.test(b.hole.holeID);
-
-				if (aIsNum && bIsNum) {
-					// Both are numeric - sort numerically
-					return parseInt(a.hole.holeID) - parseInt(b.hole.holeID);
-				}
-				if (aIsNum && !bIsNum) return -1; // Numeric comes before alphanumeric
-				if (!aIsNum && bIsNum) return 1; // Alphanumeric comes after numeric
-				// Both alphanumeric - sort alphabetically
-				return a.hole.holeID.localeCompare(b.hole.holeID);
-			});
-
-		// Use spatial detection algorithms since sequence-based logic won't work reliably
-		if (developerModeEnabled) {
-			console.log("Using OPTION 2: Modified RDP Algorithm for mixed pattern");
-			return detectRowsUsingRDP(allHoles, entityName);
-		} else {
-			console.log("Using OPTION 1: Sequential Line Fitting Algorithm for mixed pattern");
-			return detectRowsUsingLineFitting(allHoles, entityName);
-		}
-	}
-
-	// CASE 3: PURE NUMERIC SEQUENTIAL PATTERNS (1, 2, 3, 4...)
-	// Convert hole IDs to numbers and sort them
-	const numericHoles = holesData
-		.map((hole) => ({ hole, num: parseInt(hole.holeID) }))
-		.filter((item) => !isNaN(item.num)) // Remove any that couldn't be parsed as numbers
-		.sort((a, b) => a.num - b.num); // Sort numerically
-
-	// Validate that we have enough holes and all were numeric
-	if (numericHoles.length !== holesData.length || numericHoles.length < 4) {
-		// Not all holes were numeric, or too few holes for pattern detection
-		return false;
-	}
-
-	// Check if the sequence is continuous (1,2,3,4... with no gaps)
-	const firstNum = numericHoles[0].num;
-	const isSequential = numericHoles.every((item, index) => item.num === firstNum + index);
-
-	if (!isSequential) {
-		// Numbers have gaps (like 1,2,4,7...) - not suitable for sequence-based detection
-		return false;
-	}
-
-	// Choose geometric algorithm based on developer mode setting
-	if (developerModeEnabled) {
-		console.log("Using OPTION 2: Modified RDP Algorithm");
-		return detectRowsUsingRDP(numericHoles, entityName);
-	} else {
-		console.log("Using OPTION 1: Sequential Line Fitting Algorithm");
-		return detectRowsUsingLineFitting(numericHoles, entityName);
-	}
-}
-/**
- * ALPHANUMERIC HOLE PATTERN HANDLER
- *
- * This function specifically handles holes with alphanumeric IDs (like A1, A2, B1, B2, or I1, I2, B1, B2).
- * It must determine whether the letters represent:
- * 1. ROW IDENTIFIERS (A=row1, B=row2, C=row3...) - Common in mining software
- * 2. HOLE TYPE PREFIXES (I=infill, B=buffer, P=production...) - Also common in mining
- *
- * DECISION LOGIC:
- * - If letters are sequential single characters (A,B,C,D...) ? Likely rows
- * - If letters are multi-character codes (INF,BUF,PRD...) ? Likely hole types
- * - If mixed pattern ? Fall back to spatial detection
- *
- * @param {Array} holesData - Array of hole objects with alphanumeric holeIDs
- * @param {string} entityName - Name of blast entity for generating row IDs
- * @returns {boolean} - true if successful detection, false to fall back to spatial
- *
- * EXAMPLES:
- * Row pattern: A1,A2,A3,B1,B2,B3,C1,C2 ? A=row1, B=row2, C=row3
- * Type pattern: I1,I2,B1,B2,P1,P2 ? Use spatial detection instead
- */
-function handleAlphaNumericHoles(holesData, entityName) {
-	// Map to group holes by their letter prefix
-	const rowGroups = new Map();
-
-	// Array to store parsed hole information
-	const parsedHoles = [];
-
-	// Parse each hole ID to extract letter prefix and numeric suffix
-	holesData.forEach((hole) => {
-		// Regex: ^([A-Z]+)(\d+)$ - captures letter(s) + number(s)
-		// Examples: "A1"?["A","1"], "INF23"?["INF","23"], "B5"?["B","5"]
-		const match = hole.holeID.match(/^([A-Z]+)(\d+)$/i);
-		if (match) {
-			const letter = match[1].toUpperCase(); // Letter prefix (A, B, INF, etc.)
-			const number = parseInt(match[2]); // Numeric suffix (1, 2, 23, etc.)
-
-			// Store parsed information for analysis
-			parsedHoles.push({
-				hole: hole,
-				letter: letter,
-				number: number,
-			});
-
-			// Group holes by their letter prefix
-			if (!rowGroups.has(letter)) {
-				rowGroups.set(letter, []);
-			}
-			rowGroups.get(letter).push({
-				hole: hole,
-				letter: letter,
-				number: number,
-			});
-		}
-	});
-
-	// Extract all unique letter prefixes for analysis
-	const letterGroups = Array.from(rowGroups.keys());
-	console.log("Found letter groups:", letterGroups.join(", "));
-
-	// HEURISTIC ANALYSIS: Determine if letters represent rows or hole types
-	//
-	// INDICATORS FOR ROW USAGE:
-	// 1. Single letters (A, B, C) are more likely rows than multi-letter codes
-	// 2. Sequential single letters (A, B, C, D) strongly suggest row naming
-	// 3. Consistent pattern across all holes
-	//
-	// INDICATORS FOR TYPE USAGE:
-	// 1. Multi-letter codes (INF, BUF, PRD) suggest hole type abbreviations
-	// 2. Non-sequential letters (A, I, B, P) suggest different types
-	// 3. Mixed single/multi letter combinations
-
-	const singleLetters = letterGroups.filter((l) => l.length === 1).sort();
-	const multiLetters = letterGroups.filter((l) => l.length > 1);
-
-	// Check if single letters form a sequential pattern (A, B, C, D...)
-	let isSequentialRows = false;
-	if (singleLetters.length >= 2) {
-		isSequentialRows = singleLetters.every((letter, index) => {
-			if (index === 0) return true; // First letter is always valid
-			// Check if each letter is exactly 1 ASCII value higher than previous
-			// A=65, B=66, C=67... so B-A=1, C-B=1, etc.
-			return letter.charCodeAt(0) - singleLetters[index - 1].charCodeAt(0) === 1;
-		});
-	}
-
-	// DECISION CRITERIA: Use letters as row identifiers if:
-	// 1. All letters are sequential single characters (A,B,C,D...)
-	// 2. We have at least 3 different letters (need multiple rows)
-	// 3. No multi-letter codes present (pure single-letter pattern)
-	const useLettersAsRows = isSequentialRows && singleLetters.length >= 3 && multiLetters.length === 0;
-
-	if (useLettersAsRows) {
-		console.log("Letters appear to represent rows (A, B, C pattern)");
-
-		// TREAT LETTERS AS ROW IDENTIFIERS
-		// Each letter prefix becomes a separate row, numbered sequentially
-		const startingRowID = getNextRowID(entityName);
-
-		singleLetters.forEach((rowLetter, rowIndex) => {
-			const row = rowGroups.get(rowLetter);
-			// Sort holes within each row by their numeric suffix (A1, A2, A3...)
-			row.sort((a, b) => a.number - b.number);
-
-			const rowID = startingRowID + rowIndex;
-
-			// Assign row and position IDs to each hole in this letter group
-			row.forEach((item, index) => {
-				item.hole.rowID = rowID;
-				item.hole.posID = index + 1; // Position within row (1, 2, 3...)
-			});
-
-			console.log("Row " + rowLetter + " → rowID " + rowID + " with " + row.length + " holes");
-		});
-
-		return true; // Successfully used letter-based row detection
-	} else {
-		console.log("Letters appear to be hole type prefixes (I=infill, B=buffer, etc.)");
-		console.log("Falling back to spatial detection for mixed alphanumeric pattern");
-
-		// TREAT LETTERS AS HOLE TYPE PREFIXES
-		// Since letters don't represent rows, we need to use spatial detection
-		// Convert to format expected by geometric line fitting algorithms
-		const allHoles = [];
-		let counter = 1;
-
-		// Create a logical ordering for spatial analysis:
-		// Sort letter groups alphabetically, then sort holes within each group numerically
-		letterGroups.sort().forEach((letter) => {
-			const group = rowGroups.get(letter);
-			group.sort((a, b) => a.number - b.number); // I1, I2, I3... then B1, B2, B3...
-			group.forEach((item) => {
-				allHoles.push({
-					hole: item.hole,
-					num: counter++, // Give sequential numbers for geometric analysis
-				});
-			});
-		});
-
-		// Apply spatial detection algorithms since hole naming doesn't indicate rows
-		if (developerModeEnabled) {
-			console.log("Using OPTION 2: Modified RDP Algorithm for mixed pattern");
-			return detectRowsUsingRDP(allHoles, entityName);
-		} else {
-			console.log("Using OPTION 1: Sequential Line Fitting Algorithm for mixed pattern");
-			return detectRowsUsingLineFitting(allHoles, entityName);
-		}
-	}
-}
-/**
- * OPTION 1: SEQUENTIAL LINE FITTING ALGORITHM (Main Geometric Algorithm)
- *
- * This is the primary geometric algorithm for detecting rows in blast patterns.
- * It works by finding the longest sequences of holes that can be fit to straight lines,
- * using a tolerance based on hole diameter.
- *
- * ALGORITHM CONCEPT:
- * 1. For each hole, try to build the longest possible straight line of consecutive holes
- * 2. Use geometric line fitting to ensure holes are truly aligned
- * 3. Tolerance is based on hole diameter (2x diameter distance allowed from line)
- * 4. Process holes in order, marking used holes to avoid duplication
- *
- * STRENGTHS:
- * - Works well for regular drilling patterns
- * - Respects hole sequence (numbered 1,2,3,4...)
- * - Good for straight or slightly curved rows
- *
- * WEAKNESSES:
- * - Can break up rows if there are small alignment irregularities
- * - Requires sequential hole numbering to work optimally
- * - May create too many single-hole rows in irregular patterns
- *
- * @param {Array} numericHoles - Array of {hole, num} objects sorted by hole number
- * @param {string} entityName - Blast entity name for generating row IDs
- * @returns {boolean} - true if detection was successful
- */
-function detectRowsUsingLineFitting(numericHoles, entityName) {
-	// Need at least 2 holes to form any meaningful pattern
-	if (numericHoles.length < 2) return false;
-
-	// Calculate tolerance based on hole diameter
-	// Default 115mm diameter if not specified (typical blast hole size)
-	const holeDiameter = numericHoles[0].hole.holeDiameter || 115; // mm
-	const tolerance = (holeDiameter * 2) / 1000; // Convert to meters (2x diameter)
-
-	console.log("Line fitting tolerance:", tolerance.toFixed(3) + "m (2x diameter)");
-
-	// Arrays to store detected rows and track which holes have been used
-	const rows = [];
-	const used = new Set(); // Set of hole indices that have been assigned to rows
-
-	// MAIN ALGORITHM: Try to build rows starting from each unused hole
-	// Process holes in sequence order (1, 2, 3, 4...) to maintain logical flow
-	for (let startIdx = 0; startIdx < numericHoles.length; startIdx++) {
-		if (used.has(startIdx)) continue; // Skip holes already assigned to rows
-
-		// Find the longest sequence of consecutive holes that form a straight line
-		const row = findLongestLineSequence(numericHoles, startIdx, tolerance, used);
-
-		if (row.length >= 2) {
-			// Only accept sequences with at least 2 holes as valid rows
-			rows.push(row);
-
-			// Mark all holes in this row as used
-			row.forEach((hole) => used.add(numericHoles.indexOf(hole)));
-
-			console.log("Found row with", row.length, "holes:", row.map((h) => h.num).join(","));
-		}
-	}
-
-	// CLEANUP: Handle single holes that didn't fit into any row
-	// These become individual single-hole rows (may indicate outliers or edge holes)
-	for (let i = 0; i < numericHoles.length; i++) {
-		if (!used.has(i)) {
-			rows.push([numericHoles[i]]);
-			console.log("Single hole row:", numericHoles[i].num);
-		}
-	}
-
-	// ASSIGNMENT: Give each detected row a unique ID and assign positions within rows
-	const startingRowID = getNextRowID(entityName);
-	rows.forEach((row, rowIndex) => {
-		const rowID = startingRowID + rowIndex;
-		row.forEach((item, posIndex) => {
-			item.hole.rowID = rowID;
-			item.hole.posID = posIndex + 1; // Position within row (1, 2, 3...)
-		});
-	});
-
-	console.log("Line fitting detected", rows.length, "rows");
-	return rows.length > 0;
-}
-
-/**
- * FIND LONGEST LINE SEQUENCE HELPER
- *
- * Starting from a given hole, this function extends forward through consecutive holes
- * to build the longest possible sequence that forms a straight line within tolerance.
- *
- * ALGORITHM:
- * 1. Start with the given hole as the first point in the sequence
- * 2. Try adding each subsequent consecutive hole to the sequence
- * 3. Test if the extended sequence still forms a valid straight line
- * 4. Stop when adding the next hole would break the line constraint
- * 5. Return the longest valid sequence found
- *
- * KEY BEHAVIOR:
- * - Only looks FORWARD in the hole sequence (maintains drilling order)
- * - Stops at first hole that doesn't fit (ensures continuous sequences)
- * - Skips holes already used by previous rows
- *
- * @param {Array} numericHoles - All holes sorted by sequence number
- * @param {number} startIdx - Index of hole to start sequence from
- * @param {number} tolerance - Maximum distance allowed from line (meters)
- * @param {Set} used - Set of hole indices already assigned to other rows
- * @returns {Array} - Longest sequence of holes forming a straight line
- */
-function findLongestLineSequence(numericHoles, startIdx, tolerance, used) {
-	// Start sequence with the given hole
-	const sequence = [numericHoles[startIdx]];
-
-	// Try to extend the sequence by finding consecutive holes that fit the line
-	// Only look FORWARD to maintain hole sequence order (drilling progression)
-	for (let nextIdx = startIdx + 1; nextIdx < numericHoles.length; nextIdx++) {
-		if (used.has(nextIdx)) continue; // Skip holes already used by other rows
-
-		// Test if adding this hole would still form a valid straight line
-		const testSequence = [...sequence, numericHoles[nextIdx]];
-
-		if (sequenceFitsLine(testSequence, tolerance)) {
-			// Hole fits the line - add it to the sequence and continue
-			sequence.push(numericHoles[nextIdx]);
-		} else {
-			// Hole doesn't fit the line - stop extending sequence
-			// This ensures rows are continuous (no gaps in hole sequence)
-			break;
-		}
-	}
-
-	return sequence;
-}
-
-/**
- * SEQUENCE LINE FITTING VALIDATOR
- *
- * Tests whether a sequence of holes can be considered to form a straight line
- * within the specified tolerance. Uses simple linear regression approach.
- *
- * GEOMETRIC METHOD:
- * 1. Define line using first and last points in sequence
- * 2. Calculate perpendicular distance from each intermediate point to this line
- * 3. If any point is farther than tolerance from line, sequence fails
- * 4. If all points are within tolerance, sequence passes
- *
- * ASSUMPTIONS:
- * - Uses first and last points to define the "ideal" line
- * - Assumes drilling follows a reasonably straight path
- * - Tolerance accounts for small drilling irregularities and survey errors
- *
- * @param {Array} sequence - Array of hole objects to test for linearity
- * @param {number} tolerance - Maximum allowed distance from line (meters)
- * @returns {boolean} - true if sequence forms a valid straight line
- */
-function sequenceFitsLine(sequence, tolerance) {
-	// Single hole or pair always forms a valid "line"
-	if (sequence.length < 2) return true;
-
-	// Extract coordinate points from hole objects
-	const points = sequence.map((item) => ({
-		x: item.hole.startXLocation,
-		y: item.hole.startYLocation,
-	}));
-
-	// Define line using first and last points (endpoints of sequence)
-	// This represents the "ideal" straight line the holes should follow
-	const start = points[0];
-	const end = points[points.length - 1];
-
-	// Test all intermediate points (exclude endpoints since they define the line)
-	for (let i = 1; i < points.length - 1; i++) {
-		const distance = distancePointToLine(points[i], start, end);
-		if (distance > tolerance) {
-			// Found a point too far from the line - sequence is not straight enough
-			return false;
-		}
-	}
-
-	// All intermediate points are within tolerance - sequence is acceptably straight
-	return true;
-}
-
-/**
- * POINT-TO-LINE DISTANCE CALCULATOR
- *
- * Calculates the perpendicular (shortest) distance from a point to a line segment.
- * Uses the standard point-to-line distance formula from analytic geometry.
- *
- * MATHEMATICAL FORMULA:
- * For line defined by points (x1,y1) and (x2,y2), and test point (x0,y0):
- * distance = |((y2-y1)*x0 - (x2-x1)*y0 + x2*y1 - y2*x1)| / sqrt((y2-y1)? + (x2-x1)?)
- *
- * SPECIAL CASES:
- * - If line endpoints are identical (zero length), distance is 0
- * - Formula gives perpendicular distance, not diagonal distance
- *
- * @param {Object} point - Point to test {x, y}
- * @param {Object} lineStart - Line start point {x, y}
- * @param {Object} lineEnd - Line end point {x, y}
- * @returns {number} - Perpendicular distance from point to line (meters)
- */
-function distancePointToLine(point, lineStart, lineEnd) {
-	// Calculate line vector components
-	const dx = lineEnd.x - lineStart.x;
-	const dy = lineEnd.y - lineStart.y;
-	const lineLength = Math.sqrt(dx * dx + dy * dy);
-
-	// Handle degenerate case where line endpoints are identical
-	if (lineLength === 0) return 0; // Start and end are the same point
-
-	// Apply point-to-line distance formula
-	// |((y2-y1)*x0 - (x2-x1)*y0 + x2*y1 - y2*x1)| / sqrt((y2-y1)? + (x2-x1)?)
-	const distance = Math.abs((dy * point.x - dx * point.y + lineEnd.x * lineStart.y - lineEnd.y * lineStart.x) / lineLength);
-
-	return distance;
-}
-
-// ============================================================================
-// #endregion CUSTOM CSV IMPORT/EXPORT - EXTRACTED TO FILEMANAGER
-// ============================================================================
-// The above code section (HOLE_FIELD_MAPPING through row detection functions)
-// has been extracted to FileManager modules. See comment at line 29779 for details.
-// This code is retained for backward compatibility during transition period.
-// ============================================================================
-
-/**
- * CALCULATE BURDEN AND SPACING FOR HOLES
- *
- * Calculates burden and spacing for holes based on their row assignments:
- * - Spacing: Distance to next hole in the same row (along row direction)
- * - Burden: PERPENDICULAR distance between rows (not hypotenuse)
- */
-function calculateBurdenAndSpacingForHoles(holes) {
-	if (!holes || holes.length === 0) return;
-
-	// Group holes by entity name
-	var entitiesByName = new Map();
-	holes.forEach(function (hole) {
-		if (!entitiesByName.has(hole.entityName)) {
-			entitiesByName.set(hole.entityName, []);
-		}
-		entitiesByName.get(hole.entityName).push(hole);
-	});
-
-	// Calculate burden and spacing for each entity
-	entitiesByName.forEach(function (entityHoles, entityName) {
-		// Group holes by row
-		var rowMap = new Map();
-		entityHoles.forEach(function (hole) {
-			var rowKey = hole.rowID || 0;
-			if (!rowMap.has(rowKey)) {
-				rowMap.set(rowKey, []);
-			}
-			rowMap.get(rowKey).push(hole);
-		});
-
-		// Sort holes within each row by posID
-		rowMap.forEach(function (rowHoles) {
-			rowHoles.sort(function (a, b) {
-				return (a.posID || 0) - (b.posID || 0);
-			});
-		});
-
-		// Calculate spacing (distance to next hole in same row)
-		rowMap.forEach(function (rowHoles) {
-			for (var i = 0; i < rowHoles.length; i++) {
-				var hole = rowHoles[i];
-				if (i < rowHoles.length - 1) {
-					var nextHole = rowHoles[i + 1];
-					var dx = nextHole.startXLocation - hole.startXLocation;
-					var dy = nextHole.startYLocation - hole.startYLocation;
-					hole.spacing = Math.round(Math.sqrt(dx * dx + dy * dy) * 1000) / 1000; // Round to 3 decimal places
-				} else {
-					// Last hole in row - use average spacing of row
-					if (rowHoles.length > 1) {
-						var totalSpacing = 0;
-						for (var j = 0; j < rowHoles.length - 1; j++) {
-							totalSpacing += rowHoles[j].spacing;
-						}
-						hole.spacing = Math.round((totalSpacing / (rowHoles.length - 1)) * 1000) / 1000; // Round to 3 decimal places
-					} else {
-						hole.spacing = 0;
-					}
-				}
-			}
-		});
-
-		// Determine row orientation (direction along rows)
-		var rowOrientation = estimateRowOrientation(entityHoles);
-		console.log("Row orientation for " + entityName + ": " + rowOrientation.toFixed(2) + "°");
-
-		// Convert compass bearing to radians
-		var rowBearingRadians = ((90 - rowOrientation) * Math.PI) / 180;
-		var burdenBearingRadians = rowBearingRadians - Math.PI / 2; // Perpendicular to row
-
-		// Project all holes onto burden axis (perpendicular to rows)
-		entityHoles.forEach(function (hole) {
-			hole.burdenProjection =
-				hole.startXLocation * Math.cos(burdenBearingRadians) +
-				hole.startYLocation * Math.sin(burdenBearingRadians);
-		});
-
-		// Calculate burden as perpendicular distance between rows
-		var sortedRows = Array.from(rowMap.keys()).sort(function (a, b) { return a - b; });
-
-		sortedRows.forEach(function (rowID, rowIndex) {
-			var rowHoles = rowMap.get(rowID);
-
-			// Calculate average burden projection for this row
-			var avgBurdenProj = 0;
-			rowHoles.forEach(function (hole) {
-				avgBurdenProj += hole.burdenProjection;
-			});
-			avgBurdenProj /= rowHoles.length;
-
-			// Find burden to adjacent rows
-			var burdenToNext = 0;
-			var burdenToPrev = 0;
-
-			if (rowIndex < sortedRows.length - 1) {
-				var nextRowID = sortedRows[rowIndex + 1];
-				var nextRowHoles = rowMap.get(nextRowID);
-				var nextAvgProj = 0;
-				nextRowHoles.forEach(function (hole) {
-					nextAvgProj += hole.burdenProjection;
-				});
-				nextAvgProj /= nextRowHoles.length;
-				burdenToNext = Math.abs(nextAvgProj - avgBurdenProj);
-			}
-
-			if (rowIndex > 0) {
-				var prevRowID = sortedRows[rowIndex - 1];
-				var prevRowHoles = rowMap.get(prevRowID);
-				var prevAvgProj = 0;
-				prevRowHoles.forEach(function (hole) {
-					prevAvgProj += hole.burdenProjection;
-				});
-				prevAvgProj /= prevRowHoles.length;
-				burdenToPrev = Math.abs(avgBurdenProj - prevAvgProj);
-			}
-
-			// Assign burden to each hole in row (rounded to 3 decimal places)
-			rowHoles.forEach(function (hole) {
-				if (rowIndex === 0) {
-					// First row - use burden to next row
-					hole.burden = Math.round((burdenToNext || 0) * 1000) / 1000;
-				} else if (rowIndex === sortedRows.length - 1) {
-					// Last row - use burden to previous row
-					hole.burden = Math.round((burdenToPrev || 0) * 1000) / 1000;
-				} else {
-					// Middle rows - use average of both
-					hole.burden = Math.round(((burdenToPrev + burdenToNext) / 2) * 1000) / 1000;
-				}
-			});
-		});
-
-		// Clean up temporary projection properties
-		entityHoles.forEach(function (hole) {
-			delete hole.burdenProjection;
-		});
-
-		// Step 179a) FALLBACK: If all holes have burden=0, use nearest neighbor calculation
-		// This happens when HDBSCAN detects only 1 row or row detection failed
-		var holesWithZeroBurden = entityHoles.filter(function(h) { return h.burden === 0; });
-		if (holesWithZeroBurden.length > 0 && holesWithZeroBurden.length === entityHoles.length) {
-			console.log("Row-based burden calculation failed for " + entityName + " - using nearest neighbor fallback");
-			calculateBurdenFromNearestNeighbors(entityHoles, entityName);
-		}
-
-		console.log("Calculated burden and spacing for " + entityHoles.length + " holes in entity: " + entityName);
-	});
-}
-
-/**
- * CALCULATE BURDEN FROM NEAREST NEIGHBORS
- *
- * Fallback function when row-based burden calculation fails (all holes in same row).
- * Uses the 2nd nearest neighbor distance as burden estimate (1st neighbor is usually
- * the hole in the same row, 2nd neighbor is typically in the adjacent row).
- *
- * @param {Array} entityHoles - Array of holes in the same entity
- * @param {string} entityName - Name of the entity (for logging)
- */
-function calculateBurdenFromNearestNeighbors(entityHoles, entityName) {
-	if (!entityHoles || entityHoles.length < 3) return;
-
-	// Step 1) Find nearest and 2nd nearest neighbor for each hole
-	entityHoles.forEach(function(hole) {
-		var distances = [];
-
-		// Step 2) Calculate distances to all other holes
-		entityHoles.forEach(function(other) {
-			if (other === hole) return;
-			var dx = other.startXLocation - hole.startXLocation;
-			var dy = other.startYLocation - hole.startYLocation;
-			var dist = Math.sqrt(dx * dx + dy * dy);
-			distances.push(dist);
-		});
-
-		// Step 3) Sort distances to find nearest neighbors
-		distances.sort(function(a, b) { return a - b; });
-
-		// Step 4) Use spacing as 1st nearest neighbor (if not already set)
-		if (hole.spacing === 0 && distances.length >= 1) {
-			hole.spacing = Math.round(distances[0] * 1000) / 1000;
-		}
-
-		// Step 5) Use burden as 2nd nearest neighbor distance
-		// The assumption is: 1st NN = spacing (same row), 2nd NN = burden (different row)
-		if (distances.length >= 2) {
-			// Use 2nd nearest as burden estimate
-			hole.burden = Math.round(distances[1] * 1000) / 1000;
-		} else if (distances.length >= 1) {
-			// If only 1 other hole, use same value for both
-			hole.burden = Math.round(distances[0] * 1000) / 1000;
-		}
-	});
-
-	// Step 6) Calculate mode burden/spacing to assign consistent values
-	var allBurdens = entityHoles.map(function(h) { return h.burden; }).filter(function(v) { return v > 0; });
-	var allSpacings = entityHoles.map(function(h) { return h.spacing; }).filter(function(v) { return v > 0; });
-
-	// Step 7) Get mode values with 0.1m tolerance
-	var modeBurden = getModeWithToleranceGeneric(allBurdens, 0.1) || 0;
-	var modeSpacing = getModeWithToleranceGeneric(allSpacings, 0.1) || 0;
-
-	console.log("Nearest neighbor fallback: mode burden=" + modeBurden.toFixed(2) + "m, mode spacing=" + modeSpacing.toFixed(2) + "m for " + entityName);
-}
-
-/**
- * GET MODE WITH TOLERANCE (Generic helper)
- *
- * Helper function to find the most common value in an array, with tolerance binning.
- * @param {Array} values - Array of numeric values
- * @param {number} tolerance - Tolerance for binning values
- * @returns {number|null} The mode value, or null if no values
- */
-function getModeWithToleranceGeneric(values, tolerance) {
-	if (!values || values.length === 0) return null;
-	var bins = {};
-	values.forEach(function(val) {
-		var bin = Math.round(val / tolerance) * tolerance;
-		bins[bin] = (bins[bin] || 0) + 1;
-	});
-	var mode = null;
-	var maxCount = 0;
-	for (var bin in bins) {
-		if (bins[bin] > maxCount) {
-			maxCount = bins[bin];
-			mode = parseFloat(bin);
-		}
-	}
-	return mode;
-}
-
-/**
- * ESTIMATE ROW ORIENTATION
- *
- * Determines the dominant direction along which holes are aligned in rows.
- * Returns compass bearing in degrees (0° = North, 90° = East)
- */
-function estimateRowOrientation(holes) {
-	if (!holes || holes.length < 2) return 0;
-
-	// Use PCA (Principal Component Analysis) to find dominant direction
-	var meanX = 0;
-	var meanY = 0;
-	holes.forEach(function (hole) {
-		meanX += hole.startXLocation;
-		meanY += hole.startYLocation;
-	});
-	meanX /= holes.length;
-	meanY /= holes.length;
-
-	var covarXX = 0;
-	var covarXY = 0;
-	var covarYY = 0;
-
-	holes.forEach(function (hole) {
-		var dx = hole.startXLocation - meanX;
-		var dy = hole.startYLocation - meanY;
-		covarXX += dx * dx;
-		covarXY += dx * dy;
-		covarYY += dy * dy;
-	});
-
-	// Calculate principal direction (eigenvector of covariance matrix)
-	var trace = covarXX + covarYY;
-	var det = covarXX * covarYY - covarXY * covarXY;
-	var eigenvalue1 = (trace + Math.sqrt(trace * trace - 4 * det)) / 2;
-
-	// Principal direction angle
-	var angle;
-	if (Math.abs(covarXY) > 1e-10) {
-		angle = Math.atan2(eigenvalue1 - covarXX, covarXY);
-	} else {
-		angle = covarXX > covarYY ? 0 : Math.PI / 2;
-	}
-
-	// Convert to compass bearing (0° = North, 90° = East)
-	var bearing = 90 - (angle * 180) / Math.PI;
-	if (bearing < 0) bearing += 360;
-	if (bearing >= 360) bearing -= 360;
-
-	return bearing;
-}
-
-/**
- * HDBSCAN-BASED ROW DETECTION (RECOMMENDED APPROACH)
- *
- * This algorithm uses hierarchical density-based clustering to detect rows
- * in blast hole patterns. It's superior to the existing algorithms because:
- * - No need to specify number of rows beforehand
- * - Handles varying row densities automatically
- * - Robust to noise and irregular patterns
- * - Works with any hole naming convention
- */
-
-function detectRowsUsingHDBSCAN(holesData, entityName) {
-	if (!holesData || holesData.length === 0) return false;
-
-	console.log("Using HDBSCAN for row detection on " + holesData.length + " holes");
-
-	// Extract coordinates for clustering
-	const points = holesData.map((hole) => [hole.startXLocation, hole.startYLocation]);
-
-	// Calculate minimum cluster size based on expected holes per row
-	const minClusterSize = Math.max(2, Math.floor(holesData.length / 20)); // Estimate 20 rows max
-
-	// Since we don't have HDBSCAN library, we'll implement a simplified version
-	// In production, use: import { HDBSCAN } from 'hdbscan-js';
-	const clusters = simplifiedHDBSCAN(points, minClusterSize);
-
-	// Convert clusters to row assignments
-	assignClustersToRows(holesData, clusters, entityName);
-
-	console.log("HDBSCAN detected " + clusters.length + " rows");
-	return clusters.length > 0;
-}
-
-/**
- * SIMPLIFIED HDBSCAN IMPLEMENTATION
- *
- * This is a simplified version for demonstration. In production,
- * use a proper HDBSCAN library like hdbscan-js or sklearn in Python
- */
-function simplifiedHDBSCAN(points, minClusterSize) {
-	// Step 1: Calculate distance matrix
-	const distances = calculateDistanceMatrix(points);
-
-	// Step 2: Build minimum spanning tree based on mutual reachability
-	const mst = buildMinimumSpanningTree(points, distances, minClusterSize);
-
-	// Step 3: Build cluster hierarchy
-	const hierarchy = buildClusterHierarchy(mst);
-
-	// Step 4: Extract stable clusters
-	const clusters = extractStableClusters(hierarchy, minClusterSize);
-
-	return clusters;
-}
-
-/**
- * SIMPLIFIED HDBSCAN WITH DISTANCE MATRIX
- *
- * This function runs HDBSCAN clustering using a pre-calculated distance matrix
- * instead of calculating distances from point coordinates.
- *
- * @param {Array<Array<number>>} distanceMatrix - Pre-calculated n?n distance matrix
- * @param {number} minClusterSize - Minimum number of points required to form a cluster
- * @returns {Array<Array<number>>} Array of clusters, where each cluster is an array of point indices
- */
-function simplifiedHDBSCANWithDistanceMatrix(distanceMatrix, minClusterSize) {
-	// Step 2) Validate input parameters
-	if (!distanceMatrix || !Array.isArray(distanceMatrix) || distanceMatrix.length === 0) {
-		console.warn("Invalid distance matrix provided to simplifiedHDBSCANWithDistanceMatrix");
-		return [];
-	}
-
-	const n = distanceMatrix.length;
-
-	// Step 3) Validate that distance matrix is square
-	if (distanceMatrix.some((row) => !Array.isArray(row) || row.length !== n)) {
-		console.warn("Distance matrix is not square or properly formatted");
-		return [];
-	}
-
-	console.log("Running HDBSCAN with pre-calculated " + n + "×" + n + " distance matrix");
-
-	// Step 4) Build minimum spanning tree using the provided distance matrix
-	const mst = buildMinimumSpanningTreeFromMatrix(distanceMatrix, minClusterSize);
-
-	// Step 5) Build cluster hierarchy using existing function
-	const hierarchy = buildClusterHierarchy(mst);
-
-	// Step 6) Extract stable clusters using existing function
-	const clusters = extractStableClusters(hierarchy, minClusterSize);
-
-	console.log("HDBSCAN with distance matrix detected " + clusters.length + " clusters");
-	return clusters;
-}
-
-/**
- * BUILD MINIMUM SPANNING TREE FROM DISTANCE MATRIX
- *
- * Step 1) This is a variant of the existing buildMinimumSpanningTree function
- * that works with a pre-calculated distance matrix instead of calculating distances.
- *
- * @param {Array<Array<number>>} distanceMatrix - Pre-calculated n?n distance matrix
- * @param {number} minPts - Minimum points parameter for core distance calculation
- * @returns {Array<Object>} Minimum spanning tree edges with {from, to, weight} structure
- */
-function buildMinimumSpanningTreeFromMatrix(distanceMatrix, minPts) {
-	const n = distanceMatrix.length;
-	const edges = [];
-
-	// Step 2) Calculate core distances (distance to k-th nearest neighbor)
-	const coreDistances = [];
-	for (let i = 0; i < n; i++) {
-		// Step 3) Get all distances for point i and sort them
-		const dists = distanceMatrix[i].slice(); // Copy the row
-		dists.sort((a, b) => a - b);
-
-		// Step 4) Use k-th nearest neighbor distance as core distance
-		// Ensure we don't exceed array bounds
-		const kIndex = Math.min(minPts, dists.length - 1);
-		coreDistances[i] = dists[kIndex];
-	}
-
-	// Step 5) Calculate mutual reachability distances and create edges
-	for (let i = 0; i < n; i++) {
-		for (let j = i + 1; j < n; j++) {
-			// Step 6) Mutual reachability is the maximum of:
-			// - Core distance of point i
-			// - Core distance of point j
-			// - Direct distance between points i and j
-			const mutualReachability = Math.max(coreDistances[i], coreDistances[j], distanceMatrix[i][j]);
-
-			edges.push({
-				from: i,
-				to: j,
-				weight: mutualReachability,
-			});
-		}
-	}
-
-	// Step 7) Sort edges by weight (Kruskal's algorithm)
-	edges.sort((a, b) => a.weight - b.weight);
-
-	// Step 8) Build MST using Union-Find algorithm
-	const parent = Array(n)
-		.fill()
-		.map((_, i) => i);
-	const mst = [];
-
-	// Step 9) Union-Find helper functions
-	function find(x) {
-		if (parent[x] !== x) {
-			parent[x] = find(parent[x]); // Path compression
-		}
-		return parent[x];
-	}
-
-	function union(x, y) {
-		const px = find(x);
-		const py = find(y);
-		if (px !== py) {
-			parent[px] = py;
-			return true;
-		}
-		return false;
-	}
-
-	// Step 10) Build MST by adding edges that don't create cycles
-	for (const edge of edges) {
-		if (union(edge.from, edge.to)) {
-			mst.push(edge);
-			// Step 11) Stop when we have n-1 edges (complete spanning tree)
-			if (mst.length === n - 1) break;
-		}
-	}
-
-	console.log("Built MST from distance matrix with " + mst.length + " edges");
-	return mst;
-}
-
-function calculateDistanceMatrix(points) {
-	const n = points.length;
-	const distances = Array(n)
-		.fill()
-		.map(() => Array(n).fill(0));
-
-	for (let i = 0; i < n; i++) {
-		for (let j = i + 1; j < n; j++) {
-			const dx = points[i][0] - points[j][0];
-			const dy = points[i][1] - points[j][1];
-			const dist = Math.sqrt(dx * dx + dy * dy);
-			distances[i][j] = distances[j][i] = dist;
-		}
-	}
-
-	return distances;
-}
-
-function buildMinimumSpanningTree(points, distances, minPts) {
-	const n = points.length;
-	const edges = [];
-
-	// Calculate core distances (distance to k-th nearest neighbor)
-	const coreDistances = points.map((point, i) => {
-		const dists = distances[i].slice();
-		dists.sort((a, b) => a - b);
-		return dists[minPts]; // k-th nearest neighbor distance
-	});
-
-	// Calculate mutual reachability distances and create edges
-	for (let i = 0; i < n; i++) {
-		for (let j = i + 1; j < n; j++) {
-			const mutualReachability = Math.max(coreDistances[i], coreDistances[j], distances[i][j]);
-			edges.push({ from: i, to: j, weight: mutualReachability });
-		}
-	}
-
-	// Sort edges by weight (Kruskal's algorithm)
-	edges.sort((a, b) => a.weight - b.weight);
-
-	// Build MST using Union-Find
-	const parent = Array(n)
-		.fill()
-		.map((_, i) => i);
-	const mst = [];
-
-	function find(x) {
-		if (parent[x] !== x) {
-			parent[x] = find(parent[x]);
-		}
-		return parent[x];
-	}
-
-	function union(x, y) {
-		const px = find(x);
-		const py = find(y);
-		if (px !== py) {
-			parent[px] = py;
-			return true;
-		}
-		return false;
-	}
-
-	for (const edge of edges) {
-		if (union(edge.from, edge.to)) {
-			mst.push(edge);
-			if (mst.length === n - 1) break;
-		}
-	}
-
-	return mst;
-}
-
-function buildClusterHierarchy(mst) {
-	// Sort MST edges by weight (reverse order for hierarchy building)
-	const sortedEdges = mst.slice().sort((a, b) => b.weight - a.weight);
-
-	const hierarchy = [];
-	const components = new Map();
-	let nextClusterId = 0;
-
-	// Initialize each point as its own component
-	for (const edge of mst) {
-		if (!components.has(edge.from)) components.set(edge.from, [edge.from]);
-		if (!components.has(edge.to)) components.set(edge.to, [edge.to]);
-	}
-
-	// Build hierarchy by merging components
-	for (const edge of sortedEdges) {
-		const comp1 = components.get(edge.from);
-		const comp2 = components.get(edge.to);
-
-		if (comp1 && comp2 && comp1 !== comp2) {
-			const merged = [...comp1, ...comp2];
-			const clusterId = nextClusterId++;
-
-			hierarchy.push({
-				id: clusterId,
-				points: merged,
-				distance: edge.weight,
-				children: [comp1, comp2],
-			});
-
-			// Update component references
-			for (const point of merged) {
-				components.set(point, merged);
-			}
-		}
-	}
-
-	return hierarchy;
-}
-
-function extractStableClusters(hierarchy, minClusterSize) {
-	// Simplified cluster extraction - select clusters with good stability
-	const clusters = [];
-	const processed = new Set();
-
-	// Sort by cluster size and distance for stability
-	const candidates = hierarchy
-		.filter((cluster) => cluster.points.length >= minClusterSize)
-		.sort((a, b) => {
-			// Prefer larger clusters with smaller distances (more stable)
-			const stabilityA = a.points.length / (1 + a.distance);
-			const stabilityB = b.points.length / (1 + b.distance);
-			return stabilityB - stabilityA;
-		});
-
-	for (const candidate of candidates) {
-		// Check if any points are already assigned to a cluster
-		if (!candidate.points.some((point) => processed.has(point))) {
-			clusters.push(candidate.points);
-			for (const point of candidate.points) {
-				processed.add(point);
-			}
-		}
-	}
-
-	return clusters;
-}
-
-/**
- * ENHANCED GRID-BASED CLUSTERING (ALTERNATIVE APPROACH)
- *
- * This algorithm uses an adaptive grid structure to detect rows,
- * inspired by spatial co-location pattern mining techniques
- */
-function detectRowsUsingAdaptiveGrid(holesData, entityName) {
-	if (!holesData || holesData.length === 0) return false;
-
-	console.log("Using Adaptive Grid clustering for row detection");
-
-	// Calculate bounding box and optimal grid size
-	const bounds = calculateBounds(holesData);
-	const gridSize = estimateOptimalGridSize(holesData, bounds);
-
-	// Create adaptive grid
-	const grid = createAdaptiveGrid(holesData, bounds, gridSize);
-
-	// Find connected components in grid
-	const components = findGridComponents(grid);
-
-	// Convert components to rows
-	const rows = componentsToRows(components, holesData);
-
-	// Assign row IDs
-	const startingRowID = getNextRowID(entityName);
-	rows.forEach((row, index) => {
-		const rowID = startingRowID + index;
-		row.forEach((hole, pos) => {
-			hole.rowID = rowID;
-			hole.posID = pos + 1;
-		});
-	});
-
-	console.log("Adaptive Grid detected " + rows.length + " rows");
-	return rows.length > 0;
-}
-
-function calculateBounds(holesData) {
-	const xs = holesData.map((h) => h.startXLocation);
-	const ys = holesData.map((h) => h.startYLocation);
-
-	return {
-		minX: Math.min(...xs),
-		maxX: Math.max(...xs),
-		minY: Math.min(...ys),
-		maxY: Math.max(...ys),
-	};
-}
-
-function estimateOptimalGridSize(holesData, bounds) {
-	// Estimate grid size based on average hole spacing
-	const distances = [];
-
-	for (let i = 0; i < holesData.length; i++) {
-		for (let j = i + 1; j < holesData.length; j++) {
-			const dx = holesData[i].startXLocation - holesData[j].startXLocation;
-			const dy = holesData[i].startYLocation - holesData[j].startYLocation;
-			const dist = Math.sqrt(dx * dx + dy * dy);
-			distances.push(dist);
-		}
-	}
-
-	distances.sort((a, b) => a - b);
-
-	// Use median of shortest 10% of distances as grid size
-	const shortDistances = distances.slice(0, Math.floor(distances.length * 0.1));
-	const medianSpacing = shortDistances[Math.floor(shortDistances.length / 2)];
-
-	return medianSpacing * 1.5; // 1.5x median spacing for grid size
-}
-
-function createAdaptiveGrid(holesData, bounds, gridSize) {
-	const grid = new Map();
-
-	holesData.forEach((hole, index) => {
-		const cellX = Math.floor((hole.startXLocation - bounds.minX) / gridSize);
-		const cellY = Math.floor((hole.startYLocation - bounds.minY) / gridSize);
-		const key = cellX + "," + cellY;
-
-		if (!grid.has(key)) {
-			grid.set(key, []);
-		}
-		grid.get(key).push({ hole, index });
-	});
-
-	return grid;
-}
-
-function findGridComponents(grid) {
-	const visited = new Set();
-	const components = [];
-
-	for (const [cellKey, holes] of grid) {
-		if (!visited.has(cellKey) && holes.length > 0) {
-			const component = [];
-			const queue = [cellKey];
-			visited.add(cellKey);
-
-			while (queue.length > 0) {
-				const currentKey = queue.shift();
-				const currentHoles = grid.get(currentKey) || [];
-				component.push(...currentHoles);
-
-				// Check adjacent cells
-				const [x, y] = currentKey.split(",").map(Number);
-				const neighbors = [
-					[x - 1, y],
-					[x + 1, y],
-					[x, y - 1],
-					[x, y + 1], // 4-connected
-					[x - 1, y - 1],
-					[x - 1, y + 1],
-					[x + 1, y - 1],
-					[x + 1, y + 1], // 8-connected
-				];
-
-				for (const [nx, ny] of neighbors) {
-					const neighborKey = nx + "," + ny;
-					if (grid.has(neighborKey) && !visited.has(neighborKey)) {
-						visited.add(neighborKey);
-						queue.push(neighborKey);
-					}
-				}
-			}
-
-			if (component.length > 0) {
-				components.push(component);
-			}
-		}
-	}
-
-	return components;
-}
-
-function componentsToRows(components, holesData) {
-	return components.map((component) => {
-		// Sort holes within component by position along dominant axis
-		const holes = component.map((item) => item.hole);
-
-		// Determine dominant direction for sorting
-		const direction = estimateRowDirection(holes);
-
-		// Sort holes along the row direction
-		holes.sort((a, b) => {
-			const projA = a.startXLocation * Math.cos(direction) + a.startYLocation * Math.sin(direction);
-			const projB = b.startXLocation * Math.cos(direction) + b.startYLocation * Math.sin(direction);
-			return projA - projB;
-		});
-
-		return holes;
-	});
-}
-
-function estimateRowDirection(holes) {
-	if (holes.length < 2) return 0;
-
-	// Use PCA to find principal direction
-	const meanX = holes.reduce((sum, h) => sum + h.startXLocation, 0) / holes.length;
-	const meanY = holes.reduce((sum, h) => sum + h.startYLocation, 0) / holes.length;
-
-	let covarXX = 0,
-		covarXY = 0,
-		covarYY = 0;
-
-	holes.forEach((hole) => {
-		const dx = hole.startXLocation - meanX;
-		const dy = hole.startYLocation - meanY;
-		covarXX += dx * dx;
-		covarXY += dx * dy;
-		covarYY += dy * dy;
-	});
-
-	// Calculate principal direction (eigenvector of covariance matrix)
-	const trace = covarXX + covarYY;
-	const det = covarXX * covarYY - covarXY * covarXY;
-	const eigenvalue1 = (trace + Math.sqrt(trace * trace - 4 * det)) / 2;
-
-	// Principal direction angle
-	if (Math.abs(covarXY) > 1e-10) {
-		return Math.atan2(eigenvalue1 - covarXX, covarXY);
-	} else {
-		return covarXX > covarYY ? 0 : Math.PI / 2;
-	}
-}
-
-// Helper function to assign clusters to rows
-function assignClustersToRows(holesData, clusters, entityName) {
-	const startingRowID = getNextRowID(entityName);
-
-	clusters.forEach((cluster, clusterIndex) => {
-		const rowID = startingRowID + clusterIndex;
-		const rowHoles = cluster.map((pointIndex) => holesData[pointIndex]);
-
-		// Sort holes within row by spatial position
-		const direction = estimateRowDirection(rowHoles);
-		rowHoles.sort((a, b) => {
-			const projA = a.startXLocation * Math.cos(direction) + a.startYLocation * Math.sin(direction);
-			const projB = b.startXLocation * Math.cos(direction) + b.startYLocation * Math.sin(direction);
-			return projA - projB;
-		});
-
-		// Assign row and position IDs
-		rowHoles.forEach((hole, pos) => {
-			hole.rowID = rowID;
-			hole.posID = pos + 1;
-		});
-	});
-}
-
-/**
- * UPDATED SMART ROW DETECTION WITH SEQUENCE PRIORITY
- *
- * This maintains the priority of sequential hole numbering while using
- * better algorithms when sequence-based detection fails.
- * 
- * Priority order matches reference file for-reference-kirra.js
- */
-function improvedSmartRowDetection(holesData, entityName) {
-	if (!holesData || holesData.length === 0) return;
-
-	console.log("Improved smart row detection for " + holesData.length + " holes in entity: " + entityName);
-
-	// METHOD 1: ALWAYS TRY SEQUENCE-BASED DETECTION FIRST (HIGHEST PRIORITY)
-	// This respects the drilling order and numbered patterns which are most reliable
-	// Uses line fitting algorithm to detect collinear sequences of holes
-	if (trySequenceBasedDetection(holesData, entityName)) {
-		console.log("Used sequence-based row detection (PRIORITY METHOD)");
-		return;
-	}
-
-	// METHOD 2: Enhanced spatial detection with sequence weighting
-	// Use HDBSCAN but weight points based on sequence proximity
-	if (detectRowsUsingSequenceWeightedHDBSCAN(holesData, entityName)) {
-		console.log("Used sequence-weighted HDBSCAN row detection");
-		return;
-	}
-
-	// METHOD 3: Try pure spatial HDBSCAN (when sequence is completely random)
-	if (detectRowsUsingHDBSCAN(holesData, entityName)) {
-		console.log("Used pure spatial HDBSCAN row detection");
-		return;
-	}
-
-	// METHOD 4: Try Adaptive Grid clustering
-	if (detectRowsUsingAdaptiveGrid(holesData, entityName)) {
-		console.log("Used Adaptive Grid row detection");
-		return;
-	}
-
-	// METHOD 5: Fallback to bearing-based detection
-	useBearingBasedDetection(holesData, entityName);
-	console.log("Used bearing-based spatial detection as fallback");
-}
-
-/**
- * SEQUENCE-WEIGHTED HDBSCAN
- *
- * This combines the power of HDBSCAN with respect for hole numbering sequence.
- * Points that are close in sequence get a distance penalty reduction, making
- * them more likely to cluster together even if slightly farther apart spatially.
- */
-function detectRowsUsingSequenceWeightedHDBSCAN(holesData, entityName) {
-	if (!holesData || holesData.length === 0) return false;
-
-	console.log("Using Sequence-Weighted HDBSCAN for row detection");
-
-	// First, try to extract numeric sequence from hole IDs
-	const sequenceInfo = extractSequenceInformation(holesData);
-
-	if (!sequenceInfo.hasValidSequence) {
-		console.log("No valid sequence found, falling back to pure spatial HDBSCAN");
-		return false;
-	}
-
-	// Create distance matrix that considers both spatial and sequence proximity
-	const weightedDistances = calculateSequenceWeightedDistances(holesData, sequenceInfo);
-
-	// Run HDBSCAN with the weighted distances
-	const minClusterSize = Math.max(2, Math.floor(holesData.length / 20));
-	const clusters = simplifiedHDBSCANWithDistanceMatrix(weightedDistances, minClusterSize);
-
-	// Post-process clusters to respect sequence order within rows
-	const orderedClusters = orderClustersbySequence(clusters, holesData, sequenceInfo);
-
-	// Assign to rows
-	assignOrderedClustersToRows(holesData, orderedClusters, entityName);
-
-	console.log("Sequence-Weighted HDBSCAN detected " + orderedClusters.length + " rows");
-	return orderedClusters.length > 0;
-}
-
-/**
- * EXTRACT SEQUENCE INFORMATION
- *
- * Analyzes hole IDs to determine if there's a meaningful sequence that should
- * be preserved during clustering
- */
-function extractSequenceInformation(holesData) {
-	let numericCount = 0;
-	let alphaNumericCount = 0;
-	let otherCount = 0;
-	const sequenceMap = new Map(); // Maps holeID to sequence number
-
-	// Analyze hole ID patterns (same as your existing logic)
-	holesData.forEach((hole, index) => {
-		if (/^\d+$/.test(hole.holeID)) {
-			numericCount++;
-			sequenceMap.set(hole.holeID, parseInt(hole.holeID));
-		} else if (/^[A-Z]+\d+$/i.test(hole.holeID)) {
-			alphaNumericCount++;
-			// For alphanumeric, use the numeric part as sequence
-			const match = hole.holeID.match(/(\d+)$/);
-			if (match) {
-				sequenceMap.set(hole.holeID, parseInt(match[1]));
-			}
-		} else {
-			otherCount++;
-			// For other patterns, use index as sequence
-			sequenceMap.set(hole.holeID, index);
-		}
-	});
-
-	// Determine if we have a valid sequence
-	const hasValidSequence =
-		numericCount > holesData.length * 0.7 || // 70% numeric
-		alphaNumericCount > holesData.length * 0.7; // 70% alphanumeric
-
-	console.log("Sequence analysis:", {
-		numeric: numericCount,
-		alphaNumeric: alphaNumericCount,
-		other: otherCount,
-		hasValidSequence: hasValidSequence,
-	});
-
-	return {
-		hasValidSequence,
-		sequenceMap,
-		totalHoles: holesData.length,
-	};
-}
-
-/**
- * CALCULATE SEQUENCE-WEIGHTED DISTANCES
- *
- * Modifies spatial distances to give preference to holes that are close
- * in the numbering sequence, making them more likely to cluster together
- */
-function calculateSequenceWeightedDistances(holesData, sequenceInfo) {
-	const n = holesData.length;
-	const distances = Array(n)
-		.fill()
-		.map(() => Array(n).fill(0));
-
-	// Get sequence numbers for all holes
-	const sequences = holesData.map((hole) => sequenceInfo.sequenceMap.get(hole.holeID) || 0);
-	const maxSequenceDiff = Math.max(...sequences) - Math.min(...sequences);
-
-	for (let i = 0; i < n; i++) {
-		for (let j = i + 1; j < n; j++) {
-			// Calculate spatial distance
-			const dx = holesData[i].startXLocation - holesData[j].startXLocation;
-			const dy = holesData[i].startYLocation - holesData[j].startYLocation;
-			const spatialDistance = Math.sqrt(dx * dx + dy * dy);
-
-			// Calculate sequence distance (normalized)
-			const sequenceDiff = Math.abs(sequences[i] - sequences[j]);
-			const normalizedSequenceDiff = sequenceDiff / maxSequenceDiff;
-
-			// SEQUENCE WEIGHTING FORMULA:
-			// - If holes are close in sequence (low sequenceDiff), reduce distance
-			// - If holes are far in sequence (high sequenceDiff), increase distance
-			// - Weight factor controls how much sequence matters vs spatial distance
-			const sequenceWeight = 0.3; // 30% influence from sequence
-			const sequencePenalty = 1 + sequenceWeight * normalizedSequenceDiff;
-			const sequenceBonus = Math.max(0.5, 1 - sequenceWeight * Math.exp(-sequenceDiff / 5));
-
-			// Apply sequence weighting
-			let weightedDistance;
-			if (sequenceDiff <= 3) {
-				// Holes very close in sequence get a distance bonus
-				weightedDistance = spatialDistance * sequenceBonus;
-			} else {
-				// Holes far in sequence get a distance penalty
-				weightedDistance = spatialDistance * sequencePenalty;
-			}
-
-			distances[i][j] = distances[j][i] = weightedDistance;
-		}
-	}
-
-	return distances;
-}
-
-/**
- * ORDER CLUSTERS BY SEQUENCE
- *
- * After clustering, ensure holes within each cluster are ordered by sequence
- */
-function orderClustersbySequence(clusters, holesData, sequenceInfo) {
-	return clusters.map((cluster) => {
-		// Get holes in this cluster
-		const clusterHoles = cluster.map((index) => ({
-			hole: holesData[index],
-			index: index,
-			sequence: sequenceInfo.sequenceMap.get(holesData[index].holeID) || 0,
-		}));
-
-		// Sort by sequence number
-		clusterHoles.sort((a, b) => a.sequence - b.sequence);
-
-		return clusterHoles.map((item) => item.index);
-	});
-}
-
-/**
- * ASSIGN ORDERED CLUSTERS TO ROWS
- *
- * Assigns cluster results to rows while preserving sequence order
- */
-function assignOrderedClustersToRows(holesData, orderedClusters, entityName) {
-	const startingRowID = getNextRowID(entityName);
-
-	orderedClusters.forEach((cluster, clusterIndex) => {
-		const rowID = startingRowID + clusterIndex;
-
-		cluster.forEach((holeIndex, positionInRow) => {
-			const hole = holesData[holeIndex];
-			hole.rowID = rowID;
-			hole.posID = positionInRow + 1; // Position respects sequence order
-		});
-
-		console.log("Row " + rowID + " has " + cluster.length + " holes in sequence order");
-	});
-}
-
-/**
- * ENHANCED SEQUENCE-BASED DETECTION (REPLACES YOUR EXISTING VERSION)
- *
- * This improves your existing trySequenceBasedDetection with better algorithms
- * while maintaining the priority of sequential numbering
- */
-function enhancedSequenceBasedDetection(holesData, entityName) {
-	// Same pattern analysis as your original code
-	let numericCount = 0;
-	let alphaNumericCount = 0;
-	let otherCount = 0;
-
-	holesData.forEach((hole) => {
-		if (/^\d+$/.test(hole.holeID)) {
-			numericCount++;
-		} else if (/^[A-Z]+\d+$/i.test(hole.holeID)) {
-			alphaNumericCount++;
-		} else {
-			otherCount++;
-		}
-	});
-
-	console.log("Enhanced sequence analysis:", {
-		numeric: numericCount,
-		alphaNumeric: alphaNumericCount,
-		other: otherCount,
-	});
-
-	// CASE 1: All alphanumeric (keep your existing logic)
-	if (alphaNumericCount === holesData.length) {
-		console.log("All holes are alphanumeric - analyzing pattern");
-		return handleAlphaNumericHoles(holesData, entityName);
-	}
-
-	// CASE 2: Mixed patterns - improved handling
-	if (numericCount > 0 && alphaNumericCount > 0) {
-		console.log("Mixed numeric and alphanumeric pattern detected");
-		return handleMixedSequencePattern(holesData, entityName);
-	}
-
-	// CASE 3: Pure numeric - enhanced algorithms
-	const numericHoles = holesData
-		.map((hole) => ({ hole, num: parseInt(hole.holeID) }))
-		.filter((item) => !isNaN(item.num))
-		.sort((a, b) => a.num - b.num);
-
-	if (numericHoles.length !== holesData.length || numericHoles.length < 4) {
-		return false; // Not suitable for sequence-based detection
-	}
-
-	// Check sequence continuity with gap tolerance
-	const gaps = analyzeSequenceGaps(numericHoles);
-
-	if (gaps.hasReasonablePattern) {
-		console.log("Using enhanced sequence-based detection with gap tolerance");
-		return enhancedSequentialDetection(numericHoles, entityName, gaps);
-	}
-
-	return false; // Fall back to spatial detection
-}
-
-/**
- * ANALYZE SEQUENCE GAPS
- *
- * Determines if the numeric sequence has a reasonable pattern even with gaps
- */
-function analyzeSequenceGaps(numericHoles) {
-	const numbers = numericHoles.map((item) => item.num);
-	const gaps = [];
-
-	for (let i = 1; i < numbers.length; i++) {
-		gaps.push(numbers[i] - numbers[i - 1]);
-	}
-
-	// Analyze gap pattern
-	const gapCounts = {};
-	gaps.forEach((gap) => {
-		gapCounts[gap] = (gapCounts[gap] || 0) + 1;
-	});
-
-	const uniqueGaps = Object.keys(gapCounts)
-		.map(Number)
-		.sort((a, b) => a - b);
-	const mostCommonGap = uniqueGaps.reduce((a, b) => (gapCounts[a] > gapCounts[b] ? a : b));
-	const gapVariability = uniqueGaps.length;
-
-	// Consider pattern reasonable if:
-	// - Most common gap is 1 (consecutive numbering)
-	// - OR gaps are small and consistent (like 1,2,1,2,1...)
-	// - OR large gaps but very consistent (like 10,10,10... for every 10th hole)
-	const hasReasonablePattern =
-		mostCommonGap === 1 || // Mostly consecutive
-		(gapVariability <= 3 && Math.max(...uniqueGaps) <= 5) || // Small, consistent gaps
-		(gapVariability === 1 && gaps.length > 5); // Very consistent larger gaps
-
-	console.log("Gap analysis:", {
-		gaps: gaps.slice(0, 10), // First 10 gaps
-		mostCommonGap,
-		gapVariability,
-		hasReasonablePattern,
-	});
-
-	return {
-		hasReasonablePattern,
-		mostCommonGap,
-		gaps,
-		gapVariability,
-	};
-}
-
-/**
- * ENHANCED SEQUENTIAL DETECTION
- *
- * Uses improved algorithms while respecting sequence order
- */
-function enhancedSequentialDetection(numericHoles, entityName, gapInfo) {
-	// Choose algorithm based on gap pattern
-	if (gapInfo.mostCommonGap === 1 && gapInfo.gapVariability <= 2) {
-		// Mostly consecutive - use improved line fitting
-		console.log("Using improved sequential line fitting");
-		return improvedSequentialLineFitting(numericHoles, entityName);
-	} else if (gapInfo.gapVariability === 1) {
-		// Consistent gaps - use pattern-based detection
-		console.log("Using pattern-based detection for consistent gaps");
-		return patternBasedSequentialDetection(numericHoles, entityName, gapInfo.mostCommonGap);
-	} else {
-		// Irregular gaps - use sequence-aware spatial clustering
-		console.log("Using sequence-aware spatial clustering for irregular gaps");
-		return sequenceAwareSpatialClustering(numericHoles, entityName);
-	}
-}
-
-/**
- * PATTERN-BASED SEQUENTIAL DETECTION
- *
- * For holes with consistent gaps (like every 5th hole: 5,10,15,20...)
- */
-function patternBasedSequentialDetection(numericHoles, entityName, pattern) {
-	const tolerance = calculateAdaptiveTolerance(numericHoles);
-	const rows = [];
-	const used = new Set();
-
-	// Group holes by their position in the pattern cycle
-	const patternGroups = new Map();
-
-	numericHoles.forEach((item, index) => {
-		const patternPosition = item.num % pattern;
-		if (!patternGroups.has(patternPosition)) {
-			patternGroups.set(patternPosition, []);
-		}
-		patternGroups.get(patternPosition).push({ item, index });
-	});
-
-	// Process each pattern group as potential rows
-	for (const [position, group] of patternGroups) {
-		if (group.length >= 2) {
-			// Test if this group forms good spatial rows
-			const groupItems = group.map((g) => g.item);
-			const spatialRows = detectSpatialRowsInGroup(groupItems, tolerance);
-
-			spatialRows.forEach((row) => {
-				if (row.length >= 2) {
-					rows.push(row);
-					row.forEach((hole) => {
-						const originalIndex = numericHoles.indexOf(hole);
-						if (originalIndex !== -1) used.add(originalIndex);
-					});
-				}
-			});
-		}
-	}
-
-	// Handle remaining holes
-	for (let i = 0; i < numericHoles.length; i++) {
-		if (!used.has(i)) {
-			rows.push([numericHoles[i]]);
-		}
-	}
-
-	// Assign row IDs
-	const startingRowID = getNextRowID(entityName);
-	rows.forEach((row, rowIndex) => {
-		const rowID = startingRowID + rowIndex;
-		row.forEach((item, posIndex) => {
-			item.hole.rowID = rowID;
-			item.hole.posID = posIndex + 1;
-		});
-	});
-
-	console.log("Pattern-based detection found " + rows.length + " rows");
-	return rows.length > 0;
-}
-
-/**
- * HANDLE MIXED SEQUENCE PATTERNS
- *
- * Better handling for mixed numeric/alphanumeric patterns while preserving sequence
- */
-function handleMixedSequencePattern(holesData, entityName) {
-	console.log("Enhanced mixed pattern handling");
-
-	// Create unified sequence that preserves the original intent
-	const sequencedHoles = createUnifiedSequence(holesData);
-
-	// Try to detect patterns in the unified sequence
-	if (sequencedHoles.hasValidPattern) {
-		return enhancedSequentialDetection(sequencedHoles.holes, entityName, sequencedHoles.gapInfo);
-	}
-
-	// If no valid pattern, use sequence-weighted spatial clustering
-	console.log("No clear pattern, using sequence-weighted spatial clustering");
-	return detectRowsUsingSequenceWeightedHDBSCAN(holesData, entityName);
-}
-
-function createUnifiedSequence(holesData) {
-	// Separate holes by type and create logical ordering
-	const numericHoles = [];
-	const alphaNumericHoles = [];
-	const otherHoles = [];
-
-	holesData.forEach((hole, index) => {
-		if (/^\d+$/.test(hole.holeID)) {
-			numericHoles.push({
-				hole,
-				num: parseInt(hole.holeID),
-				originalIndex: index,
-			});
-		} else if (/^[A-Z]+\d+$/i.test(hole.holeID)) {
-			const match = hole.holeID.match(/^([A-Z]+)(\d+)$/i);
-			if (match) {
-				alphaNumericHoles.push({
-					hole,
-					letter: match[1],
-					num: parseInt(match[2]),
-					originalIndex: index,
-				});
-			}
-		} else {
-			otherHoles.push({ hole, num: index, originalIndex: index });
-		}
-	});
-
-	// Create unified sequence
-	let unifiedSequence = [];
-	let counter = 1;
-
-	// Add numeric holes first (sorted)
-	numericHoles.sort((a, b) => a.num - b.num);
-	numericHoles.forEach((item) => {
-		unifiedSequence.push({ hole: item.hole, num: counter++ });
-	});
-
-	// Add alphanumeric holes (sorted by letter then number)
-	alphaNumericHoles.sort((a, b) => {
-		if (a.letter !== b.letter) {
-			return a.letter.localeCompare(b.letter);
-		}
-		return a.num - b.num;
-	});
-	alphaNumericHoles.forEach((item) => {
-		unifiedSequence.push({ hole: item.hole, num: counter++ });
-	});
-
-	// Add other holes last
-	otherHoles.forEach((item) => {
-		unifiedSequence.push({ hole: item.hole, num: counter++ });
-	});
-
-	// Analyze the unified sequence
-	const gapInfo = analyzeSequenceGaps(unifiedSequence);
-
-	return {
-		holes: unifiedSequence,
-		hasValidPattern: gapInfo.hasReasonablePattern,
-		gapInfo,
-	};
-}
-
-// #endregion HDBSCAN-ROW-DETECTION
 
 //---------------- END CUSTOM STRUCTURED CSV IMPORTER ----------------//
 // #endregion CUSTOM CSV
@@ -42226,10 +40469,10 @@ async function generatePatternInPolygon(patternSettings) {
 			patternProgressDialog.show();
 
 			// Wait for DOM to render
-			await new Promise(function(resolve) { setTimeout(resolve, 100); });
+			await new Promise(function (resolve) { setTimeout(resolve, 100); });
 			patternProgressBar = document.getElementById(patternProgressId + "_bar");
 			patternProgressText = document.getElementById(patternProgressId + "_text");
-			await new Promise(function(resolve) { requestAnimationFrame(resolve); });
+			await new Promise(function (resolve) { requestAnimationFrame(resolve); });
 		} catch (err) {
 			console.error("Failed to create pattern progress dialog:", err);
 		}
@@ -42308,7 +40551,7 @@ async function generatePatternInPolygon(patternSettings) {
 
 			// Yield to browser every few rows to allow UI update
 			if (rowIndex % 5 === 0) {
-				await new Promise(function(resolve) { setTimeout(resolve, 10); });
+				await new Promise(function (resolve) { setTimeout(resolve, 10); });
 			}
 		}
 	}
@@ -42320,7 +40563,7 @@ async function generatePatternInPolygon(patternSettings) {
 			patternProgressBar.style.backgroundColor = "#4CAF50"; // Green for complete
 			patternProgressText.textContent = "Complete: " + holesProcessed + " holes generated";
 		}
-		await new Promise(function(resolve) { setTimeout(resolve, 500); });
+		await new Promise(function (resolve) { setTimeout(resolve, 500); });
 		patternProgressDialog.close();
 	}
 
@@ -47677,28 +45920,28 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 	if (loadedSurfaces && loadedSurfaces.size > 0 && tr && tr.surfaceMeshMap) {
 		// Step 3c.1) Collect visible surface meshes with BVH
 		var surfaceMeshes = [];
-		tr.surfaceMeshMap.forEach(function(mesh, surfaceId) {
+		tr.surfaceMeshMap.forEach(function (mesh, surfaceId) {
 			var surface = loadedSurfaces.get(surfaceId);
 			if (mesh && mesh.visible && surface && surface.visible) {
 				surfaceMeshes.push({ mesh: mesh, surfaceId: surfaceId, surface: surface });
 			}
 		});
-		
+
 		// Step 3c.2) Raycast against surface meshes (BVH-accelerated via three-mesh-bvh)
 		if (surfaceMeshes.length > 0 && im && im.raycaster) {
 			// Step 3c.2a) CRITICAL: Set raycaster ray to match the passed-in ray parameters
 			// The raycaster's internal ray may be stale or different from the ray we're snapping with
 			im.raycaster.ray.origin.set(rayOrigin.x, rayOrigin.y, rayOrigin.z);
 			im.raycaster.ray.direction.set(rayDirection.x, rayDirection.y, rayDirection.z);
-			
-			var meshArray = surfaceMeshes.map(function(item) { return item.mesh; });
+
+			var meshArray = surfaceMeshes.map(function (item) { return item.mesh; });
 			var surfaceHits = im.raycaster.intersectObjects(meshArray, true);
-			
+
 			// Step 3c.3) Process hits - add SURFACE_FACE and SURFACE_POINT candidates
 			for (var hi = 0; hi < surfaceHits.length && hi < 5; hi++) {
 				var hit = surfaceHits[hi];
 				var hitMesh = hit.object;
-				
+
 				// Step 3c.4) Find surfaceId - check hit mesh and parents
 				var surfaceId = hitMesh.userData ? hitMesh.userData.surfaceId : null;
 				if (!surfaceId && hitMesh.parent && hitMesh.parent.userData) {
@@ -47706,7 +45949,7 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 				}
 				var surface = surfaceId ? loadedSurfaces.get(surfaceId) : null;
 				if (!surface) continue;
-				
+
 				// Step 3d) SURFACE_FACE: Use ray-surface intersection point with interpolated Z
 				// Convert hit point from local to world coordinates
 				var hitWorld = localToWorld(hit.point.x, hit.point.y, hit.point.z);
@@ -47718,7 +45961,7 @@ function snapToNearestPointExcludingHolesWithRay(rayOrigin, rayDirection, snapRa
 					priority: MOVE_SNAP_PRIORITIES.SURFACE_FACE,
 					description: surface.name + " face"
 				});
-				
+
 				// Step 3e) SURFACE_POINT: Find nearest vertex of hit triangle
 				// Check vertices of the hit face for potential vertex snap
 				if (hit.face && surface.triangles && hit.faceIndex !== undefined) {
@@ -48751,36 +46994,36 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 	if (loadedSurfaces && loadedSurfaces.size > 0 && tr && tr.surfaceMeshMap) {
 		// Step 5a) Collect visible surface meshes with BVH
 		var surfaceMeshes = [];
-		tr.surfaceMeshMap.forEach(function(mesh, surfaceId) {
+		tr.surfaceMeshMap.forEach(function (mesh, surfaceId) {
 			var surface = loadedSurfaces.get(surfaceId);
 			if (mesh && mesh.visible && surface && surface.visible) {
 				surfaceMeshes.push({ mesh: mesh, surfaceId: surfaceId, surface: surface });
 			}
 		});
-		
+
 		if (developerModeEnabled && surfaceMeshes.length > 0) {
 			console.log("🏔️ [BVH SNAP] Found " + surfaceMeshes.length + " visible surface meshes for raycast");
 		}
-		
+
 		// Step 5b) Raycast against surface meshes (BVH-accelerated via three-mesh-bvh)
 		if (surfaceMeshes.length > 0 && im && im.raycaster) {
 			// Step 5b.1) CRITICAL: Set raycaster ray to match the passed-in ray parameters
 			// The raycaster's internal ray may be stale or different from the ray we're snapping with
 			im.raycaster.ray.origin.set(rayOrigin.x, rayOrigin.y, rayOrigin.z);
 			im.raycaster.ray.direction.set(rayDirection.x, rayDirection.y, rayDirection.z);
-			
-			var meshArray = surfaceMeshes.map(function(item) { return item.mesh; });
+
+			var meshArray = surfaceMeshes.map(function (item) { return item.mesh; });
 			var surfaceHits = im.raycaster.intersectObjects(meshArray, true);
-			
+
 			if (developerModeEnabled && surfaceHits.length > 0) {
 				console.log("🏔️ [BVH SNAP] Raycast hit " + surfaceHits.length + " surfaces, first hit distance: " + surfaceHits[0].distance.toFixed(2));
 			}
-			
+
 			// Step 5c) Process hits - add SURFACE_FACE and SURFACE_POINT candidates
 			for (var hi = 0; hi < surfaceHits.length && hi < 5; hi++) {
 				var hit = surfaceHits[hi];
 				var hitMesh = hit.object;
-				
+
 				// Step 5c.1) Find surfaceId - check hit mesh and parents
 				var surfaceId = hitMesh.userData ? hitMesh.userData.surfaceId : null;
 				if (!surfaceId && hitMesh.parent && hitMesh.parent.userData) {
@@ -48788,16 +47031,16 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 				}
 				var surface = surfaceId ? loadedSurfaces.get(surfaceId) : null;
 				if (!surface) continue;
-				
+
 				// Step 5d) SURFACE_FACE: Use ray-surface intersection point
 				// Convert hit point from local to world coordinates
 				var hitWorld = localToWorld(hit.point.x, hit.point.y, hit.point.z);
-				
+
 				// Step 5d.1) Cache the Z value for future frames (reduces raycast calls)
 				lastSnapZValue = hitWorld.z;
 				lastSnapSurfaceId = surfaceId;
 				surfaceHitFound = true;
-				
+
 				snapCandidates.push({
 					distance: 0, // Ray hit surface directly
 					rayT: hit.distance,
@@ -48806,7 +47049,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 					priority: SNAP_PRIORITIES.SURFACE_FACE,
 					description: surface.name + " face"
 				});
-				
+
 				// Step 5e) SURFACE_POINT: Find nearest vertex of hit triangle
 				// Check vertices of the hit face for potential vertex snap
 				if (hit.face && surface.triangles && hit.faceIndex !== undefined) {
@@ -48837,7 +47080,7 @@ function snapToNearestPointWithRay(rayOrigin, rayDirection, snapRadiusPixels, mo
 				}
 			}
 		}
-		
+
 		// Step 5f) DISABLED: Cached Z feature was causing false snaps
 		// When mouse is NOT over the surface, this would create snap points using old data
 		// This made the cursor "think everywhere is a snap" even when off the surface
@@ -51521,7 +49764,7 @@ function apply3DSettings(settings) {
 	if (settings.cursorOpacity !== undefined) {
 		window.cursorOpacity3D = settings.cursorOpacity;
 	}
-	
+
 	// Step 17b.1) Update plumb line display setting globally
 	if (settings.plumbLineDisplay !== undefined) {
 		window.plumbLineDisplay = settings.plumbLineDisplay;
