@@ -2531,31 +2531,31 @@
 		</div>
 		<!--END CANVAS AND MODE DISPLY BUTTONS-->
 		<!-- TOOLBAR PANEL - Tree Panel Style with ORIGINAL TOOL IDs -->
-		<div id="toolbarPanel" class="tree-panel toolbar-panel">
-			<div class="tree-panel-header" id="toolbarPanelHeader">
-				<span>Tools</span>
+		<!-- ========== TOOLBAR PANELS (7 Workflow-Oriented Panels) ========== -->
+
+		<!-- Panel 1: Select -->
+		<div id="toolbarPanelSelect" class="tree-panel toolbar-panel">
+			<div class="tree-panel-header" id="toolbarPanelSelectHeader">
+				<span>Select</span>
 				<div class="tree-panel-controls">
-					<button class="tree-panel-btn" id="toolbarCollapseBtn" title="Collapse/Expand">−</button>
-					<!-- <button class="tree-panel-btn" id="toolbarCloseBtn" title="Close">×</button> -->
+					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
 				</div>
 			</div>
-			<div class="tree-panel-content toolbar-panel-content" id="toolbarPanelContent">
+			<div class="tree-panel-content toolbar-panel-content">
 				<div class="toolbar-grid">
-					<!-- Undo/Redo buttons styled like Holes/KAD -->
 					<button id="undoBtn" class="toggle-buttons-custom undo-redo-btn" title="Undo (Ctrl+Z) - Nothing to undo" disabled>
 						undo
 					</button>
 					<button id="redoBtn" class="toggle-buttons-custom undo-redo-btn" title="Redo (Ctrl+Y) - Nothing to redo" disabled>
 						redo
 					</button>
-					<label class="label2" id="selectLabel">Select</label>
 					<input type="checkbox" id="selectPointer" name="selectPointer" value="selectPointer">
-					<label for="selectPointer" class="toggle-buttons-custom icon-button" title="selectPointer">
-						<img src="icons/pointer.png" alt="selectPointer">
+					<label for="selectPointer" class="toggle-buttons-custom icon-button" title="Pointer Select">
+						<img src="icons/pointer.png" alt="Pointer Select">
 					</label>
 					<input type="checkbox" id="selectByPolygon" name="selectByPolygon" value="selectByPolygon">
-					<label for="selectByPolygon" class="toggle-buttons-custom icon-button" title="selectByPolygon">
-						<img src="icons/pointer-select-polygon.png" alt="selectByPolygon">
+					<label for="selectByPolygon" class="toggle-buttons-custom icon-button" title="Polygon Select">
+						<img src="icons/pointer-select-polygon.png" alt="Polygon Select">
 					</label>
 					<input type="radio" id="selectHoles" name="selectType" value="holes" checked>
 					<label for="selectHoles" class="toggle-buttons-custom" title="Select Holes">
@@ -2565,7 +2565,28 @@
 					<label for="selectKAD" class="toggle-buttons-custom" title="Select KAD">
 						KAD
 					</label>
-					<label class="label2" id="createLabel">Create</label>
+					<input type="checkbox" id="rulerTool" name="rulerTool" value="rulerTool">
+					<label for="rulerTool" class="toggle-buttons-custom icon-button" title="Ruler">
+						<img src="icons/ruler-measure.png" alt="Ruler">
+					</label>
+					<input type="checkbox" id="rulerProtractorTool" name="rulerProtractorTool" value="rulerProtractorTool">
+					<label for="rulerProtractorTool" class="toggle-buttons-custom icon-button" title="Protractor">
+						<img src="icons/ruler-bearing.png" alt="Protractor">
+					</label>
+				</div>
+			</div>
+		</div>
+
+		<!-- Panel 2: Design -->
+		<div id="toolbarPanelDesign" class="tree-panel toolbar-panel">
+			<div class="tree-panel-header" id="toolbarPanelDesignHeader">
+				<span>Design</span>
+				<div class="tree-panel-controls">
+					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
+				</div>
+			</div>
+			<div class="tree-panel-content toolbar-panel-content">
+				<div class="toolbar-grid">
 					<input type="checkbox" id="patternInPolygonTool" name="patternInPolygonTool" value="patternInPolygonTool">
 					<label for="patternInPolygonTool" class="toggle-buttons-custom icon-button" title="Pattern in Polygon">
 						<img src="icons/pattern.png" alt="Pattern in Polygon">
@@ -2579,33 +2600,54 @@
 						<img src="icons/shape-2.png" alt="Holes Along PolyLine">
 					</label>
 					<input type="checkbox" id="holesAddingTool" name="holesAddingTool" value="holesAddingTool">
-					<label for="holesAddingTool" class="toggle-buttons-custom icon-button" title="Add Holes">
-						<img src="icons/circle-plus-2.png" alt="Add Holes">
+					<label for="holesAddingTool" class="toggle-buttons-custom icon-button" title="Add Hole">
+						<img src="icons/circle-plus-2.png" alt="Add Hole">
 					</label>
+					<button id="addPatternBtn" class="toggle-buttons-custom icon-button" title="Add Pattern">
+						<img src="icons/grid-dots.png" alt="Add Pattern">
+					</button>
+					<button id="renumberHolesBtn" class="toggle-buttons-custom icon-button" title="Renumber Holes">
+						<img src="icons/123.png" alt="Renumber Holes">
+					</button>
+					<button id="reorderRowsBtn" class="toggle-buttons-custom icon-button" title="Reorder Rows">
+						<img src="icons/arrows-right-left.png" alt="Reorder Rows">
+					</button>
+				</div>
+			</div>
+		</div>
 
-					<label class="label2" id="triangulateLabel">Surface</label>
+		<!-- Panel 3: Surface -->
+		<div id="toolbarPanelSurface" class="tree-panel toolbar-panel">
+			<div class="tree-panel-header" id="toolbarPanelSurfaceHeader">
+				<span>Surface</span>
+				<div class="tree-panel-controls">
+					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
+				</div>
+			</div>
+			<div class="tree-panel-content toolbar-panel-content">
+				<div class="toolbar-grid">
 					<input type="checkbox" id="triangulateTool" name="triangulateTool" value="triangulateTool">
-					<label for="triangulateTool" class="toggle-buttons-custom icon-button single" title="Triangulate">
+					<label for="triangulateTool" class="toggle-buttons-custom icon-button" title="Triangulate">
 						<img src="icons/triangulation.png" alt="Triangulate">
 					</label>
+					<!-- Future: DrawTriangle, ContourSurface -->
+				</div>
+			</div>
+		</div>
 
-					<!-- Add a radio button to snap to the surface-->
-					<!-- TODO: Add this if the snap performance can't be improved
-					<input type="radio" id="snapToSurface" name="snapToSurface" value="snap" checked>
-					<label for="snapToSurface" class="toggle-buttons-custom" title="Snap to Surface">
-						snap
-					</label>
-					<input type="radio" id="noSnapToSurface" name="snapToSurface" value="free">
-					<label for="noSnapToSurface" class="toggle-buttons-custom" title="No Snap to Surface">
-						free
-					</label>-->
-
-					<label class="label2" id="addKADLabel">Draw</label>
-					<input type="number#" step="0.1" min="-10000" max="10000" id="drawingElevationToolbar" name="drawingElevationToolbar" value="200" placeholder="Elev Z" class="single" tooltip="Elevation Z">
-					<input type="button" id="floatingKADColor" name="floatingKADColor" data-jscolor="{value:'#777777'}" title="KAD Color" placeholder="KAD Color" class="color-with-input" tooltip="KAD Color">
-					<input type="number#" step="1" min="1" max="1000" id="drawingKADSizeToolbar" name="drawingKADSizeToolbar" value="1" placeholder="Point and Line Size" class="input-with-color" tooltip="Point and Line Size">
-
-
+		<!-- Panel 4: Draw -->
+		<div id="toolbarPanelDraw" class="tree-panel toolbar-panel">
+			<div class="tree-panel-header" id="toolbarPanelDrawHeader">
+				<span>Draw</span>
+				<div class="tree-panel-controls">
+					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
+				</div>
+			</div>
+			<div class="tree-panel-content toolbar-panel-content">
+				<div class="toolbar-grid">
+					<input type="number#" step="0.1" min="-10000" max="10000" id="drawingElevationToolbar" name="drawingElevationToolbar" value="200" placeholder="Elev Z" class="single" title="Elevation Z">
+					<input type="button" id="floatingKADColor" name="floatingKADColor" data-jscolor="{value:'#777777'}" title="KAD Color" class="color-with-input">
+					<input type="number#" step="1" min="1" max="1000" id="drawingKADSizeToolbar" name="drawingKADSizeToolbar" value="1" placeholder="Size" class="input-with-color" title="Point and Line Size">
 					<input type="checkbox" id="addKADPointsTool" name="addKADPointsTool" value="addKADPointsTool">
 					<label for="addKADPointsTool" class="toggle-buttons-custom icon-button" title="Add KAD Points">
 						<img src="icons/add-kad-points.png" alt="Add KAD Points">
@@ -2626,12 +2668,31 @@
 					<label for="addKADCircleTool" class="toggle-buttons-custom icon-button" title="Add KAD Circle">
 						<img src="icons/add-kad-circle.png" alt="Add KAD Circle">
 					</label>
-					<input type="number#" step="0.1" min="0.01" max="9000" id="drawingKADRadiusToolbar" name="drawingKADRadiusToolbar" value="10.0" placeholder="Circle Radius Amount (m)" class="input-with-color">
+					<input type="number#" step="0.1" min="0.01" max="9000" id="drawingKADRadiusToolbar" name="drawingKADRadiusToolbar" value="10.0" placeholder="Radius" class="input-with-color" title="Circle Radius (m)">
+					<button id="reorderKADBtn" class="toggle-buttons-custom icon-button" title="Reorder KAD Points">
+						<img src="icons/exchange.png" alt="Reorder KAD">
+					</button>
+				</div>
+			</div>
+		</div>
 
-					<label class="label2" id="modifyLabel">Modify</label>
+		<!-- Panel 5: Modify -->
+		<div id="toolbarPanelModify" class="tree-panel toolbar-panel">
+			<div class="tree-panel-header" id="toolbarPanelModifyHeader">
+				<span>Modify</span>
+				<div class="tree-panel-controls">
+					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
+				</div>
+			</div>
+			<div class="tree-panel-content toolbar-panel-content">
+				<div class="toolbar-grid">
 					<input type="checkbox" id="moveToTool" name="moveToTool" value="moveToTool">
-					<label for="moveToTool" class="toggle-buttons-custom icon-button" title="Move To">
+					<label for="moveToTool" class="toggle-buttons-custom icon-button" title="Move">
 						<img src="icons/arrows-move.png" alt="Move">
+					</label>
+					<input type="checkbox" id="rotateTool" name="rotateTool" value="rotateTool">
+					<label for="rotateTool" class="toggle-buttons-custom icon-button" title="Rotate KAD">
+						<img src="icons/rotate-clockwise.png" alt="Rotate KAD">
 					</label>
 					<input type="checkbox" id="bearingTool" name="bearingTool" value="bearingTool">
 					<label for="bearingTool" class="toggle-buttons-custom icon-button" title="Hole Bearing">
@@ -2646,15 +2707,27 @@
 						<img src="icons/adjustments-down.png" alt="Assign Grade">
 					</label>
 					<input type="checkbox" id="offsetKADTool" name="offsetKADTool" value="offsetKADTool">
-					<label for="offsetKADTool" class="toggle-buttons-custom icon-button" title="Offset Kad">
-						<img src="icons/arrow-bar-both.png" alt="Offset Kad">
+					<label for="offsetKADTool" class="toggle-buttons-custom icon-button" title="Offset KAD">
+						<img src="icons/arrow-bar-both.png" alt="Offset KAD">
 					</label>
 					<input type="checkbox" id="radiiHolesOrKADsTool" name="radiiHolesOrKADsTool" value="radiiHolesOrKADsTool">
-					<label for="radiiHolesOrKADsTool" class="toggle-buttons-custom icon-button" title="Radii Holes or KADs">
-						<img src="icons/atom-2.png" alt="Radii Holes or KADs">
+					<label for="radiiHolesOrKADsTool" class="toggle-buttons-custom icon-button" title="Radii Holes/KADs">
+						<img src="icons/atom-2.png" alt="Radii Holes/KADs">
 					</label>
+				</div>
+			</div>
+		</div>
 
-					<label class="label2" id="connectLabel">Connect</label>
+		<!-- Panel 6: Connect -->
+		<div id="toolbarPanelConnect" class="tree-panel toolbar-panel">
+			<div class="tree-panel-header" id="toolbarPanelConnectHeader">
+				<span>Connect</span>
+				<div class="tree-panel-controls">
+					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
+				</div>
+			</div>
+			<div class="tree-panel-content toolbar-panel-content">
+				<div class="toolbar-grid">
 					<input type="checkbox" id="tieConnectTool" name="tieConnectTool" value="tieConnectTool">
 					<label for="tieConnectTool" class="toggle-buttons-custom icon-button" title="Tie Connect">
 						<img src="icons/tieconnect.png" alt="Tie Connect">
@@ -2663,22 +2736,23 @@
 					<label for="tieConnectMultiTool" class="toggle-buttons-custom icon-button" title="Tie Connect Multi">
 						<img src="icons/tieconnectmulti.png" alt="Tie Connect Multi">
 					</label>
+					<input type="button" id="floatingConnectorColor" name="floatingConnectorColor" data-jscolor="{value:'#FF0000'}" title="Connector Color" class="color-with-input">
+					<input type="number#" step="1" min="-1000" max="1000" id="floatingDelay" name="floatingDelay" value="25" placeholder="Delay" class="input-with-color" title="Delay Amount (ms)">
+					<!-- Future: Electronic Tie Tools -->
+				</div>
+			</div>
+		</div>
 
-					<input type="button" id="floatingConnectorColor" name="floatingConnectorColor" data-jscolor="{value:'#FF0000'}" title="Connector Color" placeholder="Connector Color" class="color-with-input">
-					<input type="number#" step="1" min="-1000" max="1000" id="floatingDelay" name="floatingDelay" value="25" placeholder="Delay Amount" class="input-with-color">
-
-
-					<label class="label2" id="measureLabel">Measure</label>
-					<input type="checkbox" id="rulerTool" name="rulerTool" value="rulerTool">
-					<label for="rulerTool" class="toggle-buttons-custom icon-button" title="Ruler">
-						<img src="icons/ruler-measure.png" alt="Ruler">
-					</label>
-					<input type="checkbox" id="rulerProtractorTool" name="rulerProtractorTool" value="rulerProtractorTool">
-					<label for="rulerProtractorTool" class="toggle-buttons-custom icon-button" title="Ruler Protractor">
-						<img src="icons/ruler-bearing.png" alt="Ruler Protractor">
-					</label>
-
-					<label class="label2" id="viewLabel">View</label>
+		<!-- Panel 7: View -->
+		<div id="toolbarPanelView" class="tree-panel toolbar-panel">
+			<div class="tree-panel-header" id="toolbarPanelViewHeader">
+				<span>View</span>
+				<div class="tree-panel-controls">
+					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
+				</div>
+			</div>
+			<div class="tree-panel-content toolbar-panel-content">
+				<div class="toolbar-grid">
 					<input type="checkbox" id="resetViewTool" name="resetViewTool" value="resetViewTool">
 					<label for="resetViewTool" class="toggle-buttons-custom icon-button" title="Reset View">
 						<img src="icons/circle-letter-r.png" alt="Reset View">
@@ -2688,19 +2762,18 @@
 						<img src="icons/article.png" alt="Data Explorer">
 					</label>
 					<input type="checkbox" id="dimension2D-3DBtn" name="dimension2D-3DBtn" value="dimension2D-3DBtn">
-					<label for="dimension2D-3DBtn" class="toggle-buttons-custom icon-button" title="Dimension 2D-3D">
-						<img src="icons/badge-2d-v2.png" alt="Dimension 2D-3D"><!-- needs to swap to the badge-3d-v2.png when the checkbox is checked <img src="icons/badge-3d-v2.png" alt="Dimension 2D-3D"> -->
+					<label for="dimension2D-3DBtn" class="toggle-buttons-custom icon-button" title="Toggle 2D/3D">
+						<img src="icons/badge-2d-v2.png" alt="Toggle 2D/3D">
 					</label>
 					<input type="checkbox" id="dimension2D-3D-SettingsBtn" name="dimension2D-3D-SettingsBtn" value="dimension2D-3D-SettingsBtn">
-					<label for="dimension2D-3D-SettingsBtn" class="toggle-buttons-custom icon-button" title="Dimension 2D-3D Settings">
-						<img src="icons/world-cog.png" alt="Settings2D-3D">
-						<!-- Button to open a floating dialog that alters the 3D Scene Settings - Lighting, Camera, Clipping, Trackball or ArcBall, Zoom to cursor, Wireframe, Shading, etc." -->
+					<label for="dimension2D-3D-SettingsBtn" class="toggle-buttons-custom icon-button" title="3D Settings">
+						<img src="icons/world-cog.png" alt="3D Settings">
 					</label>
 				</div>
 			</div>
 		</div>
-		<!-- END TOOLBAR PANEL -->
-		<!-- END - FLOATING TOOLBAR -->
+
+		<!-- ========== END TOOLBAR PANELS ========== -->
 		<!-- Add this to your HTML body, preferably near the end -->
 		<div id="treePanel" class="tree-panel">
 			<div class="tree-panel-header" id="treePanelHeader">

@@ -276,7 +276,7 @@ import {
 	hideTooltipPanel
 } from "./overlay/index.js";
 //=================================================
-import ToolbarPanel, { showToolbar } from "./toolbar/ToolbarPanel.js";
+import ToolbarPanel, { ToolbarManager, showToolbar, initializeToolbarPanels } from "./toolbar/ToolbarPanel.js";
 //=================================================
 // Print and Statistics Modules
 //=================================================
@@ -33976,15 +33976,9 @@ function openNavLeft() {
 		sidenavLeft.style.margin = "0px";
 	}
 
-	// Update toolbar position using ToolbarPanel class
-	if (toolbarPanel) {
-		console.log("Adding sidebar-open class to toolbar");
-		console.log("toolbarPanel container:", toolbarPanel.container);
-		console.log("Is mobile:", window.matchMedia("(max-width: 1024px)").matches);
-		toolbarPanel.updateSidebarState(true);
-		// Debug: Check if class was added
-		const toolbar = document.getElementById("toolbarPanel");
-		console.log("Toolbar classes:", toolbar.className);
+	// Update toolbar position using ToolbarManager (all 7 panels)
+	if (toolbarManager) {
+		toolbarManager.updateSidebarState(true);
 	}
 
 	// Step #) Update HUD overlay position
@@ -34006,9 +34000,9 @@ function closeNavLeft() {
 		sidenavLeft.style.margin = "0px";
 	}
 
-	// Update floating toolbar position
-	if (toolbarPanel) {
-		toolbarPanel.updateSidebarState(false);
+	// Update floating toolbar position (all 7 panels)
+	if (toolbarManager) {
+		toolbarManager.updateSidebarState(false);
 	}
 
 	// Step #) Update HUD overlay position
@@ -34064,17 +34058,20 @@ function closeNavRight() {
 //==============================================================//
 // TOOL BAR COLLAPSABLE - START
 //==============================================================//
-// ToolbarPanel is now imported
-const toolbar = document.getElementById("toolbarPanel");
+// ToolbarPanel and ToolbarManager are now imported
+// 7 toolbar panels: Select, Design, Surface, Draw, Modify, Connect, View
 
 let isDraggingTools = false;
 let offsetX, offsetY;
 
-// Step 3) Initialize the new toolbar panel
-let toolbarPanel;
+// Step 3) Initialize the toolbar panels (7 workflow-oriented panels)
+let toolbarPanel; // Legacy reference for backwards compatibility
+let toolbarManager; // New multi-panel manager
 // Step 2) Update the DOMContentLoaded section around line 21376
 document.addEventListener("DOMContentLoaded", () => {
-	toolbarPanel = new ToolbarPanel();
+	toolbarManager = initializeToolbarPanels();
+	// Legacy: point toolbarPanel to the first panel for backwards compatibility
+	toolbarPanel = toolbarManager.get("toolbarPanelSelect");
 
 	// Step #) Initialize Undo/Redo button click handlers
 	var undoBtn = document.getElementById("undoBtn");
