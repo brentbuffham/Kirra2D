@@ -1056,9 +1056,341 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 }
 
 //===========================================
+// ROW EDITING TOOLS - Phase 9
+//===========================================
+
+/**
+ * Show dialog to invert row order for an entity
+ * @param {string} preselectedEntity - Optional entity name to preselect
+ */
+export function showInvertRowsDialog(preselectedEntity) {
+	// Get available entities
+	var entityNames = window.getBlastEntityNames ? window.getBlastEntityNames() : [];
+	if (entityNames.length === 0) {
+		window.showErrorDialog("No Entities", "No blast entities found. Import or create holes first.", "OK");
+		return;
+	}
+
+	// Build entity options
+	var entityOptions = entityNames.map(function(name) {
+		return { value: name, text: name };
+	});
+
+	var fields = [
+		{
+			label: "Entity",
+			name: "entityName",
+			type: "select",
+			value: preselectedEntity || entityNames[0],
+			options: entityOptions
+		},
+		{
+			label: "Also invert positions within rows",
+			name: "invertPositions",
+			type: "checkbox",
+			value: false
+		}
+	];
+
+	var formContent = window.createEnhancedFormContent(fields);
+
+	var dialog = new window.FloatingDialog({
+		title: "Invert Row Order",
+		content: formContent,
+		width: 350,
+		height: 200,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Invert",
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var formData = window.getFormData(formContent);
+			var result = window.invertRowOrder(formData.entityName, {
+				invertPositions: formData.invertPositions
+			});
+			if (result.success) {
+				window.updateStatusMessage("Inverted " + result.rowCount + " rows (" + result.modifiedCount + " holes)");
+				setTimeout(function() { window.updateStatusMessage(""); }, 2000);
+			} else {
+				window.showErrorDialog("Invert Failed", result.error, "OK");
+			}
+		}
+	});
+	dialog.show();
+}
+
+/**
+ * Show dialog to resequence positions within rows
+ * @param {string} preselectedEntity - Optional entity name to preselect
+ */
+export function showResequencePositionsDialog(preselectedEntity) {
+	// Get available entities
+	var entityNames = window.getBlastEntityNames ? window.getBlastEntityNames() : [];
+	if (entityNames.length === 0) {
+		window.showErrorDialog("No Entities", "No blast entities found. Import or create holes first.", "OK");
+		return;
+	}
+
+	// Build entity options
+	var entityOptions = entityNames.map(function(name) {
+		return { value: name, text: name };
+	});
+
+	var fields = [
+		{
+			label: "Entity",
+			name: "entityName",
+			type: "select",
+			value: preselectedEntity || entityNames[0],
+			options: entityOptions
+		},
+		{
+			label: "Direction",
+			name: "direction",
+			type: "select",
+			value: "forward",
+			options: [
+				{ value: "forward", text: "Forward (all same direction)" },
+				{ value: "serpentine", text: "Serpentine (alternating)" }
+			]
+		},
+		{
+			label: "Order By",
+			name: "orderBy",
+			type: "select",
+			value: "spatial",
+			options: [
+				{ value: "spatial", text: "Spatial (by position along row)" },
+				{ value: "existing", text: "Existing (by current posID)" }
+			]
+		},
+		{
+			label: "Start Position",
+			name: "startPos",
+			type: "number",
+			value: 1,
+			min: 1,
+			step: 1
+		}
+	];
+
+	var formContent = window.createEnhancedFormContent(fields);
+
+	var dialog = new window.FloatingDialog({
+		title: "Resequence Positions",
+		content: formContent,
+		width: 350,
+		height: 280,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Apply",
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var formData = window.getFormData(formContent);
+			var result = window.resequencePositions(formData.entityName, {
+				direction: formData.direction,
+				orderBy: formData.orderBy,
+				startPos: parseInt(formData.startPos) || 1
+			});
+			if (result.success) {
+				window.updateStatusMessage("Resequenced " + result.modifiedCount + " holes in " + result.rowCount + " rows (" + result.direction + ")");
+				setTimeout(function() { window.updateStatusMessage(""); }, 2000);
+			} else {
+				window.showErrorDialog("Resequence Failed", result.error, "OK");
+			}
+		}
+	});
+	dialog.show();
+}
+
+/**
+ * Show dialog to assign a new row to selected holes
+ */
+export function showAssignRowDialog() {
+	var selectedHoles = window.selectedMultipleHoles || (window.selectedHole ? [window.selectedHole] : []);
+	if (selectedHoles.length === 0) {
+		window.showErrorDialog("No Selection", "Select holes first, then use this tool to assign them to a row.", "OK");
+		return;
+	}
+
+	// Get current entity and row info
+	var entityName = selectedHoles[0].entityName || "Unknown";
+	var currentRowIDs = [];
+	selectedHoles.forEach(function(h) {
+		if (h.rowID !== undefined && currentRowIDs.indexOf(h.rowID) === -1) {
+			currentRowIDs.push(h.rowID);
+		}
+	});
+
+	var currentRowText = currentRowIDs.length > 1 ? "Multiple (" + currentRowIDs.join(", ") + ")" : (currentRowIDs[0] || "None");
+
+	var fields = [
+		{
+			label: "Selected Holes",
+			name: "selectedCount",
+			type: "text",
+			value: selectedHoles.length + " hole(s) in " + entityName,
+			disabled: true
+		},
+		{
+			label: "Current Row(s)",
+			name: "currentRows",
+			type: "text",
+			value: currentRowText,
+			disabled: true
+		},
+		{
+			label: "New Row ID",
+			name: "newRowID",
+			type: "number",
+			value: 1,
+			min: 1,
+			step: 1
+		}
+	];
+
+	var formContent = window.createEnhancedFormContent(fields);
+
+	var dialog = new window.FloatingDialog({
+		title: "Assign Row to Holes",
+		content: formContent,
+		width: 350,
+		height: 220,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Assign",
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var formData = window.getFormData(formContent);
+			var newRowID = parseInt(formData.newRowID);
+			if (isNaN(newRowID) || newRowID < 1) {
+				window.showErrorDialog("Invalid Row ID", "Please enter a valid positive row number.", "OK");
+				return;
+			}
+			var result = window.assignRowToHoles(selectedHoles, newRowID);
+			if (result.success) {
+				window.updateStatusMessage("Assigned " + result.modifiedCount + " holes to Row " + result.newRowID);
+				setTimeout(function() { window.updateStatusMessage(""); }, 2000);
+			} else {
+				window.showErrorDialog("Assign Failed", result.error, "OK");
+			}
+		}
+	});
+	dialog.show();
+}
+
+/**
+ * Show dialog to rename rows by mapping old IDs to new IDs
+ * @param {string} preselectedEntity - Optional entity name to preselect
+ */
+export function showRenameRowsDialog(preselectedEntity) {
+	// Get available entities
+	var entityNames = window.getBlastEntityNames ? window.getBlastEntityNames() : [];
+	if (entityNames.length === 0) {
+		window.showErrorDialog("No Entities", "No blast entities found. Import or create holes first.", "OK");
+		return;
+	}
+
+	// Build entity options
+	var entityOptions = entityNames.map(function(name) {
+		return { value: name, text: name };
+	});
+
+	// Get rows for first entity
+	var firstEntity = preselectedEntity || entityNames[0];
+	var rowIDs = window.getEntityRowIDs ? window.getEntityRowIDs(firstEntity) : [];
+	var rowListText = rowIDs.length > 0 ? "Current rows: " + rowIDs.join(", ") : "No rows detected";
+
+	var fields = [
+		{
+			label: "Entity",
+			name: "entityName",
+			type: "select",
+			value: firstEntity,
+			options: entityOptions
+		},
+		{
+			label: "Row Info",
+			name: "rowInfo",
+			type: "text",
+			value: rowListText,
+			disabled: true
+		},
+		{
+			label: "Mapping (oldID:newID, ...)",
+			name: "mapping",
+			type: "text",
+			value: "",
+			placeholder: "e.g., 1:3, 2:1, 3:2"
+		}
+	];
+
+	var formContent = window.createEnhancedFormContent(fields);
+
+	// Add help text
+	var helpDiv = document.createElement("div");
+	helpDiv.style.cssText = "margin-top:10px;font-size:11px;color:#666;";
+	helpDiv.innerHTML = "<b>Mapping format:</b> oldRowID:newRowID pairs separated by commas.<br>" +
+		"Example: <code>1:3, 2:1, 3:2</code> swaps rows 1→3, 2→1, 3→2";
+	formContent.appendChild(helpDiv);
+
+	var dialog = new window.FloatingDialog({
+		title: "Rename Rows",
+		content: formContent,
+		width: 380,
+		height: 280,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Apply",
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var formData = window.getFormData(formContent);
+			var mappingStr = formData.mapping || "";
+
+			// Parse mapping string
+			var rowMapping = {};
+			var pairs = mappingStr.split(",");
+			var parseError = false;
+			pairs.forEach(function(pair) {
+				var parts = pair.trim().split(":");
+				if (parts.length === 2) {
+					var oldID = parseInt(parts[0].trim());
+					var newID = parseInt(parts[1].trim());
+					if (!isNaN(oldID) && !isNaN(newID)) {
+						rowMapping[oldID] = newID;
+					} else {
+						parseError = true;
+					}
+				} else if (pair.trim().length > 0) {
+					parseError = true;
+				}
+			});
+
+			if (parseError || Object.keys(rowMapping).length === 0) {
+				window.showErrorDialog("Invalid Mapping", "Please enter a valid mapping.\nFormat: oldRowID:newRowID, ...\nExample: 1:3, 2:1, 3:2", "OK");
+				return;
+			}
+
+			var result = window.renameRows(null, formData.entityName, rowMapping);
+			if (result.success) {
+				window.updateStatusMessage("Renamed rows: " + result.modifiedCount + " holes modified");
+				setTimeout(function() { window.updateStatusMessage(""); }, 2000);
+			} else {
+				window.showErrorDialog("Rename Failed", result.error || "Unknown error", "OK");
+			}
+		}
+	});
+	dialog.show();
+}
+
+//===========================================
 // HOLES CONTEXT MENU END
 //===========================================
 
 // Make functions available globally
 window.showHolePropertyEditor = showHolePropertyEditor;
 window.processHolePropertyUpdates = processHolePropertyUpdates;
+window.showInvertRowsDialog = showInvertRowsDialog;
+window.showResequencePositionsDialog = showResequencePositionsDialog;
+window.showAssignRowDialog = showAssignRowDialog;
+window.showRenameRowsDialog = showRenameRowsDialog;

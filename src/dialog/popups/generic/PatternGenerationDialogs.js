@@ -86,14 +86,14 @@ export function showPatternDialog(mode, worldX, worldY) {
 		fields.push({ label: "Spacing (m)", name: "spacing", type: "number", value: lastValues.spacing, step: 0.1 });
 		fields.push({ label: "Rows", name: "rows", type: "number", value: lastValues.rows, step: 1 });
 		fields.push({ label: "Holes Per Row", name: "holesPerRow", type: "number", value: lastValues.holesPerRow, step: 1 });
-		fields.push({ label: "Row Direction", name: "rowDirection", type: "select", options: [{ value: "return", label: "Return (Forward Only)" }, { value: "serpentine", label: "Serpentine (Forward & Back)" }], value: lastValues.rowDirection });
+		fields.push({ label: "Row Direction", name: "rowDirection", type: "select", options: [{ value: "return", text: "Return (Forward Only)" }, { value: "serpentine", text: "Serpentine (Forward & Back)" }], value: lastValues.rowDirection });
 	} else {
 		fields.push({ label: "Subdrill (m)", name: "subdrill", type: "number", value: lastValues.subdrill, step: 0.1 });
 		fields.push({ label: "Hole Angle (° from vertical)", name: "angle", type: "number", value: lastValues.angle, step: 1 });
 		fields.push({ label: "Hole Bearing (°)", name: "bearing", type: "number", value: lastValues.bearing, step: 0.1 });
 		fields.push({ label: "Diameter (mm)", name: "diameter", type: "number", value: lastValues.diameter, step: 1 });
 		fields.push({ label: "Hole Type", name: "type", type: "text", value: lastValues.type, placeholder: "Type" });
-		fields.push({ label: "Row Direction", name: "rowDirection", type: "select", options: [{ value: "return", label: "Return (Forward Only)" }, { value: "serpentine", label: "Serpentine (Forward & Back)" }], value: lastValues.rowDirection });
+		fields.push({ label: "Row Direction", name: "rowDirection", type: "select", options: [{ value: "return", text: "Return (Forward Only)" }, { value: "serpentine", text: "Serpentine (Forward & Back)" }], value: lastValues.rowDirection });
 	}
 
 	// Step 3) Create form content using createEnhancedFormContent

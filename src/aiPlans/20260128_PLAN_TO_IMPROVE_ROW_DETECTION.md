@@ -4,7 +4,10 @@
 **Plan Revised:** 2026-01-28 - Added modularization (Phase 0), post-detection editing tools (Phase 9)
 **Plan Updated:** 2026-01-29 - Phases 0, 1, 2, 3, 4, 7 COMPLETE. Fixed missing `calculateBurdenAndSpacingForHoles`. Module uses `calculateDistanceXY(x1,y1,x2,y2)` (coordinate-based) to avoid conflict with kirra.js `calculateDistance(p1,p2)` (object-based).
 **Plan Updated:** 2026-01-29 - Phase 5 COMPLETE. Added DBSCAN + Douglas-Peucker fallback. Also added: winding/S-curve detection for continuous snake patterns, Snake Row Angle setting (75-105°), distance consistency check to distinguish winding from traditional serpentine patterns. Fixed CSV import undo batching.
-**Status:** Implementation In Progress - Phases 0, 1, 2, 3, 4, 5, 7 Complete
+**Plan Updated:** 2026-01-30 - Phase 6 COMPLETE. Created RowValidation.js with validation functions, metrics calculation, and confidence scoring. Updated orchestrator to return enhanced metadata (validation status, detailed metrics, confidence score, pattern type).
+**Plan Updated:** 2026-01-30 - Phase 8 COMPLETE. Created ImportProgressDialog.js with progress bar, stage tracking, and metrics display. Integrated into parseK2Dcsv for KirraCSV imports.
+**Plan Updated:** 2026-01-30 - Phase 9 COMPLETE. Created RowEditingTools.js with renameRows, invertRowOrder, resequencePositions, and KAD editing tools. Added UI dialogs to HolesContextMenu.js. All functions exposed on window for global access.
+**Status:** Implementation COMPLETE - All Phases (0-9) Complete
 **Priority:** High
 **Complexity:** High (10 phases, 28 todos)
 
@@ -1107,20 +1110,20 @@ function renameKADSegments(kadId, newSegmentMapping) {
 | **PHASE 5: FALLBACK CHAIN** ||||
 | dbscan-douglas-peucker | Enhancement 5: Implement DBSCAN + Douglas-Peucker chain approximation as fallback | **COMPLETE** | 5 |
 | **PHASE 6: INTEGRATION** ||||
-| hierarchical-orchestrator | Update improvedSmartRowDetection() to use hierarchical approach with algorithm selection tree | Pending | 6 |
-| validation-layer | Add validation layer - consistent spacing, orphan hole handling, pattern metadata | Pending | 6 |
+| hierarchical-orchestrator | Update improvedSmartRowDetection() to use hierarchical approach with algorithm selection tree | **COMPLETE** | 6 |
+| validation-layer | Add validation layer - consistent spacing, orphan hole handling, pattern metadata | **COMPLETE** | 6 |
 | **PHASE 7: PATTERN GENERATION** ||||
 | burden-field-line-tools | Add burden field to showHolesAlongLinePopup() and showHolesAlongPolylinePopup() dialogs | **COMPLETE** | 7 |
 | row-direction-option | Add Row Direction option (Return vs Serpentine) to pattern generation dialogs | **COMPLETE** | 7 |
 | **PHASE 8: IMPORT PROGRESS** ||||
-| import-progress-dialog | Add progress dialog for blast imports showing stages (parsing, row detection, burden/spacing calc) | Pending | 8 |
-| burden-spacing-calculation | Implement accurate burden/spacing calculation with metrics after row detection | Pending | 8 |
+| import-progress-dialog | Add progress dialog for blast imports showing stages (parsing, row detection, burden/spacing calc) | **COMPLETE** | 8 |
+| burden-spacing-calculation | Implement accurate burden/spacing calculation with metrics after row detection | **COMPLETE** | 8 |
 | **PHASE 9: POST-DETECTION EDITING TOOLS (NEW)** ||||
-| row-rename-tool | Implement Row Rename Tool - change rowID assignments for selected holes | Pending | 9 |
-| invert-rows-tool | Implement Invert Rows Tool - flip row numbering direction (Row 1→N becomes Row N→1) | Pending | 9 |
-| resequence-positions-tool | Implement Resequence Positions Tool - renumber posID within selected rows | Pending | 9 |
-| kad-editing-tools | Apply same editing tools to KAD line/polyline entities | Pending | 9 |
-| edit-menu-integration | Add "Row Tools" submenu to Edit menu with all editing tools | Pending | 9 |
+| row-rename-tool | Implement Row Rename Tool - change rowID assignments for selected holes | **COMPLETE** | 9 |
+| invert-rows-tool | Implement Invert Rows Tool - flip row numbering direction (Row 1→N becomes Row N→1) | **COMPLETE** | 9 |
+| resequence-positions-tool | Implement Resequence Positions Tool - renumber posID within selected rows | **COMPLETE** | 9 |
+| kad-editing-tools | Apply same editing tools to KAD line/polyline entities | **COMPLETE** | 9 |
+| edit-menu-integration | Add dialog functions to HolesContextMenu.js, exposed globally (no edit menu exists) | **COMPLETE** | 9 |
 
 ---
 

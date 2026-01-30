@@ -5,6 +5,12 @@
 
 // Step 1) Floating Dialog System - Alternative to Swal2 for non-blocking dialogs
 // Update the FloatingDialog class to support 4 buttons and proper theme detection
+
+// Step 0) Static tracking of open dialogs (for disabling Delete key etc.)
+var openDialogsSet = new Set();
+// Step 0a) Track dialogs by title to enforce single-dialog-per-type rule
+var openDialogsByTitle = new Map();
+
 class FloatingDialog {
 	constructor(options) {
 		this.options = {
@@ -58,11 +64,24 @@ class FloatingDialog {
 	}
 
 	show() {
+		// Step 2a) Close any existing dialog with the same title (silently, no callbacks)
+		var dialogTitle = this.options.title || "Dialog";
+		if (openDialogsByTitle.has(dialogTitle)) {
+			var existingDialog = openDialogsByTitle.get(dialogTitle);
+			if (existingDialog && existingDialog !== this) {
+				existingDialog.closeSilently();
+			}
+		}
+
 		this.create();
 		this.applyLayoutType();
 		document.body.appendChild(this.element);
 		this.center();
 		this.setupEventListeners();
+
+		// Step 2b) Track this dialog as open
+		openDialogsSet.add(this);
+		openDialogsByTitle.set(dialogTitle, this);
 
 		// Step 3) Focus first input if any
 		setTimeout(() => {
@@ -335,6 +354,37 @@ class FloatingDialog {
 			document.removeEventListener("keydown", this.handleKeydownBound);
 		}
 
+		// Step 22a) Remove from open dialogs tracking
+		openDialogsSet.delete(this);
+		var dialogTitle = this.options.title || "Dialog";
+		if (openDialogsByTitle.get(dialogTitle) === this) {
+			openDialogsByTitle.delete(dialogTitle);
+		}
+
+		this.element = null;
+	}
+
+	// Step 22b) Close silently without triggering any callbacks (used when replacing dialogs)
+	closeSilently() {
+		if (this.element && this.element.parentNode) {
+			this.element.parentNode.removeChild(this.element);
+		}
+
+		// Clean up event listeners
+		if (this.handleOutsideClickBound) {
+			document.removeEventListener("click", this.handleOutsideClickBound);
+		}
+		if (this.handleKeydownBound) {
+			document.removeEventListener("keydown", this.handleKeydownBound);
+		}
+
+		// Remove from tracking
+		openDialogsSet.delete(this);
+		var dialogTitle = this.options.title || "Dialog";
+		if (openDialogsByTitle.get(dialogTitle) === this) {
+			openDialogsByTitle.delete(dialogTitle);
+		}
+
 		this.element = null;
 	}
 
@@ -343,6 +393,23 @@ class FloatingDialog {
 		const dialog = new FloatingDialog(options);
 		dialog.show();
 		return dialog;
+	}
+
+	// Step 23a) Static method to check if any dialog is currently open
+	static isAnyDialogOpen() {
+		return openDialogsSet.size > 0;
+	}
+
+	// Step 23b) Static method to get count of open dialogs
+	static getOpenDialogCount() {
+		return openDialogsSet.size;
+	}
+
+	// Step 23c) Static method to close all open dialogs silently
+	static closeAllDialogsSilently() {
+		openDialogsSet.forEach(function(dialog) {
+			dialog.closeSilently();
+		});
 	}
 }
 
@@ -1306,6 +1373,8 @@ window.showConfirmationDialogWithInput = showConfirmationDialogWithInput;
 window.showConfirmationDialogWithInputAndBeforeAfter = showConfirmationDialogWithInputAndBeforeAfter;
 window.showConfirmationThreeDialog = showConfirmationThreeDialog;
 window.showModalMessage = showModalMessage;
+// Step 0b) Shortcut for checking if any dialog is open (for disabling Delete key etc.)
+window.isAnyDialogOpen = function() { return FloatingDialog.isAnyDialogOpen(); };
 
 // Step 1) Export for ES6 modules (kirra.js uses ES6 imports at line 77)
 // Step 2) Also expose via window.functionName for backward compatibility

@@ -73,6 +73,34 @@ import {
 	DIRECTION_TYPES
 } from "./SerpentineDetection.js";
 
+import {
+	validateRowDetection,
+	calculateDetailedMetrics,
+	calculateConfidenceScore,
+	VALIDATION_STATUS,
+	PATTERN_TYPES as VALIDATION_PATTERN_TYPES
+} from "./RowValidation.js";
+
+import {
+	renameRows,
+	assignRowToHoles,
+	invertRowOrder,
+	resequencePositions,
+	renameKADPoints,
+	invertKADPointOrder,
+	resequenceKADPoints,
+	getEntityRowIDs,
+	getRowHoles,
+	getBlastEntityNames
+} from "./RowEditingTools.js";
+
+import {
+	incrementLetter,
+	renumberHolesFunction,
+	renumberPatternAfterClipping,
+	deleteHoleAndRenumber
+} from "./HoleEditingTools.js";
+
 // Step 2) Main orchestrator function
 /**
  * IMPROVED SMART ROW DETECTION
@@ -256,12 +284,32 @@ export function improvedSmartRowDetection(holesData, entityName, options) {
 		}
 	}
 
+	// Step 2k) Run validation on detected rows (Phase 6)
+	var validationResult = validateRowDetection(holesData, detectedRows);
+	var detailedMetrics = calculateDetailedMetrics(holesData, detectedRows);
+	var confidenceScore = calculateConfidenceScore(validationResult, detectionMethod);
+
+	// Step 2l) Determine final pattern type
+	var patternType = validationResult.patternType;
+	if (serpentineResult && serpentineResult.pattern === DIRECTION_TYPES.SERPENTINE) {
+		patternType = serpentineResult.isWinding ? "winding" : "serpentine";
+	}
+
 	return {
 		success: true,
 		method: detectionMethod,
 		rows: detectedRows,
 		rowCount: detectedRows ? detectedRows.length : 0,
-		serpentinePattern: serpentineResult
+		serpentinePattern: serpentineResult,
+		// Phase 6: Enhanced metadata
+		validation: {
+			status: validationResult.status,
+			issues: validationResult.issues,
+			warnings: validationResult.warnings
+		},
+		metrics: detailedMetrics,
+		confidence: confidenceScore,
+		patternType: patternType
 	};
 }
 
@@ -486,7 +534,32 @@ export {
 	detectRowsUsingKNNBearingTraversal,
 	assignSerpentinePositionIDs,
 	detectRowsUsingWindingSequence,
-	DIRECTION_TYPES
+	DIRECTION_TYPES,
+
+	// Validation (Phase 6)
+	validateRowDetection,
+	calculateDetailedMetrics,
+	calculateConfidenceScore,
+	VALIDATION_STATUS,
+	VALIDATION_PATTERN_TYPES,
+
+	// Row Editing Tools (Phase 9)
+	renameRows,
+	assignRowToHoles,
+	invertRowOrder,
+	resequencePositions,
+	renameKADPoints,
+	invertKADPointOrder,
+	resequenceKADPoints,
+	getEntityRowIDs,
+	getRowHoles,
+	getBlastEntityNames,
+
+	// Hole Editing Tools
+	incrementLetter,
+	renumberHolesFunction,
+	renumberPatternAfterClipping,
+	deleteHoleAndRenumber
 };
 
 // Step 4) Expose to window for backward compatibility with kirra.js
@@ -521,3 +594,20 @@ window.detectRowsUsingKNNBearingTraversal = detectRowsUsingKNNBearingTraversal;
 window.assignSerpentinePositionIDs = assignSerpentinePositionIDs;
 window.detectRowsUsingWindingSequence = detectRowsUsingWindingSequence;
 window.DIRECTION_TYPES = DIRECTION_TYPES;
+// Validation (Phase 6)
+window.validateRowDetection = validateRowDetection;
+window.calculateDetailedMetrics = calculateDetailedMetrics;
+window.calculateConfidenceScore = calculateConfidenceScore;
+window.VALIDATION_STATUS = VALIDATION_STATUS;
+window.VALIDATION_PATTERN_TYPES = VALIDATION_PATTERN_TYPES;
+// Row Editing Tools (Phase 9)
+window.renameRows = renameRows;
+window.assignRowToHoles = assignRowToHoles;
+window.invertRowOrder = invertRowOrder;
+window.resequencePositions = resequencePositions;
+window.renameKADPoints = renameKADPoints;
+window.invertKADPointOrder = invertKADPointOrder;
+window.resequenceKADPoints = resequenceKADPoints;
+window.getEntityRowIDs = getEntityRowIDs;
+window.getRowHoles = getRowHoles;
+window.getBlastEntityNames = getBlastEntityNames;

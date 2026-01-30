@@ -148,6 +148,8 @@ import { highlightSelectedKADThreeJS } from "./draw/canvas3DDrawSelection.js";
 import { FloatingDialog, createFormContent, createEnhancedFormContent, getFormData, showConfirmationDialog, showConfirmationThreeDialog, showModalMessage } from "./dialog/FloatingDialog.js";
 // Projection Dialog Module
 import { promptForProjection, isLikelyWGS84 } from "./dialog/popups/generic/ProjectionDialog.js";
+// Import Progress Dialog Module (Phase 8)
+import { showImportProgressDialog, IMPORT_STAGES } from "./dialog/popups/generic/ImportProgressDialog.js";
 // TreeView Module
 import { TreeView, initializeTreeView } from "./dialog/tree/TreeView.js";
 // DXF Export Dialog Module
@@ -7935,19 +7937,23 @@ document.querySelectorAll(".holes-input-btn").forEach(function (button) {
 			var reader = new FileReader();
 			reader.onload = async function (event) {
 				try {
-					var result = await parseK2Dcsv(event.target.result);
+					// Pass filename to enable progress dialog (Phase 8)
+					var result = await parseK2Dcsv(event.target.result, file.name);
 
-					// Show conditional message based on import result
-					var message;
-					if (result.cancelled) {
-						message = "Import cancelled. Imported " + result.imported + " of " + (result.imported + result.skipped) + " holes from " + file.name;
-						showModalMessage("CSV Import Cancelled", message, "warning");
-					} else if (result.skipped > 0) {
-						message = "Imported " + result.imported + " holes, skipped " + result.skipped + " (proximity conflicts) from " + file.name;
-						showModalMessage("CSV Import Complete", message, "success");
-					} else {
-						message = "Imported " + result.imported + " holes from " + file.name;
-						showModalMessage("CSV Import Success", message, "success");
+					// Progress dialog handles completion message
+					// Only show additional modal if no progress dialog or for special cases
+					if (!result.metrics) {
+						var message;
+						if (result.cancelled) {
+							message = "Import cancelled. Imported " + result.imported + " of " + (result.imported + result.skipped) + " holes from " + file.name;
+							showModalMessage("CSV Import Cancelled", message, "warning");
+						} else if (result.skipped > 0) {
+							message = "Imported " + result.imported + " holes, skipped " + result.skipped + " (proximity conflicts) from " + file.name;
+							showModalMessage("CSV Import Complete", message, "success");
+						} else {
+							message = "Imported " + result.imported + " holes from " + file.name;
+							showModalMessage("CSV Import Success", message, "success");
+						}
 					}
 
 					// Update TreeView to show imported data
@@ -13232,11 +13238,23 @@ function generateUniqueHoleID(entityName, baseID) {
 // Step 6) Returns structured data: { holes: [], warnings: [] }
 // Step 7) Backward compatibility maintained via wrapper function below
 
-async function parseK2Dcsv(data) {
+async function parseK2Dcsv(data, filename) {
+	// Step 0) Create progress dialog if filename provided (Phase 8)
+	var progressDialog = null;
+	if (filename && typeof showImportProgressDialog === "function") {
+		progressDialog = showImportProgressDialog(filename, {
+			onCancel: function() {
+				window.holeGenerationCancelled = true;
+			}
+		});
+		progressDialog.setStage("PARSING");
+	}
+
 	try {
 		// Step 1) Use FileManager to parse CSV data
 		var BlastHoleCSVParser = window.fileManager.parsers.get("blasthole-csv");
 		if (!BlastHoleCSVParser) {
+			if (progressDialog) progressDialog.fail("BlastHole CSV parser not found");
 			throw new Error("BlastHole CSV parser not found in FileManager. Ensure init.js is loaded.");
 		}
 
@@ -13246,7 +13264,15 @@ async function parseK2Dcsv(data) {
 
 		if (!holes || holes.length === 0) {
 			console.warn("No holes found in CSV");
+			if (progressDialog) {
+				progressDialog.fail("No holes found in CSV file");
+			}
 			return allBlastHoles;
+		}
+
+		if (progressDialog) {
+			progressDialog.setStage("GEOMETRY");
+			progressDialog.setDetails("Found " + holes.length + " holes to import");
 		}
 
 		// Step 2) RULE #9: Use addHole() to create proper hole geometry
@@ -13271,6 +13297,11 @@ async function parseK2Dcsv(data) {
 			if (window.holeGenerationCancelled) {
 				console.log("CSV import cancelled by user at hole " + (i + 1) + " of " + totalHoles);
 				break;
+			}
+
+			// Update progress dialog (every 10 holes to reduce overhead)
+			if (progressDialog && (i % 10 === 0 || i === holes.length - 1)) {
+				progressDialog.updateProgress(i + 1, totalHoles);
 			}
 
 			var h = holes[i];
@@ -13344,6 +13375,11 @@ async function parseK2Dcsv(data) {
 		}
 
 		// Step 5) Get all imported holes for post-processing
+		if (progressDialog) {
+			progressDialog.setStage("ROW_DETECTION");
+			progressDialog.setDetails("Analyzing row patterns...");
+		}
+
 		var entitiesAfter = new Set(allBlastHoles.map(function (h) { return h.entityName; }));
 		var newEntities = Array.from(entitiesAfter).filter(function (e) { return !entitiesBefore.has(e); });
 
@@ -13359,6 +13395,12 @@ async function parseK2Dcsv(data) {
 		window.holeGenerationCancelled = false;
 
 		// Step 6) Calculate burden and spacing for new entities
+		if (progressDialog) {
+			progressDialog.setStage("BURDEN_SPACING");
+			progressDialog.setDetails("Calculating burden and spacing...");
+		}
+
+		var importMetrics = null;
 		newEntities.forEach(function (entityName) {
 			var entityHoles = allBlastHoles.filter(function (h) { return h.entityName === entityName; });
 			if (entityHoles.length > 0) {
@@ -13371,10 +13413,27 @@ async function parseK2Dcsv(data) {
 				if (needsCalculation.length > 0) {
 					calculateBurdenAndSpacingForHoles(needsCalculation);
 				}
+				// Calculate metrics for progress dialog
+				if (!importMetrics && typeof window.calculateDetailedMetrics === "function") {
+					// Build row arrays for metrics calculation
+					var rowMap = new Map();
+					entityHoles.forEach(function(hole, index) {
+						var rowID = hole.rowID || 0;
+						if (!rowMap.has(rowID)) rowMap.set(rowID, []);
+						rowMap.get(rowID).push(index);
+					});
+					var rowArrays = Array.from(rowMap.values());
+					importMetrics = window.calculateDetailedMetrics(entityHoles, rowArrays);
+				}
 			}
 		});
 
 		// Step 7) Calculate times and redraw
+		if (progressDialog) {
+			progressDialog.setStage("FINALIZING");
+			progressDialog.setDetails("Updating display...");
+		}
+
 		holeTimes = calculateTimes(allBlastHoles);
 		drawData(allBlastHoles, selectedHole);
 
@@ -13388,16 +13447,30 @@ async function parseK2Dcsv(data) {
 			debouncedUpdateTreeView();
 		}
 
-		// Step 10) Return holes and import statistics
+		// Step 10) Complete progress dialog
+		if (progressDialog) {
+			if (wasCancelled) {
+				progressDialog.fail("Import cancelled by user");
+			} else {
+				progressDialog.complete(importedCount, importMetrics);
+			}
+		}
+
+		// Step 11) Return holes and import statistics
 		return {
 			holes: allBlastHoles,
 			imported: importedCount,
 			skipped: skippedCount,
-			cancelled: wasCancelled
+			cancelled: wasCancelled,
+			metrics: importMetrics
 		};
 	} catch (error) {
 		console.error("Error during CSV parsing:", error);
-		alert("Error importing CSV file: " + error.message);
+		if (progressDialog) {
+			progressDialog.fail(error.message);
+		} else {
+			alert("Error importing CSV file: " + error.message);
+		}
 		throw error;
 	}
 }
@@ -24245,343 +24318,8 @@ function handleHoleDeletingClick(event) {
 	}
 }
 
-// Update renumberHolesFunction to preserve rowID/posID structure
-function renumberHolesFunction(startNumber, selectedEntityName) {
-	console.log("Renumbering holes for Entity:", selectedEntityName, "Starting at:", startNumber);
-
-	const oldToNewHoleIDMap = new Map();
-
-	// Get all holes for this entity
-	const entityHoles = allBlastHoles.filter((hole) => hole.entityName === selectedEntityName);
-
-	// Sort holes by rowID first, then by posID within each row
-	entityHoles.sort((a, b) => {
-		// First sort by rowID
-		const rowDiff = (a.rowID || 0) - (b.rowID || 0);
-		if (rowDiff !== 0) return rowDiff;
-
-		// Then sort by posID within the same row
-		return (a.posID || 0) - (b.posID || 0);
-	});
-
-	const startValue = startNumber.toString();
-	const alphaMatch = startValue.match(/^([A-Z]+)(\d+)$/);
-	const isAlphaNumerical = alphaMatch !== null;
-	const canParseAsInt = !isNaN(parseInt(startValue)) && isFinite(startValue);
-
-	if (isAlphaNumerical) {
-		// ALPHA-NUMERICAL RENUMBERING BY ROW - Use rowID/posID structure
-		console.log("Using alpha-numerical renumbering with rowID/posID structure starting at:", startValue);
-
-		const startRowLetter = alphaMatch[1];
-		const startHoleNumber = parseInt(alphaMatch[2]);
-
-		// Group holes by rowID
-		const rowGroups = new Map();
-		entityHoles.forEach((hole) => {
-			const rowID = hole.rowID || 1;
-			if (!rowGroups.has(rowID)) {
-				rowGroups.set(rowID, []);
-			}
-			rowGroups.get(rowID).push(hole);
-		});
-
-		// Sort each row by posID
-		rowGroups.forEach((holes) => {
-			holes.sort((a, b) => (a.posID || 0) - (b.posID || 0));
-		});
-
-		// Get sorted rowIDs
-		const sortedRowIDs = Array.from(rowGroups.keys()).sort((a, b) => a - b);
-
-		let currentRowLetter = startRowLetter;
-
-		// Renumber each row
-		sortedRowIDs.forEach((rowID) => {
-			const rowHoles = rowGroups.get(rowID);
-			rowHoles.forEach((hole, posIndex) => {
-				const newHoleID = currentRowLetter + (startHoleNumber + posIndex);
-				oldToNewHoleIDMap.set(hole.holeID, newHoleID);
-				hole.holeID = newHoleID;
-			});
-
-			// Move to next row letter
-			if (currentRowLetter === "Z") {
-				currentRowLetter = "AA";
-			} else if (currentRowLetter === "ZZ") {
-				currentRowLetter = "AAA";
-			} else {
-				currentRowLetter = incrementLetter(currentRowLetter);
-			}
-		});
-	} else {
-		// NUMERICAL RENUMBERING - Respect rowID/posID order
-		console.log("Using numerical renumbering with rowID/posID structure starting at:", startValue);
-
-		const startNum = canParseAsInt ? parseInt(startValue) : 1;
-		let currentNumber = startNum;
-
-		entityHoles.forEach((hole) => {
-			oldToNewHoleIDMap.set(hole.holeID, currentNumber.toString());
-			hole.holeID = currentNumber.toString();
-			currentNumber++;
-		});
-	}
-
-	// Update fromHoleID references
-	allBlastHoles.forEach((hole) => {
-		if (hole.fromHoleID) {
-			const [entity, oldHoleID] = hole.fromHoleID.split(":::");
-			if (entity === selectedEntityName && oldToNewHoleIDMap.has(oldHoleID)) {
-				hole.fromHoleID = entity + ":::" + oldToNewHoleIDMap.get(oldHoleID);
-			}
-		}
-	});
-
-	refreshPoints();
-	drawData(allBlastHoles, selectedHole);
-	console.log("Renumbered", entityHoles.length, "holes respecting rowID/posID structure");
-}
-
-function renumberPatternAfterClipping(entityName) {
-	const entityHoles = allBlastHoles.filter((hole) => hole.entityName === entityName);
-
-	if (entityHoles.length === 0) return;
-
-	// For patterns generated in polygons, the offset-aware numbering is already applied during generation
-	// This function now just ensures proper A1 start and maintains the existing numbering structure
-
-	// Step 1: Automatically detect row orientation from the pattern
-	let rowOrientation = 90; // Default to East (90?) if can't determine
-
-	if (entityHoles.length >= 2) {
-		// Sort holes by Y coordinate to find potential row mates
-		const sortedByY = [...entityHoles].sort((a, b) => b.startYLocation - a.startYLocation);
-
-		// Find the first two holes that are likely in the same row (similar Y coordinates)
-		const tolerance = 2.0; // 2 meter tolerance for same row
-		let firstRowHoles = [sortedByY[0]];
-
-		for (let i = 1; i < sortedByY.length; i++) {
-			if (Math.abs(sortedByY[i].startYLocation - sortedByY[0].startYLocation) <= tolerance) {
-				firstRowHoles.push(sortedByY[i]);
-			} else {
-				break; // Found different row
-			}
-		}
-
-		// If we have at least 2 holes in the same row, calculate row orientation
-		if (firstRowHoles.length >= 2) {
-			// Sort by X coordinate to get leftmost and rightmost holes in the row
-			firstRowHoles.sort((a, b) => a.startXLocation - b.startXLocation);
-			const leftHole = firstRowHoles[0];
-			const rightHole = firstRowHoles[firstRowHoles.length - 1];
-
-			// Calculate bearing from left to right hole using your protractor formula
-			const deltaX = rightHole.startXLocation - leftHole.startXLocation;
-			const deltaY = rightHole.startYLocation - leftHole.startYLocation;
-
-			// Use the same bearing calculation as your protractor tool
-			rowOrientation = (90 - (Math.atan2(deltaY, deltaX) * 180) / Math.PI + 360) % 360;
-		}
-	}
-
-	console.log("Detected row orientation: " + rowOrientation + "° for entity: " + entityName);
-
-	// Step 2: Convert compass bearing to math radians for projections
-	const rowBearingRadians = (90 - rowOrientation) * (Math.PI / 180);
-	const burdenBearingRadians = rowBearingRadians - Math.PI / 2; // Perpendicular to row direction
-
-	// Step 3: Project each hole onto the burden axis (perpendicular to rows) and spacing axis (along rows)
-	entityHoles.forEach((hole) => {
-		// Project onto burden direction (perpendicular to rows) - this determines which row
-		hole.burdenProjection = hole.startXLocation * Math.cos(burdenBearingRadians) + hole.startYLocation * Math.sin(burdenBearingRadians);
-		// Project onto spacing direction (along rows) - this determines position within row
-		hole.spacingProjection = hole.startXLocation * Math.cos(rowBearingRadians) + hole.startYLocation * Math.sin(rowBearingRadians);
-	});
-
-	// Step 4: Sort by burden projection (to group rows), then by spacing projection (within each row)
-	entityHoles.sort((a, b) => {
-		const burdenDiff = Math.abs(a.burdenProjection - b.burdenProjection);
-		if (burdenDiff > 1.5) {
-			// Tolerance for row grouping
-			return b.burdenProjection - a.burdenProjection; // Sort rows (highest burden first)
-		}
-		return a.spacingProjection - b.spacingProjection; // Sort within row (left to right along row)
-	});
-
-	// Step 5: Group holes by rows using burden projection
-	const tolerance = 2.0; // Tolerance in meters for row grouping
-	const rows = [];
-
-	if (entityHoles.length > 0) {
-		let currentRow = [entityHoles[0]];
-		let currentBurdenPos = entityHoles[0].burdenProjection;
-
-		for (let i = 1; i < entityHoles.length; i++) {
-			const hole = entityHoles[i];
-			if (Math.abs(hole.burdenProjection - currentBurdenPos) <= tolerance) {
-				currentRow.push(hole);
-			} else {
-				// Sort current row by spacing projection (along the row direction)
-				currentRow.sort((a, b) => a.spacingProjection - b.spacingProjection);
-				rows.push(currentRow);
-				currentRow = [hole];
-				currentBurdenPos = hole.burdenProjection;
-			}
-		}
-
-		// Don't forget the last row
-		if (currentRow.length > 0) {
-			currentRow.sort((a, b) => a.spacingProjection - b.spacingProjection);
-			rows.push(currentRow);
-		}
-	}
-
-	// Step 6: Simple renumbering starting from A1 (offset logic already applied during generation)
-	let rowLetter = "A";
-	for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
-		const row = rows[rowIndex];
-
-		// For clipped patterns, just renumber sequentially starting from 1 in each row
-		for (let pos = 0; pos < row.length; pos++) {
-			const hole = row[pos];
-			const newHoleID = rowLetter + (pos + 1);
-
-			// Update fromHoleID references
-			allBlastHoles.forEach((hole) => {
-				if (hole.fromHoleID === entityName + ":::" + hole.holeID) {
-					hole.fromHoleID = entityName + ":::" + newHoleID;
-				}
-			});
-
-			hole.holeID = newHoleID;
-		}
-
-		// Move to next row letter
-		if (rowLetter === "Z") {
-			rowLetter = "AA";
-		} else if (rowLetter === "ZZ") {
-			rowLetter = "AAA";
-		} else {
-			rowLetter = incrementLetter(rowLetter);
-		}
-	}
-
-	// Step 7: Clean up temporary projection properties
-	entityHoles.forEach((hole) => {
-		delete hole.burdenProjection;
-		delete hole.spacingProjection;
-	});
-
-	console.log("Renumbered " + entityHoles.length + " holes in " + rows.length + " rows for entity: " + entityName + " with detected row orientation: " + rowOrientation + "°");
-}
-
-// Step #1: Unified deleteHoleAndRenumber for rowID/posID and alphanumeric holeID
-function deleteHoleAndRenumber(holeToDelete) {
-	const entityName = holeToDelete.entityName;
-	const holeID = holeToDelete.holeID;
-	const rowID = holeToDelete.rowID;
-	const posID = holeToDelete.posID;
-	const deletedCombinedID = entityName + ":::" + holeID;
-
-	// Step #2: Find the hole in allBlastHoles and remove it
-	const holeIndex = allBlastHoles.findIndex((hole) => hole.entityName === entityName && hole.holeID === holeID);
-	if (holeIndex !== -1) {
-		allBlastHoles.splice(holeIndex, 1);
-		console.log("❌🕳️ Deleted hole:", entityName + ":" + holeID);
-
-		// Step #2a: Clean up fromHoleID references - orphaned holes should reference themselves
-		allBlastHoles.forEach((hole) => {
-			if (hole.fromHoleID === deletedCombinedID) {
-				const selfReference = hole.entityName + ":::" + hole.holeID;
-				console.log("🕳️ Orphaned hole " + selfReference + " now references itself");
-				hole.fromHoleID = selfReference;
-			}
-		});
-
-		// Step #2b: Save to IndexedDB after deletion
-		debouncedSaveHoles();
-	} else {
-		console.warn("🚨 Hole not found for deletion:", entityName + ":" + holeID);
-		return;
-	}
-
-	// Step #3: If rowID/posID exist, use rowID/posID logic
-	if (rowID && posID) {
-		// Get all holes in the same row that come after the deleted hole
-		const sameRowHoles = allBlastHoles.filter((hole) => hole.entityName === entityName && hole.rowID === rowID && hole.posID > posID);
-
-		// Renumber positions in this row
-		sameRowHoles.forEach((hole) => {
-			const oldHoleID = hole.holeID;
-			hole.posID = hole.posID - 1; // Shift position down by 1
-
-			// Update fromHoleID references if needed
-			allBlastHoles.forEach((h) => {
-				if (h.fromHoleID === entityName + ":::" + oldHoleID) {
-					h.fromHoleID = entityName + ":::" + hole.holeID;
-				}
-			});
-		});
-
-		console.log("Renumbered " + sameRowHoles.length + " holes in row " + rowID);
-		return; // Step #4: Exit after rowID/posID logic
-	}
-
-	// Step #5: If not rowID/posID, check for alphanumeric holeID
-	const alphaMatch = holeID && holeID.toString().match(/^([A-Z]+)(\d+)$/);
-	const isAlphaNumerical = alphaMatch !== null;
-
-	if (isAlphaNumerical) {
-		const deletedRowLetter = alphaMatch[1];
-		const deletedHoleNumber = parseInt(alphaMatch[2]);
-
-		// Get all holes in the same row (same letter) and entity
-		const sameRowHoles = allBlastHoles.filter((hole) => hole.entityName === entityName && hole.holeID && hole.holeID.toString().startsWith(deletedRowLetter));
-
-		// Sort by hole number within the row
-		sameRowHoles.sort((a, b) => {
-			const aMatch = a.holeID.toString().match(/^[A-Z]+(\d+)$/);
-			const bMatch = b.holeID.toString().match(/^[A-Z]+(\d+)$/);
-			if (aMatch && bMatch) {
-				return parseInt(aMatch[1]) - parseInt(bMatch[1]);
-			}
-			return 0;
-		});
-
-		// Renumber holes in this row that come after the deleted hole
-		sameRowHoles.forEach((hole) => {
-			const currentMatch = hole.holeID.toString().match(/^([A-Z]+)(\d+)$/);
-			if (currentMatch) {
-				const currentHoleNumber = parseInt(currentMatch[2]);
-				if (currentHoleNumber > deletedHoleNumber) {
-					const oldHoleID = hole.holeID;
-					const newHoleID = deletedRowLetter + (currentHoleNumber - 1);
-					hole.holeID = newHoleID;
-
-					// Update fromHoleID references
-					allBlastHoles.forEach((h) => {
-						if (h.fromHoleID === entityName + ":::" + oldHoleID) {
-							h.fromHoleID = entityName + ":::" + newHoleID;
-						}
-					});
-				}
-			}
-		});
-
-		console.log("Renumbered " + sameRowHoles.length + " holes in row " + deletedRowLetter);
-		return; // Step #6: Exit after alphanumeric logic
-	}
-
-	// Step #7: For numerical holes, no automatic renumbering on delete
-	// (user can manually renumber if needed)
-}
-
-// Expose hole deletion and renumbering functions globally for HolesContextMenu.js
-window.deleteHoleAndRenumber = deleteHoleAndRenumber;
-window.renumberHolesFunction = renumberHolesFunction;
-window.renumberPatternAfterClipping = renumberPatternAfterClipping;
+// renumberHolesFunction, renumberPatternAfterClipping, deleteHoleAndRenumber
+// moved to src/helpers/RowDetection/HoleEditingTools.js
 
 // Expose setMeasuredDate for HolePropertyDialogs.js
 window.setMeasuredDate = setMeasuredDate;
@@ -24721,6 +24459,11 @@ let deleteKeyCount = 0;
 function handleDrawingKeyEvents(event) {
 	// Check for Delete or Backspace keys
 	if (event.key === "Delete" || event.key === "Backspace") {
+		// Step 0) Skip delete if any dialog is open (prevent accidental deletions)
+		if (window.isAnyDialogOpen && window.isAnyDialogOpen()) {
+			return; // Let dialog handle the key or ignore it
+		}
+
 		event.preventDefault(); // Prevent default browser behavior
 
 		// Only allow deletion if we have a current drawing entity
@@ -26357,7 +26100,7 @@ function showProximityWarning(proximityHoles, newHoleInfo) {
 
 // Function to generate the pattern of holes
 // added rowid and posid 14 july 2025
-function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrientation, x, y, z, gradeZ, diameter, type, angle, bearing, length, subdrill, burden, spacing, rows, holesPerRow) {
+function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrientation, x, y, z, gradeZ, diameter, type, angle, bearing, length, subdrill, burden, spacing, rows, holesPerRow, rowDirection) {
 	console.log("🔍 addPattern called with:", {
 		useGradeZ: useGradeZ,
 		useGradeZ_type: typeof useGradeZ,
@@ -26388,6 +26131,7 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 	let patternspacing = parseFloat(spacing);
 	let patternrows = parseInt(rows);
 	let patternholesPerRow = parseInt(holesPerRow);
+	let patternRowDirection = rowDirection || "return"; // "return" = forward only, "serpentine" = alternating
 	// Step 1) Calculate gradeZLocation based on mode
 	// If useGradeZ: use the user-provided gradeZ directly
 	// Otherwise: calculate from length and subdrill
@@ -26448,13 +26192,21 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 		// Each pattern row gets its own rowID
 		const currentRowID = startingRowID + i;
 
+		// Check if this is a serpentine odd row (reverse traversal direction)
+		const isSerpentineOddRow = (patternRowDirection === "serpentine" && i % 2 === 1);
+
 		for (let j = 0; j < patternholesPerRow; j++) {
 			// Check for cancellation before each hole
 			if (window.holeGenerationCancelled) {
 				console.log("Pattern generation cancelled by user");
 				break;
 			}
-			const relativeX = j * patternspacing;
+
+			// For serpentine odd rows, calculate physical position from opposite end
+			// so hole 1 is near where the last hole of the previous row was
+			const physicalJ = isSerpentineOddRow ? (patternholesPerRow - 1 - j) : j;
+
+			const relativeX = physicalJ * patternspacing;
 			const relativeY = i * patternburden;
 
 			let offsetX = 0;
@@ -26471,15 +26223,17 @@ function addPattern(offset, entityName, nameTypeIsNumerical, useGradeZ, rowOrien
 			let holeID;
 			const useCustomHoleID = true;
 
+			// Position ID is sequential within the row (1, 2, 3...)
+			const posID = j + 1;
+
 			if (!patternnameTypeIsNumerical) {
-				holeID = currentLetter + (j + 1);
+				// Alphanumeric: rowLetter + position (A1, A2, A3, B1, B2, B3...)
+				holeID = currentLetter + posID;
 			} else {
+				// Numerical: sequential global numbering
 				holeID = globalHoleCounter.toString();
 				globalHoleCounter++;
 			}
-
-			// Position ID is sequential for each hole in this row (j + 1)
-			const posID = j + 1;
 
 			// Check for cancellation right before adding hole
 			if (window.holeGenerationCancelled) {
@@ -26569,33 +26323,7 @@ window.worldX = worldX;
 window.worldY = worldY;
 window.worldZ = worldZ;
 
-function incrementLetter(str) {
-	// Helper function to increment letters
-	const lastIndex = str.length - 1;
-	let carry = false;
-	const newStr = str
-		.split("")
-		.reverse()
-		.map((char, index) => {
-			if (index === 0 || carry) {
-				if (char === "Z") {
-					carry = true;
-					return "A";
-				} else {
-					carry = false;
-					return String.fromCharCode(char.charCodeAt(0) + 1);
-				}
-			} else {
-				return char;
-			}
-		})
-		.reverse()
-		.join("");
-	if (carry) {
-		return "A" + newStr;
-	}
-	return newStr;
-}
+// incrementLetter moved to src/helpers/RowDetection/HoleEditingTools.js
 
 function setMeasuredDate() {
 	const date = new Date();
@@ -33830,6 +33558,11 @@ window.onload = function () {
 
 		// Delete Key for selected KAD objects/vertices
 		if ((event.key === "Delete" || event.key === "Backspace") && !event.target.matches('input, textarea, [contenteditable="true"]')) {
+			// Step 0) Skip delete if any dialog is open (prevent accidental deletions)
+			if (window.isAnyDialogOpen && window.isAnyDialogOpen()) {
+				return; // Let dialog handle the key or ignore it
+			}
+
 			// Step 1) Check if we have KAD selections (not during drawing)
 			const hasKADSelection = selectedKADObject || (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0);
 
@@ -40251,7 +39984,7 @@ async function generatePatternInPolygon(patternSettings) {
 	console.log("Generating pattern in polygon. REF X:[" + patternReferencePoint.x + ", " + patternReferencePoint.y + "]");
 
 	// Extract pattern settings
-	const { blastName, burden, spacing, spacingOffset, collarZ, gradeZ, subdrill, angle, bearing, diameter, type, startNumber, nameTypeIsNumerical, useGradeZ, length, patternType } = patternSettings;
+	const { blastName, burden, spacing, spacingOffset, collarZ, gradeZ, subdrill, angle, bearing, diameter, type, startNumber, nameTypeIsNumerical, useGradeZ, length, patternType, rowDirection } = patternSettings;
 
 	// Calculate the orientation angle from start to end point
 	const dx = patternEndPoint.x - patternStartPoint.x;
@@ -40500,6 +40233,9 @@ async function generatePatternInPolygon(patternSettings) {
 			rowLetter = incrementLetter(rowLetter);
 		}
 
+		// Check if this is a serpentine odd row (reverse traversal direction)
+		const isSerpentineOddRow = (rowDirection === "serpentine" && rowIndex % 2 === 1);
+
 		// Process holes in this row
 		for (let colIndex = 0; colIndex < row.length; colIndex++) {
 			// Check for cancellation before each hole
@@ -40508,29 +40244,21 @@ async function generatePatternInPolygon(patternSettings) {
 				break;
 			}
 
-			const hole = row[colIndex];
+			// For serpentine odd rows, traverse in reverse order (start near where last row ended)
+			const actualIndex = isSerpentineOddRow ? (row.length - 1 - colIndex) : colIndex;
+			const hole = row[actualIndex];
+
+			// Position ID is sequential within the row (1, 2, 3...)
+			const posID = colIndex + 1;
 
 			let holeID;
 			if (nameTypeIsNumerical) {
+				// Sequential numbering
 				holeID = holeCounter++;
 			} else {
-				const actualColGridIndex = hole.originalGridCol;
-				let colNumber = actualColGridIndex - minActualCol + 1;
-
-				// Apply offset logic based on spacingOffset value and row position
-				if (spacingOffset <= -1) {
-					colNumber = colNumber + rowLetterIndex;
-				} else if (spacingOffset > -1 && spacingOffset < 1) {
-					// colNumber stays the same
-				} else if (spacingOffset >= 1) {
-					// colNumber stays the same
-				}
-
-				holeID = rowLetter + colNumber;
+				// Alphanumeric: rowLetter + position (A1, A2, A3, B1, B2, B3...)
+				holeID = rowLetter + posID;
 			}
-
-			// Position ID is sequential for each hole in this row (starts at 1 for each row)
-			const posID = colIndex + 1;
 
 			// Check for cancellation right before adding hole
 			if (window.holeGenerationCancelled) {
