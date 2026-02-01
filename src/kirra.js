@@ -120,6 +120,8 @@ import {
 	highlightSelectedKADPointThreeJS,
 	drawToolPromptThreeJS,
 	drawConnectStadiumZoneThreeJS,
+	drawRenumberStadiumZoneThreeJS,
+	drawReorderRowsLineThreeJS,
 	drawConnectorDelayTextThreeJS,
 	drawMousePositionIndicatorThreeJS,
 	drawSlopeMapThreeJS,
@@ -539,18 +541,30 @@ let centroidNeedsRecalculation = true;
 
 // Step 2) Helper to convert world coordinates to local Three.js coordinates
 function worldToThreeLocal(worldX, worldY) {
+	// Validate inputs to prevent NaN propagation
+	const wx = parseFloat(worldX);
+	const wy = parseFloat(worldY);
+	const ox = isFinite(threeLocalOriginX) ? threeLocalOriginX : 0;
+	const oy = isFinite(threeLocalOriginY) ? threeLocalOriginY : 0;
+
 	return {
-		x: worldX - threeLocalOriginX,
-		y: worldY - threeLocalOriginY,
+		x: isFinite(wx) ? wx - ox : 0,
+		y: isFinite(wy) ? wy - oy : 0,
 	};
 }
 
 // Step 2.1) Helper to convert local Three.js coordinates back to world coordinates
 // This is the REVERSE of worldToThreeLocal - adds origin offset back
 function threeLocalToWorld(localX, localY) {
+	// Validate inputs to prevent NaN propagation
+	const lx = parseFloat(localX);
+	const ly = parseFloat(localY);
+	const ox = isFinite(threeLocalOriginX) ? threeLocalOriginX : 0;
+	const oy = isFinite(threeLocalOriginY) ? threeLocalOriginY : 0;
+
 	return {
-		x: localX + threeLocalOriginX,
-		y: localY + threeLocalOriginY,
+		x: isFinite(lx) ? lx + ox : ox,
+		y: isFinite(ly) ? ly + oy : oy,
 	};
 }
 
@@ -776,10 +790,14 @@ function exposeGlobalsToWindow() {
 function updateThreeLocalOrigin() {
 	// Priority 1: Use first hole if available
 	if (allBlastHoles && allBlastHoles.length > 0) {
-		threeLocalOriginX = allBlastHoles[0].startXLocation;
-		threeLocalOriginY = allBlastHoles[0].startYLocation;
-		console.log("📍 Three.js local origin set from first hole:", threeLocalOriginX, threeLocalOriginY);
-		return;
+		const holeX = parseFloat(allBlastHoles[0].startXLocation);
+		const holeY = parseFloat(allBlastHoles[0].startYLocation);
+		if (isFinite(holeX) && isFinite(holeY)) {
+			threeLocalOriginX = holeX;
+			threeLocalOriginY = holeY;
+			console.log("📍 Three.js local origin set from first hole:", threeLocalOriginX, threeLocalOriginY);
+			return;
+		}
 	}
 
 	// Priority 2: Use first surface point if available (including textured meshes)
@@ -787,27 +805,40 @@ function updateThreeLocalOrigin() {
 		for (const [surfaceId, surface] of loadedSurfaces.entries()) {
 			// Check for standard surface points (LAS, DXF 3DFACE, point cloud triangulations, etc.)
 			if (surface.points && surface.points.length > 0) {
-				threeLocalOriginX = surface.points[0].x;
-				threeLocalOriginY = surface.points[0].y;
-				console.log("📍 Three.js local origin set from surface points:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
-				return;
+				const px = parseFloat(surface.points[0].x);
+				const py = parseFloat(surface.points[0].y);
+				if (isFinite(px) && isFinite(py)) {
+					threeLocalOriginX = px;
+					threeLocalOriginY = py;
+					console.log("📍 Three.js local origin set from surface points:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
+					return;
+				}
 			}
 			// Check for meshBounds (LAS surfaces, OBJ files, any surface with bounds)
 			// This handles both textured meshes AND triangulated surfaces with meshBounds
 			if (surface.meshBounds) {
-				threeLocalOriginX = (surface.meshBounds.minX + surface.meshBounds.maxX) / 2;
-				threeLocalOriginY = (surface.meshBounds.minY + surface.meshBounds.maxY) / 2;
-				console.log("📍 Three.js local origin set from mesh bounds center:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
-				return;
+				const centerX = (parseFloat(surface.meshBounds.minX) + parseFloat(surface.meshBounds.maxX)) / 2;
+				const centerY = (parseFloat(surface.meshBounds.minY) + parseFloat(surface.meshBounds.maxY)) / 2;
+				if (isFinite(centerX) && isFinite(centerY)) {
+					threeLocalOriginX = centerX;
+					threeLocalOriginY = centerY;
+					console.log("📍 Three.js local origin set from mesh bounds center:", surfaceId, "->", threeLocalOriginX, threeLocalOriginY);
+					return;
+				}
 			}
 		}
 	}
 
 	// Priority 3: Fallback to current centroid
-	if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined") {
+	if (typeof centroidX !== "undefined" && typeof centroidY !== "undefined" && isFinite(centroidX) && isFinite(centroidY)) {
 		threeLocalOriginX = centroidX;
 		threeLocalOriginY = centroidY;
 		console.log("📍 Three.js local origin set to centroid:", threeLocalOriginX, threeLocalOriginY);
+	} else {
+		// Priority 4: Default to 0,0 if nothing else is available
+		threeLocalOriginX = 0;
+		threeLocalOriginY = 0;
+		console.log("📍 Three.js local origin defaulted to 0,0 (no valid data)");
 	}
 }
 
@@ -1945,19 +1976,22 @@ function handle3DClick(event) {
 	const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
 	const selectingKAD = selectKADRadio && selectKADRadio.checked;
 
-	// Step 12h.5a) Only allow selection if SelectPointer tool, Move tool, connector tool, RenumberHoles, or ReorderRows is active
+	// Step 12h.5a) Only allow selection if SelectPointer tool, Move tool, connector tool, RenumberHoles, ReorderRows, or ReorderKAD is active
 	// Fixes QUIRK 2: Prevent selection when no tool is active
 	const isConnectorToolActive = isAddingConnector || isAddingMultiConnector;
 	const isRenumberToolActive = window.isRenumberHolesActive;
 	const isReorderRowsToolActive = window.isReorderRowsActive;
-	if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled && !isMoveToolActive && !isRenumberToolActive && !isReorderRowsToolActive) {
+	const isReorderKADToolActive = window.isReorderKADActive || isReorderKADActive;
+	if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled && !isMoveToolActive && !isRenumberToolActive && !isReorderRowsToolActive && !isReorderKADToolActive) {
 		if (developerModeEnabled) {
 			console.log("🚫 [3D CLICK] Select Pointer tool not active - skipping selection");
 		}
 		return;
 	}
 
-	const clickedHole = selectingHoles ? interactionManager.findClickedHole(intersects, allBlastHoles || []) : null;
+	// Step 12h.5b) For interactive hole tools, find holes regardless of radio selection
+	const needsHoleForTool = isRenumberToolActive || isReorderRowsToolActive;
+	const clickedHole = (selectingHoles || needsHoleForTool) ? interactionManager.findClickedHole(intersects, allBlastHoles || []) : null;
 
 	if (clickedHole) {
 		if (developerModeEnabled) {
@@ -1967,6 +2001,62 @@ function handle3DClick(event) {
 		if (developerModeEnabled) {
 			console.log("🚨 [3D CLICK] No hole found in intersections");
 		}
+	}
+
+	// Step 12i.pre) Handle interactive tools FIRST (before checking clickedHole)
+	// These tools need to handle clicks even when no hole is found (to show status messages)
+	if (window.isRenumberHolesActive) {
+		// Step 12i.pre.1) RenumberHoles tool logic in 3D
+		if (developerModeEnabled) {
+			console.log("⬇️ [3D CLICK] RenumberHoles tool mode");
+		}
+		// Prevent camera controls from handling this event
+		event.stopPropagation();
+		event.preventDefault();
+		// Use the window-exposed handleRenumberHolesClick function
+		if (window.handleRenumberHolesClick) {
+			window.handleRenumberHolesClick(clickedHole); // Pass clickedHole (may be null)
+		}
+		return; // RenumberHoles handles its own drawing
+	}
+
+	if (window.isReorderRowsActive) {
+		// Step 12i.pre.2) ReorderRows tool logic in 3D
+		if (developerModeEnabled) {
+			console.log("⬇️ [3D CLICK] ReorderRows tool mode");
+		}
+		// Prevent camera controls from handling this event
+		event.stopPropagation();
+		event.preventDefault();
+		// Use the window-exposed handleReorderRowsClick function
+		if (window.handleReorderRowsClick) {
+			window.handleReorderRowsClick(clickedHole); // Pass clickedHole (may be null)
+		}
+		return; // ReorderRows handles its own drawing
+	}
+
+	// Step 12i.pre.3) ReorderKAD tool logic in 3D
+	if (isReorderKADToolActive) {
+		if (developerModeEnabled) {
+			console.log("⬇️ [3D CLICK] ReorderKAD tool mode");
+		}
+		// Prevent camera controls from handling this event
+		event.stopPropagation();
+		event.preventDefault();
+
+		// Find clicked KAD object from 3D intersections using dedicated 3D function
+		// Get canvas click position from event
+		const threeCanvas = threeRenderer.getCanvas();
+		const rect = threeCanvas.getBoundingClientRect();
+		const clickX = event.clientX - rect.left;
+		const clickY = event.clientY - rect.top;
+		const clickedKAD = getClickedKADObject3D(intersects, clickX, clickY);
+
+		// Use the window-exposed handleReorderKADClick function
+		if (window.handleReorderKADClick) {
+			window.handleReorderKADClick(clickedKAD); // Pass clickedKAD (may be null)
+		}
+		return; // ReorderKAD handles its own drawing
 	}
 
 	// Step 12i) Handle selection based on current tool mode
@@ -2115,26 +2205,6 @@ function handle3DClick(event) {
 				// Step 12i.2i) Draw - only yellow highlight visible now
 				drawData(allBlastHoles, selectedHole);
 			}
-		} else if (window.isRenumberHolesActive) {
-			// Step 12i.3) RenumberHoles tool logic in 3D
-			if (developerModeEnabled) {
-				console.log("⬇️ [3D CLICK] RenumberHoles tool mode");
-			}
-			// Use the window-exposed handleRenumberHolesClick function
-			if (window.handleRenumberHolesClick) {
-				window.handleRenumberHolesClick(clickedHole);
-			}
-			return; // RenumberHoles handles its own drawing
-		} else if (window.isReorderRowsActive) {
-			// Step 12i.4) ReorderRows tool logic in 3D
-			if (developerModeEnabled) {
-				console.log("⬇️ [3D CLICK] ReorderRows tool mode");
-			}
-			// Use the window-exposed handleReorderRowsClick function
-			if (window.handleReorderRowsClick) {
-				window.handleReorderRowsClick(clickedHole);
-			}
-			return; // ReorderRows handles its own drawing
 		} else if (isMultiHoleSelectionEnabled) {
 			// Multi-selection mode
 			if (developerModeEnabled) {
@@ -3154,6 +3224,91 @@ function handle3DMouseMove(event) {
 
 			// Step 13f.7g.2) Draw new stadium zone at mouse indicator position
 			drawConnectStadiumZoneThreeJS(fromHoleStore, { x: indicatorPos.x, y: indicatorPos.y, z: indicatorPos.z }, connectAmount);
+		}
+
+		// Step 13f.7h) Clear and draw renumber stadium zone (if tool is active)
+		if (window.isRenumberHolesActive && window.renumberFirstHole && threeRenderer && threeRenderer.connectorsGroup) {
+			const toRemoveRenumber = [];
+			threeRenderer.connectorsGroup.children.forEach(function (child) {
+				if (child.userData && child.userData.type === "renumberStadiumZone") {
+					toRemoveRenumber.push(child);
+				}
+			});
+			toRemoveRenumber.forEach(function (obj) {
+				threeRenderer.connectorsGroup.remove(obj);
+				if (obj.geometry) obj.geometry.dispose();
+				if (obj.material) {
+					if (Array.isArray(obj.material)) {
+						obj.material.forEach(function (mat) { mat.dispose(); });
+					} else {
+						obj.material.dispose();
+					}
+				}
+				// Dispose children if it's a group
+				if (obj.isGroup) {
+					obj.traverse(function(child) {
+						if (child.geometry) child.geometry.dispose();
+						if (child.material) {
+							if (Array.isArray(child.material)) {
+								child.material.forEach(function(mat) { mat.dispose(); });
+							} else {
+								child.material.dispose();
+							}
+						}
+					});
+				}
+			});
+
+			// Draw renumber stadium zone
+			var renumberZone = getRenumberStadiumZone();
+			var zoneWidth = renumberZone ? renumberZone.width : 3.0;
+			drawRenumberStadiumZoneThreeJS(window.renumberFirstHole, { x: indicatorPos.x, y: indicatorPos.y, z: indicatorPos.z }, zoneWidth);
+		}
+
+		// Step 13f.7i) Clear and draw reorder rows line (if tool is active)
+		if (window.isReorderRowsActive && window.reorderFirstHole && threeRenderer && threeRenderer.connectorsGroup) {
+			const toRemoveReorder = [];
+			threeRenderer.connectorsGroup.children.forEach(function (child) {
+				if (child.userData && child.userData.type === "reorderRowsLine") {
+					toRemoveReorder.push(child);
+				}
+			});
+			toRemoveReorder.forEach(function (obj) {
+				threeRenderer.connectorsGroup.remove(obj);
+				if (obj.geometry) obj.geometry.dispose();
+				if (obj.material) {
+					if (Array.isArray(obj.material)) {
+						obj.material.forEach(function (mat) { mat.dispose(); });
+					} else {
+						obj.material.dispose();
+					}
+				}
+				// Dispose children if it's a group
+				if (obj.isGroup) {
+					obj.traverse(function(child) {
+						if (child.geometry) child.geometry.dispose();
+						if (child.material) {
+							if (Array.isArray(child.material)) {
+								child.material.forEach(function(mat) { mat.dispose(); });
+							} else {
+								child.material.dispose();
+							}
+						}
+					});
+				}
+			});
+
+			// Draw reorder rows line (with or without arrow based on second hole selection)
+			var lineInfo = getReorderRowsLineInfo();
+			var dirInfo = getRowDirectionInfo();
+			if (lineInfo) {
+				drawReorderRowsLineThreeJS(
+					{ startXLocation: lineInfo.startX, startYLocation: lineInfo.startY, startZLocation: window.reorderFirstHole.startZLocation || 0, entityName: "", holeID: "" },
+					{ x: indicatorPos.x, y: indicatorPos.y, z: indicatorPos.z },
+					lineInfo.showArrow,
+					dirInfo
+				);
+			}
 		}
 	}
 
@@ -29856,7 +30011,7 @@ function drawData(allBlastHoles, selectedHole) {
 		// Step 3.4) CLEAR old highlights and stadium zones EVERY frame (regardless of hole count)
 		// This MUST run before any highlighting code to prevent accumulation
 		if (threeRenderer) {
-			var typesToClear = ["selectionHighlight", "stadiumZone", "kadHighlight", "kadSelectionHighlight", "vertexSelectionHighlight"];
+			var typesToClear = ["selectionHighlight", "stadiumZone", "renumberStadiumZone", "reorderRowsLine", "kadHighlight", "kadSelectionHighlight", "vertexSelectionHighlight"];
 			var groupsToClear = [threeRenderer.holesGroup, threeRenderer.connectorsGroup, threeRenderer.kadGroup];
 
 			groupsToClear.forEach(function (group) {
@@ -30182,6 +30337,54 @@ function drawData(allBlastHoles, selectedHole) {
 							highlightSelectedHoleThreeJS(hole, "second");
 							// HUD: Show connector mode message (replaces 3D text)
 							showStatusMessage("2nd Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Click to connect)", 0);
+						}
+					}
+					// RenumberHoles tool highlighting
+					else if (window.isRenumberHolesActive) {
+						if (isRenumberFirstHole(hole)) {
+							highlightSelectedHoleThreeJS(hole, "first");
+							// Step 5.2a) Draw magenta stadium zone using view-plane mouse position (follows cursor in 3D)
+							if (currentMouseIndicatorX !== 0 && currentMouseIndicatorY !== 0) {
+								var renumberZone = getRenumberStadiumZone();
+								var zoneWidth = renumberZone ? renumberZone.width : 3.0;
+								drawRenumberStadiumZoneThreeJS(hole, { x: currentMouseIndicatorX, y: currentMouseIndicatorY, z: currentMouseIndicatorZ }, zoneWidth);
+							}
+							// HUD: Show renumber mode message
+							showStatusMessage("1st Hole: " + hole.holeID + " (Select last hole in sequence)", 0);
+						} else if (isRenumberSecondHole(hole)) {
+							highlightSelectedHoleThreeJS(hole, "second");
+							// HUD: Show renumber mode message
+							showStatusMessage("Last Hole: " + hole.holeID, 0);
+						} else if (isHoleInRenumberZone(hole)) {
+							// Holes in the zone get a subtle highlight (matches 2D purple)
+							highlightSelectedHoleThreeJS(hole, "selected");
+						}
+					}
+					// ReorderRows tool highlighting
+					else if (window.isReorderRowsActive) {
+						if (isReorderRowsFirstHole(hole)) {
+							highlightSelectedHoleThreeJS(hole, "first");
+							// Step 5.3a) Draw cyan row direction line (follows cursor in 3D)
+							if (currentMouseIndicatorX !== 0 && currentMouseIndicatorY !== 0) {
+								drawReorderRowsLineThreeJS(hole, { x: currentMouseIndicatorX, y: currentMouseIndicatorY, z: currentMouseIndicatorZ }, false, null);
+							}
+							// HUD: Show reorder mode message
+							showStatusMessage("1st Hole: " + hole.holeID + " (Select last hole in row)", 0);
+						} else if (isReorderRowsSecondHole(hole)) {
+							highlightSelectedHoleThreeJS(hole, "second");
+							// Draw row direction line with burden arrow
+							var lineInfo = getReorderRowsLineInfo();
+							var dirInfo = getRowDirectionInfo();
+							if (lineInfo) {
+								drawReorderRowsLineThreeJS(
+									{ startXLocation: lineInfo.startX, startYLocation: lineInfo.startY, startZLocation: hole.startZLocation || 0, entityName: "", holeID: "" },
+									{ x: lineInfo.endX, y: lineInfo.endY, z: hole.startZLocation || 0 },
+									true,
+									dirInfo
+								);
+							}
+							// HUD: Show reorder mode message
+							showStatusMessage("Last Hole: " + hole.holeID, 0);
 						}
 					}
 					// Regular selection highlighting
@@ -33437,9 +33640,13 @@ function updateCentroids() {
 	// Include hole points
 	if (allBlastHoles !== null) {
 		for (let i = 0; i < allBlastHoles.length; i++) {
-			sumX += allBlastHoles[i].startXLocation;
-			sumY += allBlastHoles[i].startYLocation;
-			records++;
+			const holeX = parseFloat(allBlastHoles[i].startXLocation);
+			const holeY = parseFloat(allBlastHoles[i].startYLocation);
+			if (isFinite(holeX) && isFinite(holeY)) {
+				sumX += holeX;
+				sumY += holeY;
+				records++;
+			}
 		}
 	}
 
@@ -33447,9 +33654,13 @@ function updateCentroids() {
 	if (allKADDrawingsMap.size > 0) {
 		for (const entity of allKADDrawingsMap.values()) {
 			for (const dataPoint of entity.data) {
-				sumX += dataPoint.pointXLocation;
-				sumY += dataPoint.pointYLocation;
-				records++;
+				const pointX = parseFloat(dataPoint.pointXLocation);
+				const pointY = parseFloat(dataPoint.pointYLocation);
+				if (isFinite(pointX) && isFinite(pointY)) {
+					sumX += pointX;
+					sumY += pointY;
+					records++;
+				}
 			}
 		}
 	}
@@ -33460,15 +33671,23 @@ function updateCentroids() {
 			if (surface.points && surface.points.length > 0) {
 				// Standard surface with points array
 				for (const point of surface.points) {
-					sumX += point.x;
-					sumY += point.y;
-					records++;
+					const px = parseFloat(point.x);
+					const py = parseFloat(point.y);
+					if (isFinite(px) && isFinite(py)) {
+						sumX += px;
+						sumY += py;
+						records++;
+					}
 				}
 			} else if (surface.isTexturedMesh && surface.meshBounds) {
 				// Textured mesh (OBJ) - use mesh center
-				sumX += (surface.meshBounds.minX + surface.meshBounds.maxX) / 2;
-				sumY += (surface.meshBounds.minY + surface.meshBounds.maxY) / 2;
-				records++;
+				const centerX = (parseFloat(surface.meshBounds.minX) + parseFloat(surface.meshBounds.maxX)) / 2;
+				const centerY = (parseFloat(surface.meshBounds.minY) + parseFloat(surface.meshBounds.maxY)) / 2;
+				if (isFinite(centerX) && isFinite(centerY)) {
+					sumX += centerX;
+					sumY += centerY;
+					records++;
+				}
 			}
 		});
 	}
@@ -33476,7 +33695,15 @@ function updateCentroids() {
 	if (records > 0) {
 		centroidX = sumX / records;
 		centroidY = sumY / records;
+	} else {
+		// No valid data - ensure centroid is 0, not NaN
+		centroidX = 0;
+		centroidY = 0;
 	}
+
+	// Validate final centroid values to prevent NaN propagation
+	if (!isFinite(centroidX)) centroidX = 0;
+	if (!isFinite(centroidY)) centroidY = 0;
 
 	// Step 5) Calculate full centroid including Z and update dataCentroidZ
 	var fullCentroid = calculateDataCentroid();

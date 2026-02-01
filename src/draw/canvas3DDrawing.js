@@ -199,20 +199,35 @@ export function renderThreeJS() {
 export function drawHoleThreeJS(hole) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
-	// Step 1) Extract hole positions (world coordinates)
-	const collarWorld = { x: hole.startXLocation, y: hole.startYLocation };
-	const gradeWorld = { x: hole.gradeXLocation, y: hole.gradeYLocation };
-	const toeWorld = { x: hole.endXLocation, y: hole.endYLocation };
+	// Step 1) Extract hole positions (world coordinates) with validation
+	const collarWorld = {
+		x: parseFloat(hole.startXLocation) || 0,
+		y: parseFloat(hole.startYLocation) || 0
+	};
+	const gradeWorld = {
+		x: parseFloat(hole.gradeXLocation) || 0,
+		y: parseFloat(hole.gradeYLocation) || 0
+	};
+	const toeWorld = {
+		x: parseFloat(hole.endXLocation) || 0,
+		y: parseFloat(hole.endYLocation) || 0
+	};
+
+	// Step 1b) Skip holes with invalid coordinates
+	if (!isFinite(collarWorld.x) || !isFinite(collarWorld.y)) {
+		console.warn("Skipping hole with invalid collar coordinates:", hole.holeID);
+		return;
+	}
 
 	// Step 2) Convert to local Three.js coordinates for precision
 	const collarLocal = window.worldToThreeLocal(collarWorld.x, collarWorld.y);
 	const gradeLocal = window.worldToThreeLocal(gradeWorld.x, gradeWorld.y);
 	const toeLocal = window.worldToThreeLocal(toeWorld.x, toeWorld.y);
 
-	// Z coordinates stay as-is (relative elevations)
-	const collarZ = hole.startZLocation || 0;
-	const gradeZ = hole.gradeZLocation || 0;
-	const toeZ = hole.endZLocation || 0;
+	// Z coordinates stay as-is (relative elevations) with validation
+	const collarZ = parseFloat(hole.startZLocation) || 0;
+	const gradeZ = parseFloat(hole.gradeZLocation) || 0;
+	const toeZ = parseFloat(hole.endZLocation) || 0;
 
 	let holeGroup;
 
@@ -269,20 +284,35 @@ export function drawHoleThreeJS_Instanced(hole, toeSliderRadius) {
 	const manager = window.threeRenderer.instancedMeshManager;
 	const uniqueHoleId = hole.entityName + ":::" + hole.holeID;
 
-	// Step 1) Extract hole positions (world coordinates)
-	const collarWorld = { x: hole.startXLocation, y: hole.startYLocation };
-	const gradeWorld = { x: hole.gradeXLocation, y: hole.gradeYLocation };
-	const toeWorld = { x: hole.endXLocation, y: hole.endYLocation };
+	// Step 1) Extract hole positions (world coordinates) with validation
+	const collarWorld = {
+		x: parseFloat(hole.startXLocation) || 0,
+		y: parseFloat(hole.startYLocation) || 0
+	};
+	const gradeWorld = {
+		x: parseFloat(hole.gradeXLocation) || 0,
+		y: parseFloat(hole.gradeYLocation) || 0
+	};
+	const toeWorld = {
+		x: parseFloat(hole.endXLocation) || 0,
+		y: parseFloat(hole.endYLocation) || 0
+	};
+
+	// Step 1b) Skip holes with invalid coordinates
+	if (!isFinite(collarWorld.x) || !isFinite(collarWorld.y)) {
+		console.warn("Skipping hole with invalid collar coordinates:", hole.holeID);
+		return;
+	}
 
 	// Step 2) Convert to local Three.js coordinates for precision
 	const collarLocal = window.worldToThreeLocal(collarWorld.x, collarWorld.y);
 	const gradeLocal = window.worldToThreeLocal(gradeWorld.x, gradeWorld.y);
 	const toeLocal = window.worldToThreeLocal(toeWorld.x, toeWorld.y);
 
-	// Z coordinates stay as-is (relative elevations)
-	const collarZ = hole.startZLocation || 0;
-	const gradeZ = hole.gradeZLocation || 0;
-	const toeZ = hole.endZLocation || 0;
+	// Z coordinates stay as-is (relative elevations) with validation
+	const collarZ = parseFloat(hole.startZLocation) || 0;
+	const gradeZ = parseFloat(hole.gradeZLocation) || 0;
+	const toeZ = parseFloat(hole.endZLocation) || 0;
 
 	// Step 3) Determine hole type and dimensions
 	const holeLength = parseFloat(hole.holeLengthCalculated);
@@ -411,8 +441,16 @@ export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId
 	// Don't draw toe circle if radius is 0 or less
 	if (radius <= 0) return;
 
+	// Validate coordinates to prevent NaN geometry
+	const wx = parseFloat(worldX);
+	const wy = parseFloat(worldY);
+	const wz = parseFloat(worldZ) || 0;
+	if (!isFinite(wx) || !isFinite(wy)) {
+		return; // Skip invalid coordinates silently (toe is optional)
+	}
+
 	// Step 4a) Convert world coordinates to local Three.js coordinates for precision
-	const local = window.worldToThreeLocal(worldX, worldY);
+	const local = window.worldToThreeLocal(wx, wy);
 
 	// Step 4b) Create toe mesh at local coordinates
 	let color2;
@@ -421,7 +459,7 @@ export function drawHoleToeThreeJS(worldX, worldY, worldZ, radius, color, holeId
 	} else {
 		color2 = "rgb(38, 255, 0)";
 	}
-	const toeMesh = GeometryFactory.createHoleToe(local.x, local.y, worldZ, radius, color2);
+	const toeMesh = GeometryFactory.createHoleToe(local.x, local.y, wz, radius, color2);
 
 	// Step 4c) Add metadata for selection
 	toeMesh.userData = {
@@ -440,13 +478,21 @@ export function drawHoleTextThreeJS(worldX, worldY, worldZ, text, fontSize, colo
 	// Step 5a) Allow numeric 0 to display - only skip truly empty/invalid values
 	if (text === null || text === undefined || text === "" || text === "null" || text === "undefined") return;
 
-	const local = window.worldToThreeLocal(worldX, worldY);
+	// Validate coordinates to prevent NaN geometry
+	const wx = parseFloat(worldX);
+	const wy = parseFloat(worldY);
+	const wz = parseFloat(worldZ) || 0;
+	if (!isFinite(wx) || !isFinite(wy)) {
+		return; // Skip invalid coordinates
+	}
+
+	const local = window.worldToThreeLocal(wx, wy);
 
 	// Step 5a.1) Determine target group - use labelsGroup if available (for LOD control)
 	var targetGroup = window.threeRenderer.labelsGroup || window.threeRenderer.holesGroup;
 
 	// Step 5b) Always use Hershey Simplex vector font in 3D (high performance, line-based, matches export)
-	const vectorText = GeometryFactory.createVectorText(local.x, local.y, worldZ, String(text), fontSize, color, anchorX);
+	const vectorText = GeometryFactory.createVectorText(local.x, local.y, wz, String(text), fontSize, color, anchorX);
 	if (vectorText) {
 		vectorText.userData.isHoleLabel = true;
 		targetGroup.add(vectorText);
@@ -596,7 +642,16 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 export function drawKADPointThreeJS(worldX, worldY, worldZ, size, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
-	const pointMesh = GeometryFactory.createKADPoint(worldX, worldY, worldZ, size, color);
+	// Validate coordinates to prevent NaN geometry
+	const wx = parseFloat(worldX);
+	const wy = parseFloat(worldY);
+	const wz = parseFloat(worldZ) || 0;
+	if (!isFinite(wx) || !isFinite(wy)) {
+		console.warn("Skipping KAD point with invalid coordinates:", kadId);
+		return;
+	}
+
+	const pointMesh = GeometryFactory.createKADPoint(wx, wy, wz, size, color);
 
 	// Step 7a) Add metadata for selection
 	if (kadId) {
@@ -611,11 +666,23 @@ export function drawKADPointThreeJS(worldX, worldY, worldZ, size, color, kadId) 
 export function drawKADLineSegmentThreeJS(startX, startY, startZ, endX, endY, endZ, lineWidth, color, kadId) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
+	// Validate coordinates to prevent NaN geometry
+	const sx = parseFloat(startX);
+	const sy = parseFloat(startY);
+	const sz = parseFloat(startZ) || 0;
+	const ex = parseFloat(endX);
+	const ey = parseFloat(endY);
+	const ez = parseFloat(endZ) || 0;
+	if (!isFinite(sx) || !isFinite(sy) || !isFinite(ex) || !isFinite(ey)) {
+		console.warn("Skipping KAD line segment with invalid coordinates:", kadId);
+		return;
+	}
+
 	if (developerModeEnabled) {
 		console.log("🔧 [drawKADLineSegmentThreeJS] kadId:", kadId);
 	}
 
-	const lineMesh = GeometryFactory.createKADLineSegment(startX, startY, startZ, endX, endY, endZ, lineWidth, color);
+	const lineMesh = GeometryFactory.createKADLineSegment(sx, sy, sz, ex, ey, ez, lineWidth, color);
 
 	// Step 8a) Add metadata for selection
 	if (kadId) {
@@ -1539,6 +1606,210 @@ export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmoun
 	window.threeRenderer.connectorsGroup.add(stadiumGroup);
 
 	// Request render to display the stadium zone
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
+}
+
+// Step 19.1) Draw renumber stadium zone (MAGENTA - matching 2D) in Three.js
+// Used for RenumberHoles tool visualization
+export function drawRenumberStadiumZoneThreeJS(fromHole, toMousePos, zoneWidth) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (!fromHole || !toMousePos) return;
+
+	// Step 19.1a) Validate inputs
+	if (!isFinite(fromHole.startXLocation) || !isFinite(fromHole.startYLocation) || !isFinite(toMousePos.x) || !isFinite(toMousePos.y) || !isFinite(zoneWidth) || zoneWidth <= 0) {
+		console.warn("drawRenumberStadiumZoneThreeJS: Invalid inputs", {
+			fromHole: fromHole ? { x: fromHole.startXLocation, y: fromHole.startYLocation, z: fromHole.startZLocation } : null,
+			toMousePos: toMousePos,
+			zoneWidth: zoneWidth
+		});
+		return;
+	}
+
+	// Step 19.1b) Convert fromHole to local coordinates
+	const fromLocal = window.worldToThreeLocal(fromHole.startXLocation, fromHole.startYLocation);
+
+	// Step 19.1b.1) Convert toMousePos to local
+	const toLocal = window.worldToThreeLocal(toMousePos.x, toMousePos.y);
+
+	// Step 19.1c) Extract Z coordinates
+	const fromZ = fromHole.startZLocation || 0;
+	const toZ = toMousePos.z !== undefined && isFinite(toMousePos.z) ? toMousePos.z : fromHole.startZLocation || 0;
+
+	// DEBUG: Log coordinate conversion
+	if (window.developerModeEnabled) {
+		console.log("🔢 Renumber Stadium Zone Coords:");
+		console.log("  fromHole world:", fromHole.startXLocation.toFixed(2), fromHole.startYLocation.toFixed(2), fromZ.toFixed(2));
+		console.log("  toMousePos world:", toMousePos.x.toFixed(2), toMousePos.y.toFixed(2), toZ.toFixed(2));
+		console.log("  fromLocal:", fromLocal.x.toFixed(2), fromLocal.y.toFixed(2));
+		console.log("  toLocal:", toLocal.x.toFixed(2), toLocal.y.toFixed(2));
+	}
+
+	// Step 19.1d) Create stadium zone using GeometryFactory - MAGENTA color matching 2D
+	const stadiumGroup = GeometryFactory.createStadiumZone(
+		fromLocal.x,
+		fromLocal.y,
+		fromZ,
+		toLocal.x,
+		toLocal.y,
+		toZ,
+		zoneWidth,
+		"rgba(255, 0, 255, 0.6)", // stroke - magenta (matching 2D)
+		"rgba(255, 0, 255, 0.15)" // fill - semi-transparent magenta (matching 2D)
+	);
+
+	// Step 19.1e) Add metadata
+	stadiumGroup.userData = {
+		type: "renumberStadiumZone",
+		fromHoleId: fromHole.entityName + ":::" + fromHole.holeID
+	};
+
+	window.threeRenderer.connectorsGroup.add(stadiumGroup);
+
+	// Request render
+	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
+		window.threeRenderer.requestRender();
+	} else if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
+}
+
+// Step 19.2) Draw reorder rows line with burden arrow (CYAN/ORANGE - matching 2D) in Three.js
+// Used for ReorderRows tool visualization
+export function drawReorderRowsLineThreeJS(fromHole, toPos, showArrow, directionInfo) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+	if (!fromHole || !toPos) return;
+
+	// Step 19.2a) Validate inputs
+	if (!isFinite(fromHole.startXLocation) || !isFinite(fromHole.startYLocation) || !isFinite(toPos.x) || !isFinite(toPos.y)) {
+		console.warn("drawReorderRowsLineThreeJS: Invalid inputs", {
+			fromHole: fromHole ? { x: fromHole.startXLocation, y: fromHole.startYLocation } : null,
+			toPos: toPos
+		});
+		return;
+	}
+
+	// Step 19.2b) Convert to local coordinates
+	const fromLocal = window.worldToThreeLocal(fromHole.startXLocation, fromHole.startYLocation);
+	const toLocal = window.worldToThreeLocal(toPos.x, toPos.y);
+	const fromZ = fromHole.startZLocation || 0;
+	const toZ = toPos.z !== undefined && isFinite(toPos.z) ? toPos.z : fromZ;
+
+	// Step 19.2c) Create group to hold line and arrow
+	const group = new THREE.Group();
+	group.userData = {
+		type: "reorderRowsLine",
+		fromHoleId: fromHole.entityName + ":::" + fromHole.holeID
+	};
+
+	// Step 19.2d) Create main direction line (CYAN - matching 2D)
+	const lineGeometry = new THREE.BufferGeometry();
+	const positions = new Float32Array([
+		fromLocal.x, fromLocal.y, fromZ,
+		toLocal.x, toLocal.y, toZ
+	]);
+	lineGeometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+
+	const lineMaterial = new THREE.LineBasicMaterial({
+		color: new THREE.Color(0, 0.78, 1), // rgba(0, 200, 255) in normalized
+		linewidth: 3,
+		transparent: true,
+		opacity: 0.9
+	});
+	const line = new THREE.Line(lineGeometry, lineMaterial);
+	group.add(line);
+
+	// Step 19.2e) Create endpoint spheres (CYAN - matching 2D circles)
+	const sphereGeometry = new THREE.SphereGeometry(0.5, 12, 12);
+	const sphereMaterial = new THREE.MeshBasicMaterial({
+		color: new THREE.Color(0, 0.78, 1),
+		transparent: true,
+		opacity: 0.9
+	});
+
+	const startSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+	startSphere.position.set(fromLocal.x, fromLocal.y, fromZ);
+	group.add(startSphere);
+
+	const endSphere = new THREE.Mesh(sphereGeometry, sphereMaterial.clone());
+	endSphere.position.set(toLocal.x, toLocal.y, toZ);
+	group.add(endSphere);
+
+	// Step 19.2f) Draw burden direction arrow if second hole selected
+	if (showArrow && directionInfo) {
+		// Calculate midpoint
+		const midX = (fromLocal.x + toLocal.x) / 2;
+		const midY = (fromLocal.y + toLocal.y) / 2;
+		const midZ = (fromZ + toZ) / 2;
+
+		// Arrow length in world units (meters)
+		const arrowLength = 8;
+		const arrowHeadLength = 2;
+		const arrowHeadWidth = 1;
+
+		// Get perpendicular direction for burden
+		let perpX = directionInfo.perpX || 0;
+		let perpY = directionInfo.perpY || 0;
+
+		// Apply flip if needed
+		if (directionInfo.burdenFlip) {
+			perpX = -perpX;
+			perpY = -perpY;
+		}
+
+		// Arrow end point
+		const arrowEndX = midX + perpX * arrowLength;
+		const arrowEndY = midY + perpY * arrowLength;
+
+		// Create arrow shaft (ORANGE - matching 2D)
+		const arrowGeometry = new THREE.BufferGeometry();
+		const arrowPositions = new Float32Array([
+			midX, midY, midZ,
+			arrowEndX, arrowEndY, midZ
+		]);
+		arrowGeometry.setAttribute("position", new THREE.BufferAttribute(arrowPositions, 3));
+
+		const arrowMaterial = new THREE.LineBasicMaterial({
+			color: new THREE.Color(1, 0.59, 0), // rgba(255, 150, 0) in normalized
+			linewidth: 3,
+			transparent: true,
+			opacity: 0.9
+		});
+		const arrowLine = new THREE.Line(arrowGeometry, arrowMaterial);
+		group.add(arrowLine);
+
+		// Create arrowhead using cone
+		const coneGeometry = new THREE.ConeGeometry(arrowHeadWidth, arrowHeadLength, 8);
+		const coneMaterial = new THREE.MeshBasicMaterial({
+			color: new THREE.Color(1, 0.59, 0),
+			transparent: true,
+			opacity: 0.9
+		});
+		const cone = new THREE.Mesh(coneGeometry, coneMaterial);
+		cone.position.set(arrowEndX, arrowEndY, midZ);
+
+		// Rotate cone to point in the perpendicular direction
+		// ConeGeometry points along Y axis by default
+		const angle = Math.atan2(perpY, perpX);
+		cone.rotation.z = angle - Math.PI / 2; // Adjust for cone's default Y-up orientation
+
+		group.add(cone);
+
+		// Add "Row 1" label using GeometryFactory.createKADText
+		const labelX = arrowEndX + perpX * 2;
+		const labelY = arrowEndY + perpY * 2;
+		const labelText = GeometryFactory.createKADText(labelX, labelY, midZ + 0.5, "Row 1→", 1.5, "rgba(255, 150, 0, 1)");
+		if (labelText) {
+			group.add(labelText);
+		}
+	}
+
+	window.threeRenderer.connectorsGroup.add(group);
+
+	// Request render
 	if (window.threeRenderer && typeof window.threeRenderer.requestRender === "function") {
 		window.threeRenderer.requestRender();
 	} else if (window.threeRenderer) {
