@@ -106,13 +106,11 @@ export function drawKADHighlightSelectionVisuals() {
                     }
                 }
 
-                // Step 2f) Draw all vertices
+                // Step 2f) Draw all vertices as squares (consistent with 3D)
                 entity.data.forEach((point) => {
                     const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
                     ctx.fillStyle = verticesColor;
-                    ctx.beginPath();
-                    ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                    ctx.fill();
+                    ctx.fillRect(x - 4, y - 4, 8, 8);
                 });
                 break;
 
@@ -154,15 +152,13 @@ export function drawKADHighlightSelectionVisuals() {
                     }
                 }
 
-                // Step 2j) Draw all vertices
+                // Step 2j) Draw all vertices as squares (consistent with 3D)
                 polygonPoints.forEach((point) => {
                     // Step 2k) Check if point exists before accessing properties
                     if (point && point.pointXLocation !== undefined) {
                         const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
                         ctx.fillStyle = verticesColor;
-                        ctx.beginPath();
-                        ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                        ctx.fill();
+                        ctx.fillRect(x - 4, y - 4, 8, 8);
                     }
                 });
                 break;
@@ -360,15 +356,13 @@ export function drawKADHighlightSelectionVisuals() {
                             }
                         }
 
-                        // Step 3h) Draw all vertices
+                        // Step 3h) Draw all vertices as squares (consistent with 3D)
                         // PERFORMANCE FIX: Skip if large selection
                         if (drawVerticesForThis) {
                             entity.data.forEach((point) => {
                                 const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
                                 ctx.fillStyle = verticesColor;
-                                ctx.beginPath();
-                                ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                                ctx.fill();
+                                ctx.fillRect(x - 4, y - 4, 8, 8);
                             });
                         }
                         break;
@@ -407,15 +401,13 @@ export function drawKADHighlightSelectionVisuals() {
                             ctx.stroke();
                         }
 
-                        // Step 3k) Draw all vertices
+                        // Step 3k) Draw all vertices as squares (consistent with 3D)
                         // PERFORMANCE FIX: Skip if large selection
                         if (drawVerticesForThis) {
                             polygonPoints.forEach((point) => {
                                 const [x, y] = worldToCanvas(point.pointXLocation, point.pointYLocation);
                                 ctx.fillStyle = verticesColor;
-                                ctx.beginPath();
-                                ctx.arc(x, y, 4, 0, 2 * Math.PI);
-                                ctx.fill();
+                                ctx.fillRect(x - 4, y - 4, 8, 8);
                             });
                         }
                         break;
@@ -510,7 +502,7 @@ export function drawKADHighlightSelectionVisuals() {
 
     if (selectedPoint && selectedKADObject) {
         if (developerModeEnabled) {
-            console.log("✅ [2D Draw] BOTH conditions met - drawing pink circle");
+            console.log("✅ [2D Draw] BOTH conditions met - drawing pink square");
         }
         let entity = getEntityFromKADObject(selectedKADObject);
         const allKADDrawingsMap = window.allKADDrawingsMap;
@@ -525,14 +517,13 @@ export function drawKADHighlightSelectionVisuals() {
             if (point) {
                 const canvasPos = worldToCanvas(point.pointXLocation, point.pointYLocation);
 
-                // Draw pink circle for selected vertex
-                ctx.beginPath();
-                ctx.arc(canvasPos.x, canvasPos.y, 8, 0, Math.PI * 2);
+                // Draw pink square for selected vertex (matches vertex drawing style)
+                const size = 10;
                 ctx.fillStyle = "rgba(255, 68, 255, 0.4)"; // Pink with transparency
-                ctx.fill();
+                ctx.fillRect(canvasPos.x - size/2, canvasPos.y - size/2, size, size);
                 ctx.strokeStyle = "rgba(255, 68, 255, 1.0)"; // Solid pink
                 ctx.lineWidth = 2;
-                ctx.stroke();
+                ctx.strokeRect(canvasPos.x - size/2, canvasPos.y - size/2, size, size);
             }
         }
     }
@@ -544,17 +535,16 @@ export function drawKADHighlightSelectionVisuals() {
             if (point && point.pointXLocation !== undefined && point.pointYLocation !== undefined) {
                 const canvasPos = worldToCanvas(point.pointXLocation, point.pointYLocation);
 
-                // Draw pink circle for each selected vertex
-                ctx.beginPath();
-                ctx.arc(canvasPos.x, canvasPos.y, 8, 0, Math.PI * 2);
+                // Draw pink square for each selected vertex (matches vertex drawing style)
+                const size = 10;
                 ctx.fillStyle = "rgba(255, 68, 255, 0.4)"; // Pink with transparency
-                ctx.fill();
+                ctx.fillRect(canvasPos.x - size/2, canvasPos.y - size/2, size, size);
                 ctx.strokeStyle = "rgba(255, 68, 255, 1.0)"; // Solid pink
                 ctx.lineWidth = 2;
-                ctx.stroke();
+                ctx.strokeRect(canvasPos.x - size/2, canvasPos.y - size/2, size, size);
 
                 if (developerModeEnabled) {
-                    console.log("🩷 [2D] Drew pink circle for vertex:", point.pointID);
+                    console.log("🩷 [2D] Drew pink square for vertex:", point.pointID);
                 }
             }
         });

@@ -1604,6 +1604,11 @@
 						<label for="display11" class="icon-button" title="Hole Z Location">
 							<img src="icons/zmetersalt.png" alt="Hole Z Location">
 						</label>
+						<!-- Row and Position ON/OFF toggle -->
+						<input type="checkbox" id="rowAndPosDisplayBtn" name="display" value="rowAndPos" placeholder="rowAndPos">
+						<label for="rowAndPosDisplayBtn" class="icon-button" title="Row and Position">
+							<img src="icons/brackets-contain.png" alt="Row and Position">
+						</label>
 						<input type="checkbox" id="display12" name="display" value="holeType" placeholder="holeType">
 						<label for="display12" class="icon-button" title="Hole Type">
 							<img src="icons/holetype.png" alt="Hole Type">
@@ -2120,8 +2125,8 @@
 				<div class="panel">
 					<div class="button-container-1col">
 						<div class="label2" id="fontLabel">Font Size (pt): 10pt</div>
-						<input type="range" id="fontSlider" min="1" max="100" value="10" step="1" placeholder="Select font size">
-						<div class="label2" id="fontLockLabel">Font Size Locked? <input type="checkbox" id="fontLock" placeholder="fontLock"></div>
+						<input type="range" id="fontSlider" min="1" max="100" value="16" step="1" placeholder="Select font size">
+						<div class="label2" id="fontLockLabel">Font Size Locked? <input type="checkbox" id="fontLock" placeholder="fontLock" checked></div>
 						<!-- Lock the font size with a nornal checkbox not a switch with round to the fontSlider setting and disable adjustments of the slider. -->
 						<hr class="button-container-divider">
 						<div class="label2" id="connLabel">Tie Size (units): 3.0</div>
@@ -2218,9 +2223,6 @@
 						<br>
 						<!-- add a 3D screen space Snapping on/off mode button-->
 						<input type="checkbox" id="screenSpaceSnapping" checked> <label for="screenSpaceSnapping">Screen Space Snapping</label>
-						<br>
-						<input type="checkbox" id="rowAndPosDisplay"> <label for="rowAndPosDisplay">Row and Position
-							Display</label>
 						<br>
 						<!--<input type="checkbox" id="onlyShowThreeJS"> <label for="onlyShowThreeJS">Only Show Three.js</label> -->
 						<hr>
@@ -2573,14 +2575,30 @@
 					<label for="rulerProtractorTool" class="toggle-buttons-custom icon-button" title="Protractor">
 						<img src="icons/ruler-bearing.png" alt="Protractor">
 					</label>
+					<input type="checkbox" id="resetViewTool" name="resetViewTool" value="resetViewTool">
+					<label for="resetViewTool" class="toggle-buttons-custom icon-button" title="Reset View">
+						<img src="icons/circle-letter-r.png" alt="Reset View">
+					</label>
+					<input type="checkbox" id="showTreeBtn" name="showTreeBtn" value="showTreeBtn">
+					<label for="showTreeBtn" class="toggle-buttons-custom icon-button" title="Show Data Explorer">
+						<img src="icons/article.png" alt="Data Explorer">
+					</label>
+					<input type="checkbox" id="dimension2D-3DBtn" name="dimension2D-3DBtn" value="dimension2D-3DBtn">
+					<label for="dimension2D-3DBtn" class="toggle-buttons-custom icon-button" title="Toggle 2D/3D">
+						<img src="icons/badge-2d-v2.png" alt="Toggle 2D/3D">
+					</label>
+					<input type="checkbox" id="dimension2D-3D-SettingsBtn" name="dimension2D-3D-SettingsBtn" value="dimension2D-3D-SettingsBtn">
+					<label for="dimension2D-3D-SettingsBtn" class="toggle-buttons-custom icon-button" title="3D Settings">
+						<img src="icons/world-cog.png" alt="3D Settings">
+					</label>
 				</div>
 			</div>
 		</div>
 
-		<!-- Panel 2: Design -->
+		<!-- Panel 2: Holes -->
 		<div id="toolbarPanelDesign" class="tree-panel toolbar-panel">
 			<div class="tree-panel-header" id="toolbarPanelDesignHeader">
-				<span>Design</span>
+				<span>Holes</span>
 				<div class="tree-panel-controls">
 					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
 				</div>
@@ -2635,10 +2653,10 @@
 			</div>
 		</div>
 
-		<!-- Panel 4: Draw -->
+		<!-- Panel 4: KAD -->
 		<div id="toolbarPanelDraw" class="tree-panel toolbar-panel">
 			<div class="tree-panel-header" id="toolbarPanelDrawHeader">
-				<span>Draw</span>
+				<span>KAD</span>
 				<div class="tree-panel-controls">
 					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
 				</div>
@@ -2669,9 +2687,6 @@
 						<img src="icons/add-kad-circle.png" alt="Add KAD Circle">
 					</label>
 					<input type="number#" step="0.1" min="0.01" max="9000" id="drawingKADRadiusToolbar" name="drawingKADRadiusToolbar" value="10.0" placeholder="Radius" class="input-with-color" title="Circle Radius (m)">
-					<button id="reorderKADBtn" class="toggle-buttons-custom icon-button" title="Reorder KAD Points">
-						<img src="icons/exchange.png" alt="Reorder KAD">
-					</button>
 				</div>
 			</div>
 		</div>
@@ -2686,18 +2701,6 @@
 			</div>
 			<div class="tree-panel-content toolbar-panel-content">
 				<div class="toolbar-grid">
-					<input type="checkbox" id="moveToTool" name="moveToTool" value="moveToTool">
-					<label for="moveToTool" class="toggle-buttons-custom icon-button" title="Move">
-						<img src="icons/arrows-move.png" alt="Move">
-					</label>
-					<input type="checkbox" id="rotateTool" name="rotateTool" value="rotateTool">
-					<label for="rotateTool" class="toggle-buttons-custom icon-button" title="Rotate KAD">
-						<img src="icons/rotate-clockwise.png" alt="Rotate KAD">
-					</label>
-					<input type="checkbox" id="bearingTool" name="bearingTool" value="bearingTool">
-					<label for="bearingTool" class="toggle-buttons-custom icon-button" title="Hole Bearing">
-						<img src="icons/rotate-dot.png" alt="Hole Bearing">
-					</label>
 					<input type="checkbox" id="assignSurfaceTool" name="assignSurfaceTool" value="assignSurfaceTool">
 					<label for="assignSurfaceTool" class="toggle-buttons-custom icon-button" title="Assign Surface">
 						<img src="icons/adjustments-up.png" alt="Assign Surface">
@@ -2705,6 +2708,18 @@
 					<input type="checkbox" id="assignGradeTool" name="assignGradeTool" value="assignGradeTool">
 					<label for="assignGradeTool" class="toggle-buttons-custom icon-button" title="Assign Grade">
 						<img src="icons/adjustments-down.png" alt="Assign Grade">
+					</label>
+					<input type="checkbox" id="bearingTool" name="bearingTool" value="bearingTool">
+					<label for="bearingTool" class="toggle-buttons-custom icon-button" title="Hole Bearing">
+						<img src="icons/rotate-dot.png" alt="Hole Bearing">
+					</label>
+					<input type="checkbox" id="moveToTool" name="moveToTool" value="moveToTool">
+					<label for="moveToTool" class="toggle-buttons-custom icon-button" title="Move">
+						<img src="icons/arrows-move.png" alt="Move">
+					</label>
+					<input type="checkbox" id="rotateTool" name="rotateTool" value="rotateTool">
+					<label for="rotateTool" class="toggle-buttons-custom icon-button" title="Rotate KAD">
+						<img src="icons/rotate-clockwise.png" alt="Rotate KAD">
 					</label>
 					<input type="checkbox" id="offsetKADTool" name="offsetKADTool" value="offsetKADTool">
 					<label for="offsetKADTool" class="toggle-buttons-custom icon-button" title="Offset KAD">
@@ -2714,6 +2729,9 @@
 					<label for="radiiHolesOrKADsTool" class="toggle-buttons-custom icon-button" title="Radii Holes/KADs">
 						<img src="icons/atom-2.png" alt="Radii Holes/KADs">
 					</label>
+					<button id="reorderKADBtn" class="toggle-buttons-custom icon-button" title="Reorder KAD Points">
+						<img src="icons/exchange.png" alt="Reorder KAD">
+					</button>
 				</div>
 			</div>
 		</div>
@@ -2739,36 +2757,6 @@
 					<input type="button" id="floatingConnectorColor" name="floatingConnectorColor" data-jscolor="{value:'#FF0000'}" title="Connector Color" class="color-with-input">
 					<input type="number#" step="1" min="-1000" max="1000" id="floatingDelay" name="floatingDelay" value="25" placeholder="Delay" class="input-with-color" title="Delay Amount (ms)">
 					<!-- Future: Electronic Tie Tools -->
-				</div>
-			</div>
-		</div>
-
-		<!-- Panel 7: View -->
-		<div id="toolbarPanelView" class="tree-panel toolbar-panel">
-			<div class="tree-panel-header" id="toolbarPanelViewHeader">
-				<span>View</span>
-				<div class="tree-panel-controls">
-					<button class="tree-panel-btn toolbar-collapse-btn" title="Collapse/Expand">−</button>
-				</div>
-			</div>
-			<div class="tree-panel-content toolbar-panel-content">
-				<div class="toolbar-grid">
-					<input type="checkbox" id="resetViewTool" name="resetViewTool" value="resetViewTool">
-					<label for="resetViewTool" class="toggle-buttons-custom icon-button" title="Reset View">
-						<img src="icons/circle-letter-r.png" alt="Reset View">
-					</label>
-					<input type="checkbox" id="showTreeBtn" name="showTreeBtn" value="showTreeBtn">
-					<label for="showTreeBtn" class="toggle-buttons-custom icon-button" title="Show Data Explorer">
-						<img src="icons/article.png" alt="Data Explorer">
-					</label>
-					<input type="checkbox" id="dimension2D-3DBtn" name="dimension2D-3DBtn" value="dimension2D-3DBtn">
-					<label for="dimension2D-3DBtn" class="toggle-buttons-custom icon-button" title="Toggle 2D/3D">
-						<img src="icons/badge-2d-v2.png" alt="Toggle 2D/3D">
-					</label>
-					<input type="checkbox" id="dimension2D-3D-SettingsBtn" name="dimension2D-3D-SettingsBtn" value="dimension2D-3D-SettingsBtn">
-					<label for="dimension2D-3D-SettingsBtn" class="toggle-buttons-custom icon-button" title="3D Settings">
-						<img src="icons/world-cog.png" alt="3D Settings">
-					</label>
 				</div>
 			</div>
 		</div>

@@ -281,6 +281,26 @@ import ToolbarPanel, { ToolbarManager, showToolbar, initializeToolbarPanels } fr
 // Print and Statistics Modules
 //=================================================
 import { getBlastStatisticsPerEntity } from "./helpers/BlastStatistics.js";
+
+//=================================================
+// Interactive Tools
+//=================================================
+import {
+	startRenumberHolesMode,
+	cancelRenumberHolesMode,
+	isRenumberFirstHole,
+	isRenumberSecondHole,
+	isHoleInRenumberZone,
+	getRenumberStadiumZone
+} from "./tools/RenumberHolesTool.js";
+import {
+	startReorderRowsMode,
+	cancelReorderRowsMode,
+	isReorderRowsFirstHole,
+	isReorderRowsSecondHole,
+	getReorderRowsLineInfo,
+	getRowDirectionInfo
+} from "./tools/ReorderRowsTool.js";
 import { printMode, printOrientation, printPaperSize, isPrinting, paperRatios, printCanvas, printCtx, togglePrintMode, getPrintBoundary, drawPrintBoundary, printCanvasHiRes, printToPDF, setupPrintEventHandlers, remove3DPrintBoundaryOverlay } from "./print/PrintSystem.js";
 import {
 	drawDataForPrinting,
@@ -647,6 +667,7 @@ function exposeGlobalsToWindow() {
 	window.activeSurfaceLayerId = activeSurfaceLayerId;
 	window.isPatternInPolygonActive = isPatternInPolygonActive;
 	window.isHolesAlongPolyLineActive = isHolesAlongPolyLineActive;
+	window.isReorderKADActive = isReorderKADActive;
 	window.getEntityFromKADObject = getEntityFromKADObject;
 	window.developerModeEnabled = developerModeEnabled;
 	// Step 6a) Expose radio buttons and helper functions for 3D polygon selection
@@ -1924,10 +1945,12 @@ function handle3DClick(event) {
 	const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
 	const selectingKAD = selectKADRadio && selectKADRadio.checked;
 
-	// Step 12h.5a) Only allow selection if SelectPointer tool, Move tool, or connector tool is active
+	// Step 12h.5a) Only allow selection if SelectPointer tool, Move tool, connector tool, RenumberHoles, or ReorderRows is active
 	// Fixes QUIRK 2: Prevent selection when no tool is active
 	const isConnectorToolActive = isAddingConnector || isAddingMultiConnector;
-	if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled && !isMoveToolActive) {
+	const isRenumberToolActive = window.isRenumberHolesActive;
+	const isReorderRowsToolActive = window.isReorderRowsActive;
+	if (!isSelectionPointerActive && !isConnectorToolActive && !isMultiHoleSelectionEnabled && !isMoveToolActive && !isRenumberToolActive && !isReorderRowsToolActive) {
 		if (developerModeEnabled) {
 			console.log("🚫 [3D CLICK] Select Pointer tool not active - skipping selection");
 		}
@@ -2092,6 +2115,26 @@ function handle3DClick(event) {
 				// Step 12i.2i) Draw - only yellow highlight visible now
 				drawData(allBlastHoles, selectedHole);
 			}
+		} else if (window.isRenumberHolesActive) {
+			// Step 12i.3) RenumberHoles tool logic in 3D
+			if (developerModeEnabled) {
+				console.log("⬇️ [3D CLICK] RenumberHoles tool mode");
+			}
+			// Use the window-exposed handleRenumberHolesClick function
+			if (window.handleRenumberHolesClick) {
+				window.handleRenumberHolesClick(clickedHole);
+			}
+			return; // RenumberHoles handles its own drawing
+		} else if (window.isReorderRowsActive) {
+			// Step 12i.4) ReorderRows tool logic in 3D
+			if (developerModeEnabled) {
+				console.log("⬇️ [3D CLICK] ReorderRows tool mode");
+			}
+			// Use the window-exposed handleReorderRowsClick function
+			if (window.handleReorderRowsClick) {
+				window.handleReorderRowsClick(clickedHole);
+			}
+			return; // ReorderRows handles its own drawing
 		} else if (isMultiHoleSelectionEnabled) {
 			// Multi-selection mode
 			if (developerModeEnabled) {
@@ -2512,19 +2555,21 @@ function handle3DClick(event) {
 						}
 
 						// Step 12j.6.5i) Determine selection type (match 2D behavior)
+						// Priority: vertex within tolerance > segment within tolerance
 						let selectionType = "entity";
 						if (closestEntity.entityType === "line" || closestEntity.entityType === "poly") {
-							// Step 12j.6.5i.1) If vertex is significantly closer than segment, use vertex selection
-							if (closestVertexDistance < closestDistance && closestVertexDistance <= snapTolerancePixels) {
+							// Step 12j.6.5i.1) If ANY vertex is within snap tolerance, use vertex selection
+							if (closestVertexDistance <= snapTolerancePixels) {
 								selectionType = "vertex";
 								closestElementIndex = closestVertexIndex; // Update to use vertex index
 								if (developerModeEnabled) {
-									console.log("⬇️ [3D CLICK] Vertex selection - closest vertex at distance:", closestVertexDistance.toFixed(1) + "px");
+									console.log("⬇️ [3D CLICK] Vertex selection - vertex within tolerance:", closestVertexDistance.toFixed(1) + "px");
 								}
 							} else {
-								selectionType = "segment"; // Lines/polys use segment selection
+								// Step 12j.6.5i.2) No vertex in tolerance, use segment selection
+								selectionType = "segment";
 								if (developerModeEnabled) {
-									console.log("⬇️ [3D CLICK] Segment selection - distance:", closestDistance.toFixed(1) + "px");
+									console.log("⬇️ [3D CLICK] Segment selection - no vertex in tolerance, segment dist:", closestDistance.toFixed(1) + "px");
 								}
 							}
 						} else if (closestEntity.entityType === "point") {
@@ -5316,7 +5361,7 @@ const displayMLength = document.getElementById("display13"); //holeLength
 const displayMMass = document.getElementById("display14"); //holeMass
 const displayMComment = document.getElementById("display15"); //holeComment
 const displayVoronoiCells = document.getElementById("display16"); //voronoi
-const displayRowAndPosId = document.getElementById("rowAndPosDisplay"); //Developer mode Row and Position Display
+const displayRowAndPosId = document.getElementById("rowAndPosDisplayBtn"); //Row and Position Display toggle button
 
 // after const option16 = ?
 const allToggles = [displayHoleId, displayHoleLength, displayHoleDiameter, displayHoleAngle, displayHoleDip, displayHoleBearing, displayHoleSubdrill, displayConnectors, displayDelays, displayTimes, displayContours, displaySlope, displayRelief, displayFirstMovements, displayXLocation, displayYLocation, displayElevation, displayHoleType, displayMLength, displayMMass, displayMComment, displayVoronoiCells, displayRowAndPosId];
@@ -22993,6 +23038,38 @@ function getClickedHole(clickX, clickY) {
 			}
 		}
 	}
+	// RenumberHoles mode - just find and return the hole without modifying selection state
+	else if (window.isRenumberHolesActive) {
+		for (let i = 0; i < allBlastHoles.length; i++) {
+			let hole = allBlastHoles[i];
+			// CHECK VISIBILITY FIRST - Skip hidden holes
+			if (!isHoleVisible(hole)) continue;
+			let holeX = hole.startXLocation;
+			let holeY = hole.startYLocation;
+
+			let distance = Math.sqrt(Math.pow(holeX - adjustedX, 2) + Math.pow(holeY - adjustedY, 2));
+
+			if (distance <= threshold) {
+				return hole; // Return the clicked hole
+			}
+		}
+	}
+	// ReorderRows mode - just find and return the hole without modifying selection state
+	else if (window.isReorderRowsActive) {
+		for (let i = 0; i < allBlastHoles.length; i++) {
+			let hole = allBlastHoles[i];
+			// CHECK VISIBILITY FIRST - Skip hidden holes
+			if (!isHoleVisible(hole)) continue;
+			let holeX = hole.startXLocation;
+			let holeY = hole.startYLocation;
+
+			let distance = Math.sqrt(Math.pow(holeX - adjustedX, 2) + Math.pow(holeY - adjustedY, 2));
+
+			if (distance <= threshold) {
+				return hole; // Return the clicked hole
+			}
+		}
+	}
 	//! IMPORTANT alway check if the bool needs to be put here for drawing to work.
 	else if (!isMultiHoleSelectionEnabled && (isSelectionPointerActive || isPolygonSelectionActive || isHoleEditing || isLengthPopupEditing || isDeletingHole || isTypeEditing || isBlastNameEditing || isBearingToolActive || isMoveToolActive)) {
 		for (let i = 0; i < allBlastHoles.length; i++) {
@@ -27039,6 +27116,15 @@ function handleSelection(event) {
 			selectedMultipleKADObjects = []; // Clear multiple KAD selection
 		}
 
+		// Step 7a) Handle ReorderKAD interactive mode (independent of radio selection)
+		if (isReorderKADActive) {
+			const reorderClickedKAD = getClickedKADObject(clickX, clickY);
+			if (handleReorderKADClick(reorderClickedKAD)) {
+				exposeGlobalsToWindow();
+				return; // ReorderKAD handled the click
+			}
+		}
+
 		// Step 8) Try KAD objects (only if KAD radio is selected)
 		let clickedKADObject = null;
 		if (selectingKAD) {
@@ -28283,7 +28369,7 @@ function getDisplayOptions() {
 		measuredMass: document.getElementById("display14").checked,
 		measuredComment: document.getElementById("display15").checked,
 		voronoiPF: document.getElementById("display16").checked,
-		displayRowAndPosId: document.getElementById("rowAndPosDisplay").checked,
+		displayRowAndPosId: document.getElementById("rowAndPosDisplayBtn")?.checked || false,
 	};
 }
 
@@ -30808,6 +30894,178 @@ function drawConnectStadiumZone(sx, sy, endX, endY, connectAmount) {
 	}
 }
 
+// === Helper: Draw renumber stadium zone (magenta) ===
+function drawRenumberStadiumZone(sx, sy, endX, endY) {
+	// Only draw if RenumberHoles mode is active
+	if (!window.isRenumberHolesActive) return;
+
+	// Get zone width from the tool (default 3m)
+	var zoneWidth = 3.0;
+	var stadiumZone = getRenumberStadiumZone();
+	if (stadiumZone) {
+		zoneWidth = stadiumZone.width;
+	}
+
+	// Convert world coordinates to canvas coordinates
+	const [canvasStartX, canvasStartY] = worldToCanvas(sx, sy);
+	const [canvasEndX, canvasEndY] = worldToCanvas(endX, endY);
+
+	// Zone width in pixels
+	const radiusPx = zoneWidth * currentScale;
+
+	// Calculate the line vector and perpendicular vector
+	const dx = canvasEndX - canvasStartX;
+	const dy = canvasEndY - canvasStartY;
+	const length = Math.sqrt(dx * dx + dy * dy);
+
+	// Avoid division by zero
+	if (length < 1) return;
+
+	// Normalize the direction vector
+	const dirX = dx / length;
+	const dirY = dy / length;
+
+	// Get perpendicular vector (for width)
+	const perpX = -dirY;
+	const perpY = dirX;
+
+	// Calculate the four corners of the rectangle
+	const corner1X = canvasStartX + perpX * radiusPx;
+	const corner1Y = canvasStartY + perpY * radiusPx;
+	const corner3X = canvasEndX - perpX * radiusPx;
+	const corner3Y = canvasEndY - perpY * radiusPx;
+
+	// Set stadium zone color - MAGENTA with transparency
+	ctx.strokeStyle = "rgba(255, 0, 255, 0.6)";
+	ctx.fillStyle = "rgba(255, 0, 255, 0.15)";
+	ctx.lineWidth = 2;
+	ctx.setLineDash([5, 5]);
+
+	// Draw the stadium shape (rounded rectangle)
+	ctx.beginPath();
+
+	// Start at the center of the first semicircle
+	ctx.arc(canvasStartX, canvasStartY, radiusPx, Math.atan2(perpY, perpX), Math.atan2(-perpY, -perpX), false);
+
+	// Line to second corner
+	ctx.lineTo(corner3X, corner3Y);
+
+	// Second semicircle
+	ctx.arc(canvasEndX, canvasEndY, radiusPx, Math.atan2(-perpY, -perpX), Math.atan2(perpY, perpX), false);
+
+	// Line back to first corner
+	ctx.lineTo(corner1X, corner1Y);
+
+	ctx.closePath();
+	ctx.fill();
+	ctx.stroke();
+
+	// CRITICAL: Reset line dash back to solid line
+	ctx.setLineDash([]);
+}
+
+// === Helper: Draw reorder rows line with burden arrow ===
+function drawReorderRowsLine(sx, sy, endX, endY, showArrow) {
+	// Only draw if ReorderRows mode is active
+	if (!window.isReorderRowsActive) return;
+
+	// Convert world coordinates to canvas coordinates
+	const [canvasStartX, canvasStartY] = worldToCanvas(sx, sy);
+	const [canvasEndX, canvasEndY] = worldToCanvas(endX, endY);
+
+	// Calculate the line vector
+	const dx = canvasEndX - canvasStartX;
+	const dy = canvasEndY - canvasStartY;
+	const length = Math.sqrt(dx * dx + dy * dy);
+
+	// Avoid division by zero
+	if (length < 1) return;
+
+	// Normalize the direction vector
+	const dirX = dx / length;
+	const dirY = dy / length;
+
+	// Draw the main row direction line (cyan)
+	ctx.strokeStyle = "rgba(0, 200, 255, 0.9)";
+	ctx.lineWidth = 3;
+	ctx.setLineDash([]);
+	ctx.beginPath();
+	ctx.moveTo(canvasStartX, canvasStartY);
+	ctx.lineTo(canvasEndX, canvasEndY);
+	ctx.stroke();
+
+	// Draw small circles at endpoints
+	ctx.fillStyle = "rgba(0, 200, 255, 0.9)";
+	ctx.beginPath();
+	ctx.arc(canvasStartX, canvasStartY, 6, 0, Math.PI * 2);
+	ctx.fill();
+	ctx.beginPath();
+	ctx.arc(canvasEndX, canvasEndY, 6, 0, Math.PI * 2);
+	ctx.fill();
+
+	// Draw burden direction arrow if second hole is selected
+	if (showArrow) {
+		// Get burden direction from the tool
+		var dirInfo = getRowDirectionInfo();
+		if (dirInfo) {
+			// Calculate midpoint
+			const midX = (canvasStartX + canvasEndX) / 2;
+			const midY = (canvasStartY + canvasEndY) / 2;
+
+			// Arrow length in pixels
+			const arrowLength = 60;
+			const arrowHeadSize = 15;
+
+			// Perpendicular direction (canvas space) - burden direction
+			// Note: Canvas Y is inverted from world Y
+			const perpCanvasX = -dirY;
+			const perpCanvasY = dirX;
+
+			// Apply flip if needed
+			const flipSign = dirInfo.burdenFlip ? -1 : 1;
+			const perpX = perpCanvasX * flipSign;
+			const perpY = perpCanvasY * flipSign;
+
+			// Arrow end point
+			const arrowEndX = midX + perpX * arrowLength;
+			const arrowEndY = midY + perpY * arrowLength;
+
+			// Draw arrow line (orange for burden direction)
+			ctx.strokeStyle = "rgba(255, 150, 0, 0.9)";
+			ctx.lineWidth = 3;
+			ctx.beginPath();
+			ctx.moveTo(midX, midY);
+			ctx.lineTo(arrowEndX, arrowEndY);
+			ctx.stroke();
+
+			// Draw arrowhead
+			const angle = Math.atan2(perpY, perpX);
+			ctx.beginPath();
+			ctx.moveTo(arrowEndX, arrowEndY);
+			ctx.lineTo(
+				arrowEndX - arrowHeadSize * Math.cos(angle - Math.PI / 6),
+				arrowEndY - arrowHeadSize * Math.sin(angle - Math.PI / 6)
+			);
+			ctx.lineTo(
+				arrowEndX - arrowHeadSize * Math.cos(angle + Math.PI / 6),
+				arrowEndY - arrowHeadSize * Math.sin(angle + Math.PI / 6)
+			);
+			ctx.closePath();
+			ctx.fillStyle = "rgba(255, 150, 0, 0.9)";
+			ctx.fill();
+
+			// Draw "Row 1" label near arrow
+			ctx.fillStyle = "rgba(255, 150, 0, 1)";
+			ctx.font = "bold 12px Arial";
+			ctx.textAlign = "center";
+			ctx.fillText("Row 1→", arrowEndX + perpX * 15, arrowEndY + perpY * 15);
+		}
+	}
+
+	// CRITICAL: Reset line dash back to solid line
+	ctx.setLineDash([]);
+}
+
 // === Helper: Draw main hole, highlight if selected ===
 function drawHoleMainShape(hole, x, y, selectedHole) {
 	const diameterPx = parseInt((hole.holeDiameter / 1000) * currentScale * holeScale);
@@ -30841,6 +31099,52 @@ function drawHoleMainShape(hole, x, y, selectedHole) {
 			highlightColor1 = "rgba(255, 255, 0, 0.2)";
 			highlightColor2 = "rgba(255, 200, 0, .8)";
 			highlightText = "2nd Selected Hole: " + hole.holeID + " in: " + hole.entityName + " (Click to connect)";
+		}
+	}
+	// Check if we're in RenumberHoles mode
+	else if (window.isRenumberHolesActive) {
+		if (isRenumberFirstHole(hole)) {
+			highlightType = "first";
+			highlightColor1 = "rgba(0, 255, 0, 0.2)";
+			highlightColor2 = "rgba(0, 190, 0, .8)";
+			highlightText = "1st Hole: " + hole.holeID + " (Select last hole)";
+			// Draw magenta stadium zone from first hole to mouse
+			if (!onlyShowThreeJS) {
+				drawRenumberStadiumZone(hole.startXLocation, hole.startYLocation, currentMouseWorldX, currentMouseWorldY);
+			}
+		} else if (isRenumberSecondHole(hole)) {
+			highlightType = "second";
+			highlightColor1 = "rgba(255, 255, 0, 0.2)";
+			highlightColor2 = "rgba(255, 200, 0, .8)";
+			highlightText = "Last Hole: " + hole.holeID;
+		} else if (isHoleInRenumberZone(hole)) {
+			// Holes in the zone get a subtle highlight
+			highlightType = "inZone";
+			highlightColor1 = "rgba(255, 0, 255, 0.15)";
+			highlightColor2 = "rgba(255, 0, 255, 0.5)";
+		}
+	}
+	// Check if we're in ReorderRows mode
+	else if (window.isReorderRowsActive) {
+		if (isReorderRowsFirstHole(hole)) {
+			highlightType = "first";
+			highlightColor1 = "rgba(0, 255, 0, 0.2)";
+			highlightColor2 = "rgba(0, 190, 0, .8)";
+			highlightText = "1st Hole: " + hole.holeID + " (Select last hole in row)";
+			// Draw row direction line from first hole to mouse
+			if (!onlyShowThreeJS) {
+				drawReorderRowsLine(hole.startXLocation, hole.startYLocation, currentMouseWorldX, currentMouseWorldY, false);
+			}
+		} else if (isReorderRowsSecondHole(hole)) {
+			highlightType = "second";
+			highlightColor1 = "rgba(255, 255, 0, 0.2)";
+			highlightColor2 = "rgba(255, 200, 0, .8)";
+			highlightText = "Last Hole: " + hole.holeID;
+			// Draw row direction line with burden arrow
+			var lineInfo = getReorderRowsLineInfo();
+			if (!onlyShowThreeJS && lineInfo) {
+				drawReorderRowsLine(lineInfo.startX, lineInfo.startY, lineInfo.endX, lineInfo.endY, true);
+			}
 		}
 	}
 	// Regular selection highlighting (NOT in connector mode)
@@ -33548,6 +33852,18 @@ window.onload = function () {
 				hideProtractorPanel(); // Step #) Hide CSS protractor panel on ESC reset
 				updateStatusMessage("Protractor tool reset\nClick to set center point");
 			}
+			// Cancel ReorderKAD mode
+			if (isReorderKADActive) {
+				cancelReorderKADMode();
+			}
+			// Cancel RenumberHoles mode
+			if (window.isRenumberHolesActive) {
+				cancelRenumberHolesMode();
+			}
+			// Cancel ReorderRows mode
+			if (window.isReorderRowsActive) {
+				cancelReorderRowsMode();
+			}
 			selectedKADPolygon = null;
 			selectedMultipleKADObjects = [];
 			selectedMultiplePoints = [];
@@ -34096,6 +34412,47 @@ document.addEventListener("DOMContentLoaded", () => {
 	// Step #) Update undo/redo button states on initialization
 	if (undoManager) {
 		undoManager.updateButtonStates();
+	}
+
+	// Step #) Initialize Design toolbar buttons
+	const addPatternBtn = document.getElementById("addPatternBtn");
+	const renumberHolesBtn = document.getElementById("renumberHolesBtn");
+	const reorderRowsBtn = document.getElementById("reorderRowsBtn");
+	const reorderKADBtn = document.getElementById("reorderKADBtn");
+
+	// AddPattern button - opens pattern dialog at view center
+	if (addPatternBtn) {
+		addPatternBtn.addEventListener("click", function () {
+			// Get view center coordinates
+			const centerX = window.centroidX || 0;
+			const centerY = window.centroidY || 0;
+			if (typeof window.showPatternDialog === "function") {
+				window.showPatternDialog("add_pattern", centerX, centerY);
+			} else {
+				console.error("showPatternDialog not found - ensure PatternGenerationDialogs.js is loaded");
+			}
+		});
+	}
+
+	// RenumberHoles button - starts interactive renumber mode
+	if (renumberHolesBtn) {
+		renumberHolesBtn.addEventListener("click", function () {
+			startRenumberHolesMode();
+		});
+	}
+
+	// ReorderRows button - starts interactive reorder mode
+	if (reorderRowsBtn) {
+		reorderRowsBtn.addEventListener("click", function () {
+			startReorderRowsMode();
+		});
+	}
+
+	// ReorderKAD button - starts interactive reorder mode
+	if (reorderKADBtn) {
+		reorderKADBtn.addEventListener("click", function () {
+			startReorderKADMode();
+		});
 	}
 });
 
@@ -36023,62 +36380,68 @@ function getClickedKADObject(clickX, clickY) {
 					}
 				}
 			}
-			// For multi-point entities (lines and polygons) - prioritize SEGMENTS over vertices
+			// For multi-point entities (lines and polygons) - prioritize VERTICES over segments
 			else if (entity.entityType === "line" || entity.entityType === "poly") {
 				const points = entity.data;
 				if (points.length < 2) continue;
 
-				// FIRST: Check segments (higher priority than vertices)
-				const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
+				// FIRST: Check vertices (higher priority - if click is on a vertex, select vertex)
+				let vertexMatch = null;
+				let vertexMinDistance = tolerance;
+				for (let i = 0; i < points.length; i++) {
+					const point = points[i];
+					// Skip hidden vertices - hidden items not selectable from canvas
+					if (point.visible === false) continue;
+					const distance = Math.sqrt(Math.pow(point.pointXLocation - worldX, 2) + Math.pow(point.pointYLocation - worldY, 2));
 
-				for (let i = 0; i < numSegments; i++) {
-					const point1 = points[i];
-					const point2 = points[(i + 1) % points.length]; // Wrap for polygons
-
-					// Step 2) Skip segments where either endpoint is hidden - hidden items not selectable from canvas
-					if (point1.visible === false || point2.visible === false) continue;
-
-					// Calculate distance from click to line segment
-					const segmentDistance = pointToLineSegmentDistance(worldX, worldY, point1.pointXLocation, point1.pointYLocation, point2.pointXLocation, point2.pointYLocation);
-
-					if (segmentDistance <= tolerance && segmentDistance < minDistance) {
-						// Find the closest point on the segment for the clicked location
-						const closestPoint = getClosestPointOnLineSegment(worldX, worldY, point1.pointXLocation, point1.pointYLocation, point2.pointXLocation, point2.pointYLocation);
-
-						closestMatch = {
-							...point1, // Use first point's properties as base
+					if (distance <= tolerance && distance < vertexMinDistance) {
+						vertexMatch = {
+							...point,
 							mapType: "allKADDrawingsMap",
 							entityName: entityName,
 							entityType: entity.entityType,
 							elementIndex: i,
-							segmentIndex: i, // This is the specific segment clicked
-							selectionType: "segment",
-							clickedX: closestPoint.x,
-							clickedY: closestPoint.y,
+							segmentIndex: i,
+							selectionType: "vertex",
 						};
-						minDistance = segmentDistance;
+						vertexMinDistance = distance;
 					}
 				}
 
-				// SECOND: Check vertices (lower priority, only if no segment found)
-				if (!closestMatch) {
-					for (let i = 0; i < points.length; i++) {
-						const point = points[i];
-						// Step 3) Skip hidden vertices - hidden items not selectable from canvas
-						if (point.visible === false) continue;
-						const distance = Math.sqrt(Math.pow(point.pointXLocation - worldX, 2) + Math.pow(point.pointYLocation - worldY, 2));
+				// If vertex found within tolerance, use it
+				if (vertexMatch && vertexMinDistance < minDistance) {
+					closestMatch = vertexMatch;
+					minDistance = vertexMinDistance;
+				} else {
+					// SECOND: Check segments (only if no vertex within tolerance)
+					const numSegments = entity.entityType === "poly" ? points.length : points.length - 1;
 
-						if (distance <= tolerance && distance < minDistance) {
+					for (let i = 0; i < numSegments; i++) {
+						const point1 = points[i];
+						const point2 = points[(i + 1) % points.length]; // Wrap for polygons
+
+						// Skip segments where either endpoint is hidden - hidden items not selectable from canvas
+						if (point1.visible === false || point2.visible === false) continue;
+
+						// Calculate distance from click to line segment
+						const segmentDistance = pointToLineSegmentDistance(worldX, worldY, point1.pointXLocation, point1.pointYLocation, point2.pointXLocation, point2.pointYLocation);
+
+						if (segmentDistance <= tolerance && segmentDistance < minDistance) {
+							// Find the closest point on the segment for the clicked location
+							const closestPoint = getClosestPointOnLineSegment(worldX, worldY, point1.pointXLocation, point1.pointYLocation, point2.pointXLocation, point2.pointYLocation);
+
 							closestMatch = {
-								...point,
+								...point1, // Use first point's properties as base
 								mapType: "allKADDrawingsMap",
 								entityName: entityName,
 								entityType: entity.entityType,
 								elementIndex: i,
-								segmentIndex: i,
-								selectionType: "vertex",
+								segmentIndex: i, // This is the specific segment clicked
+								selectionType: "segment",
+								clickedX: closestPoint.x,
+								clickedY: closestPoint.y,
 							};
-							minDistance = distance;
+							minDistance = segmentDistance;
 						}
 					}
 				}
@@ -39249,6 +39612,13 @@ let polylineStep = 0; // 0=select line/polygon, 1=select start point, 2=select e
 let selectedPolyline = null;
 let polylineStartPoint = null;
 let polylineEndPoint = null;
+
+// ReorderKAD Tool state
+let isReorderKADActive = false;
+let reorderKADStep = 0; // 0=select entity, 1=select point
+let reorderKADEntity = null;
+let reorderKADEntityName = null;
+let reorderKADPointIndex = null;
 
 // Add this wherever I finish clipping holes to polygon boundaries
 function finalizePatternInPolygon(entityName) {
@@ -50357,4 +50727,571 @@ document.addEventListener("DOMContentLoaded", function () {
 		debugPreferences();
 	}, 50);
 });
+
+//==============================================================//
+// DESIGN TOOLBAR DIALOG FUNCTIONS
+//==============================================================//
+
+/**
+ * Show dialog to renumber holes for an entity
+ * Allows user to specify starting number and entity
+ */
+function showRenumberHolesDialog() {
+	// Get list of unique entity names
+	var entities = [...new Set(window.allBlastHoles.map(h => h.entityName))].filter(Boolean);
+
+	if (entities.length === 0) {
+		showModalMessage("No Holes", "There are no blast holes to renumber.");
+		return;
+	}
+
+	// Build entity options for dropdown (FloatingDialog expects { text, value })
+	var entityOptions = entities.map(e => ({ text: e, value: e }));
+
+	// Check if there are selected holes
+	var hasSelection = window.selectedMultipleHoles && window.selectedMultipleHoles.length > 0;
+	if (hasSelection) {
+		entityOptions.unshift({ text: "Selected Holes Only", value: "__SELECTED__" });
+	}
+
+	var fields = [
+		{
+			label: "Starting Number",
+			name: "startNumber",
+			value: "1",
+			placeholder: "e.g., 1 or A1"
+		},
+		{
+			label: "Entity",
+			name: "entityName",
+			type: "select",
+			options: entityOptions,
+			value: hasSelection ? "__SELECTED__" : entities[0]
+		}
+	];
+
+	var formContent = createEnhancedFormContent(fields, false, false);
+
+	var dialog = new FloatingDialog({
+		title: "Renumber Holes",
+		content: formContent,
+		layoutType: "default",
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Renumber",
+		cancelText: "Cancel",
+		width: 350,
+		height: 200,
+		onConfirm: function() {
+			var formData = getFormData(formContent);
+			var startNumber = formData.startNumber || "1";
+			var entityName = formData.entityName;
+
+			if (entityName === "__SELECTED__") {
+				// Renumber only selected holes
+				renumberSelectedHoles(startNumber);
+			} else {
+				// Use existing renumberHolesFunction
+				if (typeof window.renumberHolesFunction === "function") {
+					window.renumberHolesFunction(startNumber, entityName);
+				} else {
+					console.error("renumberHolesFunction not found");
+				}
+			}
+
+			dialog.close();
+		}
+	});
+	dialog.show();
+}
+
+/**
+ * Renumber only the selected holes in selection order
+ * @param {string|number} startNumber - Starting number (e.g., "1" or "A1")
+ */
+function renumberSelectedHoles(startNumber) {
+	var selectedHoles = window.selectedMultipleHoles || [];
+	if (selectedHoles.length === 0) {
+		showModalMessage("No Selection", "No holes are currently selected.");
+		return;
+	}
+
+	var startValue = startNumber.toString();
+	var alphaMatch = startValue.match(/^([A-Z]+)(\d+)$/);
+	var isAlphaNumerical = alphaMatch !== null;
+
+	var oldToNewHoleIDMap = new Map();
+
+	if (isAlphaNumerical) {
+		var currentLetter = alphaMatch[1];
+		var currentNumber = parseInt(alphaMatch[2]);
+
+		selectedHoles.forEach(function(hole) {
+			var newHoleID = currentLetter + currentNumber;
+			oldToNewHoleIDMap.set(hole.holeID, newHoleID);
+			hole.holeID = newHoleID;
+			currentNumber++;
+		});
+	} else {
+		var currentNum = parseInt(startValue) || 1;
+
+		selectedHoles.forEach(function(hole) {
+			oldToNewHoleIDMap.set(hole.holeID, currentNum.toString());
+			hole.holeID = currentNum.toString();
+			currentNum++;
+		});
+	}
+
+	// Update fromHoleID references
+	window.allBlastHoles.forEach(function(hole) {
+		if (hole.fromHoleID) {
+			var parts = hole.fromHoleID.split(":::");
+			if (parts.length === 2 && oldToNewHoleIDMap.has(parts[1])) {
+				hole.fromHoleID = parts[0] + ":::" + oldToNewHoleIDMap.get(parts[1]);
+			}
+		}
+	});
+
+	// Refresh
+	if (window.refreshPoints) window.refreshPoints();
+	if (window.drawData) window.drawData(window.allBlastHoles, window.selectedHole);
+	console.log("Renumbered", selectedHoles.length, "selected holes starting at", startNumber);
+}
+
+/**
+ * Show dialog to reorder row assignments
+ * Allows user to specify row direction bearing
+ */
+function showReorderRowsDialog() {
+	// Turn on Row and Position display when tool is active
+	var rowAndPosDisplayBtn = document.getElementById("rowAndPosDisplayBtn");
+	if (rowAndPosDisplayBtn && !rowAndPosDisplayBtn.checked) {
+		rowAndPosDisplayBtn.checked = true;
+		rowAndPosDisplayBtn.dispatchEvent(new Event("change"));
+	}
+
+	// Get list of unique entity names
+	var entities = [...new Set(window.allBlastHoles.map(h => h.entityName))].filter(Boolean);
+
+	if (entities.length === 0) {
+		showModalMessage("No Holes", "There are no blast holes to reorder.");
+		return;
+	}
+
+	// FloatingDialog expects { text, value } for select options
+	var entityOptions = entities.map(e => ({ text: e, value: e }));
+
+	var fields = [
+		{
+			label: "Entity",
+			name: "entityName",
+			type: "select",
+			options: entityOptions,
+			value: entities[0]
+		},
+		{
+			label: "Row Direction (bearing °)",
+			name: "rowBearing",
+			value: "90",
+			placeholder: "0=North, 90=East, 180=South, 270=West"
+		},
+		{
+			label: "Renumber after reorder",
+			name: "renumberAfter",
+			type: "checkbox",
+			value: true
+		},
+		{
+			label: "Starting ID",
+			name: "startID",
+			value: "A1",
+			placeholder: "e.g., 1 or A1"
+		}
+	];
+
+	var formContent = createEnhancedFormContent(fields, false, false);
+
+	var dialog = new FloatingDialog({
+		title: "Reorder Rows",
+		content: formContent,
+		layoutType: "default",
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Reorder",
+		cancelText: "Cancel",
+		width: 380,
+		height: 280,
+		onConfirm: function() {
+			var formData = getFormData(formContent);
+			var entityName = formData.entityName;
+			var rowBearing = parseFloat(formData.rowBearing) || 90;
+			var renumberAfter = formData.renumberAfter === true || formData.renumberAfter === "true";
+			var startID = formData.startID || "A1";
+
+			reorderRowsByBearing(entityName, rowBearing, renumberAfter, startID);
+			dialog.close();
+		}
+	});
+	dialog.show();
+}
+
+/**
+ * Reorder row assignments based on a bearing direction
+ * @param {string} entityName - Entity to reorder
+ * @param {number} rowBearing - Bearing direction for rows (0=N, 90=E, 180=S, 270=W)
+ * @param {boolean} renumberAfter - Whether to renumber holes after reordering
+ * @param {string} startID - Starting hole ID for renumbering
+ */
+function reorderRowsByBearing(entityName, rowBearing, renumberAfter, startID) {
+	var allBlastHoles = window.allBlastHoles || [];
+	var entityHoles = allBlastHoles.filter(h => h.entityName === entityName);
+
+	if (entityHoles.length === 0) {
+		showModalMessage("No Holes", "No holes found for entity: " + entityName);
+		return;
+	}
+
+	// Convert bearing to radians (bearing is clockwise from North)
+	// Math angle is counter-clockwise from East
+	var rowBearingRadians = (90 - rowBearing) * (Math.PI / 180);
+	var burdenBearingRadians = rowBearingRadians - Math.PI / 2; // Perpendicular to row
+
+	// Project each hole onto burden axis (perpendicular to row) and spacing axis (along row)
+	entityHoles.forEach(function(hole) {
+		hole._burdenProj = hole.startXLocation * Math.cos(burdenBearingRadians) +
+		                   hole.startYLocation * Math.sin(burdenBearingRadians);
+		hole._spacingProj = hole.startXLocation * Math.cos(rowBearingRadians) +
+		                    hole.startYLocation * Math.sin(rowBearingRadians);
+	});
+
+	// Sort by burden projection (row grouping)
+	entityHoles.sort((a, b) => b._burdenProj - a._burdenProj);
+
+	// Group into rows based on burden projection tolerance
+	var rowTolerance = 2.0; // 2 meters tolerance for same row
+	var rows = [];
+	var currentRow = [entityHoles[0]];
+	var currentBurdenProj = entityHoles[0]._burdenProj;
+
+	for (var i = 1; i < entityHoles.length; i++) {
+		var hole = entityHoles[i];
+		if (Math.abs(hole._burdenProj - currentBurdenProj) <= rowTolerance) {
+			currentRow.push(hole);
+		} else {
+			// Sort current row by spacing projection
+			currentRow.sort((a, b) => a._spacingProj - b._spacingProj);
+			rows.push(currentRow);
+			currentRow = [hole];
+			currentBurdenProj = hole._burdenProj;
+		}
+	}
+	// Don't forget the last row
+	currentRow.sort((a, b) => a._spacingProj - b._spacingProj);
+	rows.push(currentRow);
+
+	// Assign rowID and posID
+	rows.forEach(function(row, rowIndex) {
+		row.forEach(function(hole, posIndex) {
+			hole.rowID = rowIndex + 1;
+			hole.posID = posIndex + 1;
+		});
+	});
+
+	// Clean up temporary properties
+	entityHoles.forEach(function(hole) {
+		delete hole._burdenProj;
+		delete hole._spacingProj;
+	});
+
+	console.log("Reordered " + entityHoles.length + " holes into " + rows.length + " rows for entity: " + entityName);
+
+	// Optionally renumber
+	if (renumberAfter && typeof window.renumberHolesFunction === "function") {
+		window.renumberHolesFunction(startID, entityName);
+	}
+
+	// Refresh display
+	if (window.refreshPoints) window.refreshPoints();
+	if (window.drawData) window.drawData(window.allBlastHoles, window.selectedHole);
+}
+
+/**
+ * Start interactive ReorderKAD mode
+ * Step 1: Select a line/poly entity on screen
+ * Step 2: Select a point to be the new start point
+ * Step 3: Dialog asks for winding direction (Left/Right)
+ */
+function startReorderKADMode() {
+	// Check if there are any line/poly entities
+	var kadEntities = window.allKADDrawingsMap || new Map();
+	var hasLineOrPoly = false;
+	kadEntities.forEach(function(entity) {
+		if (entity.entityType === "line" || entity.entityType === "poly") {
+			hasLineOrPoly = true;
+		}
+	});
+
+	if (!hasLineOrPoly) {
+		showModalMessage("No KAD Entities", "There are no line or polygon KAD entities to reorder.");
+		return;
+	}
+
+	// Check if a line/poly is already selected (follows offset tools pattern)
+	var preSelectedEntity = window.selectedKADObject;
+	if (!preSelectedEntity || (preSelectedEntity.entityType !== "line" && preSelectedEntity.entityType !== "poly")) {
+		showModalMessage("No Entity Selected", "Please select a line or polygon first using the Selection tool, then click Reorder KAD.");
+		return;
+	}
+
+	// Initialize state with the pre-selected entity
+	isReorderKADActive = true;
+	reorderKADStep = 1; // Skip to step 1: select point (entity already selected)
+	reorderKADEntityName = preSelectedEntity.entityName;
+	reorderKADEntity = window.allKADDrawingsMap.get(reorderKADEntityName);
+	reorderKADPointIndex = null;
+
+	// Show button as active
+	var reorderKADBtn = document.getElementById("reorderKADBtn");
+	if (reorderKADBtn) {
+		reorderKADBtn.classList.add("active");
+	}
+
+	updateStatusMessage("Click on the point to be the new start point (Esc to cancel)");
+	console.log("ReorderKAD mode started for entity:", reorderKADEntityName);
+}
+
+/**
+ * Handle click during ReorderKAD mode
+ * Called from the main click handler when isReorderKADActive is true
+ * Entity is pre-selected, this only handles vertex selection
+ * @param {Object} clickedKADObject - The clicked KAD object from getClickedKADObject
+ */
+function handleReorderKADClick(clickedKADObject) {
+	if (!isReorderKADActive) return false;
+
+	// Select vertex within the pre-selected entity
+	if (!clickedKADObject) {
+		updateStatusMessage("Click on a vertex in the selected entity (Esc to cancel)");
+		return true;
+	}
+
+	// Must be same entity as pre-selected
+	if (clickedKADObject.entityName !== reorderKADEntityName) {
+		updateStatusMessage("Please click on a vertex in: " + reorderKADEntityName);
+		return true;
+	}
+
+	// Must be vertex selection
+	if (clickedKADObject.selectionType !== "vertex") {
+		updateStatusMessage("Click directly on a vertex, not a segment");
+		return true;
+	}
+
+	// Point selected
+	reorderKADPointIndex = clickedKADObject.elementIndex;
+
+	// Highlight the selected point
+	if (reorderKADEntity && reorderKADEntity.data && reorderKADEntity.data[reorderKADPointIndex]) {
+		selectedPoint = reorderKADEntity.data[reorderKADPointIndex];
+		window.selectedPoint = selectedPoint;
+	}
+
+	drawData(allBlastHoles, selectedHole);
+	console.log("ReorderKAD: Point selected - index", reorderKADPointIndex);
+
+	// Show winding dialog
+	showReorderKADWindingDialog();
+	return true;
+}
+
+/**
+ * Show dialog to select winding direction after point is selected
+ */
+function showReorderKADWindingDialog() {
+	var fields = [
+		{
+			label: "Winding Direction",
+			name: "winding",
+			type: "select",
+			options: [
+				{ text: "Left (Counter-clockwise)", value: "left" },
+				{ text: "Right (Clockwise)", value: "right" }
+			],
+			value: "left"
+		}
+	];
+
+	var formContent = createEnhancedFormContent(fields, false, false);
+
+	var dialog = new FloatingDialog({
+		title: "Reorder KAD - Set Direction",
+		content: formContent,
+		layoutType: "default",
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "OK",
+		cancelText: "Cancel",
+		width: 320,
+		height: 150,
+		onConfirm: function() {
+			var formData = getFormData(formContent);
+			var winding = formData.winding;
+
+			executeReorderKAD(winding);
+			dialog.close();
+			cancelReorderKADMode();
+		},
+		onCancel: function() {
+			cancelReorderKADMode();
+		}
+	});
+	dialog.show();
+}
+
+/**
+ * Execute the reorder operation
+ * @param {string} winding - "left" or "right"
+ */
+function executeReorderKAD(winding) {
+	if (!reorderKADEntity || !reorderKADEntity.data || reorderKADPointIndex === null) {
+		showModalMessage("Error", "Invalid reorder state.");
+		return;
+	}
+
+	var points = reorderKADEntity.data;
+	var n = points.length;
+	var startIndex = reorderKADPointIndex;
+
+	// Rotate array so startIndex becomes index 0
+	var reordered = [];
+	for (var i = 0; i < n; i++) {
+		var idx = (startIndex + i) % n;
+		reordered.push(points[idx]);
+	}
+
+	// If right winding, reverse the order (but keep selected point first)
+	if (winding === "right") {
+		// Keep first element, reverse the rest
+		var first = reordered.shift();
+		reordered.reverse();
+		reordered.unshift(first);
+	}
+
+	// Reassign pointIDs starting from 1
+	reordered.forEach(function(point, index) {
+		point.pointID = index + 1;
+	});
+
+	// Update entity data
+	reorderKADEntity.data = reordered;
+
+	console.log("Reordered " + n + " points in KAD entity: " + reorderKADEntityName + " (winding: " + winding + ", start index: " + startIndex + ")");
+
+	// Save to IndexedDB
+	if (typeof debouncedSaveKAD === "function") {
+		debouncedSaveKAD();
+	}
+
+	// Update tree view
+	if (typeof debouncedUpdateTreeView === "function") {
+		debouncedUpdateTreeView();
+	}
+
+	// Refresh display
+	if (window.drawData) window.drawData(window.allBlastHoles, window.selectedHole);
+
+	updateStatusMessage("Reordered " + n + " points successfully");
+	setTimeout(function() { updateStatusMessage(""); }, 3000);
+}
+
+/**
+ * Cancel ReorderKAD mode
+ */
+function cancelReorderKADMode() {
+	isReorderKADActive = false;
+	reorderKADStep = 0;
+	reorderKADEntity = null;
+	reorderKADEntityName = null;
+	reorderKADPointIndex = null;
+	selectedPoint = null;
+	window.selectedPoint = null;
+
+	// Remove button active state
+	var reorderKADBtn = document.getElementById("reorderKADBtn");
+	if (reorderKADBtn) {
+		reorderKADBtn.classList.remove("active");
+	}
+
+	updateStatusMessage("");
+	drawData(allBlastHoles, selectedHole);
+	console.log("ReorderKAD mode cancelled");
+}
+
+// Legacy function kept for backwards compatibility
+function showReorderKADDialog() {
+	startReorderKADMode();
+}
+
+/**
+ * Reorder points in a KAD line/polygon entity
+ * @param {string} entityName - Entity to reorder
+ * @param {string} direction - How to reorder: "reverse", "x_asc", "x_desc", "y_asc", "y_desc"
+ */
+function reorderKADPoints(entityName, direction) {
+	// KAD entities are stored in allKADDrawingsMap with data array
+	var kadEntities = window.allKADDrawingsMap || new Map();
+	var entity = kadEntities.get(entityName);
+
+	if (!entity || !entity.data || entity.data.length === 0) {
+		showModalMessage("Error", "Entity not found or has no points: " + entityName);
+		return;
+	}
+
+	var points = entity.data;
+
+	switch (direction) {
+		case "reverse":
+			points.reverse();
+			break;
+		case "x_asc":
+			points.sort((a, b) => a.pointXLocation - b.pointXLocation);
+			break;
+		case "x_desc":
+			points.sort((a, b) => b.pointXLocation - a.pointXLocation);
+			break;
+		case "y_asc":
+			points.sort((a, b) => a.pointYLocation - b.pointYLocation);
+			break;
+		case "y_desc":
+			points.sort((a, b) => b.pointYLocation - a.pointYLocation);
+			break;
+	}
+
+	// Reassign pointIDs based on new order
+	points.forEach(function(point, index) {
+		point.pointID = index + 1;
+	});
+
+	console.log("Reordered " + points.length + " points in KAD entity: " + entityName + " (" + direction + ")");
+
+	// Save to IndexedDB
+	if (window.saveKADToDB) {
+		window.saveKADToDB(entityName, entity);
+	}
+
+	// Refresh display
+	if (window.drawData) window.drawData(window.allBlastHoles, window.selectedHole);
+}
+
+// Expose dialog functions globally
+window.showRenumberHolesDialog = showRenumberHolesDialog;
+window.showReorderRowsDialog = showReorderRowsDialog;
+window.showReorderKADDialog = showReorderKADDialog;
+window.renumberSelectedHoles = renumberSelectedHoles;
+window.reorderRowsByBearing = reorderRowsByBearing;
+window.reorderKADPoints = reorderKADPoints;
+window.startReorderKADMode = startReorderKADMode;
+window.handleReorderKADClick = handleReorderKADClick;
+window.cancelReorderKADMode = cancelReorderKADMode;
+window.executeReorderKAD = executeReorderKAD;
 

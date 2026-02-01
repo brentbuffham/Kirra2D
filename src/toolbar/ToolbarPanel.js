@@ -569,12 +569,11 @@ export function initializeToolbarPanels() {
     // Panel positions (staggered grid layout)
     const panelConfigs = [
         { id: "toolbarPanelSelect", defaultTop: 60, defaultLeft: 10 },
-        { id: "toolbarPanelDesign", defaultTop: 60, defaultLeft: 120 },
+        { id: "toolbarPanelDesign", defaultTop: 60, defaultLeft: 120 },  // Renamed to "Holes"
         { id: "toolbarPanelSurface", defaultTop: 60, defaultLeft: 230 },
-        { id: "toolbarPanelDraw", defaultTop: 220, defaultLeft: 10 },
+        { id: "toolbarPanelDraw", defaultTop: 220, defaultLeft: 10 },    // Renamed to "KAD"
         { id: "toolbarPanelModify", defaultTop: 220, defaultLeft: 120 },
         { id: "toolbarPanelConnect", defaultTop: 220, defaultLeft: 230 },
-        { id: "toolbarPanelView", defaultTop: 380, defaultLeft: 10 },
     ];
 
     panelConfigs.forEach(config => {

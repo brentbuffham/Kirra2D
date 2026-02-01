@@ -3372,6 +3372,26 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-cust
     box-shadow: 0 0 5px rgba(255, 0, 0, 0.7);
 }
 
+/* Active state for toolbar buttons (used by interactive tools like ReorderKAD) */
+.toolbar-grid .icon-button.active {
+    background-color: var(--selected-colour, #ff4444) !important;
+    border-width: 2px;
+    border-color: #ff0000 !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.toolbar-grid .icon-button.active:hover {
+    background-color: var(--selected-colour, #ff4444) !important;
+    border-width: 2px;
+    border-color: #ff0000 !important;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 4px rgba(255, 0, 0, 0.5);
+}
+
+/* Override accordion minus sign for toolbar buttons */
+.toolbar-grid .icon-button.active:after {
+    content: none !important;
+}
+
 .toolbar-grid .icon-button img {
     width: 24px;
     height: 24px;
