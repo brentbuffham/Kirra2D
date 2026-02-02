@@ -858,6 +858,36 @@ export function drawKADTextThreeJS(worldX, worldY, worldZ, text, fontSize, color
 	}
 }
 
+// Step 11g) Draw KAD point ID label in Three.js
+// Used when the KAD Point ID display toggle is enabled
+export function drawKADPointIDThreeJS(worldX, worldY, worldZ, pointID, color) {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	// Small offset to position the ID label above and to the left of the point
+	const offsetX = -0.5;
+	const offsetY = 0.5;
+	const offsetZ = 0.2;
+
+	// Use font size 12 for the ID
+	const fontSize = 9;
+
+	// Draw the point ID using vector text
+	const vectorText = GeometryFactory.createVectorText(
+		worldX + offsetX,
+		worldY + offsetY,
+		worldZ + offsetZ,
+		String(pointID),
+		fontSize,
+		color,
+		"right"
+	);
+
+	if (vectorText) {
+		vectorText.userData = { type: "kadPointIDLabel" };
+		window.threeRenderer.kadGroup.add(vectorText);
+	}
+}
+
 //=================================================
 // Surface & Other 3D Drawing
 //=================================================

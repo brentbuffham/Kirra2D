@@ -111,6 +111,7 @@ import {
 	drawKADSuperBatchedCirclesThreeJS,
 	drawKADCircleThreeJS,
 	drawKADTextThreeJS,
+	drawKADPointIDThreeJS,
 	drawSurfaceThreeJS,
 	drawContoursThreeJS,
 	drawDirectionArrowsThreeJS,
@@ -5538,9 +5539,10 @@ const displayMMass = document.getElementById("display14"); //holeMass
 const displayMComment = document.getElementById("display15"); //holeComment
 const displayVoronoiCells = document.getElementById("display16"); //voronoi
 const displayRowAndPosId = document.getElementById("rowAndPosDisplayBtn"); //Row and Position Display toggle button
+const displayKADPointIDs = document.getElementById("kadPointIDDisplayBtn"); //KAD Point ID Display toggle button
 
 // after const option16 = ?
-const allToggles = [displayHoleId, displayHoleLength, displayHoleDiameter, displayHoleAngle, displayHoleDip, displayHoleBearing, displayHoleSubdrill, displayConnectors, displayDelays, displayTimes, displayContours, displaySlope, displayRelief, displayFirstMovements, displayXLocation, displayYLocation, displayElevation, displayHoleType, displayMLength, displayMMass, displayMComment, displayVoronoiCells, displayRowAndPosId];
+const allToggles = [displayHoleId, displayHoleLength, displayHoleDiameter, displayHoleAngle, displayHoleDip, displayHoleBearing, displayHoleSubdrill, displayConnectors, displayDelays, displayTimes, displayContours, displaySlope, displayRelief, displayFirstMovements, displayXLocation, displayYLocation, displayElevation, displayHoleType, displayMLength, displayMMass, displayMComment, displayVoronoiCells, displayRowAndPosId, displayKADPointIDs];
 
 allToggles.forEach((opt) => {
 	if (opt)
@@ -28546,6 +28548,7 @@ function getDisplayOptions() {
 		measuredComment: document.getElementById("display15").checked,
 		voronoiPF: document.getElementById("display16").checked,
 		displayRowAndPosId: document.getElementById("rowAndPosDisplayBtn")?.checked || false,
+		kadPointID: document.getElementById("kadPointIDDisplayBtn")?.checked || false,
 	};
 }
 
@@ -28785,6 +28788,7 @@ function drawData(allBlastHoles, selectedHole) {
 						}
 						drawKADPoints(screenX, screenY, point.pointZLocation, lineWidthForDisplay, point.color);
 						drawKADCoordinates(point, screenX, screenY);
+						drawKADPointID(point, screenX, screenY);
 					});
 				} else if (entity.entityType === "point") {
 					// Apply pixel distance simplification to points for performance
@@ -28799,6 +28803,7 @@ function drawData(allBlastHoles, selectedHole) {
 						const [x, y] = worldToCanvas(pointData.pointXLocation, pointData.pointYLocation);
 						drawKADPoints(x, y, pointData.pointZLocation, lineWidthForDisplay, pointData.color);
 						drawKADCoordinates(pointData, x, y);
+						drawKADPointID(pointData, x, y);
 					}
 				} else if (entity.entityType === "circle") {
 					// ? FIXED: Move visibility check inside forEach loop
@@ -28808,6 +28813,7 @@ function drawData(allBlastHoles, selectedHole) {
 						const screenY = -(circle.pointYLocation - centroidY) * currentScale + canvas.height / 2;
 						drawKADCircles(screenX, screenY, circle.pointZLocation, circle.radius, circle.lineWidth, circle.color);
 						drawKADCoordinates(circle, screenX, screenY);
+						drawKADPointID(circle, screenX, screenY);
 					});
 				} else if (entity.entityType === "text") {
 					entity.data.forEach((textData) => {
@@ -28819,6 +28825,7 @@ function drawData(allBlastHoles, selectedHole) {
 							var textFontHeight2D = textData.fontHeight || 12;
 							drawKADTexts(screenX, screenY, textData.pointZLocation, textData.text, textData.color, textFontHeight2D);
 							drawKADCoordinates(textData, screenX, screenY);
+							drawKADPointID(textData, screenX, screenY);
 						}
 					});
 				} else if (developerModeEnabled && (entity.entityType === "line" || entity.entityType === "poly")) {
@@ -28844,8 +28851,10 @@ function drawData(allBlastHoles, selectedHole) {
 						// Step #) Use nextPoint's color and lineWidth - segment TO the point uses that point's attributes
 						drawKADPolys(sx, sy, ex, ey, currentPoint.pointZLocation, nextPoint.pointZLocation, nextPoint.lineWidth, nextPoint.color, false);
 						drawKADCoordinates(currentPoint, sx, sy);
+						drawKADPointID(currentPoint, sx, sy);
 						if (nextPoint === visiblePoints[visiblePoints.length - 1]) {
 							drawKADCoordinates(nextPoint, ex, ey);
+							drawKADPointID(nextPoint, ex, ey);
 						}
 					}
 
@@ -28906,8 +28915,10 @@ function drawData(allBlastHoles, selectedHole) {
 						// Step #) Use nextPoint's color and lineWidth - segment TO the point uses that point's attributes
 						drawKADPolys(sx, sy, ex, ey, currentPoint.pointZLocation, nextPoint.pointZLocation, nextPoint.lineWidth, nextPoint.color, false);
 						drawKADCoordinates(currentPoint, sx, sy);
+						drawKADPointID(currentPoint, sx, sy);
 						if (nextPoint === simplifiedPoints[simplifiedPoints.length - 1]) {
 							drawKADCoordinates(nextPoint, ex, ey);
+							drawKADPointID(nextPoint, ex, ey);
 						}
 					}
 
@@ -30443,6 +30454,8 @@ function drawData(allBlastHoles, selectedHole) {
 		// This was the cause of 17k+ scene objects - KAD was adding every frame without clearing!
 		var shouldRebuildKAD = window.threeDataNeedsRebuild || window.threeKADNeedsRebuild;
 		if (drawingsGroupVisible && shouldRebuildKAD) {
+			// Get display options for 3D KAD rendering (e.g., kadPointID toggle)
+			const displayOptions = getDisplayOptions();
 
 			// Step 3.1) SUPER-BATCH: For large DXF files, merge ALL lines/polys into ONE geometry
 			// This reduces 3799 draw calls to just 1 - massive performance improvement!
@@ -30584,6 +30597,10 @@ function drawData(allBlastHoles, selectedHole) {
 						const vertexIndex = entity.data.indexOf(pointData);
 						const kadId = name + ":::" + vertexIndex;
 						drawKADPointThreeJS(local.x, local.y, pointData.pointZLocation || 0, size, pointData.color || "#FF0000", kadId); // kadId format: "entityName:::vertexIndex"
+						// Draw point ID if enabled
+						if (displayOptions.kadPointID && pointData.pointID !== undefined) {
+							drawKADPointIDThreeJS(local.x, local.y, pointData.pointZLocation || 0, pointData.pointID, pointData.color || "#FF0000");
+						}
 					}
 				} else if (entity.entityType === "line" || entity.entityType === "poly") {
 					// Step 6) Lines and Polygons: Draw segment-by-segment (matches 2D canvas behavior)
@@ -30706,6 +30723,10 @@ function drawData(allBlastHoles, selectedHole) {
 							pointMesh.userData = { type: "kadPoint", kadId: kadId };
 							pointMesh.visible = false; // Make invisible but keep in scene for raycasting
 							window.threeRenderer.kadGroup.add(pointMesh);
+							// Draw point ID if enabled
+							if (displayOptions.kadPointID && point.pointID !== undefined) {
+								drawKADPointIDThreeJS(local.x, local.y, point.pointZLocation || 0, point.pointID, point.color || "#FF0000");
+							}
 						}
 					}
 				} else if (entity.entityType === "circle") {
@@ -30721,6 +30742,10 @@ function drawData(allBlastHoles, selectedHole) {
 						const vertexIndex = entity.data.indexOf(circleData);
 						const kadId = name + ":::" + vertexIndex;
 						drawKADCircleThreeJS(local.x, local.y, centerZ, radius, circleData.lineWidth || 1, circleData.color || "#FF0000", kadId); // kadId format: "entityName:::vertexIndex"
+						// Draw point ID if enabled
+						if (displayOptions.kadPointID && circleData.pointID !== undefined) {
+							drawKADPointIDThreeJS(local.x, local.y, centerZ, circleData.pointID, circleData.color || "#FF0000");
+						}
 					}
 				} else if (entity.entityType === "text") {
 					for (const textData of entity.data) {
@@ -30731,6 +30756,10 @@ function drawData(allBlastHoles, selectedHole) {
 						// Step B2) Use fontHeight attribute for text size, default to 12
 						var textFontSize = textData.fontHeight || 12;
 						drawKADTextThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.text || "", textFontSize, textData.color || "#000000", textData.backgroundColor || null, kadId); // kadId format: "entityName:::vertexIndex"
+						// Draw point ID if enabled
+						if (displayOptions.kadPointID && textData.pointID !== undefined) {
+							drawKADPointIDThreeJS(local.x, local.y, textData.pointZLocation || 0, textData.pointID, textData.color || "#000000");
+						}
 					}
 				}
 			}
@@ -30853,6 +30882,24 @@ function drawData(allBlastHoles, selectedHole) {
 			console.log("🧊 Three.js scene rendered - drawData()");
 		}
 	}
+}
+
+function drawKADPointID(kadPoint, screenX, screenY) {
+	const displayOptions = getDisplayOptions();
+	if (!displayOptions.kadPointID) return;
+
+	// Draw the point ID above and to the left of the point
+	const textOffset = 8;
+	const fontSize = 12;
+
+	ctx.font = fontSize + "px Arial";
+	ctx.fillStyle = kadPoint.color || textFillColor;
+	ctx.textAlign = "right";
+	ctx.textBaseline = "bottom";
+
+	// Draw the point ID
+	const pointID = kadPoint.pointID !== undefined ? kadPoint.pointID : "?";
+	ctx.fillText(String(pointID), screenX - textOffset / 2, screenY - textOffset / 2);
 }
 
 function drawKADCoordinates(kadPoint, screenX, screenY) {
