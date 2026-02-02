@@ -157,19 +157,12 @@ function activateReorderRowsClickMode() {
 		selectHolesRadio.dispatchEvent(new Event("change"));
 	}
 
-	// Add click handler to both 2D and 3D canvases
+	// Add click handler to 2D canvas only
+	// NOTE: 3D clicks are handled by handle3DClick in kirra.js which calls handleReorderRowsClick
 	var canvas = document.getElementById("canvas");
 	if (canvas) {
 		canvas.addEventListener("click", handleReorderRowsClick2D);
 		canvas.addEventListener("touchstart", handleReorderRowsClick2D);
-	}
-
-	if (window.threeRenderer && window.threeRenderer.getCanvas) {
-		var threeCanvas = window.threeRenderer.getCanvas();
-		if (threeCanvas) {
-			threeCanvas.addEventListener("click", handleReorderRowsClick2D);
-			threeCanvas.addEventListener("touchstart", handleReorderRowsClick2D);
-		}
 	}
 
 	// Show button as active
@@ -196,10 +189,14 @@ function activateReorderRowsClickMode() {
 // =============================================================================
 
 /**
- * Internal click handler for ReorderRows mode (2D canvas)
+ * Internal click handler for ReorderRows mode (2D canvas only)
+ * Note: 3D clicks are handled by handle3DClick in kirra.js which calls handleReorderRowsClick directly
  */
 function handleReorderRowsClick2D(event) {
 	if (!isReorderRowsActive) return;
+
+	// Skip if in 3D mode - 3D clicks are handled by kirra.js
+	if (window.onlyShowThreeJS) return;
 
 	event.preventDefault();
 	event.stopPropagation();
@@ -210,16 +207,10 @@ function handleReorderRowsClick2D(event) {
 	var clickX = event.clientX - rect.left;
 	var clickY = event.clientY - rect.top;
 
-	// Get clicked hole using appropriate function for mode
+	// 2D mode: use standard 2D selection
 	var clickedHole = null;
-	if (window.onlyShowThreeJS) {
-		if (window.getClickedHole3DWithTolerance) {
-			clickedHole = window.getClickedHole3DWithTolerance(event);
-		}
-	} else {
-		if (window.getClickedHole) {
-			clickedHole = window.getClickedHole(clickX, clickY);
-		}
+	if (window.getClickedHole) {
+		clickedHole = window.getClickedHole(clickX, clickY);
 	}
 
 	handleReorderRowsClick(clickedHole);
@@ -231,11 +222,22 @@ function handleReorderRowsClick2D(event) {
  * @returns {boolean} - True if click was handled
  */
 function handleReorderRowsClick(clickedHole) {
-	if (!isReorderRowsActive) return false;
+	console.log("🔵 [REORDER] handleReorderRowsClick called");
+	console.log("  isReorderRowsActive:", isReorderRowsActive);
+	console.log("  clickedHole:", clickedHole ? (clickedHole.holeID + " @ " + clickedHole.entityName) : "null");
+	console.log("  reorderFirstHole:", reorderFirstHole ? (reorderFirstHole.holeID + " @ " + reorderFirstHole.entityName) : "null");
+	console.log("  reorderSecondHole:", reorderSecondHole ? (reorderSecondHole.holeID + " @ " + reorderSecondHole.entityName) : "null");
+	console.log("  onlyShowThreeJS:", window.onlyShowThreeJS);
+
+	if (!isReorderRowsActive) {
+		console.log("  ❌ Early exit: isReorderRowsActive is false");
+		return false;
+	}
 
 	if (!reorderFirstHole) {
 		// Step 1: Select first hole
 		if (!clickedHole) {
+			console.log("  ❌ No hole clicked for first selection");
 			if (window.updateStatusMessage) {
 				window.updateStatusMessage("Click on a hole to set as first in row");
 			}
@@ -255,19 +257,30 @@ function handleReorderRowsClick(clickedHole) {
 			window.drawData(window.allBlastHoles, window.selectedHole);
 		}
 
-		console.log("ReorderRows: First hole selected -", clickedHole.holeID, "in", clickedHole.entityName);
+		console.log("🟢 [REORDER] First hole selected -", clickedHole.holeID, "in", clickedHole.entityName);
 		return true;
 
 	} else if (!reorderSecondHole) {
 		// Step 2: Select second hole
+		console.log("  Checking second hole selection...");
+
 		if (!clickedHole) {
+			console.log("  ❌ No hole clicked for second selection");
 			if (window.updateStatusMessage) {
 				window.updateStatusMessage("Click on a hole to set as last in row");
 			}
 			return true;
 		}
 
-		if (clickedHole === reorderFirstHole) {
+		// Compare by ID instead of reference for 3D compatibility
+		var isSameHole = (clickedHole.entityName === reorderFirstHole.entityName &&
+		                  clickedHole.holeID === reorderFirstHole.holeID);
+		console.log("  isSameHole check:", isSameHole,
+			"(clicked:", clickedHole.entityName + ":::" + clickedHole.holeID,
+			"vs first:", reorderFirstHole.entityName + ":::" + reorderFirstHole.holeID + ")");
+
+		if (isSameHole) {
+			console.log("  ❌ Same hole as first - skipping");
 			if (window.updateStatusMessage) {
 				window.updateStatusMessage("Please select a different hole");
 			}
@@ -276,6 +289,7 @@ function handleReorderRowsClick(clickedHole) {
 
 		// Must be same entity
 		if (clickedHole.entityName !== reorderEntityName) {
+			console.log("  ❌ Different entity:", clickedHole.entityName, "vs", reorderEntityName);
 			if (window.updateStatusMessage) {
 				window.updateStatusMessage("Select a hole from the same entity: " + reorderEntityName);
 			}
@@ -295,12 +309,13 @@ function handleReorderRowsClick(clickedHole) {
 		}
 
 		// Show confirmation dialog
+		console.log("🟡 [REORDER] Second hole selected -", clickedHole.holeID, "- showing dialog");
 		showReorderConfirmDialog();
 
-		console.log("ReorderRows: Second hole selected -", clickedHole.holeID);
 		return true;
 	}
 
+	console.log("  ❌ Unhandled state - returning false");
 	return false;
 }
 
@@ -323,12 +338,14 @@ function showReorderConfirmDialog() {
 	flipBtn.style.cssText = "margin-top: 10px; padding: 8px 16px; cursor: pointer; width: 100%;";
 	flipBtn.onclick = function() {
 		reorderBurdenFlip = !reorderBurdenFlip;
+		console.log("🔄 [REORDER] Burden flipped to:", reorderBurdenFlip);
 		// Update dialog content
 		var newInfo = getRowDirectionInfo();
 		content.querySelector("p:nth-child(2)").innerHTML =
 			"<b>Burden Direction:</b> " + newInfo.burdenBearing.toFixed(1) + "° " +
 			(reorderBurdenFlip ? "(flipped)" : "");
-		// Redraw to update arrow
+		// Force 3D rebuild and redraw to update arrow
+		window.threeDataNeedsRebuild = true;
 		if (window.drawData) {
 			window.drawData(window.allBlastHoles, window.selectedHole);
 		}
@@ -576,6 +593,9 @@ function executeReorderRows() {
 		window.debouncedUpdateTreeView();
 	}
 
+	// Force 3D rebuild to update hole labels/IDs
+	window.threeDataNeedsRebuild = true;
+
 	if (window.updateStatusMessage) {
 		var msg = "Reordered " + totalHoles + " holes into " + rows.length + " rows";
 		if (reorderRenumberAfter && firstHoleID && lastHoleID) {
@@ -651,19 +671,12 @@ function cancelReorderRowsMode() {
 	window.reorderSecondHole = null;
 	window.isReorderRowsActive = false;
 
-	// Remove click handlers
+	// Remove click handlers from 2D canvas
+	// NOTE: 3D clicks are handled by handle3DClick in kirra.js
 	var canvas = document.getElementById("canvas");
 	if (canvas) {
 		canvas.removeEventListener("click", handleReorderRowsClick2D);
 		canvas.removeEventListener("touchstart", handleReorderRowsClick2D);
-	}
-
-	if (window.threeRenderer && window.threeRenderer.getCanvas) {
-		var threeCanvas = window.threeRenderer.getCanvas();
-		if (threeCanvas) {
-			threeCanvas.removeEventListener("click", handleReorderRowsClick2D);
-			threeCanvas.removeEventListener("touchstart", handleReorderRowsClick2D);
-		}
 	}
 
 	// Remove button active state

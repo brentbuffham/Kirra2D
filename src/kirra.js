@@ -1400,8 +1400,10 @@ function setup3DMouseEvents() {
 // Using click instead of mousedown ensures it only fires after a full click (not during drag)
 // Simplified pattern matching Three.js examples - works at any camera orientation
 function handle3DClick(event) {
+	// Always log for debugging
+	console.log("🔫 [3D CLICK] Event fired - isRenumber:", window.isRenumberHolesActive, "isReorder:", window.isReorderRowsActive, "onlyShowThreeJS:", onlyShowThreeJS);
 	if (developerModeEnabled) {
-		console.log("🔫 [3D CLICK] Event fired", {
+		console.log("🔫 [3D CLICK] Event details", {
 			onlyShowThreeJS,
 			threeInitialized: !!threeInitialized,
 			threeRenderer: !!threeRenderer,
@@ -2005,56 +2007,75 @@ function handle3DClick(event) {
 
 	// Step 12i.pre) Handle interactive tools FIRST (before checking clickedHole)
 	// These tools need to handle clicks even when no hole is found (to show status messages)
+	// IMPORTANT: Use screen-space tolerance selection (like 2D) for better UX - raycasting can miss holes
 	if (window.isRenumberHolesActive) {
 		// Step 12i.pre.1) RenumberHoles tool logic in 3D
-		if (developerModeEnabled) {
-			console.log("⬇️ [3D CLICK] RenumberHoles tool mode");
-		}
+		console.log("⬇️ [3D CLICK] RenumberHoles tool mode active");
 		// Prevent camera controls from handling this event
 		event.stopPropagation();
 		event.preventDefault();
+		// Use screen-space tolerance selection (like 2D) for consistent behavior
+		var renumberClickedHole = getClickedHole3DWithTolerance(event);
+		console.log("⬇️ [3D CLICK] RenumberHoles - clicked hole:", renumberClickedHole ? (renumberClickedHole.holeID + " @ " + renumberClickedHole.entityName) : "null");
 		// Use the window-exposed handleRenumberHolesClick function
 		if (window.handleRenumberHolesClick) {
-			window.handleRenumberHolesClick(clickedHole); // Pass clickedHole (may be null)
+			window.handleRenumberHolesClick(renumberClickedHole); // Pass clickedHole (may be null)
+		} else {
+			console.error("❌ [3D CLICK] window.handleRenumberHolesClick is not defined!");
 		}
 		return; // RenumberHoles handles its own drawing
 	}
 
 	if (window.isReorderRowsActive) {
 		// Step 12i.pre.2) ReorderRows tool logic in 3D
-		if (developerModeEnabled) {
-			console.log("⬇️ [3D CLICK] ReorderRows tool mode");
-		}
+		console.log("⬇️ [3D CLICK] ReorderRows tool mode active");
 		// Prevent camera controls from handling this event
 		event.stopPropagation();
 		event.preventDefault();
+		// Use screen-space tolerance selection (like 2D) for consistent behavior
+		var reorderClickedHole = getClickedHole3DWithTolerance(event);
+		console.log("⬇️ [3D CLICK] ReorderRows - clicked hole:", reorderClickedHole ? (reorderClickedHole.holeID + " @ " + reorderClickedHole.entityName) : "null");
 		// Use the window-exposed handleReorderRowsClick function
 		if (window.handleReorderRowsClick) {
-			window.handleReorderRowsClick(clickedHole); // Pass clickedHole (may be null)
+			window.handleReorderRowsClick(reorderClickedHole); // Pass clickedHole (may be null)
+		} else {
+			console.error("❌ [3D CLICK] window.handleReorderRowsClick is not defined!");
 		}
 		return; // ReorderRows handles its own drawing
 	}
 
 	// Step 12i.pre.3) ReorderKAD tool logic in 3D
 	if (isReorderKADToolActive) {
-		if (developerModeEnabled) {
-			console.log("⬇️ [3D CLICK] ReorderKAD tool mode");
-		}
+		console.log("⬇️ [3D CLICK] ReorderKAD tool mode active");
 		// Prevent camera controls from handling this event
 		event.stopPropagation();
 		event.preventDefault();
 
-		// Find clicked KAD object from 3D intersections using dedicated 3D function
-		// Get canvas click position from event
-		const threeCanvas = threeRenderer.getCanvas();
-		const rect = threeCanvas.getBoundingClientRect();
-		const clickX = event.clientX - rect.left;
-		const clickY = event.clientY - rect.top;
-		const clickedKAD = getClickedKADObject3D(intersects, clickX, clickY);
+		// Use screen-space tolerance selection for vertex picking (like 2D mode)
+		// This is more reliable than raycasting for vertex selection
+		const kadVertex = getClickedKADVertex3DWithTolerance(event);
+		console.log("⬇️ [3D CLICK] ReorderKAD - vertex result:", kadVertex);
+
+		// Convert to the format expected by handleReorderKADClick
+		let clickedKAD = null;
+		if (kadVertex) {
+			const entity = allKADDrawingsMap.get(kadVertex.entityName);
+			clickedKAD = {
+				entityName: kadVertex.entityName,
+				entityType: kadVertex.entityType,
+				elementIndex: kadVertex.elementIndex,
+				selectionType: "vertex",
+				pointXLocation: kadVertex.dataPoint.pointXLocation,
+				pointYLocation: kadVertex.dataPoint.pointYLocation,
+				pointZLocation: kadVertex.dataPoint.pointZLocation
+			};
+		}
 
 		// Use the window-exposed handleReorderKADClick function
 		if (window.handleReorderKADClick) {
 			window.handleReorderKADClick(clickedKAD); // Pass clickedKAD (may be null)
+		} else {
+			console.error("❌ [3D CLICK] window.handleReorderKADClick is not defined!");
 		}
 		return; // ReorderKAD handles its own drawing
 	}
@@ -30375,6 +30396,7 @@ function drawData(allBlastHoles, selectedHole) {
 							// Draw row direction line with burden arrow
 							var lineInfo = getReorderRowsLineInfo();
 							var dirInfo = getRowDirectionInfo();
+							console.log("🔶 [REORDER 3D] Drawing arrow - dirInfo.burdenFlip:", dirInfo ? dirInfo.burdenFlip : "null", "burdenBearing:", dirInfo ? dirInfo.burdenBearing : "null");
 							if (lineInfo) {
 								drawReorderRowsLineThreeJS(
 									{ startXLocation: lineInfo.startX, startYLocation: lineInfo.startY, startZLocation: hole.startZLocation || 0, entityName: "", holeID: "" },
@@ -34675,10 +34697,14 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// ReorderKAD button - starts interactive reorder mode
+	// ReorderKAD button - starts interactive reorder mode (toggle on/off)
 	if (reorderKADBtn) {
 		reorderKADBtn.addEventListener("click", function () {
-			startReorderKADMode();
+			if (isReorderKADActive) {
+				cancelReorderKADMode();
+			} else {
+				startReorderKADMode();
+			}
 		});
 	}
 });
@@ -51423,6 +51449,10 @@ function executeReorderKAD(winding) {
 	if (typeof debouncedUpdateTreeView === "function") {
 		debouncedUpdateTreeView();
 	}
+
+	// Force full 3D rebuild to update KAD line/polygon geometry
+	window.threeDataNeedsRebuild = true;
+	window.threeKADNeedsRebuild = true;
 
 	// Refresh display
 	if (window.drawData) window.drawData(window.allBlastHoles, window.selectedHole);

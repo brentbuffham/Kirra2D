@@ -148,20 +148,12 @@ function activateRenumberClickMode() {
 		selectHolesRadio.dispatchEvent(new Event("change"));
 	}
 
-	// Add click handler to both 2D and 3D canvases
+	// Add click handler to 2D canvas only
+	// NOTE: 3D clicks are handled by handle3DClick in kirra.js which calls handleRenumberHolesClick
 	var canvas = document.getElementById("canvas");
 	if (canvas) {
 		canvas.addEventListener("click", handleRenumberClick);
 		canvas.addEventListener("touchstart", handleRenumberClick);
-	}
-
-	// Also add to 3D canvas if available
-	if (window.threeRenderer && window.threeRenderer.getCanvas) {
-		var threeCanvas = window.threeRenderer.getCanvas();
-		if (threeCanvas) {
-			threeCanvas.addEventListener("click", handleRenumberClick);
-			threeCanvas.addEventListener("touchstart", handleRenumberClick);
-		}
 	}
 
 	// Show button as active
@@ -185,11 +177,14 @@ function activateRenumberClickMode() {
 }
 
 /**
- * Internal click handler for RenumberHoles mode (2D only)
- * Note: 3D clicks are handled by kirra.js handleMouseUp3D
+ * Internal click handler for RenumberHoles mode (2D canvas only)
+ * Note: 3D clicks are handled by handle3DClick in kirra.js which calls handleRenumberHolesClick directly
  */
 function handleRenumberClick(event) {
 	if (!isRenumberHolesActive) return;
+
+	// Skip if in 3D mode - 3D clicks are handled by kirra.js
+	if (window.onlyShowThreeJS) return;
 
 	event.preventDefault();
 	event.stopPropagation();
@@ -200,18 +195,10 @@ function handleRenumberClick(event) {
 	var clickX = event.clientX - rect.left;
 	var clickY = event.clientY - rect.top;
 
-	// Get clicked hole using appropriate function for mode
+	// 2D mode: use standard 2D selection
 	var clickedHole = null;
-	if (window.onlyShowThreeJS) {
-		// 3D mode: use screen-space tolerance selection
-		if (window.getClickedHole3DWithTolerance) {
-			clickedHole = window.getClickedHole3DWithTolerance(event);
-		}
-	} else {
-		// 2D mode: use standard 2D selection
-		if (window.getClickedHole) {
-			clickedHole = window.getClickedHole(clickX, clickY);
-		}
+	if (window.getClickedHole) {
+		clickedHole = window.getClickedHole(clickX, clickY);
 	}
 
 	handleRenumberHolesClick(clickedHole);
@@ -227,11 +214,21 @@ function handleRenumberClick(event) {
  * @returns {boolean} - True if click was handled
  */
 function handleRenumberHolesClick(clickedHole) {
-	if (!isRenumberHolesActive) return false;
+	console.log("🔵 [RENUMBER] handleRenumberHolesClick called");
+	console.log("  isRenumberHolesActive:", isRenumberHolesActive);
+	console.log("  clickedHole:", clickedHole ? (clickedHole.holeID + " @ " + clickedHole.entityName) : "null");
+	console.log("  renumberFirstHole:", renumberFirstHole ? (renumberFirstHole.holeID + " @ " + renumberFirstHole.entityName) : "null");
+	console.log("  onlyShowThreeJS:", window.onlyShowThreeJS);
+
+	if (!isRenumberHolesActive) {
+		console.log("  ❌ Early exit: isRenumberHolesActive is false");
+		return false;
+	}
 
 	if (!renumberFirstHole) {
 		// Step 1: Select first hole
 		if (!clickedHole) {
+			console.log("  ❌ No hole clicked for first selection");
 			if (window.updateStatusMessage) {
 				window.updateStatusMessage("Click on a hole to set as first in sequence");
 			}
@@ -250,19 +247,30 @@ function handleRenumberHolesClick(clickedHole) {
 			window.drawData(window.allBlastHoles, window.selectedHole);
 		}
 
-		console.log("RenumberHoles: First hole selected -", clickedHole.holeID);
+		console.log("🟢 [RENUMBER] First hole selected -", clickedHole.holeID, "in", clickedHole.entityName);
 		return true;
 
 	} else {
 		// Step 2: Select second hole - execute immediately
+		console.log("  Checking second hole selection...");
+
 		if (!clickedHole) {
+			console.log("  ❌ No hole clicked for second selection");
 			if (window.updateStatusMessage) {
 				window.updateStatusMessage("Click on a hole to set as last in sequence");
 			}
 			return true;
 		}
 
-		if (clickedHole === renumberFirstHole) {
+		// Compare by ID instead of reference for 3D compatibility
+		var isSameHole = (clickedHole.entityName === renumberFirstHole.entityName &&
+		                  clickedHole.holeID === renumberFirstHole.holeID);
+		console.log("  isSameHole check:", isSameHole,
+			"(clicked:", clickedHole.entityName + ":::" + clickedHole.holeID,
+			"vs first:", renumberFirstHole.entityName + ":::" + renumberFirstHole.holeID + ")");
+
+		if (isSameHole) {
+			console.log("  ❌ Same hole as first - skipping");
 			if (window.updateStatusMessage) {
 				window.updateStatusMessage("Please select a different hole as the last hole");
 			}
@@ -275,12 +283,13 @@ function handleRenumberHolesClick(clickedHole) {
 		// Collect holes in the stadium zone
 		renumberCollectedHoles = getHolesInStadiumZone(renumberFirstHole, renumberSecondHole, renumberZoneWidth);
 
-		console.log("RenumberHoles: Second hole selected -", clickedHole.holeID);
-		console.log("RenumberHoles: Collected", renumberCollectedHoles.length, "holes in zone");
+		console.log("🟡 [RENUMBER] Second hole selected -", clickedHole.holeID, "in", clickedHole.entityName);
+		console.log("🟡 [RENUMBER] Collected", renumberCollectedHoles.length, "holes in zone");
 
 		// Check for ID conflicts before renumbering
 		var conflict = checkForIdConflicts(renumberCollectedHoles, renumberStartValue);
 		if (conflict) {
+			console.log("  ❌ ID conflict detected:", conflict);
 			if (window.showModalMessage) {
 				window.showModalMessage("ID Conflict", conflict);
 			}
@@ -289,10 +298,12 @@ function handleRenumberHolesClick(clickedHole) {
 		}
 
 		// Execute renumbering immediately
+		console.log("🚀 [RENUMBER] Executing renumber...");
 		executeRenumberHoles();
 
 		// Done - cancel mode
 		cancelRenumberHolesMode();
+		console.log("✅ [RENUMBER] Complete");
 		return true;
 	}
 }
@@ -631,6 +642,9 @@ function executeRenumberHoles() {
 		window.debouncedUpdateTreeView();
 	}
 
+	// Force 3D rebuild to update hole labels/IDs
+	window.threeDataNeedsRebuild = true;
+
 	// Update status message
 	if (window.updateStatusMessage) {
 		var msg;
@@ -678,19 +692,12 @@ function cancelRenumberHolesMode() {
 	window.renumberSecondHole = null;
 	window.isRenumberHolesActive = false;
 
-	// Remove click handlers
+	// Remove click handlers from 2D canvas
+	// NOTE: 3D clicks are handled by handle3DClick in kirra.js
 	var canvas = document.getElementById("canvas");
 	if (canvas) {
 		canvas.removeEventListener("click", handleRenumberClick);
 		canvas.removeEventListener("touchstart", handleRenumberClick);
-	}
-
-	if (window.threeRenderer && window.threeRenderer.getCanvas) {
-		var threeCanvas = window.threeRenderer.getCanvas();
-		if (threeCanvas) {
-			threeCanvas.removeEventListener("click", handleRenumberClick);
-			threeCanvas.removeEventListener("touchstart", handleRenumberClick);
-		}
 	}
 
 	// Remove button active state

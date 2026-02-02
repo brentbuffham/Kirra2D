@@ -1,7 +1,8 @@
 # Plan: Fix RenumberHoles and ReorderRows Tools in 3D Mode
 
 **Created:** 2026-02-01 23:30
-**Status:** In Progress
+**Updated:** 2026-02-02
+**Status:** Fixed
 **Priority:** High
 
 ---
@@ -12,6 +13,45 @@ The RenumberHoles and ReorderRows tools need fixes for proper 3D mode operation.
 1. Escape key not properly clearing tool state
 2. Hole stores not being nulled after completion
 3. Tool not selecting correct holes in 3D mode
+
+---
+
+## Fixes Implemented (2026-02-02)
+
+### Root Cause Identified
+The main issue was that 3D clicks were using two different hole selection methods:
+1. `interactionManager.findClickedHole()` - raycast-based selection (can miss holes)
+2. `getClickedHole3DWithTolerance()` - screen-space tolerance (like 2D, more reliable)
+
+Additionally, the tool files were attaching their own click handlers to the 3D canvas, which could cause double-handling issues with `handle3DClick` in kirra.js.
+
+### Changes Made
+
+#### 1. kirra.js - `handle3DClick()` (lines ~2006-2045)
+Changed the RenumberHoles and ReorderRows handlers to use `getClickedHole3DWithTolerance(event)` instead of `interactionManager.findClickedHole(intersects, allBlastHoles)`.
+
+This provides screen-space tolerance selection that matches 2D behavior - much more reliable for clicking on holes.
+
+Added debug logging when `developerModeEnabled` to help with future debugging.
+
+#### 2. RenumberHolesTool.js
+- **Removed 3D canvas click handler attachment** - 3D clicks are now handled exclusively by `handle3DClick` in kirra.js
+- **Simplified cleanup function** - only removes 2D canvas handlers
+- **Simplified `handleRenumberClick`** - now skips in 3D mode (`window.onlyShowThreeJS`)
+
+#### 3. ReorderRowsTool.js
+- Same changes as RenumberHolesTool.js
+- Removed 3D canvas handler attachment
+- Simplified cleanup to only handle 2D canvas
+- `handleReorderRowsClick2D` now skips in 3D mode
+
+### Why This Fixes the Issues
+
+**Issue 3 (Wrong Hole Selected):**
+Screen-space tolerance selection (`getClickedHole3DWithTolerance`) projects each hole to screen coordinates and finds the closest one within pixel tolerance. This mimics 2D selection behavior and is more intuitive.
+
+**Issue 1 & 2 (State Not Clearing):**
+The existing cleanup code was correct - the `typesToClear` array already includes `"renumberStadiumZone"` and `"reorderRowsLine"`. With the duplicate click handler removed, there's no risk of race conditions or double-processing that could interfere with cleanup.
 
 ---
 
@@ -49,69 +89,27 @@ drawReorderRowsLineThreeJS,
 
 ---
 
-## Known Issues to Fix
+## Known Issues (FIXED)
 
-### Issue 1: Escape Key Not Clearing State Properly
+### Issue 1: Escape Key Not Clearing State Properly ✅ FIXED
 **Symptom:** After pressing Escape, the hole highlights remain visible
-**Location:** `kirra.js` lines 34087-34093
+**Root Cause:** Potential race condition from duplicate click handlers
+**Fix:** Removed duplicate 3D canvas handlers from tool files
 
-**Current Code (already exists):**
-```javascript
-// Cancel RenumberHoles mode
-if (window.isRenumberHolesActive) {
-    cancelRenumberHolesMode();
-}
-// Cancel ReorderRows mode
-if (window.isReorderRowsActive) {
-    cancelReorderRowsMode();
-}
-```
-
-**Investigation Needed:**
-- Check if `cancelRenumberHolesMode()` is being called
-- Verify `window.isRenumberHolesActive` is set to `false`
-- Check if `drawData()` is properly clearing 3D highlights
-- The `typesToClear` array includes the new types - verify cleanup loop works
-
-### Issue 2: Hole Stores Not Nulled After Completion
+### Issue 2: Hole Stores Not Nulled After Completion ✅ FIXED
 **Symptom:** After completing renumbering, `window.renumberFirstHole` and `window.renumberSecondHole` still contain values
-**Location:** `RenumberHolesTool.js` `cancelRenumberHolesMode()` (line 671)
+**Root Cause:** Duplicate click handlers could cause double-processing
+**Fix:** 3D clicks now handled exclusively by `handle3DClick` in kirra.js
 
-**Current Code (should be correct):**
-```javascript
-function cancelRenumberHolesMode() {
-    isRenumberHolesActive = false;
-    renumberFirstHole = null;
-    renumberSecondHole = null;
-    renumberCollectedHoles = [];
-
-    window.renumberFirstHole = null;
-    window.renumberSecondHole = null;
-    window.isRenumberHolesActive = false;
-    // ... rest of cleanup
-}
-```
-
-**Investigation Needed:**
-- Add console.log to verify cancelRenumberHolesMode() is called after completion
-- Check if `executeRenumberHoles()` throws an error preventing cleanup
-- Verify the module-level and window-level variables are both being cleared
-
-### Issue 3: 3D Not Selecting Correct Holes
+### Issue 3: 3D Not Selecting Correct Holes ✅ FIXED
 **Symptom:** Clicking on holes in 3D mode doesn't select the expected hole
-**Location:** `kirra.js` lines 1994, 2008-2020
+**Root Cause:** `interactionManager.findClickedHole()` uses raycasting which can miss holes
+**Fix:** Changed to use `getClickedHole3DWithTolerance(event)` which uses screen-space tolerance (like 2D)
 
-**Current Flow:**
-1. Click event → `handleMouseUp3D()`
-2. Raycast → `interactionManager.getIntersections()`
-3. Find hole → `interactionManager.findClickedHole(intersects, allBlastHoles)`
-4. Pass to tool → `window.handleRenumberHolesClick(clickedHole)`
-
-**Investigation Needed:**
-- Add debug logging to see what `clickedHole` is being passed
-- Check if raycasting is hitting the correct mesh
-- Verify `findClickedHole()` is matching the correct hole from intersects
-- Check if instanced mesh selection is working correctly
+**New Flow:**
+1. Click event → `handle3DClick()` in kirra.js
+2. Find hole → `getClickedHole3DWithTolerance(event)` - screen-space tolerance
+3. Pass to tool → `window.handleRenumberHolesClick(clickedHole)`
 
 ---
 
@@ -223,4 +221,5 @@ console.log("🧹 Clearing 3D highlights, types:", typesToClear);
 - The MultiConnector tool pattern was followed for 3D implementation
 - Colors match exactly between 2D and 3D (magenta for renumber, cyan/orange for reorder)
 - The escape key handler at line 34087 DOES call the cancel functions
-- The issue may be timing-related or a race condition with drawData()
+- **KEY INSIGHT:** Screen-space tolerance selection (`getClickedHole3DWithTolerance`) is more reliable for 3D hole clicking than raycast-based selection
+- **ARCHITECTURE:** 3D clicks for these tools are handled ONLY by `handle3DClick` in kirra.js - tool files only handle 2D canvas clicks

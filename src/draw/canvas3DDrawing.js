@@ -870,10 +870,10 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	// Check if mesh actually has textures
 	var hasTexture = false;
 	if (surfaceData && surfaceData.threeJSMesh) {
-		surfaceData.threeJSMesh.traverse(function(child) {
+		surfaceData.threeJSMesh.traverse(function (child) {
 			if (child.isMesh && child.material) {
 				if (Array.isArray(child.material)) {
-					hasTexture = child.material.some(function(mat) {
+					hasTexture = child.material.some(function (mat) {
 						return mat.map !== null && mat.map !== undefined;
 					});
 				} else {
@@ -912,7 +912,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 		// Step 12c.0) DIAGNOSTIC: Check original vertex positions BEFORE any transformation
 		var firstVertexOriginal = null;
-		texturedMesh.traverse(function(child) {
+		texturedMesh.traverse(function (child) {
 			if (!firstVertexOriginal && child.isMesh && child.geometry && child.geometry.attributes && child.geometry.attributes.position) {
 				var pos = child.geometry.attributes.position.array;
 				firstVertexOriginal = { x: pos[0], y: pos[1], z: pos[2] };
@@ -945,12 +945,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		texturedMesh.position.set(meshCenterLocalX, meshCenterLocalY, 0);
 
 		// Step 12c.2) Deep clone materials and preserve textures
-		texturedMesh.traverse(function(child) {
+		texturedMesh.traverse(function (child) {
 			if (child.isMesh) {
 				// Clone materials and preserve textures
 				if (child.material) {
 					if (Array.isArray(child.material)) {
-						child.material = child.material.map(function(mat) {
+						child.material = child.material.map(function (mat) {
 							var clonedMat = mat.clone();
 							if (mat.map) {
 								clonedMat.map = mat.map;
@@ -998,7 +998,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 		// Step 12e.1) Add BVH for accelerated raycasting on large textured meshes
 		var totalTriangles = 0;
-		texturedMesh.traverse(function(child) {
+		texturedMesh.traverse(function (child) {
 			if (child.isMesh && child.geometry) {
 				var posAttr = child.geometry.attributes.position;
 				if (posAttr) {
@@ -1028,7 +1028,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 		// Step 12f) Apply transparency if specified
 		if (transparency < 1.0) {
-			texturedMesh.traverse(function(child) {
+			texturedMesh.traverse(function (child) {
 				if (child.isMesh && child.material) {
 					child.material.transparent = true;
 					child.material.opacity = transparency;
@@ -1050,7 +1050,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			var minVertexZ = Infinity,
 				maxVertexZ = -Infinity;
 			var firstVertex = null;
-			texturedMesh.traverse(function(child) {
+			texturedMesh.traverse(function (child) {
 				if (child.isMesh && child.geometry && child.geometry.attributes.position) {
 					var positions = child.geometry.attributes.position.array;
 					for (var i = 0; i < positions.length; i += 3) {
@@ -1084,7 +1084,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	var validTriangleCount = 0;
 	var invalidTriangleCount = 0;
 
-	var localTriangles = triangles.map(function(triangle, idx) {
+	var localTriangles = triangles.map(function (triangle, idx) {
 		if (!triangle.vertices || triangle.vertices.length !== 3) {
 			invalidTriangleCount++;
 			if (invalidTriangleCount <= 3 && developerModeEnabled) {
@@ -1093,7 +1093,7 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			return triangle;
 		}
 
-		var localVertices = triangle.vertices.map(function(v) {
+		var localVertices = triangle.vertices.map(function (v) {
 			var local = window.worldToThreeLocal(v.x, v.y);
 			return { x: local.x, y: local.y, z: v.z }; // Keep elevation as-is
 		});
@@ -1127,12 +1127,12 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		}
 		// Step 10b-1) Convert hex color to Three.js RGB format
 		var fixedColor = hexToThreeColor(hillshadeHex);
-		colorFunction = function(z) {
+		colorFunction = function (z) {
 			return fixedColor;
 		};
 	} else {
 		// Step 10c) Regular elevation-based color gradient with custom limits support
-		colorFunction = function(z) {
+		colorFunction = function (z) {
 			var rgbString = window.elevationToColor(z, minZ, maxZ, gradient, surfaceMinLimit, surfaceMaxLimit);
 			return window.rgbStringToThreeColor(rgbString);
 		};
@@ -1167,7 +1167,7 @@ export function drawContoursThreeJS(contourLinesArray, color, allBlastHoles) {
 	if (!contourLinesArray || contourLinesArray.length === 0) return;
 
 	// Check if contours already exist to prevent duplicates
-	var hasExistingContours = window.threeRenderer.contoursGroup.children.some(function(child) {
+	var hasExistingContours = window.threeRenderer.contoursGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "contourLines";
 	});
 	if (hasExistingContours) {
@@ -1236,7 +1236,7 @@ export function drawDirectionArrowsThreeJS(directionArrows, allBlastHoles) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
 
 	// Check if direction arrows already exist to prevent duplicates
-	var hasExistingArrows = window.threeRenderer.contoursGroup.children.some(function(child) {
+	var hasExistingArrows = window.threeRenderer.contoursGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "directionArrows";
 	});
 	if (hasExistingArrows) {
@@ -1276,7 +1276,7 @@ export function drawBackgroundImageThreeJS(imageId, imageCanvas, bbox, transpare
 
 	// Check if image already exists to prevent duplicates
 	var existingImage = null;
-	window.threeRenderer.imagesGroup.children.forEach(function(child) {
+	window.threeRenderer.imagesGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.imageId === imageId) {
 			existingImage = child;
 		}
@@ -1330,7 +1330,7 @@ export function drawConnectorThreeJS(fromHole, toHole, color, curve, delayText, 
 	var toHoleKey = toHole.entityName + ":::" + toHole.holeID;
 
 	// Check if connector already exists for this hole pair to prevent duplicates
-	var hasExistingConnector = window.threeRenderer.connectorsGroup.children.some(function(child) {
+	var hasExistingConnector = window.threeRenderer.connectorsGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "connector" && child.userData.fromHoleId === fromHoleKey && child.userData.toHoleId === toHoleKey;
 	});
 	if (hasExistingConnector) {
@@ -1365,7 +1365,7 @@ export function drawConnectorDelayTextThreeJS(fromHole, toHole, color, curve, de
 	var textKey = "delayText_" + fromHoleKey + "_" + toHoleKey;
 
 	// Step 16b.3) Check if delay text already exists for this hole pair
-	var hasExistingText = window.threeRenderer.connectorsGroup.children.some(function(child) {
+	var hasExistingText = window.threeRenderer.connectorsGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "standaloneDelayText" && child.userData.textKey === textKey;
 	});
 	if (hasExistingText) {
@@ -1751,14 +1751,10 @@ export function drawReorderRowsLineThreeJS(fromHole, toPos, showArrow, direction
 		const arrowHeadWidth = 1;
 
 		// Get perpendicular direction for burden
+		// NOTE: perpX/perpY already have the flip applied in getRowDirectionInfo()
+		// Do NOT flip again here - that was causing double-flip bug
 		let perpX = directionInfo.perpX || 0;
 		let perpY = directionInfo.perpY || 0;
-
-		// Apply flip if needed
-		if (directionInfo.burdenFlip) {
-			perpX = -perpX;
-			perpY = -perpY;
-		}
 
 		// Arrow end point
 		const arrowEndX = midX + perpX * arrowLength;
@@ -1801,7 +1797,7 @@ export function drawReorderRowsLineThreeJS(fromHole, toPos, showArrow, direction
 		// Add "Row 1" label using GeometryFactory.createKADText
 		const labelX = arrowEndX + perpX * 2;
 		const labelY = arrowEndY + perpY * 2;
-		const labelText = GeometryFactory.createKADText(labelX, labelY, midZ + 0.5, "Row 1→", 1.5, "rgba(255, 150, 0, 1)");
+		const labelText = GeometryFactory.createKADText(labelX, labelY, midZ + 0.5, "Row 1→", 15, "rgba(255, 150, 0, 1)");
 		if (labelText) {
 			group.add(labelText);
 		}
@@ -1952,7 +1948,7 @@ export function drawPlumbLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, toWorld
 		fromLocal.x, fromLocal.y, toWorldZ     // End point (Drawing Z) - ORANGE
 	]);
 	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-	
+
 	// Step 19.5.1e) Add vertex colors for gradient effect
 	const colors = new Float32Array([
 		greyColor.r, greyColor.g, greyColor.b,     // Start vertex - Grey
@@ -2101,12 +2097,12 @@ export function drawKADLeadingLineThreeJS(fromWorldX, fromWorldY, fromWorldZ, to
 	}
 
 	var toRemove = [];
-	kadGroup.children.forEach(function(child) {
+	kadGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		kadGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -2175,12 +2171,12 @@ export function clearKADLeadingLineThreeJS() {
 	if (!kadGroup) return;
 
 	var toRemove = [];
-	kadGroup.children.forEach(function(child) {
+	kadGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "kadLeadingLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		kadGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -2210,12 +2206,12 @@ export function drawKADLeadingLineThreeJSV2(fromWorldX, fromWorldY, fromWorldZ, 
 
 	// Step 4) Remove existing leading lines - same pattern as ruler
 	var toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "kadLeadingLineV2") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -2255,12 +2251,12 @@ export function clearKADLeadingLineThreeJSV2() {
 	if (!connectorsGroup) return;
 
 	var toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "kadLeadingLineV2") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -2286,12 +2282,12 @@ export function drawRulerThreeJS(startWorldX, startWorldY, startWorldZ, endWorld
 	// Step 19.8b) Remove existing ruler line if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "rulerLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -2345,12 +2341,12 @@ export function clearRulerThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "rulerLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -2369,12 +2365,12 @@ export function drawProtractorThreeJS(centerWorldX, centerWorldY, centerWorldZ, 
 	// Step 19.10b) Remove existing protractor lines if present
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "protractorLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -2455,12 +2451,12 @@ export function clearProtractorThreeJS() {
 
 	const connectorsGroup = window.threeRenderer.connectorsGroup;
 	const toRemove = [];
-	connectorsGroup.children.forEach(function(child) {
+	connectorsGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "protractorLine") {
 			toRemove.push(child);
 		}
 	});
-	toRemove.forEach(function(obj) {
+	toRemove.forEach(function (obj) {
 		connectorsGroup.remove(obj);
 		if (obj.geometry) obj.geometry.dispose();
 		if (obj.material) obj.material.dispose();
@@ -2479,7 +2475,7 @@ export function drawSlopeMapThreeJS(triangles, allBlastHoles) {
 	}
 
 	// Step 20.0a) Check if slope map already exists to prevent duplicates
-	var hasExistingSlope = window.threeRenderer.surfacesGroup.children.some(function(child) {
+	var hasExistingSlope = window.threeRenderer.surfacesGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "slopeMap";
 	});
 	if (hasExistingSlope) {
@@ -2554,7 +2550,7 @@ export function drawBurdenReliefMapThreeJS(triangles, allBlastHoles) {
 	}
 
 	// Step 21.0a) Check if relief map already exists to prevent duplicates
-	var hasExistingRelief = window.threeRenderer.surfacesGroup.children.some(function(child) {
+	var hasExistingRelief = window.threeRenderer.surfacesGroup.children.some(function (child) {
 		return child.userData && child.userData.type === "burdenReliefMap";
 	});
 	if (hasExistingRelief) {
@@ -2685,15 +2681,15 @@ export function clearVoronoiCellsThreeJS() {
 
 	// Step 22.1a) Find and remove all Voronoi cell groups
 	var toRemove = [];
-	surfacesGroup.children.forEach(function(child) {
+	surfacesGroup.children.forEach(function (child) {
 		if (child.userData && child.userData.type === "voronoiCells") {
 			toRemove.push(child);
 		}
 	});
 
 	// Step 22.1b) Dispose geometry, materials, and textures to prevent memory leaks
-	toRemove.forEach(function(voronoiGroup) {
-		voronoiGroup.traverse(function(object) {
+	toRemove.forEach(function (voronoiGroup) {
+		voronoiGroup.traverse(function (object) {
 			if (object.geometry) {
 				object.geometry.dispose();
 			}
@@ -2701,7 +2697,7 @@ export function clearVoronoiCellsThreeJS() {
 				// Step 22.1c) Dispose textures before disposing material
 				if (object.material.map) object.material.map.dispose();
 				if (Array.isArray(object.material)) {
-					object.material.forEach(function(mat) {
+					object.material.forEach(function (mat) {
 						mat.dispose();
 					});
 				} else {
@@ -2734,12 +2730,12 @@ export function disposeKADThreeJS() {
 
 	// Step 23a) Count objects for logging
 	var objectCount = 0;
-	kadGroup.traverse(function() {
+	kadGroup.traverse(function () {
 		objectCount++;
 	});
 
 	// Step 23b) Dispose all geometries and materials
-	kadGroup.traverse(function(object) {
+	kadGroup.traverse(function (object) {
 		if (object.geometry) {
 			object.geometry.dispose();
 		}
@@ -2747,7 +2743,7 @@ export function disposeKADThreeJS() {
 		// Only dispose if NOT using shared material cache
 		if (object.material && !GeometryFactory._lineMaterialCache) {
 			if (Array.isArray(object.material)) {
-				object.material.forEach(function(mat) {
+				object.material.forEach(function (mat) {
 					mat.dispose();
 				});
 			} else {
