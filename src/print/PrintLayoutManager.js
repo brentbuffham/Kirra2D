@@ -108,6 +108,11 @@ export class PrintLayoutManager {
         return this.getFooterColumn("blastStatistics");
     }
 
+    // Step 13b) Get legend cell position
+    getLegendCell() {
+        return this.getFooterColumn("legend");
+    }
+
     // Step 14) Get title cell position (inside title block)
     getTitleCell() {
         return this.getTitleBlockRow("title");

@@ -4,6 +4,7 @@
 // Simple, reliable PDF generation using jsPDF
 
 import { jsPDF } from "jspdf";
+import { getBlastStatisticsPerEntity } from "../helpers/BlastStatistics.js";
 
 // Step 2) Render map area (vector graphics) to canvas/image
 // Returns: { canvas, printScale } - canvas with rendered graphics and the scale used
@@ -546,9 +547,9 @@ export function generatePDFWithPDFMake(context, userInput, mode) {
         pdf.text("Map Area - Not implemented in basic version", 20, 60);
 
         // Add statistics if available
-        if (getVoronoiMetrics && allBlastHoles && allBlastHoles.length > 0) {
+        if (allBlastHoles && allBlastHoles.length > 0) {
             try {
-                const stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+                const stats = getBlastStatisticsPerEntity(allBlastHoles);
                 let yPos = 80;
 
                 pdf.setFontSize(14);

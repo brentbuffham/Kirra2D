@@ -12,6 +12,7 @@ import { PrintLayoutManager } from "./PrintLayoutManager.js";
 import { showPrintDialog } from "./PrintDialog.js";
 import { PrintCaptureManager } from "./PrintCaptureManager.js";
 import { getBlastStatisticsPerEntity } from "../helpers/BlastStatistics.js";
+import { getActiveLegends } from "../overlay/index.js";
 
 // ============== PRINT STATE VARIABLES ==============
 export var printMode = false;
@@ -160,6 +161,8 @@ export function drawPrintBoundary(ctx, canvas) {
                 colLabel = mode === "3D" ? "[XYZ GIZMO]" : "[NORTH ARROW]";
             } else if (col.id === "connectorCount") {
                 colLabel = "CONNECTOR\nCOUNT";
+            } else if (col.id === "legend") {
+                colLabel = "LEGEND";
             } else if (col.id === "blastStatistics") {
                 colLabel = "BLAST\nSTATISTICS";
             } else if (col.id === "logo") {
@@ -328,6 +331,8 @@ function create3DPrintBoundaryOverlay(paperSize, orientation, threeRenderer) {
             colLabel = "[XYZ GIZMO]";
         } else if (col.id === "connectorCount") {
             colLabel = "CONNECTOR\nCOUNT";
+        } else if (col.id === "legend") {
+            colLabel = "LEGEND";
         } else if (col.id === "blastStatistics") {
             colLabel = "BLAST\nSTATISTICS";
         } else if (col.id === "logo") {
@@ -747,36 +752,36 @@ export function printCanvasHiRes(context) {
                         return luminance < 0.5 ? "#ffffff" : "#000000";
                     }
                     
-                    // Step 11n1) Draw Connector Count with delay groups
+                    // Step 11n1) Draw Connector Count (actual connectors grouped by delay)
                     var connectorCell = layoutMgr.getConnectorCountCell();
-                    if (connectorCell && allBlastHoles && allBlastHoles.length > 0 && getVoronoiMetrics) {
+                    if (connectorCell && allBlastHoles && allBlastHoles.length > 0) {
                         try {
-                            var stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+                            var stats = getBlastStatisticsPerEntity(allBlastHoles);
                             var entityNames = Object.keys(stats);
-                            
+
                             // Draw header
                             printCtx.fillStyle = "#000000";
                             printCtx.font = "bold " + (9 * mmToPx / 3) + "px Arial";
                             printCtx.textAlign = "center";
                             printCtx.fillText("CONNECTOR COUNT", (connectorCell.x + connectorCell.width / 2) * mmToPx, (connectorCell.y + 4) * mmToPx);
-                            
-                            // Draw delay groups as colored rows
+
+                            // Draw connector groups as colored rows (actual connectors, not all holes)
                             var rowY = connectorCell.y + 9;
                             var rowHeight = 3.5;
                             var padding = 1;
-                            
+
                             for (var e = 0; e < entityNames.length; e++) {
                                 var entityStats = stats[entityNames[e]];
-                                if (entityStats && entityStats.delayGroups) {
-                                    var delays = Object.keys(entityStats.delayGroups).sort(function(a, b) {
+                                if (entityStats && entityStats.connectorGroups) {
+                                    var delays = Object.keys(entityStats.connectorGroups).sort(function(a, b) {
                                         if (a === "Unknown") return 1;
                                         if (b === "Unknown") return -1;
                                         return parseFloat(a) - parseFloat(b);
                                     });
-                                    
+
                                     for (var d = 0; d < delays.length && rowY < connectorCell.y + connectorCell.height - 3; d++) {
                                         var delay = delays[d];
-                                        var group = entityStats.delayGroups[delay];
+                                        var group = entityStats.connectorGroups[delay];
                                         var bgColor = group.color || "#ffffff";
                                         var txtColor = getContrastColor(bgColor);
                                         
@@ -811,9 +816,9 @@ export function printCanvasHiRes(context) {
                     
                     // Step 11n2) Draw Blast Statistics
                     var statsCell = layoutMgr.getBlastStatisticsCell();
-                    if (statsCell && allBlastHoles && allBlastHoles.length > 0 && getVoronoiMetrics) {
+                    if (statsCell && allBlastHoles && allBlastHoles.length > 0) {
                         try {
-                            var blastStats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+                            var blastStats = getBlastStatisticsPerEntity(allBlastHoles);
                             var entityKeys = Object.keys(blastStats);
                             
                             // Draw header
@@ -863,7 +868,128 @@ export function printCanvasHiRes(context) {
                         printCtx.textAlign = "center";
                         printCtx.fillText("BLAST STATISTICS", (statsCell.x + statsCell.width / 2) * mmToPx, (statsCell.y + statsCell.height / 2) * mmToPx);
                     }
-                    
+
+                    // Step 11n2b) Draw Legend in legend cell
+                    var legendCell = layoutMgr.getLegendCell();
+                    if (legendCell) {
+                        var activeLegends = getActiveLegends();
+
+                        // Draw header
+                        printCtx.fillStyle = "#000000";
+                        printCtx.font = "bold " + (9 * mmToPx / 3) + "px Arial";
+                        printCtx.textAlign = "center";
+                        printCtx.fillText("LEGEND", (legendCell.x + legendCell.width / 2) * mmToPx, (legendCell.y + 4) * mmToPx);
+
+                        var legendY = legendCell.y + 8;
+                        var legendRowHeight = 3;
+                        var legendPadding = 1.5;
+                        var swatchSize = 2.5;
+
+                        if (activeLegends) {
+                            // Draw Slope Legend
+                            if (activeLegends.slope && activeLegends.slope.items && activeLegends.slope.items.length > 0) {
+                                printCtx.font = "bold " + (6 * mmToPx / 3) + "px Arial";
+                                printCtx.textAlign = "left";
+                                printCtx.fillStyle = "#000000";
+                                printCtx.fillText("Slope", (legendCell.x + legendPadding) * mmToPx, legendY * mmToPx);
+                                legendY += legendRowHeight;
+
+                                for (var si = 0; si < activeLegends.slope.items.length && legendY < legendCell.y + legendCell.height - 2; si++) {
+                                    var sItem = activeLegends.slope.items[si];
+                                    // Draw color swatch
+                                    printCtx.fillStyle = sItem.color || "#888";
+                                    printCtx.fillRect((legendCell.x + legendPadding) * mmToPx, (legendY - swatchSize * 0.7) * mmToPx, swatchSize * mmToPx, swatchSize * mmToPx);
+                                    // Draw label
+                                    printCtx.fillStyle = "#000000";
+                                    printCtx.font = (5 * mmToPx / 3) + "px Arial";
+                                    printCtx.fillText(sItem.label || "", (legendCell.x + legendPadding + swatchSize + 1) * mmToPx, legendY * mmToPx);
+                                    legendY += legendRowHeight * 0.8;
+                                }
+                                legendY += legendRowHeight * 0.5;
+                            }
+
+                            // Draw Relief Legend
+                            if (activeLegends.relief && activeLegends.relief.items && activeLegends.relief.items.length > 0) {
+                                printCtx.font = "bold " + (6 * mmToPx / 3) + "px Arial";
+                                printCtx.textAlign = "left";
+                                printCtx.fillStyle = "#000000";
+                                printCtx.fillText("Relief", (legendCell.x + legendPadding) * mmToPx, legendY * mmToPx);
+                                legendY += legendRowHeight;
+
+                                for (var ri = 0; ri < activeLegends.relief.items.length && legendY < legendCell.y + legendCell.height - 2; ri++) {
+                                    var rItem = activeLegends.relief.items[ri];
+                                    // Draw color swatch
+                                    printCtx.fillStyle = rItem.color || "#888";
+                                    printCtx.fillRect((legendCell.x + legendPadding) * mmToPx, (legendY - swatchSize * 0.7) * mmToPx, swatchSize * mmToPx, swatchSize * mmToPx);
+                                    // Draw label
+                                    printCtx.fillStyle = "#000000";
+                                    printCtx.font = (5 * mmToPx / 3) + "px Arial";
+                                    printCtx.fillText(rItem.label || "", (legendCell.x + legendPadding + swatchSize + 1) * mmToPx, legendY * mmToPx);
+                                    legendY += legendRowHeight * 0.8;
+                                }
+                                legendY += legendRowHeight * 0.5;
+                            }
+
+                            // Draw Voronoi Legend (gradient)
+                            if (activeLegends.voronoi && activeLegends.voronoi.title) {
+                                printCtx.font = "bold " + (6 * mmToPx / 3) + "px Arial";
+                                printCtx.textAlign = "left";
+                                printCtx.fillStyle = "#000000";
+                                printCtx.fillText(activeLegends.voronoi.title, (legendCell.x + legendPadding) * mmToPx, legendY * mmToPx);
+                                legendY += legendRowHeight;
+
+                                // Draw gradient bar
+                                var gradientWidth = (legendCell.width - legendPadding * 2) * 0.6;
+                                var gradientHeight = 2.5;
+                                var gradX = (legendCell.x + legendPadding) * mmToPx;
+                                var gradY = legendY * mmToPx;
+
+                                if (activeLegends.voronoi.colorStops && activeLegends.voronoi.colorStops.length > 0) {
+                                    var gradient = printCtx.createLinearGradient(gradX, gradY, gradX + gradientWidth * mmToPx, gradY);
+                                    for (var cs = 0; cs < activeLegends.voronoi.colorStops.length; cs++) {
+                                        var stop = activeLegends.voronoi.colorStops[cs];
+                                        gradient.addColorStop(stop.position || cs / (activeLegends.voronoi.colorStops.length - 1), stop.color || "#888");
+                                    }
+                                    printCtx.fillStyle = gradient;
+                                } else {
+                                    printCtx.fillStyle = "#888";
+                                }
+                                printCtx.fillRect(gradX, gradY, gradientWidth * mmToPx, gradientHeight * mmToPx);
+
+                                // Draw min/max labels
+                                printCtx.fillStyle = "#000000";
+                                printCtx.font = (5 * mmToPx / 3) + "px Arial";
+                                printCtx.textAlign = "left";
+                                var minLabel = activeLegends.voronoi.minVal !== undefined ? activeLegends.voronoi.minVal.toFixed(1) : "Min";
+                                var maxLabel = activeLegends.voronoi.maxVal !== undefined ? activeLegends.voronoi.maxVal.toFixed(1) : "Max";
+                                printCtx.fillText(minLabel, gradX, (legendY + gradientHeight + 2) * mmToPx);
+                                printCtx.textAlign = "right";
+                                printCtx.fillText(maxLabel, gradX + gradientWidth * mmToPx, (legendY + gradientHeight + 2) * mmToPx);
+
+                                legendY += gradientHeight + legendRowHeight * 1.5;
+                            }
+
+                            // Draw Surface Legends
+                            if (activeLegends.surfaces && activeLegends.surfaces.length > 0) {
+                                printCtx.font = "bold " + (6 * mmToPx / 3) + "px Arial";
+                                printCtx.textAlign = "left";
+                                printCtx.fillStyle = "#000000";
+                                printCtx.fillText("Surfaces", (legendCell.x + legendPadding) * mmToPx, legendY * mmToPx);
+                                legendY += legendRowHeight;
+
+                                for (var surf = 0; surf < activeLegends.surfaces.length && legendY < legendCell.y + legendCell.height - 2; surf++) {
+                                    var surfData = activeLegends.surfaces[surf];
+                                    if (surfData && surfData.name) {
+                                        printCtx.fillStyle = "#000000";
+                                        printCtx.font = (5 * mmToPx / 3) + "px Arial";
+                                        printCtx.fillText(surfData.name.substring(0, 15), (legendCell.x + legendPadding) * mmToPx, legendY * mmToPx);
+                                        legendY += legendRowHeight * 0.8;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                     // Step 11n3) Draw Logo/QR code using pre-loaded image
                     var logoCell = layoutMgr.getLogoCell();
                     if (logoCell) {
@@ -1011,6 +1137,8 @@ export function printCanvasHiRes(context) {
                             }
                         } else {
                             // 2D mode - use existing drawDataForPrinting function
+                            // Add activeLegends to context for legend rendering
+                            context.activeLegends = getActiveLegends();
                             drawDataForPrinting(printCtx, printArea, context);
                         }
                         
@@ -1232,7 +1360,9 @@ export function setupPrintEventHandlers(contextOrGetter) {
 				FloatingDialog: context.FloatingDialog,
                 threeRenderer: context.threeRenderer,
                 cameraControls: context.cameraControls,
-				getDipAngle: context.getDipAngle
+				getDipAngle: context.getDipAngle,
+				calculateTriangleCentroid: context.calculateTriangleCentroid,
+				getBurdenRelief: context.getBurdenRelief
 			};
 			printToPDF(printContext);
 		});

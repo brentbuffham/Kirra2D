@@ -339,7 +339,7 @@ export function showSlopeLegend(items) {
     OverlayEventBus.emit(OverlayEvents.LEGEND, {
         visible: true,
         type: LegendTypes.SLOPE,
-        items: items
+        items: items || defaultSlopeLegend
     });
 }
 
@@ -347,7 +347,7 @@ export function showReliefLegend(items) {
     OverlayEventBus.emit(OverlayEvents.LEGEND, {
         visible: true,
         type: LegendTypes.RELIEF,
-        items: items
+        items: items || defaultReliefLegend
     });
 }
 
@@ -418,3 +418,19 @@ export function hideLegend() {
 
 // Step 10) Export legend types
 export { LegendTypes };
+
+// Step 11) Get active legends for printing
+// Returns copy of current legend state for use in print system
+export function getActiveLegends() {
+    return {
+        slope: activeLegends.slope ? { items: activeLegends.slope.items || null } : null,
+        relief: activeLegends.relief ? { items: activeLegends.relief.items || null } : null,
+        voronoi: activeLegends.voronoi ? {
+            title: activeLegends.voronoi.title,
+            minVal: activeLegends.voronoi.minVal,
+            maxVal: activeLegends.voronoi.maxVal,
+            colorStops: activeLegends.voronoi.colorStops
+        } : null,
+        surfaces: activeLegends.surfaces ? activeLegends.surfaces.slice() : []
+    };
+}

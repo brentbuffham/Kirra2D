@@ -948,6 +948,44 @@ export function printLegend(strokecolor) {
     printCtx.fillRect(60, printCanvas.height / 2 + 155, 20, 20);
     printCtx.stroke();
 }
+
+// Step 950a) Simple voronoi/gradient legend for active legend state
+export function printVoronoiLegendSimple(title, minVal, maxVal) {
+    var legendX = 10;
+    var legendY = printCanvas.height / 2 - 70;
+    var gradientWidth = 20;
+    var gradientHeight = 160;
+
+    printCtx.fillStyle = "black";
+    printCtx.font = "14px Arial";
+    printCtx.fontWeight = "bold";
+    printCtx.fillText(title || "Legend", legendX, legendY - 15);
+
+    // Create gradient for legend (Blue -> Cyan -> Green -> Yellow -> Red)
+    var gradient = printCtx.createLinearGradient(0, legendY, 0, legendY + gradientHeight);
+    gradient.addColorStop(0.0, "rgb(0, 0, 255)");
+    gradient.addColorStop(0.25, "rgb(0, 255, 255)");
+    gradient.addColorStop(0.5, "rgb(0, 255, 0)");
+    gradient.addColorStop(0.75, "rgb(255, 255, 0)");
+    gradient.addColorStop(1.0, "rgb(255, 0, 0)");
+
+    printCtx.fillStyle = gradient;
+    printCtx.fillRect(legendX, legendY, gradientWidth, gradientHeight);
+
+    // Border
+    printCtx.strokeStyle = "black";
+    printCtx.lineWidth = 1;
+    printCtx.strokeRect(legendX, legendY, gradientWidth, gradientHeight);
+
+    // Min/Max labels
+    printCtx.fillStyle = "black";
+    printCtx.font = "12px Arial";
+    var minText = minVal !== undefined && minVal !== null ? minVal.toFixed(2) : "0.00";
+    var maxText = maxVal !== undefined && maxVal !== null ? maxVal.toFixed(2) : "1.00";
+    printCtx.fillText(minText, legendX + gradientWidth + 5, legendY + gradientHeight);
+    printCtx.fillText(maxText, legendX + gradientWidth + 5, legendY + 10);
+}
+
 //ENGINE
 // Replace your existing printData function with this one
 export function printData(allBlastHoles, selectedHole, context) {
@@ -1363,7 +1401,8 @@ export function printData(allBlastHoles, selectedHole, context) {
             for (const triangle of resultTriangles) {
                 printTriangleAngleText(triangle, centroid, "black", context);
             }
-            printLegend("black");
+            // Legend now rendered in footer cell - disabled legacy map overlay legend
+            // printLegend("black");
         }
 
         // Burden Relief
@@ -1377,7 +1416,8 @@ export function printData(allBlastHoles, selectedHole, context) {
             for (const triangle of reliefTriangles) {
                 printTriangleBurdenReliefText(triangle, centroid, "black", context);
             }
-            printReliefLegend("black");
+            // Legend now rendered in footer cell - disabled legacy map overlay legend
+            // printReliefLegend("black");
         }
 
         // First Movement Direction Arrows
@@ -1492,6 +1532,14 @@ export function printData(allBlastHoles, selectedHole, context) {
             now.toLocaleTimeString("en-AU", { hour: "2-digit", minute: "2-digit" });
         printCtx.fillStyle = "black";
         printCtx.fillText("Date: " + dateNow, 10, printCanvas.height - 35);
+
+        // Step 1503) Legends are now rendered in the footer cell by PrintSystem.js
+        // Legacy map overlay legends have been disabled - they were previously drawn here:
+        // - printLegend("black") for slope
+        // - printReliefLegend("black") for relief
+        // - printVoronoiLegendSimple() for voronoi
+        // - printSurfaceLegend() for surfaces
+        // These are now handled by the template-based legend cell in the footer
 
         // These are DOM manipulations and should not be in a print function
         // fontSlider.value = (currentFontSize * magnifyFont);

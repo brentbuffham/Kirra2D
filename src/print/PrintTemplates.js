@@ -25,18 +25,17 @@ export const PRINT_TEMPLATES = {
     // LANDSCAPE 2D Template - North Arrow in navigation cell
     // =========================================================
     // Layout from PrintoutTemplateLAND.pdf:
-    // +------------------------------------------------------------------+
-    // |                           [MAP AREA]                             |
-    // |                         (78% of page)                            |
-    // +----------+----------------+----------------+---------+-----------+
-    // | NORTH    | CONNECTOR      | BLAST          | [LOGO]  | TITLE     |
-    // | ARROW    | COUNT          | STATISTICS     | QR+URL  | [BLAST]   |
-    // |          |                |                |         +-----------+
-    // |          |                |                |         | DATE      |
-    // |          |                |                |         +-----------+
-    // |          |                |                |         | Scale:    |
-    // |          |                |                |         | Designer: |
-    // +----------+----------------+----------------+---------+-----------+
+    // +---------------------------------------------------------------------------------+
+    // |                              [MAP AREA]                                          |
+    // |                            (78% of page)                                         |
+    // +----------+----------------+----------+----------------+---------+----------------+
+    // | NORTH    | CONNECTOR      | LEGEND   | BLAST          | [LOGO]  | TITLE          |
+    // | ARROW    | COUNT          |          | STATISTICS     | QR+URL  | [BLAST]        |
+    // |          |                |          |                |         +----------------+
+    // |          |                |          |                |         | DATE           |
+    // |          |                |          |                |         +----------------+
+    // |          |                |          |                |         | Scale:Designer:|
+    // +----------+----------------+----------+----------------+---------+----------------+
     LANDSCAPE_2D: {
         name: "LAND_2D",
         mode: "2D",
@@ -59,12 +58,13 @@ export const PRINT_TEMPLATES = {
                 width: 0.97,          // 97% of page width
                 height: 0.185,        // 18.5% of page height
                 // Footer is divided into columns and rows
-                // Columns: NavIndicator(10%) | ConnectorCount(22%) | BlastStats(22%) | Logo(12%) | TitleBlock(34%)
+                // Columns: NavIndicator(8%) | ConnectorCount(18%) | Legend(12%) | BlastStats(18%) | Logo(10%) | TitleBlock(34%)
                 columns: [
-                    { id: "navIndicator", widthPercent: 0.10 },
-                    { id: "connectorCount", widthPercent: 0.22 },
-                    { id: "blastStatistics", widthPercent: 0.22 },
-                    { id: "logo", widthPercent: 0.12 },
+                    { id: "navIndicator", widthPercent: 0.08 },
+                    { id: "connectorCount", widthPercent: 0.18 },
+                    { id: "legend", widthPercent: 0.12 },
+                    { id: "blastStatistics", widthPercent: 0.18 },
+                    { id: "logo", widthPercent: 0.10 },
                     { id: "titleBlock", widthPercent: 0.34 }
                 ],
                 // TitleBlock column has internal rows
@@ -84,6 +84,11 @@ export const PRINT_TEMPLATES = {
                         id: "connectorCount",
                         content: "delayGroups",
                         label: "CONNECTOR COUNT"
+                    },
+                    legend: {
+                        id: "legend",
+                        content: "activeLegends",
+                        label: "LEGEND"
                     },
                     blastStatistics: {
                         id: "blastStatistics",
@@ -142,11 +147,13 @@ export const PRINT_TEMPLATES = {
                 y: 0.80,
                 width: 0.97,
                 height: 0.185,
+                // Columns: NavIndicator(8%) | ConnectorCount(18%) | Legend(12%) | BlastStats(18%) | Logo(10%) | TitleBlock(34%)
                 columns: [
-                    { id: "navIndicator", widthPercent: 0.10 },
-                    { id: "connectorCount", widthPercent: 0.22 },
-                    { id: "blastStatistics", widthPercent: 0.22 },
-                    { id: "logo", widthPercent: 0.12 },
+                    { id: "navIndicator", widthPercent: 0.08 },
+                    { id: "connectorCount", widthPercent: 0.18 },
+                    { id: "legend", widthPercent: 0.12 },
+                    { id: "blastStatistics", widthPercent: 0.18 },
+                    { id: "logo", widthPercent: 0.10 },
                     { id: "titleBlock", widthPercent: 0.34 }
                 ],
                 titleBlockRows: [
@@ -164,6 +171,11 @@ export const PRINT_TEMPLATES = {
                         id: "connectorCount",
                         content: "delayGroups",
                         label: "CONNECTOR COUNT"
+                    },
+                    legend: {
+                        id: "legend",
+                        content: "activeLegends",
+                        label: "LEGEND"
                     },
                     blastStatistics: {
                         id: "blastStatistics",
@@ -204,19 +216,18 @@ export const PRINT_TEMPLATES = {
     // PORTRAIT 2D Template - North Arrow in navigation cell
     // =========================================================
     // Layout from PrintoutTemplatePORT.pdf:
-    // +-------------------------------------------------------+
-    // |                      [MAP AREA]                        |
-    // |                    (78% of page)                       |
-    // +----------+-------------+-------------+-----------------+
-    // | NORTH    | CONNECTOR   | BLAST       | TITLE           |
-    // | ARROW    | COUNT       | STATISTICS  | [BLASTNAME]     |
-    // +----------+             |             +-----------------+
-    // | [LOGO]   |             |             | DATE            |
-    // | QR+URL   |             |             | [DATETIME]      |
-    // |          |             |             +-----------------+
-    // |          |             |             | Scale:          |
-    // |          |             |             | Designer:       |
-    // +----------+-------------+-------------+-----------------+
+    // +--------------------------------------------------------------------+
+    // |                         [MAP AREA]                                  |
+    // |                       (78% of page)                                 |
+    // +----------+-------------+----------+-------------+------------------+
+    // | NORTH    | CONNECTOR   | LEGEND   | BLAST       | TITLE            |
+    // | ARROW    | COUNT       |          | STATISTICS  | [BLASTNAME]      |
+    // +----------+             |          |             +------------------+
+    // | [LOGO]   |             |          |             | DATE             |
+    // | QR+URL   |             |          |             | [DATETIME]       |
+    // |          |             |          |             +------------------+
+    // |          |             |          |             | Scale: Designer: |
+    // +----------+-------------+----------+-------------+------------------+
     PORTRAIT_2D: {
         name: "PORT_2D",
         mode: "2D",
@@ -237,11 +248,12 @@ export const PRINT_TEMPLATES = {
                 width: 0.97,
                 height: 0.185,
                 // Portrait has different column layout
-                // Columns: NavIndicator+Logo(10%) | ConnectorCount(22%) | BlastStats(22%) | TitleBlock(46%)
+                // Columns: NavIndicator+Logo(8%) | ConnectorCount(16%) | Legend(12%) | BlastStats(18%) | TitleBlock(46%)
                 columns: [
-                    { id: "navLogoColumn", widthPercent: 0.10 },
-                    { id: "connectorCount", widthPercent: 0.22 },
-                    { id: "blastStatistics", widthPercent: 0.22 },
+                    { id: "navLogoColumn", widthPercent: 0.08 },
+                    { id: "connectorCount", widthPercent: 0.16 },
+                    { id: "legend", widthPercent: 0.12 },
+                    { id: "blastStatistics", widthPercent: 0.18 },
                     { id: "titleBlock", widthPercent: 0.46 }
                 ],
                 // NavLogoColumn has two rows: North Arrow (top) and Logo (bottom)
@@ -269,6 +281,11 @@ export const PRINT_TEMPLATES = {
                         id: "connectorCount",
                         content: "delayGroups",
                         label: "CONNECTOR COUNT"
+                    },
+                    legend: {
+                        id: "legend",
+                        content: "activeLegends",
+                        label: "LEGEND"
                     },
                     blastStatistics: {
                         id: "blastStatistics",
@@ -322,10 +339,12 @@ export const PRINT_TEMPLATES = {
                 y: 0.80,
                 width: 0.97,
                 height: 0.185,
+                // Columns: NavIndicator+Logo(8%) | ConnectorCount(16%) | Legend(12%) | BlastStats(18%) | TitleBlock(46%)
                 columns: [
-                    { id: "navLogoColumn", widthPercent: 0.10 },
-                    { id: "connectorCount", widthPercent: 0.22 },
-                    { id: "blastStatistics", widthPercent: 0.22 },
+                    { id: "navLogoColumn", widthPercent: 0.08 },
+                    { id: "connectorCount", widthPercent: 0.16 },
+                    { id: "legend", widthPercent: 0.12 },
+                    { id: "blastStatistics", widthPercent: 0.18 },
                     { id: "titleBlock", widthPercent: 0.46 }
                 ],
                 navLogoRows: [
@@ -352,6 +371,11 @@ export const PRINT_TEMPLATES = {
                         id: "connectorCount",
                         content: "delayGroups",
                         label: "CONNECTOR COUNT"
+                    },
+                    legend: {
+                        id: "legend",
+                        content: "activeLegends",
+                        label: "LEGEND"
                     },
                     blastStatistics: {
                         id: "blastStatistics",

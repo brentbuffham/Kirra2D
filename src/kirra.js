@@ -432,6 +432,8 @@ function initializeVoronoiControls() {
 	if (voronoiBoundarySwitch) {
 		voronoiBoundarySwitch.addEventListener("change", function () {
 			useToeLocation = voronoiBoundarySwitch.checked;
+			// Invalidate voronoi caches when boundary type changes
+			invalidateVoronoiCaches();
 			drawData(allBlastHoles, selectedHole);
 		});
 	}
@@ -5492,6 +5494,8 @@ document.addEventListener("DOMContentLoaded", function () {
 		showModalMessage: showModalMessage,
 		FloatingDialog: FloatingDialog,
 		getDipAngle: getDipAngle,
+		calculateTriangleCentroid: calculateTriangleCentroid,
+		getBurdenRelief: getBurdenRelief,
 		currentRotation: currentRotation,
 		// Step) 3D printing support - ThreeJS renderer and camera controls
 		threeRenderer: threeRenderer,
@@ -50848,7 +50852,7 @@ function calculateContoursSync(contourData, contourLevels, maxEdgeLength, displa
 							const arrowEndX = centroidX - normSlopeX * firstMovementSize;
 							const arrowEndY = centroidY - normSlopeY * firstMovementSize;
 
-							directionArrows.push([centroidX, centroidY, arrowEndX, arrowEndY, "goldenrod", firstMovementSize]);
+							directionArrows.push([centroidX, centroidY, arrowEndX, arrowEndY, "#FF7900", firstMovementSize]);
 						}
 					}
 				}

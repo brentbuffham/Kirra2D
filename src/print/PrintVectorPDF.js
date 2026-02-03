@@ -11,6 +11,7 @@ import { getBlastStatisticsPerEntity } from "../helpers/BlastStatistics.js";
 import { getTemplate, getPaperDimensions } from "./PrintTemplates.js";
 import { PrintLayoutManager } from "./PrintLayoutManager.js";
 import { PrintCaptureManager } from "./PrintCaptureManager.js";
+import { getActiveLegends } from "../overlay/index.js";
 import ClipperLib from "clipper-lib";
 
 // ============== LINE CLIPPING HELPERS ==============
@@ -138,6 +139,98 @@ function drawClippedCircle(pdf, cx, cy, radius, rect, style) {
     }
 }
 
+// Sutherland-Hodgman polygon clipping algorithm
+// Clips a polygon to a rectangle, returns new polygon points array [[x,y], ...]
+function clipPolygonToRect(polygon, rect) {
+    if (!polygon || polygon.length < 3) return [];
+
+    var minX = rect.x;
+    var maxX = rect.x + rect.width;
+    var minY = rect.y;
+    var maxY = rect.y + rect.height;
+
+    // Clip against each edge of the rectangle
+    var output = polygon.slice();
+
+    // Clip against left edge
+    output = clipPolygonAgainstEdge(output, minX, null, 'left');
+    if (output.length === 0) return [];
+
+    // Clip against right edge
+    output = clipPolygonAgainstEdge(output, maxX, null, 'right');
+    if (output.length === 0) return [];
+
+    // Clip against top edge
+    output = clipPolygonAgainstEdge(output, null, minY, 'top');
+    if (output.length === 0) return [];
+
+    // Clip against bottom edge
+    output = clipPolygonAgainstEdge(output, null, maxY, 'bottom');
+
+    return output;
+}
+
+// Helper for Sutherland-Hodgman: clip polygon against one edge
+function clipPolygonAgainstEdge(polygon, edgeX, edgeY, edge) {
+    if (polygon.length === 0) return [];
+
+    var output = [];
+    var prev = polygon[polygon.length - 1];
+
+    for (var i = 0; i < polygon.length; i++) {
+        var curr = polygon[i];
+        var prevInside = isInsideEdge(prev, edgeX, edgeY, edge);
+        var currInside = isInsideEdge(curr, edgeX, edgeY, edge);
+
+        if (currInside) {
+            if (!prevInside) {
+                // Entering: add intersection
+                output.push(getEdgeIntersection(prev, curr, edgeX, edgeY, edge));
+            }
+            output.push(curr);
+        } else if (prevInside) {
+            // Leaving: add intersection
+            output.push(getEdgeIntersection(prev, curr, edgeX, edgeY, edge));
+        }
+
+        prev = curr;
+    }
+
+    return output;
+}
+
+// Check if point is inside edge
+function isInsideEdge(pt, edgeX, edgeY, edge) {
+    switch (edge) {
+        case 'left': return pt[0] >= edgeX;
+        case 'right': return pt[0] <= edgeX;
+        case 'top': return pt[1] >= edgeY;
+        case 'bottom': return pt[1] <= edgeY;
+    }
+    return true;
+}
+
+// Get intersection of line segment with edge
+function getEdgeIntersection(p1, p2, edgeX, edgeY, edge) {
+    var dx = p2[0] - p1[0];
+    var dy = p2[1] - p1[1];
+    var t;
+
+    switch (edge) {
+        case 'left':
+        case 'right':
+            if (dx === 0) return [edgeX, p1[1]];
+            t = (edgeX - p1[0]) / dx;
+            return [edgeX, p1[1] + t * dy];
+        case 'top':
+        case 'bottom':
+            if (dy === 0) return [p1[0], edgeY];
+            t = (edgeY - p1[1]) / dy;
+            return [p1[0] + t * dx, edgeY];
+    }
+    return p1;
+}
+
 // ============== HELPER FUNCTIONS ==============
 
 // Step 1) Convert hex color to RGB
@@ -218,6 +311,450 @@ function drawMultilineText(pdf, lines, x, y, width, height, fontSize, lineSpacin
 
     for (var i = 0; i < lines.length; i++) {
         pdf.text(lines[i], x + width / 2, startY + i * (fontSize + lineSpacing), { align: "center" });
+    }
+}
+
+// ============== LEGEND DRAWING FUNCTIONS ==============
+
+// Step 7a) Default slope legend colors (from LegendPanel.js)
+var defaultSlopeLegend = [
+    { label: "0°-5°", color: "rgb(51, 139, 255)" },
+    { label: "5°-7°", color: "rgb(0, 102, 204)" },
+    { label: "7°-9°", color: "rgb(0, 204, 204)" },
+    { label: "9°-12°", color: "rgb(102, 204, 0)" },
+    { label: "12°-15°", color: "rgb(204, 204, 0)" },
+    { label: "15°-17°", color: "rgb(255, 128, 0)" },
+    { label: "17°-20°", color: "rgb(255, 0, 0)" },
+    { label: "20°+", color: "rgb(153, 0, 76)" }
+];
+
+// Step 7b) Default relief legend colors (from LegendPanel.js)
+var defaultReliefLegend = [
+    { label: "0-4", color: "rgb(75, 20, 20)" },
+    { label: "4-7", color: "rgb(255, 40, 40)" },
+    { label: "7-10", color: "rgb(255, 120, 50)" },
+    { label: "10-13", color: "rgb(255, 255, 50)" },
+    { label: "13-16", color: "rgb(50, 255, 70)" },
+    { label: "16-19", color: "rgb(50, 255, 200)" },
+    { label: "19-22", color: "rgb(50, 230, 255)" },
+    { label: "22-25", color: "rgb(50, 180, 255)" },
+    { label: "25-30", color: "rgb(50, 100, 255)" },
+    { label: "30-40", color: "rgb(0, 0, 180)" },
+    { label: "40+", color: "rgb(75, 0, 150)" }
+];
+
+// Step 7c) Parse RGB string to {r, g, b}
+function parseRgbString(rgbStr) {
+    if (!rgbStr) return { r: 0, g: 0, b: 0 };
+    var match = rgbStr.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+    if (match) {
+        return { r: parseInt(match[1]), g: parseInt(match[2]), b: parseInt(match[3]) };
+    }
+    return { r: 0, g: 0, b: 0 };
+}
+
+// Step 7d) Draw slope legend on PDF
+function drawSlopeLegendPDF(pdf, mapZone) {
+    var legendX = mapZone.x + 5;
+    var legendY = mapZone.y + 5;
+    var legendWidth = 35;  // Standardized width for vertical alignment
+    var legendHeight = 50;
+    var itemHeight = 5;
+    var padding = 2;
+
+    var items = defaultSlopeLegend;
+
+    // Background with border
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.2);
+    pdf.rect(legendX, legendY, legendWidth, legendHeight, "FD");
+
+    // Title
+    pdf.setFontSize(6);
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(0, 0, 0);
+    pdf.text("Slope (°)", legendX + legendWidth / 2, legendY + padding + 2, { align: "center" });
+
+    // Legend items
+    pdf.setFontSize(5);
+    pdf.setFont("helvetica", "normal");
+    var startY = legendY + padding + 6;
+
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var rgb = parseRgbString(item.color);
+        var itemY = startY + i * itemHeight;
+
+        // Color box
+        pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+        pdf.rect(legendX + padding, itemY, 8, itemHeight - 1, "F");
+
+        // Label
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(item.label, legendX + padding + 10, itemY + itemHeight / 2, { baseline: "middle" });
+    }
+
+    return legendHeight;
+}
+
+// Step 7e) Draw relief legend on PDF
+function drawReliefLegendPDF(pdf, mapZone, yOffset) {
+    var legendX = mapZone.x + 5;
+    var legendY = mapZone.y + 5 + (yOffset || 0);
+    var legendWidth = 35;  // Standardized width for vertical alignment
+    var legendHeight = 65;
+    var itemHeight = 5;
+    var padding = 2;
+
+    var items = defaultReliefLegend;
+
+    // Background with border
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.2);
+    pdf.rect(legendX, legendY, legendWidth, legendHeight, "FD");
+
+    // Title
+    pdf.setFontSize(6);
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(0, 0, 0);
+    pdf.text("Relief (ms/m)", legendX + legendWidth / 2, legendY + padding + 2, { align: "center" });
+
+    // Legend items
+    pdf.setFontSize(5);
+    pdf.setFont("helvetica", "normal");
+    var startY = legendY + padding + 6;
+
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var rgb = parseRgbString(item.color);
+        var itemY = startY + i * itemHeight;
+
+        // Color box
+        pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+        pdf.rect(legendX + padding, itemY, 8, itemHeight - 1, "F");
+
+        // Label
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(item.label, legendX + padding + 10, itemY + itemHeight / 2, { baseline: "middle" });
+    }
+
+    return legendHeight;
+}
+
+// Step 7f) Draw voronoi/gradient legend on PDF with discrete color boxes (like relief legend)
+// Uses 0.1 increments for labels
+function drawVoronoiLegendPDF(pdf, mapZone, voronoiData, yOffset) {
+    if (!voronoiData) return 0;
+
+    var legendX = mapZone.x + 5;
+    var legendY = mapZone.y + 5 + (yOffset || 0);
+    var legendWidth = 45;  // Wider to fit longer titles like "Powder Factor (kg/m³)"
+    var itemHeight = 4;    // Smaller to fit more items
+    var padding = 2;
+
+    // Get min/max values
+    var minVal = voronoiData.minVal !== undefined ? voronoiData.minVal : 0;
+    var maxVal = voronoiData.maxVal !== undefined ? voronoiData.maxVal : 1;
+    var range = maxVal - minVal;
+
+    // Build legend items with 0.1 increments
+    var items = [];
+    var increment = 0.1;
+    var startVal = Math.floor(minVal * 10) / 10;  // Round down to nearest 0.1
+    var endVal = Math.ceil(maxVal * 10) / 10;     // Round up to nearest 0.1
+
+    // Limit number of items to prevent overflow (max ~15 items)
+    var numItems = Math.round((endVal - startVal) / increment);
+    if (numItems > 15) {
+        increment = (endVal - startVal) / 15;
+        increment = Math.ceil(increment * 10) / 10; // Round up to nice increment
+    }
+
+    // Helper function to get color for a value (interpolated from spectrum)
+    function getSpectrumColor(val) {
+        var ratio = range > 0 ? Math.min(Math.max((val - minVal) / range, 0), 1) : 0;
+        var r, g, b;
+        if (ratio < 0.2) {
+            var t = ratio / 0.2;
+            r = Math.round(148 * (1 - t));
+            g = 0;
+            b = Math.round(211 * (1 - t) + 255 * t);
+        } else if (ratio < 0.4) {
+            var t = (ratio - 0.2) / 0.2;
+            r = 0;
+            g = Math.round(255 * t);
+            b = 255;
+        } else if (ratio < 0.6) {
+            var t = (ratio - 0.4) / 0.2;
+            r = 0;
+            g = 255;
+            b = Math.round(255 * (1 - t));
+        } else if (ratio < 0.8) {
+            var t = (ratio - 0.6) / 0.2;
+            r = Math.round(255 * t);
+            g = 255;
+            b = 0;
+        } else {
+            var t = (ratio - 0.8) / 0.2;
+            r = 255;
+            g = Math.round(255 * (1 - t));
+            b = 0;
+        }
+        return { r: r, g: g, b: b };
+    }
+
+    for (var val = startVal; val < endVal; val += increment) {
+        var lowVal = val;
+        var highVal = Math.min(val + increment, endVal);
+        var midVal = (lowVal + highVal) / 2;
+
+        items.push({
+            label: lowVal.toFixed(1) + "-" + highVal.toFixed(1),
+            color: getSpectrumColor(midVal)
+        });
+    }
+
+    // Calculate legend height based on items
+    var legendHeight = 8 + items.length * itemHeight;
+
+    // Background with border
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.2);
+    pdf.rect(legendX, legendY, legendWidth, legendHeight, "FD");
+
+    // Title
+    pdf.setFontSize(5);  // Slightly smaller font to fit longer titles
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(0, 0, 0);
+    var title = voronoiData.title || "Legend";
+    // No truncation - wider legend can fit full titles like "Powder Factor (kg/m³)"
+    pdf.text(title, legendX + legendWidth / 2, legendY + padding + 2, { align: "center" });
+
+    // Legend items (color boxes with labels)
+    pdf.setFontSize(5);
+    pdf.setFont("helvetica", "normal");
+    var startY = legendY + padding + 6;
+
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var itemY = startY + i * itemHeight;
+
+        // Color box
+        pdf.setFillColor(item.color.r, item.color.g, item.color.b);
+        pdf.rect(legendX + padding, itemY, 8, itemHeight - 1, "F");
+
+        // Label
+        pdf.setTextColor(0, 0, 0);
+        pdf.text(item.label, legendX + padding + 10, itemY + itemHeight / 2, { baseline: "middle" });
+    }
+
+    return legendHeight;
+}
+
+// Step 7g) Get gradient color at position t (0-1)
+function getGradientColor(t) {
+    // Blue -> Cyan -> Green -> Yellow -> Red
+    if (t < 0.25) {
+        var p = t / 0.25;
+        return { r: 0, g: Math.round(255 * p), b: 255 };
+    } else if (t < 0.5) {
+        var p = (t - 0.25) / 0.25;
+        return { r: 0, g: 255, b: Math.round(255 * (1 - p)) };
+    } else if (t < 0.75) {
+        var p = (t - 0.5) / 0.25;
+        return { r: Math.round(255 * p), g: 255, b: 0 };
+    } else {
+        var p = (t - 0.75) / 0.25;
+        return { r: 255, g: Math.round(255 * (1 - p)), b: 0 };
+    }
+}
+
+// Step 7g2) Get slope color for a given angle (matches AnalysisCache.js)
+function getSlopeColorPDF(maxSlopeAngle) {
+    if (maxSlopeAngle >= 0 && maxSlopeAngle < 5) {
+        return { r: 51, g: 139, b: 255 };   // Cornflower blue
+    } else if (maxSlopeAngle >= 5 && maxSlopeAngle < 7) {
+        return { r: 0, g: 102, b: 204 };
+    } else if (maxSlopeAngle >= 7 && maxSlopeAngle < 9) {
+        return { r: 0, g: 204, b: 204 };
+    } else if (maxSlopeAngle >= 9 && maxSlopeAngle < 12) {
+        return { r: 102, g: 204, b: 0 };
+    } else if (maxSlopeAngle >= 12 && maxSlopeAngle < 15) {
+        return { r: 204, g: 204, b: 0 };
+    } else if (maxSlopeAngle >= 15 && maxSlopeAngle < 17) {
+        return { r: 255, g: 128, b: 0 };
+    } else if (maxSlopeAngle >= 17 && maxSlopeAngle < 20) {
+        return { r: 255, g: 0, b: 0 };
+    } else {
+        return { r: 153, g: 0, b: 76 };     // Dark pink
+    }
+}
+
+// Step 7g3) Get relief color for a given burden relief value (matches AnalysisCache.js)
+function getReliefColorPDF(burdenRelief) {
+    if (burdenRelief < 4) {
+        return { r: 75, g: 20, b: 20 };     // fast - dark red
+    } else if (burdenRelief < 7) {
+        return { r: 255, g: 40, b: 40 };    // red
+    } else if (burdenRelief < 10) {
+        return { r: 255, g: 120, b: 50 };   // orange
+    } else if (burdenRelief < 13) {
+        return { r: 255, g: 255, b: 50 };   // yellow
+    } else if (burdenRelief < 16) {
+        return { r: 50, g: 255, b: 70 };    // green
+    } else if (burdenRelief < 19) {
+        return { r: 50, g: 255, b: 200 };   // cyan-green
+    } else if (burdenRelief < 22) {
+        return { r: 50, g: 230, b: 255 };   // cyan
+    } else if (burdenRelief < 25) {
+        return { r: 50, g: 180, b: 255 };   // light blue
+    } else if (burdenRelief < 30) {
+        return { r: 50, g: 100, b: 255 };   // blue
+    } else if (burdenRelief < 40) {
+        return { r: 0, g: 0, b: 180 };      // navy
+    } else {
+        return { r: 75, g: 0, b: 150 };     // slow - purple
+    }
+}
+
+// Step 7h) Surface gradient presets
+var surfaceGradientColors = {
+    "default": function(t) {
+        return getGradientColor(t);
+    },
+    "viridis": function(t) {
+        // Dark purple -> Blue-purple -> Teal -> Green -> Yellow
+        if (t < 0.25) return { r: 68, g: 1 + Math.round(81 * t / 0.25), b: 84 + Math.round(55 * t / 0.25) };
+        if (t < 0.5) return { r: 33, g: 82 + Math.round(62 * (t - 0.25) / 0.25), b: 139 - Math.round((-1) * (t - 0.25) / 0.25) };
+        if (t < 0.75) return { r: 33 + Math.round(59 * (t - 0.5) / 0.25), g: 144 + Math.round(56 * (t - 0.5) / 0.25), b: 140 - Math.round(41 * (t - 0.5) / 0.25) };
+        return { r: 92 + Math.round(161 * (t - 0.75) / 0.25), g: 200 + Math.round(31 * (t - 0.75) / 0.25), b: 99 - Math.round(62 * (t - 0.75) / 0.25) };
+    },
+    "turbo": function(t) {
+        if (t < 0.25) return { r: 48 + Math.round(2 * t / 0.25), g: 18 + Math.round(118 * t / 0.25), b: 59 + Math.round(130 * t / 0.25) };
+        if (t < 0.5) return { r: 50 + Math.round(44 * (t - 0.25) / 0.25), g: 136 + Math.round(65 * (t - 0.25) / 0.25), b: 189 - Math.round(91 * (t - 0.25) / 0.25) };
+        if (t < 0.75) return { r: 94 + Math.round(159 * (t - 0.5) / 0.25), g: 201 + Math.round(30 * (t - 0.5) / 0.25), b: 98 - Math.round(61 * (t - 0.5) / 0.25) };
+        return { r: 253 - Math.round(13 * (t - 0.75) / 0.25), g: 231 - Math.round(210 * (t - 0.75) / 0.25), b: 37 - Math.round(15 * (t - 0.75) / 0.25) };
+    },
+    "terrain": function(t) {
+        // Dark green -> Green -> Pale green -> Brown -> Gray -> White
+        if (t < 0.25) return { r: Math.round(65 * t / 0.25), g: 68 + Math.round(106 * t / 0.25), b: 27 + Math.round(91 * t / 0.25) };
+        if (t < 0.4) return { r: 65 + Math.round(121 * (t - 0.25) / 0.15), g: 174 + Math.round(54 * (t - 0.25) / 0.15), b: 118 + Math.round(61 * (t - 0.25) / 0.15) };
+        if (t < 0.55) return { r: 186 - Math.round(66 * (t - 0.4) / 0.15), g: 228 - Math.round(143 * (t - 0.4) / 0.15), b: 179 - Math.round(134 * (t - 0.4) / 0.15) };
+        if (t < 0.7) return { r: 120 + Math.round(40 * (t - 0.55) / 0.15), g: 85 + Math.round(33 * (t - 0.55) / 0.15), b: 45 + Math.round(29 * (t - 0.55) / 0.15) };
+        if (t < 0.85) return { r: 160 + Math.round(40 * (t - 0.7) / 0.15), g: 118 + Math.round(82 * (t - 0.7) / 0.15), b: 74 + Math.round(126 * (t - 0.7) / 0.15) };
+        return { r: 200 + Math.round(55 * (t - 0.85) / 0.15), g: 200 + Math.round(55 * (t - 0.85) / 0.15), b: 200 + Math.round(55 * (t - 0.85) / 0.15) };
+    }
+};
+
+// Step 7i) Draw surface elevation legend on PDF
+function drawSurfaceLegendPDF(pdf, mapZone, surfaces, yOffset) {
+    if (!surfaces || surfaces.length === 0) return 0;
+
+    var legendX = mapZone.x + 5;
+    var legendY = mapZone.y + 5 + (yOffset || 0);
+    var legendWidth = 35;
+    var entryHeight = 35;
+    var totalHeight = 8 + surfaces.length * entryHeight;
+    var padding = 2;
+
+    // Background with border
+    pdf.setFillColor(255, 255, 255);
+    pdf.setDrawColor(0, 0, 0);
+    pdf.setLineWidth(0.2);
+    pdf.rect(legendX, legendY, legendWidth, totalHeight, "FD");
+
+    // Title
+    pdf.setFontSize(6);
+    pdf.setFont("helvetica", "bold");
+    pdf.setTextColor(0, 0, 0);
+    pdf.text("Elevation", legendX + legendWidth / 2, legendY + padding + 2, { align: "center" });
+
+    // Draw each surface entry
+    var entryY = legendY + 8;
+    for (var s = 0; s < surfaces.length; s++) {
+        var surface = surfaces[s];
+        var gradientName = surface.gradient || "default";
+        var isHillshade = (gradientName === "hillshade");
+
+        // Surface name
+        pdf.setFontSize(5);
+        pdf.setFont("helvetica", "normal");
+        var surfaceName = surface.name || "Surface";
+        if (surfaceName.length > 12) surfaceName = surfaceName.substring(0, 12) + "...";
+        pdf.text(surfaceName, legendX + padding, entryY + 3);
+
+        if (isHillshade) {
+            // Draw solid color swatch for hillshade
+            var hillshadeColor = surface.hillshadeColor || "#808080";
+            var rgb = hexToRgb(hillshadeColor);
+            pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+            pdf.rect(legendX + padding, entryY + 6, 10, 20, "F");
+            pdf.setDrawColor(0, 0, 0);
+            pdf.setLineWidth(0.1);
+            pdf.rect(legendX + padding, entryY + 6, 10, 20, "S");
+        } else {
+            // Draw gradient bar
+            var gradientFunc = surfaceGradientColors[gradientName] || surfaceGradientColors["default"];
+            var gradientHeight = 20;
+            var gradientWidth = 10;
+            var numStrips = 15;
+            var stripHeight = gradientHeight / numStrips;
+
+            for (var i = 0; i < numStrips; i++) {
+                var t = i / (numStrips - 1);
+                var rgb = gradientFunc(t);
+                pdf.setFillColor(rgb.r, rgb.g, rgb.b);
+                pdf.rect(legendX + padding, entryY + 6 + gradientHeight - (i + 1) * stripHeight, gradientWidth, stripHeight, "F");
+            }
+
+            // Border around gradient
+            pdf.setDrawColor(0, 0, 0);
+            pdf.setLineWidth(0.1);
+            pdf.rect(legendX + padding, entryY + 6, gradientWidth, gradientHeight, "S");
+
+            // Min/Max labels
+            var minZ = surface.displayMinZ !== undefined ? surface.displayMinZ : (surface.actualMinZ !== undefined ? surface.actualMinZ : surface.minZ);
+            var maxZ = surface.displayMaxZ !== undefined ? surface.displayMaxZ : (surface.actualMaxZ !== undefined ? surface.actualMaxZ : surface.maxZ);
+            pdf.setFontSize(4);
+            if (maxZ !== undefined) pdf.text(maxZ.toFixed(1) + "m", legendX + padding + gradientWidth + 2, entryY + 8);
+            if (minZ !== undefined) pdf.text(minZ.toFixed(1) + "m", legendX + padding + gradientWidth + 2, entryY + 6 + gradientHeight - 2);
+        }
+
+        entryY += entryHeight;
+    }
+
+    return totalHeight;
+}
+
+// Step 7j) Draw all active legends on PDF
+function drawLegendsOnPDF(pdf, mapZone, activeLegends, context) {
+    if (!activeLegends) return;
+
+    var yOffset = 0;
+
+    // Draw slope legend if active
+    if (activeLegends.slope) {
+        yOffset += drawSlopeLegendPDF(pdf, mapZone) + 3;
+    }
+
+    // Draw relief legend if active
+    if (activeLegends.relief) {
+        var reliefHeight = drawReliefLegendPDF(pdf, mapZone, yOffset);
+        yOffset += reliefHeight + 3;
+    }
+
+    // Draw voronoi legend if active
+    if (activeLegends.voronoi) {
+        var voronoiHeight = drawVoronoiLegendPDF(pdf, mapZone, activeLegends.voronoi, yOffset);
+        yOffset += voronoiHeight + 3;
+    }
+
+    // Draw surface legends if active
+    if (activeLegends.surfaces && activeLegends.surfaces.length > 0) {
+        drawSurfaceLegendPDF(pdf, mapZone, activeLegends.surfaces, yOffset);
     }
 }
 
@@ -655,6 +1192,249 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 }
             }
 
+            // Step 17a-pre) Define visibleBlastHoles and displayOptions early for slope/relief/voronoi
+            var visibleBlastHoles = allBlastHoles ? allBlastHoles.filter(function(hole) { return hole.visible !== false; }) : [];
+            var displayOptions = getDisplayOptions ? getDisplayOptions() : {};
+
+            bar.style.width = "45%";
+            text.textContent = "Drawing slope/relief/voronoi...";
+
+            // Step 17a) Draw slope map triangles
+            if (displayOptions.slopeMap && context.delaunayTriangles && visibleBlastHoles.length > 0) {
+                try {
+                    var triangleResult = context.delaunayTriangles(visibleBlastHoles, context.maxEdgeLength);
+                    var resultTriangles = triangleResult.resultTriangles;
+
+                    if (resultTriangles && resultTriangles.length > 0) {
+                        for (var ti = 0; ti < resultTriangles.length; ti++) {
+                            var triangle = resultTriangles[ti];
+                            var tAX = triangle[0][0], tAY = triangle[0][1];
+                            var tBX = triangle[1][0], tBY = triangle[1][1];
+                            var tCX = triangle[2][0], tCY = triangle[2][1];
+
+                            // Get dip angle for coloring
+                            var maxSlopeAngle = context.getDipAngle ? context.getDipAngle(triangle) : 0;
+
+                            // Get slope color based on angle
+                            var slopeColor = getSlopeColorPDF(maxSlopeAngle);
+
+                            // Transform to PDF coordinates
+                            var c1 = worldToPDF(tAX, tAY);
+                            var c2 = worldToPDF(tBX, tBY);
+                            var c3 = worldToPDF(tCX, tCY);
+
+                            // Draw filled triangle
+                            pdf.setFillColor(slopeColor.r, slopeColor.g, slopeColor.b);
+                            pdf.setDrawColor(100, 100, 100);
+                            pdf.setLineWidth(0.05);
+                            pdf.triangle(c1[0], c1[1], c2[0], c2[1], c3[0], c3[1], "FD");
+                        }
+
+                        // Draw slope angle text on triangles
+                        pdf.setFontSize(3);
+                        pdf.setTextColor(0, 0, 0);
+                        for (var ti = 0; ti < resultTriangles.length; ti++) {
+                            var triangle = resultTriangles[ti];
+                            var centroidX = (triangle[0][0] + triangle[1][0] + triangle[2][0]) / 3;
+                            var centroidY = (triangle[0][1] + triangle[1][1] + triangle[2][1]) / 3;
+                            var maxSlopeAngle = context.getDipAngle ? context.getDipAngle(triangle) : 0;
+                            var centroidCoords = worldToPDF(centroidX, centroidY);
+                            if (isPointInRect(centroidCoords[0], centroidCoords[1], mapZone)) {
+                                pdf.text(parseFloat(maxSlopeAngle).toFixed(1), centroidCoords[0], centroidCoords[1], { align: "center" });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Failed to draw slope map:", e);
+                }
+            }
+
+            // Step 17b) Draw burden relief map triangles
+            if (displayOptions.burdenRelief && context.delaunayTriangles && visibleBlastHoles.length > 0) {
+                try {
+                    var triangleResult = context.delaunayTriangles(visibleBlastHoles, context.maxEdgeLength);
+                    var reliefTriangles = triangleResult.reliefTriangles;
+
+                    if (reliefTriangles && reliefTriangles.length > 0) {
+                        for (var ti = 0; ti < reliefTriangles.length; ti++) {
+                            var triangle = reliefTriangles[ti];
+                            var tAX = triangle[0][0], tAY = triangle[0][1];
+                            var tBX = triangle[1][0], tBY = triangle[1][1];
+                            var tCX = triangle[2][0], tCY = triangle[2][1];
+
+                            // Get burden relief for coloring
+                            var burdenRelief = context.getBurdenRelief ? context.getBurdenRelief(triangle) : 0;
+
+                            // Get relief color based on value
+                            var reliefColor = getReliefColorPDF(burdenRelief);
+
+                            // Transform to PDF coordinates
+                            var c1 = worldToPDF(tAX, tAY);
+                            var c2 = worldToPDF(tBX, tBY);
+                            var c3 = worldToPDF(tCX, tCY);
+
+                            // Draw filled triangle
+                            pdf.setFillColor(reliefColor.r, reliefColor.g, reliefColor.b);
+                            pdf.setDrawColor(100, 100, 100);
+                            pdf.setLineWidth(0.05);
+                            pdf.triangle(c1[0], c1[1], c2[0], c2[1], c3[0], c3[1], "FD");
+                        }
+
+                        // Draw burden relief text on triangles
+                        pdf.setFontSize(3);
+                        pdf.setTextColor(0, 0, 0);
+                        for (var ti = 0; ti < reliefTriangles.length; ti++) {
+                            var triangle = reliefTriangles[ti];
+                            var centroidX = (triangle[0][0] + triangle[1][0] + triangle[2][0]) / 3;
+                            var centroidY = (triangle[0][1] + triangle[1][1] + triangle[2][1]) / 3;
+                            var burdenRelief = context.getBurdenRelief ? context.getBurdenRelief(triangle) : 0;
+                            var centroidCoords = worldToPDF(centroidX, centroidY);
+                            if (isPointInRect(centroidCoords[0], centroidCoords[1], mapZone)) {
+                                pdf.text(parseFloat(burdenRelief).toFixed(1), centroidCoords[0], centroidCoords[1], { align: "center" });
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Failed to draw burden relief map:", e);
+                }
+            }
+
+            // Step 17c) Draw voronoi cells
+            if (displayOptions.voronoiPF && context.getVoronoiMetrics && context.clipVoronoiCells && visibleBlastHoles.length > 0) {
+                try {
+                    var voronoiMetrics = context.getVoronoiMetrics(visibleBlastHoles, context.useToeLocation);
+                    var clippedCells = context.clipVoronoiCells(voronoiMetrics);
+
+                    if (clippedCells && clippedCells.length > 0) {
+                        // Determine which metric to use and get the matching color function from context
+                        var selectedMetric = context.selectedVoronoiMetric || "powderFactor";
+                        var isVoronoiLegendFixed = context.isVoronoiLegendFixed || false;
+
+                        // Calculate min/max for the selected metric - MUST match app's logic in kirra.js
+                        var values = clippedCells.map(function(c) { return c[selectedMetric]; }).filter(function(v) { return v != null && !isNaN(v); });
+                        var minVal, maxVal;
+                        var getColorFunc = null;
+
+                        // Each metric has specific min/max rules - match exactly what kirra.js does
+                        switch (selectedMetric) {
+                            case "powderFactor":
+                                getColorFunc = context.getPFColor;
+                                if (isVoronoiLegendFixed) {
+                                    minVal = 0; maxVal = 3;
+                                } else {
+                                    minVal = 0; // App always uses 0 for PF min (not actual min)
+                                    maxVal = values.length > 0 ? Math.max.apply(null, values) : 3;
+                                }
+                                break;
+                            case "mass":
+                                getColorFunc = context.getMassColor;
+                                if (isVoronoiLegendFixed) {
+                                    minVal = 0; maxVal = 1000;
+                                } else {
+                                    minVal = values.length > 0 ? Math.min.apply(null, values) : 0;
+                                    maxVal = values.length > 0 ? Math.max.apply(null, values) : 500;
+                                }
+                                break;
+                            case "volume":
+                                getColorFunc = context.getVolumeColor;
+                                if (isVoronoiLegendFixed) {
+                                    minVal = 0; maxVal = 250;
+                                } else {
+                                    minVal = values.length > 0 ? Math.min.apply(null, values) : 0;
+                                    maxVal = values.length > 0 ? Math.max.apply(null, values) : 100;
+                                }
+                                break;
+                            case "area":
+                                getColorFunc = context.getAreaColor;
+                                if (isVoronoiLegendFixed) {
+                                    minVal = 0; maxVal = 250;
+                                } else {
+                                    minVal = values.length > 0 ? Math.min.apply(null, values) : 0;
+                                    maxVal = values.length > 0 ? Math.max.apply(null, values) : 100;
+                                }
+                                break;
+                            case "measuredLength":
+                                getColorFunc = context.getLengthColor;
+                                if (isVoronoiLegendFixed) {
+                                    minVal = 0; maxVal = 30;
+                                } else {
+                                    minVal = values.length > 0 ? Math.min.apply(null, values) : 0;
+                                    maxVal = values.length > 0 ? Math.max.apply(null, values) : 20;
+                                }
+                                break;
+                            case "designedLength":
+                                getColorFunc = context.getLengthColor;
+                                if (isVoronoiLegendFixed) {
+                                    minVal = 0; maxVal = 30;
+                                } else {
+                                    minVal = values.length > 0 ? Math.min.apply(null, values) : 0;
+                                    maxVal = values.length > 0 ? Math.max.apply(null, values) : 20;
+                                }
+                                break;
+                            case "holeFiringTime":
+                                getColorFunc = context.getHoleFiringTimeColor;
+                                if (isVoronoiLegendFixed) {
+                                    minVal = 0; maxVal = 10000;
+                                } else {
+                                    minVal = values.length > 0 ? Math.min.apply(null, values) : 0;
+                                    maxVal = values.length > 0 ? Math.max.apply(null, values) : 5000;
+                                }
+                                break;
+                            default:
+                                getColorFunc = context.getPFColor;
+                                minVal = 0;
+                                maxVal = values.length > 0 ? Math.max.apply(null, values) : 3;
+                                break;
+                        }
+
+                        // Handle edge case where min equals max
+                        if (maxVal - minVal <= 0) {
+                            minVal = 0;
+                            maxVal = 1;
+                        }
+
+                        for (var ci = 0; ci < clippedCells.length; ci++) {
+                            var cell = clippedCells[ci];
+                            if (!cell.polygon || cell[selectedMetric] == null) continue;
+
+                            // Get color using the app's actual color function (returns "rgb(r,g,b)" string)
+                            var colorStr = getColorFunc ? getColorFunc(cell[selectedMetric], minVal, maxVal) : "rgb(128,128,128)";
+                            var cellColor = parseRgbString(colorStr);
+
+                            // Convert polygon points to PDF coordinates (handle both {x,y} objects and [x,y] arrays)
+                            var pdfPolygon = cell.polygon.map(function(pt) {
+                                var x = pt.x !== undefined ? pt.x : pt[0];
+                                var y = pt.y !== undefined ? pt.y : pt[1];
+                                return worldToPDF(x, y);
+                            });
+
+                            // Clip polygon to map zone using Sutherland-Hodgman algorithm
+                            var clippedPolygon = clipPolygonToRect(pdfPolygon, mapZone);
+
+                            if (clippedPolygon.length >= 3) {
+                                // Draw filled polygon
+                                pdf.setFillColor(cellColor.r, cellColor.g, cellColor.b);
+                                pdf.setDrawColor(100, 100, 100);
+                                pdf.setLineWidth(0.05);
+
+                                // Build polygon path using lines
+                                var firstPt = clippedPolygon[0];
+                                var pathSegments = [];
+                                for (var pi = 1; pi < clippedPolygon.length; pi++) {
+                                    pathSegments.push([clippedPolygon[pi][0] - clippedPolygon[pi-1][0], clippedPolygon[pi][1] - clippedPolygon[pi-1][1]]);
+                                }
+                                // Close the polygon
+                                pathSegments.push([firstPt[0] - clippedPolygon[clippedPolygon.length-1][0], firstPt[1] - clippedPolygon[clippedPolygon.length-1][1]]);
+
+                                pdf.lines(pathSegments, firstPt[0], firstPt[1], [1, 1], "FD", true);
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Failed to draw voronoi cells:", e);
+                }
+            }
+
             bar.style.width = "50%";
             text.textContent = "Drawing KAD entities...";
 
@@ -731,10 +1511,7 @@ export function generateTrueVectorPDF(context, userInput, mode) {
             bar.style.width = "60%";
             text.textContent = "Drawing blast holes...";
 
-            // Step 19) Draw blast holes as vectors
-            var visibleBlastHoles = allBlastHoles ? allBlastHoles.filter(function(hole) { return hole.visible !== false; }) : [];
-            var displayOptions = getDisplayOptions ? getDisplayOptions() : {};
-
+            // Step 19) Draw blast holes as vectors (visibleBlastHoles and displayOptions already defined above)
             var toeSizeInMeters = parseFloat(document.getElementById("toeSlider")?.value || 3);
             var printHoleScale = parseFloat(document.getElementById("holeSize")?.value || 3);
 
@@ -787,63 +1564,13 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                     drawClippedCircle(pdf, toeCoords[0], toeCoords[1], toeRadius, mapZone, "S");
                 }
 
-                // Draw collar - only if collar is inside mapZone
+                // Draw collar - only if collar is inside mapZone (GEOMETRY ONLY - labels drawn later)
                 if (collarInside) {
                     var holeRadius = (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14;
                     holeRadius = Math.max(holeRadius, 0.5); // Minimum radius
                     pdf.setFillColor(0, 0, 0);
                     pdf.setDrawColor(0, 0, 0);
                     pdf.circle(collarCoords[0], collarCoords[1], holeRadius, "F");
-
-                    // Draw labels - use smaller font to match screen display
-                    var textOffset = holeRadius * 2.5;
-                    var fontSize = 4; // Reduced from 6 to better match screen font size
-                    pdf.setFontSize(fontSize);
-                    pdf.setFont("helvetica", "normal");
-
-                    // Right side of collar labels (ID, Dia, Len)
-                    if (displayOptions.holeID) {
-                        pdf.setTextColor(0, 0, 0); // Black (textFillColor equivalent)
-                        pdf.text(hole.holeID, collarCoords[0] + textOffset, collarCoords[1] - textOffset);
-                    }
-                    if (displayOptions.holeDia) {
-                        pdf.setTextColor(0, 128, 0); // Green
-                        pdf.text(parseFloat(hole.holeDiameter).toFixed(0), collarCoords[0] + textOffset, collarCoords[1] + textOffset);
-                    }
-                    if (displayOptions.holeLen) {
-                        pdf.setTextColor(0, 0, 255); // Blue (depthColor equivalent)
-                        pdf.text(parseFloat(hole.holeLengthCalculated).toFixed(1), collarCoords[0] + textOffset, collarCoords[1]);
-                    }
-                }
-                
-                // Left side of collar labels (Ang, Time) - only if collar inside
-                if (collarInside && displayOptions.holeAng) {
-                    var textOffset2 = collarInside ? (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14 * 2.5 : 2;
-                    pdf.setTextColor(128, 64, 0); // Brown/Orange (angleDipColor equivalent)
-                    pdf.text(parseFloat(hole.holeAngle).toFixed(0) + "deg", collarCoords[0] - textOffset2, collarCoords[1] - textOffset2, { align: "right" });
-                }
-                if (collarInside && displayOptions.initiationTime) {
-                    var textOffset3 = (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14 * 2.5;
-                    pdf.setTextColor(255, 0, 0); // Red
-                    pdf.text(String(hole.holeTime || ""), collarCoords[0] - textOffset3, collarCoords[1], { align: "right" });
-                }
-                
-                // Left side of toe labels (Dip, Bea, Subdrill) - only if toe inside
-                if (toeInside) {
-                    var toeTextOffset = toeSizeInMeters * printScale * 1.5;
-                    if (displayOptions.holeDip) {
-                        pdf.setTextColor(128, 64, 0); // Brown/Orange (angleDipColor equivalent)
-                        var dipAngle = 90 - parseFloat(hole.holeAngle);
-                        pdf.text(dipAngle.toFixed(0) + "deg", toeCoords[0] - toeTextOffset, toeCoords[1] - toeTextOffset, { align: "right" });
-                    }
-                    if (displayOptions.holeBea) {
-                        pdf.setTextColor(255, 0, 0); // Red
-                        pdf.text(parseFloat(hole.holeBearing).toFixed(1) + "deg", toeCoords[0] - toeTextOffset, toeCoords[1] + toeTextOffset, { align: "right" });
-                    }
-                    if (displayOptions.holeSubdrill) {
-                        pdf.setTextColor(0, 0, 255); // Blue
-                        pdf.text(parseFloat(hole.subdrillAmount || 0).toFixed(1), toeCoords[0] - toeTextOffset, toeCoords[1], { align: "right" });
-                    }
                 }
             });
 
@@ -891,7 +1618,7 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                                             pdf.setLineWidth(0.2);
                                             pdf.line(clippedConn.x1, clippedConn.y1, clippedConn.x2, clippedConn.y2);
                                         }
-                                        
+
                                         // Draw arrowhead only if end point is inside mapZone
                                         if (endInside) {
                                             var angle = Math.atan2(endCoords[1] - startCoords[1], endCoords[0] - startCoords[0]);
@@ -900,6 +1627,21 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                                             var arrowX2 = endCoords[0] - arrowLength * Math.cos(angle + Math.PI / 6);
                                             var arrowY2 = endCoords[1] - arrowLength * Math.sin(angle + Math.PI / 6);
                                             pdf.triangle(endCoords[0], endCoords[1], arrowX1, arrowY1, arrowX2, arrowY2, "F");
+                                        }
+
+                                        // Draw delay text at midpoint of connector
+                                        var delayMs = hole.timingDelayMilliseconds;
+                                        if (delayMs !== undefined && delayMs !== null && displayOptions.connectorDelay !== false) {
+                                            var midX = (startCoords[0] + endCoords[0]) / 2;
+                                            var midY = (startCoords[1] + endCoords[1]) / 2;
+                                            if (isPointInRect(midX, midY, mapZone)) {
+                                                var txtColor = getContrastColor(connColor);
+                                                var txtRgb = hexToRgb(txtColor);
+                                                pdf.setTextColor(txtRgb.r, txtRgb.g, txtRgb.b);
+                                                pdf.setFontSize(5);
+                                                pdf.setFont("helvetica", "normal");
+                                                pdf.text(String(delayMs), midX, midY - 0.5, { align: "center" });
+                                            }
                                         }
                                     } else {
                                         // Curved connector - clip each segment
@@ -943,6 +1685,19 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                                             var arrowY2 = endCoords[1] - arrowLength * Math.sin(angle + Math.PI / 6);
                                             pdf.triangle(endCoords[0], endCoords[1], arrowX1, arrowY1, arrowX2, arrowY2, "F");
                                         }
+
+                                        // Draw delay text at control point of curved connector
+                                        var delayMs2 = hole.timingDelayMilliseconds;
+                                        if (delayMs2 !== undefined && delayMs2 !== null && displayOptions.connectorDelay !== false) {
+                                            if (isPointInRect(controlX, controlY, mapZone)) {
+                                                var txtColor2 = getContrastColor(connColor);
+                                                var txtRgb2 = hexToRgb(txtColor2);
+                                                pdf.setTextColor(txtRgb2.r, txtRgb2.g, txtRgb2.b);
+                                                pdf.setFontSize(5);
+                                                pdf.setFont("helvetica", "normal");
+                                                pdf.text(String(delayMs2), controlX, controlY - 0.5, { align: "center" });
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -952,6 +1707,116 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                     }
                 });
             }
+
+            bar.style.width = "68%";
+            text.textContent = "Drawing hole labels...";
+
+            // Step 19a2) Draw hole labels (separate pass for z-ordering - labels on top of connectors)
+            visibleBlastHoles.forEach(function(hole) {
+                var collarCoords = worldToPDF(hole.startXLocation, hole.startYLocation);
+                var toeCoords = worldToPDF(hole.endXLocation, hole.endYLocation);
+                var collarInside = isPointInRect(collarCoords[0], collarCoords[1], mapZone);
+                var toeInside = isPointInRect(toeCoords[0], toeCoords[1], mapZone);
+
+                if (collarInside) {
+                    var holeRadius = (hole.holeDiameter / 1000 / 2) * printHoleScale * printScale * 0.14;
+                    holeRadius = Math.max(holeRadius, 0.5);
+                    var textOffset = holeRadius * 2.5;
+                    var fontSize = 4;
+                    pdf.setFontSize(fontSize);
+                    pdf.setFont("helvetica", "normal");
+
+                    // Right side of collar labels (ID, Dia, Len, and additional labels)
+                    var labelY = collarCoords[1] - textOffset;
+                    var labelSpacing = fontSize * 0.4;
+
+                    if (displayOptions.holeID) {
+                        pdf.setTextColor(0, 0, 0);
+                        pdf.text(hole.holeID || "", collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.holeDia) {
+                        pdf.setTextColor(0, 128, 0);
+                        pdf.text(parseFloat(hole.holeDiameter).toFixed(0), collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.holeLen) {
+                        pdf.setTextColor(0, 0, 255);
+                        pdf.text(parseFloat(hole.holeLengthCalculated).toFixed(1), collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.xValue) {
+                        pdf.setTextColor(0, 0, 0);
+                        pdf.text("X:" + parseFloat(hole.startXLocation).toFixed(2), collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.yValue) {
+                        pdf.setTextColor(0, 0, 0);
+                        pdf.text("Y:" + parseFloat(hole.startYLocation).toFixed(2), collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.zValue) {
+                        pdf.setTextColor(0, 0, 0);
+                        pdf.text("Z:" + parseFloat(hole.startZLocation).toFixed(2), collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.holeType) {
+                        pdf.setTextColor(128, 0, 128);
+                        pdf.text(hole.holeType || "", collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.rowID && hole.rowID) {
+                        pdf.setTextColor(0, 100, 100);
+                        pdf.text("R:" + hole.rowID, collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.posID && hole.posID) {
+                        pdf.setTextColor(100, 0, 100);
+                        pdf.text("P:" + hole.posID, collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.measuredLength && hole.measuredLength) {
+                        pdf.setTextColor(0, 100, 0);
+                        pdf.text("ML:" + parseFloat(hole.measuredLength).toFixed(1), collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+                    if (displayOptions.measuredMass && hole.measuredMass) {
+                        pdf.setTextColor(100, 100, 0);
+                        pdf.text("MM:" + parseFloat(hole.measuredMass).toFixed(1), collarCoords[0] + textOffset, labelY);
+                        labelY += labelSpacing;
+                    }
+
+                    // Left side of collar labels (Ang, Time)
+                    if (displayOptions.holeAng) {
+                        var textOffset2 = holeRadius * 2.5;
+                        pdf.setTextColor(128, 64, 0);
+                        pdf.text(parseFloat(hole.holeAngle).toFixed(0) + "deg", collarCoords[0] - textOffset2, collarCoords[1] - textOffset2, { align: "right" });
+                    }
+                    if (displayOptions.initiationTime) {
+                        var textOffset3 = holeRadius * 2.5;
+                        pdf.setTextColor(255, 0, 0);
+                        pdf.text(String(hole.holeTime || ""), collarCoords[0] - textOffset3, collarCoords[1], { align: "right" });
+                    }
+                }
+
+                // Left side of toe labels (Dip, Bea, Subdrill)
+                if (toeInside) {
+                    var toeTextOffset = toeSizeInMeters * printScale * 1.5;
+                    if (displayOptions.holeDip) {
+                        pdf.setTextColor(128, 64, 0);
+                        var dipAngle = 90 - parseFloat(hole.holeAngle);
+                        pdf.text(dipAngle.toFixed(0) + "deg", toeCoords[0] - toeTextOffset, toeCoords[1] - toeTextOffset, { align: "right" });
+                    }
+                    if (displayOptions.holeBea) {
+                        pdf.setTextColor(255, 0, 0);
+                        pdf.text(parseFloat(hole.holeBearing).toFixed(1) + "deg", toeCoords[0] - toeTextOffset, toeCoords[1] + toeTextOffset, { align: "right" });
+                    }
+                    if (displayOptions.holeSubdrill) {
+                        pdf.setTextColor(0, 0, 255);
+                        pdf.text(parseFloat(hole.subdrillAmount || 0).toFixed(1), toeCoords[0] - toeTextOffset, toeCoords[1], { align: "right" });
+                    }
+                }
+            });
 
             bar.style.width = "70%";
             text.textContent = "Drawing contour lines...";
@@ -983,7 +1848,65 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                     }
                 }
             }
-            
+
+            bar.style.width = "72%";
+            text.textContent = "Drawing direction arrows...";
+
+            // Step 19c) Draw first movement direction arrows
+            if (displayOptions.firstMovement && context.directionArrows && context.directionArrows.length > 0) {
+                var firstMovementSize = context.firstMovementSize || 10;
+                var arrowBaseWidth = (firstMovementSize / 4) * printScale;
+                var arrowHeadLength = 2 * (firstMovementSize / 4) * printScale;
+                var tailWidth = arrowBaseWidth * 0.7;
+
+                for (var da = 0; da < context.directionArrows.length; da++) {
+                    var arrow = context.directionArrows[da];
+                    if (arrow && arrow.length >= 5) {
+                        var arrowStartCoords = worldToPDF(arrow[0], arrow[1]);
+                        var arrowEndCoords = worldToPDF(arrow[2], arrow[3]);
+                        var arrowColor = arrow[4] || "#FFD700"; // goldenrod default
+
+                        // Check if arrow is visible in mapZone
+                        var arrowMidX = (arrowStartCoords[0] + arrowEndCoords[0]) / 2;
+                        var arrowMidY = (arrowStartCoords[1] + arrowEndCoords[1]) / 2;
+                        if (!isPointInRect(arrowMidX, arrowMidY, mapZone)) continue;
+
+                        var angle = Math.atan2(arrowEndCoords[1] - arrowStartCoords[1], arrowEndCoords[0] - arrowStartCoords[0]);
+
+                        // Draw arrow shape as filled polygon
+                        var arrowRgb = hexToRgb(arrowColor);
+                        pdf.setFillColor(arrowRgb.r, arrowRgb.g, arrowRgb.b);
+                        pdf.setDrawColor(0, 0, 0);
+                        pdf.setLineWidth(0.1);
+
+                        // Build arrow polygon points
+                        var sx = arrowStartCoords[0], sy = arrowStartCoords[1];
+                        var ex = arrowEndCoords[0], ey = arrowEndCoords[1];
+                        var sinA = Math.sin(angle), cosA = Math.cos(angle);
+
+                        // Arrow polygon: tail start top -> tail end top -> arrowhead base right -> tip -> arrowhead base left -> tail end bottom -> tail start bottom
+                        var p1x = sx + (tailWidth / 2) * sinA, p1y = sy - (tailWidth / 2) * cosA;
+                        var p2x = ex - arrowHeadLength * cosA + (tailWidth / 2) * sinA, p2y = ey - arrowHeadLength * sinA - (tailWidth / 2) * cosA;
+                        var p3x = ex - arrowHeadLength * cosA + arrowBaseWidth * sinA, p3y = ey - arrowHeadLength * sinA - arrowBaseWidth * cosA;
+                        var p4x = ex, p4y = ey; // tip
+                        var p5x = ex - arrowHeadLength * cosA - arrowBaseWidth * sinA, p5y = ey - arrowHeadLength * sinA + arrowBaseWidth * cosA;
+                        var p6x = ex - arrowHeadLength * cosA - (tailWidth / 2) * sinA, p6y = ey - arrowHeadLength * sinA + (tailWidth / 2) * cosA;
+                        var p7x = sx - (tailWidth / 2) * sinA, p7y = sy + (tailWidth / 2) * cosA;
+
+                        // Draw polygon using lines
+                        pdf.lines([
+                            [p2x - p1x, p2y - p1y],
+                            [p3x - p2x, p3y - p2y],
+                            [p4x - p3x, p4y - p3y],
+                            [p5x - p4x, p5y - p4y],
+                            [p6x - p5x, p6y - p5y],
+                            [p7x - p6x, p7y - p6y],
+                            [p1x - p7x, p1y - p7y]
+                        ], p1x, p1y, [1, 1], "FD", true);
+                    }
+                }
+            }
+
             } // End of if (!is3DMode) - 2D data rendering block
 
             bar.style.width = "75%";
@@ -1049,36 +1972,36 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 }
             }
 
-            // Step 25) Render Connector Count (delay timing groups)
+            // Step 25) Render Connector Count (actual connectors grouped by delay)
             var connectorCell = layoutMgr.getConnectorCountCell();
-            if (connectorCell && allBlastHoles && allBlastHoles.length > 0 && getVoronoiMetrics) {
+            if (connectorCell && allBlastHoles && allBlastHoles.length > 0) {
                 try {
-                    var stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+                    var stats = getBlastStatisticsPerEntity(allBlastHoles);
                     var entityNames = Object.keys(stats);
-                    
+
                     // Draw header
                     pdf.setFontSize(9);
                     pdf.setFont("helvetica", "bold");
                     pdf.setTextColor(0, 0, 0);
                     pdf.text("CONNECTOR COUNT", connectorCell.x + connectorCell.width / 2, connectorCell.y + 4, { align: "center" });
-                    
-                    // Draw delay groups as colored rows
+
+                    // Draw connector groups as colored rows (actual connectors, not all holes)
                     var rowY = connectorCell.y + 9;
                     var rowHeight = 3.5;
                     var padding = 1;
-                    
+
                     for (var e = 0; e < entityNames.length; e++) {
                         var entityStats = stats[entityNames[e]];
-                        if (entityStats && entityStats.delayGroups) {
-                            var delays = Object.keys(entityStats.delayGroups).sort(function(a, b) {
+                        if (entityStats && entityStats.connectorGroups) {
+                            var delays = Object.keys(entityStats.connectorGroups).sort(function(a, b) {
                                 if (a === "Unknown") return 1;
                                 if (b === "Unknown") return -1;
                                 return parseFloat(a) - parseFloat(b);
                             });
-                            
+
                             for (var d = 0; d < delays.length && rowY < connectorCell.y + connectorCell.height - 3; d++) {
                                 var delay = delays[d];
-                                var group = entityStats.delayGroups[delay];
+                                var group = entityStats.connectorGroups[delay];
                                 var bgColor = group.color || "#ffffff";
                                 var txtColor = getContrastColor(bgColor);
                                 
@@ -1109,9 +2032,9 @@ export function generateTrueVectorPDF(context, userInput, mode) {
 
             // Step 26) Render Blast Statistics
             var statsCell = layoutMgr.getBlastStatisticsCell();
-            if (statsCell && allBlastHoles && allBlastHoles.length > 0 && getVoronoiMetrics) {
+            if (statsCell && allBlastHoles && allBlastHoles.length > 0) {
                 try {
-                    var blastStats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+                    var blastStats = getBlastStatisticsPerEntity(allBlastHoles);
                     var entityKeys = Object.keys(blastStats);
                     
                     // Draw header
@@ -1155,6 +2078,167 @@ export function generateTrueVectorPDF(context, userInput, mode) {
                 }
             } else {
                 drawCenteredText(pdf, "BLAST\nSTATISTICS", statsCell.x, statsCell.y, statsCell.width, statsCell.height, 7, true);
+            }
+
+            // Step 26b) Render Legend in footer legend cell
+            var legendCell = layoutMgr.getLegendCell();
+            if (legendCell) {
+                try {
+                    var activeLegends = getActiveLegends();
+
+                    // Draw header
+                    pdf.setFontSize(9);
+                    pdf.setFont("helvetica", "bold");
+                    pdf.setTextColor(0, 0, 0);
+                    pdf.text("LEGEND", legendCell.x + legendCell.width / 2, legendCell.y + 4, { align: "center" });
+
+                    if (activeLegends) {
+                        var legendY = legendCell.y + 8;
+                        var legendRowHeight = 3;
+                        var legendPadding = 1.5;
+                        var swatchSize = 2.5;
+
+                        // Draw Slope Legend
+                        if (activeLegends.slope && activeLegends.slope.items && activeLegends.slope.items.length > 0) {
+                            pdf.setFontSize(6);
+                            pdf.setFont("helvetica", "bold");
+                            pdf.text("Slope", legendCell.x + legendPadding, legendY);
+                            legendY += legendRowHeight;
+
+                            pdf.setFontSize(5);
+                            pdf.setFont("helvetica", "normal");
+                            for (var si = 0; si < activeLegends.slope.items.length && legendY < legendCell.y + legendCell.height - 2; si++) {
+                                var sItem = activeLegends.slope.items[si];
+                                var sRgb = parseRgbString(sItem.color || "rgb(128,128,128)");
+                                // Draw color swatch
+                                pdf.setFillColor(sRgb.r, sRgb.g, sRgb.b);
+                                pdf.rect(legendCell.x + legendPadding, legendY - swatchSize * 0.7, swatchSize, swatchSize, "F");
+                                // Draw label
+                                pdf.setTextColor(0, 0, 0);
+                                pdf.text(sItem.label || "", legendCell.x + legendPadding + swatchSize + 1, legendY);
+                                legendY += legendRowHeight * 0.8;
+                            }
+                            legendY += legendRowHeight * 0.5;
+                        }
+
+                        // Draw Relief Legend
+                        if (activeLegends.relief && activeLegends.relief.items && activeLegends.relief.items.length > 0) {
+                            pdf.setFontSize(6);
+                            pdf.setFont("helvetica", "bold");
+                            pdf.setTextColor(0, 0, 0);
+                            pdf.text("Relief", legendCell.x + legendPadding, legendY);
+                            legendY += legendRowHeight;
+
+                            pdf.setFontSize(5);
+                            pdf.setFont("helvetica", "normal");
+                            for (var ri = 0; ri < activeLegends.relief.items.length && legendY < legendCell.y + legendCell.height - 2; ri++) {
+                                var rItem = activeLegends.relief.items[ri];
+                                var rRgb = parseRgbString(rItem.color || "rgb(128,128,128)");
+                                // Draw color swatch
+                                pdf.setFillColor(rRgb.r, rRgb.g, rRgb.b);
+                                pdf.rect(legendCell.x + legendPadding, legendY - swatchSize * 0.7, swatchSize, swatchSize, "F");
+                                // Draw label
+                                pdf.setTextColor(0, 0, 0);
+                                pdf.text(rItem.label || "", legendCell.x + legendPadding + swatchSize + 1, legendY);
+                                legendY += legendRowHeight * 0.8;
+                            }
+                            legendY += legendRowHeight * 0.5;
+                        }
+
+                        // Draw Voronoi Legend (discrete vertical boxes with 0.1 increments)
+                        if (activeLegends.voronoi && activeLegends.voronoi.title) {
+                            pdf.setFontSize(6);
+                            pdf.setFont("helvetica", "bold");
+                            pdf.setTextColor(0, 0, 0);
+                            var vTitle = activeLegends.voronoi.title;
+                            // Allow longer titles - truncate only if very long
+                            if (vTitle.length > 28) vTitle = vTitle.substring(0, 25) + "...";
+                            pdf.text(vTitle, legendCell.x + legendPadding, legendY);
+                            legendY += legendRowHeight;
+
+                            // Build discrete voronoi items with 0.1 increments
+                            var vMinVal = activeLegends.voronoi.minVal !== undefined ? activeLegends.voronoi.minVal : 0;
+                            var vMaxVal = activeLegends.voronoi.maxVal !== undefined ? activeLegends.voronoi.maxVal : 1;
+                            var vRange = vMaxVal - vMinVal;
+                            var vIncrement = 0.1;
+                            var vStartVal = Math.floor(vMinVal * 10) / 10;
+                            var vEndVal = Math.ceil(vMaxVal * 10) / 10;
+
+                            // Limit items to fit in available space
+                            var maxItems = Math.floor((legendCell.y + legendCell.height - legendY - 2) / (legendRowHeight * 0.8));
+                            var numItems = Math.round((vEndVal - vStartVal) / vIncrement);
+                            if (numItems > maxItems) {
+                                vIncrement = (vEndVal - vStartVal) / maxItems;
+                                vIncrement = Math.ceil(vIncrement * 10) / 10;
+                            }
+
+                            // Helper to get spectrum color
+                            function getVoronoiSpectrumColor(val) {
+                                var ratio = vRange > 0 ? Math.min(Math.max((val - vMinVal) / vRange, 0), 1) : 0;
+                                var r, g, b;
+                                if (ratio < 0.2) {
+                                    var t = ratio / 0.2;
+                                    r = Math.round(148 * (1 - t)); g = 0; b = Math.round(211 * (1 - t) + 255 * t);
+                                } else if (ratio < 0.4) {
+                                    var t = (ratio - 0.2) / 0.2;
+                                    r = 0; g = Math.round(255 * t); b = 255;
+                                } else if (ratio < 0.6) {
+                                    var t = (ratio - 0.4) / 0.2;
+                                    r = 0; g = 255; b = Math.round(255 * (1 - t));
+                                } else if (ratio < 0.8) {
+                                    var t = (ratio - 0.6) / 0.2;
+                                    r = Math.round(255 * t); g = 255; b = 0;
+                                } else {
+                                    var t = (ratio - 0.8) / 0.2;
+                                    r = 255; g = Math.round(255 * (1 - t)); b = 0;
+                                }
+                                return { r: r, g: g, b: b };
+                            }
+
+                            pdf.setFontSize(5);
+                            pdf.setFont("helvetica", "normal");
+                            for (var vVal = vStartVal; vVal < vEndVal && legendY < legendCell.y + legendCell.height - 2; vVal += vIncrement) {
+                                var vLow = vVal;
+                                var vHigh = Math.min(vVal + vIncrement, vEndVal);
+                                var vMid = (vLow + vHigh) / 2;
+                                var vLabel = vLow.toFixed(1) + "-" + vHigh.toFixed(1);
+                                var vRgb = getVoronoiSpectrumColor(vMid);
+                                // Draw color swatch
+                                pdf.setFillColor(vRgb.r, vRgb.g, vRgb.b);
+                                pdf.rect(legendCell.x + legendPadding, legendY - swatchSize * 0.7, swatchSize, swatchSize, "F");
+                                // Draw label
+                                pdf.setTextColor(0, 0, 0);
+                                pdf.text(vLabel, legendCell.x + legendPadding + swatchSize + 1, legendY);
+                                legendY += legendRowHeight * 0.8;
+                            }
+                            legendY += legendRowHeight * 0.5;
+                        }
+
+                        // Draw Surface Legends
+                        if (activeLegends.surfaces && activeLegends.surfaces.length > 0) {
+                            pdf.setFontSize(6);
+                            pdf.setFont("helvetica", "bold");
+                            pdf.setTextColor(0, 0, 0);
+                            pdf.text("Surfaces", legendCell.x + legendPadding, legendY);
+                            legendY += legendRowHeight;
+
+                            pdf.setFontSize(5);
+                            pdf.setFont("helvetica", "normal");
+                            for (var surf = 0; surf < activeLegends.surfaces.length && legendY < legendCell.y + legendCell.height - 2; surf++) {
+                                var surfData = activeLegends.surfaces[surf];
+                                if (surfData && surfData.name) {
+                                    var surfName = surfData.name;
+                                    if (surfName.length > 12) surfName = surfName.substring(0, 12) + "...";
+                                    pdf.text(surfName, legendCell.x + legendPadding, legendY);
+                                    legendY += legendRowHeight * 0.8;
+                                }
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Failed to render legend cell:", e);
+                    drawCenteredText(pdf, "LEGEND", legendCell.x, legendCell.y, legendCell.width, legendCell.height, 7, true);
+                }
             }
 
             // Step 27) Render Logo and URL

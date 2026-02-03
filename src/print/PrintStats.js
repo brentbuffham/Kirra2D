@@ -69,8 +69,8 @@ export function printFooter(printCtx, x, y, width, height, context) {
  * @deprecated Use printBlastStatsSVG() for vector PDF generation
  */
 export function printBlastStats(printCtx, xPos, yPos, context) {
-    const { allBlastHoles, getVoronoiMetrics } = context;
-    const stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+    const { allBlastHoles } = context;
+    const stats = getBlastStatisticsPerEntity(allBlastHoles);
     xPos = xPos || 10;
     yPos = yPos || 150;
 
@@ -188,8 +188,8 @@ export function printBlastStats(printCtx, xPos, yPos, context) {
  * @deprecated Use printBlastStatsSimpleSVG() for vector PDF generation
  */
 export function printBlastStatsSimple(printCtx, xPos, yPos, context) {
-    const { allBlastHoles, getVoronoiMetrics } = context;
-    const stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+    const { allBlastHoles } = context;
+    const stats = getBlastStatisticsPerEntity(allBlastHoles);
     xPos = xPos || 10;
     yPos = yPos || 150;
     Object.keys(stats).forEach((entity) => {
@@ -237,8 +237,8 @@ export function printFooterSVG(x, y, width, height, context) {
 }
 
 export function printBlastStatsSVG(xPos, yPos, context) {
-    const { allBlastHoles, getVoronoiMetrics } = context;
-    const stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+    const { allBlastHoles } = context;
+    const stats = getBlastStatisticsPerEntity(allBlastHoles);
     xPos = xPos || 10;
     yPos = yPos || 150;
     
@@ -310,8 +310,8 @@ export function printBlastStatsSVG(xPos, yPos, context) {
 }
 
 export function printBlastStatsSimpleSVG(xPos, yPos, context) {
-    const { allBlastHoles, getVoronoiMetrics } = context;
-    const stats = getBlastStatisticsPerEntity(allBlastHoles, getVoronoiMetrics);
+    const { allBlastHoles } = context;
+    const stats = getBlastStatisticsPerEntity(allBlastHoles);
     xPos = xPos || 10;
     yPos = yPos || 150;
     
