@@ -48,6 +48,10 @@ import {
 	EditKADPropsAction
 } from "./tools/UndoActions.js";
 //=================================================
+// Transform Tool
+//=================================================
+import { startTransformMode, cancelTransformMode } from "./tools/TransformTool.js";
+//=================================================
 // Three.js Renderer Selection (MUST BE EARLY!)
 //=================================================
 // CRITICAL: Load renderer preference from localStorage IMMEDIATELY
@@ -2011,6 +2015,7 @@ function handle3DClick(event) {
 	// Step 12i.pre) Handle interactive tools FIRST (before checking clickedHole)
 	// These tools need to handle clicks even when no hole is found (to show status messages)
 	// IMPORTANT: Use screen-space tolerance selection (like 2D) for better UX - raycasting can miss holes
+
 	if (window.isRenumberHolesActive) {
 		// Step 12i.pre.1) RenumberHoles tool logic in 3D
 		console.log("⬇️ [3D CLICK] RenumberHoles tool mode active");
@@ -34098,6 +34103,16 @@ window.onload = function () {
 
 		// Escape Key to reset tools
 		if (event.key === "Escape") {
+			// Step 1) Check if Transform tool is active - cancel it first
+			if (window.isTransformToolActive) {
+				console.log("Escape pressed - cancelling Transform mode");
+				cancelTransformMode();
+				const transformToolBtn = document.getElementById("transformTool");
+				if (transformToolBtn) transformToolBtn.checked = false;
+				event.preventDefault();
+				return;
+			}
+
 			console.log("Escape pressed - resetting all");
 			resetAllSelectedStores();
 			endKadTools();
@@ -34755,6 +34770,18 @@ document.addEventListener("DOMContentLoaded", () => {
 				cancelReorderKADMode();
 			} else {
 				startReorderKADMode();
+			}
+		});
+	}
+
+	// TransformTool checkbox - starts transform mode (toggle on/off)
+	const transformToolBtn = document.getElementById("transformTool");
+	if (transformToolBtn) {
+		transformToolBtn.addEventListener("change", function () {
+			if (this.checked) {
+				startTransformMode();
+			} else {
+				cancelTransformMode();
 			}
 		});
 	}

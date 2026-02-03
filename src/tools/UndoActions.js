@@ -896,7 +896,63 @@ class EditKADPropsAction extends UndoableAction {
     }
 }
 
-// Step 16) Export all action classes
+// Step 16) TransformKADAction - For transforming (translate/rotate) KAD entities
+class TransformKADAction extends UndoableAction {
+    constructor(beforePositions, afterPositions, description) {
+        super("TRANSFORM_KAD", false, true);
+        // beforePositions and afterPositions are Maps: key -> {x, y, z}
+        // key format: "entityName:::pointID"
+        this.beforePositions = new Map(beforePositions);
+        this.afterPositions = new Map(afterPositions);
+        this.description = description || "Transform " + this.beforePositions.size + " KAD points";
+    }
+
+    execute() {
+        this._applyPositions(this.afterPositions);
+    }
+
+    undo() {
+        this._applyPositions(this.beforePositions);
+    }
+
+    redo() {
+        this._applyPositions(this.afterPositions);
+    }
+
+    _applyPositions(positions) {
+        for (const [key, pos] of positions) {
+            const parts = key.split(":::");
+            const entityName = parts[0];
+            const pointID = parts[1];
+
+            if (window.allKADDrawingsMap) {
+                const entity = window.allKADDrawingsMap.get(entityName);
+                if (entity && entity.data) {
+                    const vertex = entity.data.find(function(v) {
+                        return String(v.pointID) === String(pointID);
+                    });
+
+                    if (vertex) {
+                        vertex.pointXLocation = pos.x;
+                        vertex.pointYLocation = pos.y;
+                        vertex.pointZLocation = pos.z;
+                    }
+                }
+            }
+        }
+
+        // Trigger redraw
+        window.threeDataNeedsRebuild = true;
+        if (typeof window.drawData === "function") {
+            window.drawData(window.allBlastHoles, window.selectedHole);
+        }
+        if (typeof window.debouncedSaveKAD === "function") {
+            window.debouncedSaveKAD();
+        }
+    }
+}
+
+// Step 17) Export all action classes
 export {
     // Hole actions
     AddHoleAction,
@@ -907,7 +963,7 @@ export {
     MoveMultipleHolesAction,
     EditHolePropsAction,
     EditMultipleHolesPropsAction,
-    
+
     // KAD actions
     AddKADEntityAction,
     AddMultipleKADEntitiesAction,
@@ -917,5 +973,6 @@ export {
     DeleteKADVertexAction,
     MoveKADVertexAction,
     MoveMultipleKADVerticesAction,
-    EditKADPropsAction
+    EditKADPropsAction,
+    TransformKADAction
 };
