@@ -1,2 +1,5 @@
 node_modules/
 dist/
+# Add .DS_Store to .gitignore
+echo ".DS_Store" >> .gitignore
+echo "dist/.DS_Store" >> .gitignore
