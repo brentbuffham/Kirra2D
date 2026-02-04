@@ -73,7 +73,20 @@ export function updatePopup() {
 		"<br>" +
 		'<label class="labelWhite12c">' +
 		"<br>" +
-		"🗓️ Jan26 (Week of Jan 14-22)" +
+		"🗓️ Feb26 (Week of Jan 14-22)" +
+		"<br>" +
+		"⠀⠀🔔 Fe26 - Reflected entity name for SBS import" +
+		"<br>" +
+		"⠀⠀🔔 Fe26 - Corrected zero timing when Sentinel timing Is not present" +
+		"<br>" +
+		"⠀⠀🔔 Fe26 - Added transform tools, reordering of KAD sequence" +
+		"<br>" +
+		"⠀⠀🔔 Fe26 - Added point id on KAD objects" +
+		"<br>" +
+		"</label>" +
+		'<label class="labelWhite12c">' +
+		"<br>" +
+		"🗓️ Jan26" +
 		"<br>" +
 		"⠀⠀🔔 Jan26 - Attempt to streamline and speed up Voronoi diagrams" +
 		"<br>" +
@@ -110,11 +123,6 @@ export function updatePopup() {
 		"⠀⠀🔔 Jan26 - Layer management context menu enhanced" +
 		"<br>" +
 		"⠀⠀🔔 Jan26 - BlastHole holeTime property CSV handling" +
-		"<br>" +
-		"</label>" +
-		'<label class="labelWhite12c">' +
-		"<br>" +
-		"🗓️ Jan26 (Week of Jan 7-13)" +
 		"<br>" +
 		"⠀⠀🔔 Jan26 - Print validation allows surfaces/images" +
 		"<br>" +
