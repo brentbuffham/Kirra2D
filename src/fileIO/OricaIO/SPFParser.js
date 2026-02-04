@@ -59,7 +59,7 @@ class SPFParser extends BaseParser {
 		}
 
 		// Step 15) Convert to Kirra blast holes array
-		result.kirraHoles = this.convertToKirraHoles(result.holes, result.blastHeader);
+		result.kirraHoles = this.convertToKirraHoles(result.holes, result.blastHeader, result.filename);
 
 		console.log("SPF Parse complete: " + result.holes.length + " holes found");
 
@@ -268,30 +268,15 @@ class SPFParser extends BaseParser {
 	}
 
 	// Step 27) Convert SPF holes to Kirra blast hole format
-	convertToKirraHoles(spfHoles, blastHeader) {
+	convertToKirraHoles(spfHoles, blastHeader, filename) {
 		var kirraHoles = [];
 		var offsetX = this.offsetX;
 		var offsetY = this.offsetY;
 
-		// Step 27a) Try to extract blast name from first hole's comment field
-		// Format observed: "CH01_5420_114_:::1" where blast name is before ":::"
-		var blastName = "SPF_Blast";
-		if (spfHoles.length > 0 && spfHoles[0].comment) {
-			var comment = spfHoles[0].comment;
-			var separatorIndex = comment.indexOf(":::");
-			if (separatorIndex > 0) {
-				blastName = comment.substring(0, separatorIndex);
-				// Remove trailing underscore if present
-				if (blastName.endsWith("_")) {
-					blastName = blastName.substring(0, blastName.length - 1);
-				}
-				console.log("SPF Extracted blast name from comment:", blastName);
-			}
-		}
-
-		// Step 27b) Fall back to blast header if no name extracted from comment
-		if (blastName === "SPF_Blast" && blastHeader) {
-			blastName = blastHeader.location || blastHeader.mine || blastName;
+		// Step 27a) Use filename (without extension) as blast name
+		var blastName = filename || "SPF_Blast";
+		if (blastName.indexOf(".") !== -1) {
+			blastName = blastName.substring(0, blastName.lastIndexOf("."));
 		}
 
 		// Debug: Log first hole to check coordinate structure
@@ -426,8 +411,10 @@ class SPFParser extends BaseParser {
 				holeLengthCalculated: depth,
 				holeAngle: angle,
 				holeBearing: bearing,
-				fromHoleID: this.parseFromHoleID(spf.comment, blastName, spf.holeId || String(i + 1)),
-				timingDelayMilliseconds: Math.round(spf.firingTime || 0), // SPF firingTime rounded to integer milliseconds
+				fromHoleID: (spf.firingTime != null && spf.firingTime < 10000000)
+					? this.parseFromHoleID(spf.comment, blastName, spf.holeId || String(i + 1))
+					: blastName + ":::" + (spf.holeId || String(i + 1)), // No timing or sentinel value = connect to self
+				timingDelayMilliseconds: (spf.firingTime != null && spf.firingTime < 10000000) ? Math.round(spf.firingTime) : 0,
 				colorHexDecimal: "#00FF00",
 				measuredLength: 0,
 				measuredLengthTimeStamp: "09/05/1975 00:00:00",

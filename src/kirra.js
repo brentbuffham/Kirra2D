@@ -10949,29 +10949,10 @@ document.querySelector(".orica-input-btn")?.addEventListener("click", function (
 							return;
 						}
 
-						// Step 4) Use entity name from parsed holes (extracted from comment field)
-						// Fall back to filename or blast header if not available
-						var entityName = "ShotPlus_Import";
-
-						// Step 4a) First try to use entity name from first parsed hole
-						if (holes.length > 0 && holes[0].entityName && holes[0].entityName !== "SPF_Blast") {
-							entityName = holes[0].entityName;
-							console.log("SPF Using entity name from parsed data:", entityName);
-						}
-						// Step 4b) Fall back to blast header info
-						else if (result.blastHeader) {
-							if (result.blastHeader.location) {
-								entityName = result.blastHeader.location;
-							} else if (result.blastHeader.mine) {
-								entityName = result.blastHeader.mine;
-							}
-						}
-						// Step 4c) Fall back to filename
-						else {
-							entityName = file.name || "ShotPlus_Import";
-							if (entityName.indexOf(".") !== -1) {
-								entityName = entityName.substring(0, entityName.lastIndexOf("."));
-							}
+						// Step 4) Use filename (without extension) as entity name
+						var entityName = file.name || "ShotPlus_Import";
+						if (entityName.indexOf(".") !== -1) {
+							entityName = entityName.substring(0, entityName.lastIndexOf("."));
 						}
 
 						if (!allBlastHoles || !Array.isArray(allBlastHoles)) allBlastHoles = [];
@@ -11017,13 +10998,24 @@ document.querySelector(".orica-input-btn")?.addEventListener("click", function (
 							});
 
 							if (createdHole) {
-								// Copy timing information
+								// Copy timing information - if no timing data, force to 0 and self-connect
 								if (h.timingDelayMilliseconds !== undefined && h.timingDelayMilliseconds !== null) {
 									createdHole.timingDelayMilliseconds = h.timingDelayMilliseconds;
+								} else {
+									createdHole.timingDelayMilliseconds = 0;
+									createdHole.fromHoleID = entityName + ":::" + h.holeID;
 								}
 								// Copy fromHoleID (parsed from SPF comment field)
+								// CRITICAL: Replace the SPF blast name prefix with the actual entity name
+								// SPF parser uses blastName from the file (e.g. "SPF_Blast") but the
+								// import handler may assign a different entityName (e.g. "ShotPlus_Import")
 								if (h.fromHoleID && h.fromHoleID !== "") {
-									createdHole.fromHoleID = h.fromHoleID;
+									var fromParts = h.fromHoleID.split(":::");
+									if (fromParts.length === 2) {
+										createdHole.fromHoleID = entityName + ":::" + fromParts[1];
+									} else {
+										createdHole.fromHoleID = entityName + ":::" + h.holeID;
+									}
 								}
 								// Copy subdrill values in case addHole() calculated differently
 								if (h.subdrillAmount !== undefined && h.subdrillAmount !== null) {
@@ -28065,10 +28057,24 @@ function timeChart() {
 	}
 
 	const times = holeTimes.map((time) => time[1]);
-	const maxTime = Math.max(...times);
+	// const maxTime = Math.max(...times); //no good
+	let maxTime = 0;                                                                                 
+  	for (let i = 0; i < times.length; i++) {                                                         
+		if (times[i] > maxTime) maxTime = times[i];                                                  
+	} 
 	const timeRange = parseInt(document.getElementById("timeRange").value);
 	const timeOffset = parseInt(document.getElementById("timeOffset").value);
-	const numBins = Math.ceil(maxTime / timeRange);
+
+	// Guard against invalid or extreme numBins that would freeze the browser
+	if (!timeRange || timeRange <= 0 || !isFinite(maxTime) || maxTime <= 0) {
+		isUpdatingTimeChart = false;
+		return;
+	}
+	var numBins = Math.ceil(maxTime / timeRange);
+	if (numBins > 10000) {
+		console.warn("[timeChart] numBins capped from " + numBins + " to 10000 (maxTime=" + maxTime + ", timeRange=" + timeRange + ")");
+		numBins = 10000;
+	}
 	const binStart = -timeOffset;
 
 	const measuredMassRadio = document.getElementById("measuredMassRadio");
@@ -28136,7 +28142,11 @@ function timeChart() {
 	const currentYLabel = currentLayout?.yaxis?.title?.text;
 	const preserveYRange = currentYLabel === newYLabel;
 
-	const maxYValue = Math.max(...yValues) + 1;
+	let maxYValue = 0;                                                                               
+	for (let i = 0; i < yValues.length; i++) {                                                       
+		if (yValues[i] > maxYValue) maxYValue = yValues[i];                                          
+	}                                                                                                
+	maxYValue += 1;
 
 	// Step 1) Extract numeric range values to avoid circular references
 	let yAxisRange = [0, maxYValue - 0.5];
@@ -50106,15 +50116,15 @@ window.handleTreeViewShowProperties = function (nodeId, type) {
 
 // Step 5) Handle TreeView reset connections
 window.handleTreeViewResetConnections = function (holeNodeIds) {
-	console.log("🎄 [TreeView] Reset connections for:", holeNodeIds.length, "holes");
+	console.log("[TreeView] Reset connections for:", holeNodeIds.length, "holes");
 
-	const holesToReset = [];
+	var holesToReset = [];
 	holeNodeIds.forEach(function (nodeId) {
-		const parts = nodeId.split("⣿");
+		var parts = nodeId.split("⣿");
 		if (parts[0] === "hole" && parts.length === 3) {
-			const entityName = parts[1];
-			const holeID = parts[2];
-			const hole = allBlastHoles.find(function (h) { return h.entityName === entityName && h.holeID === holeID; });
+			var entityName = parts[1];
+			var holeID = parts[2];
+			var hole = allBlastHoles.find(function (h) { return h.entityName === entityName && h.holeID === holeID; });
 			if (hole) {
 				holesToReset.push(hole);
 			}
@@ -50123,25 +50133,23 @@ window.handleTreeViewResetConnections = function (holeNodeIds) {
 
 	if (holesToReset.length === 0) return;
 
-	// Reset connections
+	// Reset each hole: disconnect, zero delay, zero accumulated time
 	holesToReset.forEach(function (hole) {
 		hole.fromHoleID = hole.entityName + ":::" + hole.holeID;
+		hole.timingDelayMilliseconds = 0;
+		hole.holeTime = 0;
 	});
 
-	// Recalculate timing
-	if (typeof calculateTimes === "function") {
-		holeTimes = calculateTimes(allBlastHoles);
-	}
-	if (typeof recalculateContours === "function") {
-		const result = recalculateContours(allBlastHoles, 0, 0);
-		if (result) {
-			contourLinesArray = result.contourLinesArray;
-			directionArrows = result.directionArrows;
-		}
-	}
-
+	// Redraw, save, and update TreeView
 	drawData(allBlastHoles, selectedHole);
+	if (typeof debouncedSaveHoles === "function") {
+		debouncedSaveHoles();
+	}
+	if (typeof debouncedUpdateTreeView === "function") {
+		debouncedUpdateTreeView();
+	}
 };
+
 
 //=============================================================
 // FLOATING DIALOG SYSTEM - NOW IMPORTED FROM MODULE
