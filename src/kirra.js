@@ -24,6 +24,7 @@ import html2canvas from "html2canvas";
 import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { evaluate } from "mathjs";
+import { deduplicatePoints, decimatePoints } from "./helpers/PointDeduplication.js";
 //=================================================
 // Undo/Redo System
 //=================================================
@@ -43925,6 +43926,20 @@ function showPointCloudImportDialog(points, fileName) {
 	contentHTML += '<label for="pc-consider-3d-angle" class="labelWhite15" style="margin: 0; cursor: pointer; font-size: 11px;">Consider 3D angle (includes Z in calculation)</label>';
 	contentHTML += "</div>";
 
+	// XY Tolerance (for deduplication)
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+	contentHTML += '<label class="labelWhite15">XY Tolerance:</label>';
+	contentHTML += '<input type="number" id="pc-xyz-tolerance" value="0.001" min="0.001" max="10" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">Merge points within this XY distance.</p>';
+	contentHTML += "</div>";
+
+	// Max Surface Points (decimation before triangulation)
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+	contentHTML += '<label class="labelWhite15">Max Surface Points:</label>';
+	contentHTML += '<input type="number" id="pc-max-surface-points" value="0" min="0" max="5000000" step="10000" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">0 = no limit. Decimates before triangulation.</p>';
+	contentHTML += "</div>";
+
 	// Surface Style (gradient)
 	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
 	contentHTML += '<label class="labelWhite15">Surface Style:</label>';
@@ -43952,7 +43967,7 @@ function showPointCloudImportDialog(points, fileName) {
 		content: contentHTML,
 		layoutType: "default",
 		width: 650,
-		height: detectedWGS84 ? 780 : 580,
+		height: detectedWGS84 ? 860 : 660,
 		showConfirm: true,
 		showCancel: true,
 		confirmText: "Import",
@@ -44013,6 +44028,8 @@ function showPointCloudImportDialog(points, fileName) {
 				var minAngleEl = document.getElementById("pc-min-angle");
 				var consider3DAngleEl = document.getElementById("pc-consider-3d-angle");
 				var surfaceStyleEl = document.getElementById("pc-surface-style");
+				var xyzToleranceEl = document.getElementById("pc-xyz-tolerance");
+				var maxSurfacePointsEl = document.getElementById("pc-max-surface-points");
 
 				var config = {
 					surfaceName: surfaceNameEl ? surfaceNameEl.value : "PointCloud_Surface",
@@ -44020,7 +44037,9 @@ function showPointCloudImportDialog(points, fileName) {
 					consider3DLength: consider3DLengthEl ? consider3DLengthEl.checked : false,
 					minAngle: minAngleEl ? parseFloat(minAngleEl.value) || 0 : 0,
 					consider3DAngle: consider3DAngleEl ? consider3DAngleEl.checked : false,
-					surfaceStyle: surfaceStyleEl ? surfaceStyleEl.value : "default"
+					surfaceStyle: surfaceStyleEl ? surfaceStyleEl.value : "default",
+					xyzTolerance: xyzToleranceEl ? parseFloat(xyzToleranceEl.value) || 0.001 : 0.001,
+					maxSurfacePoints: maxSurfacePointsEl ? parseInt(maxSurfacePointsEl.value) || 0 : 0
 				};
 
 				// Step 12) NOW close the dialog
@@ -44104,11 +44123,37 @@ function createSurfaceFromPointsWithOptions(points, config) {
 	var minAngle = config.minAngle || 0;
 	var consider3DAngle = config.consider3DAngle || false;
 	var surfaceStyle = config.surfaceStyle || "default";
+	var xyzTolerance = config.xyzTolerance || 0.001;
+	var maxSurfacePoints = config.maxSurfacePoints || 0;
+
+	// Step 0.5) Decimate if maxSurfacePoints is set (before dedup for performance)
+	if (maxSurfacePoints > 0 && points.length > maxSurfacePoints) {
+		var originalCount = points.length;
+		points = decimatePoints(points, maxSurfacePoints);
+		if (developerModeEnabled) {
+			console.log("Decimated: " + originalCount + " -> " + points.length + " points (target: " + maxSurfacePoints + ")");
+		}
+	}
+
+	// Step 0.6) Deduplicate points by XY distance within tolerance
+	if (xyzTolerance > 0) {
+		var dedupResult = deduplicatePoints(points, xyzTolerance);
+		if (developerModeEnabled) {
+			console.log("Deduplication: " + dedupResult.originalCount + " -> " + dedupResult.uniqueCount + " points (tolerance: " + xyzTolerance + ")");
+		}
+		points = dedupResult.uniquePoints;
+	}
 
 	// Debug logging (only in developer mode)
 	if (developerModeEnabled) {
 		console.log("Creating surface: " + surfaceName);
 		console.log("Options: maxEdgeLength=" + maxEdgeLength + ", minAngle=" + minAngle);
+	}
+
+	// Check minimum points after dedup/decimation
+	if (points.length < 3) {
+		updateStatusMessage("Insufficient points for triangulation after deduplication: " + points.length);
+		return;
 	}
 
 	// Step 1) Create triangles using Delaunator

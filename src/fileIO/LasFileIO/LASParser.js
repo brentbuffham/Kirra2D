@@ -12,6 +12,7 @@ import BaseParser from "../BaseParser.js";
 import proj4 from "proj4";
 import { top100EPSGCodes, isLikelyWGS84 } from "../../dialog/popups/generic/ProjectionDialog.js";
 import { Delaunay } from "d3-delaunay";
+import { deduplicatePoints, decimatePoints } from "../../helpers/PointDeduplication.js";
 
 // Step 6) LAS Classification lookup table
 const LAS_CLASSIFICATIONS = {
@@ -738,6 +739,8 @@ class LASParser extends BaseParser {
 		var consider3DAngle = config.consider3DAngle || false;
 		var surfaceName = config.surfaceName || "LAS_Surface";
 		var surfaceStyle = config.surfaceStyle || "default";
+		var xyzTolerance = config.xyzTolerance || 0.001;
+		var maxSurfacePoints = config.maxSurfacePoints || 0;
 
 		// Step 2) Prepare points for triangulation
 		var vertices = points.map(function(pt) {
@@ -748,6 +751,24 @@ class LASParser extends BaseParser {
 			};
 		});
 
+		// Step 2.5) Decimate if maxSurfacePoints is set (before dedup for performance)
+		if (maxSurfacePoints > 0 && vertices.length > maxSurfacePoints) {
+			var originalCount = vertices.length;
+			vertices = decimatePoints(vertices, maxSurfacePoints);
+			if (window.developerModeEnabled) {
+				console.log("Decimated: " + originalCount + " -> " + vertices.length + " points (target: " + maxSurfacePoints + ")");
+			}
+		}
+
+		// Step 2.6) Deduplicate points by XY distance within tolerance
+		if (xyzTolerance > 0) {
+			var dedupResult = deduplicatePoints(vertices, xyzTolerance);
+			if (window.developerModeEnabled) {
+				console.log("Deduplication: " + dedupResult.originalCount + " -> " + dedupResult.uniqueCount + " points (tolerance: " + xyzTolerance + ")");
+			}
+			vertices = dedupResult.uniquePoints;
+		}
+
 		// Step 3) Check minimum points for triangulation
 		if (vertices.length < 3) {
 			throw new Error("Insufficient points for triangulation: " + vertices.length + " (minimum 3 required)");
@@ -755,8 +776,8 @@ class LASParser extends BaseParser {
 
 		// Step 4a) Debug logging (only in developer mode)
 		if (window.developerModeEnabled) {
-			console.log("🔺 Creating Delaunay triangulation from " + vertices.length + " LAS points");
-			console.log("🔺 Options: maxEdgeLength=" + maxEdgeLength + ", minAngle=" + minAngle + ", 3DLength=" + consider3DLength + ", 3DAngle=" + consider3DAngle);
+			console.log("Creating Delaunay triangulation from " + vertices.length + " LAS points");
+			console.log("Options: maxEdgeLength=" + maxEdgeLength + ", minAngle=" + minAngle + ", 3DLength=" + consider3DLength + ", 3DAngle=" + consider3DAngle);
 		}
 
 		// Step 4) Create Delaunay triangulation directly using d3-delaunay
@@ -1062,11 +1083,18 @@ class LASParser extends BaseParser {
 			contentHTML += '<label for="las-consider-3d-angle" class="labelWhite15" style="margin: 0; cursor: pointer; font-size: 11px;">Consider 3D angle (includes Z in calculation)</label>';
 			contentHTML += "</div>";
 
-			// XYZ Tolerance (for deduplication)
+			// XY Tolerance (for deduplication)
 			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
-			contentHTML += '<label class="labelWhite15">XYZ Tolerance:</label>';
+			contentHTML += '<label class="labelWhite15">XY Tolerance:</label>';
 			contentHTML += '<input type="number" id="las-xyz-tolerance" value="0.001" min="0.001" max="10" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
-			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">Deduplicate points within this distance.</p>';
+			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">Merge points within this XY distance.</p>';
+			contentHTML += "</div>";
+
+			// Max Surface Points (decimation before triangulation)
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+			contentHTML += '<label class="labelWhite15">Max Surface Points:</label>';
+			contentHTML += '<input type="number" id="las-max-surface-points" value="0" min="0" max="5000000" step="10000" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">0 = no limit. Decimates before triangulation.</p>';
 			contentHTML += "</div>";
 
 			// Surface Style (gradient)
@@ -1096,7 +1124,7 @@ class LASParser extends BaseParser {
 				content: contentHTML,
 				layoutType: "default",
 				width: 650,
-				height: 700,
+				height: 780,
 				showConfirm: true,
 				showCancel: true,
 				confirmText: "Import",
@@ -1119,6 +1147,7 @@ class LASParser extends BaseParser {
 							config.minAngle = parseFloat(document.getElementById("las-min-angle").value) || 0;
 							config.consider3DAngle = document.getElementById("las-consider-3d-angle").checked;
 							config.xyzTolerance = parseFloat(document.getElementById("las-xyz-tolerance").value) || 0.001;
+							config.maxSurfacePoints = parseInt(document.getElementById("las-max-surface-points").value) || 0;
 							config.surfaceStyle = document.getElementById("las-surface-style").value || "default";
 						}
 
