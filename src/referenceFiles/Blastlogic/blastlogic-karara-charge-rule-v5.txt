@@ -1,0 +1,1071 @@
+/*=======================================
+ *===== Version Control Numbering =======
+ *=======================================
+ *DATE      VERSION       AUTHOR                  COMMENTS
+ *20220216    1                     BRENT BUFFHAM     FIRST KARARA CHARGE RULE
+ *20220222    2                     BRENT BUFFHAM     SECOND KARARA CHARGE RULE
+ *20220301    3                     BRENT BUFFHAM     FIXING PRESPLIT RULE
+ *20220308    4                     BRENT BUFFHAM     FIXEDSTEM ISSUE ON AIR VENT HOLES - Line 594 to 599
+ *20220929    5                     BRENT BUFFHAM     ADDED AIRDECKING CODE 
+ *20241201							BRENT BUFFHAM	  REVIEWED - review after next software update
+
+ * 
+ */
+
+/**
+ *=======================================
+ *====== SITE SETUP HOLE PROPERTIES =====
+ *=======================================
+ * Enter the custom hole properties HERE.
+ *=======================================
+ *====== CHARGE RULE PARAMETERS =============================================================================
+ *     	IDENTIFIER                       	Type                    	LABEL
+ *		stemmingType						Blast product				Stemming Type
+ *		preferredStemLength					Float						|---------> Preferred Stemming Length
+ *		minStemLength						Float						|---------> Mininmum Stemming Length
+ *		dryChargeProduct					Blast product				Dry Charge Product
+ *		preferredChargeLength				Float						|---------> Preferred Charge Length
+ *		minChargeLength						Float						|---------> Minimum Charge Length
+ *		ratioExplosive						Float						Percentage Charge
+ *		useMassOverLength					Boolean						Use a Charge Mass
+ *		chargeMass							Float						Charge Mass
+ *		dampChargeProduct					Blast product				Wet Sides Product
+ *		dampTolerance						Float						|---------> Wet Sides Tolerance
+ *		wetChargeProduct					Blast product				Wet Hole Product
+ *		wetTolerance						Float						|---------> Wet Hole Tolerance
+ *		gasBagType							Blast product				Gas Bag Type
+ *		useShortHole						Boolean						Use Short Hole Advice?
+ *		isReactiveHole						Boolean						Assign as Reactive Hole?
+ *		inhibitedProduct					Blast product				|---------> Inhibited Product Type
+ *		useCavityInfo						Boolean						Use Cavity Advice?
+ *		downholeType						Blast product family		Primer Build - Downhole Detonator Type
+ *		boosterType							Blast product				Primer Build - Booster Type
+ *
+ *
+ * 
+ * COPY ABOVE IF REQUIRED
+ *==============================================================================================================
+ */
+
+/**
+ * Main function.
+ * @param {Params} params - Charge rule parameters.
+ * @param {Hole} hole - The hole object.
+ * @param {BuiltInProduct} products - Built-in blast products.
+ */
+ function rule(params, hole, products) {
+	var props = JSON.stringify(hole.collar);
+	message("@HOLE#, %f, Diameter, %.3fm, Length, %.1fm, Burden, %.1fm, Spacing, %.1fm",
+		hole.id, hole.diameter, hole.length, hole.burden, hole.spacing);
+	// Fill the hole conditionally with either a load table or a single product.
+	fillConditionally(hole, params, products);
+
+	var holeWaterDepth = hole.length - hole.waterLength;
+	// Replace all explosive decks if any of them are affected by water.
+	replaceAllDecksIfAnyAffectedByWater(hole, holeWaterDepth, params.wetTolerance, params.wetChargeProduct, true);
+
+	var holeDampDepth = hole.length - hole.wetLength;
+	// Replace all explosive decks if any of them are affected by wet sides.
+	replaceAllDecksIfAnyAffectedByWater(hole, holeDampDepth, params.dampTolerance, params.dampChargeProduct, false);
+
+	// Consolidate explosive decks shorter than minChargeLength with the adjacent explosive deck.
+	var minLengthTest = 0.01;
+	replaceShortExplosiveDecksWithExplosive(hole, minLengthTest, false); //params.minChargeLength
+
+	var primersPerColumn = [];
+	var explosiveIntervals = hole.allExplosives().intervals;
+	for (var index = 0; index < explosiveIntervals.length; ++index) {
+		primersPerColumn[index] = 1;
+	}
+
+	// Load primer(s) into the hole, at 10% from the bottom of the hole,
+	// and then evenly spaced from there.
+	var primerProducts = [params.boosterType, params.downholeType];
+	//Correction for Denser Products and small decks
+	if (hole.length <= 2) {
+		loadPrimers(hole, primersPerColumn, primerProducts, hole.length * 0.001);
+	} else {
+		loadPrimers(hole, primersPerColumn, primerProducts, hole.length * 0.1);
+	}
+}
+
+//////////////////// FUNCTIONS ////////////////////
+/**
+ * Calculate the SDoB of the blast hole.
+ * @param {Hole} hole - The hole object.
+ * @param {number} stemLength - Hole stemming length.
+ * @param {BlastProduct} product - Product to use for backfill.
+ * @return {boolean} - true if the hole was filled, false otherwise.
+ */
+function scaledDistanceBurial(hole, stemLength, product) {
+	//Constants
+	const C1 = 0.0005;
+	const C2 = 0.00923;
+	const C3 = 1 / 3;
+	const limitGT4 = 10;
+	const limitLT4 = 8;
+	const limitVar = 0.100; //4inches
+	//Variables
+	var diameterVar = hole.diameter;
+	var diam;
+	var mValue;
+	var m2Value;
+	var holeLength = hole.length;
+	var prodDensityVar = product.density;
+	var scaledDistanceBurialValue;
+
+	//START OF CALC: Scaled Distance Burial Ratio
+	diam = hole.diameter * 1000;
+	mValue = (holeLength - stemLength) / (diameterVar);
+	m2Value = (holeLength - stemLength) / (diameterVar);
+	if (diameterVar > limitVar && (holeLength - stemLength) > limitGT4) {
+		m2Value = limitGT4;
+	} else if (diameterVar <= limitVar && mValue >= limitLT4) {
+		m2Value = limitLT4;
+	} else {
+		m2Value = mValue;
+	}
+	scaledDistanceBurialValue = (stemLength + (C1 * m2Value * diam)) / (C2 * diam * Math.pow((m2Value * prodDensityVar), C3));
+
+	return scaledDistanceBurialValue;
+}
+
+
+/**
+ * Fill holes that are too short with appropriate charges and designated stemming Product.
+ * @param {Hole} hole - The hole object.
+ * @param {number} shortHoleLength - Hole length minimum.
+ * @param {BlastProduct} product - Product to use for backfill.
+ * @return {boolean} - true if the hole was filled, false otherwise.
+ */
+//For Stemming Styled Hole Charge codes
+function fillShortHoleStem(hole, shortHoleLength, product) {
+
+	var prodUsed = params.dryChargeProduct;
+	// Check that the hole has been flagged as REACTIVE OR NOT by Geology (this is a manual engineering setting)
+	if (params.isReactiveHole == true) {
+		message("REACTIVE");
+		prodUsed = params.inhibitedProduct;
+	}
+	// Check for Water
+	else if (hole.waterLength > params.wetTolerance) {
+		message("WET");
+		prodUsed = params.wetChargeProduct;
+	}
+	// Check for WetSides
+	else if (hole.wetLength > params.dampTolerance) {
+		message("DAMP");
+		prodUsed = params.dampChargeProduct;
+	}
+	// Dry Holes
+	else {
+		message("DRY");
+		prodUsed = params.dryChargeProduct;
+	}
+
+	if (params.useShortHole == true) {
+		message("SHORT HOLE LOGIC ON");
+		message("@-----XX----> Cavity > Ignored");
+		//if (hole.length <= params.stemLength || REMOVED DUE TO ISSUES 20201202
+		if (hole.length < shortHoleLength) {
+			debug("Hole is less than shortHoleLength");
+			//INFO: If the hole is less than the minimum hole length and greater than 4m and greater or equal to the nominated Stemming length
+			if (hole.length >= (shortHoleLength)) {
+				message("@C1s1 - Hole Length = %fm , Short hole length = %fm", hole.length, shortHoleLength);
+				if (params.useMassOverLength == true && prodUsed.calculateMass(hole.length * 0.50, hole.diameter) > params.chargeMass) {
+					message("@--------> Charge Mass Overrides 50% charge condition");
+					hole.fillToMass(hole.unallocated(), prodUsed, params.chargeMass);
+					hole.fill(hole.unallocated(), params.stemmingType);
+				} else {
+					hole.fill(hole.unallocated().lower(hole.length * 0.50), prodUsed);
+					hole.fill(hole.unallocated(), params.stemmingType);
+				}
+			} else if (hole.length < (shortHoleLength) && hole.length >= (shortHoleLength * 0.75)) {
+				message("@C2s1 - Hole Length = %fm , Short hole length = %fm", hole.length, shortHoleLength);
+				if (params.useMassOverLength == true && prodUsed.calculateMass(hole.length * 0.40, hole.diameter) > params.chargeMass) {
+					message("@--------> Charge Mass Overrides 40% charge condition");
+					hole.fillToMass(hole.unallocated(), prodUsed, params.chargeMass);
+					hole.fill(hole.unallocated(), params.stemmingType);
+				} else {
+					hole.fill(hole.unallocated().lower(hole.length * 0.40), prodUsed);
+					hole.fill(hole.unallocated(), params.stemmingType);
+				}
+			} else if (hole.length < (shortHoleLength * 0.75) && hole.length >= (shortHoleLength * 0.5)) {
+				message("@C3s1 - Hole Length = %fm , Short hole length = %fm", hole.length, shortHoleLength);
+				if (params.useMassOverLength == true && prodUsed.calculateMass(hole.length * 0.25, hole.diameter) > params.chargeMass) {
+					message("@--------> Charge Mass Overrides 25% charge condition");
+					hole.fillToMass(hole.unallocated(), prodUsed, params.chargeMass);
+					hole.fill(hole.unallocated(), params.stemmingType);
+				} else {
+					hole.fill(hole.unallocated().lower(hole.length * 0.25), prodUsed);
+					hole.fill(hole.unallocated(), params.stemmingType);
+				}
+			} else if (hole.length < (shortHoleLength * 0.5) && hole.length >= (shortHoleLength * 0.25)) {
+				message("@C4s1 - Hole Length = %fm , Short hole length = %fm", hole.length, shortHoleLength);
+				if (params.useMassOverLength == true && 5 > params.chargeMass) {
+					message("@--------> Charge Mass Overrides 5kg charge condition");
+					hole.fillToMass(hole.unallocated(), prodUsed, params.chargeMass);
+					hole.fill(hole.unallocated(), params.stemmingType);
+				} else {
+					hole.fillToMass(hole.unallocated(), prodUsed, 5);
+					hole.fill(hole.unallocated(), params.stemmingType);
+				}
+			} else if (hole.length < (shortHoleLength * 0.25)) {
+				message("@C5s1 - Hole Length = %fm , Short hole length = %fm", hole.length, shortHoleLength);
+				message("@C5s1 - This Condition will never charge with Short Hole Logic ON");
+				hole.fill(hole.unallocated(), product);
+			} else {
+				message("@C6s1 - Hole Length = %fm , Short hole length = %fm", hole.length, shortHoleLength);
+				message("@C6s1 - Catch all outliers that don't meet conditions 1 to 5");
+				hole.fill(hole.unallocated(), product);
+			}
+			return true;
+		}
+	}
+	if (params.useShortHole == false) {
+		//	hole.fill(hole.unallocated(), product);
+		message("@SHORT HOLE LOGIC OFF");
+		message("@Hole Length = %fm , Short hole length = %fm", hole.length, shortHoleLength);
+		message("@----XX----> Short Hole Logic is NOT Applied");
+	}
+	return false;
+}
+
+/**
+ * Fill an interval with a single product or Load Table. The interval must be 
+ * a minimum length as determined by the user. A length above and below the 
+ * interval will also be filled, controlled by the extendAboveLength and 
+ * extendBelowLength arguments.
+ * 
+ * NOTE: This will overwrite the decks currently overlapping the interval.
+ * @param {Hole} hole - The hole object.
+ * @param {IntervalLabel} intervalLabel - The target interval to fill.
+ *                                        All intervals with this label will be
+ *                                        filled using the method below.
+ * @param {BlastProduct OR LoadTable} fillProductOrLoadTable - 
+ *                                    Product or load table to use for filling the interval.
+ * @param {number} extendAboveLength - Fills above the interval this length.
+ * @param {number} extendBelowLength - Fills below the interval this length.
+ * @param {number} minimumLength - The minimum interval length required in order to perform the fill.
+ */
+function fillInterval(
+	hole, intervalLabel, fillProduct, extendAboveLength, extendBelowLength, minimumLength) {
+
+	var interval = hole.labelled(intervalLabel);
+	if (interval.length <= 0) {
+		debug("Interval '%s' has no length.", intervalLabel.name);
+		return;
+	}
+
+	var allHoleIntervals = interval.intervals;
+	for (var idx = 0; idx < allHoleIntervals.length; ++idx) {
+		var currentInterval = allHoleIntervals[idx];
+
+		if (currentInterval.length <= 0 || currentInterval.length < minimumLength) {
+			if (params.t__debug) {
+				message("@Intersection of interval %s at %.1fL(m|ft) to %.1fL(m|ft) is too short.",
+					intervalLabel.name, currentInterval.top, currentInterval.bottom);
+			}
+			continue;
+		}
+
+		// Make sure the top of the current interval, plus the extendAboveLength
+		// is not poking out above the hole.
+		var topOfInterval = Math.max(currentInterval.top - extendAboveLength, 0);
+
+		// Make sure we aren't trying to fill below the drilled hole length.
+		var bottomOfInterval = Math.min(currentInterval.bottom + extendBelowLength, hole.length);
+
+		var intervalToFill = hole.between(topOfInterval, bottomOfInterval);
+		if (intervalToFill.length <= 0) {
+			continue;
+		}
+
+		var fillMethodName;
+		//force to Stemming Length
+		if (topOfInterval < params.stemLength) {
+			hole.fill(hole.unallocated().below(params.stemLength), fillProduct);
+			fillMethodName = fillProduct.name;
+		}
+		//Fill to the Surface.
+		else {
+			hole.fill(intervalToFill, fillProduct);
+			fillMethodName = fillProduct.name;
+		}
+
+		if (params.t__debug) {
+			message("@Filled from %.1fL(m|ft) to %.1fL(m|ft) with %s",
+				topOfInterval, bottomOfInterval, fillMethodName);
+		}
+	}
+}
+
+/**
+ * Fill holes that have a NOMINATED CHARGE and are off design depth by greater than 80% with a ratio adjusted amount.
+ * @param {Hole} hole - The hole object.
+ * @param {number} designLength - Hole length designed.
+ * @param {number} lastKnownLength - Hole length current.
+ * @param {number} adjustedChargeMass - Ratio adjusted nominated charge
+ * @param {BlastProduct} product - Product to use for backfill.
+ * @return {boolean} - true if the hole was filled, false otherwise.
+ 
+function nominatedChargeRatioAdjust(hole, designLength, lastKnownLength, product) {
+	//Declare and instantiate a variable named adjustedChargeMass
+	var adjustedChargeMass = 0;
+		// if hole is less than nominated adjustment % of the designed hole then work out the adjusted nominated charge and fill hole appropraitely
+	if ((lastKnownLength < (designLength * params.nominatedChargeRatioAdjustAmount)) && (params.useShortHole == false)) {
+		message("@***WARNING*** : Variable lastKnownLength %.03fL = ", lastKnownLength)
+		adjustedChargeMass = (hole.length / (hole.targetLength / params.chargeDeckMass));
+		hole.fillToMass(hole.unallocated(), product, adjustedChargeMass);
+	} else
+		hole.fillToMass(hole.unallocated(), product, params.chargeDeckMass);
+}
+*/
+
+/**
+ * Function to mark Blastholes that have a temperature recording of 50 degs or Greater with a DNC CODE.
+ * @param {hole} Blasthole
+ * 
+ */
+function hotHolesCheck(hole) {
+	if (!isNaN(hole.temperature)) {
+		var holeTemp = fromKelvinToCelsius(Number(hole.temperature));
+		if (Number(holeTemp) >= 50) {
+			hole.fill(hole.all(), params.doNotCharge);
+			message("HOT HOLE %.1f°C", holeTemp);
+			message("DO NOT CHARGE");
+		}
+	}
+}
+// function to get the predicted length of a charge mass
+// additionally there is a helper function product.calculateLength(mass,diameter) you can use. 
+function getChargeLengthFromMass(hole, mass, product, useParams) {
+	var diam = hole.diameter;
+	var mass = mass;
+	if (useParams) {
+		mass = params.chargeMass;
+	}
+	var density = product.density;
+	var volume = mass / density;
+	var radius = diam / 2;
+	var radiusInMetres = radius * 1000;
+	var pi = 3.14159265359;
+	var piR2 = pi * (radiusInMetres * radiusInMetres)
+	var chargeLength = volume / piR2;
+
+	return chargeLength;
+}
+
+//Fill Conditionally Code
+function fillConditionally(hole, params, products) {
+
+	var chargeCode = hole.properties.chargeConfig;
+	var holeType = hole.properties.holeType;
+	var cavityLength = hole.properties.cavityBase - hole.properties.cavityTop;
+
+	//assign stemming to short holes based on table
+	var chargeParameters = params.chargeParameters;
+
+	//Decclaration of Variables
+	var minimumHoleLength = NaN;
+	var stemLength = NaN;
+	var percStem = NaN;
+
+	if (chargeCode == null) {
+		error("@Charge Code has not been set under hole properties");
+	}
+	if (isNaN(hole.diameter)) {
+		error("@Hole diameter has not been set under hole properties");
+	}
+	if (stemLength > percStem * hole.unallocated().length) {
+		stemLength = percStem * hole.unallocated().length;
+	}
+	var productConditional = params.dryChargeProduct;
+	// Check that the hole has been flagged as REACTIVE OR NOT by Geology (this is a manual engineering setting)
+	if (params.isReactiveHole == true) {
+		message("REACTIVE");
+		productConditional = params.inhibitedProduct;
+	}
+	// Check for Water
+	else if (hole.waterLength > params.wetTolerance) {
+		productConditional = params.wetChargeProduct;
+	}
+	// Check for WetSides
+	else if (hole.wetLength > params.dampTolerance) {
+		productConditional = params.dampChargeProduct;
+	}
+	// Dry Holes
+	else {
+		productConditional = params.dryChargeProduct;
+	}
+	//==========================================================//
+	//============ CHARGE CODE CRITERIA BELOW ==================//
+	//==========================================================//
+
+	//Charge Configuration STNDVS - LENGTH CHARGING
+	if (chargeCode == "STNDVS" && params.useMassOverLength == false && (!params.useCavityInfo || cavityLength <= 0.1)) {
+		message("@CONFIG: STNDVS LENGTH CHARGE");
+		fillShortHoleStem(hole, params.shortHoleLength, products.air);
+		hole.fill(hole.unallocated().upper(params.minStemLength), params.stemmingType);
+		hole.fill(hole.unallocated().lower(params.preferredChargeLength), productConditional);
+		hole.fill(hole.unallocated(), params.stemmingType);
+	}
+	//Charge Configuration STNDVS - MASS CHARGING
+	if (chargeCode == "STNDVS" && params.useMassOverLength == true && !params.useCavityInfo) {
+		message("@CONFIG: STNDVS MASS CHARGE");
+		fillShortHoleStem(hole, params.shortHoleLength, products.air);
+		hole.fill(hole.unallocated().upper(params.minStemLength), params.stemmingType);
+		hole.fillToMass(hole.unallocated(), productConditional, params.chargeMass);
+		hole.fill(hole.unallocated(), params.stemmingType);
+	}
+
+	//Charge Configuration STNDVS - MASS CHARGING
+	if (chargeCode == "STNDVS" && params.useCavityInfo && (cavityLength > 0.1 || cavityLength != null) && !params.useMassOverLength) {
+		message("@CONFIG: STNDVS with CAVITY CHECK");
+		fillShortHoleStem(hole, params.shortHoleLength, products.air);
+		if (
+			(hole.length < hole.properties.cavityTop || cavityLength > 0.1 || cavityLength != null || params.minimumHoleLength < hole.length)) {
+			var tLen = 0; //total length
+			//initialise some variables
+			var hL = hole.length; //hole length
+			var gbL = params.gasBagType.length; //gasbag length
+			var cvB = hole.properties.cavityBase; //cavity bottom depth
+			var cvT = hole.properties.cavityTop; //cavity top depth
+			var cvL = cvB - cvT; //cavity length
+			var stL = 0; //stemming length
+			rLen = tLen; //remaining length
+			//stemming
+			if (hole.length - params.preferredChargeLength < params.minStemLength) {
+				stL = params.minStemLength;
+				tLen = hL - stL - gbL - cvL;
+			} else {
+				stL = hole.length - params.preferredChargeLength;
+				tLen = hL - stL - gbL - cvL;
+			}
+			var acL = cvT - stL - gbL; //above cavity length
+			rLen = rLen - acL; //remaining length
+			var bcL = hL - stL - acL - gbL - cvL; //below cavity length
+			var pfcL = params.preferredChargeLength; //preferred cavity length
+			var acLMass = 0; //above cavity mass
+			var rMass = 0; //remaining mass;
+
+			debug(params.t__debug, "useCavity");
+			message("@hL = %.01fm, stL = %.01fm, acL = %.01fm, gbL = %.01fm, cvL = %.01fm, bcL = %.01fm, cvT = %.01fm, cvB = %.01fm", hL, stL, acL, gbL, cvL, bcL, cvT, cvB);
+			message("Cavity(Top: %.01fm - Bot: %.01fm)", cvT, cvB);
+			//Place the preferred or minimum stemming in the hole
+			hole.fill(hole.unallocated().upper(stL), params.stemmingType);
+			//Place the product in the hole above the gas bag       
+			if (hole.length > hole.properties.cavityTop) {
+				hole.fill(hole.unallocated().upper(acL), productConditional);
+				acLMass = hole.deckAtDepth(cvT - gbL - 0.1).mass;
+			} else hole.fill(hole.unallocated(), productConditional);
+			//Place a gas bag above the cavity
+			if (hole.length > hole.properties.cavityTop) {
+				hole.fill(hole.unallocated().upper(gbL), params.gasBagType);
+			}
+			//Indicate cavity with an Airdeck
+			hole.fill(hole.unallocated().upper(cvL), products.air);
+			//Place charge below cavityBottom
+			rMass = productConditional.calculateMass(bcL,hole.diameter) - acLMass;
+			message("@cMass =  %.01fkg, tLen = %.01fm, acL = %.01fm, rLen = %.01fm, acLMass = %1fkg, rMass = %01fkg", params.chargeMass, tLen, acL, rLen, acLMass, rMass);
+			if (rLen < bcL) {
+				if (rMass > 0) {
+					hole.fillToMass(hole.unallocated(), productConditional, rMass);
+				}
+				hole.fill(hole.unallocated(), products.air);
+			} else {
+				hole.fill(hole.unallocated(), productConditional);
+			}
+		}
+
+
+		message("@CONFIG: STNDVS");
+		//Hot hole Check and replace with DNC if 50degs or hotter
+		hotHolesCheck(hole);
+	}
+	if (chargeCode == "STNDVS" && params.useCavityInfo && (cavityLength > 0.1 || cavityLength != null) && params.useMassOverLength) {
+		message("@CONFIG: STNDVS with CAVITY CHECK and MASS CHARGE");
+		fillShortHoleStem(hole, params.shortHoleLength, products.air);
+
+		var tLen = 0;
+		//initialise some variables
+		var hL = hole.length;
+		var gbL = params.gasBagType.length;
+		var cvB = hole.properties.cavityBase;
+		var cvT = hole.properties.cavityTop;
+		var cvL = cvB - cvT;
+		var stL = 0;
+
+		tLen = productConditional.calculateLength(params.chargeMass, hole.diameter);
+		rLen = tLen;
+		//stemming
+		if (hole.length - params.preferredChargeLength < params.minStemLength) {
+			stL = params.minStemLength;
+		} else {
+			var stL = hole.length - params.preferredChargeLength;
+		}
+		var acL = cvT - stL - gbL;
+		rLen = rLen - acL;
+		var bcL = hL - stL - acL - gbL - cvL;
+
+		var cmLen = productConditional.calculateLength(params.chargeMass, hole.diameter);
+
+		var acLMass = 0;
+		var rMass = 0; //params.chargeMass - acLMass;
+
+		debug(params.t__debug, "useCavity");
+		message("@hL = %.01fm, stL = %.01fm, acL = %.01fm, gbL = %.01fm, cvL = %.01fm, bcL = %.01fm, cvT = %.01fm, cvB = %.01fm", hL, stL, acL, gbL, cvL, bcL, cvT, cvB);
+		message("Cavity(Top: %.01fm - Bot: %.01fm)", cvT, cvB);
+		//Place the preferred or minimum stemming in the hole
+		hole.fill(hole.unallocated().upper(stL), params.stemmingType);
+		//Place the product in the hole above the gas bag       
+		if (hole.length > hole.properties.cavityTop && hole.length.toFixed(1) <= hole.properties.cavityBase.toFixed(1)) {
+			message("@-----------> Hole is longer than cavity top and shorter or equal to cavity base");
+			if (cmLen <= acL) {
+				hole.fill(hole.unallocated().upper(cmLen), productConditional);
+				acLMass = params.chargeMass;
+			} else {
+				hole.fill(hole.unallocated().upper(acL), productConditional);
+				acLMass = hole.deckAtDepth(cvT - gbL - 0.1).mass;
+			}
+		}
+		//If the Hole is deeper than the cavity base amount 
+		else if (hole.length > hole.properties.cavityTop && hole.length.toFixed(1) > hole.properties.cavityBase.toFixed(1) ) {
+			message("@-----------> Hole is longer than cavity top and longer than cavity base");
+			if (cmLen <= bcL) {
+				message("@-----------> Charge Mass Length less than or equal to the Base charge Length");
+				hole.fill(hole.unallocated().upper(acL), params.stemmingType);
+				//acLMass = params.chargeMass;
+			}
+
+		} else {
+			hole.fillToMass(hole.unallocated(), productConditional, params.chargeMass);
+		}
+		//Place a gas bag above the cavity
+		if (hole.length > hole.properties.cavityTop) {
+			hole.fill(hole.unallocated().upper(gbL), params.gasBagType);
+		}
+		//Indicate cavity with an Airdeck
+		hole.fill(hole.unallocated().upper(cvL), products.air);
+		//Place charge below cavityBottom
+		rMass = params.chargeMass - acLMass;
+		message("@cMass =  %.01fkg, tLen = %.01fm, acL = %.01fm, rLen = %.01fm, acLMass = %01fkg, rMass = %01fkg", params.chargeMass, tLen, acL, rLen, acLMass, rMass);
+		if (rLen < bcL) {
+			if (rMass > 0) {
+				hole.fillToMass(hole.unallocated(), productConditional, rMass);
+			}
+			hole.fill(hole.unallocated(), products.air);
+		}
+		message("@CONFIG: STNDVS");
+		//Hot hole Check and replace with DNC if 50degs or hotter
+		hotHolesCheck(hole);
+	}
+
+	//Charge Config STNDFS - Standard Fixed Stemming - WORKING with Reactive/Cavity/Wet/Water Checks - SDOB to be implemented
+	else if ((chargeCode == "STNDFS")) {
+		//Used short hole stem length
+		if (params.shortHoleLength >= params.preferredStemLength){
+			fillShortHoleStem(hole, params.shortHoleLength, products.air);
+		}
+		//If the short holes are shorter than the preferred stemming then use the preferred stemming as the short hole length. ONLY FOR STNDFS
+		if (params.shortHoleLength < params.preferredStemLength){
+			fillShortHoleStem(hole, params.preferredStemLength, products.air);
+		}
+		
+		debug(params.t__debug, "STNDFS");
+		//Check that the Preferred Stem Length is GREATER THAN the Minimum Stemming Length.
+		//Use the Larger value.
+		if (!params.useCavityInfo || (params.useCavityInfo == true && cavityLength <= 0.1)) {
+			if (params.preferredStemLength < params.minStemLength) {
+				hole.fill(hole.unallocated().upper(params.minStemLength), params.stemmingType);
+			} else {
+				hole.fill(hole.unallocated().upper(params.preferredStemLength), params.stemmingType);
+			}
+			hole.fill(hole.unallocated(), productConditional);
+		}
+		// IF there is a CAVITY
+		else if ((hole.length < hole.properties.cavityTop || cavityLength > 0.1 || cavityLength != null || params.minimumHoleLength < hole.length) && params.useCavityInfo == true) {
+
+			//initialise some variables
+			var hL = hole.length;
+			var gbL = params.gasBagType.length;
+			var cvB = hole.properties.cavityBase;
+			var cvT = hole.properties.cavityTop;
+			var cvL = cvB - cvT;
+			var stL = 0;
+
+			//stemming
+			if (hole.length - params.preferredChargeLength < params.minStemLength) {
+				stL = params.minStemLength;
+			}
+			else {
+				stL = params.preferredStemLength;
+			}
+		
+			if (cvT <= stL-gbL){
+				stL = stL-gbL;
+			}
+			var acL = cvT - stL - gbL;
+			var bcL = hL - stL - acL - gbL - cvL;
+
+			debug(params.t__debug, "useCavity");
+			message("@hL = %.03fl, stL = %.03fl, acL = %.03fl, gbL = %.03fl, cvL = %.03fl, bcL = %.03fl, cvT = %.03fl, cvB = %.03fl", hL, stL, acL, gbL, cvL, bcL, cvT, cvB);
+			message("Cavity(Top: %.01fm - Bot: %.01fm)", cvT, cvB);
+			//Place the preferred or minimum stemming in the hole
+			hole.fill(hole.unallocated().upper(stL), params.stemmingType);
+			//Place the product in the hole above the gas bag
+			//////////////// Handle if GasBag Can't fit in the space.
+			if (acL <= gbL) {
+				//hole.fill(hole.unallocated().upper(acL), params.stemmingType);
+			}
+			else if (hL > cvT) {
+				hole.fill(hole.unallocated().upper(acL), productConditional);
+			} 
+			else hole.fill(hole.unallocated(), productConditional);
+			//Place a gas bag above the cavity
+			if (hL > cvT) {
+				hole.fill(hole.unallocated().upper(gbL), params.gasBagType);
+			}
+			//Indicate cavity with an Airdeck
+			hole.fill(hole.unallocated().upper(cvL), products.air);
+			//Place charge below cavityBottom
+			hole.fill(hole.unallocated(), productConditional);
+			//hole.fill(hole.unallocated().upper(bcL),productConditional);
+		}
+
+		message("@CONFIG: STNDFS");
+		//Hot hole Check and replace with DNC if 50degs or hotter
+		hotHolesCheck(hole);
+	}
+	//Charge Config PERCHG
+	else if ((chargeCode == "PERCHG")) {
+		//Used for Stem Style Charge Codes
+		fillShortHoleStem(hole, params.shortHoleLength, products.air);
+		debug(params.t__debug, "PERCHG");
+		var stL = (1 - params.ratioExplosive) * hole.unallocated().length;
+		hole.fill(hole.unallocated().upper(stL), params.stemmingType);
+		hole.fill(hole.unallocated(), productConditional);
+		message("@----XX----> Cavity > Ignored");
+		message("@----XX----> Charge Mass > Ignored");
+		message("@CONFIG: PERCHG");
+		//Hot hole Check and replace with DNC if 50degs or hotter
+		hotHolesCheck(hole);
+	}
+	//Charge Config INTVAL
+	//Charge Config INTVAL
+	else if ((chargeCode == "INTVAL")) {
+		//Used for Stem Style Charge Codes
+		fillShortHoleStem(hole, params.shortHoleLength, products.air);
+		debug(params.t__debug, "INTVAL");
+		fillInterval(hole, params.productTopSurface, productConditional, 0.0, 0.0, params.minChargeLength);
+		hole.fill(hole.unallocated(), params.stemmingType);
+		message("@----XX----> Cavity > Ignored");
+		message("@----XX----> Charge Mass > Ignored");
+		message("@CONFIG: INTVAL");
+		//Hot hole Check and replace with DNC if 50degs or hotter
+		hotHolesCheck(hole);
+	}
+	//AIRDEC - Additional code where Charge takes priority
+	else if ((chargeCode == "AIRDEC")) {
+		//Used for Stem Style Charge Codes
+		fillShortHoleStem(hole, params.shortHoleStartingDepth, products.air);
+		debug(params.t__debug, "SSDB");
+		//Charge hole stemming component
+		hole.fill(hole.unallocated().upper(params.preferredStemLength), params.stemmingType);
+		//Charge the Design KG
+		// Check that the hole has been flagged as REACTIVE OR NOT by Geology (this is a manual engineering setting)
+		if (params.isReactiveHoleFlag == true) {
+			message("MARKED AS REACTIVE");
+			hole.fill(hole.unallocated().lower(hole.targetLength - params.preferredStemLength - params.airDeckLength), params.inhibitedProduct);
+		} else
+			hole.fill(hole.unallocated().lower(hole.targetLength - params.preferredStemLength - params.airDeckLength), params.dryChargeProduct);
+		//Place an airbag in the hole
+		if (hole.unallocated().length > params.gasBagType.length) {
+			hole.fill(hole.unallocated().upper(params.gasBagType.length), params.gasBagType);
+		}
+		//Charge the leftover hole with air - if designed state it will be the airDeckLength
+		hole.fill(hole.unallocated(), products.air);
+		message("@----XX----> Cavity > Ignored");
+		message("@----XX----> Charge Mass > Ignored");
+		message("@CONFIG: AIRDEC");
+		//Hot hole Check and replace with DNC if 50degs or hotter
+		hotHolesCheck(hole);
+	}
+	// PRESPLIT HOLES	
+	else if ((chargeCode == "PRESPL")){//&& chargeCode != "NOCHG" && params.presplitType.isPackagedProduct == true){
+		message("@CONFIG: PRESPL");
+		if (params.isReactiveHole == true){
+			message("REACTIVE")
+			hole.fill(hole.unallocated(), params.doNotCharge); //Make a new Product called DO_NOT_CHARGE
+		}
+		else{ 
+			message("@CHARGING PRESPLIT");
+			hole.fill(hole.unallocated().upper(params.preferredStemLength), params.stemmingType);
+			var presplitLen = params.presplitType.length;
+			var snagsInUnallocated = Math.floor(hole.unallocated().length / presplitLen);
+			var snagsAtBase = params.presplitToeExtras;
+			var length = params.presplitType.length;
+			//message("Cavity(Top: %.01fm - Bot: %.01fm)", cvT, cvB);
+			var numberOfPackages = Math.min(params.presplitToeExtras, snagsInUnallocated);
+			message("DBLD %.1f", snagsAtBase);
+			message("SNGL %.1f", snagsInUnallocated);
+			message("TLTD %.1f", (snagsInUnallocated+snagsAtBase));
+			//Test MESSAGE CODE: message("Number of Packages in the first run = %f", numberOfPackages);
+			hole.fillPackaged(hole.unallocated().lower(numberOfPackages * presplitLen), params.presplitType, numberOfPackages);
+			numberOfPackages = Math.floor(hole.unallocated().length / length);
+			//Test MESSAGE CODE: message("Number of Packages in the second run = %f", numberOfPackages);
+			hole.fillPackaged(hole.unallocated().lower(numberOfPackages * length), params.presplitType, numberOfPackages);
+			hole.fill(hole.unallocated(), params.stemmingType);
+		}
+	}	
+	//Charge Code NOCHG - Do Not Charge
+	else if ((chargeCode == "NOCHG")) {
+		hole.fill(hole.unallocated(), params.doNotCharge); //Make a new Product called DO_NOT_CHARGE
+		message("NO EXCEPTIONS");
+		message("DO NOT CHARGE");
+
+	}
+	// All OTHER CASES FILL WITH AIR
+	else {
+		debug(params.t__debug, "ARRRGGHH Soomethings Wrong");
+		hole.fill(hole.unallocated(), products.air);
+	}
+	//Hot hole Check and replace with DNC if 50degs or hotter
+	hotHolesCheck(hole);
+}
+
+/**
+ * This function will replace all explosive decks in a hole with the given product. 
+ * Replacement will occur if the provided water/wet sides level sits at least 
+ * maximumWetLength above the bottom most explosive deck.
+ * @param {Hole} hole - The hole object.
+ * @param {number} wetDepth - The depth in the hole where water/wet sides begins.
+ * @param {number} maximumWetLength - Maximum length of water/wet sides, 
+ *                                   taken from the bottom of the hole.
+ * @param {BlastProduct} product - Product to replace water affected decks with.
+ * @param {bool} replacingWater - True if this function is used to replace water
+ *                                affected decks. False if it used to replace
+ *                                decks with wet sides.
+ */
+function replaceAllDecksIfAnyAffectedByWater(hole, wetDepth, maximumWetLength, product, replacingWater) {
+
+	var explosiveIntervals = hole.allExplosives().intervals;
+	if (explosiveIntervals.length == 0) return;
+
+	var bottomDeck = explosiveIntervals[explosiveIntervals.length - 1];
+	var bottomDeckWetLimit = bottomDeck.bottom - maximumWetLength;
+
+	// If the wet depth does not exceed the maximum allowed then we have no
+	// work to do.
+	if (isNaN(wetDepth) || wetDepth > bottomDeckWetLimit) return;
+
+	// Give the user a warning if the product to swap in is not water/damp resistant.
+	if (replacingWater && !product.isWaterResistant) {
+		message("WARNING: Product selected to swap with water affected decks is " +
+			"not water resistant: %s", product.name);
+	} else if (!product.isDampResistant) {
+		message("WARNING: Product selected to swap with wet sides affected decks is " +
+			"not damp resistant: %s", product.name);
+	}
+
+	// Otherwise, replace all the products.
+	var decks = hole.allDecks().decks;
+	for (var index = 0; index < decks.length; ++index) {
+		var deck = decks[index];
+		if (!deck.product.isExplosive) continue;
+
+		// No need to swap products if the product is already water resistant.
+		if (replacingWater && deck.product.isWaterResistant) continue;
+		else if (deck.product.isDampResistant) continue;
+		//Get the current holes Mass or interval
+		var interval = deck.interval;
+
+		//Check to see if the product amount should be adjusted
+		if (params.noAdjustFlag == false) {
+			message("noAdjustFlag is False - Loading interval with New Product");
+			hole.fill(interval, product);
+		}
+
+		if (params.t__debug) {
+			message("@Replaced deck (%.1fL(m|ft) -> %.1fL(m|ft)) with %s",
+				interval.top, interval.bottom, product.name);
+		}
+	}
+}
+/**
+ * Replace explosive decks that are deemed too short, with the closest explosive product.
+ * @param {Hole} hole - The hole object.
+ * @param {number} tolerance - Deck length tolerance.
+ * @param {bool} revertToAlternateProduct - 
+ *               If set to true, short explosive decks sandwiched
+ *               between two other inert decks will consolidate
+ *               with the top inert deck.
+ */
+function replaceShortExplosiveDecksWithExplosive(hole, tolerance, revertToAlternateProduct) {
+	var allDecks = hole.allDecks().decks;
+	if (allDecks.length <= 1) return;
+
+	for (var index = 0; index < allDecks.length; ++index) {
+		var deck = allDecks[index];
+
+		//Commented out as it does nothing
+		//if (deck.product.isExplosive == false ) continue; //!deck.product.isExplosive
+
+		if (deck.span <= tolerance) {
+			if (index == 0) {
+				if (!allDecks[index + 1].product.isExplosive && revertToAlternateProduct) {
+					// Product below is inert and the fallback is enabled.
+					allDecks[index + 1] = combineDecks(hole, deck, allDecks[index + 1]);
+				} else {
+					error("Product below the deck (%.2fL(m|ft) -> %.2fL(m|ft)) is explosive.\n" +
+						"It cannot be consolidated with an explosive deck.",
+						deck.top, deck.bottom);
+				}
+			} else if (index == (allDecks.length - 1)) {
+				// Last deck in the hole, only check the deck above.
+				if (allDecks[index - 1].product.isExplosive || revertToAlternateProduct) {
+					allDecks[index] = combineDecks(hole, allDecks[index - 1], deck);
+				} else {
+					error("Product above the deck (%.2fL(m|ft) -> %.2fL(m|ft)) is inert.\n" +
+						"Consider consolidating with an inert deck, or using the revert option.",
+						deck.top, deck.bottom);
+				}
+			} else {
+				if (isUndefined(deck.product) || deck.product.isExplosive) {
+					// Current deck product is either undefined or is explosive.
+					if (allDecks[index + 1].product.isExplosive) {
+						// Product below is explosive, use that product.
+						allDecks[index + 1] = combineDecks(hole, deck, allDecks[index + 1]);
+					} else if (allDecks[index - 1].product.isExplosive || revertToAlternateProduct) {
+						// Product above is explosive so we can use that, OR
+						// revert to using above inert product.
+						allDecks[index] = combineDecks(hole, allDecks[index - 1], deck);
+					} else {
+						error("Products closest to the deck (%.2fL(m|ft) -> %.2fL(m|ft)) are inert.\n" +
+							"Consider consolidating with an inert deck, or using the revert option.",
+							deck.top, deck.bottom);
+					}
+				}
+			}
+		}
+	}
+}
+/**
+ * Fill 'deck' with the same product as 'deckBelow'.
+ * @param {Hole} hole - The hole object.
+ * @param {Deck} deck - Deck to fill.
+ * @param {Deck} deckBelow - The deck object below 'deck'.
+ * @returns {Deck} - The new deck. A combination of the current deck, 
+ *                   and the one below.
+ */
+function fillUsingProductBelow(hole, deck, deckBelow) {
+	var productBelow = deckBelow.product;
+
+	if (isUndefined(productBelow)) {
+		error("Product below the deck (%.2fL(m|ft) -> %.2fL(m|ft)) is undefined.",
+			deck.top, deck.bottom);
+	}
+
+	if (params.t__debug) {
+		message("@Filling deck (%.2fL(m|ft) -> %.2fL(m|ft)) with product from deck below (%s)",
+			deck.top, deck.bottom, productBelow.name);
+	}
+
+	hole.fill(deck.interval, productBelow);
+
+	// Create a new deck that encapsulates the combined decks we have just made.
+	var newInterval = deck.interval.unionWith(deckBelow.interval);
+	var newQuantity = deck.quantity + deckBelow.quantity;
+	return new Deck(hole, newInterval, productBelow, newQuantity);
+}
+/**
+ * Fill 'deck' with the same product as 'deckAbove'.
+ * @param {Hole} hole - The hole object.
+ * @param {Deck} deck - Deck to fill.
+ * @param {Deck} deckAbove - The deck object above 'deck'.
+ * @returns {Deck} - The new deck. A combination of the current deck, 
+ *                   and the one above.
+ */
+function fillUsingProductAbove(hole, deck, deckAbove) {
+	var productAbove = deckAbove.product;
+
+	if (isUndefined(productAbove)) {
+		error("Product above the deck (%.2fL(m|ft) -> %.2fL(m|ft)) is undefined.",
+			deck.top, deck.bottom);
+	}
+
+	if (params.t__debug) {
+		message("@Filling deck (%.2fL(m|ft) -> %.2fL(m|ft)) with product from deck above (%s)",
+			deck.top, deck.bottom, productAbove.name);
+	}
+
+	hole.fill(deck.interval, productAbove);
+
+	// Create a new deck that encapsulates the combined decks we have just made.
+	var newInterval = deck.interval.unionWith(deckAbove.interval);
+	var newQuantity = deck.quantity + deckAbove.quantity;
+	return new Deck(hole, newInterval, productAbove, newQuantity);
+}
+/**
+ * Combines two decks. The product from the larger of the two decks is used
+ * to fill the combined length of the decks.
+ * @param {Hole} hole - The hole object.
+ * @param {Deck} deck - Deck to fill.
+ * @param {Deck} deckBelow - The deck object below 'deck'.
+ * @returns {Deck} - A new deck - the combination of the two decks.
+ */
+function combineDecks(hole, deck, deckBelow) {
+	if (deck.length > deckBelow.length) {
+		return fillUsingProductAbove(hole, deckBelow, deck);
+	}
+
+	return fillUsingProductBelow(hole, deck, deckBelow);
+}
+/**
+ * Place primers in each explosive column. The number of primers and specific
+ * primer products are controlled by the 'numberOfPrimers' and 'primerProducts'
+ * parameters.
+ * After the first primer is placed, the remaining primers are loaded evenly
+ * into the remaining space.
+ * 
+ * Load Primers only deals with a maximum single product length of 30m - BB-20180106
+ *
+ * @param {Hole} hole - The hole object.
+ * @param {int[]} primersPerColumn - Number of primers to be placed in each explosive column.
+ *                                   Primers per column are specified top down.
+ * @param {BlastProduct[]} products - Primer products to put down the hole.
+ * @param {number} primerSpacing - Position in the explosive column to place the first primer.
+ *                                (For the "evenly spaced" loading scenario, this is the
+ *                                 minimum spacing between adjacent primers.
+ *                                 For the "clustered" loading scenario, this is the
+ *                                 position within the column to load all primers.)
+ */
+function loadPrimers(hole, primersPerColumn, primerProducts, primerSpacing) {
+	var chargeCode = hole.properties.chargeConfig;
+	if (chargeCode == "PRESPL") return;
+	for (var primerIndex = 0; primerIndex < primerProducts.length; ++primerIndex) { //for nthPrimer as loong as the nth Primers length is 
+		var primerProduct = primerProducts[primerIndex];
+
+		if (primerProduct instanceof BlastProductFamily ||
+			primerProduct instanceof FilteredBlastProductFamily) {
+			// Blast product families are valid primer products.
+			continue;
+		}
+		//ERROR WARNING about using a non priming product as a primer.
+		//if (!primerProduct.isPrimerProduct) {
+		//	error("The product provided to 'loadPrimers' (%s) is not a valid primer product",
+		//		primerProduct.name + " Otherwords: You have tried to use a NON priming product as a Primer."
+		//	);
+		//}
+	}
+
+	var explosiveIntervals = hole.allExplosives().intervals;
+	//ERROR WARNING for User displayed in the console
+	if (primersPerColumn.length < explosiveIntervals.length) {
+		error("The array 'primersPerColumn' must contain at least the same number " +
+			"of elements as the number of explosive columns in the hole." +
+			" Otherwords: You must have at least one primer per explosive deck. ");
+	}
+
+	for (var index = 0; index < explosiveIntervals.length; ++index) {
+		var interval = explosiveIntervals[index];
+
+		// Cannot load primers into intervals with span < 0.05m.
+		if (interval.length < 0.05) {
+			error("Primer at depth %.1fL(m|ft) cannot be loaded into column with " +
+				"length less than %.2fL(m|ft)", interval.top, 0.05);
+		}
+
+		var primerSpacing = interval.length * 0.1;
+		var primerInt = params.primerInterval;
+		var primers = (interval.length - primerSpacing) / primerInt;
+
+		//loadPrimersInColumnFromBottom(hole, interval, primersPerColumn[index], primerProducts, primerSpacing);
+
+		loadPrimersInColumnFromBottom(hole, interval, primers, primerProducts, primerSpacing);
+		
+		//Otherwise do nothing special to the priming... 	
+	}
+
+}
+
+/**
+ * Place a primer 'firstPrimerSpacing' from the bottom of the hole, and then
+ * place the remaining primers evenly within the remaining space.
+ * @param {Hole} hole - The hole object.
+ * @param {Interval} interval - The explosive column that will be loaded with primers.
+ * @param {int} numberOfPrimers - Number of primers to be placed in each explosive column.
+ * @param {BlastProduct[]} primerProducts - Primer products to put down the hole.
+ * @param {number} firstPrimerSpacing - Position from the bottom of the explosive column to place the first primer.
+ */
+function loadPrimersInColumnFromBottom(hole, interval, numberOfPrimers, primerProducts, firstPrimerSpacing) {
+	var chargeCode = hole.properties.chargeConfig;
+	if (chargeCode == "PRESPL") return;
+	if (numberOfPrimers <= 0) return;
+	var bottomPrimer = interval.bottom - firstPrimerSpacing;
+	var primerSpacer = (bottomPrimer - interval.top) / numberOfPrimers;
+
+	// Cannot load above the provided explosive interval.
+	if (bottomPrimer < interval.top) {
+		message("@Primers will be positioned outside the explosive column.\n" +
+			"Minimum primer depth for this interval is %%.1fL(m|ft)",
+			interval.top);
+		//Reassigned the var to the interval botton plus 10% of the interval length - function loadPrimersInColumnFromBottom
+		bottomPrimer = interval.bottom + firstPrimerSpacing;
+		error("@Brent you edited this and it didn't work");
+		primerSpacer = 0.01;
+	}
+
+	for (var primerIndex = 0; primerIndex < numberOfPrimers; ++primerIndex) {
+		var primerDepth = bottomPrimer - (primerSpacer * primerIndex);
+		debug("Placing primer at depth %%.1fL(m|ft)", primerDepth);
+		
+		
+			hole.addPrimer(primerDepth, primerProducts);
+			
+		}
+
+}
+/**
+ * Prints a simple debug message when the 'active' boolean is true
+ * @param {string} information - Message to display to the user.
+ * @param {value} argument1 - Argument to display within the message.
+ * @param {value} argument2 - Argument to display within the message.
+ */
+function debug(information, argument1, argument2) {
+	if (params.t__debug) {
+		// The '@' symbol will stop messages from being displayed on the tablet.
+		information = "@" + information;
+		if (isUndefined(argument1) && isUndefined(argument2)) {
+			message(information);
+		} else if (isUndefined(argument2)) {
+			message(information, argument1);
+		} else {
+			message(information, argument1, argument2);
+		}
+	}
+}
+/**
+//////////////// FOR INTERACTIVE DEBUGGING PURPOSES ONLY ////////////////////
+// The following allows for this script to be debugged using an external
+// IDE with debugging support. It does not run when executed on the BlastLogic
+// Desktop. It can be safely left at the bottom of this script.
+*/
+if (typeof process !== 'undefined' && process.argv.includes('--debug')) {
+	try {
+		// ChargeCalculations and supporting objects are included in here:
+		eval(require('fs').readFileSync('debug/TestHarness.js') + '');
+
+		// Run the charge rule.
+		rule(params, hole, products);
+
+		// Print out a table of primers and decks that were loaded.
+		printDecksAndPrimers(hole);
+	} catch (err) {
+		if (typeof err.args == 'undefined') {
+			errorMsg(err.message);
+		} else {
+			errorMsg(err.args);
+		}
+	}
+}
