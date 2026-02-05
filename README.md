@@ -399,237 +399,6 @@ Organizes drawing entities and surfaces into layers with:
 
 ---
 
-## Surpac DTM/STR Surface Format
-
-### Overview
-
-Kirra supports the **Surpac DTM/STR dual-file format** for representing triangulated surfaces. This format is widely used in mining software (Surpac, Vulcan, MineSight) for terrain modeling, pit design, and geological surfaces.
-
-The DTM/STR system uses **two paired files** that work together:
-- **STR file**: Contains the unique vertex coordinates (point cloud)
-- **DTM file**: Contains the triangle topology (TRISOLATION)
-
-### File Format Specifications
-
-#### STR File (String File) - Vertex Coordinates
-
-The STR file stores unique 3D vertices with **1-based indexing**:
-
-```
-filename, dd-Mmm-yy,,description
-0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000
-32000, Y1, X1, Z1, 
-32000, Y2, X2, Z2, 
-32000, Y3, X3, Z3, 
-...
-0, 0.000, 0.000, 0.000, END
-```
-
-**Format Details:**
-- **Header Line**: `filename, date, empty, description`
-- **Second Line**: Seven zeros (spacing preserved from Surpac format)
-- **Vertex Lines**: `32000, Y, X, Z,` (note: **Y before X** - Northing, Easting, Elevation)
-  - String number `32000` indicates surface vertices
-  - Trailing space after Z coordinate
-  - **No duplicate vertices** - each point appears exactly once
-- **End Marker**: `0, 0.000, 0.000, 0.000, END`
-
-**Coordinate Order**: Y (Northing), X (Easting), Z (Elevation)
-
-#### DTM File (Digital Terrain Model) - Triangle Topology
-
-The DTM file defines **how vertices connect** to form triangles:
-
-```
-filename.str,
-0, 0.000, 0.000, 0.000, END
-OBJECT, 1,
-TRISOLATION, 1, neighbours=no,validated=true,closed=no
-1, 2, 3, 1, 0, 0, 0,
-2, 3, 4, 1, 0, 0, 0,
-3, 5, 6, 2, 0, 0, 0,
-...
-END
-```
-
-**Format Details:**
-- **Header Line**: References the STR filename (e.g., `mysurf.str,`)
-- **Second Line**: Simple END marker
-- **OBJECT Line**: Object identifier
-- **TRISOLATION Line**: Triangle isolation metadata
-  - `neighbours=no`: No neighbor calculations performed
-  - `validated=true`: Topology is valid
-  - `closed=no`: Surface is not closed (not a solid)
-
-**Triangle Definition (7 values per line):**
-```
-TriangleID, Vertex1, Vertex2, Vertex3, Neighbor1, Neighbor2, Neighbor3, 0,
-```
-
-| Field | Description | Example |
-|-------|-------------|---------|
-| **TriangleID** | Sequential triangle number (1-based) | `1` |
-| **Vertex1** | Index of first vertex from STR file | `2` |
-| **Vertex2** | Index of second vertex from STR file | `3` |
-| **Vertex3** | Index of third vertex from STR file | `1` |
-| **Neighbor1** | Triangle sharing edge V1-V2 (0 = boundary) | `8` |
-| **Neighbor2** | Triangle sharing edge V2-V3 (0 = boundary) | `4` |
-| **Neighbor3** | Triangle sharing edge V3-V1 (0 = boundary) | `0` |
-| **Terminator** | Always 0 | `0` |
-
-**Vertex Indexing:**
-- Vertices are **1-based** (first vertex in STR = index 1)
-- Vertex order matches the STR file exactly
-- Triangle vertices can be in any order (not necessarily sequential)
-
-**Neighbor Information:**
-- Value of `0` = **boundary edge** (no adjacent triangle)
-- Non-zero value = ID of neighboring triangle
-- Enables efficient surface traversal and topology operations
-
-### Example Files
-
-#### Example STR File: `24m-west-wall.str`
-```
-24m-west-wall,10-Jan-26,,mine-design
-0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000
-32000, 477743.285, 6771826.348, 334.000, 
-32000, 477743.916, 6771819.412, 322.000, 
-32000, 477767.820, 6771877.700, 322.000, 
-32000, 477764.866, 6771878.971, 334.000, 
-32000, 477744.698, 6771812.573, 310.000, 
-0, 0.000, 0.000, 0.000, END
-```
-
-#### Example DTM File: `24m-west-wall.dtm`
-```
-24m-west-wall.str,
-0, 0.000, 0.000, 0.000, END
-OBJECT, 1,
-TRISOLATION, 1, neighbours=no,validated=true,closed=no
-1, 2, 3, 1, 8, 4, 0,
-2, 3, 4, 1, 10, 0, 2,
-3, 5, 6, 2, 0, 8, 0,
-END
-```
-
-**Reading the Triangle Data:**
-- Triangle #1: Connects vertices 2→3→1 (from STR lines 4, 5, 3)
-- Triangle #2: Connects vertices 3→4→1 (from STR lines 5, 6, 3)
-- Triangle #3: Connects vertices 5→6→2 (from STR lines 7, 8, 4)
-
-### Import/Export in Kirra
-
-#### Importing DTM/STR Surfaces
-
-1. **File → Import → Surpac DTM Surface**
-2. Select **both .dtm AND .str files** (must share same base filename)
-3. Kirra parses:
-   - Unique vertices from STR file
-   - Triangle topology from DTM TRISOLATION section
-   - Creates internal surface representation with gradient visualization
-
-**Import Requirements:**
-- Both files must have matching base filenames (e.g., `surface.dtm` + `surface.str`)
-- Vertices must be numbered 1-based
-- Triangle indices must reference valid vertices
-
-#### Exporting DTM/STR Surfaces
-
-1. **File → Export → Surpac DTM (Surfaces)**
-2. Enter base filename (e.g., `mysurf`)
-3. Kirra generates:
-   - `mysurf.str` - Unique vertices from all visible surfaces
-   - `mysurf.dtm` - TRISOLATION with triangle topology
-
-**Export Process:**
-1. **Collect Unique Vertices**: Scans all visible surface triangles
-2. **Deduplicate**: Uses 3 decimal place precision matching
-3. **Assign Indices**: Sequential 1-based numbering
-4. **Write STR**: Outputs unique vertices in order
-5. **Write DTM**: References STR filename and writes triangle indices
-
-**Export Features:**
-- Automatically deduplicates shared vertices between triangles
-- Maintains coordinate precision (3 decimal places)
-- Writes both files with matching base filename
-- Supports multiple surfaces (merged into single DTM/STR pair)
-
-### Technical Details
-
-#### Coordinate System
-- **X**: Easting (meters)
-- **Y**: Northing (meters)
-- **Z**: Elevation (meters)
-- **File Format**: Y,X,Z (Northing first)
-- **Typical Range**: UTM coordinates (6-7 digit values)
-
-#### Vertex Deduplication
-Kirra uses **formatted coordinate matching** to identify duplicate vertices:
-```javascript
-// Vertices match if coordinates are identical to 3 decimal places
-key = formatNumber(x, 3) + "_" + formatNumber(y, 3) + "_" + formatNumber(z, 3);
-```
-
-This ensures:
-- Consistent precision across export/import cycles
-- Proper triangle connectivity
-- No floating-point comparison errors
-
-#### Triangle Winding Order
-- **Clockwise or Counter-clockwise**: Format supports both
-- **Normals**: Calculated from vertex order
-- **Consistency**: All triangles in same surface should use same winding
-
-### Common Use Cases
-
-#### 1. Terrain Surface Export
-Export topographic surveys for use in Surpac/Vulcan:
-```
-1. Import survey points or DXF/OBJ surface
-2. View in 3D with gradient visualization
-3. Export as DTM/STR for mine planning software
-```
-
-#### 2. Pit Design Surface
-Export designed pit surfaces:
-```
-1. Create pit surface in Kirra
-2. Apply gradient (hillshade, elevation)
-3. Export to Surpac for volume calculations
-```
-
-#### 3. Geological Surface
-Export geological boundaries:
-```
-1. Import OBJ mesh of ore body
-2. Convert to DTM/STR format
-3. Use in resource modeling software
-```
-
-### Troubleshooting
-
-#### Problem: "Missing Files" Error on Import
-**Solution**: Both .dtm and .str files must be selected together. They must share the same base filename.
-
-#### Problem: Corrupted Surface After Export
-**Solution**: Ensure surfaces are triangulated. Some import formats (CSV points) require triangulation before export.
-
-#### Problem: Duplicate Vertices Warning
-**Solution**: The STR writer automatically deduplicates. If Surpac reports duplicates, check coordinate precision.
-
-#### Problem: Triangle Topology Errors in Surpac
-**Solution**: Verify triangle vertices are wound consistently. Use Surpac's validation tools to check topology.
-
-### References
-
-For more information on Surpac DTM/STR format:
-- [GeoTutes: DTM Concepts in Surpac](https://geotutes.com/what-are-dtms-dtm-concepts-in-surpac/)
-- Surpac Documentation: Triangulated Irregular Networks (TIN)
-- GEOVIA Surpac: Surface Module
-
----
-
 ## Core Functionality
 
 ### 1. Blast Hole Management
@@ -1283,3 +1052,291 @@ spacing                    || 1 // Always use HDBScan to determine if not assign
 connectorCurve             || 0 // the bend of the connector.
 ```
 <img width="2002" height="1040" alt="image" src="https://github.com/user-attachments/assets/08eb1ace-4ecf-4373-8fe6-3c2273133bb5" />
+
+
+---
+
+# Charging and Charging Rules/Codes
+*Not implemented yet*
+
+---
+
+## Deck
+*Combination of various Deck Elements, that reside in a blast hole.*
+
+### Inert
+*Input array of Non Explosive*
+
+### Explosive Coupled
+*Input array of a Bulk Explosive* 
+
+### Explosive De-Coupled
+*Input array of High-Explosive*
+
+### Spacer
+*Gas-bag, Stem-Cap, Stem-brush, etc.* 
+
+---
+
+## Non-Explosive
+*Air, Water, Stemming, StemGel, etc*
+
+---
+
+## Bulk-Explosive
+*ANFO, Blend-Gassed, Blend-Non-Gassed, Molecular*
+
+---
+
+## Primer
+*Combination of Detonator and High-Explosive* 
+
+---
+
+## Detonators
+*Detonator supplier*
+
+
+## High-Explosives
+*Packaged, Booster, etc*
+
+
+---
+
+# File Formats Accepted
+
+## DXFs
+
+### DXF file formats in here.
+
+## Surpac DTM/STR Surface Format
+
+### Overview
+
+Kirra supports the **Surpac DTM/STR dual-file format** for representing triangulated surfaces. This format is widely used in mining software (Surpac, Vulcan, MineSight) for terrain modeling, pit design, and geological surfaces.
+
+The DTM/STR system uses **two paired files** that work together:
+- **STR file**: Contains the unique vertex coordinates (point cloud)
+- **DTM file**: Contains the triangle topology (TRISOLATION)
+
+### File Format Specifications
+
+#### STR File (String File) - Vertex Coordinates
+
+The STR file stores unique 3D vertices with **1-based indexing**:
+
+```
+filename, dd-Mmm-yy,,description
+0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000
+32000, Y1, X1, Z1, 
+32000, Y2, X2, Z2, 
+32000, Y3, X3, Z3, 
+...
+0, 0.000, 0.000, 0.000, END
+```
+
+**Format Details:**
+- **Header Line**: `filename, date, empty, description`
+- **Second Line**: Seven zeros (spacing preserved from Surpac format)
+- **Vertex Lines**: `32000, Y, X, Z,` (note: **Y before X** - Northing, Easting, Elevation)
+  - String number `32000` indicates surface vertices
+  - Trailing space after Z coordinate
+  - **No duplicate vertices** - each point appears exactly once
+- **End Marker**: `0, 0.000, 0.000, 0.000, END`
+
+**Coordinate Order**: Y (Northing), X (Easting), Z (Elevation)
+
+#### DTM File (Digital Terrain Model) - Triangle Topology
+
+The DTM file defines **how vertices connect** to form triangles:
+
+```
+filename.str,
+0, 0.000, 0.000, 0.000, END
+OBJECT, 1,
+TRISOLATION, 1, neighbours=no,validated=true,closed=no
+1, 2, 3, 1, 0, 0, 0,
+2, 3, 4, 1, 0, 0, 0,
+3, 5, 6, 2, 0, 0, 0,
+...
+END
+```
+
+**Format Details:**
+- **Header Line**: References the STR filename (e.g., `mysurf.str,`)
+- **Second Line**: Simple END marker
+- **OBJECT Line**: Object identifier
+- **TRISOLATION Line**: Triangle isolation metadata
+  - `neighbours=no`: No neighbor calculations performed
+  - `validated=true`: Topology is valid
+  - `closed=no`: Surface is not closed (not a solid)
+
+**Triangle Definition (7 values per line):**
+```
+TriangleID, Vertex1, Vertex2, Vertex3, Neighbor1, Neighbor2, Neighbor3, 0,
+```
+
+| Field | Description | Example |
+|-------|-------------|---------|
+| **TriangleID** | Sequential triangle number (1-based) | `1` |
+| **Vertex1** | Index of first vertex from STR file | `2` |
+| **Vertex2** | Index of second vertex from STR file | `3` |
+| **Vertex3** | Index of third vertex from STR file | `1` |
+| **Neighbor1** | Triangle sharing edge V1-V2 (0 = boundary) | `8` |
+| **Neighbor2** | Triangle sharing edge V2-V3 (0 = boundary) | `4` |
+| **Neighbor3** | Triangle sharing edge V3-V1 (0 = boundary) | `0` |
+| **Terminator** | Always 0 | `0` |
+
+**Vertex Indexing:**
+- Vertices are **1-based** (first vertex in STR = index 1)
+- Vertex order matches the STR file exactly
+- Triangle vertices can be in any order (not necessarily sequential)
+
+**Neighbor Information:**
+- Value of `0` = **boundary edge** (no adjacent triangle)
+- Non-zero value = ID of neighboring triangle
+- Enables efficient surface traversal and topology operations
+
+### Example Files
+
+#### Example STR File: `24m-west-wall.str`
+```
+24m-west-wall,10-Jan-26,,mine-design
+0, 0.000, 0.000, 0.000, 0.000, 0.000, 0.000
+32000, 477743.285, 6771826.348, 334.000, 
+32000, 477743.916, 6771819.412, 322.000, 
+32000, 477767.820, 6771877.700, 322.000, 
+32000, 477764.866, 6771878.971, 334.000, 
+32000, 477744.698, 6771812.573, 310.000, 
+0, 0.000, 0.000, 0.000, END
+```
+
+#### Example DTM File: `24m-west-wall.dtm`
+```
+24m-west-wall.str,
+0, 0.000, 0.000, 0.000, END
+OBJECT, 1,
+TRISOLATION, 1, neighbours=no,validated=true,closed=no
+1, 2, 3, 1, 8, 4, 0,
+2, 3, 4, 1, 10, 0, 2,
+3, 5, 6, 2, 0, 8, 0,
+END
+```
+
+**Reading the Triangle Data:**
+- Triangle #1: Connects vertices 2→3→1 (from STR lines 4, 5, 3)
+- Triangle #2: Connects vertices 3→4→1 (from STR lines 5, 6, 3)
+- Triangle #3: Connects vertices 5→6→2 (from STR lines 7, 8, 4)
+
+### Import/Export in Kirra
+
+#### Importing DTM/STR Surfaces
+
+1. **File → Import → Surpac DTM Surface**
+2. Select **both .dtm AND .str files** (must share same base filename)
+3. Kirra parses:
+   - Unique vertices from STR file
+   - Triangle topology from DTM TRISOLATION section
+   - Creates internal surface representation with gradient visualization
+
+**Import Requirements:**
+- Both files must have matching base filenames (e.g., `surface.dtm` + `surface.str`)
+- Vertices must be numbered 1-based
+- Triangle indices must reference valid vertices
+
+#### Exporting DTM/STR Surfaces
+
+1. **File → Export → Surpac DTM (Surfaces)**
+2. Enter base filename (e.g., `mysurf`)
+3. Kirra generates:
+   - `mysurf.str` - Unique vertices from all visible surfaces
+   - `mysurf.dtm` - TRISOLATION with triangle topology
+
+**Export Process:**
+1. **Collect Unique Vertices**: Scans all visible surface triangles
+2. **Deduplicate**: Uses 3 decimal place precision matching
+3. **Assign Indices**: Sequential 1-based numbering
+4. **Write STR**: Outputs unique vertices in order
+5. **Write DTM**: References STR filename and writes triangle indices
+
+**Export Features:**
+- Automatically deduplicates shared vertices between triangles
+- Maintains coordinate precision (3 decimal places)
+- Writes both files with matching base filename
+- Supports multiple surfaces (merged into single DTM/STR pair)
+
+### Technical Details
+
+#### Coordinate System
+- **X**: Easting (meters)
+- **Y**: Northing (meters)
+- **Z**: Elevation (meters)
+- **File Format**: Y,X,Z (Northing first)
+- **Typical Range**: UTM coordinates (6-7 digit values)
+
+#### Vertex Deduplication
+Kirra uses **formatted coordinate matching** to identify duplicate vertices:
+```javascript
+// Vertices match if coordinates are identical to 3 decimal places
+key = formatNumber(x, 3) + "_" + formatNumber(y, 3) + "_" + formatNumber(z, 3);
+```
+
+This ensures:
+- Consistent precision across export/import cycles
+- Proper triangle connectivity
+- No floating-point comparison errors
+
+#### Triangle Winding Order
+- **Clockwise or Counter-clockwise**: Format supports both
+- **Normals**: Calculated from vertex order
+- **Consistency**: All triangles in same surface should use same winding
+
+### Common Use Cases
+
+#### 1. Terrain Surface Export
+Export topographic surveys for use in Surpac/Vulcan:
+```
+1. Import survey points or DXF/OBJ surface
+2. View in 3D with gradient visualization
+3. Export as DTM/STR for mine planning software
+```
+
+#### 2. Pit Design Surface
+Export designed pit surfaces:
+```
+1. Create pit surface in Kirra
+2. Apply gradient (hillshade, elevation)
+3. Export to Surpac for volume calculations
+```
+
+#### 3. Geological Surface
+Export geological boundaries:
+```
+1. Import OBJ mesh of ore body
+2. Convert to DTM/STR format
+3. Use in resource modeling software
+```
+
+### Troubleshooting
+
+#### Problem: "Missing Files" Error on Import
+**Solution**: Both .dtm and .str files must be selected together. They must share the same base filename.
+
+#### Problem: Corrupted Surface After Export
+**Solution**: Ensure surfaces are triangulated. Some import formats (CSV points) require triangulation before export.
+
+#### Problem: Duplicate Vertices Warning
+**Solution**: The STR writer automatically deduplicates. If Surpac reports duplicates, check coordinate precision.
+
+#### Problem: Triangle Topology Errors in Surpac
+**Solution**: Verify triangle vertices are wound consistently. Use Surpac's validation tools to check topology.
+
+### References
+
+For more information on Surpac DTM/STR format:
+- [GeoTutes: DTM Concepts in Surpac](https://geotutes.com/what-are-dtms-dtm-concepts-in-surpac/)
+- Surpac Documentation: Triangulated Irregular Networks (TIN)
+- GEOVIA Surpac: Surface Module
+
+---
+
