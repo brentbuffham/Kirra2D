@@ -47,6 +47,357 @@ Kirra2D/
 ```
 
 ---
+---
+
+## IndexedDB Database Schema
+
+Kirra uses IndexedDB for client-side data persistence. The database structure consists of four main object stores that manage blast holes, drawings, surfaces, and layer organization.
+
+### Database Structure Overview
+
+```mermaid
+erDiagram
+    KIRRA-DATABASE ||--o{ BLASTHOLES : contains
+    KIRRA-DATABASE ||--o{ KADDRAWINGS : contains
+    KIRRA-DATABASE ||--o{ KADSURFACE : contains
+    KIRRA-DATABASE ||--o{ KADLAYERS : contains
+
+    BLASTHOLES {
+        string id PK "blastHolesData"
+        array data "Array of blast hole objects"
+    }
+    
+    BLASTHOLE-OBJECT {
+        float benchHeight
+        float burden
+        string colorHexDecimal
+        int connectorCurve
+        float endXLocation
+        float endYLocation
+        float endZLocation
+        string entityName
+        string entityType "hole"
+        string fromHoleID
+        float gradeXLocation
+        float gradeYLocation
+        float gradeZLocation
+        float holeAngle
+        float holeBearing
+        float holeDiameter
+        string holeID PK
+        float holeLengthCalculated
+        int holeTime
+        string holeType "Production"
+        string measuredComment
+        string measuredCommentTimeStamp
+        float measuredLength
+        string measuredLengthTimeStamp
+        float measuredMass
+        string measuredMassTimeStamp
+        int posID
+        int rowID
+        float spacing
+        float startXLocation
+        float startYLocation
+        float startZLocation
+        float subdrillAmount
+        float subdrillLength
+        int timingDelayMilliseconds
+        boolean visible
+    }
+
+    KADDRAWINGS {
+        string id PK "kadDrawingData"
+        array data "Array[entityName, entityObject]"
+    }
+
+    DRAWING-ENTITY {
+        string entityName PK "Unique entity identifier"
+        string name "Display name"
+        string entityType "poly|line|point|circle|text"
+        string layerId FK "Reference to layer"
+        boolean visible "Visibility flag"
+        array data "Array of geometry points"
+    }
+
+    POLY-ENTITY {
+        string entityName PK
+        string name
+        string entityType "poly"
+        string layerId FK
+        boolean visible
+        array data "Array of poly points"
+    }
+
+    POLY-POINT {
+        string entityName FK
+        string entityType "poly"
+        int pointID "Sequential point ID"
+        float pointXLocation "Easting coordinate"
+        float pointYLocation "Northing coordinate"
+        float pointZLocation "Elevation"
+        boolean closed "Is polygon closed"
+        string color "Hex color #RRGGBB"
+        int lineWidth "Line width in pixels"
+        boolean visible
+    }
+
+    LINE-ENTITY {
+        string entityName PK
+        string name
+        string entityType "line"
+        string layerId FK
+        boolean visible
+        array data "Array of line points"
+    }
+
+    LINE-POINT {
+        string entityName FK
+        string entityType "line"
+        int pointID "Sequential point ID"
+        float pointXLocation "Easting coordinate"
+        float pointYLocation "Northing coordinate"
+        float pointZLocation "Elevation"
+        boolean closed "Always false for lines"
+        string color "Hex color #RRGGBB"
+        int lineWidth "Line width in pixels"
+        boolean visible
+    }
+
+    POINT-ENTITY {
+        string entityName PK
+        string name
+        string entityType "point"
+        string layerId FK
+        boolean visible
+        array data "Array of point objects"
+    }
+
+    POINT-OBJECT {
+        string entityName FK
+        string entityType "point"
+        int pointID "Sequential point ID"
+        float pointXLocation "Easting coordinate"
+        float pointYLocation "Northing coordinate"
+        float pointZLocation "Elevation"
+        boolean closed "Always false"
+        string color "Hex color #RRGGBB"
+        boolean connected "Connection flag"
+        boolean visible
+    }
+
+    CIRCLE-ENTITY {
+        string entityName PK
+        string entityName_attr "Entity identifier"
+        string entityType "circle"
+        string layerId FK
+        boolean visible
+        array data "Array of circle centers"
+    }
+
+    CIRCLE-OBJECT {
+        string entityName FK
+        string entityType "circle"
+        int pointID "Sequential circle ID"
+        float pointXLocation "Center X (Easting)"
+        float pointYLocation "Center Y (Northing)"
+        float pointZLocation "Center Z (Elevation)"
+        string radius "Circle radius"
+        boolean closed "Always false"
+        string color "Hex color #RRGGBB"
+        int lineWidth "Line width in pixels"
+        boolean connected "Connection flag"
+        boolean visible
+    }
+
+    TEXT-ENTITY {
+        string entityName PK
+        string entityName_attr "Entity identifier"
+        string entityType "text"
+        string layerId FK
+        boolean visible
+        array data "Array of text placements"
+    }
+
+    TEXT-OBJECT {
+        string entityName FK
+        string entityType "text"
+        int pointID "Sequential text ID"
+        float pointXLocation "Text X (Easting)"
+        float pointYLocation "Text Y (Northing)"
+        float pointZLocation "Text Z (Elevation)"
+        string text "Text content"
+        int fontHeight "Font size in pixels"
+        boolean closed "Always false"
+        string color "Hex color #RRGGBB"
+        boolean connected "Connection flag"
+        boolean visible
+    }
+
+    KADSURFACE {
+        string id PK "Surface identifier"
+        string name "Display name"
+        string type "delaunay|triangulated"
+        array points "Array of 3D vertices"
+        array triangles "Array of triangle faces"
+        string created "ISO DateTime"
+        string gradient "hillshade|texture"
+        string hillshadeColor "Color for hillshade"
+        string layerId FK "Reference to layer"
+        float maxLimit "Max elevation limit"
+        float minLimit "Min elevation limit"
+        object metadata "Surface metadata"
+        float transparency "0-1 transparency"
+        boolean visible "Visibility flag"
+        boolean isTexturedMesh "Has texture mapping"
+        string objContent "OBJ file content"
+        string mtlContent "MTL file content"
+        object meshBounds "3D bounding box"
+        object flattenedImageBounds "2D image bounds"
+        string flattenedImageDataURL "Base64 PNG"
+        object flattenedImageDimensions "Image size"
+        object materialProperties "Material definitions"
+        object textureBlobs "Texture image blobs"
+    }
+
+    SURFACE-METADATA {
+        string algorithm "constrained_delaunay"
+        int pointCount "Number of vertices"
+        int triangleCount "Number of triangles"
+        int constraintCount "Number of constraints"
+        string blastHolePointType "Point type"
+    }
+
+    SURFACE-POINT {
+        float x "Easting coordinate"
+        float y "Northing coordinate"
+        float z "Elevation"
+    }
+
+    SURFACE-TRIANGLE {
+        array vertices "3 vertex references"
+        array uvs "UV texture coordinates"
+        array normals "Normal vectors"
+        string material "Material reference"
+    }
+
+    MESH-BOUNDS {
+        float minX "Minimum easting"
+        float maxX "Maximum easting"
+        float minY "Minimum northing"
+        float maxY "Maximum northing"
+        float minZ "Minimum elevation"
+        float maxZ "Maximum elevation"
+    }
+
+    MATERIAL-PROPERTIES {
+        string name "Material name"
+        array Ka "Ambient color RGB"
+        array Kd "Diffuse color RGB"
+        array Ks "Specular color RGB"
+        int Ns "Specular exponent"
+        int illum "Illumination model"
+        string map_Kd "Texture filename"
+    }
+
+    TEXTURE-BLOB {
+        string filename PK "Texture filename"
+        int size "File size in bytes"
+        string type "MIME type image/jpeg"
+        blob data "Binary image data"
+    }
+
+    FLATTENED-IMAGE {
+        int width "Image width pixels"
+        int height "Image height pixels"
+        string dataURL "Base64 PNG data"
+    }
+
+    KADLAYERS {
+        string id PK "layersData"
+        array drawingLayers "Drawing layer array"
+        array surfaceLayers "Surface layer array"
+    }
+
+    DRAWING-LAYER {
+        string layerId PK
+        string layerName
+        array entities "Array of entity IDs"
+        string importDate "ISO DateTime"
+        string sourceFile "Source filename"
+        boolean visible
+    }
+
+    SURFACE-LAYER {
+        string layerId PK
+        string layerName
+        array surfaces "Array of surface IDs"
+        string importDate "ISO DateTime"
+        string sourceFile "Source filename"
+        boolean visible
+    }
+
+    BLASTHOLES ||--o{ BLASTHOLE-OBJECT : stores
+    KADDRAWINGS ||--o{ DRAWING-ENTITY : stores
+    DRAWING-ENTITY ||--o{ POLY-ENTITY : "is type of"
+    DRAWING-ENTITY ||--o{ LINE-ENTITY : "is type of"
+    DRAWING-ENTITY ||--o{ POINT-ENTITY : "is type of"
+    DRAWING-ENTITY ||--o{ CIRCLE-ENTITY : "is type of"
+    DRAWING-ENTITY ||--o{ TEXT-ENTITY : "is type of"
+    POLY-ENTITY ||--o{ POLY-POINT : contains
+    LINE-ENTITY ||--o{ LINE-POINT : contains
+    POINT-ENTITY ||--o{ POINT-OBJECT : contains
+    CIRCLE-ENTITY ||--o{ CIRCLE-OBJECT : contains
+    TEXT-ENTITY ||--o{ TEXT-OBJECT : contains
+    KADSURFACE ||--|| SURFACE-METADATA : has
+    KADSURFACE ||--o{ SURFACE-POINT : contains
+    KADSURFACE ||--o{ SURFACE-TRIANGLE : contains
+    KADSURFACE ||--|| MESH-BOUNDS : has
+    KADSURFACE ||--o{ MATERIAL-PROPERTIES : has
+    KADSURFACE ||--o{ TEXTURE-BLOB : contains
+    KADSURFACE ||--|| FLATTENED-IMAGE : generates
+    MATERIAL-PROPERTIES ||--|| TEXTURE-BLOB : references
+    KADLAYERS ||--o{ DRAWING-LAYER : manages
+    KADLAYERS ||--o{ SURFACE-LAYER : manages
+    DRAWING-LAYER ||--o{ DRAWING-ENTITY : references
+    SURFACE-LAYER ||--o{ KADSURFACE : references
+```
+
+### Object Store Descriptions
+
+#### BLASTHOLES Store
+Stores all blast hole data with complete geometric and operational properties. Each blast hole includes collar, toe, and grade positions, along with calculated attributes like angle, bearing, length, and timing information.
+
+#### KADDRAWINGS Store
+Stores CAD-like drawing entities including:
+- **Polylines (poly)**: Closed or open multi-point shapes with styling
+- **Lines**: Open polylines connecting points
+- **Points**: Discrete point objects
+- **Circles**: Circle geometries with center and radius
+- **Text**: Text annotations with font properties
+
+All drawing entities are stored as `[entityName, entityObject]` pairs with geometry data arrays containing 3D coordinates.
+
+#### KADSURFACE Store
+Manages 3D surface data with two types:
+- **Delaunay Surfaces**: Algorithm-generated terrain from point clouds with hillshade rendering
+- **Triangulated Meshes**: Imported OBJ models with full texture mapping support
+
+Textured meshes include:
+- Complete OBJ/MTL file contents
+- Material properties (ambient, diffuse, specular colors)
+- Texture image blobs (JPEG/PNG)
+- Pre-rendered 2D flattened images for quick display
+- 3D mesh bounds for spatial queries
+
+#### KADLAYERS Store
+Organizes drawing entities and surfaces into layers with:
+- Layer visibility toggles
+- Import metadata (date, source file)
+- Entity/surface references
+- Separate management for drawings and surfaces
+
+---
 
 ## Surpac DTM/STR Surface Format
 
