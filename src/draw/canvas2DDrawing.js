@@ -272,13 +272,18 @@ export function drawHexagon(x, y, sideLength, fillColor, strokeColor) {
 //=================================================
 
 export function drawKADPoints(x, y, z, lineWidth = 1, strokeColor) {
-	window.ctx.beginPath();
-	window.ctx.arc(x, y, lineWidth, 0, 2 * Math.PI);
-	window.ctx.strokeStyle = strokeColor;
 	window.ctx.fillStyle = strokeColor;
-	// Don't use line width use the line width as a proxy for diameter.
-	window.ctx.stroke();
-	window.ctx.fill();
+	// For 1px points, use fillRect for crisp rendering
+	if (lineWidth <= 1) {
+		window.ctx.fillRect(Math.floor(x), Math.floor(y), 1, 1);
+	} else {
+		// Larger points use arc
+		window.ctx.beginPath();
+		window.ctx.arc(x, y, lineWidth, 0, 2 * Math.PI);
+		window.ctx.strokeStyle = strokeColor;
+		window.ctx.stroke();
+		window.ctx.fill();
+	}
 }
 
 export function drawKADLines(sx, sy, ex, ey, sz, ez, lineWidth, strokeColor) {

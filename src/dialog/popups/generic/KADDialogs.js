@@ -353,13 +353,15 @@ export async function showTriangulationPopup() {
 				var isConstrained = formData.useBreaklines === "yes";
 				var triangulationType = isConstrained ? "Constrained Delaunay" : "Delaunay";
 
-				var progressContentHTML = "<p>Creating " + triangulationType + " Triangulation</p>" +
-					"<p>Processing " + estimatedPoints.toLocaleString() + " points...</p>" +
-					'<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 20px 0;">' +
+				var progressContentHTML = '<p style="margin: 0 0 10px 0;">Creating ' + triangulationType + ' Triangulation</p>' +
+					'<p style="margin: 0 0 15px 0;">Processing ' + estimatedPoints.toLocaleString() + ' points...</p>' +
+					'<div style="width: 100%; background-color: #333; border-radius: 5px; margin: 15px 0;">' +
 					'<div id="triangulationProgressBar" style="width: 0%; height: 20px; background-color: #4CAF50; border-radius: 5px; transition: width 0.3s;"></div>' +
-					"</div>" +
-					'<p id="triangulationProgressText">Initializing...</p>' +
-					'<button id="triangulationCancelBtn" style="margin-top: 10px; padding: 8px 16px; background-color: #dc3545; color: white; border: none; border-radius: 4px; cursor: pointer;">Cancel</button>';
+					'</div>' +
+					'<p id="triangulationProgressText" style="margin: 10px 0;">Initializing...</p>' +
+					'<div style="text-align: center; margin-top: 15px;">' +
+					'<button id="triangulationCancelBtn" class="floating-dialog-btn cancel">Cancel</button>' +
+					'</div>';
 
 				var progressContentDiv = document.createElement("div");
 				progressContentDiv.innerHTML = progressContentHTML;

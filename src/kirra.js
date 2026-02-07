@@ -29027,10 +29027,7 @@ function drawData(allBlastHoles, selectedHole) {
 						if (point.visible === false) return;
 						const screenX = (point.pointXLocation - centroidX) * currentScale + canvas.width / 2;
 						const screenY = -(point.pointYLocation - centroidY) * currentScale + canvas.height / 2;
-						let lineWidthForDisplay = point.lineWidth;
-						if (point.lineWidth <= 1) {
-							lineWidthForDisplay = 1;
-						}
+						const lineWidthForDisplay = point.lineWidth || 1;
 						drawKADPoints(screenX, screenY, point.pointZLocation, lineWidthForDisplay, point.color);
 						drawKADCoordinates(point, screenX, screenY);
 						drawKADPointID(point, screenX, screenY);
@@ -29041,10 +29038,7 @@ function drawData(allBlastHoles, selectedHole) {
 					const simplifiedPoints = simplifyByPxDist(originalPoints, 3);
 
 					for (const pointData of simplifiedPoints) {
-						let lineWidthForDisplay = pointData.lineWidth;
-						if (pointData.lineWidth <= 1) {
-							lineWidthForDisplay = 1;
-						}
+						const lineWidthForDisplay = pointData.lineWidth || 1;
 						const [x, y] = worldToCanvas(pointData.pointXLocation, pointData.pointYLocation);
 						drawKADPoints(x, y, pointData.pointZLocation, lineWidthForDisplay, pointData.color);
 						drawKADCoordinates(pointData, x, y);
@@ -30837,7 +30831,7 @@ function drawData(allBlastHoles, selectedHole) {
 				if (entity.entityType === "point") {
 					for (const pointData of entity.data) {
 						if (pointData.visible === false) continue;
-						const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 3 = radius 1.5, scaled by 0.1)
+						const size = ((pointData.lineWidth || 2) / 2) * 0.25; // Convert diameter to radius (lineWidth 2 = 1px radius)
 						const local = worldToThreeLocal(pointData.pointXLocation, pointData.pointYLocation);
 						const vertexIndex = entity.data.indexOf(pointData);
 						const kadId = name + ":::" + vertexIndex;
