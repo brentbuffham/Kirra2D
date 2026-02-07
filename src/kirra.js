@@ -124,6 +124,8 @@ import {
 	drawConnectorThreeJS,
 	highlightSelectedHoleThreeJS,
 	highlightSelectedKADPointThreeJS,
+	clearVertexHighlightsThreeJS,
+	clearKADSelectionHighlightsThreeJS,
 	drawToolPromptThreeJS,
 	drawConnectStadiumZoneThreeJS,
 	drawRenumberStadiumZoneThreeJS,
@@ -695,6 +697,7 @@ function exposeGlobalsToWindow() {
 	// Step 6a) Expose radio buttons and helper functions for 3D polygon selection
 	window.selectHolesRadio = selectHolesRadio;
 	window.selectKADRadio = selectKADRadio;
+	window.selectVerticesRadio = selectVerticesRadio;
 	window.isHoleVisible = isHoleVisible;
 	window.isEntityVisible = isEntityVisible;
 	window.allBlastHoles = allBlastHoles;
@@ -1982,9 +1985,10 @@ function handle3DClick(event) {
 		}
 	}
 
-	// Step 12h.5) Check radio button selection mode (Holes vs KAD) - matching 2D behavior
+	// Step 12h.5) Check radio button selection mode (Holes vs KAD vs Vertices) - matching 2D behavior
 	const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
 	const selectingKAD = selectKADRadio && selectKADRadio.checked;
+	const selectingVertices = selectVerticesRadio && selectVerticesRadio.checked;
 
 	// Step 12h.5a) Only allow selection if SelectPointer tool, Move tool, connector tool, RenumberHoles, ReorderRows, or ReorderKAD is active
 	// Fixes QUIRK 2: Prevent selection when no tool is active
@@ -2324,8 +2328,8 @@ function handle3DClick(event) {
 			}
 		});
 
-		// Step 12j.1) Check if selection pointer is active and KAD radio is selected
-		if (isSelectionPointerActive && selectingKAD) {
+		// Step 12j.1) Check if selection pointer is active and KAD or Vertices radio is selected
+		if (isSelectionPointerActive && (selectingKAD || selectingVertices)) {
 			let clickedKADObject = null;
 
 			// Step 12j.2) Search intersects for KAD objects (they have userData.kadId)
@@ -2725,33 +2729,150 @@ function handle3DClick(event) {
 				// Step 12j.8) Check for Shift key (multiple selection)
 				const isShiftPressed = event.shiftKey;
 
+				// Step 12j.8.1) Handle Vertices selection mode (V radio) - always use multi-vertex selection
+				if (selectingVertices) {
+					const entity = allKADDrawingsMap.get(clickedKADObject.entityName);
+					if (entity && entity.data && entity.data[clickedKADObject.elementIndex]) {
+						const clickedPoint = entity.data[clickedKADObject.elementIndex];
+
+						// If not Shift, clear existing selection first
+						if (!isShiftPressed) {
+							selectedMultiplePoints = [];
+						}
+
+						// Check if vertex is already in selection
+						const existingVertexIndex = selectedMultiplePoints.findIndex((vp) => {
+							return vp.entityName === clickedKADObject.entityName && vp.pointIndex === clickedKADObject.elementIndex;
+						});
+
+						if (existingVertexIndex === -1) {
+							// Add vertex to multi-selection
+							selectedMultiplePoints.push({
+								entityName: clickedKADObject.entityName,
+								entityType: clickedKADObject.entityType,
+								pointIndex: clickedKADObject.elementIndex,
+								point: clickedPoint,
+								pointID: clickedPoint.pointID,
+								pointXLocation: clickedPoint.pointXLocation,
+								pointYLocation: clickedPoint.pointYLocation,
+								pointZLocation: clickedPoint.pointZLocation
+							});
+							if (developerModeEnabled) {
+								console.log("⬇️ [3D VERTEX SELECT] Added vertex to selection, total:", selectedMultiplePoints.length);
+							}
+						} else if (isShiftPressed) {
+							// Only toggle off if Shift is pressed (clicking again removes)
+							selectedMultiplePoints.splice(existingVertexIndex, 1);
+							if (developerModeEnabled) {
+								console.log("⬇️ [3D VERTEX SELECT] Removed vertex from selection, total:", selectedMultiplePoints.length);
+							}
+						}
+
+						// Update status message
+						if (selectedMultiplePoints.length > 0) {
+							updateStatusMessage("Selected " + selectedMultiplePoints.length + " vertices (Delete to remove)");
+						} else {
+							updateStatusMessage("");
+						}
+
+						// Clear single point selection (we're using multi-vertex mode)
+						selectedPoint = null;
+						selectedKADObject = null;
+						selectedKADPolygon = null;
+
+						// Clear hole selections
+						selectedHole = null;
+						selectedMultipleHoles = [];
+
+						// Expose globals and redraw
+						exposeGlobalsToWindow();
+						drawData(allBlastHoles || [], selectedHole);
+						syncCanvasToTreeView();
+
+						// Prevent camera controls from handling this event
+						event.stopPropagation();
+						event.preventDefault();
+						return; // Skip the rest of KAD selection logic
+					}
+				}
+
 				if (isShiftPressed) {
 					// Step 12j.9) Multiple selection mode
 					if (developerModeEnabled) {
-						console.log("⬇️ [3D CLICK] Multiple KAD selection mode (Shift pressed)");
+						console.log("⬇️ [3D CLICK] Multiple selection mode (Shift pressed)");
 					}
-					const existingIndex = selectedMultipleKADObjects.findIndex((obj) => {
-						return obj.entityName === clickedKADObject.entityName && obj.entityType === clickedKADObject.entityType;
-					});
 
-					if (existingIndex === -1) {
-						// Add to multiple selection
-						selectedMultipleKADObjects.push(clickedKADObject);
-						if (developerModeEnabled) {
-							console.log("⬇️ [3D CLICK] Added to selection, total:", selectedMultipleKADObjects.length);
+					// Step 12j.9a) Check if we clicked on a vertex - use vertex multi-selection
+					if (clickedKADObject.selectionType === "vertex") {
+						const entity = allKADDrawingsMap.get(clickedKADObject.entityName);
+						if (entity && entity.data && entity.data[clickedKADObject.elementIndex]) {
+							const clickedPoint = entity.data[clickedKADObject.elementIndex];
+
+							// Check if vertex is already in selection
+							const existingVertexIndex = selectedMultiplePoints.findIndex((vp) => {
+								return vp.entityName === clickedKADObject.entityName && vp.pointIndex === clickedKADObject.elementIndex;
+							});
+
+							if (existingVertexIndex === -1) {
+								// Add vertex to multi-selection
+								selectedMultiplePoints.push({
+									entityName: clickedKADObject.entityName,
+									entityType: clickedKADObject.entityType,
+									pointIndex: clickedKADObject.elementIndex,
+									point: clickedPoint,
+									pointID: clickedPoint.pointID,
+									pointXLocation: clickedPoint.pointXLocation,
+									pointYLocation: clickedPoint.pointYLocation,
+									pointZLocation: clickedPoint.pointZLocation
+								});
+								if (developerModeEnabled) {
+									console.log("⬇️ [3D CLICK] Added vertex to selection, total:", selectedMultiplePoints.length);
+								}
+							} else {
+								// Remove vertex from multi-selection
+								selectedMultiplePoints.splice(existingVertexIndex, 1);
+								if (developerModeEnabled) {
+									console.log("⬇️ [3D CLICK] Removed vertex from selection, total:", selectedMultiplePoints.length);
+								}
+							}
+
+							// Update status message
+							if (selectedMultiplePoints.length > 0) {
+								updateStatusMessage("Selected " + selectedMultiplePoints.length + " vertices (Delete to remove)");
+							} else {
+								updateStatusMessage("");
+							}
+
+							// Clear single point selection
+							selectedPoint = null;
+							selectedKADObject = null;
+							selectedKADPolygon = null;
 						}
 					} else {
-						// Remove from multiple selection
-						selectedMultipleKADObjects.splice(existingIndex, 1);
-						if (developerModeEnabled) {
-							console.log("⬇️ [3D CLICK] Removed from selection, total:", selectedMultipleKADObjects.length);
-						}
-					}
+						// Step 12j.9b) Entity multi-selection (existing behavior)
+						const existingIndex = selectedMultipleKADObjects.findIndex((obj) => {
+							return obj.entityName === clickedKADObject.entityName && obj.entityType === clickedKADObject.entityType;
+						});
 
-					// Clear single selection
-					selectedKADObject = null;
-					selectedKADPolygon = null;
-					selectedPoint = null; // Clear selectedPoint in multi-selection mode
+						if (existingIndex === -1) {
+							// Add to multiple selection
+							selectedMultipleKADObjects.push(clickedKADObject);
+							if (developerModeEnabled) {
+								console.log("⬇️ [3D CLICK] Added entity to selection, total:", selectedMultipleKADObjects.length);
+							}
+						} else {
+							// Remove from multiple selection
+							selectedMultipleKADObjects.splice(existingIndex, 1);
+							if (developerModeEnabled) {
+								console.log("⬇️ [3D CLICK] Removed entity from selection, total:", selectedMultipleKADObjects.length);
+							}
+						}
+
+						// Clear single selection
+						selectedKADObject = null;
+						selectedKADPolygon = null;
+						selectedPoint = null;
+					}
 				} else {
 					// Step 12j.10) Single selection mode
 					if (developerModeEnabled) {
@@ -2816,6 +2937,11 @@ function handle3DClick(event) {
 						selectedKADObject = null;
 						selectedKADPolygon = null;
 						selectedMultipleKADObjects = [];
+					}
+					if (selectingVertices) {
+						selectedMultiplePoints = [];
+						selectedPoint = null;
+						updateStatusMessage("");
 					}
 					if (selectingHoles && !isMultiHoleSelectionEnabled) {
 						selectedHole = null;
@@ -27270,6 +27396,7 @@ function handleSelection(event) {
 		// Step 5) Respect radio selection mode
 		const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
 		const selectingKAD = selectKADRadio && selectKADRadio.checked;
+		const selectingVertices = selectVerticesRadio && selectVerticesRadio.checked;
 
 		// Check if Shift key is pressed for multiple selection
 		const isShiftPressed = event.shiftKey;
@@ -27367,6 +27494,66 @@ function handleSelection(event) {
 			}
 		}
 
+		// Step 8b) Try vertex selection (only if Vertices radio is selected)
+		if (selectingVertices) {
+			// Use KAD click detection but handle as vertex selection
+			const clickedVertex = getClickedKADObject(clickX, clickY);
+
+			if (clickedVertex) {
+				const entity = getEntityFromKADObject(clickedVertex);
+				if (entity && entity.data && entity.data[clickedVertex.elementIndex]) {
+					const point = entity.data[clickedVertex.elementIndex];
+
+					if (isShiftPressed) {
+						// Shift+click: Add/remove vertex from selection
+						const existingIndex = selectedMultiplePoints.findIndex(function (vp) {
+							return vp.entityName === clickedVertex.entityName && vp.pointIndex === clickedVertex.elementIndex;
+						});
+
+						if (existingIndex === -1) {
+							// Add vertex to selection
+							selectedMultiplePoints.push({
+								entityName: clickedVertex.entityName,
+								entityType: entity.entityType,
+								pointIndex: clickedVertex.elementIndex,
+								point: point,
+								pointID: point.pointID,
+								pointXLocation: point.pointXLocation,
+								pointYLocation: point.pointYLocation,
+								pointZLocation: point.pointZLocation
+							});
+						} else {
+							// Remove from selection
+							selectedMultiplePoints.splice(existingIndex, 1);
+						}
+					} else {
+						// Single click: Start new vertex selection
+						selectedMultiplePoints = [{
+							entityName: clickedVertex.entityName,
+							entityType: entity.entityType,
+							pointIndex: clickedVertex.elementIndex,
+							point: point,
+							pointID: point.pointID,
+							pointXLocation: point.pointXLocation,
+							pointYLocation: point.pointYLocation,
+							pointZLocation: point.pointZLocation
+						}];
+					}
+
+					// Update status
+					if (selectedMultiplePoints.length > 0) {
+						updateStatusMessage("Selected " + selectedMultiplePoints.length + " vertices (Delete to remove)");
+					}
+
+					// Clear other selections
+					selectedHole = null;
+					selectedMultipleHoles = [];
+					selectedKADObject = null;
+					selectedMultipleKADObjects = [];
+				}
+			}
+		}
+
 		// Step 9) Nothing was clicked - clear all selections if not shift clicking
 		if (!isShiftPressed && !clickedHole && !multipleClickedHoles.length && !clickedKADObject) {
 			if (selectingKAD) {
@@ -27419,14 +27606,42 @@ function completePolygonSelection() {
 	// Step 2) Clear previous selections
 	selectedMultipleHoles = [];
 	selectedMultipleKADObjects = [];
+	selectedMultiplePoints = [];
 	selectedHole = null; // Clear single hole selection
 
 	// Step 3) Respect radio selection mode for polygon selection
 	const selectingHoles = selectHolesRadio && selectHolesRadio.checked;
 	const selectingKAD = selectKADRadio && selectKADRadio.checked;
+	const selectingVertices = selectVerticesRadio && selectVerticesRadio.checked;
 
 	// Step 4) Mutually exclusive selection logic
-	if (selectingHoles) {
+	if (selectingVertices) {
+		// Select individual VERTICES (for point cloud cleaning)
+		for (const [entityName, entity] of allKADDrawingsMap.entries()) {
+			if (!isEntityVisible(entityName)) continue;
+			if (!entity || !entity.data) continue;
+
+			// Check EACH point individually
+			for (let i = 0; i < entity.data.length; i++) {
+				const point = entity.data[i];
+				if (point.visible === false) continue;
+
+				if (isPointInPolygon(point.pointXLocation, point.pointYLocation, polyPointsX, polyPointsY)) {
+					// Add individual vertex reference
+					selectedMultiplePoints.push({
+						entityName: entityName,
+						entityType: entity.entityType,
+						pointIndex: i,
+						point: point,
+						pointID: point.pointID,
+						pointXLocation: point.pointXLocation,
+						pointYLocation: point.pointYLocation,
+						pointZLocation: point.pointZLocation
+					});
+				}
+			}
+		}
+	} else if (selectingHoles) {
 		// Only select holes
 		allBlastHoles.forEach((hole) => {
 			if (isHoleVisible(hole) && isPointInPolygon(hole.startXLocation, hole.startYLocation, polyPointsX, polyPointsY)) {
@@ -27510,7 +27725,9 @@ function completePolygonSelection() {
 	}
 
 	// Step 5) HUD: Show selection message (consistent format for 2D/3D)
-	if (selectedMultipleHoles.length > 0) {
+	if (selectedMultiplePoints.length > 0) {
+		showSelectionMessage("Selected " + selectedMultiplePoints.length + " vertices\nDelete to remove, Escape to clear");
+	} else if (selectedMultipleHoles.length > 0) {
 		var holeIDsPoly = selectedMultipleHoles.map((h) => h.holeID);
 		var displayIDsPoly = holeIDsPoly.length > 10 ? holeIDsPoly.slice(0, 10).join(",") + "..." : holeIDsPoly.join(",");
 		showSelectionMessage("Editing " + selectedMultipleHoles.length + " Holes: {" + displayIDsPoly + "}\nEscape key to clear Selection");
@@ -30793,10 +31010,15 @@ function drawData(allBlastHoles, selectedHole) {
 			}
 		}
 
-		// Step 6) Highlight selected KAD objects in Three.js (after KAD drawing)
+		// Step 6) Clear and redraw KAD selection highlights in Three.js
+		// Clear previous highlights before drawing new ones to prevent accumulation
+		clearKADSelectionHighlightsThreeJS();
+		clearVertexHighlightsThreeJS();
+
+		// Step 6a) Highlight selected KAD objects in Three.js (includes vertex highlights)
 		highlightSelectedKADThreeJS();
 
-		// Step 6a) Draw offset preview in 3D if active
+		// Step 6b) Draw offset preview in 3D if active
 		// This draws the live preview of offset operations in 3D mode
 		draw3DOffsetPreview();
 	}
@@ -34409,6 +34631,87 @@ window.onload = function () {
 					});
 				}
 			}
+			// Step 5) Handle MULTIPLE VERTEX deletion (from polygon vertex selection)
+			else if (window.selectedMultiplePoints && window.selectedMultiplePoints.length > 0) {
+				event.preventDefault();
+				const vertexCount = window.selectedMultiplePoints.length;
+				console.log("❌🔑 [DELETE KEY] Deleting " + vertexCount + " selected vertices");
+
+				showConfirmationDialog(
+					"Delete Vertices",
+					"Are you sure you want to delete " + vertexCount + " selected vertices?\n\nThis is useful for cleaning stray points from point clouds.",
+					"Delete Vertices",
+					"Cancel"
+				).then(function (confirmed) {
+					if (confirmed) {
+						// Group deletions by entity for efficiency
+						var deletionsByEntity = new Map();
+						window.selectedMultiplePoints.forEach(function (vp) {
+							if (!deletionsByEntity.has(vp.entityName)) {
+								deletionsByEntity.set(vp.entityName, []);
+							}
+							deletionsByEntity.get(vp.entityName).push(vp.pointIndex);
+						});
+
+						// Begin undo batch
+						if (undoManager) {
+							undoManager.beginBatch("Delete " + vertexCount + " vertices");
+						}
+
+						var totalDeleted = 0;
+						for (var [entityName, indices] of deletionsByEntity.entries()) {
+							var entity = allKADDrawingsMap.get(entityName);
+							if (!entity || !entity.data) continue;
+
+							// Sort indices descending to delete from end first (maintains correct indices)
+							indices.sort(function (a, b) { return b - a; });
+
+							for (var idx of indices) {
+								if (idx >= 0 && idx < entity.data.length) {
+									// Capture for undo
+									var vertexDataForUndo = JSON.parse(JSON.stringify(entity.data[idx]));
+									if (undoManager) {
+										var deleteVertexAction = new DeleteKADVertexAction(entityName, vertexDataForUndo, idx);
+										undoManager.pushAction(deleteVertexAction);
+									}
+									entity.data.splice(idx, 1);
+									totalDeleted++;
+								}
+							}
+
+							// Delete entity if empty
+							if (entity.data.length === 0) {
+								allKADDrawingsMap.delete(entityName);
+								console.log("Entity empty after vertex deletion - removed:", entityName);
+							} else if (typeof renumberEntityPoints === "function") {
+								renumberEntityPoints(entity);
+							}
+						}
+
+						if (undoManager) {
+							undoManager.endBatch();
+						}
+
+						console.log("Deleted " + totalDeleted + " vertices from " + deletionsByEntity.size + " entities");
+
+						// Clear vertex selection (both local and window variables)
+						selectedMultiplePoints = [];
+						window.selectedMultiplePoints = selectedMultiplePoints;
+						selectedPoint = null;
+						window.selectedPoint = null;
+
+						if (typeof debouncedSaveKAD === "function") {
+							debouncedSaveKAD();
+						}
+						window.threeDataNeedsRebuild = true;
+						drawData(allBlastHoles, selectedHole);
+						syncCanvasToTreeView();
+						updateTreeView();
+						updateStatusMessage("Deleted " + totalDeleted + " vertices");
+						setTimeout(function () { updateStatusMessage(""); }, 2000);
+					}
+				});
+			}
 		}
 		// Shift Key for multi-select
 		if (event.key === "Shift") {
@@ -34820,7 +35123,8 @@ const rulerTool = document.getElementById("rulerTool");
 const rulerProtractorTool = document.getElementById("rulerProtractorTool");
 
 const selectHolesRadio = document.getElementById("selectHoles"); // Step 1) Radio: holes
-const selectKADRadio = document.getElementById("selectKAD"); // Step 2) Radio: KAD
+const selectKADRadio = document.getElementById("selectKAD"); // Step 2) Radio: KAD entities
+const selectVerticesRadio = document.getElementById("selectVertices"); // Step 2b) Radio: vertices
 
 // Step 3) Radio change handlers - enforce exclusive selection type
 selectHolesRadio.addEventListener("change", function () {
@@ -34829,16 +35133,27 @@ selectHolesRadio.addEventListener("change", function () {
 		selectedKADObject = null;
 		selectedKADPolygon = null;
 		selectedMultipleKADObjects = [];
-		updateStatusMessage("Selection mode: Holes only");
+		selectedMultiplePoints = [];
+		updateStatusMessage("Selection mode: Holes");
 		drawData(allBlastHoles, selectedHole);
 	}
 });
 selectKADRadio.addEventListener("change", function () {
 	if (this.checked) {
-		// Clear Hole selections
+		// Clear Hole selections and vertex selections
 		selectedHole = null;
 		selectedMultipleHoles = [];
-		updateStatusMessage("Selection mode: KAD only");
+		selectedMultiplePoints = [];
+		updateStatusMessage("Selection mode: KAD Entities");
+		drawData(allBlastHoles, selectedHole);
+	}
+});
+selectVerticesRadio.addEventListener("change", function () {
+	if (this.checked) {
+		// Clear Hole selections (keep KAD entity selections for context)
+		selectedHole = null;
+		selectedMultipleHoles = [];
+		updateStatusMessage("Selection mode: Vertices (for point cloud cleaning)");
 		drawData(allBlastHoles, selectedHole);
 	}
 });
@@ -43031,28 +43346,25 @@ function loadPointCloudFile(file) {
 		var points;
 
 		try {
-			switch (fileExtension) {
-				case "xyz":
-					points = parseXYZFile(content);
-					break;
-				case "asc":
-					points = parseASCFile(content);
-					break;
-				case "txt":
-					points = parseTXTFile(content);
-					break;
-				case "csv":
-					points = parseCSVPointCloud(content);
-					break;
-				case "ply":
-					points = parsePLYFile(content);
-					break;
-				case "pts":
-					points = parsePTSFile(content);
-					break;
-				default:
-					// Default to the existing parser for backward compatibility
+			// Use unified PointCloudParser for text-based formats
+			var useUnifiedParser = ["xyz", "txt", "csv", "pts", "ptx", "asc"].includes(fileExtension);
+
+			if (useUnifiedParser) {
+				// Use the new PointCloudParser that handles all delimiters (space, comma, semicolon, tab)
+				var PointCloudParserClass = window.fileManager.parsers.get("pointcloud-csv");
+				if (PointCloudParserClass) {
+					var parser = new PointCloudParserClass();
+					var result = parser.parsePointCloudData(content, file.name);
+					points = result.points;
+				} else {
+					console.warn("PointCloudParser not found, falling back to legacy parser");
 					points = parsePointCloudData(content);
+				}
+			} else if (fileExtension === "ply") {
+				points = parsePLYFile(content);
+			} else {
+				// Default to the existing parser for backward compatibility
+				points = parsePointCloudData(content);
 			}
 
 			if (points && points.length > 0) {

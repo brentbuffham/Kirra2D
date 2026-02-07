@@ -1861,6 +1861,7 @@
 								<option value="csv" selected>CSV</option>
 								<option value="ply">PLY</option>
 								<option value="pts">PTS</option>
+								<option value="ptx">PTX</option>
 							</select>
 							<label class="icon-button pointcloud-input-btn" data-target="fileInputPointCloud"
 								title="Import Point Cloud">
@@ -2644,14 +2645,14 @@
 				<label for="selectByPolygon" class="toggle-buttons-custom icon-button" title="Polygon Select">
 					<img src="icons/pointer-select-polygon.png" alt="Polygon Select">
 				</label>
-				<input type="radio" id="selectHoles" name="selectType" value="holes" checked>
-				<label for="selectHoles" class="toggle-buttons-custom" title="Select Holes">
-					Holes
-				</label>
-				<input type="radio" id="selectKAD" name="selectType" value="kad">
-				<label for="selectKAD" class="toggle-buttons-custom" title="Select KAD">
-					KAD
-				</label>
+				<div class="segmented-control single">
+					<input type="radio" id="selectHoles" name="selectType" value="holes" checked>
+					<label for="selectHoles" title="Select Holes">H</label>
+					<input type="radio" id="selectKAD" name="selectType" value="kad">
+					<label for="selectKAD" title="Select KAD">K</label>
+					<input type="radio" id="selectVertices" name="selectType" value="vertices">
+					<label for="selectVertices" title="Select KAD Vertices">V</label>
+				</div>
 				<input type="checkbox" id="rulerTool" name="rulerTool" value="rulerTool">
 				<label for="rulerTool" class="toggle-buttons-custom icon-button" title="Ruler">
 					<img src="icons/ruler-measure.png" alt="Ruler">

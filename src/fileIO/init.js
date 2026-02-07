@@ -257,17 +257,35 @@ export function initializeFileManager() {
 		category: "point-cloud"
 	});
 
-	// Step 12b) Register Point Cloud CSV parser
+	// Step 12b) Register Point Cloud parser (XYZ, PTS, PTX, CSV formats)
 	fileManager.registerParser("pointcloud-csv", PointCloudParser, {
-		extensions: ["csv", "xyz", "txt"],
-		description: "Point Cloud CSV (x,y,z format with optional header)",
+		extensions: ["csv", "xyz", "txt", "pts", "ptx"],
+		description: "Point Cloud (XYZ, PTS, PTX, CSV formats with optional RGB/intensity)",
 		category: "point-cloud"
 	});
 
-	// Step 12c) Register Point Cloud writer
+	// Step 12c) Register Point Cloud writers for different formats
 	fileManager.registerWriter("pointcloud-xyz", PointCloudWriter, {
-		extensions: ["xyz", "txt", "csv"],
-		description: "Point Cloud XYZ format (X,Y,Z or X,Y,Z,R,G,B)",
+		extensions: ["xyz", "txt"],
+		description: "Point Cloud XYZ format (X Y Z or X Y Z R G B)",
+		category: "point-cloud"
+	});
+
+	fileManager.registerWriter("pointcloud-csv", PointCloudWriter, {
+		extensions: ["csv"],
+		description: "Point Cloud CSV format (X,Y,Z or X,Y,Z,R,G,B)",
+		category: "point-cloud"
+	});
+
+	fileManager.registerWriter("pointcloud-pts", PointCloudWriter, {
+		extensions: ["pts"],
+		description: "Point Cloud PTS format (count header, X Y Z I R G B)",
+		category: "point-cloud"
+	});
+
+	fileManager.registerWriter("pointcloud-ptx", PointCloudWriter, {
+		extensions: ["ptx"],
+		description: "Point Cloud PTX format (Leica scanner, single scan)",
 		category: "point-cloud"
 	});
 

@@ -1576,6 +1576,67 @@ export function highlightSelectedKADPointThreeJS(kadObject, highlightType) {
 	window.threeRenderer.kadGroup.add(highlightMesh);
 }
 
+// Step 18.6) Clear vertex selection highlights in Three.js
+// Call this before drawing new highlights to prevent accumulation
+export function clearVertexHighlightsThreeJS() {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var kadGroup = window.threeRenderer.kadGroup;
+	if (!kadGroup) return;
+
+	var toRemove = [];
+	kadGroup.children.forEach(function(child) {
+		if (child.userData && (child.userData.type === "vertexHighlight" || child.userData.type === "vertexSelectionHighlight")) {
+			toRemove.push(child);
+		}
+	});
+
+	toRemove.forEach(function(obj) {
+		kadGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+		if (obj.material) {
+			if (Array.isArray(obj.material)) {
+				obj.material.forEach(function(mat) { mat.dispose(); });
+			} else {
+				obj.material.dispose();
+			}
+		}
+	});
+}
+
+// Step 18.6b) Clear KAD selection highlights in Three.js
+// Call this before drawing new highlights to prevent accumulation
+export function clearKADSelectionHighlightsThreeJS() {
+	if (!window.threeInitialized || !window.threeRenderer) return;
+
+	var kadGroup = window.threeRenderer.kadGroup;
+	if (!kadGroup) return;
+
+	var toRemove = [];
+	kadGroup.children.forEach(function(child) {
+		if (child.userData && child.userData.type === "kadSelectionHighlight") {
+			toRemove.push(child);
+		}
+	});
+
+	toRemove.forEach(function(obj) {
+		kadGroup.remove(obj);
+		// Dispose children if it's a group
+		if (obj.traverse) {
+			obj.traverse(function(subObj) {
+				if (subObj.geometry) subObj.geometry.dispose();
+				if (subObj.material) {
+					if (Array.isArray(subObj.material)) {
+						subObj.material.forEach(function(mat) { mat.dispose(); });
+					} else {
+						subObj.material.dispose();
+					}
+				}
+			});
+		}
+	});
+}
+
 // Step 19) Draw connection stadium zone (multi-connector indicator) in Three.js
 // Now accepts WORLD coordinates for toMousePos and converts to local internally
 export function drawConnectStadiumZoneThreeJS(fromHole, toMousePos, connectAmount) {

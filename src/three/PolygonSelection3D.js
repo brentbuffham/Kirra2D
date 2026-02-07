@@ -39,23 +39,25 @@ export class PolygonSelection3D {
     createOverlayCanvas() {
         if (this.overlayCanvas) return; // Already created
 
-        // Step 5a) Get Three.js canvas for positioning
+        // Step 5a) Get Three.js canvas for positioning and dimensions
         const threeCanvas = this.threeRenderer.getCanvas();
-        const rect = threeCanvas.getBoundingClientRect();
+        const canvasRect = threeCanvas.getBoundingClientRect();
+        const parentRect = threeCanvas.parentElement.getBoundingClientRect();
 
         // Step 5b) Create new canvas element
         this.overlayCanvas = document.createElement("canvas");
         this.overlayCanvas.id = "polygon-overlay-3d";
-        // Use CSS dimensions for canvas pixel dimensions (1:1 mapping)
-        this.overlayCanvas.width = rect.width;
-        this.overlayCanvas.height = rect.height;
+        // Use Three.js canvas internal dimensions for pixel-perfect drawing
+        this.overlayCanvas.width = threeCanvas.width;
+        this.overlayCanvas.height = threeCanvas.height;
 
-        // Step 5c) Style the canvas
+        // Step 5c) Style the canvas - position to match Three.js canvas visually
         this.overlayCanvas.style.position = "absolute";
-        this.overlayCanvas.style.left = threeCanvas.offsetLeft + "px";
-        this.overlayCanvas.style.top = threeCanvas.offsetTop + "px";
-        this.overlayCanvas.style.width = rect.width + "px";
-        this.overlayCanvas.style.height = rect.height + "px";
+        this.overlayCanvas.style.left = (canvasRect.left - parentRect.left) + "px";
+        this.overlayCanvas.style.top = (canvasRect.top - parentRect.top) + "px";
+        // CSS size matches Three.js canvas CSS size (may differ from internal pixel size)
+        this.overlayCanvas.style.width = canvasRect.width + "px";
+        this.overlayCanvas.style.height = canvasRect.height + "px";
         this.overlayCanvas.style.pointerEvents = "none"; // Allow clicks through to Three.js canvas
         this.overlayCanvas.style.zIndex = "3"; // Above Three.js canvas (z-index 1) and 2D canvas (z-index 2)
         this.overlayCanvas.style.display = "none"; // Hidden by default
@@ -66,7 +68,7 @@ export class PolygonSelection3D {
         // Step 5e) Insert into DOM (after Three.js canvas)
         threeCanvas.parentElement.appendChild(this.overlayCanvas);
 
-        console.log("📐 3D Polygon overlay canvas created - Width:", this.overlayCanvas.width, "Height:", this.overlayCanvas.height);
+        console.log("📐 3D Polygon overlay canvas created - Internal:", this.overlayCanvas.width, "x", this.overlayCanvas.height, "CSS:", canvasRect.width, "x", canvasRect.height);
     }
 
     // Step 6) Show overlay canvas
@@ -97,15 +99,17 @@ export class PolygonSelection3D {
         if (!this.overlayCanvas) return;
 
         const threeCanvas = this.threeRenderer.getCanvas();
-        const rect = threeCanvas.getBoundingClientRect();
+        const canvasRect = threeCanvas.getBoundingClientRect();
+        const parentRect = threeCanvas.parentElement.getBoundingClientRect();
 
-        // Use CSS dimensions for canvas pixel dimensions (1:1 mapping)
-        this.overlayCanvas.width = rect.width;
-        this.overlayCanvas.height = rect.height;
-        this.overlayCanvas.style.left = threeCanvas.offsetLeft + "px";
-        this.overlayCanvas.style.top = threeCanvas.offsetTop + "px";
-        this.overlayCanvas.style.width = rect.width + "px";
-        this.overlayCanvas.style.height = rect.height + "px";
+        // Use Three.js canvas internal dimensions for pixel-perfect drawing
+        this.overlayCanvas.width = threeCanvas.width;
+        this.overlayCanvas.height = threeCanvas.height;
+        // Position and CSS size to match Three.js canvas visually
+        this.overlayCanvas.style.left = (canvasRect.left - parentRect.left) + "px";
+        this.overlayCanvas.style.top = (canvasRect.top - parentRect.top) + "px";
+        this.overlayCanvas.style.width = canvasRect.width + "px";
+        this.overlayCanvas.style.height = canvasRect.height + "px";
 
         // Redraw after resize
         if (this.isActive && this.polyPointsX.length > 0) {
@@ -184,15 +188,18 @@ export class PolygonSelection3D {
         event.preventDefault();
         event.stopPropagation();
 
-        // Step 12b) Get canvas coordinates
-        const rect = this.overlayCanvas.getBoundingClientRect();
+        // Step 12b) Get coordinates from Three.js canvas (the actual click target)
+        // Use Three.js canvas rect - this is what we're actually clicking on
+        const threeCanvas = this.threeRenderer.getCanvas();
+        const rect = threeCanvas.getBoundingClientRect();
         const clickX = event.clientX - rect.left;
         const clickY = event.clientY - rect.top;
 
-        // Step 12c) Convert to canvas pixel coordinates
-        // Use direct pixel coordinates (canvas already has correct pixel dimensions)
-        const canvasX = clickX;
-        const canvasY = clickY;
+        // Step 12c) Convert to canvas pixel coordinates (accounting for any CSS scaling)
+        const scaleX = threeCanvas.width / rect.width;
+        const scaleY = threeCanvas.height / rect.height;
+        const canvasX = clickX * scaleX;
+        const canvasY = clickY * scaleY;
 
         // Step 12d) Add point to polygon
         this.polyPointsX.push(canvasX);
@@ -247,10 +254,21 @@ export class PolygonSelection3D {
 
         console.log("After removing preview, polygon has " + this.polyPointsX.length + " vertices");
 
-        // Step 13b) Perform selection
-        this.projectAndSelectObjects();
+        // Step 13b) Check if vertex selection mode is enabled
+        // Check if "V" (Vertices) radio is selected
+        const selectVerticesRadio = document.getElementById("selectVertices");
+        const vertexSelectionMode = selectVerticesRadio && selectVerticesRadio.checked;
 
-        // Step 13c) Clear polygon and hide overlay
+        // Step 13c) Perform selection based on mode
+        if (vertexSelectionMode) {
+            console.log("🔷 Using VERTEX selection mode");
+            this.projectAndSelectVertices();
+        } else {
+            console.log("🔶 Using ENTITY selection mode");
+            this.projectAndSelectObjects();
+        }
+
+        // Step 13d) Clear polygon and hide overlay
         this.polyPointsX = [];
         this.polyPointsY = [];
         this.hideOverlayCanvas();
@@ -267,14 +285,17 @@ export class PolygonSelection3D {
             event.stopPropagation();
         }
 
-        // Step 14a) Get canvas coordinates
-        const rect = this.overlayCanvas.getBoundingClientRect();
+        // Step 14a) Get coordinates from Three.js canvas
+        const threeCanvas = this.threeRenderer.getCanvas();
+        const rect = threeCanvas.getBoundingClientRect();
         const mouseX = event.clientX - rect.left;
         const mouseY = event.clientY - rect.top;
 
-        // Step 14b) Use direct pixel coordinates
-        const canvasX = mouseX;
-        const canvasY = mouseY;
+        // Step 14b) Convert to canvas pixel coordinates (accounting for CSS scaling)
+        const scaleX = threeCanvas.width / rect.width;
+        const scaleY = threeCanvas.height / rect.height;
+        const canvasX = mouseX * scaleX;
+        const canvasY = mouseY * scaleY;
 
         // Step 14c) Update preview point (last point in array)
         if (this.polyPointsX.length > 0) {
@@ -318,13 +339,16 @@ export class PolygonSelection3D {
         // Step 15b) Single touch - add vertex
         event.preventDefault();
         const touch = event.touches[0];
-        const rect = this.overlayCanvas.getBoundingClientRect();
+        const threeCanvas = this.threeRenderer.getCanvas();
+        const rect = threeCanvas.getBoundingClientRect();
         const touchX = touch.clientX - rect.left;
         const touchY = touch.clientY - rect.top;
 
-        // Use direct pixel coordinates
-        const canvasX = touchX;
-        const canvasY = touchY;
+        // Convert to canvas pixel coordinates (accounting for CSS scaling)
+        const scaleX = threeCanvas.width / rect.width;
+        const scaleY = threeCanvas.height / rect.height;
+        const canvasX = touchX * scaleX;
+        const canvasY = touchY * scaleY;
 
         // Add point
         this.polyPointsX.push(canvasX);
@@ -351,13 +375,16 @@ export class PolygonSelection3D {
 
         event.preventDefault();
         const touch = event.touches[0];
-        const rect = this.overlayCanvas.getBoundingClientRect();
+        const threeCanvas = this.threeRenderer.getCanvas();
+        const rect = threeCanvas.getBoundingClientRect();
         const touchX = touch.clientX - rect.left;
         const touchY = touch.clientY - rect.top;
 
-        // Use direct pixel coordinates
-        const canvasX = touchX;
-        const canvasY = touchY;
+        // Convert to canvas pixel coordinates (accounting for CSS scaling)
+        const scaleX = threeCanvas.width / rect.width;
+        const scaleY = threeCanvas.height / rect.height;
+        const canvasX = touchX * scaleX;
+        const canvasY = touchY * scaleY;
 
         // Update preview point
         if (this.polyPointsX.length > 0) {
@@ -762,6 +789,92 @@ export class PolygonSelection3D {
         }
 
         return inside;
+    }
+
+    //=================================================
+    // Individual Vertex Selection (for point cloud cleaning)
+    //=================================================
+
+    // Step 20b) Select individual VERTICES instead of whole entities
+    projectAndSelectVertices() {
+        console.log("=== 3D VERTEX SELECTION MODE ===");
+
+        // Vertices mode is valid when "V" radio is selected
+        const selectVerticesRadio = window.selectVerticesRadio || document.getElementById("selectVertices");
+        const selectingVertices = selectVerticesRadio && selectVerticesRadio.checked;
+        if (!selectingVertices) {
+            console.log("Not in Vertices selection mode");
+            return;
+        }
+
+        const allKADDrawingsMap = window.allKADDrawingsMap;
+        if (!allKADDrawingsMap) {
+            console.log("allKADDrawingsMap not found");
+            return;
+        }
+
+        // Initialize or clear vertex selection array
+        if (!window.selectedMultiplePoints) {
+            window.selectedMultiplePoints = [];
+        }
+        window.selectedMultiplePoints.length = 0;
+
+        let totalTested = 0;
+        let totalSelected = 0;
+
+        for (const [entityName, entity] of allKADDrawingsMap.entries()) {
+            // Check entity visibility
+            if (window.isEntityVisible && !window.isEntityVisible(entityName)) continue;
+            if (!entity || !entity.data) continue;
+
+            // Check EACH point individually
+            for (let i = 0; i < entity.data.length; i++) {
+                const point = entity.data[i];
+                if (point.visible === false) continue;
+
+                totalTested++;
+
+                const worldX = point.pointXLocation;
+                const worldY = point.pointYLocation;
+                const worldZ = point.pointZLocation || 0;
+
+                const { screenX, screenY } = this.projectToScreen(worldX, worldY, worldZ);
+
+                if (this.isPointInPolygon(screenX, screenY)) {
+                    // Add individual vertex reference
+                    window.selectedMultiplePoints.push({
+                        entityName: entityName,
+                        entityType: entity.entityType,
+                        pointIndex: i,
+                        point: point,
+                        pointID: point.pointID,
+                        pointXLocation: point.pointXLocation,
+                        pointYLocation: point.pointYLocation,
+                        pointZLocation: point.pointZLocation
+                    });
+                    totalSelected++;
+                }
+            }
+        }
+
+        console.log("Vertex selection: tested " + totalTested + ", selected " + totalSelected);
+
+        // Update status message
+        if (window.updateStatusMessage) {
+            if (totalSelected > 0) {
+                window.updateStatusMessage("Selected " + totalSelected + " vertices (Delete to remove)");
+            } else {
+                window.updateStatusMessage("No vertices found in polygon");
+            }
+        }
+
+        // Trigger redraw to show vertex highlights
+        if (window.drawData) {
+            window.drawData(window.allBlastHoles, window.selectedHole);
+        }
+        if (window.renderThreeJS) {
+            window.renderThreeJS();
+        }
     }
 
     //=================================================

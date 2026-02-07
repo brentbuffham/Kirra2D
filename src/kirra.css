@@ -6,8 +6,8 @@
 
 /* Hershey Simplex font family for 2D canvas text rendering */
 @font-face {
-    font-family: 'HersheySimplex';
-    src: url('./fonts/AVHersheySimplexMedium.ttf') format('truetype');
+    font-family: "HersheySimplex";
+    src: url("./fonts/AVHersheySimplexMedium.ttf") format("truetype");
     font-weight: normal;
     font-style: normal;
     font-display: swap;
@@ -71,7 +71,9 @@ body {
     /* Default Background Color */
     color: var(--light-mode-text);
     /* Default Text Color */
-    transition: background-color 2s, color 2s;
+    transition:
+        background-color 2s,
+        color 2s;
     font-family: var(--default-font);
     overflow-x: hidden;
     max-width: 100vw;
@@ -141,7 +143,9 @@ canvas#canvas {
     /* Changed from 'background' shorthand */
     border: var(--canvas-border) solid var(--light-mode-border);
     /* Default border for light mode */
-    transition: background-color 2s, border 2s;
+    transition:
+        background-color 2s,
+        border 2s;
     /* Adjusted transition */
     z-index: 1;
     /* z-index relative to .canvas-container */
@@ -271,7 +275,9 @@ body.dark-mode #dark-mode-toggle::after {
     /* Border color based on light mode */
     border-radius: 8px;
     /* Adjust border radius if needed */
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
 }
 
 body.dark-mode .modal-content {
@@ -310,7 +316,9 @@ body.dark-mode .modal-footer {
     color: var(--light-mode-text);
     border: none;
     border-radius: 4px;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     padding: 8px 16px;
     /* Adjust padding for uniform size */
     font-size: var(--default-font-size);
@@ -361,7 +369,9 @@ body.dark-mode .modal-footer .btn:hover {
 body.dark-mode .menubar {
     background-color: var(--dark-mode-color);
     border-bottom: 1px solid var(--dark-mode-border);
-    transition: background-color 2s, color 2s;
+    transition:
+        background-color 2s,
+        color 2s;
 }
 
 /* The .menu holds all top-level menu items in one row. */
@@ -487,7 +497,9 @@ body.dark-mode .menu-content a:hover {
     text-decoration: none;
     border-radius: 4px;
     font-family: Arial, Helvetica, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
 }
 
 .button-container-3col {
@@ -506,7 +518,9 @@ body.dark-mode .menu-content a:hover {
     text-decoration: none;
     border-radius: 4px;
     font-family: Arial, Helvetica, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
 }
 
 .button-container-1col {
@@ -524,7 +538,9 @@ body.dark-mode .menu-content a:hover {
     text-decoration: none;
     border-radius: 4px;
     font-family: Arial, Helvetica, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
 }
 
 .button-container a.dark-mode {
@@ -578,11 +594,11 @@ body.dark-mode .menu-content a:hover {
     margin-left: 2px;
 }
 
-.dark-mode-toggle input:checked+label {
+.dark-mode-toggle input:checked + label {
     background-color: #666;
 }
 
-.dark-mode-toggle input:checked+label:after {
+.dark-mode-toggle input:checked + label:after {
     transform: translateX(24px);
 }
 
@@ -810,11 +826,11 @@ input[type="file"] {
     transition: 0.4s;
 }
 
-input:checked+.slider {
+input:checked + .slider {
     background-color: #00a91c;
 }
 
-input:checked+.slider:before {
+input:checked + .slider:before {
     -webkit-transform: translateX(26px);
     -ms-transform: translateX(26px);
     transform: translateX(26px);
@@ -834,7 +850,9 @@ button {
     background-color: var(--primary-color);
     color: #000;
     font-family: Arial, Helvetica, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border: none;
     /* Remove the border */
     border-radius: 4px;
@@ -871,7 +889,9 @@ button:hover {
     background-color: firebrick;
     color: #ffffff;
     font-family: Arial, Helvetica, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border: none;
     /* Remove the border */
     border-radius: 4px;
@@ -896,7 +916,9 @@ button:hover {
     color: #ffffff;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border: none;
     border-radius: 4px;
     outline: none;
@@ -928,7 +950,9 @@ button:hover {
     color: #000;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border: none;
     /* Remove the border */
     border-radius: 4px;
@@ -965,7 +989,9 @@ button:hover {
     color: #ffffff;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border: none;
     /* Remove the border */
     border-radius: 4px;
@@ -1004,7 +1030,9 @@ button:hover {
     color: #000;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border: none;
     /* Remove the border */
     border-radius: 4px;
@@ -1036,7 +1064,9 @@ button:hover {
     color: #000;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 12px;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border: none;
     /* Remove the border */
     border-radius: 4px;
@@ -1068,7 +1098,9 @@ button:hover {
     color: #000;
     font-family: Arial, Helvetica, sans-serif;
     font-size: 15px;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     display: block;
     margin: 0 auto;
     text-align: center;
@@ -1156,7 +1188,9 @@ input[type="color"] {
     background-color: none;
     color: none;
     font-family: Arial, Helvetica, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border-radius: 4px;
     margin-left: 5px;
     margin-right: 5px;
@@ -1171,7 +1205,9 @@ input[type="color"] {
     background-color: none;
     color: none;
     font-family: Arial, Helvetica, sans-serif;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
     border-radius: 4px;
     margin-left: 5px;
     margin-right: 5px;
@@ -1293,13 +1329,13 @@ body.dark-mode .file-import-btn:hover {
 }
 
 /* Style the selected (checked) button */
-.radio-buttons-custom input[type="radio"]:checked+.icon-button {
+.radio-buttons-custom input[type="radio"]:checked + .icon-button {
     background-color: red;
     /* Set the selected color */
 }
 
 /* Style the selected (checked) button */
-.toggle-buttons-custom input[type="checkbox"]:checked+.icon-button {
+.toggle-buttons-custom input[type="checkbox"]:checked + .icon-button {
     /* display: none; */
     background-color: red;
     border-color: red;
@@ -1840,7 +1876,9 @@ label {
     color: var(--light-mode-text);
     font-family: var(--default-font);
     font-size: 12px;
-    transition: background-color 0.3s, color 0.3s;
+    transition:
+        background-color 0.3s,
+        color 0.3s;
 
     border: none;
     /* Remove the border */
@@ -2489,12 +2527,12 @@ body.dark-mode .tree-meta {
 /* Step 4) Active layer indicator */
 .tree-item.active-layer {
     background-color: rgba(76, 175, 80, 0.15);
-    border-left: 3px solid #4CAF50;
+    border-left: 3px solid #4caf50;
 }
 
 .tree-item.active-layer .tree-label:after {
     content: " ✓";
-    color: #4CAF50;
+    color: #4caf50;
     font-weight: bold;
 }
 
@@ -2616,7 +2654,9 @@ body.dark-mode .tree-context-separator {
     /* ✅ INCREASED: was 6px */
     cursor: pointer !important;
     vertical-align: middle !important;
-    transition: border-color 0.2s, transform 0.1s !important;
+    transition:
+        border-color 0.2s,
+        transform 0.1s !important;
     box-sizing: border-box !important;
     flex-shrink: 0 !important;
     /* ✅ PREVENT: Don't shrink */
@@ -2638,7 +2678,6 @@ body.dark-mode .color-swatch:hover {
 /* STRICT MOBILE CONSTRAINTS */
 /* Universal mobile support */
 @media (max-width: 1024px) {
-
     html,
     body {
         margin: 0;
@@ -2836,11 +2875,11 @@ body.dark-mode .floating-dialog-btn {
     margin-top: 4px;
 }
 
-.floating-dialog .button-container-2col>*:nth-child(odd) {
+.floating-dialog .button-container-2col > *:nth-child(odd) {
     justify-self: start;
 }
 
-.floating-dialog .button-container-2col>*:nth-child(even) {
+.floating-dialog .button-container-2col > *:nth-child(even) {
     justify-self: stretch;
     width: 100%;
     margin-right: 4px;
@@ -2857,7 +2896,7 @@ body.dark-mode .floating-dialog-btn {
 }
 
 /* Ensure the second column doesn't overflow */
-.floating-dialog-compact .button-container-2col>*:nth-child(even) {
+.floating-dialog-compact .button-container-2col > *:nth-child(even) {
     margin-right: 8px !important;
     min-width: 0 !important;
     /* Allow shrinking */
@@ -2872,7 +2911,7 @@ body.dark-mode .floating-dialog-btn {
     row-gap: 6px !important;
 }
 
-.floating-dialog-wide .button-container-2col>*:nth-child(even) {
+.floating-dialog-wide .button-container-2col > *:nth-child(even) {
     margin-right: 6px !important;
 }
 
@@ -2988,7 +3027,9 @@ body.dark-mode .floating-dialog .update-popup-logo {
     padding: 0 !important;
     appearance: none !important;
     box-sizing: border-box !important;
-    transition: border-color 0.2s, transform 0.1s !important;
+    transition:
+        border-color 0.2s,
+        transform 0.1s !important;
 }
 
 .floating-dialog input[type="button"][data-jscolor]:hover {
@@ -3309,8 +3350,8 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
 }
 
 /* When checkbox is checked, style the associated label */
-.toolbar-grid input[type="checkbox"]:checked+.icon-button,
-.toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom {
+.toolbar-grid input[type="checkbox"]:checked + .icon-button,
+.toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
     border-color: #ff0000 !important;
@@ -3318,24 +3359,26 @@ body.dark-mode .toolbar-panel-content:hover::-webkit-scrollbar-thumb {
 }
 
 /* Add hover state for checked buttons */
-.toolbar-grid input[type="checkbox"]:checked+.icon-button:hover,
-.toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom:hover {
+.toolbar-grid input[type="checkbox"]:checked + .icon-button:hover,
+.toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2x;
     border-color: #ff0000 !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 4px rgba(255, 0, 0, 0.5);
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.3),
+        0 0 4px rgba(255, 0, 0, 0.5);
 }
 
 /* Dark mode checked state */
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.icon-button,
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .icon-button,
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
     border-color: #ff0000 !important;
 }
 
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.icon-button:hover,
-body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .icon-button:hover,
+body.dark-mode .toolbar-grid input[type="checkbox"]:checked + .toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
     border-color: #ff0000 !important;
@@ -3412,7 +3455,9 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-cust
     background-color: var(--selected-colour, #ff4444) !important;
     border-width: 2px;
     border-color: #ff0000 !important;
-    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3), 0 0 4px rgba(255, 0, 0, 0.5);
+    box-shadow:
+        inset 0 2px 4px rgba(0, 0, 0, 0.3),
+        0 0 4px rgba(255, 0, 0, 0.5);
 }
 
 /* Override accordion minus sign for toolbar buttons */
@@ -3432,7 +3477,7 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-cust
 }
 
 /* Step 2) Radio button label styling with horizontal alignment */
-.toolbar-grid input[type="radio"]+.toggle-buttons-custom {
+.toolbar-grid input[type="radio"] + .toggle-buttons-custom {
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -3452,7 +3497,7 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-cust
 }
 
 /* Step 3) Radio button checked state */
-.toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom {
+.toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     border-width: 1px;
@@ -3460,39 +3505,101 @@ body.dark-mode .toolbar-grid input[type="checkbox"]:checked+.toggle-buttons-cust
 }
 
 /* Step 4) Radio button hover states */
-.toolbar-grid input[type="radio"]+.toggle-buttons-custom:hover {
+.toolbar-grid input[type="radio"] + .toggle-buttons-custom:hover {
     border-color: #999;
     background-color: #444;
 }
 
-.toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:hover {
+.toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     box-shadow: 0 0 5px rgba(255, 0, 0, 0.7);
 }
 
 /* Step 5) Dark mode radio button styling */
-body.dark-mode .toolbar-grid input[type="radio"]+.toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="radio"] + .toggle-buttons-custom {
     background-color: #2a2a2a;
     border-color: #555;
     color: #ddd;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom {
+body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     color: #fff;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"]+.toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="radio"] + .toggle-buttons-custom:hover {
     background-color: #3a3a3a;
     border-color: #777;
 }
 
-body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:hover {
+body.dark-mode .toolbar-grid input[type="radio"]:checked + .toggle-buttons-custom:hover {
     background-color: var(--selected-colour, #ff4444);
     border-color: #ff0000;
     box-shadow: 0 0 5px rgba(255, 0, 0, 0.7);
+}
+
+/* =============================================================================
+   SEGMENTED CONTROL (H/K/V Selection Mode)
+   Compact inline segmented button group for selection type toggle
+============================================================================= */
+.segmented-control {
+    display: inline-flex;
+    background: #f0f0f0;
+    border-radius: 4px;
+    padding: 1px;
+    margin: 0 2px;
+    border: 1px solid var(--light-mode-border);
+}
+
+body.dark-mode .segmented-control {
+    background: #1a1a1a;
+    border-color: #3a3a3a;
+}
+
+.segmented-control input[type="radio"] {
+    display: none;
+}
+
+.segmented-control label {
+    padding: 2px 6px;
+    font-size: 8pt;
+    font-weight: normal;
+    color: var(--light-mode-text);
+    cursor: pointer;
+    transition: all 0.1s ease;
+    border-radius: 3px;
+    flex: 1;
+    text-align: center;
+    -webkit-user-select: none;
+    user-select: none;
+    line-height: 1.2;
+}
+
+body.dark-mode .segmented-control label {
+    color: #888;
+}
+
+.segmented-control label:hover {
+    color: #555;
+}
+
+body.dark-mode .segmented-control label:hover {
+    color: #ccc;
+}
+
+.segmented-control input[type="radio"]:checked + label {
+    background: var(--selected-colour, #e63946);
+    color: #fff;
+}
+
+/* Override .single max-width for segmented control */
+.toolbar-grid .segmented-control.single {
+    max-width: none;
+    width: 80%;
+    justify-self: center;
+    justify-content: center;
 }
 
 /* Ensure grid items are properly centered */
@@ -3583,7 +3690,10 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:
 
 /* Smooth transition when sidebar opens/closes */
 .toolbar-panel {
-    transition: left 0.5s ease, width 0.5s ease, height 0.5s ease;
+    transition:
+        left 0.5s ease,
+        width 0.5s ease,
+        height 0.5s ease;
 }
 
 /* Add this to your CSS file */
@@ -3608,7 +3718,7 @@ body.dark-mode .toolbar-grid input[type="radio"]:checked+.toggle-buttons-custom:
     height: 100%;
     pointer-events: none;
     z-index: 100;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 8pt;
 }
 
@@ -3909,7 +4019,7 @@ body:not(.dark-mode) .hud-legend-color-swatch {
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 12px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     color: #00cccc;
     z-index: 1000;
     min-width: 180px;
@@ -3947,7 +4057,7 @@ body:not(.dark-mode) .hud-legend-color-swatch {
     border-radius: 6px;
     padding: 8px 12px;
     font-size: 12px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     color: #cc00cc;
     z-index: 1000;
     min-width: 160px;
@@ -4014,7 +4124,7 @@ body:not(.dark-mode) .protractor-value {
     border-radius: 6px;
     padding: 8px 10px;
     font-size: 11px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     color: #e0e0e0;
     z-index: 1000;
     min-width: 140px;
@@ -4091,7 +4201,7 @@ body:not(.dark-mode) .tooltip-value {
     border-radius: 6px;
     padding: 4px 8px;
     font-size: 11px;
-    font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     color: #00cc66;
     z-index: 1000;
     min-width: 90px;

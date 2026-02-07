@@ -11,6 +11,7 @@ export function drawKADHighlightSelectionVisuals() {
     // Step 1a) Access globals from window object
     const selectedKADObject = window.selectedKADObject;
     const selectedMultipleKADObjects = window.selectedMultipleKADObjects;
+    const selectedMultiplePoints = window.selectedMultiplePoints;
     const isSelectionPointerActive = window.isSelectionPointerActive;
     const developerModeEnabled = window.developerModeEnabled;
     const ctx = window.ctx;
@@ -18,8 +19,10 @@ export function drawKADHighlightSelectionVisuals() {
     const currentScale = window.currentScale;
     const getEntityFromKADObject = window.getEntityFromKADObject;
 
-    // Step 1b) Early exit if no selection
-    if (!selectedKADObject && (!selectedMultipleKADObjects || selectedMultipleKADObjects.length === 0)) return;
+    // Step 1b) Early exit if no selection at all (KAD objects OR vertices)
+    const hasKADSelection = selectedKADObject || (selectedMultipleKADObjects && selectedMultipleKADObjects.length > 0);
+    const hasVertexSelection = selectedMultiplePoints && selectedMultiplePoints.length > 0;
+    if (!hasKADSelection && !hasVertexSelection) return;
 
     if (developerModeEnabled) {
         console.log("=== DRAWING FUNCTION DEBUG ===");
@@ -515,36 +518,38 @@ export function drawKADHighlightSelectionVisuals() {
             // Find the selected point
             const point = entity.data.find(function (p) { return p.pointID === selectedPoint.pointID; });
             if (point) {
-                const canvasPos = worldToCanvas(point.pointXLocation, point.pointYLocation);
+                // worldToCanvas returns [x, y] array
+                const [canvasX, canvasY] = worldToCanvas(point.pointXLocation, point.pointYLocation);
 
                 // Draw pink square for selected vertex (matches vertex drawing style)
                 const size = 10;
                 ctx.fillStyle = "rgba(255, 68, 255, 0.4)"; // Pink with transparency
-                ctx.fillRect(canvasPos.x - size/2, canvasPos.y - size/2, size, size);
+                ctx.fillRect(canvasX - size/2, canvasY - size/2, size, size);
                 ctx.strokeStyle = "rgba(255, 68, 255, 1.0)"; // Solid pink
                 ctx.lineWidth = 2;
-                ctx.strokeRect(canvasPos.x - size/2, canvasPos.y - size/2, size, size);
+                ctx.strokeRect(canvasX - size/2, canvasY - size/2, size, size);
             }
         }
     }
 
-    // Step 5) Draw multiple selected vertices (from TreeView multi-select)
-    const selectedMultiplePoints = window.selectedMultiplePoints;
+    // Step 5) Draw multiple selected vertices (from TreeView multi-select or polygon selection)
+    // selectedMultiplePoints is already fetched in Step 1a
     if (selectedMultiplePoints && selectedMultiplePoints.length > 0) {
         selectedMultiplePoints.forEach(function (point) {
             if (point && point.pointXLocation !== undefined && point.pointYLocation !== undefined) {
-                const canvasPos = worldToCanvas(point.pointXLocation, point.pointYLocation);
+                // worldToCanvas returns [x, y] array
+                const [canvasX, canvasY] = worldToCanvas(point.pointXLocation, point.pointYLocation);
 
-                // Draw pink square for each selected vertex (matches vertex drawing style)
+                // Draw magenta square for each selected vertex (matches 3D vertex selection color)
                 const size = 10;
-                ctx.fillStyle = "rgba(255, 68, 255, 0.4)"; // Pink with transparency
-                ctx.fillRect(canvasPos.x - size/2, canvasPos.y - size/2, size, size);
-                ctx.strokeStyle = "rgba(255, 68, 255, 1.0)"; // Solid pink
+                ctx.fillStyle = "rgba(255, 68, 255, 0.4)"; // Magenta with transparency
+                ctx.fillRect(canvasX - size/2, canvasY - size/2, size, size);
+                ctx.strokeStyle = "rgba(255, 68, 255, 1.0)"; // Solid magenta
                 ctx.lineWidth = 2;
-                ctx.strokeRect(canvasPos.x - size/2, canvasPos.y - size/2, size, size);
+                ctx.strokeRect(canvasX - size/2, canvasY - size/2, size, size);
 
                 if (developerModeEnabled) {
-                    console.log("🩷 [2D] Drew pink square for vertex:", point.pointID);
+                    console.log("🩷 [2D] Drew magenta square for vertex:", point.pointID);
                 }
             }
         });

@@ -74,32 +74,28 @@ export function updatePopup() {
         '<label class="labelWhite12c">' +
         "🤚 Pan using the mouse left click and drag or" +
         "<br>" +
-        "<br>" +
         "👆 Touch Pan drag on mobile devices." +
-        "<br>" +
         "<br>" +
         "🔍 Zoom using the mouse wheel or touch pinch on mobile devices." +
         "<br>" +
+        "🔄 Rotate using the [ALT] key and [LEFT Click] drag " +
         "<br>" +
-        "🔄 Rotate using the ALT key and mouse left click and drag " +
-        "<br>" +
-        "<br>" +
-        "🔄 hold SHIFT + ALT key and mouse left click drag for plan view rotation" +
+        "🔄 hold [SHIFT] + [ALT] key and [LEFT Click] drag for plan view rotation" +
         "<br>" +
         "<i>⚠️ Rotate not supported on mobile devices.</i>" +
         "<br>" +
-        "<br>" +
         "↖️ Select entities using the mouse left click" +
         "<br>" +
-        "<br>" +
-        "👆 Use the select tools [holes] or [kad] to select multiple entities" +
-        "<br>" +
+        "👆 Use the select tools [H=holes], [K=kad], [V=kad vertices]" +
         "<br>" +
         '<label class="labelWhite12c" style="margin-top:8px;">' +
         "<hr>" +
         '<br><label class="labelWhite15" style="font-weight: bold;">New & Existing Issues & Resolved</label>' +
         '<br><label class="labelWhite12c">⚠️ Beta Version: contact Brent if you have any issues or suggestions ⚠️</label>' +
         "</div>" +
+        "<i>If only it were all so simple! If only there were evil people somewhere insidiously committing evil deeds, and it were necessary only to separate them from the rest of us and destroy them. But the line dividing good and evil cuts through the heart of every human being. And who is willing to destroy a piece of his own heart? - Aleksandr Solzhenitsyn</i>" +
+        "<i>The only way to do great work is to love what you do. - Steve Jobs</i>" +
+        "<i>Therefore I tell you, whatever you ask for in prayer, believe that you have received it, and it will be yours. - Mark 11:24</i>" +
         "<br>" +
         '<a href="https://www.buymeacoffee.com/BrentBuffham" target="_blank" rel="noopener">' +
         '<img src="https://img.buymeacoffee.com/button-api/?text=Buy Brent a coffee&emoji=&slug=BrentBuffham&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" />' +

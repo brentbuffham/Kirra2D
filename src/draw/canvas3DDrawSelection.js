@@ -284,7 +284,7 @@ export function highlightSelectedKADThreeJS() {
 		}
 	}
 
-	// Step 5) Draw multiple selected vertices (from TreeView multi-select)
+	// Step 5) Draw multiple selected vertices (from TreeView multi-select or polygon/shift-click selection)
 	const selectedMultiplePoints = window.selectedMultiplePoints;
 	if (selectedMultiplePoints && selectedMultiplePoints.length > 0) {
 		selectedMultiplePoints.forEach(function(point) {
@@ -293,19 +293,19 @@ export function highlightSelectedKADThreeJS() {
 				// Step #) Use Z directly WITHOUT subtracting dataCentroidZ - must match entity vertex Z
 				const worldZ = point.pointZLocation || dataCentroidZ || 0;
 
-				// Use factory method for consistency
+				// Use factory method for consistency - magenta color, smaller size (0.5 instead of 1.0)
 				const sphere = GeometryFactory.createKADPointHighlight(
 					localPos.x,
 					localPos.y,
 					worldZ,
-					1.0, // radius - matches selected segment vertex
-					selectedVertexColor // Pink
+					0.5, // radius - 50% of previous size
+					selectedVertexColor // Magenta
 				);
 				sphere.userData.type = "vertexSelectionHighlight";
 				window.threeRenderer.kadGroup.add(sphere);
 
 				if (developerModeEnabled) {
-					console.log("🩷 [3D] Drew pink sphere for vertex:", point.pointID);
+					console.log("🩷 [3D] Drew magenta sphere for vertex:", point.pointID);
 				}
 			}
 		});
