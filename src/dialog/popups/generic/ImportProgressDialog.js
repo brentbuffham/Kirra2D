@@ -196,10 +196,10 @@ ImportProgressDialog.prototype.complete = function(holeCount, metrics) {
 		this.showMetrics(metrics);
 	}
 
-	// Change cancel button to OK
-	var cancelBtn = this.dialog.element.querySelector(".floating-dialog-cancel");
+	// Change cancel button to Continue
+	var cancelBtn = this.dialog.element.querySelector(".floating-dialog-btn.cancel");
 	if (cancelBtn) {
-		cancelBtn.textContent = "OK";
+		cancelBtn.textContent = "Continue";
 	}
 };
 
@@ -214,7 +214,7 @@ ImportProgressDialog.prototype.fail = function(errorMessage) {
 	this.detailsDiv.style.color = "#f44336";
 
 	// Change cancel button to Close
-	var cancelBtn = this.dialog.element.querySelector(".floating-dialog-cancel");
+	var cancelBtn = this.dialog.element.querySelector(".floating-dialog-btn.cancel");
 	if (cancelBtn) {
 		cancelBtn.textContent = "Close";
 	}

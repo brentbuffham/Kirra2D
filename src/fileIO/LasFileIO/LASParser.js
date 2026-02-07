@@ -98,13 +98,31 @@ class LASParser extends BaseParser {
 					success: true
 				};
 			} else {
-				// Original point cloud behavior
-				rawData.kadDrawingsMap = this.convertToKadFormat(rawData.points, rawData.header);
+				// Point cloud behavior with decimation/deduplication
+				var points = rawData.points;
+				var originalCount = points.length;
+
+				// Apply decimation if maxPoints specified
+				if (config.maxPoints > 0 && points.length > config.maxPoints) {
+					points = decimatePoints(points, config.maxPoints);
+					console.log("LAS point cloud decimated: " + originalCount + " -> " + points.length + " points");
+				}
+
+				// Apply deduplication if tolerance specified
+				if (config.pcXyTolerance > 0) {
+					var dedupResult = deduplicatePoints(points, config.pcXyTolerance);
+					console.log("LAS point cloud deduplicated: " + dedupResult.originalCount + " -> " + dedupResult.uniqueCount + " points");
+					points = dedupResult.uniquePoints;
+				}
+
+				rawData.kadDrawingsMap = this.convertToKadFormat(points, rawData.header, config.pcPreserveColors);
 				return {
 					...rawData,
 					config: config,
 					dataType: "pointcloud",
-					success: true
+					success: true,
+					originalPointCount: originalCount,
+					processedPointCount: points.length
 				};
 			}
 
@@ -572,9 +590,11 @@ class LASParser extends BaseParser {
 
 			// Convert 16-bit color to hex string for Kirra
 			point.color = this.rgb16ToHex(point.red, point.green, point.blue);
+			point.hasRgbColor = true; // Flag: this color came from actual RGB data
 		} else {
-			// Default color based on classification
-			point.color = this.getClassificationColor(point.classification);
+			// No RGB in this format - will use elevation color in convertToKadFormat
+			point.color = null;
+			point.hasRgbColor = false;
 		}
 
 		// Step 31) NIR (formats 8, 10)
@@ -605,9 +625,17 @@ class LASParser extends BaseParser {
 	}
 
 	// Step 33) Convert to Kirra kadDrawingsMap format
-	convertToKadFormat(points, header) {
+	convertToKadFormat(points, header, preserveColors) {
 		var kadDrawingsMap = new Map();
 		var entityName = "LAS_Points";
+		var self = this;
+
+		// Default to true if not specified
+		if (preserveColors === undefined) preserveColors = true;
+
+		// Get Z range for elevation-based fallback colors
+		var minZ = header.minZ;
+		var maxZ = header.maxZ;
 
 		// Group points by classification for different layers
 		var pointsByClass = new Map();
@@ -628,6 +656,14 @@ class LASParser extends BaseParser {
 
 			for (var j = 0; j < classPoints.length; j++) {
 				var pt = classPoints[j];
+				// Use LAS RGB color if available and preserveColors is true, otherwise use elevation-based color
+				var pointColor;
+				if (preserveColors && pt.hasRgbColor && pt.color) {
+					pointColor = pt.color;
+				} else {
+					// Fallback to elevation-based color (blue->cyan->green->yellow->red)
+					pointColor = self.getElevationColor(pt.z, minZ, maxZ);
+				}
 				kadData.push({
 					entityName: className,
 					entityType: "point",
@@ -636,7 +672,7 @@ class LASParser extends BaseParser {
 					pointYLocation: pt.y,
 					pointZLocation: pt.z,
 					lineWidth: 1,
-					color: pt.color,
+					color: pointColor,
 					intensity: pt.intensity,
 					classification: pt.classification,
 					returnNumber: pt.returnNumber,
@@ -655,6 +691,42 @@ class LASParser extends BaseParser {
 		}
 
 		return kadDrawingsMap;
+	}
+
+	// Step 33b) Get elevation-based color (blue->cyan->green->yellow->red spectrum)
+	getElevationColor(z, minZ, maxZ) {
+		var range = maxZ - minZ;
+		if (range < 0.001) {
+			return "#FFA500"; // Orange for flat data
+		}
+
+		var ratio = (z - minZ) / range;
+		ratio = Math.max(0, Math.min(1, ratio)); // Clamp to 0-1
+
+		var r, g, b;
+		if (ratio < 0.25) {
+			// Blue to Cyan
+			r = 0;
+			g = Math.floor(ratio * 4 * 255);
+			b = 255;
+		} else if (ratio < 0.5) {
+			// Cyan to Green
+			r = 0;
+			g = 255;
+			b = Math.floor(255 - (ratio - 0.25) * 4 * 255);
+		} else if (ratio < 0.75) {
+			// Green to Yellow
+			r = Math.floor((ratio - 0.5) * 4 * 255);
+			g = 255;
+			b = 0;
+		} else {
+			// Yellow to Red
+			r = 255;
+			g = Math.floor(255 - (ratio - 0.75) * 4 * 255);
+			b = 0;
+		}
+
+		return "#" + r.toString(16).padStart(2, "0") + g.toString(16).padStart(2, "0") + b.toString(16).padStart(2, "0");
 	}
 
 	// Step 34) Calculate statistics
@@ -741,14 +813,34 @@ class LASParser extends BaseParser {
 		var surfaceStyle = config.surfaceStyle || "default";
 		var xyzTolerance = config.xyzTolerance || 0.001;
 		var maxSurfacePoints = config.maxSurfacePoints || 0;
+		var useLasColors = surfaceStyle === "lasColors";
 
-		// Step 2) Prepare points for triangulation
+		// Get Z range for elevation color fallback
+		var minZ = Infinity, maxZ = -Infinity;
+		for (var i = 0; i < points.length; i++) {
+			var z = parseFloat(points[i].z);
+			if (z < minZ) minZ = z;
+			if (z > maxZ) maxZ = z;
+		}
+		var self = this;
+
+		// Step 2) Prepare points for triangulation (preserve colors if using lasColors)
 		var vertices = points.map(function(pt) {
-			return {
+			var vertex = {
 				x: parseFloat(pt.x),
 				y: parseFloat(pt.y),
 				z: parseFloat(pt.z)
 			};
+			// Preserve LAS RGB color if using lasColors gradient, otherwise use elevation color
+			if (useLasColors) {
+				if (pt.hasRgbColor && pt.color) {
+					vertex.color = pt.color;
+				} else {
+					// Fallback to elevation-based color
+					vertex.color = self.getElevationColor(vertex.z, minZ, maxZ);
+				}
+			}
+			return vertex;
 		});
 
 		// Step 2.5) Decimate if maxSurfacePoints is set (before dedup for performance)
@@ -884,6 +976,7 @@ class LASParser extends BaseParser {
 
 		// Step 7) Create the surface object with gradient
 		var surfaceId = surfaceName.replace(/\s+/g, "_") + "_" + Date.now();
+		var hasVertexColors = useLasColors && vertices.some(function(v) { return v.color; });
 		var surface = {
 			id: surfaceId,
 			name: surfaceName,
@@ -892,7 +985,8 @@ class LASParser extends BaseParser {
 			triangles: resultTriangles,
 			meshBounds: meshBounds, // CRITICAL: Add meshBounds for centroid calculation
 			visible: true,
-			gradient: surfaceStyle, // Uses selected gradient style
+			gradient: surfaceStyle, // Uses selected gradient style (including "lasColors")
+			hasVertexColors: hasVertexColors, // Flag for renderer to use vertex colors
 			transparency: 1.0,
 			metadata: {
 				source: "LAS_import",
@@ -901,7 +995,8 @@ class LASParser extends BaseParser {
 				culledByEdge: culledByEdge,
 				culledByAngle: culledByAngle,
 				maxEdgeLength: maxEdgeLength,
-				minAngle: minAngle
+				minAngle: minAngle,
+				useLasColors: useLasColors
 			}
 		};
 
@@ -1029,12 +1124,22 @@ class LASParser extends BaseParser {
 			contentHTML += '<div id="las-pointcloud-options" style="border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
 			contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Point Cloud Options:</p>';
 
-			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
+			// Max Points (decimation)
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
 			contentHTML += '<label class="labelWhite15">Max Points:</label>';
-			contentHTML += '<input type="number" id="las-max-points" value="100000" min="1000" max="1000000" step="1000" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<input type="number" id="las-max-points" value="50000" min="1000" max="1000000" step="1000" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">Decimates to this count (0 = no limit).</p>';
 			contentHTML += "</div>";
 
-			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
+			// XY Tolerance (deduplication)
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+			contentHTML += '<label class="labelWhite15">XY Tolerance:</label>';
+			contentHTML += '<input type="number" id="las-pc-xy-tolerance" value="0.01" min="0" max="10" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">Deduplicates points within XY distance (0 = disabled).</p>';
+			contentHTML += "</div>";
+
+			// Classification Filter
+			contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
 			contentHTML += '<label class="labelWhite15">Classification Filter:</label>';
 			contentHTML += '<select id="las-classification-filter" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
 			contentHTML += '<option value="all">All Classifications</option>';
@@ -1043,6 +1148,12 @@ class LASParser extends BaseParser {
 			contentHTML += '<option value="buildings">Buildings (6)</option>';
 			contentHTML += '<option value="unclassified">Unclassified Only (1)</option>';
 			contentHTML += "</select>";
+			contentHTML += "</div>";
+
+			// Preserve LAS Colors
+			contentHTML += '<div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">';
+			contentHTML += '<input type="checkbox" id="las-pc-preserve-colors" checked style="margin: 0;">';
+			contentHTML += '<label for="las-pc-preserve-colors" class="labelWhite15" style="margin: 0; cursor: pointer; font-size: 11px;">Preserve LAS point colors (if available)</label>';
 			contentHTML += "</div>";
 
 			contentHTML += "</div>";
@@ -1102,6 +1213,7 @@ class LASParser extends BaseParser {
 			contentHTML += '<label class="labelWhite15">Surface Style:</label>';
 			contentHTML += '<select id="las-surface-style" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
 			contentHTML += '<option value="default">Default (elevation)</option>';
+			contentHTML += '<option value="lasColors">LAS Point Colors</option>';
 			contentHTML += '<option value="hillshade">Hillshade</option>';
 			contentHTML += '<option value="viridis">Viridis</option>';
 			contentHTML += '<option value="turbo">Turbo</option>';
@@ -1109,6 +1221,7 @@ class LASParser extends BaseParser {
 			contentHTML += '<option value="cividis">Cividis</option>';
 			contentHTML += '<option value="terrain">Terrain</option>';
 			contentHTML += "</select>";
+			contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">LAS Point Colors uses RGB from LAS file (if available).</p>';
 			contentHTML += "</div>";
 
 			contentHTML += "</div>";
@@ -1133,13 +1246,19 @@ class LASParser extends BaseParser {
 					try {
 						// Get form values
 						var importType = document.querySelector('input[name="import-type"]:checked').value;
-						var maxPoints = parseInt(document.getElementById("las-max-points").value);
+						var maxPoints = parseInt(document.getElementById("las-max-points").value) || 0;
 						var classificationFilter = document.getElementById("las-classification-filter").value;
 						var errorDiv = document.getElementById("las-import-error-message");
 
 						var config = { cancelled: false, importType: importType, maxPoints: maxPoints, classificationFilter: classificationFilter, transform: false, epsgCode: null, proj4Source: null };
 
-						// Step 47a) Get surface triangulation options if surface import selected
+						// Step 47a) Get point cloud options
+						if (importType === "pointcloud") {
+							config.pcXyTolerance = parseFloat(document.getElementById("las-pc-xy-tolerance").value) || 0;
+							config.pcPreserveColors = document.getElementById("las-pc-preserve-colors").checked;
+						}
+
+						// Step 47b) Get surface triangulation options if surface import selected
 						if (importType === "surface") {
 							config.surfaceName = document.getElementById("las-surface-name").value || "LAS_Surface";
 							config.maxEdgeLength = parseFloat(document.getElementById("las-max-edge-length").value) || 0;

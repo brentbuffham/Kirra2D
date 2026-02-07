@@ -8,6 +8,8 @@
 const TREE_CHUNK_SIZE = 50;       // Points per chunk group
 const TREE_CHUNK_THRESHOLD = 20;  // Only chunk if more than this many points
 
+import { formatEntityStatistics } from '../../helpers/GeometryStatistics.js';
+
 export class TreeView {
 	constructor(containerId) {
 		this.container = document.getElementById(containerId);
@@ -21,12 +23,19 @@ export class TreeView {
 		};
 		this.isCollapsed = false;
 		this.isSyncing = false; // Flag to prevent infinite loops
+		this.resizeData = {
+			isResizing: false,
+			startX: 0,
+			startWidth: 0,
+			startRight: 0
+		};
 
 		this.init();
 	}
 
 	init() {
 		this.setupEventListeners();
+		this.createLeftResizeHandle();
 		this.updateTreeData();
 	}
 
@@ -132,6 +141,57 @@ export class TreeView {
 
 		const btn = document.getElementById("treeCollapseBtn");
 		btn.textContent = this.isCollapsed ? "+" : "−";
+	}
+
+	// Left-edge resize handle
+	createLeftResizeHandle() {
+		var handle = document.createElement('div');
+		handle.className = 'tree-panel-resize-left';
+		handle.title = 'Drag to resize';
+		this.container.insertBefore(handle, this.container.firstChild);
+		handle.addEventListener('mousedown', this.startLeftResize.bind(this));
+	}
+
+	startLeftResize(e) {
+		e.preventDefault();
+		e.stopPropagation();
+
+		this.resizeData.isResizing = true;
+		this.resizeData.startX = e.clientX;
+		this.resizeData.startWidth = this.container.offsetWidth;
+		this.resizeData.startRight = window.innerWidth - this.container.getBoundingClientRect().right;
+
+		document.body.style.cursor = 'ew-resize';
+		document.body.style.userSelect = 'none';
+
+		this.boundDoLeftResize = this.doLeftResize.bind(this);
+		this.boundStopLeftResize = this.stopLeftResize.bind(this);
+
+		document.addEventListener('mousemove', this.boundDoLeftResize);
+		document.addEventListener('mouseup', this.boundStopLeftResize);
+	}
+
+	doLeftResize(e) {
+		if (!this.resizeData.isResizing) return;
+
+		var deltaX = this.resizeData.startX - e.clientX;
+		var newWidth = this.resizeData.startWidth + deltaX;
+
+		var minWidth = 150;
+		var maxWidth = window.innerWidth - 100;
+		newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
+
+		this.container.style.width = newWidth + 'px';
+		this.container.style.right = this.resizeData.startRight + 'px';
+	}
+
+	stopLeftResize() {
+		this.resizeData.isResizing = false;
+		document.body.style.cursor = '';
+		document.body.style.userSelect = '';
+
+		document.removeEventListener('mousemove', this.boundDoLeftResize);
+		document.removeEventListener('mouseup', this.boundStopLeftResize);
 	}
 
 	hide() {
@@ -298,7 +358,7 @@ export class TreeView {
 					label = "Circle " + pointID;
 					meta = "R:" + (Number(element.radius) || 0).toFixed(1);
 				} else {
-					label = "Point " + pointID;
+					label = String(pointID);
 					meta = "(" + (Number(element.pointXLocation) || 0).toFixed(1) + "," + (Number(element.pointYLocation) || 0).toFixed(1) + "," + (Number(element.pointZLocation) || 0).toFixed(1) + ")";
 				}
 
@@ -382,7 +442,7 @@ export class TreeView {
 				label = "Circle " + pointID;
 				meta = "R:" + (Number(element.radius) || 0).toFixed(1);
 			} else {
-				label = "Point " + pointID;
+				label = String(pointID);
 				meta = "(" + (Number(element.pointXLocation) || 0).toFixed(1) + "," + (Number(element.pointYLocation) || 0).toFixed(1) + "," + (Number(element.pointZLocation) || 0).toFixed(1) + ")";
 			}
 
@@ -1455,27 +1515,27 @@ export class TreeView {
 				case "point":
 					nodeId = "points⣿" + entityName;
 					nodeType = "points-leaf";
-					layerBucket.points.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					layerBucket.points.push({ id: nodeId, type: nodeType, label: entityName, meta: formatEntityStatistics("point", entity.data), visible: entityVisible, children: [] });
 					break;
 				case "line":
 					nodeId = "line⣿" + entityName;
 					nodeType = "line-leaf";
-					layerBucket.lines.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					layerBucket.lines.push({ id: nodeId, type: nodeType, label: entityName, meta: formatEntityStatistics("line", entity.data), visible: entityVisible, children: [] });
 					break;
 				case "poly":
 					nodeId = "poly⣿" + entityName;
 					nodeType = "polygon-leaf";
-					layerBucket.polys.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					layerBucket.polys.push({ id: nodeId, type: nodeType, label: entityName, meta: formatEntityStatistics("poly", entity.data), visible: entityVisible, children: [] });
 					break;
 				case "circle":
 					nodeId = "circle⣿" + entityName;
 					nodeType = "circle-leaf";
-					layerBucket.circles.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					layerBucket.circles.push({ id: nodeId, type: nodeType, label: entityName, meta: formatEntityStatistics("circle", entity.data), visible: entityVisible, children: [] });
 					break;
 				case "text":
 					nodeId = "text⣿" + entityName;
 					nodeType = "text-leaf";
-					layerBucket.texts.push({ id: nodeId, type: nodeType, label: entityName, meta: "(" + pointCount + ")", visible: entityVisible, children: [] });
+					layerBucket.texts.push({ id: nodeId, type: nodeType, label: entityName, meta: formatEntityStatistics("text", entity.data), visible: entityVisible, children: [] });
 					break;
 			}
 		}

@@ -13486,11 +13486,19 @@ async function parseK2Dcsv(data, filename) {
 		var parser = new BlastHoleCSVParser();
 		var result = parser.parseCSVData(data);
 		var holes = result.holes;
+		var warnings = result.warnings || [];
 
 		if (!holes || holes.length === 0) {
 			console.warn("No holes found in CSV");
+			// Check if there were unsupported column count warnings
+			var hasUnsupportedFormat = warnings.some(function(w) {
+				return w.includes("unsupported column count");
+			});
+			var errorMsg = hasUnsupportedFormat
+				? "Unsupported CSV format. Try using File > Import > Custom CSV for non-standard formats."
+				: "No holes found in CSV file.";
 			if (progressDialog) {
-				progressDialog.fail("No holes found in CSV file");
+				progressDialog.fail(errorMsg);
 			}
 			return allBlastHoles;
 		}
@@ -43892,10 +43900,22 @@ function showPointCloudImportDialog(points, fileName) {
 	contentHTML += '<div id="pc-pointcloud-options" style="display: none; border: 1px solid var(--light-mode-border); border-radius: 4px; padding: 10px; background: var(--dark-mode-bg);">';
 	contentHTML += '<p class="labelWhite15" style="margin: 0 0 8px 0; font-weight: bold;">Point Cloud Options:</p>';
 
-	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center;">';
+	// Max Points (decimation)
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
 	contentHTML += '<label class="labelWhite15">Max Points:</label>';
-	contentHTML += '<input type="number" id="pc-max-points" value="100000" min="1000" max="1000000" step="1000" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += '<input type="number" id="pc-max-points" value="50000" min="1000" max="1000000" step="1000" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">Decimates to this count (0 = no limit).</p>';
 	contentHTML += "</div>";
+
+	// XY Tolerance (deduplication)
+	contentHTML += '<div style="display: grid; grid-template-columns: 140px 1fr; gap: 8px; align-items: center; margin-bottom: 6px;">';
+	contentHTML += '<label class="labelWhite15">XY Tolerance:</label>';
+	contentHTML += '<input type="number" id="pc-xy-tolerance" value="0.01" min="0" max="10" step="0.001" style="padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">';
+	contentHTML += '<p class="labelWhite15" style="font-size: 10px; opacity: 0.7; margin: 2px 0 0 0; grid-column: 2;">Deduplicates points within XY distance (0 = disabled).</p>';
+	contentHTML += "</div>";
+
+	// Color info
+	contentHTML += '<p class="labelWhite15" style="font-size: 11px; opacity: 0.8; margin-top: 6px;">Points will be colored by elevation (blue=low, red=high).</p>';
 
 	contentHTML += "</div>";
 
@@ -44028,9 +44048,12 @@ function showPointCloudImportDialog(points, fileName) {
 				}
 
 				// Step 11) Get ALL form values BEFORE closing dialog (elements removed on close)
-				var maxPoints = 100000;
+				var maxPoints = 50000;
 				var maxPointsEl = document.getElementById("pc-max-points");
-				if (maxPointsEl) maxPoints = parseInt(maxPointsEl.value) || 100000;
+				if (maxPointsEl) maxPoints = parseInt(maxPointsEl.value) || 0;
+
+				var pcXyToleranceEl = document.getElementById("pc-xy-tolerance");
+				var pcXyTolerance = pcXyToleranceEl ? parseFloat(pcXyToleranceEl.value) || 0 : 0;
 
 				var surfaceNameEl = document.getElementById("pc-surface-name");
 				var maxEdgeLengthEl = document.getElementById("pc-max-edge-length");
@@ -44057,12 +44080,23 @@ function showPointCloudImportDialog(points, fileName) {
 
 				// Step 13) Import based on type
 				if (importType === "pointcloud") {
-					// Point Cloud import
+					// Point Cloud import with decimation and deduplication
 					var finalPoints = processedPoints;
-					if (processedPoints.length > maxPoints) {
-						finalPoints = decimatePointCloud(processedPoints, maxPoints);
-						console.log("Decimated from " + processedPoints.length + " to " + finalPoints.length + " points");
+					var originalCount = finalPoints.length;
+
+					// Apply decimation first (faster than dedup)
+					if (maxPoints > 0 && finalPoints.length > maxPoints) {
+						finalPoints = decimatePointCloud(finalPoints, maxPoints);
+						console.log("Point cloud decimated: " + originalCount + " -> " + finalPoints.length + " points");
 					}
+
+					// Apply deduplication if tolerance specified
+					if (pcXyTolerance > 0 && typeof deduplicatePoints === "function") {
+						var dedupResult = deduplicatePoints(finalPoints, pcXyTolerance);
+						console.log("Point cloud deduplicated: " + dedupResult.originalCount + " -> " + dedupResult.uniqueCount + " points");
+						finalPoints = dedupResult.uniquePoints;
+					}
+
 					createKADPointsFromPointCloud(finalPoints, fileName);
 					updateStatusMessage("Imported " + finalPoints.length + " points as KAD entities");
 				} else {
@@ -44306,7 +44340,43 @@ function decimatePointCloud(points, targetCount) {
 	return decimatedPoints;
 }
 
-// Create KAD Points from Point Cloud with colors
+// Get elevation-based color as hex string (blue->cyan->green->yellow->red spectrum)
+function getElevationColorHex(z, minZ, maxZ) {
+	var range = maxZ - minZ;
+	if (range < 0.001) {
+		return "#FFA500"; // Orange for flat data
+	}
+
+	var ratio = (z - minZ) / range;
+	ratio = Math.max(0, Math.min(1, ratio)); // Clamp to 0-1
+
+	var r, g, b;
+	if (ratio < 0.25) {
+		// Blue to Cyan
+		r = 0;
+		g = Math.floor(ratio * 4 * 255);
+		b = 255;
+	} else if (ratio < 0.5) {
+		// Cyan to Green
+		r = 0;
+		g = 255;
+		b = Math.floor(255 - (ratio - 0.25) * 4 * 255);
+	} else if (ratio < 0.75) {
+		// Green to Yellow
+		r = Math.floor((ratio - 0.5) * 4 * 255);
+		g = 255;
+		b = 0;
+	} else {
+		// Yellow to Red
+		r = 255;
+		g = Math.floor(255 - (ratio - 0.75) * 4 * 255);
+		b = 0;
+	}
+
+	return "#" + r.toString(16).padStart(2, "0") + g.toString(16).padStart(2, "0") + b.toString(16).padStart(2, "0");
+}
+
+// Create KAD Points from Point Cloud with elevation-based colors
 function createKADPointsFromPointCloud(points, fileName) {
 	// Step 1) Generate unique entity name
 	var uid = Date.now();
@@ -44327,6 +44397,14 @@ function createKADPointsFromPointCloud(points, fileName) {
 		});
 	}
 
+	// Step 2b) Calculate Z range for elevation-based colors
+	var minZ = Infinity, maxZ = -Infinity;
+	for (var i = 0; i < points.length; i++) {
+		var z = points[i].z || 0;
+		if (z < minZ) minZ = z;
+		if (z > maxZ) maxZ = z;
+	}
+
 	// Step 3) Convert point cloud points to KAD point format
 	var kadPoints = [];
 	var pointIDCounter = 1;
@@ -44340,7 +44418,7 @@ function createKADPointsFromPointCloud(points, fileName) {
 		var z = pt.z || 0;
 
 		// Step 5) Extract or generate color
-		var color = "#808080"; // Default gray
+		var color = null;
 
 		if (pt.r !== undefined && pt.g !== undefined && pt.b !== undefined) {
 			// Step 6) Convert RGB to hex color
@@ -44355,6 +44433,11 @@ function createKADPointsFromPointCloud(points, fileName) {
 		} else if (pt.color) {
 			// Step 7) Use existing color if available
 			color = pt.color;
+		}
+
+		// Step 7b) Fallback to elevation-based color (blue->cyan->green->yellow->red)
+		if (!color) {
+			color = getElevationColorHex(z, minZ, maxZ);
 		}
 
 		// Step 8) Create KAD point object with proper structure

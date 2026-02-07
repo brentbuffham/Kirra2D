@@ -6,441 +6,272 @@
 
 // Step 5) Generic success dialog
 export function showSuccessDialog(title, content) {
-	const contentDiv = document.createElement("div");
-	contentDiv.innerHTML = content;
+    const contentDiv = document.createElement("div");
+    contentDiv.innerHTML = content;
 
-	const dialog = new FloatingDialog({
-		title: title,
-		content: contentDiv,
-		layoutType: "default",
-		width: 350,
-		height: 300,
-		showConfirm: true,
-		showCancel: false,
-		confirmText: "OK",
-		onConfirm: () => {
-			// Dialog will close automatically
-		}
-	});
+    const dialog = new FloatingDialog({
+        title: title,
+        content: contentDiv,
+        layoutType: "default",
+        width: 350,
+        height: 300,
+        showConfirm: true,
+        showCancel: false,
+        confirmText: "OK",
+        onConfirm: () => {
+            // Dialog will close automatically
+        }
+    });
 
-	dialog.show();
+    dialog.show();
 }
 
 // Step 6) Update/Version popup with release notes using FloatingDialog
 export function updatePopup() {
-	console.log("function updatePopup()");
+    console.log("function updatePopup()");
 
-	// Step 6a) Build the content HTML with theme-aware styling using CSS classes and variables
-	const content =
-		'<div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px;">' +
-		'<svg class="update-popup-logo" version="1.1" baseProfile="basic" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="70" height="70" viewBox="-40 0 200 200" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
-		'<path d="M7.53,64.77c-0.36-1.36-0.38-3.99,0.08-5.34c-0.98-2.51-2.88-8.13-2.22-10.9c1.77-5.81-0.07-16.1-0.95-24.92C3.55,18.78,6.31,4.11,7.61,2.26c6.24-5.37,24.76,22.67,29.81,29.81c1.57-0.17,1.91,1.72,1.78,2.93c1.87,2.82,3.54,4.3,7.03,4.17c2.71,0.61,9.25,1.73,11.56,3.31c3.57-1.82,10.55,1.6,12.57-3.03c1.23-0.82,4.4-3.07,3.94-4.96c2.19-1.04,4.21-5.39,5.03-7.5c1.7-4.14,5.96-7.51,8.29-11.14c5.21-6.14,15.78-27.02,20.71-8.09c2.32,9.62,3.98,22.54,1.38,32.15c0.51,1.33,0.58,4.5,0.59,5.92c0.89,1.69,0.82,4.84,0.2,6.61c0.38,2.52-0.66,5.62-2.47,7.4c0.17,1.03,0.2,2.67-0.49,3.55c0,0,3.21,2.42,4.04,4.54c0.84,2.12-0.59,9.51-1.18,12.53c1.32,1.57,2.75,4.67,2.17,6.81c3.3,5.31-0.68,4.27,1.38,8.48c0.69,2.34-0.51,4.65,1.09,6.71c-0.28,1.05-1.39,3.81-1.58,4.93c0.84,2.71-1.41,6.85-2.96,8.97c0,0,0.39,3.85,0.39,3.85c-4.86,1.62-1.02,2.56-4.83,5.13c-3.52,19.49-28.37,34.55-46.94,37.28c-9.52,0.18-23.4-3.44-29-11.64c-3.47-1.2-9.42-2.81-11.05-6.51c-0.68-1.05-4.4-2.51-3.75-4.24c-1.39,0.33-2.04-1.83-2.47-2.76c-3.42,0.24-3.99-8.32-3.55-10.75c0,0-1.68-3.16-1.68-3.16c0.5-1.06,0.12-1.99-0.69-2.66c0.66-1.83,0.58-1.44-1.18-1.87c-0.19-1.23,0.33-2.6-0.69-3.45c0.13-1.01-0.33-2.69-0.8-3.55c-1.65-1.36-1.5-5.44-2.56-7.3c-3.32-1.31-2.49-3.65,0.2-5.23c0.49-1.42-0.47-3.32-1.38-4.34c2.56-1.71-0.74-3.32,1.48-6.41c0.99-2.71,2.11-0.41-0.3-3.85c0.28-2.86,2.84-3.43,3.06-6.9c0.46-1.74-0.61-4.26-1.78-5.52c3.46-0.9,1.88-1.16,1.28-3.65l2.81-3" />' +
-		'<path d="M60.64,124.58c1.69,0.63,4,0.19,5.21-1.41c-1.74,0.78-4.01,1.14-4.83-0.99c3.43-2.98-6.5-3.52,1.55,1.73" />' +
-		'<path d="M51.44,124.77c-1.56,0.79-4.74,0.05-5.89-2.37c1.6,1.38,3.9,2.71,4.71-0.18c-3.32-3.58,5.44-3.26,2.3,1.74" />' +
-		'<path d="M42.74,86.54c-3.68-8.21-9.86-10.1-12.32-6.32c-1.16,1.72-1.56,3.14-2.92,3.74" />' +
-		'<path d="M41.19,87.3c0,0-1.04,0.11-2.33,0.63c-1.29,0.52-5.01,0.78-6.4-0.06c-1.39-0.83-2.55-3.2-2.55-3.2" />' +
-		'<path d="M72.65,83.88c0,0,0.7-1.47,0.93-2.36c0.22-0.89,0.9-4.5,4.52-4.59c3.62-0.09,5.07,2.18,5.95,3.48s3.41,2.52,3.41,2.52" />' +
-		'<path d="M74.1,84.9c2.28,3.42,7.74,2.49,9.25-1.12" />' +
-		'<path d="M34.46,114.13c1.38,2.59,0.42,5.7,0.55,9.02s6.39,9.58,11.88,10.5c15.33-0.88,26.05,3.26,34.02-13.86c1.31-4.15,4.28-5.58,7.4-7.96c-0.51,2.55-4.26,8.65-5.62,10.91c-1.51,5.29-4.92,13.59-8.8,17.57c-1.11,7.93-2.1,17.62-11.76,19.38c-12.37,1.23-15.89-4.36-15.83-16.05c-2.76-2.08-5.87-7.81-6.95-11.02" />' +
-		'<path d="M68.11,149.19c-2.23,4.57-6.63,5.95-11.39,5.32c-3.31-0.23-5.85-2.22-6.95-5.32" />' +
-		'<path d="M40.3,41.79l0.25,2.02c0.1,0.81-0.53,1.53-1.35,1.53h-1.72l0.71,1.99c0.21,0.58,0.2,1.21-0.03,1.77l-0.25,0.63c-0.25,0.62-0.91,0.97-1.56,0.84c-1.28-0.27-3.16-0.65-3.01-0.5c0.14,0.14,0.77,1.41,1.25,2.38c0.33,0.67,0.27,1.47-0.16,2.09l0,0c-0.31,0.45-0.81,0.74-1.35,0.79L29.2,55.7l0,0c0.57,0.8,0.27,1.93-0.63,2.34l-1.37,0.62l0,0c1.07,0.44,1.13,1.92,0.11,2.46l-0.11,0.06l0,0c1.01,0.72,0.8,2.28-0.37,2.71l-0.08,0.03h0c0.76,0.63,0.57,1.85-0.35,2.21l-1.35,0.53h0c0.93,0.97,1.12,2.43,0.48,3.61l-0.24,0.44c-0.46,0.85-0.86,1.74-1.19,2.65l-1.34,3.7c-0.45,1.24-1.14,2.38-2.04,3.35l-3.23,3.49l-3.33,3.99" />' +
-		'<path d="M9.75,67.53l4.97-1.74c0.73-0.25,1.29-0.85,1.49-1.6l0.24-0.87c0.25-0.91,0.84-1.69,1.64-2.18l1.78-1.1c1.17-0.72,2.16-1.7,2.88-2.87l1.62-2.6c0.45-0.73,0.99-1.4,1.59-2.01l1.39-1.39c0.33-0.33,0.59-0.73,0.75-1.17l0.79-2.14c0.28-0.76,0.87-1.35,1.63-1.64l0.55-0.21c1.57-0.59,2.65-2.03,2.8-3.7l0.42-4.67" />' +
-		'<path d="M70.4,44.82l0.99,2.07c0.39,0.81,0.87,1.58,1.43,2.28c0.33,0.42,0.74,0.88,1.06,1.23c0.3,0.33,0.72,0.5,1.16,0.5c0.82-0.01,2.16,0.22,2.46,1.68l0,0l6.54,1.31c0.53,0.11,0.97,0.48,1.16,0.99v0c0.13,0.36,0.45,0.63,0.83,0.69l1.12,0.19c1.15,0.19,2.17,0.86,2.8,1.84l0.64,0.99c0.24,0.38,0.55,0.71,0.91,0.98l1.58,1.18c0.55,0.41,0.99,0.95,1.29,1.57l0.73,1.55c0.3,0.63,0.7,1.2,1.18,1.7c0.77,0.79,2.03,2.05,2.74,2.76c0.34,0.34,0.78,0.58,1.26,0.67c0.42,0.08,0.97,0.19,1.49,0.27c1.24,0.2,2.47-0.38,3.11-1.47l0.87-1.47" />' +
-		'<path d="M78.02,45.64c2.43,2.96,7.99,2.96,7.99,2.96s-2.66-2.88-2.07-5.7c0.59-2.81-2-2.29-3.4-3.77c-1.41-1.48,1.11-10.65,1.11-10.65s-5.55,7.4-5.87,9.54" />' +
-		'<path d="M96.96,28.48c0.83,1.43,1.78,2.22,1.48,5.25s-2.74,5.4-2.74,5.4s-1.04,1.18-1.63,2.66c-0.59,1.48-0.15,5.4-0.67,6.44c-0.52,1.04-1.18,1.41-2.29,1.41c-1.11,0-4.22,0-5.1-1.04c-0.89-1.04-2.07-4.59-2.07-5.7c0-1.11,1.63-1.85,1.63-1.85s-0.74-1.29-0.59-2.51c0.15-1.22,1.09-2.72,2.49-3.25c1.4-0.53,3.65-1.18,4.61-2.59s-0.81-2.74-0.67-4.22C91.56,27,94.44,25,94.44,25" />' +
-		'<path d="M14.88,39.54c0.15-0.56,0.71-0.9,1.28-0.76l2.7,0.64c0.54,0.13,1.08-0.18,1.26-0.7l0.76-2.27c0.03-0.09,0.05-0.17,0.05-0.26l0.29-4.23" />' +
-		'<path d="M18.24,26.66c0.73-0.95,2.05-1.23,3.09-0.64l2.92,1.63c0.29,0.16,0.56,0.35,0.82,0.55l2.55,2.05c1.65,1.32,2.43,3.45,2.02,5.53l-0.59,2.96c-0.05,0.27-0.12,0.52-0.22,0.78c-0.47,1.28-1.94,5.31-2.01,5.31c-0.03,0-0.44,0.92-0.87,1.92c-0.38,0.88-1.64,0.85-1.98-0.05l0,0c-0.34-0.93-2.13-0.98-2,0c0.73,5.26-1.19,4.42-1.44,3.98c-0.25-0.44-0.36-1.56-0.86-3.16c-0.33-1.08-2.04-1.75-2.22-0.64l0.14,0.86c0.5,2.45-1.01,1.49-1.74,0.15c0,0-0.61-4.26-2.02-3.44" />' +
-		'<path d="M48.95,81.34c0.27-8.42-0.2-14.05-10.13-14.1c4.07,2.81,4.72,2.2-0.96,2.55c3.59,2.44,5.86,3.03,0,3c0,0,4.88,3.48,4.88,3.48" />' +
-		'<path d="M66.51,81.81c-1.86-6.59-4.51-15.84,4.95-15.53c0,0-2.46,3.33-2.46,3.33c4.6-1.37,6.17-4.41,3.86,2.48c3.07-2.83,3.5-3.2,2.27,1.22c-0.8,1.5-3.99,2.59-3.99,2.59" />' +
-		'<path d="M56.2,113.69c-10.45-1.63-14.35,2.61-9.02,13.24c1.03,1.95,6.8,4.29,9.02,4.29c2.22,0,9.97-4.36,11.09-10.8c0.49-2.79-1.41-7.53-4.59-7.17c-3.18,0.36-5.19,0.59-5.19,0.59" />' +
-		'<path d="M46.88,133.66c0,0,1.11,3.25,1.11,3.25c1.59,4.52,4.14,12.99,10.28,12.28c5.26,0.91,7.22-1.96,8.58-6.51c0.93-2.57,3.04-8.51,3.57-11.14" />' +
-		'<path d="M14.63,91.57l-2,3.48c2.78-0.79,3.25-1.37,1.55,1.63c0,0,3.55-2,3.55-2s-4.07,10.36-3.55,9.84c0.52-0.52,3.25-3.92,3.25-3.92l-0.37,8.88l3.99-5.4c-0.06,2.42-6.63,14.46,0,7.47c0.1,1.2-2.39,6.04,0.52,5.84c0.44-0.15-0.37,6.21,0,5.84c5.11-8.5,2.1-0.16,7.91-3.43" />' +
-		'<path d="M92.23,66.42l2.81,6.88c-1.71,2.48,0.02,3.07,1.63,4.51c-2.6,4.51,2.76,3.87-1.48,7.84c1.93,3.51,6.42,7.84,10.21,9.25c-4.4,2.3-2.16,2.64,0,5.55c0,0-2.81,4.29-2.81,4.29c0.84,2.23,1.99,3.22-1.11,3.99c0,0,2.07,2,1.85,2s-6.21,0-6.21,0l1.33,3.25c-2.8,1.8-4.5,1.5-1.48,4.66c-2.16-0.37-4.47-2.5-1.48,1.16" />' +
-		'<path d="M42.74,90.17c0,0-1.63,3.66-2.51,4.96c-0.89,1.29-3.95,3.37-5.77,4.22c-1.82,0.84-3.6,1.58-4.96,2.29s-3.77,2.24-4.51,1.04c-0.74-1.21-1.48-9.69-0.74-11.10c0.74-1.41,1.92,4.62,4.14,4.84c0.59,0.08,0.81,0.82,1.52,0.85s1.74,0.07,1.74,0.07" />' +
-		'<path d="M74.92,91.57c0,0,1.8,4.66,3.18,6.73c1.38,2.07,3.25,4.04,4.29,4.81s3.06,1.7,4.07,1.7c1.01,0,0.91-1.58,1.63-2.15c0.72-0.57,2.22-2.74,2.22-3.77c0-1.04-1.23-2.01-0.89-3.03c0.35-1.02,1.85-1.87,0.89-2.62c-0.96-0.76-4.29,2.18-4.29,2.18" />' +
-		'<path d="M38.02,82.31c0,1.37-1.11,2.48-2.48,2.48c-1.37,0-2.48-1.11-2.48-2.48c0-1.37,1.11-2.48,2.48-2.48" />' +
-		'<path d="M77.98,78.29c1.37,0,2.48,1.11,2.48,2.48c0,1.37-1.11,2.48-2.48,2.48s-2.48-1.11-2.48-2.48" />' +
-		'<path d="M39.21,82.75c0,2.21-1.79,4.01-4.01,4.01c-2.21,0-4.01-1.79-4.01-4.01c0-2.21,1.79-4.01,4.01-4.01" />' +
-		'<path d="M78.23,77.22c2.21,0,4.01,1.79,4.01,4.01c0,2.21-1.79,4.01-4.01,4.01c-2.21,0-4.01-1.79-4.01-4.01" />' +
-		'<path d="M65.76,119.94c0,0-0.8-2.02-2.61-2.63c-1.81-0.61-4.99-0.91-6.88-0.92s-3.11,0.63-4.16,0c-1.05-0.63-1.66-1.39-1.66-1.39" />' +
-		"</svg>" +
-		'<label class="labelWhite18" style="text-align: center; font-weight: bold;">Welcome to Kirra</label>' +
-		'<i><label class="labelWhite15" style="text-align: center;">Version: Build ' +
-		window.buildVersion +
-		"</i></label>" +
-		'<div style="max-height: 350px; overflow-y: auto; border: 1px solid var(--light-mode-border); padding: 10px; text-align: center; width: 100%;">' +
-		'<label class="labelWhite18" style="text-align: center; font-weight: bold;">🇦🇺 🇦🇺 September 2025 - January 2026 🇦🇺 🇦🇺</label>' +
-		"<br>" +
-		'<label class="labelWhite12c">' +
-		"<br>" +
-		"🗓️ Feb26 (Week of Jan 14-22)" +
-		"<br>" +
-		"⠀⠀🔔 Fe26 - Reflected entity name for SBS import" +
-		"<br>" +
-		"⠀⠀🔔 Fe26 - Corrected zero timing when Sentinel timing Is not present" +
-		"<br>" +
-		"⠀⠀🔔 Fe26 - Added transform tools, reordering of KAD sequence" +
-		"<br>" +
-		"⠀⠀🔔 Fe26 - Added point id on KAD objects" +
-		"<br>" +
-		"</label>" +
-		'<label class="labelWhite12c">' +
-		"<br>" +
-		"🗓️ Jan26" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Attempt to streamline and speed up Voronoi diagrams" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Undo/Redo system with batch support for holes/KAD" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Orica SPF blast file parser implemented" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Surpac Binary STR parser export functionality added" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - LAS import performance fix 60fps restored" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - LAS Z centroid cursor visibility fixed" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - 3D Performance SceneManager architecture" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Performance Monitor FPS/draw calls overlay" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Instanced hole rendering 10k at 60fps" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Batched line rendering 100k segments" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - three-mesh-bvh raycasting performance" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Offset terminology consistency fixed" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - KAD offset live preview functionality" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Stadium connector 3D rendering fixed" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Shapefile Z-axis offset support added" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - LAS/Shapefile import/export complete" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Layer management context menu enhanced" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - BlastHole holeTime property CSV handling" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Print validation allows surfaces/images" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - GeoTIFF export debugging logs enhanced" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Surpac DTM/STR format documented" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - KML/KMZ export functionality implemented" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - EPSG codes expanded to 100+" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - GeoTIFF corruption fix completed" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Directory picker for file exports" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Filename prefix prompt added" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Blast hole data handling fixed" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - CSS/HUD overlay positioning improved" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Output files UI cleaned up" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - GeoTIFF export options enhanced" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Measured data import/export revamped" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Export dialog DXF/CSV improved" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - GPU memory management implemented" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Large polyline chunking prevents crashes" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - WebGL context loss recovery dialog" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Line thickness restored hybrid rendering" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Entity collision fix applied" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - TreeView update fix implemented" +
-		"<br>" +
-		"</label>" +
-		'<label class="labelWhite12c">' +
-		"<br>" +
-		"🗓️ Jan26 (Early)" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - FileManager I/O system implemented" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Custom CSV field mapping parser" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - DXF Vulcan XData writer added" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - PLY parser ASCII/Binary support" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - OBJ export with normals/UVs" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Point cloud RGB colors preserved" +
-		"<br>" +
-		"⠀⠀🔔 Jan26 - Geofence Y,X format parser added" +
-		"<br>" +
-		"</label>" +
-		'<label class="labelWhite12c">' +
-		"<br>" +
-		"🗓️ Dec25" +
-		"<br>" +
-		"⠀⠀🔔 Dec25 - Textured OBJ rendering optimized" +
-		"<br>" +
-		"⠀⠀🔔 Dec25 - 3D surface gradient visualization improved" +
-		"<br>" +
-		"⠀⠀🔔 Dec25 - Surpac surface parser enhanced" +
-		"<br>" +
-		"⠀⠀🔔 Dec25 - Context menu KAD selections improved" +
-		"<br>" +
-		"⠀⠀🔔 Dec25 - Screen space snapping checkbox added" +
-		"<br>" +
-		"⠀⠀🔔 Dec25 - Performance optimizations mouse throttling" +
-		"<br>" +
-		"⠀⠀🔔 Dec25 - Centroid Z calculation fixed" +
-		"<br>" +
-		"⠀⠀🔔 Dec25 - Rendering loops 3D mode fixed" +
-		"<br>" +
-		"</label>" +
-		'<label class="labelWhite12c">' +
-		"<br>" +
-		"🗓️ Nov25" +
-		"<br>" +
-		"⠀⠀🔔 Nov25 - IREDES export functionality enhanced" +
-		"<br>" +
-		"⠀⠀🔔 Nov25 - Three.js mesh loader improved" +
-		"<br>" +
-		"⠀⠀🔔 Nov25 - Selection tunnel ray casting added" +
-		"<br>" +
-		"⠀⠀🔔 Nov25 - Orbit/zoom around mouse position" +
-		"<br>" +
-		"⠀⠀🔔 Nov25 - Surface rendering gradient colors" +
-		"<br>" +
-		"⠀⠀🔔 Nov25 - Point cloud decimation options added" +
-		"<br>" +
-		"⠀⠀🔔 Nov25 - Material caching reduces GPU overhead" +
-		"<br>" +
-		"</label>" +
-		'<label class="labelWhite12c">' +
-		"<br>" +
-		"🗓️ Oct25" +
-		"<br>" +
-		"⠀⠀🔔 Oct25 - Segment-based lines/polygons rendering" +
-		"<br>" +
-		"⠀⠀🔔 Oct25 - KAD drawings batched for performance" +
-		"<br>" +
-		"⠀⠀🔔 Oct25 - LineSegments2 fat lines implemented" +
-		"<br>" +
-		"⠀⠀🔔 Oct25 - DXF entity types expanded to nine" +
-		"<br>" +
-		"⠀⠀🔔 Oct25 - AQM MineStar export format added" +
-		"<br>" +
-		"⠀⠀🔔 Oct25 - Surpac STR writer reference added" +
-		"<br>" +
-		"⠀⠀🔔 Oct25 - FloatingDialog standardized across app" +
-		"<br>" +
-		"</label>" +
-		'<label class="labelWhite12c">' +
-		"<br>" +
-		"🗓️ Sep25" +
-		"<br>" +
-		"⠀⠀🔔 Sep25 - Blast pattern generation enhanced" +
-		"<br>" +
-		"⠀⠀🔔 Sep25 - Multi-format file support expanded" +
-		"<br>" +
-		"⠀⠀🔔 Sep25 - 2D/3D coordinate transform unified" +
-		"<br>" +
-		"⠀⠀🔔 Sep25 - UTM large coordinate handling improved" +
-		"<br>" +
-		"⠀⠀🔔 Sep25 - Theme toggle dark/light mode" +
-		"<br>" +
-		"⠀⠀🔔 Sep25 - Internationalization multi-language support" +
-		"<br>" +
-		"⠀⠀🔔 Sep25 - BlastHole class data structure defined" +
-		"<br>" +
-		"</label>" +
-		'<label class="labelWhite12c" style="margin-top:8px;">' +
-		"<hr>" +
-		'<br><label class="labelWhite15" style="font-weight: bold;">New & Existing Issues & Resolved</label>' +
-		'<br><label class="labelWhite12c">🐞 Voronoi Display Lag with large blasts      ⚠️ in progress ⚠️</label>' +
-		'<br><label class="labelWhite12c">🐞 Volume for blasts not working in treeView  ❌ unresolved ❌</label>' +
-		'<br><label class="labelWhite12c">🐞 Some Tools won\'t release state properly   ❌ unresolved ❌</label>' +
-		'<br><label class="labelWhite12c">🐞 Screen Space Snapping causes lag           ❌ unresolved ❌</label>' +
-		"</div>" +
-		"<br>" +
-		'<a href="https://www.buymeacoffee.com/BrentBuffham" target="_blank" rel="noopener">' +
-		'<img src="https://img.buymeacoffee.com/button-api/?text=Buy Brent a coffee&emoji=&slug=BrentBuffham&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" />' +
-		"</a>" +
-		"<br>" +
-		"</div>";
+    // Step 6a) Build the content HTML with theme-aware styling using CSS classes and variables
+    const content =
+        '<div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 10px;">' +
+        '<svg class="update-popup-logo" version="1.1" baseProfile="basic" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="70" height="70" viewBox="-40 0 200 200" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M7.53,64.77c-0.36-1.36-0.38-3.99,0.08-5.34c-0.98-2.51-2.88-8.13-2.22-10.9c1.77-5.81-0.07-16.1-0.95-24.92C3.55,18.78,6.31,4.11,7.61,2.26c6.24-5.37,24.76,22.67,29.81,29.81c1.57-0.17,1.91,1.72,1.78,2.93c1.87,2.82,3.54,4.3,7.03,4.17c2.71,0.61,9.25,1.73,11.56,3.31c3.57-1.82,10.55,1.6,12.57-3.03c1.23-0.82,4.4-3.07,3.94-4.96c2.19-1.04,4.21-5.39,5.03-7.5c1.7-4.14,5.96-7.51,8.29-11.14c5.21-6.14,15.78-27.02,20.71-8.09c2.32,9.62,3.98,22.54,1.38,32.15c0.51,1.33,0.58,4.5,0.59,5.92c0.89,1.69,0.82,4.84,0.2,6.61c0.38,2.52-0.66,5.62-2.47,7.4c0.17,1.03,0.2,2.67-0.49,3.55c0,0,3.21,2.42,4.04,4.54c0.84,2.12-0.59,9.51-1.18,12.53c1.32,1.57,2.75,4.67,2.17,6.81c3.3,5.31-0.68,4.27,1.38,8.48c0.69,2.34-0.51,4.65,1.09,6.71c-0.28,1.05-1.39,3.81-1.58,4.93c0.84,2.71-1.41,6.85-2.96,8.97c0,0,0.39,3.85,0.39,3.85c-4.86,1.62-1.02,2.56-4.83,5.13c-3.52,19.49-28.37,34.55-46.94,37.28c-9.52,0.18-23.4-3.44-29-11.64c-3.47-1.2-9.42-2.81-11.05-6.51c-0.68-1.05-4.4-2.51-3.75-4.24c-1.39,0.33-2.04-1.83-2.47-2.76c-3.42,0.24-3.99-8.32-3.55-10.75c0,0-1.68-3.16-1.68-3.16c0.5-1.06,0.12-1.99-0.69-2.66c0.66-1.83,0.58-1.44-1.18-1.87c-0.19-1.23,0.33-2.6-0.69-3.45c0.13-1.01-0.33-2.69-0.8-3.55c-1.65-1.36-1.5-5.44-2.56-7.3c-3.32-1.31-2.49-3.65,0.2-5.23c0.49-1.42-0.47-3.32-1.38-4.34c2.56-1.71-0.74-3.32,1.48-6.41c0.99-2.71,2.11-0.41-0.3-3.85c0.28-2.86,2.84-3.43,3.06-6.9c0.46-1.74-0.61-4.26-1.78-5.52c3.46-0.9,1.88-1.16,1.28-3.65l2.81-3" />' +
+        '<path d="M60.64,124.58c1.69,0.63,4,0.19,5.21-1.41c-1.74,0.78-4.01,1.14-4.83-0.99c3.43-2.98-6.5-3.52,1.55,1.73" />' +
+        '<path d="M51.44,124.77c-1.56,0.79-4.74,0.05-5.89-2.37c1.6,1.38,3.9,2.71,4.71-0.18c-3.32-3.58,5.44-3.26,2.3,1.74" />' +
+        '<path d="M42.74,86.54c-3.68-8.21-9.86-10.1-12.32-6.32c-1.16,1.72-1.56,3.14-2.92,3.74" />' +
+        '<path d="M41.19,87.3c0,0-1.04,0.11-2.33,0.63c-1.29,0.52-5.01,0.78-6.4-0.06c-1.39-0.83-2.55-3.2-2.55-3.2" />' +
+        '<path d="M72.65,83.88c0,0,0.7-1.47,0.93-2.36c0.22-0.89,0.9-4.5,4.52-4.59c3.62-0.09,5.07,2.18,5.95,3.48s3.41,2.52,3.41,2.52" />' +
+        '<path d="M74.1,84.9c2.28,3.42,7.74,2.49,9.25-1.12" />' +
+        '<path d="M34.46,114.13c1.38,2.59,0.42,5.7,0.55,9.02s6.39,9.58,11.88,10.5c15.33-0.88,26.05,3.26,34.02-13.86c1.31-4.15,4.28-5.58,7.4-7.96c-0.51,2.55-4.26,8.65-5.62,10.91c-1.51,5.29-4.92,13.59-8.8,17.57c-1.11,7.93-2.1,17.62-11.76,19.38c-12.37,1.23-15.89-4.36-15.83-16.05c-2.76-2.08-5.87-7.81-6.95-11.02" />' +
+        '<path d="M68.11,149.19c-2.23,4.57-6.63,5.95-11.39,5.32c-3.31-0.23-5.85-2.22-6.95-5.32" />' +
+        '<path d="M40.3,41.79l0.25,2.02c0.1,0.81-0.53,1.53-1.35,1.53h-1.72l0.71,1.99c0.21,0.58,0.2,1.21-0.03,1.77l-0.25,0.63c-0.25,0.62-0.91,0.97-1.56,0.84c-1.28-0.27-3.16-0.65-3.01-0.5c0.14,0.14,0.77,1.41,1.25,2.38c0.33,0.67,0.27,1.47-0.16,2.09l0,0c-0.31,0.45-0.81,0.74-1.35,0.79L29.2,55.7l0,0c0.57,0.8,0.27,1.93-0.63,2.34l-1.37,0.62l0,0c1.07,0.44,1.13,1.92,0.11,2.46l-0.11,0.06l0,0c1.01,0.72,0.8,2.28-0.37,2.71l-0.08,0.03h0c0.76,0.63,0.57,1.85-0.35,2.21l-1.35,0.53h0c0.93,0.97,1.12,2.43,0.48,3.61l-0.24,0.44c-0.46,0.85-0.86,1.74-1.19,2.65l-1.34,3.7c-0.45,1.24-1.14,2.38-2.04,3.35l-3.23,3.49l-3.33,3.99" />' +
+        '<path d="M9.75,67.53l4.97-1.74c0.73-0.25,1.29-0.85,1.49-1.6l0.24-0.87c0.25-0.91,0.84-1.69,1.64-2.18l1.78-1.1c1.17-0.72,2.16-1.7,2.88-2.87l1.62-2.6c0.45-0.73,0.99-1.4,1.59-2.01l1.39-1.39c0.33-0.33,0.59-0.73,0.75-1.17l0.79-2.14c0.28-0.76,0.87-1.35,1.63-1.64l0.55-0.21c1.57-0.59,2.65-2.03,2.8-3.7l0.42-4.67" />' +
+        '<path d="M70.4,44.82l0.99,2.07c0.39,0.81,0.87,1.58,1.43,2.28c0.33,0.42,0.74,0.88,1.06,1.23c0.3,0.33,0.72,0.5,1.16,0.5c0.82-0.01,2.16,0.22,2.46,1.68l0,0l6.54,1.31c0.53,0.11,0.97,0.48,1.16,0.99v0c0.13,0.36,0.45,0.63,0.83,0.69l1.12,0.19c1.15,0.19,2.17,0.86,2.8,1.84l0.64,0.99c0.24,0.38,0.55,0.71,0.91,0.98l1.58,1.18c0.55,0.41,0.99,0.95,1.29,1.57l0.73,1.55c0.3,0.63,0.7,1.2,1.18,1.7c0.77,0.79,2.03,2.05,2.74,2.76c0.34,0.34,0.78,0.58,1.26,0.67c0.42,0.08,0.97,0.19,1.49,0.27c1.24,0.2,2.47-0.38,3.11-1.47l0.87-1.47" />' +
+        '<path d="M78.02,45.64c2.43,2.96,7.99,2.96,7.99,2.96s-2.66-2.88-2.07-5.7c0.59-2.81-2-2.29-3.4-3.77c-1.41-1.48,1.11-10.65,1.11-10.65s-5.55,7.4-5.87,9.54" />' +
+        '<path d="M96.96,28.48c0.83,1.43,1.78,2.22,1.48,5.25s-2.74,5.4-2.74,5.4s-1.04,1.18-1.63,2.66c-0.59,1.48-0.15,5.4-0.67,6.44c-0.52,1.04-1.18,1.41-2.29,1.41c-1.11,0-4.22,0-5.1-1.04c-0.89-1.04-2.07-4.59-2.07-5.7c0-1.11,1.63-1.85,1.63-1.85s-0.74-1.29-0.59-2.51c0.15-1.22,1.09-2.72,2.49-3.25c1.4-0.53,3.65-1.18,4.61-2.59s-0.81-2.74-0.67-4.22C91.56,27,94.44,25,94.44,25" />' +
+        '<path d="M14.88,39.54c0.15-0.56,0.71-0.9,1.28-0.76l2.7,0.64c0.54,0.13,1.08-0.18,1.26-0.7l0.76-2.27c0.03-0.09,0.05-0.17,0.05-0.26l0.29-4.23" />' +
+        '<path d="M18.24,26.66c0.73-0.95,2.05-1.23,3.09-0.64l2.92,1.63c0.29,0.16,0.56,0.35,0.82,0.55l2.55,2.05c1.65,1.32,2.43,3.45,2.02,5.53l-0.59,2.96c-0.05,0.27-0.12,0.52-0.22,0.78c-0.47,1.28-1.94,5.31-2.01,5.31c-0.03,0-0.44,0.92-0.87,1.92c-0.38,0.88-1.64,0.85-1.98-0.05l0,0c-0.34-0.93-2.13-0.98-2,0c0.73,5.26-1.19,4.42-1.44,3.98c-0.25-0.44-0.36-1.56-0.86-3.16c-0.33-1.08-2.04-1.75-2.22-0.64l0.14,0.86c0.5,2.45-1.01,1.49-1.74,0.15c0,0-0.61-4.26-2.02-3.44" />' +
+        '<path d="M48.95,81.34c0.27-8.42-0.2-14.05-10.13-14.1c4.07,2.81,4.72,2.2-0.96,2.55c3.59,2.44,5.86,3.03,0,3c0,0,4.88,3.48,4.88,3.48" />' +
+        '<path d="M66.51,81.81c-1.86-6.59-4.51-15.84,4.95-15.53c0,0-2.46,3.33-2.46,3.33c4.6-1.37,6.17-4.41,3.86,2.48c3.07-2.83,3.5-3.2,2.27,1.22c-0.8,1.5-3.99,2.59-3.99,2.59" />' +
+        '<path d="M56.2,113.69c-10.45-1.63-14.35,2.61-9.02,13.24c1.03,1.95,6.8,4.29,9.02,4.29c2.22,0,9.97-4.36,11.09-10.8c0.49-2.79-1.41-7.53-4.59-7.17c-3.18,0.36-5.19,0.59-5.19,0.59" />' +
+        '<path d="M46.88,133.66c0,0,1.11,3.25,1.11,3.25c1.59,4.52,4.14,12.99,10.28,12.28c5.26,0.91,7.22-1.96,8.58-6.51c0.93-2.57,3.04-8.51,3.57-11.14" />' +
+        '<path d="M14.63,91.57l-2,3.48c2.78-0.79,3.25-1.37,1.55,1.63c0,0,3.55-2,3.55-2s-4.07,10.36-3.55,9.84c0.52-0.52,3.25-3.92,3.25-3.92l-0.37,8.88l3.99-5.4c-0.06,2.42-6.63,14.46,0,7.47c0.1,1.2-2.39,6.04,0.52,5.84c0.44-0.15-0.37,6.21,0,5.84c5.11-8.5,2.1-0.16,7.91-3.43" />' +
+        '<path d="M92.23,66.42l2.81,6.88c-1.71,2.48,0.02,3.07,1.63,4.51c-2.6,4.51,2.76,3.87-1.48,7.84c1.93,3.51,6.42,7.84,10.21,9.25c-4.4,2.3-2.16,2.64,0,5.55c0,0-2.81,4.29-2.81,4.29c0.84,2.23,1.99,3.22-1.11,3.99c0,0,2.07,2,1.85,2s-6.21,0-6.21,0l1.33,3.25c-2.8,1.8-4.5,1.5-1.48,4.66c-2.16-0.37-4.47-2.5-1.48,1.16" />' +
+        '<path d="M42.74,90.17c0,0-1.63,3.66-2.51,4.96c-0.89,1.29-3.95,3.37-5.77,4.22c-1.82,0.84-3.6,1.58-4.96,2.29s-3.77,2.24-4.51,1.04c-0.74-1.21-1.48-9.69-0.74-11.10c0.74-1.41,1.92,4.62,4.14,4.84c0.59,0.08,0.81,0.82,1.52,0.85s1.74,0.07,1.74,0.07" />' +
+        '<path d="M74.92,91.57c0,0,1.8,4.66,3.18,6.73c1.38,2.07,3.25,4.04,4.29,4.81s3.06,1.7,4.07,1.7c1.01,0,0.91-1.58,1.63-2.15c0.72-0.57,2.22-2.74,2.22-3.77c0-1.04-1.23-2.01-0.89-3.03c0.35-1.02,1.85-1.87,0.89-2.62c-0.96-0.76-4.29,2.18-4.29,2.18" />' +
+        '<path d="M38.02,82.31c0,1.37-1.11,2.48-2.48,2.48c-1.37,0-2.48-1.11-2.48-2.48c0-1.37,1.11-2.48,2.48-2.48" />' +
+        '<path d="M77.98,78.29c1.37,0,2.48,1.11,2.48,2.48c0,1.37-1.11,2.48-2.48,2.48s-2.48-1.11-2.48-2.48" />' +
+        '<path d="M39.21,82.75c0,2.21-1.79,4.01-4.01,4.01c-2.21,0-4.01-1.79-4.01-4.01c0-2.21,1.79-4.01,4.01-4.01" />' +
+        '<path d="M78.23,77.22c2.21,0,4.01,1.79,4.01,4.01c0,2.21-1.79,4.01-4.01,4.01c-2.21,0-4.01-1.79-4.01-4.01" />' +
+        '<path d="M65.76,119.94c0,0-0.8-2.02-2.61-2.63c-1.81-0.61-4.99-0.91-6.88-0.92s-3.11,0.63-4.16,0c-1.05-0.63-1.66-1.39-1.66-1.39" />' +
+        "</svg>" +
+        '<label class="labelWhite18" style="text-align: center; font-weight: bold;">Welcome to Kirra</label>' +
+        '<i><label class="labelWhite15" style="text-align: center;">Version: Build ' +
+        window.buildVersion +
+        "</i></label>" +
+        '<div style="max-height: 350px; overflow-y: auto; border: 1px solid var(--light-mode-border); padding: 10px; text-align: center; width: 100%;">' +
+        '<label class="labelWhite18" style="text-align: center; font-weight: bold;">Quick Guide</label>' +
+        "<br>" +
+        '<label class="labelWhite12c">' +
+        "🤚 Pan using the mouse left click and drag or" +
+        "<br>" +
+        "<br>" +
+        "👆 Touch Pan drag on mobile devices." +
+        "<br>" +
+        "<br>" +
+        "🔍 Zoom using the mouse wheel or touch pinch on mobile devices." +
+        "<br>" +
+        "<br>" +
+        "🔄 Rotate using the ALT key and mouse left click and drag " +
+        "<br>" +
+        "<br>" +
+        "🔄 hold SHIFT + ALT key and mouse left click drag for plan view rotation" +
+        "<br>" +
+        "<i>⚠️ Rotate not supported on mobile devices.</i>" +
+        "<br>" +
+        "<br>" +
+        "↖️ Select entities using the mouse left click" +
+        "<br>" +
+        "<br>" +
+        "👆 Use the select tools [holes] or [kad] to select multiple entities" +
+        "<br>" +
+        "<br>" +
+        '<label class="labelWhite12c" style="margin-top:8px;">' +
+        "<hr>" +
+        '<br><label class="labelWhite15" style="font-weight: bold;">New & Existing Issues & Resolved</label>' +
+        '<br><label class="labelWhite12c">⚠️ Beta Version: contact Brent if you have any issues or suggestions ⚠️</label>' +
+        "</div>" +
+        "<br>" +
+        '<a href="https://www.buymeacoffee.com/BrentBuffham" target="_blank" rel="noopener">' +
+        '<img src="https://img.buymeacoffee.com/button-api/?text=Buy Brent a coffee&emoji=&slug=BrentBuffham&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" />' +
+        "</a>" +
+        "<br>" +
+        "</div>";
+    // End of Selection
 
-	// Step 6c) Create FloatingDialog
-	const dialog = new window.FloatingDialog({
-		title: "Kirra - Version " + window.buildVersion,
-		content: content,
-		width: 500,
-		height: 730,
-		showConfirm: true,
-		showCancel: false,
-		showDeny: true,
-		showOption1: true,
-		showOption2: true,
-		denyText: "Report",
-		option1Text: "Request",
-		option2Text: "Youtube",
-		confirmText: "OK",
-		draggable: true,
-		resizable: true,
-		closeOnOutsideClick: false,
-		layoutType: "default",
+    // Step 6c) Create FloatingDialog
+    const dialog = new window.FloatingDialog({
+        title: "Kirra - Version " + window.buildVersion,
+        content: content,
+        width: 500,
+        height: 730,
+        showConfirm: true,
+        showCancel: false,
+        showDeny: true,
+        showOption1: true,
+        showOption2: true,
+        denyText: "Report",
+        option1Text: "Request",
+        option2Text: "Youtube",
+        confirmText: "OK",
+        draggable: true,
+        resizable: true,
+        closeOnOutsideClick: false,
+        layoutType: "default",
 
-		onDeny: function() {
-			// Step 6d) Call checkAndPromptForStoredData after user clicks OK
-			if (window.checkAndPromptForStoredData) {
-				window.checkAndPromptForStoredData();
-			}
-			// Call the sendBugOrFeatureEmail function when "Report Bug" is selected
-			sendBugEmail();
-		},
-		onOption1: function() {
-			// Step 6d) Call checkAndPromptForStoredData after user clicks OK
-			if (window.checkAndPromptForStoredData) {
-				window.checkAndPromptForStoredData();
-			}
-			sendFeatureEmail();
-		},
-		onOption2: function() {
-			// Step 6d) Call checkAndPromptForStoredData after user clicks OK
-			if (window.checkAndPromptForStoredData) {
-				window.checkAndPromptForStoredData();
-			}
-			window.open("https://www.youtube.com/@redundantlyuseful3366", "_blank", "noopener");
-		},
-		onConfirm: function() {
-			// Step 6d) Call checkAndPromptForStoredData after user clicks OK
-			if (window.checkAndPromptForStoredData) {
-				window.checkAndPromptForStoredData();
-			}
-		}
-	});
+        onDeny: function () {
+            // Step 6d) Call checkAndPromptForStoredData after user clicks OK
+            if (window.checkAndPromptForStoredData) {
+                window.checkAndPromptForStoredData();
+            }
+            // Call the sendBugOrFeatureEmail function when "Report Bug" is selected
+            sendBugEmail();
+        },
+        onOption1: function () {
+            // Step 6d) Call checkAndPromptForStoredData after user clicks OK
+            if (window.checkAndPromptForStoredData) {
+                window.checkAndPromptForStoredData();
+            }
+            sendFeatureEmail();
+        },
+        onOption2: function () {
+            // Step 6d) Call checkAndPromptForStoredData after user clicks OK
+            if (window.checkAndPromptForStoredData) {
+                window.checkAndPromptForStoredData();
+            }
+            window.open("https://www.youtube.com/@redundantlyuseful3366", "_blank", "noopener");
+        },
+        onConfirm: function () {
+            // Step 6d) Call checkAndPromptForStoredData after user clicks OK
+            if (window.checkAndPromptForStoredData) {
+                window.checkAndPromptForStoredData();
+            }
+        }
+    });
 
-	// Step 6e) Show the dialog
-	dialog.show();
+    // Step 6e) Show the dialog
+    dialog.show();
 }
 
 // Step 1) Create modern, snappy bug report email with emojis
 function sendBugEmail() {
-	const email = "blastingapps.xyz@gmail.com";
-	const subject = "🐛 Kirra Bug Report - " + new Date().toLocaleDateString();
+    const email = "blastingapps.xyz@gmail.com";
+    const subject = "🐛 Kirra Bug Report - " + new Date().toLocaleDateString();
 
-	// Step 2) Create modern formatted body with emojis and visual elements
-	const body =
-		"╔═══════════════════════════════════════════════════════════════╗\n" +
-		"║                    🐛 KIRRA BUG REPORT 🐛                     ║\n" +
-		"╚═══════════════════════════════════════════════════════════════╝\n\n" +
-		"📱 Application: Kirra (Build " +
-		(window.buildVersion || "Unknown") +
-		")\n" +
-		"📅 Date: " +
-		new Date().toLocaleString() +
-		"\n" +
-		"🌐 Browser: " +
-		navigator.userAgent.split(" ").slice(-2).join(" ") +
-		"\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ 📝 BUG DESCRIPTION                                             │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"[Describe the bug you encountered in detail]\n\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ 🔄 STEPS TO REPRODUCE                                          │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"1️⃣ [First step]\n\n" +
-		"2️⃣ [Second step]\n\n" +
-		"3️⃣ [Third step]\n\n" +
-		"4️⃣ [Additional steps if needed]\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ ✅ EXPECTED BEHAVIOR                                           │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"[What you expected to happen]\n\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ ❌ ACTUAL BEHAVIOR                                             │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"[What actually happened - the bug]\n\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ 📎 ADDITIONAL INFORMATION                                      │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"🔴 Error Messages:\n" +
-		"[Any error messages from console]\n\n" +
-		"📸 Screenshots/Files:\n" +
-		"[Attach any relevant screenshots or files]\n\n" +
-		"💡 Additional Notes:\n" +
-		"[Any other relevant details]\n\n\n" +
-		"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-		"Thank you for helping make Kirra better! 🚀\n" +
-		"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    // Step 2) Create modern formatted body with emojis and visual elements
+    const body =
+        "╔═══════════════════════════════════════════════════════════════╗\n" +
+        "║                    🐛 KIRRA BUG REPORT 🐛                     ║\n" +
+        "╚═══════════════════════════════════════════════════════════════╝\n\n" +
+        "📱 Application: Kirra (Build " +
+        (window.buildVersion || "Unknown") +
+        ")\n" +
+        "📅 Date: " +
+        new Date().toLocaleString() +
+        "\n" +
+        "🌐 Browser: " +
+        navigator.userAgent.split(" ").slice(-2).join(" ") +
+        "\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ 📝 BUG DESCRIPTION                                             │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "[Describe the bug you encountered in detail]\n\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ 🔄 STEPS TO REPRODUCE                                          │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "1️⃣ [First step]\n\n" +
+        "2️⃣ [Second step]\n\n" +
+        "3️⃣ [Third step]\n\n" +
+        "4️⃣ [Additional steps if needed]\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ ✅ EXPECTED BEHAVIOR                                           │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "[What you expected to happen]\n\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ ❌ ACTUAL BEHAVIOR                                             │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "[What actually happened - the bug]\n\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ 📎 ADDITIONAL INFORMATION                                      │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "🔴 Error Messages:\n" +
+        "[Any error messages from console]\n\n" +
+        "📸 Screenshots/Files:\n" +
+        "[Attach any relevant screenshots or files]\n\n" +
+        "💡 Additional Notes:\n" +
+        "[Any other relevant details]\n\n\n" +
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+        "Thank you for helping make Kirra better! 🚀\n" +
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
 
-	window.location.href = "mailto:" + email + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-	return true;
+    window.location.href = "mailto:" + email + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    return true;
 }
 
 // Step 3) Create modern, snappy feature request email with emojis
 function sendFeatureEmail() {
-	const email = "blastingapps.xyz@gmail.com";
-	const subject = "✨ Kirra Feature Request - " + new Date().toLocaleDateString();
+    const email = "blastingapps.xyz@gmail.com";
+    const subject = "✨ Kirra Feature Request - " + new Date().toLocaleDateString();
 
-	// Step 4) Create modern formatted body with emojis and visual elements
-	const body =
-		"╔═══════════════════════════════════════════════════════════════╗\n" +
-		"║                ✨ KIRRA FEATURE REQUEST ✨                     ║\n" +
-		"╚═══════════════════════════════════════════════════════════════╝\n\n" +
-		"📱 Application: Kirra (Build " +
-		(window.buildVersion || "Unknown") +
-		")\n" +
-		"📅 Date: " +
-		new Date().toLocaleString() +
-		"\n" +
-		"👤 Submitted by: [Your name/company]\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ 🎯 FEATURE SUMMARY                                             │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"[One-line description of the feature]\n\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ 📖 DETAILED DESCRIPTION                                        │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"[Explain what this feature would do and how it would work]\n\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ 💼 USE CASE / PROBLEM IT SOLVES                                │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"🎯 Current Challenge:\n" +
-		"[What problem are you facing?]\n\n" +
-		"💡 How This Feature Helps:\n" +
-		"[How would this improve your workflow?]\n\n" +
-		"📊 Impact on Work:\n" +
-		"[Time saved, efficiency gained, etc.]\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ 🛠️ SUGGESTED IMPLEMENTATION                                    │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"[Optional: Any ideas on UI/UX or how this could work]\n\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ ⚡ PRIORITY LEVEL                                              │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"🔥 [ ] CRITICAL - Blocking my work right now\n" +
-		"⭐ [ ] HIGH - Would significantly improve workflow\n" +
-		"💚 [ ] MEDIUM - Nice to have, helpful feature\n" +
-		"💡 [ ] LOW - Future enhancement idea\n\n\n" +
-		"┌───────────────────────────────────────────────────────────────┐\n" +
-		"│ 📎 EXAMPLES / REFERENCES                                       │\n" +
-		"└───────────────────────────────────────────────────────────────┘\n" +
-		"[Similar features in other apps, mockups, screenshots, etc.]\n\n\n\n" +
-		"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
-		"Thank you for helping shape the future of Kirra! 🚀💎\n" +
-		"━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
+    // Step 4) Create modern formatted body with emojis and visual elements
+    const body =
+        "╔═══════════════════════════════════════════════════════════════╗\n" +
+        "║                ✨ KIRRA FEATURE REQUEST ✨                     ║\n" +
+        "╚═══════════════════════════════════════════════════════════════╝\n\n" +
+        "📱 Application: Kirra (Build " +
+        (window.buildVersion || "Unknown") +
+        ")\n" +
+        "📅 Date: " +
+        new Date().toLocaleString() +
+        "\n" +
+        "👤 Submitted by: [Your name/company]\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ 🎯 FEATURE SUMMARY                                             │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "[One-line description of the feature]\n\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ 📖 DETAILED DESCRIPTION                                        │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "[Explain what this feature would do and how it would work]\n\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ 💼 USE CASE / PROBLEM IT SOLVES                                │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "🎯 Current Challenge:\n" +
+        "[What problem are you facing?]\n\n" +
+        "💡 How This Feature Helps:\n" +
+        "[How would this improve your workflow?]\n\n" +
+        "📊 Impact on Work:\n" +
+        "[Time saved, efficiency gained, etc.]\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ 🛠️ SUGGESTED IMPLEMENTATION                                    │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "[Optional: Any ideas on UI/UX or how this could work]\n\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ ⚡ PRIORITY LEVEL                                              │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "🔥 [ ] CRITICAL - Blocking my work right now\n" +
+        "⭐ [ ] HIGH - Would significantly improve workflow\n" +
+        "💚 [ ] MEDIUM - Nice to have, helpful feature\n" +
+        "💡 [ ] LOW - Future enhancement idea\n\n\n" +
+        "┌───────────────────────────────────────────────────────────────┐\n" +
+        "│ 📎 EXAMPLES / REFERENCES                                       │\n" +
+        "└───────────────────────────────────────────────────────────────┘\n" +
+        "[Similar features in other apps, mockups, screenshots, etc.]\n\n\n\n" +
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n" +
+        "Thank you for helping shape the future of Kirra! 🚀💎\n" +
+        "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n";
 
-	window.location.href = "mailto:" + email + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
-	return true;
+    window.location.href = "mailto:" + email + "?subject=" + encodeURIComponent(subject) + "&body=" + encodeURIComponent(body);
+    return true;
 }
 
 // Step 7) Expose functions globally
