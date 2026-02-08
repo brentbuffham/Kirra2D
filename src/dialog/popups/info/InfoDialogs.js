@@ -70,33 +70,27 @@ export function updatePopup() {
         "</i></label>" +
         '<div style="max-height: 350px; overflow-y: auto; border: 1px solid var(--light-mode-border); padding: 10px; text-align: center; width: 100%;">' +
         '<label class="labelWhite18" style="text-align: center; font-weight: bold;">Quick Guide</label>' +
-        "<br>" +
         '<label class="labelWhite12c">' +
-        "🤚 Pan using the mouse left click and drag or" +
-        "<br>" +
-        "👆 Touch Pan drag on mobile devices." +
-        "<br>" +
-        "🔍 Zoom using the mouse wheel or touch pinch on mobile devices." +
-        "<br>" +
-        "🔄 Rotate using the [ALT] key and [LEFT Click] drag " +
-        "<br>" +
-        "🔄 hold [SHIFT] + [ALT] key and [LEFT Click] drag for plan view rotation" +
-        "<br>" +
-        "<i>⚠️ Rotate not supported on mobile devices.</i>" +
-        "<br>" +
-        "↖️ Select entities using the mouse left click" +
-        "<br>" +
-        "👆 Use the select tools [H=holes], [K=kad], [V=kad vertices]" +
-        "<br>" +
-        '<label class="labelWhite12c" style="margin-top:8px;">' +
-        "<hr>" +
-        '<br><label class="labelWhite15" style="font-weight: bold;">New & Existing Issues & Resolved</label>' +
-        '<br><label class="labelWhite12c">⚠️ Beta Version: contact Brent if you have any issues or suggestions ⚠️</label>' +
+        '<div style="text-align: left;">' +
+        '<br><label class="labelWhite15" style="font-weight: bold;">Toggle (ON/OFF):</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>[F]</b> key — Hole bearing focus mode (when Bearing tool active)</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>[S]</b> key — Self-snap</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>⇧ - [Shift]</b> key — Multi-select mode</label>' +
+        '<br><br><label class="labelWhite12c"style="font-weight: bold;">Actions:</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>⌃Z - [Ctrl]+[Z]</b> key — Undo</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>⌃Y / ⌃⇧Z - [Ctrl]+[Y] / [Ctrl]+[Shift]+[Z]</b> key — Redo</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>⎋ - [Escape]</b> key — Clear selections and reset tools</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>⌫ / ⌦ - [Backspace] / [Delete]</b> key — Delete selected KAD objects/vertices, </label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>⌫ / ⌦ - [Backspace] / [Delete]</b> key — Delete last drawn point(when drawing)</label > ' +
+        '<br><br><label class="labelWhite12c"style="font-weight: bold;">3D mouse modifiers:</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>⌥ + drag - [Alt]+[drag]</b> — Orbit camera</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>⌥⇧ + drag - [Alt]+[Shift]+[drag]</b> — Camera roll</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>Scroll[Mouse wheel]</b> — Zoom</label>' +
+        '<br>&nbsp;&nbsp;&nbsp;&nbsp;<label class="labelWhite12"><b>Right - click - [Right mouse button]</b>  — Context menu(no camera)</label>' +
         "</div>" +
-        "<i>If only it were all so simple! If only there were evil people somewhere insidiously committing evil deeds, and it were necessary only to separate them from the rest of us and destroy them. But the line dividing good and evil cuts through the heart of every human being. And who is willing to destroy a piece of his own heart? - Aleksandr Solzhenitsyn</i>" +
-        "<i>The only way to do great work is to love what you do. - Steve Jobs</i>" +
-        "<i>Therefore I tell you, whatever you ask for in prayer, believe that you have received it, and it will be yours. - Mark 11:24</i>" +
-        "<br>" +
+        "</div>" +
+        '<i>"...the line dividing good and evil cuts through the heart of every human being. And who is willing to destroy a piece of his own heart?" - Aleksandr Solzhenitsyn</i>' +
+        '<i>"...whatever you ask for in prayer, believe that you have received it, and it will be yours." - Mark 11:24</i>' +
         '<a href="https://www.buymeacoffee.com/BrentBuffham" target="_blank" rel="noopener">' +
         '<img src="https://img.buymeacoffee.com/button-api/?text=Buy Brent a coffee&emoji=&slug=BrentBuffham&button_colour=FFDD00&font_colour=000000&font_family=Cookie&outline_colour=000000&coffee_colour=ffffff" alt="Buy me a coffee" />' +
         "</a>" +
