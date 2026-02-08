@@ -237,6 +237,30 @@ import "./dialog/popups/generic/ExportDialogs.js";
 import "./dialog/popups/generic/KADDialogs.js";
 import "./dialog/popups/generic/SurfaceAssignmentDialogs.js";
 //=================================================
+// Charging System
+//=================================================
+import {
+	ALL_CHARGING_STORES,
+	loadProductsFromDB,
+	loadChargingFromDB,
+	loadChargeConfigsFromDB,
+	saveProductsToDB,
+	saveChargingToDB,
+	saveChargeConfigsToDB,
+	debouncedSaveProducts,
+	debouncedSaveCharging,
+	debouncedSaveConfigs
+} from "./charging/ChargingDatabase.js";
+import { showProductManagerDialog } from "./charging/ProductDialog.js";
+import { showDeckBuilderDialog } from "./charging/ui/DeckBuilderDialog.js";
+import { applyChargeRule } from "./charging/rules/SimpleRuleEngine.js";
+import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip } from "./charging/ConfigImportExport.js";
+//=================================================
+// KAP Project File IO
+//=================================================
+import KAPWriter from "./fileIO/KirraIO/KAPWriter.js";
+import KAPParser from "./fileIO/KirraIO/KAPParser.js";
+//=================================================
 // FileManager IO System - Modular file import/export
 //=================================================
 import { fileManager, initializeFileManager } from "./fileIO/init.js";
@@ -740,6 +764,18 @@ function exposeGlobalsToWindow() {
 	window.isPointInBackgroundImage = isPointInBackgroundImage;
 	window.loadedImages = loadedImages;
 	window.loadedSurfaces = loadedSurfaces;
+	window.loadedProducts = loadedProducts;
+	window.loadedCharging = loadedCharging;
+	window.loadedChargeConfigs = loadedChargeConfigs;
+	window.debouncedSaveProducts = function() { debouncedSaveProducts(db, loadedProducts); };
+	window.debouncedSaveCharging = function() { debouncedSaveCharging(db, loadedCharging); };
+	window.debouncedSaveConfigs = function() { debouncedSaveConfigs(db, loadedChargeConfigs); };
+	window.showProductManagerDialog = showProductManagerDialog;
+	window.showDeckBuilderDialog = showDeckBuilderDialog;
+	window.applyChargeRule = applyChargeRule;
+	window.exportBaseConfigTemplate = exportBaseConfigTemplate;
+	window.exportCurrentConfig = function() { exportCurrentConfig(loadedProducts, loadedChargeConfigs); };
+	window.importConfigFromZip = importConfigFromZip;
 	window.debouncedUpdateTreeView = debouncedUpdateTreeView;
 	window.clearCurrentDrawingEntity = clearCurrentDrawingEntity;
 	window.addPointDraw = addPointDraw;
@@ -773,8 +809,12 @@ function exposeGlobalsToWindow() {
 	window.deleteSurfaceFromDB = deleteSurfaceFromDB;
 	window.deleteAllSurfacesFromDB = deleteAllSurfacesFromDB;
 	window.saveSurfaceToDB = saveSurfaceToDB;
+	window.saveImageToDB = saveImageToDB;
 	window.deleteImageFromDB = deleteImageFromDB;
 	window.deleteAllImagesFromDB = deleteAllImagesFromDB;
+	window.clearAllDataStructures = clearAllDataStructures;
+	window.rebuildTexturedMesh = rebuildTexturedMesh;
+	window.calculateTimes = calculateTimes;
 
 	// Step 6g) Expose UndoManager and action classes for undo/redo operations
 	window.undoManager = undoManager;
@@ -5451,6 +5491,16 @@ function clearAllDataStructures() {
 	if (typeof allBlastHoles !== "undefined" && allBlastHoles) {
 		allBlastHoles.length = 0;
 	}
+	// Step 2e) Clear charging system maps
+	if (typeof loadedProducts !== "undefined" && loadedProducts) {
+		loadedProducts.clear();
+	}
+	if (typeof loadedCharging !== "undefined" && loadedCharging) {
+		loadedCharging.clear();
+	}
+	if (typeof loadedChargeConfigs !== "undefined" && loadedChargeConfigs) {
+		loadedChargeConfigs.clear();
+	}
 }
 
 // Step 3) Centralized cleanup function to prevent memory leaks
@@ -8139,6 +8189,96 @@ document.getElementById("exportDrawingDXF").addEventListener("click", function (
 });
 
 //=================================================
+// KAP Project File Import/Export Buttons
+//=================================================
+
+// KAP EXPORT
+document.querySelectorAll(".kap-output-btn").forEach(function (button) {
+	button.addEventListener("click", async function () {
+		try {
+			var writer = new KAPWriter();
+			var result = await writer.write({});
+
+			if (window.showSaveFilePicker) {
+				try {
+					var fileHandle = await window.showSaveFilePicker({
+						suggestedName: result.filename,
+						types: [{
+							description: 'Kirra Application Project',
+							accept: { 'application/zip': ['.kap'] }
+						}]
+					});
+					var writable = await fileHandle.createWritable();
+					await writable.write(result.blob);
+					await writable.close();
+					showModalMessage("Export Complete", "Project exported as " + fileHandle.name, "success");
+				} catch (pickerErr) {
+					if (pickerErr.name === 'AbortError') {
+						console.log("User cancelled file picker");
+					} else {
+						console.error("File picker error, falling back:", pickerErr);
+						writer.downloadFile(result.blob, result.filename);
+						showModalMessage("Export Complete", "Project exported as " + result.filename, "success");
+					}
+				}
+			} else {
+				writer.downloadFile(result.blob, result.filename);
+				showModalMessage("Export Complete", "Project exported as " + result.filename, "success");
+			}
+		} catch (error) {
+			console.error("KAP export error:", error);
+			showModalMessage("Export Failed", "Error exporting KAP: " + error.message, "error");
+		}
+	});
+});
+
+// KAP IMPORT
+document.querySelectorAll(".kap-input-btn").forEach(function (button) {
+	button.addEventListener("click", function () {
+		var input = document.getElementById("fileInputKAP");
+		if (input) {
+			input.value = "";
+			input.onchange = async function (e) {
+				var file = e.target.files[0];
+				if (!file) return;
+
+				showConfirmationDialog(
+					"Import Project",
+					"This will replace all current data with the project from:\n\n" + file.name + "\n\nContinue?",
+					"Import",
+					"Cancel",
+					async function () {
+						try {
+							var parser = new KAPParser();
+							var summary = await parser.parse(file);
+
+							var msg = "Project: " + (summary.projectName || file.name) + "\n\n";
+							msg += "Holes: " + summary.holes + "\n";
+							msg += "Drawings: " + summary.drawings + "\n";
+							msg += "Surfaces: " + summary.surfaces + "\n";
+							msg += "Images: " + summary.images + "\n";
+							msg += "Products: " + summary.products + "\n";
+							msg += "Charging: " + summary.charging + "\n";
+							msg += "Configs: " + summary.configs;
+
+							if (summary.errors.length > 0) {
+								msg += "\n\nWarnings (" + summary.errors.length + "):\n" + summary.errors.join("\n");
+							}
+
+							showModalMessage("Import Complete", msg, summary.errors.length > 0 ? "warning" : "success");
+						} catch (error) {
+							console.error("KAP import error:", error);
+							showModalMessage("Import Failed", "Error importing KAP: " + error.message, "error");
+						}
+					}
+				);
+			};
+			input.click();
+		}
+	});
+});
+
+//=================================================
 // NEW FileManager-based Export Buttons
 //=================================================
 
@@ -8161,9 +8301,47 @@ document.querySelectorAll(".kad-output-btn").forEach(function (button) {
 			// Step 10) Write KAD data
 			var result = await writer.write({ kadDrawingsMap: window.allKADDrawingsMap });
 
-			// Step 11) Download both files
-			writer.downloadFile(result.kadFile, result.kadFilename);
-			writer.downloadFile(result.txtFile, result.txtFilename);
+			// Step 11) Save both files using file picker or fallback
+			if (window.showSaveFilePicker) {
+				try {
+					// Save .kad file
+					var kadHandle = await window.showSaveFilePicker({
+						suggestedName: result.kadFilename,
+						types: [{
+							description: 'Kirra App Drawing',
+							accept: { 'application/octet-stream': ['.kad'] }
+						}]
+					});
+					var kadWritable = await kadHandle.createWritable();
+					await kadWritable.write(result.kadFile);
+					await kadWritable.close();
+
+					// Save .txt file
+					var txtHandle = await window.showSaveFilePicker({
+						suggestedName: result.txtFilename,
+						types: [{
+							description: 'Text Files',
+							accept: { 'text/plain': ['.txt'] }
+						}]
+					});
+					var txtWritable = await txtHandle.createWritable();
+					await txtWritable.write(result.txtFile);
+					await txtWritable.close();
+
+					showModalMessage("Export Complete", "Exported " + kadHandle.name + " and " + txtHandle.name, "success");
+				} catch (pickerErr) {
+					if (pickerErr.name === 'AbortError') {
+						console.log("User cancelled file picker");
+					} else {
+						console.error("File picker error, falling back:", pickerErr);
+						writer.downloadFile(result.kadFile, result.kadFilename);
+						writer.downloadFile(result.txtFile, result.txtFilename);
+					}
+				}
+			} else {
+				writer.downloadFile(result.kadFile, result.kadFilename);
+				writer.downloadFile(result.txtFile, result.txtFilename);
+			}
 
 			console.log("KAD export completed");
 		} catch (error) {
@@ -32080,7 +32258,7 @@ const BLASTHOLES_STORE_NAME = "BLASTHOLES";
 const LAYERS_STORE_NAME = "KADLAYERS";
 
 // Define all required stores - THIS WAS MISSING
-const REQUIRED_STORES = [STORE_NAME, SURFACE_STORE_NAME, IMAGE_STORE_NAME, BLASTHOLES_STORE_NAME, LAYERS_STORE_NAME];
+const REQUIRED_STORES = [STORE_NAME, SURFACE_STORE_NAME, IMAGE_STORE_NAME, BLASTHOLES_STORE_NAME, LAYERS_STORE_NAME, ...ALL_CHARGING_STORES];
 
 // Start with a higher version that you'll use going forward
 const DB_VERSION = 5; // Set this higher than your current version
@@ -32761,11 +32939,29 @@ async function loadAllDataWithProgress() {
 		var surfaceCount = loadedSurfaces ? loadedSurfaces.size : 0;
 		updateLoadingProgress(loadingDialog, "Loaded " + surfaceCount + " surface(s)", 70);
 
-		// Step 5) Load images (70-90%)
+		// Step 5) Load images (70-85%)
 		updateLoadingProgress(loadingDialog, "Loading images...", 75);
 		await loadAllImagesIntoMemory();
 		var imageCount = loadedImages ? loadedImages.size : 0;
-		updateLoadingProgress(loadingDialog, "Loaded " + imageCount + " image(s)", 90);
+		updateLoadingProgress(loadingDialog, "Loaded " + imageCount + " image(s)", 85);
+
+		// Step 5a) Load charging system data (85-95%)
+		updateLoadingProgress(loadingDialog, "Loading charging data...", 87);
+		try {
+			loadedProducts = await loadProductsFromDB(db);
+			window.loadedProducts = loadedProducts;
+			loadedCharging = await loadChargingFromDB(db);
+			window.loadedCharging = loadedCharging;
+			loadedChargeConfigs = await loadChargeConfigsFromDB(db);
+			window.loadedChargeConfigs = loadedChargeConfigs;
+			var productCount = loadedProducts ? loadedProducts.size : 0;
+			var chargingCount = loadedCharging ? loadedCharging.size : 0;
+			var configCount = loadedChargeConfigs ? loadedChargeConfigs.size : 0;
+			updateLoadingProgress(loadingDialog, "Loaded " + productCount + " products, " + chargingCount + " charge records, " + configCount + " configs", 95);
+		} catch (chargingError) {
+			console.warn("Charging data load skipped (stores may not exist yet):", chargingError);
+			updateLoadingProgress(loadingDialog, "Charging data: none found", 95);
+		}
 
 		// Step 6) Complete
 		updateLoadingProgress(loadingDialog, "Complete! All data loaded successfully", 100);
@@ -35107,6 +35303,118 @@ document.addEventListener("DOMContentLoaded", () => {
 			} else {
 				cancelTransformMode();
 			}
+		});
+	}
+
+	// Charging System toolbar buttons
+	const productManagerBtn = document.getElementById("productManagerBtn");
+	if (productManagerBtn) {
+		productManagerBtn.addEventListener("click", function () {
+			showProductManagerDialog();
+		});
+	}
+
+	const exportProductTemplateBtn = document.getElementById("exportProductTemplateBtn");
+	if (exportProductTemplateBtn) {
+		exportProductTemplateBtn.addEventListener("click", function () {
+			exportBaseConfigTemplate();
+		});
+	}
+
+	const importProductConfigBtn = document.getElementById("importProductConfigBtn");
+	if (importProductConfigBtn) {
+		importProductConfigBtn.addEventListener("click", function () {
+			// Create hidden file input for ZIP selection
+			var fileInput = document.createElement("input");
+			fileInput.type = "file";
+			fileInput.accept = ".zip";
+			fileInput.style.display = "none";
+			fileInput.addEventListener("change", async function () {
+				if (!fileInput.files || fileInput.files.length === 0) return;
+				try {
+					var results = await importConfigFromZip(fileInput.files[0]);
+					// Add imported products to loadedProducts
+					var importedCount = 0;
+					for (var i = 0; i < results.products.length; i++) {
+						var product = results.products[i];
+						loadedProducts.set(product.productID, product);
+						importedCount++;
+					}
+					window.loadedProducts = loadedProducts;
+					// Add imported configs to loadedChargeConfigs
+					var configCount = 0;
+					for (var j = 0; j < results.configs.length; j++) {
+						var config = results.configs[j];
+						loadedChargeConfigs.set(config.configID, config);
+						configCount++;
+					}
+					window.loadedChargeConfigs = loadedChargeConfigs;
+					// Save to IndexedDB
+					if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
+					if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
+					// Report results
+					var msg = "Imported " + importedCount + " products and " + configCount + " configs.";
+					if (results.errors.length > 0) {
+						msg += "\n\nWarnings:\n" + results.errors.join("\n");
+					}
+					alert(msg);
+				} catch (err) {
+					console.error("Error importing config:", err);
+					alert("Error importing config: " + err.message);
+				}
+				document.body.removeChild(fileInput);
+			});
+			document.body.appendChild(fileInput);
+			fileInput.click();
+		});
+	}
+
+	// Charge Rule Builder button - opens the Deck Builder dialog
+	const chargeRuleBuilderBtn = document.getElementById("chargeRuleBuilderBtn");
+	if (chargeRuleBuilderBtn) {
+		chargeRuleBuilderBtn.addEventListener("click", function () {
+			showDeckBuilderDialog();
+		});
+	}
+
+	// Add Charge Rule button - opens deck builder for quick rule application
+	const addChargeRuleBtn = document.getElementById("addChargeRuleBtn");
+	if (addChargeRuleBtn) {
+		addChargeRuleBtn.addEventListener("click", function () {
+			showDeckBuilderDialog();
+		});
+	}
+
+	// Remove Charge Rule button - clears charging from selected holes
+	const removeChargeRuleBtn = document.getElementById("removeChargeRuleBtn");
+	if (removeChargeRuleBtn) {
+		removeChargeRuleBtn.addEventListener("click", function () {
+			var targets = [];
+			if (window.selectedMultipleHoles && window.selectedMultipleHoles.length > 0) {
+				targets = window.selectedMultipleHoles;
+			} else if (window.selectedHole) {
+				targets = [window.selectedHole];
+			}
+			if (targets.length === 0) {
+				showModalMessage("Remove Charging", "No holes selected.", "warning");
+				return;
+			}
+			showConfirmationDialog(
+				"Remove Charging",
+				"Remove charging from " + targets.length + " hole(s)?",
+				"Remove",
+				"Cancel",
+				function () {
+					for (var i = 0; i < targets.length; i++) {
+						if (window.loadedCharging) {
+							window.loadedCharging.delete(targets[i].holeID);
+						}
+					}
+					if (typeof window.debouncedSaveCharging === "function") window.debouncedSaveCharging();
+					if (typeof window.drawData === "function") window.drawData(window.allBlastHoles, window.selectedHole);
+					showModalMessage("Charging Removed", "Removed charging from " + targets.length + " hole(s).", "success");
+				}
+			);
 		});
 	}
 });
@@ -43063,6 +43371,11 @@ window.generateHolesAlongPolyline = generateHolesAlongPolyline;
 ///----------------- ASSIGN HOLE START Z TO A SURFACE TOOL and ASSIGN HOLE GRADE Z to a surface -----------------///
 // WITH this multi-surface system:
 let loadedSurfaces = new Map(); // Map<surfaceId, {id, name, points, triangles, visible, gradient}>
+
+// Charging System global storage
+let loadedProducts = new Map();       // Map<productID, Product>
+let loadedCharging = new Map();       // Map<holeID, HoleCharging>
+let loadedChargeConfigs = new Map();  // Map<configID, ChargeConfig>
 
 // Step 0) Surface 2D rendering cache - stores pre-rendered surface images for performance
 // Cache is invalidated when: surface properties change, zoom changes beyond threshold, or surface is modified

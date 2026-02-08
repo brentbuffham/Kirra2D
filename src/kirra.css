@@ -3139,6 +3139,128 @@ body.dark-mode .floating-dialog .checkbox-row label {
     }
 }
 
+/* ===== DECK BUILDER ===== */
+.deck-builder-info {
+    padding: 6px 10px;
+    background: var(--default-background-color);
+    color: var(--light-mode-text);
+    font-size: 11px;
+    border-bottom: 1px solid var(--light-mode-border);
+    display: flex;
+    gap: 12px;
+    flex-shrink: 0;
+}
+
+body.dark-mode .deck-builder-info {
+    background: #2a2a2a;
+    color: #ccc;
+    border-bottom-color: var(--dark-mode-border);
+}
+
+.deck-builder-palette {
+    width: 180px;
+    min-width: 180px;
+    border-right: 1px solid var(--light-mode-border);
+    overflow-y: auto;
+    background: #f0f0f0;
+    padding: 4px;
+}
+
+body.dark-mode .deck-builder-palette {
+    border-right-color: var(--dark-mode-border);
+    background: #1e1e1e;
+}
+
+.deck-builder-palette-title {
+    font-size: 11px;
+    font-weight: bold;
+    color: #666;
+    padding: 4px 6px;
+    text-transform: uppercase;
+}
+
+body.dark-mode .deck-builder-palette-title {
+    color: #aaa;
+}
+
+.deck-builder-cat-header {
+    font-size: 10px;
+    font-weight: bold;
+    color: #888;
+    padding: 6px 6px 2px;
+    text-transform: uppercase;
+    border-top: 1px solid #ddd;
+    margin-top: 4px;
+}
+
+body.dark-mode .deck-builder-cat-header {
+    border-top-color: #333;
+}
+
+.deck-palette-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 6px;
+    margin: 1px 0;
+    border-radius: 3px;
+    cursor: grab;
+    font-size: 11px;
+    color: var(--light-mode-text);
+    background: #e8e8e8;
+    transition: background 0.1s;
+}
+
+.deck-palette-item:hover {
+    background: #d0d0d0;
+}
+
+body.dark-mode .deck-palette-item {
+    color: #ddd;
+    background: #2a2a2a;
+}
+
+body.dark-mode .deck-palette-item:hover {
+    background: #3a3a3a;
+}
+
+.deck-builder-bottom {
+    border-top: 1px solid var(--light-mode-border);
+    background: #f0f0f0;
+    padding: 6px 10px;
+    flex-shrink: 0;
+}
+
+body.dark-mode .deck-builder-bottom {
+    border-top-color: var(--dark-mode-border);
+    background: #1e1e1e;
+}
+
+.deck-builder-props {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+    font-size: 11px;
+    color: var(--light-mode-text);
+    min-height: 24px;
+}
+
+body.dark-mode .deck-builder-props {
+    color: #ccc;
+}
+
+.deck-builder-summary {
+    font-size: 10px;
+    color: #666;
+    margin-bottom: 6px;
+}
+
+body.dark-mode .deck-builder-summary {
+    color: #888;
+}
+
 /* ===== TOOLBAR PANEL (Tree-Panel Style) ===== */
 .toolbar-panel {
     position: fixed;

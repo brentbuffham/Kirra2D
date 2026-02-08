@@ -1701,6 +1701,24 @@
 				Files (Import / Export)
 				<div class="file-io-grid">
 
+					<!-- Kirra Application Project (.kap) -->
+					<input type="file" name="fileInputKAP" id="fileInputKAP" accept=".kap,.zip"
+						class="hidden-file-input" placeholder="fileInputKAP" title="Import Kirra Application Project">
+					<div class="label2" id="label_KAP" style="display: flex; align-items: center;">Kirra Application
+						Project
+						<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
+							<label class="icon-button kap-input-btn" data-target="fileInputKAP"
+								title="Import KAP Project">
+								<img src="icons/file-import.png" alt="Import">
+							</label>
+							<label class="icon-button kap-output-btn" id="fileOutputKAP" title="Export KAP Project">
+								<img src="icons/file-export.png" alt="Export">
+							</label>
+						</span>
+					</div>
+
+					<hr>
+
 					<!-- Holes CSV/TXT -->
 					<div class="label2" id="label_holesCSV" style="display: flex; align-items: center;">Holes CSV/TXT
 						<span style="margin-left: auto; display: flex; align-items: center; gap: 4px;">
@@ -2719,14 +2737,36 @@
 				<label for="holesAddingTool" class="toggle-buttons-custom icon-button" title="Add Hole">
 					<img src="icons/circle-plus-2.png" alt="Add Hole">
 				</label>
-				<button id="addPatternBtn" class="toggle-buttons-custom icon-button" title="Add Pattern">
+				<button id="addPatternBtn" class="toggle-buttons-custom icon-button single" title="Add Pattern">
 					<img src="icons/grid-dots.png" alt="Add Pattern">
 				</button>
+				<hr class="single">
 				<button id="renumberHolesBtn" class="toggle-buttons-custom icon-button" title="Renumber Holes">
 					<img src="icons/123.png" alt="Renumber Holes">
 				</button>
 				<button id="reorderRowsBtn" class="toggle-buttons-custom icon-button" title="Reorder Rows">
 					<img src="icons/arrows-right-left.png" alt="Reorder Rows">
+				</button>
+				<hr class="single">
+				<button id="productManagerBtn" class="toggle-buttons-custom icon-button" title="Product Manager">
+					<img src="icons/table-options.png" alt="Product Manager">
+				</button>
+				<button id="chargeRuleBuilderBtn" class="toggle-buttons-custom icon-button" title="Charge Rule Builder">
+					<img src="icons/table-alias.png" alt="Charge Rule Builder">
+				</button>
+				<button id="exportProductTemplateBtn" class="toggle-buttons-custom icon-button"
+					title="Export Product Template">
+					<img src="icons/file-zip.png" alt="Export Product Template">
+				</button>
+				<button id="importProductConfigBtn" class="toggle-buttons-custom icon-button"
+					title="Import Product Configuration">
+					<img src="icons/file-upload.png" alt="Import Product Configuration">
+				</button>
+				<button id="addChargeRuleBtn" class="toggle-buttons-custom icon-button" title="Add Charges">
+					<img src="icons/cylinder-plus.png" alt="Add Charge Rule">
+				</button>
+				<button id="removeChargeRuleBtn" class="toggle-buttons-custom icon-button" title="Remove Charges">
+					<img src="icons/cylinder-off.png" alt="Remove Charge Rule">
 				</button>
 			</div>
 		</div>
@@ -2868,6 +2908,8 @@
 			</div>
 		</div>
 	</div>
+	<!-- Panel 7: Loading -->
+	<!-- future possible toolbar for now the tools will be put in the hole toolbar-->
 
 	<!-- ========== END TOOLBAR PANELS ========== -->
 	<!-- Add this to your HTML body, preferably near the end -->
