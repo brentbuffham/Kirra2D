@@ -288,7 +288,7 @@ class BlastHoleCSVWriter extends BaseWriter {
 	// Step 14) Generate 35 column CSV format (all data)
 	generate35ColumnCSV(holes) {
 		var csv = "";
-		var header = "entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID, burden, spacing, connectorCurve";
+		var header = "entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation,gradeYLocation,gradeZLocation,subdrillAmount,subdrillLength,benchHeight,holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp,rowID,posID,burden,spacing,connectorCurve";
 		csv += header + "\n";
 
 		var dp = this.decimalPlaces;

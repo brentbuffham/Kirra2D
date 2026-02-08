@@ -13941,11 +13941,17 @@ async function parseK2Dcsv(data, filename) {
 		newEntities.forEach(function (entityName) {
 			var entityHoles = allBlastHoles.filter(function (h) { return h.entityName === entityName; });
 			if (entityHoles.length > 0) {
-				// Only calculate if not already set (default is 1, so recalculate ONLY if exactly 1)
-				// CRITICAL: Preserve user-supplied 0 values (0 means "no burden/spacing")
+				// Only calculate burden/spacing for holes that don't already have valid values
+				// Skip recalculation if burden, spacing, rowID, and posID are all supplied from the file
 				var needsCalculation = entityHoles.filter(function (h) {
-					return (h.burden === undefined || h.burden === null || h.burden === 1) &&
-						(h.spacing === undefined || h.spacing === null || h.spacing === 1);
+					var hasBurden = h.burden !== undefined && h.burden !== null && h.burden !== 1;
+					var hasSpacing = h.spacing !== undefined && h.spacing !== null && h.spacing !== 1;
+					var hasRowID = h.rowID !== undefined && h.rowID !== null && h.rowID !== 0;
+					var hasPosID = h.posID !== undefined && h.posID !== null && h.posID !== 0;
+					// If all four are supplied from file, don't recalculate
+					if (hasBurden && hasSpacing && hasRowID && hasPosID) return false;
+					// Otherwise, recalculate if burden/spacing are defaults
+					return !hasBurden || !hasSpacing;
 				});
 				if (needsCalculation.length > 0) {
 					calculateBurdenAndSpacingForHoles(needsCalculation);

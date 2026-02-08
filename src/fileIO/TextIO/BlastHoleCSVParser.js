@@ -34,11 +34,14 @@ class BlastHoleCSVParser extends BaseParser {
 		var minX = Infinity;
 		var minY = Infinity;
 
-		var supportedLengths = [4, 7, 9, 12, 14, 20, 25, 30, 32, 35];
+		var supportedLengths = [4, 7, 9, 12, 14, 29, 30, 31, 32, 35];
 		var warnings = [];
 		var newHolesForRowDetection = [];
 
 		var blastNameValue = "BLAST_" + randomHex;
+
+		// Step 10a) Header-based column mapping for dynamic formats (e.g. "allcolumns" export)
+		var headerColumnMap = null;
 
 		// Step 11) Parse each line
 		for (var i = 0; i < lines.length; i++) {
@@ -51,9 +54,9 @@ class BlastHoleCSVParser extends BaseParser {
 			// Step 12) Skip empty lines
 			if (values.every((v) => v.trim() === "")) continue;
 
-			// Step 12a) CRITICAL FIX: Skip header row by checking if coordinate columns contain text instead of numbers
+			// Step 12a) Detect header row by checking if coordinate columns contain text instead of numbers
 			// For valid hole data, columns 3,4,5 (startX, startY, startZ) must be numeric
-			// If they're NOT numeric, this is likely a header row
+			// If they're NOT numeric, this is likely a header row - capture it for column mapping
 			if (len >= 6 && i < 3) { // Only check first 3 lines for headers
 				var col3 = values[3] ? values[3].trim() : "";
 				var col4 = values[4] ? values[4].trim() : "";
@@ -63,13 +66,18 @@ class BlastHoleCSVParser extends BaseParser {
 				var isHeader = isNaN(parseFloat(col3)) || isNaN(parseFloat(col4)) || isNaN(parseFloat(col5));
 
 				if (isHeader) {
-					console.log("📋 Skipping header row at line " + (i + 1) + ": " + values.slice(0, 5).join(","));
+					console.log("📋 Header row detected at line " + (i + 1) + ": " + values.slice(0, 5).join(","));
+					// Build column name -> index map for header-based parsing
+					headerColumnMap = {};
+					for (var hi = 0; hi < values.length; hi++) {
+						headerColumnMap[values[hi].trim()] = hi;
+					}
 					continue;
 				}
 			}
 
-			// Step 13) Validate column count
-			if (!supportedLengths.includes(len)) {
+			// Step 13) Validate column count - allow any count if we have a header map
+			if (!supportedLengths.includes(len) && !headerColumnMap) {
 				warnings.push("Line " + (i + 1) + " skipped: unsupported column count (" + len + ")");
 				continue;
 			}
@@ -95,8 +103,44 @@ class BlastHoleCSVParser extends BaseParser {
 			var spacing = 0;
 			var connectorCurve = 0;
 
+			// Step 14a) Header-based parsing for dynamic column formats (e.g. "allcolumns" export)
+			// When a header was detected and column count doesn't match fixed formats, use column names
+			if (headerColumnMap && !supportedLengths.includes(len)) {
+				var hv = function(name) { return headerColumnMap[name] !== undefined ? values[headerColumnMap[name]] : undefined; };
+				var hvf = function(name) { var v = hv(name); return v !== undefined ? parseFloat(v) : undefined; };
+				var hvi = function(name) { var v = hv(name); return v !== undefined ? parseInt(v) : undefined; };
+
+				entityName = hv("entityName") || blastNameValue;
+				holeID = hv("holeID");
+				startX = hvf("startXLocation");
+				startY = hvf("startYLocation");
+				startZ = hvf("startZLocation");
+				endX = hvf("endXLocation");
+				endY = hvf("endYLocation");
+				endZ = hvf("endZLocation");
+				subdrill = hvf("subdrillAmount") || 0;
+				holeDiameter = hvf("holeDiameter") || 0;
+				holeType = hv("holeType") || "Undefined";
+				fromHoleID = hv("fromHoleID") || "";
+				delay = hvi("timingDelayMilliseconds") || 0;
+				var colorVal = hv("colorHexDecimal");
+				color = colorVal ? colorVal.replace(/\r$/, "") : "red";
+				measuredLength = hvf("measuredLength") || 0;
+				measuredLengthTimeStamp = hv("measuredLengthTimeStamp") || "09/05/1975 00:00:00";
+				measuredMass = hvf("measuredMass") || 0;
+				measuredMassTimeStamp = hv("measuredMassTimeStamp") || "09/05/1975 00:00:00";
+				measuredComment = hv("measuredComment") || "None";
+				measuredCommentTimeStamp = hv("measuredCommentTimeStamp") || "09/05/1975 00:00:00";
+				var rowVal = hv("rowID");
+				rowID = rowVal && rowVal.trim() !== "" ? parseInt(rowVal) : null;
+				var posVal = hv("posID");
+				posID = posVal && posVal.trim() !== "" ? parseInt(posVal) : null;
+				burden = hvf("burden") || 0;
+				spacing = hvf("spacing") || 0;
+				connectorCurve = hvi("connectorCurve") || 0;
+			}
 			// Step 15) Parse based on column count (35 column format - full data)
-			if (len === 35) {
+			else if (len === 35) {
 				entityName = values[0];
 				holeID = values[2];
 				startX = parseFloat(values[3]);
@@ -123,8 +167,9 @@ class BlastHoleCSVParser extends BaseParser {
 				spacing = parseFloat(values[33]);
 				connectorCurve = parseInt(values[34]);
 			}
-			// Step 16) Parse 32 column format
-			else if (len === 32) {
+			// Step 16) Parse 31/32 column format (measuredLength + measuredMass, then rowID at index 26)
+			// Writer "32column" outputs 31 columns; accept 32 for external CSVs with same layout
+			else if (len === 31 || len === 32) {
 				entityName = values[0];
 				holeID = values[2];
 				startX = parseFloat(values[3]);
@@ -140,16 +185,16 @@ class BlastHoleCSVParser extends BaseParser {
 				delay = parseInt(values[18]);
 				color = values[19].replace(/\r$/, "");
 				measuredLength = parseFloat(values[24]);
-				measuredLengthTimeStamp = values[25];
-				measuredMass = parseFloat(values[26]);
-				measuredMassTimeStamp = values[27];
-				measuredComment = values[28];
-				measuredCommentTimeStamp = values[29];
-				rowID = values[30] && values[30].trim() !== "" ? parseInt(values[30]) : null;
-				posID = values[31] && values[31].trim() !== "" ? parseInt(values[31]) : null;
+				measuredMass = parseFloat(values[25]);
+				rowID = values[26] && values[26].trim() !== "" ? parseInt(values[26]) : null;
+				posID = values[27] && values[27].trim() !== "" ? parseInt(values[27]) : null;
+				burden = parseFloat(values[28]);
+				spacing = parseFloat(values[29]);
+				connectorCurve = len >= 32 ? parseInt(values[30]) : 0;
 			}
-			// Step 17) Parse 30 column format
-			else if (len === 30) {
+			// Step 17) Parse 29/30 column format (no measured data, rowID at index 24)
+			// Writer "30column" outputs 29 columns; accept 30 for external CSVs with same layout
+			else if (len === 29 || len === 30) {
 				entityName = values[0];
 				holeID = values[2];
 				startX = parseFloat(values[3]);
@@ -164,12 +209,12 @@ class BlastHoleCSVParser extends BaseParser {
 				fromHoleID = values[17];
 				delay = parseInt(values[18]);
 				color = values[19].replace(/\r$/, "");
-				measuredLength = parseFloat(values[24]);
-				measuredLengthTimeStamp = values[25];
-				measuredMass = parseFloat(values[26]);
-				measuredMassTimeStamp = values[27];
-				measuredComment = values[28];
-				measuredCommentTimeStamp = values[29];
+				// No measured data in this format
+				rowID = values[24] && values[24].trim() !== "" ? parseInt(values[24]) : null;
+				posID = values[25] && values[25].trim() !== "" ? parseInt(values[25]) : null;
+				burden = parseFloat(values[26]);
+				spacing = parseFloat(values[27]);
+				connectorCurve = parseInt(values[28]);
 			}
 			// Step 18) Parse 14 column format
 			else if (len === 14) {
