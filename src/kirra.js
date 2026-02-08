@@ -14571,6 +14571,13 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 								}
 							});
 
+							// Step 9a.1b) Enable alpha transparency so transparent texture pixels render correctly
+							if (appliedTexture) {
+								child.material.transparent = true;
+								child.material.alphaTest = 0.1;
+								child.material.needsUpdate = true;
+							}
+
 							if (!appliedTexture) {
 								console.warn("🚨 No texture applied to mesh: " + (child.name || "unnamed"));
 							}
@@ -15156,6 +15163,7 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 		var offscreenRenderer = new THREE.WebGLRenderer({
 			antialias: true,
 			preserveDrawingBuffer: true,
+			alpha: true,
 		});
 		offscreenRenderer.setSize(imgWidth, imgHeight);
 		offscreenRenderer.setClearColor(0xffffff, 0); // Transparent background
@@ -43664,12 +43672,14 @@ function createMaterialFromProperties(materialProps, texture, textureName) {
 		)
 		: new THREE.Color(0, 0, 0);
 
+	var hasTexture = !!(texture && texture instanceof THREE.Texture);
 	var material = new THREE.MeshPhongMaterial({
 		color: diffuseColor,
 		specular: specularColor,
 		shininess: materialProps.Ns !== undefined ? materialProps.Ns : 30,
 		side: THREE.DoubleSide,
-		transparent: false,
+		transparent: hasTexture,
+		alphaTest: hasTexture ? 0.1 : 0,
 		opacity: 1.0,
 	});
 

@@ -3660,7 +3660,8 @@ export class GeometryFactory {
 		const geometry = new THREE.PlaneGeometry(width, height);
 		const material = new THREE.MeshBasicMaterial({
 			map: texture,
-			transparent: transparency < 1.0,
+			transparent: true,
+			alphaTest: 0.01,
 			opacity: transparency,
 			side: THREE.DoubleSide,
 		});
