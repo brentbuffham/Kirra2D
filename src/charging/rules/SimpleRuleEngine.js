@@ -228,7 +228,37 @@ function applyStandardFixedStem(hole, config) {
 	var stemLen = config.preferredStemLength || 3.5;
 	stemLen = Math.min(stemLen, holeLen - (config.minChargeLength || 2.0));
 
-	// Stemming
+	var chargeLen = holeLen - stemLen;
+	var chargeBase = holeLen;
+
+	// Apply chargeRatio if set (e.g. 0.5 = 50% charge, rest becomes top stemming)
+	if (config.chargeRatio != null && config.chargeRatio > 0 && config.chargeRatio < 1) {
+		chargeLen = holeLen * config.chargeRatio;
+		chargeLen = Math.max(chargeLen, config.minChargeLength || 2.0);
+		stemLen = holeLen - chargeLen;
+	}
+
+	// Apply mass-based charging if configured
+	if (config.useMassOverLength && config.targetChargeMassKg > 0) {
+		var chargeDensity = chargeProduct ? (chargeProduct.density || 0.85) : 0.85;
+		var holeDiameterM = (hole.holeDiameter || 115) / 1000;
+		var holeRadiusM = holeDiameterM / 2;
+		var crossSectionArea = Math.PI * holeRadiusM * holeRadiusM; // m^2
+		var kgPerMetre = chargeDensity * 1000 * crossSectionArea; // density g/cc -> kg/m^3, times area = kg/m
+
+		if (kgPerMetre > 0) {
+			chargeLen = config.targetChargeMassKg / kgPerMetre;
+			chargeLen = Math.max(chargeLen, config.minChargeLength || 1.0);
+			chargeLen = Math.min(chargeLen, holeLen - (config.minStemLength || 2.0));
+			stemLen = holeLen - chargeLen;
+		}
+	}
+
+	// Charge sits at bottom, stemming at top
+	var chargeTop = stemLen;
+	chargeBase = holeLen;
+
+	// Stemming from collar
 	hc.decks.push(new Deck({
 		holeID: hc.holeID,
 		deckType: DECK_TYPES.INERT,
@@ -237,30 +267,29 @@ function applyStandardFixedStem(hole, config) {
 		product: snap(stemProduct) || { name: "Stemming", density: 2.1 }
 	}));
 
-	// Fill rest with charge
+	// Charge deck
 	hc.decks.push(new Deck({
 		holeID: hc.holeID,
 		deckType: DECK_TYPES.COUPLED,
-		topDepth: stemLen,
-		baseDepth: holeLen,
+		topDepth: chargeTop,
+		baseDepth: chargeBase,
 		product: snap(chargeProduct) || { name: "Explosive", density: 0.85 }
 	}));
 
-	// Place primers at intervals
-	var chargeTop = stemLen;
+	// Place primers at intervals within charge column
 	var interval = config.primerInterval || 8.0;
 	var maxPrimers = config.maxPrimersPerDeck || 3;
-	var chargeLen = holeLen - stemLen;
+	var actualChargeLen = chargeBase - chargeTop;
 
-	var primerCount = Math.max(1, Math.min(maxPrimers, Math.ceil(chargeLen / interval)));
+	var primerCount = Math.max(1, Math.min(maxPrimers, Math.ceil(actualChargeLen / interval)));
 	for (var p = 0; p < primerCount; p++) {
 		var depth;
 		if (primerCount === 1) {
-			depth = holeLen * 0.9;
+			depth = chargeBase - actualChargeLen * 0.1;
 		} else {
 			// Distribute evenly within charge column
-			depth = chargeTop + (chargeLen * (p + 1)) / (primerCount + 1) + chargeLen * 0.1;
-			depth = Math.min(depth, holeLen - 0.1);
+			depth = chargeTop + (actualChargeLen * (p + 1)) / (primerCount + 1) + actualChargeLen * 0.1;
+			depth = Math.min(depth, chargeBase - 0.1);
 		}
 
 		hc.addPrimer(new Primer({

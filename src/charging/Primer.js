@@ -18,6 +18,7 @@ export class Primer {
 			initiatorType: options.detonator?.initiatorType || null, // Electronic, ShockTube, Electric, DetonatingCord
 			deliveryVodMs: options.detonator?.deliveryVodMs != null ? options.detonator.deliveryVodMs : 0,  // m/s (0 = instant)
 			delayMs: options.detonator?.delayMs || 0,               // programmed or series delay
+			quantity: options.detonator?.quantity || 1,              // number of detonators (e.g. 2 for Twinplex)
 			serialNumber: options.detonator?.serialNumber || null
 		};
 

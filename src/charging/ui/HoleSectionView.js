@@ -591,15 +591,21 @@ export class HoleSectionView {
 		ctx.fillStyle = DECK_COLORS.BOOSTER;
 		ctx.fillRect(centerX - markerW / 2, y - markerH / 2, markerW, markerH);
 
-		// Detonator triangle on top (blue)
+		// Detonator drawn inside the booster (small blue rectangle centered within)
+		var detW = 6;
+		var detH = 6;
+		var detQty = (primer.detonator && primer.detonator.quantity > 1) ? primer.detonator.quantity : 1;
 		ctx.fillStyle = DECK_COLORS.DETONATOR;
-		var triSize = 5;
-		ctx.beginPath();
-		ctx.moveTo(centerX, y - markerH / 2 - triSize);
-		ctx.lineTo(centerX - triSize, y - markerH / 2);
-		ctx.lineTo(centerX + triSize, y - markerH / 2);
-		ctx.closePath();
-		ctx.fill();
+		if (detQty === 1) {
+			ctx.fillRect(centerX - detW / 2, y - detH / 2, detW, detH);
+		} else {
+			// Multiple detonators: draw side by side inside booster
+			var totalDetW = detQty * detW + (detQty - 1) * 2;
+			var startX = centerX - totalDetW / 2;
+			for (var dq = 0; dq < detQty; dq++) {
+				ctx.fillRect(startX + dq * (detW + 2), y - detH / 2, detW, detH);
+			}
+		}
 
 		// Outline
 		ctx.strokeStyle = isSelected ? theme.selectionOutline : "#000000";
@@ -609,10 +615,18 @@ export class HoleSectionView {
 		// Label on left side with connector
 		var labelParts = [];
 		if (primer.booster && primer.booster.productName) {
-			labelParts.push(primer.booster.productName);
+			var boosterLabel = primer.booster.productName;
+			if (primer.booster.quantity > 1) {
+				boosterLabel = primer.booster.quantity + "x " + boosterLabel;
+			}
+			labelParts.push(boosterLabel);
 		}
 		if (primer.detonator && primer.detonator.productName) {
-			labelParts.push(primer.detonator.productName);
+			var detLabel = primer.detonator.productName;
+			if (primer.detonator.quantity > 1) {
+				detLabel = primer.detonator.quantity + "x " + detLabel;
+			}
+			labelParts.push(detLabel);
 		}
 		if (labelParts.length === 0) {
 			labelParts.push("Primer");
@@ -747,31 +761,90 @@ export class HoleSectionView {
 			var newDepth = this.yToDepth(pos.y);
 			var decks = this.holeCharging.decks;
 			var idx = this._dragBoundaryIndex;
+			var upperDeck = decks[idx];
+			var lowerDeck = decks[idx + 1];
 
-			// Clamp to neighboring deck boundaries (min 0.1m deck height)
-			var minDepth = decks[idx].topDepth + 0.1;
-			var maxDepth = decks[idx + 1].baseDepth - 0.1;
+			// Check if either adjacent deck is a fixed-size spacer
+			var upperFixedLen = getSpacerMaxLength(upperDeck);
+			var lowerFixedLen = getSpacerMaxLength(lowerDeck);
 
-			// Enforce spacer max length constraints
-			var upperMaxLen = getSpacerMaxLength(decks[idx]);
-			if (upperMaxLen !== null) {
-				// Upper deck is spacer: boundary can't go lower than topDepth + maxLen
-				var spacerMaxBase = decks[idx].topDepth + upperMaxLen;
-				maxDepth = Math.min(maxDepth, spacerMaxBase);
+			if (upperFixedLen !== null && upperDeck.deckType === "SPACER") {
+				// Upper deck is a fixed-size spacer: move it as a unit
+				var delta = newDepth - upperDeck.baseDepth;
+				var newTop = upperDeck.topDepth + delta;
+				var newBase = upperDeck.baseDepth + delta;
+
+				// Clamp: spacer can't go above the deck before it (or hole top)
+				var minTop = (idx > 0 ? decks[idx - 1].topDepth + 0.1 : 0);
+				// Clamp: spacer can't push lower deck below its base (or hole bottom)
+				var maxBase = lowerDeck.baseDepth - 0.1;
+
+				if (newTop < minTop) {
+					newTop = minTop;
+					newBase = newTop + upperFixedLen;
+				}
+				if (newBase > maxBase) {
+					newBase = maxBase;
+					newTop = newBase - upperFixedLen;
+				}
+
+				upperDeck.topDepth = parseFloat(newTop.toFixed(2));
+				upperDeck.baseDepth = parseFloat(newBase.toFixed(2));
+				// Resize adjacent decks to fill gaps
+				if (idx > 0) {
+					decks[idx - 1].baseDepth = parseFloat(newTop.toFixed(2));
+				}
+				lowerDeck.topDepth = parseFloat(newBase.toFixed(2));
+			} else if (lowerFixedLen !== null && lowerDeck.deckType === "SPACER") {
+				// Lower deck is a fixed-size spacer: move it as a unit
+				var delta = newDepth - lowerDeck.topDepth;
+				var newTop = lowerDeck.topDepth + delta;
+				var newBase = lowerDeck.baseDepth + delta;
+
+				// Clamp: spacer can't go above upper deck top
+				var minTop = upperDeck.topDepth + 0.1;
+				// Clamp: spacer can't go below next deck's base (or hole bottom)
+				var maxBase = (idx + 2 < decks.length ? decks[idx + 2].baseDepth - 0.1 : this._maxDepth);
+
+				if (newTop < minTop) {
+					newTop = minTop;
+					newBase = newTop + lowerFixedLen;
+				}
+				if (newBase > maxBase) {
+					newBase = maxBase;
+					newTop = newBase - lowerFixedLen;
+				}
+
+				lowerDeck.topDepth = parseFloat(newTop.toFixed(2));
+				lowerDeck.baseDepth = parseFloat(newBase.toFixed(2));
+				// Resize adjacent decks to fill gaps
+				upperDeck.baseDepth = parseFloat(newTop.toFixed(2));
+				if (idx + 2 < decks.length) {
+					decks[idx + 2].topDepth = parseFloat(newBase.toFixed(2));
+				}
+			} else {
+				// Standard boundary drag (no fixed-size spacer)
+				var minDepth = upperDeck.topDepth + 0.1;
+				var maxDepth = lowerDeck.baseDepth - 0.1;
+
+				// Enforce spacer max length constraints for non-fixed spacers
+				var upperMaxLen = getSpacerMaxLength(upperDeck);
+				if (upperMaxLen !== null) {
+					var spacerMaxBase = upperDeck.topDepth + upperMaxLen;
+					maxDepth = Math.min(maxDepth, spacerMaxBase);
+				}
+
+				var lowerMaxLen = getSpacerMaxLength(lowerDeck);
+				if (lowerMaxLen !== null) {
+					var spacerMinTop = lowerDeck.baseDepth - lowerMaxLen;
+					minDepth = Math.max(minDepth, spacerMinTop);
+				}
+
+				newDepth = Math.max(minDepth, Math.min(maxDepth, newDepth));
+
+				upperDeck.baseDepth = parseFloat(newDepth.toFixed(2));
+				lowerDeck.topDepth = parseFloat(newDepth.toFixed(2));
 			}
-
-			var lowerMaxLen = getSpacerMaxLength(decks[idx + 1]);
-			if (lowerMaxLen !== null) {
-				// Lower deck is spacer: boundary can't go higher than baseDepth - maxLen
-				var spacerMinTop = decks[idx + 1].baseDepth - lowerMaxLen;
-				minDepth = Math.max(minDepth, spacerMinTop);
-			}
-
-			newDepth = Math.max(minDepth, Math.min(maxDepth, newDepth));
-
-			// Update boundary
-			decks[idx].baseDepth = parseFloat(newDepth.toFixed(2));
-			decks[idx + 1].topDepth = parseFloat(newDepth.toFixed(2));
 
 			this.draw();
 			return;

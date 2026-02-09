@@ -243,10 +243,13 @@ export function showDeckBuilderDialog(referenceHole) {
 	function updatePrimerInfo(primer, index) {
 		var row = document.getElementById("deckBuilderPropsRow");
 		if (!row) return;
+		var detQty = primer.detonator.quantity || 1;
+		var detLabel = (primer.detonator.productName || "None");
+		if (detQty > 1) detLabel = detQty + "x " + detLabel;
 		row.innerHTML =
 			"<b>Primer " + (index + 1) + ":</b> " +
 			"<span>Depth: " + (primer.lengthFromCollar || 0).toFixed(1) + "m</span>" +
-			"<span>Det: " + (primer.detonator.productName || "None") + "</span>" +
+			"<span>Det: " + detLabel + "</span>" +
 			"<span>Booster: " + (primer.booster.productName || "None") + "</span>" +
 			"<span>Delay: " + (primer.detonator.delayMs || 0) + "ms</span>";
 	}
@@ -263,17 +266,40 @@ export function showDeckBuilderDialog(referenceHole) {
 			" | Powder Factor: " + pf.toFixed(3) + " kg/m\u00B3";
 	}
 
+	function showInlineWarning(message) {
+		var row = document.getElementById("deckBuilderPropsRow");
+		if (!row) return;
+		row.innerHTML = '<span style="color:#ff9800;">\u26A0 ' + message + '</span>';
+		setTimeout(function() {
+			row.innerHTML = "<span style='opacity:0.5;'>Click a deck to edit properties</span>";
+		}, 3000);
+	}
+
 	function removeDeck(hc, sv) {
 		var idx = sv.selectedDeckIndex;
 		if (idx < 0 || idx >= hc.decks.length) {
-			showModalMessage("Deck Builder", "Select a deck to remove first.", "warning");
+			showInlineWarning("Select a deck to remove first.");
 			return;
 		}
 		if (hc.decks.length <= 1) {
-			showModalMessage("Deck Builder", "Cannot remove the last deck. Use Clear instead.", "warning");
+			showInlineWarning("Cannot remove the last deck. Use Clear instead.");
 			return;
 		}
+		var removed = hc.decks[idx];
 		hc.decks.splice(idx, 1);
+
+		// Expand adjacent deck to fill the gap left by the removed deck
+		if (idx === 0 && hc.decks.length > 0) {
+			// Removed first deck: expand next deck upward
+			hc.decks[0].topDepth = removed.topDepth;
+		} else if (idx >= hc.decks.length && hc.decks.length > 0) {
+			// Removed last deck: expand previous deck downward
+			hc.decks[hc.decks.length - 1].baseDepth = removed.baseDepth;
+		} else if (hc.decks.length > 0) {
+			// Removed middle deck: expand deck above downward
+			hc.decks[idx - 1].baseDepth = removed.baseDepth;
+		}
+
 		hc.sortDecks();
 		sv.selectedDeckIndex = -1;
 		sv.setData(hc);
@@ -283,7 +309,7 @@ export function showDeckBuilderDialog(referenceHole) {
 	function removePrimer(hc, sv) {
 		var idx = sv.selectedPrimerIndex;
 		if (idx < 0 || idx >= hc.primers.length) {
-			showModalMessage("Deck Builder", "Select a primer to remove first.", "warning");
+			showInlineWarning("Select a primer to remove first.");
 			return;
 		}
 		hc.primers.splice(idx, 1);
@@ -501,6 +527,7 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
 	var fields = [
 		{ label: "Depth from Collar (m)", name: "depthFromCollar", type: "number", value: defaultDepth.toFixed(1), step: "0.1" },
 		{ label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: detOptions.length > 1 ? detOptions[1].value : "" },
+		{ label: "Detonator Qty", name: "detonatorQty", type: "number", value: "1", step: "1" },
 		{ label: "Delay (ms)", name: "delayMs", type: "number", value: "0", step: "1" },
 		{ label: "Booster", name: "boosterName", type: "select", options: boosterOptions, value: boosterOptions.length > 1 ? boosterOptions[1].value : "" },
 		{ label: "Booster Qty", name: "boosterQty", type: "number", value: "1", step: "1" }
@@ -542,7 +569,8 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
 					productName: data.detonatorName || null,
 					initiatorType: detProduct ? (detProduct.initiatorType || detProduct.productType) : null,
 					deliveryVodMs: detProduct ? (detProduct.deliveryVodMs || 0) : 0,
-					delayMs: parseFloat(data.delayMs) || 0
+					delayMs: parseFloat(data.delayMs) || 0,
+					quantity: parseInt(data.detonatorQty) || 1
 				},
 				booster: {
 					productID: boosterProduct ? boosterProduct.productID : null,

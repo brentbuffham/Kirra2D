@@ -62,6 +62,7 @@ var CHARGE_CONFIGS_CSV_HEADER = [
 	"minChargeLength",
 	"useMassOverLength",
 	"targetChargeMassKg",
+	"chargeRatio",
 	"primerInterval",
 	"primerDepthFromCollar",
 	"maxPrimersPerDeck",
@@ -116,6 +117,38 @@ var README_CONTENT = [
 	"  DetonatingCord   - 7000 m/s",
 	"  Use 0 for instant delivery (no downhole burn time added)",
 	"",
+	"COLUMN REFERENCE BY CATEGORY:",
+	"  (x = required, o = optional, blank = not applicable)",
+	"",
+	"  Column                  | NonExpl | BulkExpl | HighExpl | Initiator | Spacer",
+	"  ------------------------+---------+----------+----------+-----------+-------",
+	"  productCategory         |    x    |    x     |    x     |     x     |   x",
+	"  productType             |    x    |    x     |    x     |     x     |   x",
+	"  name                    |    x    |    x     |    x     |     x     |   x",
+	"  supplier                |    o    |    o     |    o     |     o     |   o",
+	"  density                 |    x    |    x     |    x     |           |   o",
+	"  colorHex                |    o    |    o     |    o     |           |   o",
+	"  isCompressible          |         |    x     |          |           |",
+	"  minDensity              |         |    o     |          |           |",
+	"  maxDensity              |         |    o     |          |           |",
+	"  vodMs                   |         |    x     |    x     |           |",
+	"  reKjKg                  |         |    x     |    x     |           |",
+	"  rws                     |         |    o     |          |           |",
+	"  waterResistant          |         |    x     |    o     |           |",
+	"  dampResistant           |         |    o     |          |           |",
+	"  massGrams               |         |          |    x     |           |",
+	"  diameterMm              |         |          |    x     |     o     |   o",
+	"  lengthMm                |         |          |    x     |     o     |   x",
+	"  initiatorType           |         |          |          |     x     |",
+	"  deliveryVodMs           |         |          |          |     x     |",
+	"  minDelayMs              |         |          |          |     o     |",
+	"  maxDelayMs              |         |          |          |     o     |",
+	"  delayIncrementMs        |         |          |          |     o     |",
+	"  delaySeriesMs           |         |          |          |     o     |",
+	"  coreLoadGramsPerMeter   |         |          |          |     o     |",
+	"  spacerType              |         |          |          |           |   x",
+	"  description             |    o    |    o     |    o     |     o     |   o",
+	"",
 	"NOTES:",
 	"  - Leave cells blank for optional/not-applicable fields",
 	"  - Density is in g/cc (grams per cubic centimeter)",
@@ -124,22 +157,129 @@ var README_CONTENT = [
 	""
 ].join("\n");
 
-// ============ EXAMPLE PRODUCT ROWS ============
+// ============ EXAMPLE PRODUCT DATA ============
 
-var EXAMPLE_PRODUCTS = [
-	"NonExplosive,Air,Air,,0.0012,#FFFFFF,,,,,,,,,,,,,,,,,,,,",
-	"NonExplosive,Water,Water,,1.00,#4169E1,,,,,,,,,,,,,,,,,,,,",
-	"NonExplosive,Stemming,Crushed Rock Stemming,,2.10,#8B7355,,,,,,,,,,,,,,,,,,,,7-19mm aggregate",
-	"BulkExplosive,ANFO,ANFO Standard,,0.85,#FFFF00,false,,,3200,3800,100,false,false,,,,,,,,,,,,Standard prilled ANFO",
-	"BulkExplosive,BlendNonGassed,Heavy ANFO 70/30,,1.20,#FFD700,true,0.85,1.40,4500,4200,115,true,false,,,,,,,,,,,,70% emulsion 30% ANFO blend",
-	"BulkExplosive,Emulsion,Bulk Emulsion,,1.15,#FF8C00,true,1.00,1.30,5500,3600,120,true,true,,,,,,,,,,,,Pumpable emulsion",
-	"HighExplosive,Booster,400g Pentex Booster,,1.60,#FF0000,,,,7500,5200,,true,,400,76,110,,,,,,,,,Cast pentolite booster",
-	"HighExplosive,PackagedEmulsion,Packaged Emulsion 75mm,,1.15,#FF4500,,,,5000,3400,,true,,2300,75,320,,,,,,,,,75mm packaged emulsion",
-	"Initiator,Electronic,i-kon II Electronic,,,,,,,,,,,,,,7.6,98,Electronic,0,0,20000,1,,,,Orica i-kon II",
-	"Initiator,ShockTube,Exel LP Shock Tube,,,,,,,,,,,,,,7.6,98,ShockTube,2000,,,,17;25;42;65;100;150;200;300;400;500,,,Orica Exel LP series",
-	"Initiator,DetonatingCord,10g/m Det Cord,,,,,,,,,,,,,,,,DetonatingCord,7000,,,,,10,,10 gram per meter detonating cord",
-	"Spacer,GasBag,400mm Gas Bag,,0.06,#ADD8E6,,,,,,,,,,230,400,,,,,,,,GasBag,,Standard 400mm gas bag"
+var EXAMPLE_PRODUCT_DATA = [
+	// --- NonExplosive ---
+	{ productCategory: "NonExplosive", productType: "Air", name: "Air", density: 0.0012, colorHex: "#FFFFFF", description: "" },
+	{ productCategory: "NonExplosive", productType: "Water", name: "Water", density: 1.00, colorHex: "#4169E1", description: "" },
+	{ productCategory: "NonExplosive", productType: "Stemming", name: "Crushed Rock Stemming", density: 2.10, colorHex: "#8B7355", description: "7-19mm aggregate" },
+	// --- BulkExplosive ---
+	{ productCategory: "BulkExplosive", productType: "ANFO", name: "ANFO Standard", density: 0.85, colorHex: "#FFFF00", isCompressible: false, vodMs: 3200, reKjKg: 3800, rws: 100, waterResistant: false, dampResistant: false, description: "Standard prilled ANFO" },
+	{ productCategory: "BulkExplosive", productType: "BlendNonGassed", name: "Heavy ANFO 70/30", density: 1.20, colorHex: "#FFD700", isCompressible: true, minDensity: 0.85, maxDensity: 1.40, vodMs: 4500, reKjKg: 4200, rws: 115, waterResistant: true, dampResistant: false, description: "70% emulsion 30% ANFO blend" },
+	{ productCategory: "BulkExplosive", productType: "Emulsion", name: "Bulk Emulsion", density: 1.15, colorHex: "#FF8C00", isCompressible: true, minDensity: 1.00, maxDensity: 1.30, vodMs: 5500, reKjKg: 3600, rws: 120, waterResistant: true, dampResistant: true, description: "Pumpable emulsion" },
+	// --- HighExplosive ---
+	{ productCategory: "HighExplosive", productType: "Booster", name: "400g Pentex Booster", density: 1.60, colorHex: "#FF0000", vodMs: 7500, reKjKg: 5200, waterResistant: true, massGrams: 400, diameterMm: 76, lengthMm: 110, description: "Cast pentolite booster" },
+	{ productCategory: "HighExplosive", productType: "PackagedEmulsion", name: "Packaged Emulsion 75mm", density: 1.15, colorHex: "#FF4500", vodMs: 5000, reKjKg: 3400, waterResistant: true, massGrams: 2300, diameterMm: 75, lengthMm: 320, description: "75mm packaged emulsion" },
+	// --- Initiator ---
+	{ productCategory: "Initiator", productType: "Electronic", name: "i-kon II Electronic", initiatorType: "Electronic", deliveryVodMs: 0, shellDiameterMm: 7.6, shellLengthMm: 98, minDelayMs: 0, maxDelayMs: 20000, delayIncrementMs: 1, description: "Orica i-kon II" },
+	{ productCategory: "Initiator", productType: "ShockTube", name: "Exel LP Shock Tube", initiatorType: "ShockTube", deliveryVodMs: 2000, shellDiameterMm: 7.6, shellLengthMm: 98, delaySeriesMs: [17, 25, 42, 65, 100, 150, 200, 300, 400, 500], description: "Orica Exel LP series" },
+	{ productCategory: "Initiator", productType: "DetonatingCord", name: "10g/m Det Cord", initiatorType: "DetonatingCord", deliveryVodMs: 7000, coreLoadGramsPerMeter: 10, description: "10 gram per meter detonating cord" },
+	// --- Spacer ---
+	{ productCategory: "Spacer", productType: "GasBag", name: "400mm Gas Bag", density: 0.06, colorHex: "#ADD8E6", spacerType: "GasBag", diameterMm: 230, lengthMm: 400, description: "Standard 400mm gas bag" }
 ];
+
+/**
+ * Build example product CSV rows from structured data objects.
+ * Uses createProductFromJSON + productToCSVRow to guarantee column alignment.
+ */
+function buildExampleProductRows() {
+	var rows = [];
+	for (var i = 0; i < EXAMPLE_PRODUCT_DATA.length; i++) {
+		var product = createProductFromJSON(EXAMPLE_PRODUCT_DATA[i]);
+		rows.push(productToCSVRow(product));
+	}
+	return rows;
+}
+
+// ============ EXAMPLE CHARGE CONFIG DATA ============
+
+var EXAMPLE_CONFIG_DATA = [
+	{
+		configCode: "SIMPLE_SINGLE",
+		configName: "Simple Single Deck",
+		stemmingProduct: "Crushed Rock Stemming",
+		chargeProduct: "ANFO Standard",
+		boosterProduct: "400g Pentex Booster",
+		detonatorProduct: "i-kon II Electronic",
+		preferredStemLength: 3.5,
+		minStemLength: 2.5,
+		preferredChargeLength: 6.0,
+		minChargeLength: 2.0,
+		useMassOverLength: false,
+		primerInterval: 8.0,
+		maxPrimersPerDeck: 3,
+		description: "Single stemming + charge + primer"
+	},
+	{
+		configCode: "STNDFS",
+		configName: "50/50 Stem and Charge",
+		stemmingProduct: "Crushed Rock Stemming",
+		chargeProduct: "ANFO Standard",
+		boosterProduct: "400g Pentex Booster",
+		detonatorProduct: "i-kon II Electronic",
+		preferredStemLength: 3.5,
+		minStemLength: 2.0,
+		minChargeLength: 2.0,
+		useMassOverLength: false,
+		chargeRatio: 0.5,
+		primerInterval: 8.0,
+		maxPrimersPerDeck: 3,
+		description: "50% stemming 50% charge split"
+	},
+	{
+		configCode: "STNDFS",
+		configName: "20kg Mass Based",
+		stemmingProduct: "Crushed Rock Stemming",
+		chargeProduct: "Bulk Emulsion",
+		boosterProduct: "400g Pentex Booster",
+		detonatorProduct: "i-kon II Electronic",
+		preferredStemLength: 3.5,
+		minStemLength: 2.0,
+		minChargeLength: 1.0,
+		useMassOverLength: true,
+		targetChargeMassKg: 20,
+		primerInterval: 8.0,
+		maxPrimersPerDeck: 3,
+		description: "Charge to target mass of 20kg then stem remainder"
+	},
+	{
+		configCode: "AIRDEC",
+		configName: "Air Deck with Gas Bag",
+		stemmingProduct: "Crushed Rock Stemming",
+		chargeProduct: "ANFO Standard",
+		boosterProduct: "400g Pentex Booster",
+		detonatorProduct: "i-kon II Electronic",
+		gasBagProduct: "400mm Gas Bag",
+		preferredStemLength: 3.0,
+		minStemLength: 2.0,
+		minChargeLength: 2.0,
+		useMassOverLength: false,
+		airDeckLength: 1.0,
+		primerInterval: 8.0,
+		maxPrimersPerDeck: 3,
+		description: "Stem + charge + gas bag air deck + charge"
+	},
+	{
+		configCode: "NOCHG",
+		configName: "No Charge",
+		stemmingProduct: "Air",
+		description: "Do not charge - leave hole empty"
+	}
+];
+
+/**
+ * Build example charge config CSV rows from structured data objects.
+ * Uses ChargeConfig + configToCSVRow to guarantee column alignment.
+ */
+function buildExampleConfigRows() {
+	var rows = [];
+	for (var i = 0; i < EXAMPLE_CONFIG_DATA.length; i++) {
+		var config = ChargeConfig.fromJSON(EXAMPLE_CONFIG_DATA[i]);
+		rows.push(configToCSVRow(config));
+	}
+	return rows;
+}
 
 // ============ EXPORT BASE CONFIG ============
 
@@ -152,13 +292,14 @@ export async function exportBaseConfigTemplate() {
 	// Add README
 	zip.file("README.txt", README_CONTENT);
 
-	// Add products CSV with header + examples
-	var productsCSV = PRODUCTS_CSV_HEADER + "\n" + EXAMPLE_PRODUCTS.join("\n") + "\n";
+	// Add products CSV with header + examples (programmatically generated for alignment)
+	var exampleRows = buildExampleProductRows();
+	var productsCSV = PRODUCTS_CSV_HEADER + "\n" + exampleRows.join("\n") + "\n";
 	zip.file("products.csv", productsCSV);
 
-	// Add charge configs CSV with header + simple example
-	var configsCSV = CHARGE_CONFIGS_CSV_HEADER + "\n" +
-		"SIMPLE_SINGLE,Simple Single Deck,Crushed Rock Stemming,ANFO Standard,,400g Pentex Booster,i-kon II Electronic,,3.5,2.5,6.0,2.0,false,,8.0,,3,,,Single stemming + charge + primer\n";
+	// Add charge configs CSV with header + example configs (programmatically generated)
+	var exampleConfigs = buildExampleConfigRows();
+	var configsCSV = CHARGE_CONFIGS_CSV_HEADER + "\n" + exampleConfigs.join("\n") + "\n";
 	zip.file("chargeConfigs.csv", configsCSV);
 
 	// Generate and download
@@ -306,6 +447,7 @@ function configToCSVRow(config) {
 		escapeCSV(json.minChargeLength),
 		escapeCSV(json.useMassOverLength),
 		escapeCSV(json.targetChargeMassKg || ""),
+		escapeCSV(json.chargeRatio != null ? json.chargeRatio : ""),
 		escapeCSV(json.primerInterval),
 		escapeCSV(json.primerDepthFromCollar || ""),
 		escapeCSV(json.maxPrimersPerDeck),
