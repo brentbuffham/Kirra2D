@@ -3723,6 +3723,12 @@ body.dark-mode .segmented-control label:hover {
     justify-self: center;
     justify-content: center;
 }
+/* Override .single max-width for connector presets row */
+.toolbar-grid .connector-presets.single {
+    max-width: none;
+    width: 100%;
+    justify-self: stretch;
+}
 
 /* Ensure grid items are properly centered */
 .toolbar-grid {

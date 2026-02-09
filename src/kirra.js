@@ -254,7 +254,8 @@ import {
 import { showProductManagerDialog } from "./charging/ProductDialog.js";
 import { showDeckBuilderDialog } from "./charging/ui/DeckBuilderDialog.js";
 import { applyChargeRule } from "./charging/rules/SimpleRuleEngine.js";
-import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip } from "./charging/ConfigImportExport.js";
+import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip, clearAllProducts, clearAllChargeConfigs, backupProducts, backupChargeConfigs } from "./charging/ConfigImportExport.js";
+import { buildSurfaceConnectorPresets } from "./charging/ui/ConnectorPresets.js";
 //=================================================
 // KAP Project File IO
 //=================================================
@@ -776,6 +777,11 @@ function exposeGlobalsToWindow() {
 	window.exportBaseConfigTemplate = exportBaseConfigTemplate;
 	window.exportCurrentConfig = function() { exportCurrentConfig(loadedProducts, loadedChargeConfigs); };
 	window.importConfigFromZip = importConfigFromZip;
+	window.buildSurfaceConnectorPresets = buildSurfaceConnectorPresets;
+	window.clearAllProducts = clearAllProducts;
+	window.clearAllChargeConfigs = clearAllChargeConfigs;
+	window.backupProducts = backupProducts;
+	window.backupChargeConfigs = backupChargeConfigs;
 	window.debouncedUpdateTreeView = debouncedUpdateTreeView;
 	window.clearCurrentDrawingEntity = clearCurrentDrawingEntity;
 	window.addPointDraw = addPointDraw;
@@ -32964,6 +32970,8 @@ async function loadAllDataWithProgress() {
 			var chargingCount = loadedCharging ? loadedCharging.size : 0;
 			var configCount = loadedChargeConfigs ? loadedChargeConfigs.size : 0;
 			updateLoadingProgress(loadingDialog, "Loaded " + productCount + " products, " + chargingCount + " charge records, " + configCount + " configs", 95);
+			// Build connector presets from loaded products
+			buildSurfaceConnectorPresets();
 		} catch (chargingError) {
 			console.warn("Charging data load skipped (stores may not exist yet):", chargingError);
 			updateLoadingProgress(loadingDialog, "Charging data: none found", 95);
@@ -35358,6 +35366,8 @@ document.addEventListener("DOMContentLoaded", () => {
 					// Save to IndexedDB
 					if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
 					if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
+					// Rebuild connector presets from imported products
+					buildSurfaceConnectorPresets();
 					// Report results
 					var msg = "Imported " + importedCount + " products and " + configCount + " configs.";
 					if (results.errors.length > 0) {
@@ -35421,6 +35431,35 @@ document.addEventListener("DOMContentLoaded", () => {
 					showModalMessage("Charging Removed", "Removed charging from " + targets.length + " hole(s).", "success");
 				}
 			);
+		});
+	}
+
+	// Clear/Backup buttons
+	const clearAllProductsBtn = document.getElementById("clearAllProductsBtn");
+	if (clearAllProductsBtn) {
+		clearAllProductsBtn.addEventListener("click", function () {
+			clearAllProducts();
+		});
+	}
+
+	const clearAllConfigsBtn = document.getElementById("clearAllConfigsBtn");
+	if (clearAllConfigsBtn) {
+		clearAllConfigsBtn.addEventListener("click", function () {
+			clearAllChargeConfigs();
+		});
+	}
+
+	const backupProductsBtn = document.getElementById("backupProductsBtn");
+	if (backupProductsBtn) {
+		backupProductsBtn.addEventListener("click", function () {
+			backupProducts();
+		});
+	}
+
+	const backupConfigsBtn = document.getElementById("backupConfigsBtn");
+	if (backupConfigsBtn) {
+		backupConfigsBtn.addEventListener("click", function () {
+			backupChargeConfigs();
 		});
 	}
 });

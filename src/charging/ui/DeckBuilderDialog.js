@@ -64,6 +64,10 @@ export function showDeckBuilderDialog(referenceHole) {
 		return;
 	}
 
+	// Track the last applied charge config so we can re-run it per-hole.
+	// Wrapped in an object so nested/external functions can mutate it.
+	var configTracker = { config: null };
+
 	// Build or clone HoleCharging for the reference hole
 	var existingCharging = window.loadedCharging ? window.loadedCharging.get(refHole.holeID) : null;
 	var workingCharging;
@@ -179,6 +183,7 @@ export function showDeckBuilderDialog(referenceHole) {
 	}));
 
 	actionRow.appendChild(makeBtn("Clear", "cancel", function() {
+		configTracker.config = null;
 		workingCharging.clear();
 		sectionView.setData(workingCharging);
 		updateSummary();
@@ -189,15 +194,15 @@ export function showDeckBuilderDialog(referenceHole) {
 	actionRow.appendChild(spacer);
 
 	actionRow.appendChild(makeBtn("Apply Rule...", "option2", function() {
-		showRuleSelector(workingCharging, sectionView, refHole);
+		showRuleSelector(workingCharging, sectionView, refHole, configTracker);
 	}));
 
 	actionRow.appendChild(makeBtn("Apply to Selected", "confirm", function() {
-		applyToSelectedHoles(workingCharging, refHole);
+		applyToSelectedHoles(workingCharging, refHole, configTracker);
 	}));
 
 	// ======== DRAG & DROP SETUP ========
-	setupDragDrop(sectionCanvas, sectionView, workingCharging, refHole);
+	setupDragDrop(sectionCanvas, sectionView, workingCharging, refHole, configTracker);
 
 	// ======== CREATE DIALOG ========
 	var dialog = new FloatingDialog({
@@ -214,13 +219,15 @@ export function showDeckBuilderDialog(referenceHole) {
 	});
 	dialog.show();
 
-	// Size canvas after dialog is visible
+	// Size canvas after dialog is fully laid out (double-rAF for layout flush)
 	requestAnimationFrame(function() {
-		var rect = sectionCanvas.parentElement.getBoundingClientRect();
-		sectionView.resize(
-			Math.max(rect.width, 200) * (window.devicePixelRatio || 1),
-			Math.max(rect.height, 200) * (window.devicePixelRatio || 1)
-		);
+		requestAnimationFrame(function() {
+			var rect = sectionCanvas.parentElement.getBoundingClientRect();
+			sectionView.resize(
+				Math.max(rect.width, 200) * (window.devicePixelRatio || 1),
+				Math.max(rect.height, 200) * (window.devicePixelRatio || 1)
+			);
+		});
 	});
 
 	updateSummary();
@@ -404,7 +411,7 @@ function buildProductPalette(container) {
 /**
  * Setup drag-and-drop from palette to section view canvas
  */
-function setupDragDrop(canvas, sectionView, workingCharging, refHole) {
+function setupDragDrop(canvas, sectionView, workingCharging, refHole, configTracker) {
 	canvas.addEventListener("dragover", function(e) {
 		e.preventDefault();
 		e.dataTransfer.dropEffect = "copy";
@@ -435,6 +442,9 @@ function setupDragDrop(canvas, sectionView, workingCharging, refHole) {
 		if (!fullProduct) {
 			fullProduct = productData; // Use the drag data as fallback
 		}
+
+		// Manual drop invalidates any tracked rule config
+		if (configTracker) configTracker.config = null;
 
 		// Determine drop depth from Y position
 		var dropDepth = sectionView.yToDepth(
@@ -527,7 +537,7 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
 	var fields = [
 		{ label: "Depth from Collar (m)", name: "depthFromCollar", type: "number", value: defaultDepth.toFixed(1), step: "0.1" },
 		{ label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: detOptions.length > 1 ? detOptions[1].value : "" },
-		{ label: "Detonator Qty", name: "detonatorQty", type: "number", value: "1", step: "1" },
+		{ label: "Detonator Qty", name: "detonatorQty", type: "number", value: "1", step: "1", min: "1", max: "10" },
 		{ label: "Delay (ms)", name: "delayMs", type: "number", value: "0", step: "1" },
 		{ label: "Booster", name: "boosterName", type: "select", options: boosterOptions, value: boosterOptions.length > 1 ? boosterOptions[1].value : "" },
 		{ label: "Booster Qty", name: "boosterQty", type: "number", value: "1", step: "1" }
@@ -570,7 +580,7 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
 					initiatorType: detProduct ? (detProduct.initiatorType || detProduct.productType) : null,
 					deliveryVodMs: detProduct ? (detProduct.deliveryVodMs || 0) : 0,
 					delayMs: parseFloat(data.delayMs) || 0,
-					quantity: parseInt(data.detonatorQty) || 1
+					quantity: Math.max(1, Math.min(10, parseInt(data.detonatorQty) || 1))
 				},
 				booster: {
 					productID: boosterProduct ? boosterProduct.productID : null,
@@ -593,7 +603,7 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
 /**
  * Show rule selection dropdown and apply selected rule
  */
-function showRuleSelector(workingCharging, sectionView, refHole) {
+function showRuleSelector(workingCharging, sectionView, refHole, configTracker) {
 	var configs = window.loadedChargeConfigs || new Map();
 	if (configs.size === 0) {
 		showModalMessage("Apply Rule", "No charge configs loaded. Import a config template first.", "warning");
@@ -630,6 +640,7 @@ function showRuleSelector(workingCharging, sectionView, refHole) {
 					workingCharging.decks = newCharging.decks;
 					workingCharging.primers = newCharging.primers;
 					workingCharging.modified = new Date().toISOString();
+					if (configTracker) configTracker.config = config;
 					sectionView.setData(workingCharging);
 				}
 			} else {
@@ -641,9 +652,11 @@ function showRuleSelector(workingCharging, sectionView, refHole) {
 }
 
 /**
- * Apply working charging to all selected holes
+ * Apply working charging to all selected holes.
+ * If a charge config was tracked (rule-based), re-run applyChargeRule per hole.
+ * Otherwise (manual design), proportionally scale deck depths by hole length ratio.
  */
-function applyToSelectedHoles(workingCharging, refHole) {
+function applyToSelectedHoles(workingCharging, refHole, configTracker) {
 	var targets = [];
 
 	// Gather target holes
@@ -660,24 +673,32 @@ function applyToSelectedHoles(workingCharging, refHole) {
 		return;
 	}
 
+	var activeConfig = configTracker ? configTracker.config : null;
+	var modeLabel = activeConfig ? "rule-based" : "proportional";
+
 	showConfirmationDialog(
 		"Apply Charging",
-		"Apply this charging design to " + targets.length + " hole(s)?",
+		"Apply this charging design (" + modeLabel + ") to " + targets.length + " hole(s)?",
 		"Apply",
 		"Cancel",
 		function() {
-			var chargingJSON = workingCharging.toJSON();
+			var refLen = Math.abs(workingCharging.holeLength);
 
 			for (var i = 0; i < targets.length; i++) {
 				var hole = targets[i];
-				// Clone the design for each hole, adjusting for different hole lengths
-				var clone = JSON.parse(JSON.stringify(chargingJSON));
-				clone.holeID = hole.holeID;
-				clone.entityName = hole.entityName;
-				clone.holeDiameterMm = hole.holeDiameter || workingCharging.holeDiameterMm;
-				clone.holeLength = hole.holeLengthCalculated || workingCharging.holeLength;
+				var hc;
 
-				var hc = HoleCharging.fromJSON(clone);
+				if (activeConfig && typeof window.applyChargeRule === "function") {
+					// Re-run the rule engine for each target hole individually
+					hc = window.applyChargeRule(hole, activeConfig);
+					if (!hc) {
+						// Fallback: proportional scale if rule fails
+						hc = scaleChargingToHole(workingCharging, hole, refLen);
+					}
+				} else {
+					// Manual design: proportionally scale deck depths
+					hc = scaleChargingToHole(workingCharging, hole, refLen);
+				}
 
 				if (!window.loadedCharging) {
 					window.loadedCharging = new Map();
@@ -695,7 +716,54 @@ function applyToSelectedHoles(workingCharging, refHole) {
 				window.drawData(window.allBlastHoles, window.selectedHole);
 			}
 
-			showModalMessage("Charging Applied", "Applied charging to " + targets.length + " hole(s).", "success");
+			showModalMessage("Charging Applied", "Applied charging (" + modeLabel + ") to " + targets.length + " hole(s).", "success");
 		}
 	);
+}
+
+/**
+ * Proportionally scale a charging design from a reference hole to a target hole.
+ * Deck depths and primer positions are scaled by (targetLength / referenceLength).
+ * @param {HoleCharging} sourceCharging - The reference charging design
+ * @param {Object} targetHole - The target blast hole
+ * @param {number} refLen - The reference hole length
+ * @returns {HoleCharging} New HoleCharging sized for the target hole
+ */
+function scaleChargingToHole(sourceCharging, targetHole, refLen) {
+	var chargingJSON = sourceCharging.toJSON();
+	var clone = JSON.parse(JSON.stringify(chargingJSON));
+
+	var targetLen = Math.abs(targetHole.holeLengthCalculated || 0);
+	clone.holeID = targetHole.holeID;
+	clone.entityName = targetHole.entityName;
+	clone.holeDiameterMm = targetHole.holeDiameter || sourceCharging.holeDiameterMm;
+	clone.holeLength = targetLen;
+
+	// Scale ratio (guard against zero-length reference)
+	var ratio = (refLen > 0) ? (targetLen / refLen) : 1;
+
+	// Scale deck depths
+	if (clone.decks && clone.decks.length > 0) {
+		for (var d = 0; d < clone.decks.length; d++) {
+			var deck = clone.decks[d];
+			deck.topDepth = Math.max(0, Math.min(targetLen, deck.topDepth * ratio));
+			deck.baseDepth = Math.max(0, Math.min(targetLen, deck.baseDepth * ratio));
+			// Ensure minimum deck thickness
+			if (deck.baseDepth - deck.topDepth < 0.01 && d < clone.decks.length - 1) {
+				deck.baseDepth = Math.min(targetLen, deck.topDepth + 0.01);
+			}
+		}
+		// Ensure last deck extends to hole bottom
+		clone.decks[clone.decks.length - 1].baseDepth = targetLen;
+	}
+
+	// Scale primer depths
+	if (clone.primers && clone.primers.length > 0) {
+		for (var p = 0; p < clone.primers.length; p++) {
+			var primer = clone.primers[p];
+			primer.lengthFromCollar = Math.max(0, Math.min(targetLen - 0.1, primer.lengthFromCollar * ratio));
+		}
+	}
+
+	return HoleCharging.fromJSON(clone);
 }

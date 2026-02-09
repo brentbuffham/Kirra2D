@@ -8,7 +8,8 @@
 import { HoleCharging } from "../HoleCharging.js";
 import { Deck } from "../Deck.js";
 import { Primer } from "../Primer.js";
-import { DECK_TYPES, CHARGE_CONFIG_CODES } from "../ChargingConstants.js";
+import { DECK_TYPES, CHARGE_CONFIG_CODES, SHORT_HOLE_TIERS, CHARGING_DEFAULTS } from "../ChargingConstants.js";
+import { isFormula, evaluateFormula } from "../../helpers/FormulaEvaluator.js";
 
 /**
  * Find a product by name from the loaded products Map
@@ -39,6 +40,63 @@ function snap(product) {
 		density: product.density || 0,
 		colorHex: product.colorHex || null
 	};
+}
+
+/**
+ * Look up the SHORT_HOLE_TIERS entry for a given hole length.
+ * Returns the tier object if the hole is short enough, or null for normal-length holes.
+ * @param {number} holeLength - Hole length in metres
+ * @returns {Object|null} Tier with chargeRatio or fixedMassKg, or null
+ */
+function getShortHoleTier(holeLength) {
+	// Only apply short-hole tiers below the shortHoleLength threshold
+	if (holeLength >= (CHARGING_DEFAULTS.shortHoleLength || 4.0)) {
+		return null;
+	}
+	for (var i = 0; i < SHORT_HOLE_TIERS.length; i++) {
+		var tier = SHORT_HOLE_TIERS[i];
+		if (holeLength >= tier.minLength && holeLength < tier.maxLength) {
+			return tier;
+		}
+	}
+	return null;
+}
+
+/**
+ * Apply short-hole tier overrides to charge/stem lengths.
+ * If the tier has chargeRatio 0, returns null (signals NO_CHARGE).
+ * If the tier has chargeRatio, overrides charge length.
+ * If the tier has fixedMassKg, calculates charge length from mass and density.
+ * @param {number} holeLen - Total hole length
+ * @param {number} stemLen - Current stem length
+ * @param {number} chargeLen - Current charge length
+ * @param {Object} tier - SHORT_HOLE_TIERS entry
+ * @param {Object} [chargeProduct] - Charge product (for density)
+ * @param {number} holeDiameterMm - Hole diameter in mm
+ * @returns {{ stemLen: number, chargeLen: number }|null} Adjusted values or null for NO_CHARGE
+ */
+function applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, holeDiameterMm) {
+	if (tier.chargeRatio === 0) {
+		return null; // NO_CHARGE
+	}
+
+	if (tier.chargeRatio != null) {
+		chargeLen = holeLen * tier.chargeRatio;
+		stemLen = holeLen - chargeLen;
+	} else if (tier.fixedMassKg != null && tier.fixedMassKg > 0) {
+		var density = chargeProduct ? (chargeProduct.density || 0.85) : 0.85;
+		var diamM = (holeDiameterMm || 115) / 1000;
+		var radiusM = diamM / 2;
+		var area = Math.PI * radiusM * radiusM;
+		var kgPerMetre = density * 1000 * area;
+		if (kgPerMetre > 0) {
+			chargeLen = tier.fixedMassKg / kgPerMetre;
+			chargeLen = Math.min(chargeLen, holeLen * 0.8); // Never exceed 80% of hole
+			stemLen = holeLen - chargeLen;
+		}
+	}
+
+	return { stemLen: stemLen, chargeLen: chargeLen };
 }
 
 /**
@@ -89,6 +147,17 @@ function applySimpleSingle(hole, config) {
 
 	// Stemming from collar
 	var stemLen = Math.min(config.preferredStemLength || 3.5, holeLen * 0.5);
+	var chargeLen = holeLen - stemLen;
+
+	// Check short-hole tiers
+	var tier = getShortHoleTier(holeLen);
+	if (tier) {
+		var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
+		if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
+		stemLen = adjusted.stemLen;
+		chargeLen = adjusted.chargeLen;
+	}
+
 	hc.decks.push(new Deck({
 		holeID: hc.holeID,
 		deckType: DECK_TYPES.INERT,
@@ -107,7 +176,17 @@ function applySimpleSingle(hole, config) {
 	}));
 
 	// Primer at configured depth or 90% of hole length
-	var primerDepth = config.primerDepthFromCollar || holeLen * 0.9;
+	var primerDepth;
+	if (config.primerDepthFromCollar != null && isFormula(String(config.primerDepthFromCollar))) {
+		primerDepth = evaluateFormula(String(config.primerDepthFromCollar), {
+			holeLength: holeLen, chargeLength: holeLen - stemLen,
+			chargeTop: stemLen, chargeBase: holeLen,
+			stemLength: stemLen, holeDiameter: (hole.holeDiameter || 115)
+		});
+		if (primerDepth == null) primerDepth = holeLen * 0.9;
+	} else {
+		primerDepth = config.primerDepthFromCollar || holeLen * 0.9;
+	}
 	primerDepth = Math.min(primerDepth, holeLen - 0.1);
 
 	hc.addPrimer(new Primer({
@@ -152,6 +231,15 @@ function applyStandardVented(hole, config) {
 	var stemLen = Math.min(config.preferredStemLength || 3.5, holeLen * 0.4);
 	var chargeLen = config.preferredChargeLength || (holeLen - stemLen);
 	chargeLen = Math.min(chargeLen, holeLen - stemLen);
+
+	// Check short-hole tiers
+	var tier = getShortHoleTier(holeLen);
+	if (tier) {
+		var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
+		if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
+		stemLen = adjusted.stemLen;
+		chargeLen = adjusted.chargeLen;
+	}
 
 	// Air at top (vented)
 	var airLen = holeLen - stemLen - chargeLen;
@@ -231,15 +319,23 @@ function applyStandardFixedStem(hole, config) {
 	var chargeLen = holeLen - stemLen;
 	var chargeBase = holeLen;
 
+	// Check short-hole tiers first - they override config ratios for very short holes
+	var tier = getShortHoleTier(holeLen);
+	if (tier) {
+		var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
+		if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
+		stemLen = adjusted.stemLen;
+		chargeLen = adjusted.chargeLen;
+	}
 	// Apply chargeRatio if set (e.g. 0.5 = 50% charge, rest becomes top stemming)
-	if (config.chargeRatio != null && config.chargeRatio > 0 && config.chargeRatio < 1) {
+	else if (config.chargeRatio != null && config.chargeRatio > 0 && config.chargeRatio < 1) {
 		chargeLen = holeLen * config.chargeRatio;
 		chargeLen = Math.max(chargeLen, config.minChargeLength || 2.0);
 		stemLen = holeLen - chargeLen;
 	}
 
-	// Apply mass-based charging if configured
-	if (config.useMassOverLength && config.targetChargeMassKg > 0) {
+	// Apply mass-based charging if configured (only when chargeRatio not active)
+	else if (config.useMassOverLength && config.targetChargeMassKg > 0) {
 		var chargeDensity = chargeProduct ? (chargeProduct.density || 0.85) : 0.85;
 		var holeDiameterM = (hole.holeDiameter || 115) / 1000;
 		var holeRadiusM = holeDiameterM / 2;
@@ -281,10 +377,28 @@ function applyStandardFixedStem(hole, config) {
 	var maxPrimers = config.maxPrimersPerDeck || 3;
 	var actualChargeLen = chargeBase - chargeTop;
 
+	// Check for configured primer depth (literal or formula)
+	var configuredPrimerDepth = null;
+	if (config.primerDepthFromCollar != null) {
+		var depthVal = config.primerDepthFromCollar;
+		if (isFormula(String(depthVal))) {
+			configuredPrimerDepth = evaluateFormula(String(depthVal), {
+				holeLength: holeLen, chargeLength: actualChargeLen,
+				chargeTop: chargeTop, chargeBase: chargeBase,
+				stemLength: stemLen, holeDiameter: (hole.holeDiameter || 115)
+			});
+		} else if (typeof depthVal === "number" && depthVal > 0) {
+			configuredPrimerDepth = depthVal;
+		}
+	}
+
 	var primerCount = Math.max(1, Math.min(maxPrimers, Math.ceil(actualChargeLen / interval)));
 	for (var p = 0; p < primerCount; p++) {
 		var depth;
-		if (primerCount === 1) {
+		if (p === 0 && configuredPrimerDepth != null) {
+			// First primer uses configured depth
+			depth = Math.max(chargeTop + 0.1, Math.min(configuredPrimerDepth, chargeBase - 0.1));
+		} else if (primerCount === 1) {
 			depth = chargeBase - actualChargeLen * 0.1;
 		} else {
 			// Distribute evenly within charge column
@@ -425,6 +539,15 @@ function applyPresplit(hole, config) {
 	var detProduct = findProduct(config.detonatorProduct);
 
 	var stemLen = Math.min(config.preferredStemLength || 3.5, holeLen * 0.4);
+	var chargeLen = holeLen - stemLen;
+
+	// Check short-hole tiers
+	var tier = getShortHoleTier(holeLen);
+	if (tier) {
+		var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
+		if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
+		stemLen = adjusted.stemLen;
+	}
 
 	// Stemming
 	hc.decks.push(new Deck({

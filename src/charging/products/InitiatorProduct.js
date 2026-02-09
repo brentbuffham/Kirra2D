@@ -49,6 +49,21 @@ export class InitiatorProduct extends Product {
 			case "ShockTube": return ShockTubeDetonator.fromJSON(obj);
 			case "Electric": return ElectricDetonator.fromJSON(obj);
 			case "DetonatingCord": return DetonatingCordProduct.fromJSON(obj);
+			case "SurfaceConnector": {
+				var p = ShockTubeDetonator.fromJSON(obj);
+				p.initiatorType = "SurfaceConnector";
+				return p;
+			}
+			case "SurfaceWire": {
+				var p = ElectronicDetonator.fromJSON(obj);
+				p.initiatorType = "SurfaceWire";
+				return p;
+			}
+			case "SurfaceCord": {
+				var p = DetonatingCordProduct.fromJSON(obj);
+				p.initiatorType = "SurfaceCord";
+				return p;
+			}
 			default: return new InitiatorProduct(obj);
 		}
 	}

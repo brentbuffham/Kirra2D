@@ -324,10 +324,137 @@ export function showHolePropertyEditor(hole) {
 	noteDiv.textContent = isMultiple ? "Note: Use = prefix for calculations (e.g., =+0.3 to add, =-0.2 to subtract). Plain numbers set absolute values. Only changed values will be applied." : "Note: Use = prefix for calculations (e.g., =+0.3 to add, =-0.2 to subtract). Plain numbers (including negatives like -0.3) set absolute values. Curved connectors: 45° to 120° or -45° to -120°. Straight: 0°";
 	formContent.appendChild(noteDiv);
 
+	// Step 9b) Build tabbed content for single-hole edit (Properties + Loading tabs)
+	let dialogContent = formContent;
+	let dialogWidth = 380;
+	let sectionViewRef = null;
+
+	if (!isMultiple) {
+		dialogWidth = 480;
+		const tabbedContainer = document.createElement("div");
+		tabbedContainer.style.cssText = "display:flex;flex-direction:column;height:100%;";
+
+		// Tab header buttons
+		const tabBar = document.createElement("div");
+		tabBar.style.cssText = "display:flex;border-bottom:2px solid #444;margin-bottom:6px;flex-shrink:0;";
+
+		const tabProps = document.createElement("button");
+		tabProps.textContent = "Properties";
+		tabProps.style.cssText = "flex:1;padding:6px 0;border:none;cursor:pointer;font-size:12px;font-weight:bold;background:#333;color:#fff;border-bottom:2px solid #4a9eff;";
+
+		const tabLoading = document.createElement("button");
+		tabLoading.textContent = "Loading";
+		tabLoading.style.cssText = "flex:1;padding:6px 0;border:none;cursor:pointer;font-size:12px;font-weight:bold;background:#222;color:#888;border-bottom:2px solid transparent;";
+
+		tabBar.appendChild(tabProps);
+		tabBar.appendChild(tabLoading);
+		tabbedContainer.appendChild(tabBar);
+
+		// Tab 1: Properties panel (existing form)
+		const propsPanel = document.createElement("div");
+		propsPanel.style.cssText = "flex:1;overflow-y:auto;display:block;";
+		propsPanel.appendChild(formContent);
+
+		// Tab 2: Loading panel (charging cross-section + summary)
+		const loadingPanel = document.createElement("div");
+		loadingPanel.style.cssText = "flex:1;overflow-y:auto;display:none;";
+
+		// Build loading tab content
+		const singleHole = holes[0];
+		const holeCharging = window.loadedCharging ? window.loadedCharging.get(singleHole.holeID) : null;
+
+		if (holeCharging) {
+			const loadingRow = document.createElement("div");
+			loadingRow.style.cssText = "display:flex;gap:8px;height:100%;";
+
+			// Left: Section view canvas
+			const sectionCanvas = document.createElement("canvas");
+			sectionCanvas.style.cssText = "width:200px;flex-shrink:0;height:100%;min-height:250px;";
+			loadingRow.appendChild(sectionCanvas);
+
+			// Right: Summary text
+			const summaryDiv = document.createElement("div");
+			summaryDiv.style.cssText = "flex:1;font-size:11px;color:#ccc;padding:4px;line-height:1.6;";
+
+			const deckCount = holeCharging.decks ? holeCharging.decks.length : 0;
+			const primerCount = holeCharging.primers ? holeCharging.primers.length : 0;
+			const totalMass = typeof holeCharging.getTotalExplosiveMass === "function" ? holeCharging.getTotalExplosiveMass() : 0;
+			const burden = singleHole.burden || 1;
+			const spacing = singleHole.spacing || 1;
+			const powderFactor = typeof holeCharging.calculatePowderFactor === "function" ? holeCharging.calculatePowderFactor(burden, spacing) : 0;
+
+			let productNames = [];
+			if (holeCharging.decks) {
+				holeCharging.decks.forEach(function(d) {
+					if (d.product && d.product.name && productNames.indexOf(d.product.name) === -1) {
+						productNames.push(d.product.name);
+					}
+				});
+			}
+
+			let detDelay = "";
+			if (holeCharging.primers && holeCharging.primers.length > 0) {
+				const p = holeCharging.primers[0];
+				if (p.detonator && p.detonator.delayMs != null) {
+					detDelay = p.detonator.delayMs + "ms";
+					if (p.detonator.productName) detDelay += " (" + p.detonator.productName + ")";
+				}
+			}
+
+			summaryDiv.innerHTML =
+				"<b>Charging Summary</b><br>" +
+				"Decks: " + deckCount + "<br>" +
+				"Primers: " + primerCount + "<br>" +
+				"Explosive Mass: <b>" + totalMass.toFixed(1) + " kg</b><br>" +
+				"Powder Factor: <b>" + powderFactor.toFixed(3) + " kg/m\u00B3</b><br>" +
+				"Products: " + (productNames.length > 0 ? productNames.join(", ") : "None") + "<br>" +
+				(detDelay ? "Det Delay: " + detDelay + "<br>" : "");
+
+			loadingRow.appendChild(summaryDiv);
+			loadingPanel.appendChild(loadingRow);
+
+			// Create HoleSectionView in read-only mode after dialog shows
+			sectionViewRef = { canvas: sectionCanvas, holeCharging: holeCharging, holeDiameterMm: singleHole.holeDiameter || 115 };
+		} else {
+			const placeholder = document.createElement("div");
+			placeholder.style.cssText = "text-align:center;padding:40px 20px;color:#666;font-size:13px;";
+			placeholder.textContent = "No charging data for this hole.";
+			loadingPanel.appendChild(placeholder);
+		}
+
+		tabbedContainer.appendChild(propsPanel);
+		tabbedContainer.appendChild(loadingPanel);
+
+		// Tab switching logic
+		tabProps.addEventListener("click", function() {
+			propsPanel.style.display = "block";
+			loadingPanel.style.display = "none";
+			tabProps.style.background = "#333";
+			tabProps.style.color = "#fff";
+			tabProps.style.borderBottom = "2px solid #4a9eff";
+			tabLoading.style.background = "#222";
+			tabLoading.style.color = "#888";
+			tabLoading.style.borderBottom = "2px solid transparent";
+		});
+
+		tabLoading.addEventListener("click", function() {
+			propsPanel.style.display = "none";
+			loadingPanel.style.display = "block";
+			tabLoading.style.background = "#333";
+			tabLoading.style.color = "#fff";
+			tabLoading.style.borderBottom = "2px solid #4a9eff";
+			tabProps.style.background = "#222";
+			tabProps.style.color = "#888";
+			tabProps.style.borderBottom = "2px solid transparent";
+		});
+
+		dialogContent = tabbedContainer;
+	}
+
 	// Step 10) Create dialog
 	const dialog = new window.FloatingDialog({
 		title: title,
-		content: formContent,
+		content: dialogContent,
 		layoutType: "compact",
 		showConfirm: true,
 		showCancel: true,
@@ -339,7 +466,7 @@ export function showHolePropertyEditor(hole) {
 		option1Text: "Hide",
 		option2Text: "Delete",
 		option3Text: "Insert",
-		width: 380,
+		width: dialogWidth,
 		height: 600,
 		onConfirm: () => {
 			// Step 10a) Get form values and process updates
@@ -822,6 +949,25 @@ export function showHolePropertyEditor(hole) {
 	});
 
 	dialog.show();
+
+	// Step 10f) Initialize HoleSectionView for Loading tab after dialog is visible
+	if (sectionViewRef) {
+		requestAnimationFrame(function() {
+			try {
+				// Dynamic import to avoid circular dependency
+				import("../../charging/ui/HoleSectionView.js").then(function(mod) {
+					var sv = new mod.HoleSectionView({
+						canvas: sectionViewRef.canvas,
+						padding: 20,
+						holeDiameterMm: sectionViewRef.holeDiameterMm
+					});
+					sv.setData(sectionViewRef.holeCharging);
+				});
+			} catch (e) {
+				console.warn("Could not load HoleSectionView for Loading tab:", e);
+			}
+		});
+	}
 }
 
 // Step 11) Process hole property updates (extracted from original logic)

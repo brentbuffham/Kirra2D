@@ -43,7 +43,10 @@ export const INITIATOR_TYPES = Object.freeze({
 	ELECTRONIC: "Electronic",
 	SHOCK_TUBE: "ShockTube",
 	ELECTRIC: "Electric",
-	DETONATING_CORD: "DetonatingCord"
+	DETONATING_CORD: "DetonatingCord",
+	SURFACE_CONNECTOR: "SurfaceConnector",
+	SURFACE_WIRE: "SurfaceWire",
+	SURFACE_CORD: "SurfaceCord"
 });
 
 // SPACER TYPES
