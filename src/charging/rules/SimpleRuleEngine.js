@@ -38,7 +38,10 @@ function snap(product) {
 		productType: product.productType || null,
 		productCategory: product.productCategory,
 		density: product.density || 0,
-		colorHex: product.colorHex || null
+		colorHex: product.colorHex || null,
+		diameterMm: product.diameterMm || null,
+		lengthMm: product.lengthMm || null,
+		massGrams: product.massGrams || null
 	};
 }
 

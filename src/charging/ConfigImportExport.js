@@ -199,7 +199,7 @@ var EXAMPLE_PRODUCT_DATA = [
     // --- HighExplosive ---
     { productCategory: "HighExplosive", productType: "Booster", name: "BS400G", density: 1.6, colorHex: "#FF0000", vodMs: 7500, reKjKg: 5200, waterResistant: true, massGrams: 400, diameterMm: 76, lengthMm: 110, description: "400 gram cast pentolite booster" },
     { productCategory: "HighExplosive", productType: "PackagedEmulsion", name: "PKG75mm", density: 1.15, colorHex: "#AA0044", vodMs: 5000, reKjKg: 3400, waterResistant: true, massGrams: 2300, diameterMm: 75, lengthMm: 320, description: "75mm packaged det sensitive emulsion" },
-    { productCategory: "HighExplosive", productType: "PackagedEmulsion", name: "PRE32MM", density: 1.2, colorHex: "#770040", vodMs: 5000, reKjKg: 3400, waterResistant: true, massGrams: 2300, diameterMm: 32, lengthMm: 400, description: "32mm packaged det sensitive emulsion" },
+    { productCategory: "HighExplosive", productType: "PackagedEmulsion", name: "PRE32MM", density: 1.2, colorHex: "#770040", vodMs: 5000, reKjKg: 3400, waterResistant: true, massGrams: 386, diameterMm: 32, lengthMm: 400, description: "32mm packaged det sensitive emulsion" },
     // --- Initiator --- Generic Programmable Electronic Detonator
     { productCategory: "Initiator", productType: "Electronic", name: "GENERIC-E", initiatorType: "Electronic", deliveryVodMs: 0, minDelayMs: 0, maxDelayMs: 20000, delayIncrementMs: 1, colorHex: "#0000FF", description: "Generic Programmable Electronic Detonator" },
     // --- Initiator --- Shocktube Millisecond Downhole Detonator

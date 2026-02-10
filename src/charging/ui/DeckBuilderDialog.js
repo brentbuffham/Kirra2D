@@ -21,27 +21,35 @@ import { ChargeConfig } from "../ChargeConfig.js";
  * Determine the deck type for a product based on its category
  */
 function deckTypeForProduct(product) {
-	switch (product.productCategory) {
-		case "NonExplosive": return DECK_TYPES.INERT;
-		case "BulkExplosive": return DECK_TYPES.COUPLED;
-		case "HighExplosive": return DECK_TYPES.DECOUPLED;
-		case "Spacer": return DECK_TYPES.SPACER;
-		default: return DECK_TYPES.INERT;
-	}
+    switch (product.productCategory) {
+        case "NonExplosive":
+            return DECK_TYPES.INERT;
+        case "BulkExplosive":
+            return DECK_TYPES.COUPLED;
+        case "HighExplosive":
+            return DECK_TYPES.DECOUPLED;
+        case "Spacer":
+            return DECK_TYPES.SPACER;
+        default:
+            return DECK_TYPES.INERT;
+    }
 }
 
 /**
  * Build a product snapshot suitable for storing on a Deck
  */
 function productSnapshot(product) {
-	return {
-		productID: product.productID || null,
-		name: product.name,
-		productType: product.productType || null,
-		productCategory: product.productCategory,
-		density: product.density || 0,
-		colorHex: product.colorHex || null
-	};
+    return {
+        productID: product.productID || null,
+        name: product.name,
+        productType: product.productType || null,
+        productCategory: product.productCategory,
+        density: product.density || 0,
+        colorHex: product.colorHex || null,
+        diameterMm: product.diameterMm || null,
+        lengthMm: product.lengthMm || null,
+        massGrams: product.massGrams || null
+    };
 }
 
 /**
@@ -49,668 +57,680 @@ function productSnapshot(product) {
  * @param {Object} [referenceHole] - A blast hole to use as reference for dimensions
  */
 export function showDeckBuilderDialog(referenceHole) {
-	// Resolve reference hole
-	var refHole = referenceHole || null;
-	if (!refHole && window.selectedHole) {
-		refHole = window.selectedHole;
-	}
-	if (!refHole && window.selectedMultipleHoles && window.selectedMultipleHoles.length > 0) {
-		refHole = window.selectedMultipleHoles[0];
-	}
-	if (!refHole && window.allBlastHoles && window.allBlastHoles.length > 0) {
-		refHole = window.allBlastHoles[0];
-	}
-	if (!refHole) {
-		showModalMessage("Deck Builder", "No blast holes loaded. Import holes first.", "warning");
-		return;
-	}
+    // Resolve reference hole
+    var refHole = referenceHole || null;
+    if (!refHole && window.selectedHole) {
+        refHole = window.selectedHole;
+    }
+    if (!refHole && window.selectedMultipleHoles && window.selectedMultipleHoles.length > 0) {
+        refHole = window.selectedMultipleHoles[0];
+    }
+    if (!refHole && window.allBlastHoles && window.allBlastHoles.length > 0) {
+        refHole = window.allBlastHoles[0];
+    }
+    if (!refHole) {
+        showModalMessage("Deck Builder", "No blast holes loaded. Import holes first.", "warning");
+        return;
+    }
 
-	// Track the last applied charge config so we can re-run it per-hole.
-	// Wrapped in an object so nested/external functions can mutate it.
-	var configTracker = { config: null };
+    // Track the last applied charge config so we can re-run it per-hole.
+    // Wrapped in an object so nested/external functions can mutate it.
+    var configTracker = { config: null };
 
-	// Build or clone HoleCharging for the reference hole
-	var existingCharging = window.loadedCharging ? window.loadedCharging.get(refHole.holeID) : null;
-	var workingCharging;
-	if (existingCharging) {
-		workingCharging = HoleCharging.fromJSON(existingCharging.toJSON());
-	} else {
-		workingCharging = new HoleCharging(refHole);
-	}
+    // Build or clone HoleCharging for the reference hole
+    var existingCharging = window.loadedCharging ? window.loadedCharging.get(refHole.holeID) : null;
+    var workingCharging;
+    if (existingCharging) {
+        workingCharging = HoleCharging.fromJSON(existingCharging.toJSON());
+    } else {
+        workingCharging = new HoleCharging(refHole);
+    }
 
-	// ======== BUILD CONTENT ========
-	var contentDiv = document.createElement("div");
-	contentDiv.style.display = "flex";
-	contentDiv.style.flexDirection = "column";
-	contentDiv.style.height = "100%";
-	contentDiv.style.gap = "0";
+    // ======== BUILD CONTENT ========
+    var contentDiv = document.createElement("div");
+    contentDiv.style.display = "flex";
+    contentDiv.style.flexDirection = "column";
+    contentDiv.style.height = "100%";
+    contentDiv.style.gap = "0";
 
-	// Header info bar
-	var infoBar = document.createElement("div");
-	infoBar.className = "deck-builder-info";
-	infoBar.innerHTML =
-		"<span>Hole: <b>" + (refHole.holeID || "N/A") + "</b></span>" +
-		"<span>Entity: <b>" + (refHole.entityName || "N/A") + "</b></span>" +
-		"<span>Dia: <b>" + (refHole.holeDiameter || 0) + "mm</b></span>" +
-		"<span>Length: <b>" + (refHole.holeLengthCalculated || 0).toFixed(1) + "m</b></span>";
-	contentDiv.appendChild(infoBar);
+    // Header info bar
+    var infoBar = document.createElement("div");
+    infoBar.className = "deck-builder-info";
+    infoBar.innerHTML = "<span>Hole: <b>" + (refHole.holeID || "N/A") + "</b></span>" + "<span>Entity: <b>" + (refHole.entityName || "N/A") + "</b></span>" + "<span>Dia: <b>" + (refHole.holeDiameter || 0) + "mm</b></span>" + "<span>Length: <b>" + (refHole.holeLengthCalculated || 0).toFixed(1) + "m</b></span>";
+    contentDiv.appendChild(infoBar);
 
-	// Main area: product palette + section view
-	var mainArea = document.createElement("div");
-	mainArea.style.cssText = "display:flex;flex:1;overflow:hidden;min-height:0;";
-	contentDiv.appendChild(mainArea);
+    // Main area: product palette + section view
+    var mainArea = document.createElement("div");
+    mainArea.style.cssText = "display:flex;flex:1;overflow:hidden;min-height:0;";
+    contentDiv.appendChild(mainArea);
 
-	// -------- LEFT: Product Palette --------
-	var paletteDiv = document.createElement("div");
-	paletteDiv.className = "deck-builder-palette";
-	mainArea.appendChild(paletteDiv);
+    // -------- LEFT: Product Palette --------
+    var paletteDiv = document.createElement("div");
+    paletteDiv.className = "deck-builder-palette";
+    mainArea.appendChild(paletteDiv);
 
-	var paletteTitle = document.createElement("div");
-	paletteTitle.className = "deck-builder-palette-title";
-	paletteTitle.textContent = "Products";
-	paletteDiv.appendChild(paletteTitle);
+    var paletteTitle = document.createElement("div");
+    paletteTitle.className = "deck-builder-palette-title";
+    paletteTitle.textContent = "Products";
+    paletteDiv.appendChild(paletteTitle);
 
-	buildProductPalette(paletteDiv);
+    buildProductPalette(paletteDiv);
 
-	// -------- RIGHT: Section View --------
-	var sectionDiv = document.createElement("div");
-	sectionDiv.style.cssText = "flex:1;display:flex;flex-direction:column;min-width:0;";
-	mainArea.appendChild(sectionDiv);
+    // -------- RIGHT: Section View --------
+    var sectionDiv = document.createElement("div");
+    sectionDiv.style.cssText = "flex:1;display:flex;flex-direction:column;min-width:0;";
+    mainArea.appendChild(sectionDiv);
 
-	var sectionCanvas = document.createElement("canvas");
-	sectionCanvas.style.cssText = "flex:1;width:100%;";
-	sectionDiv.appendChild(sectionCanvas);
+    var sectionCanvas = document.createElement("canvas");
+    sectionCanvas.style.cssText = "flex:1;width:100%;";
+    sectionDiv.appendChild(sectionCanvas);
 
-	var sectionView = new HoleSectionView({
-		canvas: sectionCanvas,
-		padding: 25,
-		holeDiameterMm: refHole.holeDiameter || 115,
-		onDeckSelect: function(deck, index) {
-			updateDeckPropertiesPanel(deck, index);
-		},
-		onDeckResize: function() {
-			workingCharging.modified = new Date().toISOString();
-			sectionView.draw();
-			updateSummary();
-		},
-		onPrimerSelect: function(primer, index) {
-			updatePrimerInfo(primer, index);
-		}
-	});
-	sectionView.setData(workingCharging);
+    var sectionView = new HoleSectionView({
+        canvas: sectionCanvas,
+        padding: 25,
+        holeDiameterMm: refHole.holeDiameter || 115,
+        fontSizeOffset: -1,
+        onDeckSelect: function (deck, index) {
+            updateDeckPropertiesPanel(deck, index);
+        },
+        onDeckResize: function () {
+            workingCharging.modified = new Date().toISOString();
+            sectionView.draw();
+            updateSummary();
+        },
+        onPrimerSelect: function (primer, index) {
+            updatePrimerInfo(primer, index);
+        }
+    });
+    sectionView.setData(workingCharging);
 
-	// -------- BOTTOM: Properties + Actions --------
-	var bottomArea = document.createElement("div");
-	bottomArea.className = "deck-builder-bottom";
-	contentDiv.appendChild(bottomArea);
+    // -------- BOTTOM: Properties + Actions --------
+    var bottomArea = document.createElement("div");
+    bottomArea.className = "deck-builder-bottom";
+    contentDiv.appendChild(bottomArea);
 
-	// Properties row
-	var propsRow = document.createElement("div");
-	propsRow.className = "deck-builder-props";
-	propsRow.id = "deckBuilderPropsRow";
-	propsRow.innerHTML = "<span style='opacity:0.5;'>Click a deck to edit properties</span>";
-	bottomArea.appendChild(propsRow);
+    // Properties row
+    var propsRow = document.createElement("div");
+    propsRow.className = "deck-builder-props";
+    propsRow.id = "deckBuilderPropsRow";
+    propsRow.innerHTML = "<span style='opacity:0.5;'>Click a deck to edit properties</span>";
+    bottomArea.appendChild(propsRow);
 
-	// Summary row
-	var summaryRow = document.createElement("div");
-	summaryRow.className = "deck-builder-summary";
-	summaryRow.id = "deckBuilderSummary";
-	bottomArea.appendChild(summaryRow);
+    // Summary row
+    var summaryRow = document.createElement("div");
+    summaryRow.className = "deck-builder-summary";
+    summaryRow.id = "deckBuilderSummary";
+    bottomArea.appendChild(summaryRow);
 
-	// Action buttons
-	var actionRow = document.createElement("div");
-	actionRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
-	bottomArea.appendChild(actionRow);
+    // Action buttons
+    var actionRow = document.createElement("div");
+    actionRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
+    bottomArea.appendChild(actionRow);
 
-	function makeBtn(text, className, onClick) {
-		var btn = document.createElement("button");
-		btn.className = "floating-dialog-btn " + className;
-		btn.textContent = text;
-		btn.style.cssText = "font-size:11px;padding:4px 10px;";
-		btn.addEventListener("click", onClick);
-		return btn;
-	}
+    function makeBtn(text, className, onClick) {
+        var btn = document.createElement("button");
+        btn.className = "floating-dialog-btn " + className;
+        btn.textContent = text;
+        btn.style.cssText = "font-size:11px;padding:4px 10px;";
+        btn.addEventListener("click", onClick);
+        return btn;
+    }
 
-	actionRow.appendChild(makeBtn("Add Primer", "option1", function() {
-		addPrimerToCharging(workingCharging, sectionView, refHole);
-	}));
+    actionRow.appendChild(
+        makeBtn("Add Primer", "option1", function () {
+            addPrimerToCharging(workingCharging, sectionView, refHole);
+        })
+    );
 
-	actionRow.appendChild(makeBtn("Remove Deck", "deny", function() {
-		removeDeck(workingCharging, sectionView);
-	}));
+    actionRow.appendChild(
+        makeBtn("Remove Deck", "deny", function () {
+            removeDeck(workingCharging, sectionView);
+        })
+    );
 
-	actionRow.appendChild(makeBtn("Remove Spacer", "deny", function() {
-		removeSpacer(workingCharging, sectionView);
-	}));
+    actionRow.appendChild(
+        makeBtn("Remove Spacer", "deny", function () {
+            removeSpacer(workingCharging, sectionView);
+        })
+    );
 
-	actionRow.appendChild(makeBtn("Remove Primer", "deny", function() {
-		removePrimer(workingCharging, sectionView);
-	}));
+    actionRow.appendChild(
+        makeBtn("Remove Primer", "deny", function () {
+            removePrimer(workingCharging, sectionView);
+        })
+    );
 
-	actionRow.appendChild(makeBtn("Clear", "cancel", function() {
-		configTracker.config = null;
-		workingCharging.clear();
-		sectionView.setData(workingCharging);
-		updateSummary();
-	}));
+    actionRow.appendChild(
+        makeBtn("Clear", "cancel", function () {
+            configTracker.config = null;
+            workingCharging.clear();
+            sectionView.setData(workingCharging);
+            updateSummary();
+        })
+    );
 
-	var spacer = document.createElement("div");
-	spacer.style.flex = "1";
-	actionRow.appendChild(spacer);
+    var spacer = document.createElement("div");
+    spacer.style.flex = "1";
+    actionRow.appendChild(spacer);
 
-	actionRow.appendChild(makeBtn("Apply Rule...", "option2", function() {
-		showRuleSelector(workingCharging, sectionView, refHole, configTracker);
-	}));
+    actionRow.appendChild(
+        makeBtn("Apply Rule...", "option2", function () {
+            showRuleSelector(workingCharging, sectionView, refHole, configTracker);
+        })
+    );
 
-	actionRow.appendChild(makeBtn("Save as Rule", "option1", function() {
-		showSaveAsRuleDialog(workingCharging, configTracker);
-	}));
+    actionRow.appendChild(
+        makeBtn("Save as Rule", "option1", function () {
+            showSaveAsRuleDialog(workingCharging, configTracker);
+        })
+    );
 
-	actionRow.appendChild(makeBtn("Apply to Selected", "confirm", function() {
-		applyToSelectedHoles(workingCharging, refHole, configTracker);
-	}));
+    actionRow.appendChild(
+        makeBtn("Apply to Selected", "confirm", function () {
+            applyToSelectedHoles(workingCharging, refHole, configTracker);
+        })
+    );
 
-	// ======== DRAG & DROP SETUP ========
-	setupDragDrop(sectionCanvas, sectionView, workingCharging, refHole, configTracker);
+    // ======== DRAG & DROP SETUP ========
+    setupDragDrop(sectionCanvas, sectionView, workingCharging, refHole, configTracker);
 
-	// ======== CREATE DIALOG ========
-	var dialog = new FloatingDialog({
-		title: "Deck Builder",
-		content: contentDiv,
-		width: 680,
-		height: 560,
-		showConfirm: false,
-		showCancel: true,
-		cancelText: "Close",
-		onCancel: function() {
-			sectionView.destroy();
-		}
-	});
-	dialog.show();
+    // ======== CREATE DIALOG ========
+    var dialog = new FloatingDialog({
+        title: "Deck Builder",
+        content: contentDiv,
+        width: 680,
+        height: 560,
+        showConfirm: false,
+        showCancel: true,
+        cancelText: "Close",
+        onCancel: function () {
+            sectionView.destroy();
+        }
+    });
+    dialog.show();
 
-	// Size canvas after dialog is fully laid out (double-rAF for layout flush)
-	requestAnimationFrame(function() {
-		requestAnimationFrame(function() {
-			var rect = sectionCanvas.parentElement.getBoundingClientRect();
-			sectionView.resize(
-				Math.max(rect.width, 200) * (window.devicePixelRatio || 1),
-				Math.max(rect.height, 200) * (window.devicePixelRatio || 1)
-			);
-		});
-	});
+    // Size canvas after dialog is fully laid out (double-rAF for layout flush)
+    requestAnimationFrame(function () {
+        requestAnimationFrame(function () {
+            var rect = sectionCanvas.parentElement.getBoundingClientRect();
+            sectionView.resize(Math.max(rect.width, 200) * (window.devicePixelRatio || 1), Math.max(rect.height, 200) * (window.devicePixelRatio || 1));
+        });
+    });
 
-	updateSummary();
+    updateSummary();
 
-	// ======== HELPER FUNCTIONS (closures) ========
+    // ======== HELPER FUNCTIONS (closures) ========
 
-	function updateDeckPropertiesPanel(deck, index) {
-		var row = document.getElementById("deckBuilderPropsRow");
-		if (!row) return;
-		row.innerHTML =
-			"<b>Deck " + (index + 1) + ":</b> " +
-			"<span>Type: " + deck.deckType + "</span>" +
-			"<span>Product: " + (deck.product ? deck.product.name : "None") + "</span>" +
-			"<span>Top: " + deck.topDepth.toFixed(1) + "m</span>" +
-			"<span>Base: " + deck.baseDepth.toFixed(1) + "m</span>" +
-			"<span>Length: " + deck.length.toFixed(1) + "m</span>" +
-			"<span>Density: " + (deck.effectiveDensity || 0).toFixed(3) + " g/cc</span>";
-	}
+    function updateDeckPropertiesPanel(deck, index) {
+        var row = document.getElementById("deckBuilderPropsRow");
+        if (!row) return;
+        row.innerHTML =
+            "<b>Deck " +
+            (index + 1) +
+            ":</b> " +
+            "<span>Type: " +
+            deck.deckType +
+            "</span>" +
+            "<span>Product: " +
+            (deck.product ? deck.product.name : "None") +
+            "</span>" +
+            "<span>Top: " +
+            deck.topDepth.toFixed(1) +
+            "m</span>" +
+            "<span>Base: " +
+            deck.baseDepth.toFixed(1) +
+            "m</span>" +
+            "<span>Length: " +
+            deck.length.toFixed(1) +
+            "m</span>" +
+            "<span>Density: " +
+            (deck.effectiveDensity || 0).toFixed(3) +
+            " g/cc</span>";
+    }
 
-	function updatePrimerInfo(primer, index) {
-		var row = document.getElementById("deckBuilderPropsRow");
-		if (!row) return;
-		var detQty = primer.detonator.quantity || 1;
-		var detLabel = (primer.detonator.productName || "None");
-		if (detQty > 1) detLabel = detQty + "x " + detLabel;
-		row.innerHTML =
-			"<b>Primer " + (index + 1) + ":</b> " +
-			"<span>Depth: " + (primer.lengthFromCollar || 0).toFixed(1) + "m</span>" +
-			"<span>Det: " + detLabel + "</span>" +
-			"<span>Booster: " + (primer.booster.productName || "None") + "</span>" +
-			"<span>Delay: " + (primer.detonator.delayMs || 0) + "ms</span>";
-	}
+    function updatePrimerInfo(primer, index) {
+        var row = document.getElementById("deckBuilderPropsRow");
+        if (!row) return;
+        var detQty = primer.detonator.quantity || 1;
+        var detLabel = primer.detonator.productName || "None";
+        if (detQty > 1) detLabel = detQty + "x " + detLabel;
+        row.innerHTML = "<b>Primer " + (index + 1) + ":</b> " + "<span>Depth: " + (primer.lengthFromCollar || 0).toFixed(1) + "m</span>" + "<span>Det: " + detLabel + "</span>" + "<span>Booster: " + (primer.booster.productName || "None") + "</span>" + "<span>Delay: " + (primer.detonator.delayMs || 0) + "ms</span>";
+    }
 
-	function updateSummary() {
-		var el = document.getElementById("deckBuilderSummary");
-		if (!el || !workingCharging) return;
-		var mass = workingCharging.getTotalExplosiveMass();
-		var pf = workingCharging.calculatePowderFactor(refHole.burden || 1, refHole.spacing || 1);
-		el.textContent =
-			"Decks: " + workingCharging.decks.length +
-			" | Primers: " + workingCharging.primers.length +
-			" | Explosive Mass: " + mass.toFixed(1) + " kg" +
-			" | Powder Factor: " + pf.toFixed(3) + " kg/m\u00B3";
-	}
+    function updateSummary() {
+        var el = document.getElementById("deckBuilderSummary");
+        if (!el || !workingCharging) return;
+        var mass = workingCharging.getTotalExplosiveMass();
+        var pf = workingCharging.calculatePowderFactor(refHole.burden || 1, refHole.spacing || 1);
+        el.textContent = "Decks: " + workingCharging.decks.length + " | Primers: " + workingCharging.primers.length + " | Explosive Mass: " + mass.toFixed(1) + " kg" + " | Powder Factor: " + pf.toFixed(3) + " kg/m\u00B3";
+    }
 
-	function showInlineWarning(message) {
-		var row = document.getElementById("deckBuilderPropsRow");
-		if (!row) return;
-		row.innerHTML = '<span style="color:#ff9800;">\u26A0 ' + message + '</span>';
-		setTimeout(function() {
-			row.innerHTML = "<span style='opacity:0.5;'>Click a deck to edit properties</span>";
-		}, 3000);
-	}
+    function showInlineWarning(message) {
+        var row = document.getElementById("deckBuilderPropsRow");
+        if (!row) return;
+        row.innerHTML = '<span style="color:#ff9800;">\u26A0 ' + message + "</span>";
+        setTimeout(function () {
+            row.innerHTML = "<span style='opacity:0.5;'>Click a deck to edit properties</span>";
+        }, 3000);
+    }
 
-	function isFixedSpacer(deck) {
-		return deck && deck.deckType === DECK_TYPES.SPACER;
-	}
+    function isFixedSpacer(deck) {
+        return deck && deck.deckType === DECK_TYPES.SPACER;
+    }
 
-	/**
-	 * Find the nearest non-spacer deck to absorb a gap.
-	 * Searches above (idx-1, idx-2...) then below (idx, idx+1...).
-	 */
-	function findGapFillDeck(decks, removedIdx, removedTop, removedBase) {
-		// Search above the removed position
-		for (var i = removedIdx - 1; i >= 0; i--) {
-			if (!isFixedSpacer(decks[i])) {
-				decks[i].baseDepth = removedBase;
-				return;
-			}
-		}
-		// Search below (indices shifted after splice, so removedIdx is now next deck)
-		for (var j = removedIdx; j < decks.length; j++) {
-			if (!isFixedSpacer(decks[j])) {
-				decks[j].topDepth = removedTop;
-				return;
-			}
-		}
-		// All remaining are spacers - expand last deck as fallback
-		if (decks.length > 0) {
-			decks[decks.length - 1].baseDepth = removedBase;
-		}
-	}
+    /**
+     * Find the nearest non-spacer deck to absorb a gap.
+     * Searches above (idx-1, idx-2...) then below (idx, idx+1...).
+     */
+    function findGapFillDeck(decks, removedIdx, removedTop, removedBase) {
+        // Search above the removed position
+        for (var i = removedIdx - 1; i >= 0; i--) {
+            if (!isFixedSpacer(decks[i])) {
+                decks[i].baseDepth = removedBase;
+                return;
+            }
+        }
+        // Search below (indices shifted after splice, so removedIdx is now next deck)
+        for (var j = removedIdx; j < decks.length; j++) {
+            if (!isFixedSpacer(decks[j])) {
+                decks[j].topDepth = removedTop;
+                return;
+            }
+        }
+        // All remaining are spacers - expand last deck as fallback
+        if (decks.length > 0) {
+            decks[decks.length - 1].baseDepth = removedBase;
+        }
+    }
 
-	function removeDeck(hc, sv) {
-		var idx = sv.selectedDeckIndex;
-		if (idx < 0 || idx >= hc.decks.length) {
-			showInlineWarning("Select a deck to remove first.");
-			return;
-		}
-		if (hc.decks.length <= 1) {
-			showInlineWarning("Cannot remove the last deck. Use Clear instead.");
-			return;
-		}
-		var removed = hc.decks[idx];
-		var removedTop = removed.topDepth;
-		var removedBase = removed.baseDepth;
-		hc.decks.splice(idx, 1);
+    function removeDeck(hc, sv) {
+        var idx = sv.selectedDeckIndex;
+        if (idx < 0 || idx >= hc.decks.length) {
+            showInlineWarning("Select a deck to remove first.");
+            return;
+        }
+        if (hc.decks.length <= 1) {
+            showInlineWarning("Cannot remove the last deck. Use Clear instead.");
+            return;
+        }
+        var removed = hc.decks[idx];
+        var removedTop = removed.topDepth;
+        var removedBase = removed.baseDepth;
+        hc.decks.splice(idx, 1);
 
-		// Expand nearest non-spacer deck to fill the gap
-		findGapFillDeck(hc.decks, idx, removedTop, removedBase);
+        // Expand nearest non-spacer deck to fill the gap
+        findGapFillDeck(hc.decks, idx, removedTop, removedBase);
 
-		hc.sortDecks();
-		sv.selectedDeckIndex = -1;
-		sv.setData(hc);
-		updateSummary();
-	}
+        hc.sortDecks();
+        sv.selectedDeckIndex = -1;
+        sv.setData(hc);
+        updateSummary();
+    }
 
-	function removeSpacer(hc, sv) {
-		var idx = sv.selectedDeckIndex;
-		// If no selection or selected deck is not a spacer, find first spacer
-		if (idx < 0 || idx >= hc.decks.length || !isFixedSpacer(hc.decks[idx])) {
-			idx = -1;
-			for (var s = 0; s < hc.decks.length; s++) {
-				if (isFixedSpacer(hc.decks[s])) { idx = s; break; }
-			}
-			if (idx < 0) {
-				showInlineWarning("No spacer decks to remove.");
-				return;
-			}
-		}
-		if (hc.decks.length <= 1) {
-			showInlineWarning("Cannot remove the last deck. Use Clear instead.");
-			return;
-		}
-		var removed = hc.decks[idx];
-		var removedTop = removed.topDepth;
-		var removedBase = removed.baseDepth;
-		hc.decks.splice(idx, 1);
+    function removeSpacer(hc, sv) {
+        var idx = sv.selectedDeckIndex;
+        // If no selection or selected deck is not a spacer, find first spacer
+        if (idx < 0 || idx >= hc.decks.length || !isFixedSpacer(hc.decks[idx])) {
+            idx = -1;
+            for (var s = 0; s < hc.decks.length; s++) {
+                if (isFixedSpacer(hc.decks[s])) {
+                    idx = s;
+                    break;
+                }
+            }
+            if (idx < 0) {
+                showInlineWarning("No spacer decks to remove.");
+                return;
+            }
+        }
+        if (hc.decks.length <= 1) {
+            showInlineWarning("Cannot remove the last deck. Use Clear instead.");
+            return;
+        }
+        var removed = hc.decks[idx];
+        var removedTop = removed.topDepth;
+        var removedBase = removed.baseDepth;
+        hc.decks.splice(idx, 1);
 
-		// Expand nearest non-spacer deck to fill the gap
-		findGapFillDeck(hc.decks, idx, removedTop, removedBase);
+        // Expand nearest non-spacer deck to fill the gap
+        findGapFillDeck(hc.decks, idx, removedTop, removedBase);
 
-		hc.sortDecks();
-		sv.selectedDeckIndex = -1;
-		sv.setData(hc);
-		updateSummary();
-	}
+        hc.sortDecks();
+        sv.selectedDeckIndex = -1;
+        sv.setData(hc);
+        updateSummary();
+    }
 
-	function removePrimer(hc, sv) {
-		var idx = sv.selectedPrimerIndex;
-		if (idx < 0 || idx >= hc.primers.length) {
-			showInlineWarning("Select a primer to remove first.");
-			return;
-		}
-		hc.primers.splice(idx, 1);
-		sv.selectedPrimerIndex = -1;
-		sv.setData(hc);
-		updateSummary();
-	}
+    function removePrimer(hc, sv) {
+        var idx = sv.selectedPrimerIndex;
+        if (idx < 0 || idx >= hc.primers.length) {
+            showInlineWarning("Select a primer to remove first.");
+            return;
+        }
+        hc.primers.splice(idx, 1);
+        sv.selectedPrimerIndex = -1;
+        sv.setData(hc);
+        updateSummary();
+    }
 }
 
 /**
  * Build draggable product palette items from window.loadedProducts
  */
 function buildProductPalette(container) {
-	var products = window.loadedProducts || new Map();
+    var products = window.loadedProducts || new Map();
 
-	if (products.size === 0) {
-		var empty = document.createElement("div");
-		empty.style.cssText = "color:#666;font-size:11px;padding:8px;text-align:center;";
-		empty.textContent = "No products loaded. Import a config first.";
-		container.appendChild(empty);
-		return;
-	}
+    if (products.size === 0) {
+        var empty = document.createElement("div");
+        empty.style.cssText = "color:#666;font-size:11px;padding:8px;text-align:center;";
+        empty.textContent = "No products loaded. Import a config first.";
+        container.appendChild(empty);
+        return;
+    }
 
-	// Group by category
-	var categories = {};
-	products.forEach(function(product) {
-		var cat = product.productCategory || "Other";
-		if (!categories[cat]) categories[cat] = [];
-		categories[cat].push(product);
-	});
+    // Group by category
+    var categories = {};
+    products.forEach(function (product) {
+        var cat = product.productCategory || "Other";
+        if (!categories[cat]) categories[cat] = [];
+        categories[cat].push(product);
+    });
 
-	var catOrder = ["NonExplosive", "BulkExplosive", "HighExplosive", "Initiator", "Spacer"];
-	var catLabels = {
-		"NonExplosive": "Non-Explosive",
-		"BulkExplosive": "Bulk Explosive",
-		"HighExplosive": "High Explosive",
-		"Initiator": "Initiators",
-		"Spacer": "Spacers"
-	};
+    var catOrder = ["NonExplosive", "BulkExplosive", "HighExplosive", "Initiator", "Spacer"];
+    var catLabels = {
+        NonExplosive: "Non-Explosive",
+        BulkExplosive: "Bulk Explosive",
+        HighExplosive: "High Explosive",
+        Initiator: "Initiators",
+        Spacer: "Spacers"
+    };
 
-	for (var ci = 0; ci < catOrder.length; ci++) {
-		var cat = catOrder[ci];
-		var items = categories[cat];
-		if (!items || items.length === 0) continue;
+    for (var ci = 0; ci < catOrder.length; ci++) {
+        var cat = catOrder[ci];
+        var items = categories[cat];
+        if (!items || items.length === 0) continue;
 
-		var catHeader = document.createElement("div");
-		catHeader.className = "deck-builder-cat-header";
-		catHeader.textContent = catLabels[cat] || cat;
-		container.appendChild(catHeader);
+        var catHeader = document.createElement("div");
+        catHeader.className = "deck-builder-cat-header";
+        catHeader.textContent = catLabels[cat] || cat;
+        container.appendChild(catHeader);
 
-		for (var pi = 0; pi < items.length; pi++) {
-			var product = items[pi];
-			var item = document.createElement("div");
-			item.className = "deck-palette-item";
-			item.setAttribute("draggable", "true");
-			item.dataset.productId = product.productID || product.name;
-			item.dataset.productCategory = product.productCategory;
+        for (var pi = 0; pi < items.length; pi++) {
+            var product = items[pi];
+            var item = document.createElement("div");
+            item.className = "deck-palette-item";
+            item.setAttribute("draggable", "true");
+            item.dataset.productId = product.productID || product.name;
+            item.dataset.productCategory = product.productCategory;
 
-			// Color swatch
-			var swatch = document.createElement("span");
-			swatch.style.cssText = "width:12px;height:12px;border-radius:2px;flex-shrink:0;border:1px solid #555;";
-			swatch.style.backgroundColor = product.colorHex || "#CCCCCC";
-			item.appendChild(swatch);
+            // Color swatch
+            var swatch = document.createElement("span");
+            swatch.style.cssText = "width:12px;height:12px;border-radius:2px;flex-shrink:0;border:1px solid #555;";
+            swatch.style.backgroundColor = product.colorHex || "#CCCCCC";
+            item.appendChild(swatch);
 
-			// Name
-			var nameSpan = document.createElement("span");
-			nameSpan.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
-			nameSpan.textContent = product.name;
-			nameSpan.title = product.name + " (" + product.productCategory + ")";
-			item.appendChild(nameSpan);
+            // Name
+            var nameSpan = document.createElement("span");
+            nameSpan.style.cssText = "flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+            nameSpan.textContent = product.name;
+            nameSpan.title = product.name + " (" + product.productCategory + ")";
+            item.appendChild(nameSpan);
 
-			// Drag start
-			(function(prod) {
-				item.addEventListener("dragstart", function(e) {
-					e.dataTransfer.setData("text/plain", JSON.stringify({
-						productID: prod.productID || prod.name,
-						name: prod.name,
-						productCategory: prod.productCategory,
-						productType: prod.productType,
-						density: prod.density,
-						colorHex: prod.colorHex
-					}));
-					e.dataTransfer.effectAllowed = "copy";
-				});
-			})(product);
+            // Drag start
+            (function (prod) {
+                item.addEventListener("dragstart", function (e) {
+                    e.dataTransfer.setData(
+                        "text/plain",
+                        JSON.stringify({
+                            productID: prod.productID || prod.name,
+                            name: prod.name,
+                            productCategory: prod.productCategory,
+                            productType: prod.productType,
+                            density: prod.density,
+                            colorHex: prod.colorHex
+                        })
+                    );
+                    e.dataTransfer.effectAllowed = "copy";
+                });
+            })(product);
 
-			container.appendChild(item);
-		}
-	}
+            container.appendChild(item);
+        }
+    }
 }
 
 /**
  * Setup drag-and-drop from palette to section view canvas
  */
 function setupDragDrop(canvas, sectionView, workingCharging, refHole, configTracker) {
-	canvas.addEventListener("dragover", function(e) {
-		e.preventDefault();
-		e.dataTransfer.dropEffect = "copy";
-	});
+    canvas.addEventListener("dragover", function (e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "copy";
+    });
 
-	canvas.addEventListener("drop", function(e) {
-		e.preventDefault();
+    canvas.addEventListener("drop", function (e) {
+        e.preventDefault();
 
-		var dataStr = e.dataTransfer.getData("text/plain");
-		if (!dataStr) return;
+        var dataStr = e.dataTransfer.getData("text/plain");
+        if (!dataStr) return;
 
-		var productData;
-		try {
-			productData = JSON.parse(dataStr);
-		} catch (err) {
-			return;
-		}
+        var productData;
+        try {
+            productData = JSON.parse(dataStr);
+        } catch (err) {
+            return;
+        }
 
-		// Find the full product from loaded products
-		var fullProduct = null;
-		if (window.loadedProducts) {
-			window.loadedProducts.forEach(function(p) {
-				if ((p.productID && p.productID === productData.productID) || p.name === productData.name) {
-					fullProduct = p;
-				}
-			});
-		}
-		if (!fullProduct) {
-			fullProduct = productData; // Use the drag data as fallback
-		}
+        // Find the full product from loaded products
+        var fullProduct = null;
+        if (window.loadedProducts) {
+            window.loadedProducts.forEach(function (p) {
+                if ((p.productID && p.productID === productData.productID) || p.name === productData.name) {
+                    fullProduct = p;
+                }
+            });
+        }
+        if (!fullProduct) {
+            fullProduct = productData; // Use the drag data as fallback
+        }
 
-		// Manual drop invalidates any tracked rule config
-		if (configTracker) configTracker.config = null;
+        // Manual drop invalidates any tracked rule config
+        if (configTracker) configTracker.config = null;
 
-		// Determine drop depth from Y position
-		var dropDepth = sectionView.yToDepth(
-			(e.clientY - canvas.getBoundingClientRect().top) * (canvas.height / canvas.getBoundingClientRect().height)
-		);
+        // Determine drop depth from Y position
+        var dropDepth = sectionView.yToDepth((e.clientY - canvas.getBoundingClientRect().top) * (canvas.height / canvas.getBoundingClientRect().height));
 
-		// Clamp to hole range
-		var minD = 0;
-		var maxD = Math.abs(workingCharging.holeLength);
-		dropDepth = Math.max(minD, Math.min(maxD, dropDepth));
+        // Clamp to hole range
+        var minD = 0;
+        var maxD = Math.abs(workingCharging.holeLength);
+        dropDepth = Math.max(minD, Math.min(maxD, dropDepth));
 
-		// Determine deck type from product
-		var deckType = deckTypeForProduct(fullProduct);
+        // Determine deck type from product
+        var deckType = deckTypeForProduct(fullProduct);
 
-		// For initiator products, add as primer instead
-		if (fullProduct.productCategory === "Initiator") {
-			var primer = new Primer({
-				holeID: workingCharging.holeID,
-				lengthFromCollar: parseFloat(dropDepth.toFixed(2)),
-				detonator: {
-					productID: fullProduct.productID || null,
-					productName: fullProduct.name,
-					initiatorType: fullProduct.initiatorType || fullProduct.productType || null,
-					deliveryVodMs: fullProduct.deliveryVodMs || 0,
-					delayMs: 0
-				},
-				booster: {
-					productName: null,
-					quantity: 1
-				}
-			});
-			var result = workingCharging.addPrimer(primer);
-			if (!result.success && result.errors && result.errors.length > 0) {
-				showModalMessage("Primer Error", result.errors.join("\n"), "warning");
-			}
-			sectionView.setData(workingCharging);
-			return;
-		}
+        // For initiator products, add as primer instead
+        if (fullProduct.productCategory === "Initiator") {
+            var primer = new Primer({
+                holeID: workingCharging.holeID,
+                lengthFromCollar: parseFloat(dropDepth.toFixed(2)),
+                detonator: {
+                    productID: fullProduct.productID || null,
+                    productName: fullProduct.name,
+                    initiatorType: fullProduct.initiatorType || fullProduct.productType || null,
+                    deliveryVodMs: fullProduct.deliveryVodMs || 0,
+                    delayMs: 0
+                },
+                booster: {
+                    productName: null,
+                    quantity: 1
+                }
+            });
+            var result = workingCharging.addPrimer(primer);
+            if (!result.success && result.errors && result.errors.length > 0) {
+                showModalMessage("Primer Error", result.errors.join("\n"), "warning");
+            }
+            sectionView.setData(workingCharging);
+            return;
+        }
 
-		var defaultDeckLength = 2.0;
-		if (fullProduct.productCategory === "HighExplosive") {
-			defaultDeckLength = 0.5; // Short deck for packages
-		} else if (fullProduct.productCategory === "Spacer") {
-			defaultDeckLength = 0.4; // Short for spacers
-		}
+        var defaultDeckLength = 2.0;
+        if (fullProduct.productCategory === "HighExplosive") {
+            defaultDeckLength = 0.5; // Short deck for packages
+        } else if (fullProduct.productCategory === "Spacer") {
+            defaultDeckLength = 0.4; // Short for spacers
+        }
 
-		// Calculate interval: drop point is center of new deck
-		var halfLen = defaultDeckLength / 2;
-		var topD = Math.max(minD, dropDepth - halfLen);
-		var baseD = Math.min(maxD, topD + defaultDeckLength);
+        // Calculate interval: drop point is center of new deck
+        var halfLen = defaultDeckLength / 2;
+        var topD = Math.max(minD, dropDepth - halfLen);
+        var baseD = Math.min(maxD, topD + defaultDeckLength);
 
-		workingCharging.fillInterval(
-			parseFloat(topD.toFixed(2)),
-			parseFloat(baseD.toFixed(2)),
-			deckType,
-			productSnapshot(fullProduct)
-		);
+        workingCharging.fillInterval(parseFloat(topD.toFixed(2)), parseFloat(baseD.toFixed(2)), deckType, productSnapshot(fullProduct));
 
-		sectionView.setData(workingCharging);
-	});
+        sectionView.setData(workingCharging);
+    });
 }
 
 /**
  * Add a primer via a simple dialog prompt
  */
 function addPrimerToCharging(workingCharging, sectionView, refHole) {
-	// Gather initiator products for selection
-	var initiators = [];
-	var boosters = [];
-	if (window.loadedProducts) {
-		window.loadedProducts.forEach(function(p) {
-			if (p.productCategory === "Initiator") initiators.push(p);
-			if (p.productCategory === "HighExplosive") boosters.push(p);
-		});
-	}
+    // Gather initiator products for selection
+    var initiators = [];
+    var boosters = [];
+    if (window.loadedProducts) {
+        window.loadedProducts.forEach(function (p) {
+            if (p.productCategory === "Initiator") initiators.push(p);
+            if (p.productCategory === "HighExplosive") boosters.push(p);
+        });
+    }
 
-	var detOptions = [{ value: "", text: "-- None --" }];
-	for (var i = 0; i < initiators.length; i++) {
-		detOptions.push({ value: initiators[i].name, text: initiators[i].name });
-	}
+    var detOptions = [{ value: "", text: "-- None --" }];
+    for (var i = 0; i < initiators.length; i++) {
+        detOptions.push({ value: initiators[i].name, text: initiators[i].name });
+    }
 
-	var boosterOptions = [{ value: "", text: "-- None --" }];
-	for (var b = 0; b < boosters.length; b++) {
-		boosterOptions.push({ value: boosters[b].name, text: boosters[b].name });
-	}
+    var boosterOptions = [{ value: "", text: "-- None --" }];
+    for (var b = 0; b < boosters.length; b++) {
+        boosterOptions.push({ value: boosters[b].name, text: boosters[b].name });
+    }
 
-	var holeLen = Math.abs(workingCharging.holeLength);
-	var defaultDepth = holeLen * 0.9;
+    var holeLen = Math.abs(workingCharging.holeLength);
+    var defaultDepth = holeLen * 0.9;
 
-	var fields = [
-		{ label: "Depth from Collar (m)", name: "depthFromCollar", type: "number", value: defaultDepth.toFixed(1), step: "0.1" },
-		{ label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: detOptions.length > 1 ? detOptions[1].value : "" },
-		{ label: "Detonator Qty", name: "detonatorQty", type: "number", value: "1", step: "1", min: "1", max: "10" },
-		{ label: "Delay (ms)", name: "delayMs", type: "number", value: "0", step: "1" },
-		{ label: "Booster", name: "boosterName", type: "select", options: boosterOptions, value: boosterOptions.length > 1 ? boosterOptions[1].value : "" },
-		{ label: "Booster Qty", name: "boosterQty", type: "number", value: "1", step: "1" }
-	];
+    var fields = [
+        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "number", value: defaultDepth.toFixed(1), step: "0.1" },
+        { label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: detOptions.length > 1 ? detOptions[1].value : "" },
+        { label: "Detonator Qty", name: "detonatorQty", type: "number", value: "1", step: "1", min: "1", max: "10" },
+        { label: "Delay (ms)", name: "delayMs", type: "number", value: "0", step: "1" },
+        { label: "Booster", name: "boosterName", type: "select", options: boosterOptions, value: boosterOptions.length > 1 ? boosterOptions[1].value : "" },
+        { label: "Booster Qty", name: "boosterQty", type: "number", value: "1", step: "1" }
+    ];
 
-	var formContent = createEnhancedFormContent(fields);
+    var formContent = createEnhancedFormContent(fields);
 
-	var primerDialog = new FloatingDialog({
-		title: "Add Primer",
-		content: formContent,
-		width: 350,
-		height: 320,
-		showConfirm: true,
-		confirmText: "Add",
-		showCancel: true,
-		onConfirm: function() {
-			var data = getFormData(formContent);
-			var depth = parseFloat(data.depthFromCollar) || defaultDepth;
+    var primerDialog = new FloatingDialog({
+        title: "Add Primer",
+        content: formContent,
+        width: 350,
+        height: 320,
+        showConfirm: true,
+        confirmText: "Add",
+        showCancel: true,
+        onConfirm: function () {
+            var data = getFormData(formContent);
+            var depth = parseFloat(data.depthFromCollar) || defaultDepth;
 
-			// Find product details
-			var detProduct = null;
-			var boosterProduct = null;
-			if (data.detonatorName && window.loadedProducts) {
-				window.loadedProducts.forEach(function(p) {
-					if (p.name === data.detonatorName) detProduct = p;
-				});
-			}
-			if (data.boosterName && window.loadedProducts) {
-				window.loadedProducts.forEach(function(p) {
-					if (p.name === data.boosterName) boosterProduct = p;
-				});
-			}
+            // Find product details
+            var detProduct = null;
+            var boosterProduct = null;
+            if (data.detonatorName && window.loadedProducts) {
+                window.loadedProducts.forEach(function (p) {
+                    if (p.name === data.detonatorName) detProduct = p;
+                });
+            }
+            if (data.boosterName && window.loadedProducts) {
+                window.loadedProducts.forEach(function (p) {
+                    if (p.name === data.boosterName) boosterProduct = p;
+                });
+            }
 
-			var primer = new Primer({
-				holeID: workingCharging.holeID,
-				lengthFromCollar: depth,
-				detonator: {
-					productID: detProduct ? detProduct.productID : null,
-					productName: data.detonatorName || null,
-					initiatorType: detProduct ? (detProduct.initiatorType || detProduct.productType) : null,
-					deliveryVodMs: detProduct ? (detProduct.deliveryVodMs || 0) : 0,
-					delayMs: parseFloat(data.delayMs) || 0,
-					quantity: Math.max(1, Math.min(10, parseInt(data.detonatorQty) || 1))
-				},
-				booster: {
-					productID: boosterProduct ? boosterProduct.productID : null,
-					productName: data.boosterName || null,
-					quantity: parseInt(data.boosterQty) || 1,
-					massGrams: boosterProduct ? boosterProduct.massGrams : null
-				}
-			});
+            var primer = new Primer({
+                holeID: workingCharging.holeID,
+                lengthFromCollar: depth,
+                detonator: {
+                    productID: detProduct ? detProduct.productID : null,
+                    productName: data.detonatorName || null,
+                    initiatorType: detProduct ? detProduct.initiatorType || detProduct.productType : null,
+                    deliveryVodMs: detProduct ? detProduct.deliveryVodMs || 0 : 0,
+                    delayMs: parseFloat(data.delayMs) || 0,
+                    quantity: Math.max(1, Math.min(10, parseInt(data.detonatorQty) || 1))
+                },
+                booster: {
+                    productID: boosterProduct ? boosterProduct.productID : null,
+                    productName: data.boosterName || null,
+                    quantity: parseInt(data.boosterQty) || 1,
+                    massGrams: boosterProduct ? boosterProduct.massGrams : null
+                }
+            });
 
-			var result = workingCharging.addPrimer(primer);
-			if (!result.success && result.errors && result.errors.length > 0) {
-				showModalMessage("Primer Error", result.errors.join("\n"), "warning");
-			}
-			sectionView.setData(workingCharging);
-		}
-	});
-	primerDialog.show();
+            var result = workingCharging.addPrimer(primer);
+            if (!result.success && result.errors && result.errors.length > 0) {
+                showModalMessage("Primer Error", result.errors.join("\n"), "warning");
+            }
+            sectionView.setData(workingCharging);
+        }
+    });
+    primerDialog.show();
 }
 
 /**
  * Show rule selection dropdown and apply selected rule
  */
 function showRuleSelector(workingCharging, sectionView, refHole, configTracker) {
-	var configs = window.loadedChargeConfigs || new Map();
-	if (configs.size === 0) {
-		showModalMessage("Apply Rule", "No charge configs loaded. Import a config template first.", "warning");
-		return;
-	}
+    var configs = window.loadedChargeConfigs || new Map();
+    if (configs.size === 0) {
+        showModalMessage("Apply Rule", "No charge configs loaded. Import a config template first.", "warning");
+        return;
+    }
 
-	var configOptions = [];
-	configs.forEach(function(config, configID) {
-		configOptions.push({ value: configID, text: config.configName || configID });
-	});
+    var configOptions = [];
+    configs.forEach(function (config, configID) {
+        configOptions.push({ value: configID, text: config.configName || configID });
+    });
 
-	var fields = [
-		{ label: "Charge Configuration", name: "configID", type: "select", options: configOptions, value: configOptions[0].value }
-	];
-	var formContent = createEnhancedFormContent(fields);
+    var fields = [{ label: "Charge Configuration", name: "configID", type: "select", options: configOptions, value: configOptions[0].value }];
+    var formContent = createEnhancedFormContent(fields);
 
-	var ruleDialog = new FloatingDialog({
-		title: "Apply Rule",
-		content: formContent,
-		width: 350,
-		height: 180,
-		showConfirm: true,
-		confirmText: "Apply",
-		showCancel: true,
-		onConfirm: function() {
-			var data = getFormData(formContent);
-			var config = configs.get(data.configID);
-			if (!config) return;
+    var ruleDialog = new FloatingDialog({
+        title: "Apply Rule",
+        content: formContent,
+        width: 350,
+        height: 180,
+        showConfirm: true,
+        confirmText: "Apply",
+        showCancel: true,
+        onConfirm: function () {
+            var data = getFormData(formContent);
+            var config = configs.get(data.configID);
+            if (!config) return;
 
-			// Apply rule via SimpleRuleEngine (imported dynamically to avoid circular deps)
-			if (typeof window.applyChargeRule === "function") {
-				var newCharging = window.applyChargeRule(refHole, config);
-				if (newCharging) {
-					workingCharging.decks = newCharging.decks;
-					workingCharging.primers = newCharging.primers;
-					workingCharging.modified = new Date().toISOString();
-					if (configTracker) configTracker.config = config;
-					sectionView.setData(workingCharging);
-				}
-			} else {
-				showModalMessage("Apply Rule", "Rule engine not loaded.", "warning");
-			}
-		}
-	});
-	ruleDialog.show();
+            // Apply rule via SimpleRuleEngine (imported dynamically to avoid circular deps)
+            if (typeof window.applyChargeRule === "function") {
+                var newCharging = window.applyChargeRule(refHole, config);
+                if (newCharging) {
+                    workingCharging.decks = newCharging.decks;
+                    workingCharging.primers = newCharging.primers;
+                    workingCharging.modified = new Date().toISOString();
+                    if (configTracker) configTracker.config = config;
+                    sectionView.setData(workingCharging);
+                }
+            } else {
+                showModalMessage("Apply Rule", "Rule engine not loaded.", "warning");
+            }
+        }
+    });
+    ruleDialog.show();
 }
 
 /**
@@ -719,68 +739,62 @@ function showRuleSelector(workingCharging, sectionView, refHole, configTracker) 
  * Otherwise (manual design), proportionally scale deck depths by hole length ratio.
  */
 function applyToSelectedHoles(workingCharging, refHole, configTracker) {
-	var targets = [];
+    var targets = [];
 
-	// Gather target holes
-	if (window.selectedMultipleHoles && window.selectedMultipleHoles.length > 0) {
-		targets = window.selectedMultipleHoles;
-	} else if (window.selectedHole) {
-		targets = [window.selectedHole];
-	} else {
-		targets = [refHole];
-	}
+    // Gather target holes
+    if (window.selectedMultipleHoles && window.selectedMultipleHoles.length > 0) {
+        targets = window.selectedMultipleHoles;
+    } else if (window.selectedHole) {
+        targets = [window.selectedHole];
+    } else {
+        targets = [refHole];
+    }
 
-	if (targets.length === 0) {
-		showModalMessage("Apply Charging", "No holes selected.", "warning");
-		return;
-	}
+    if (targets.length === 0) {
+        showModalMessage("Apply Charging", "No holes selected.", "warning");
+        return;
+    }
 
-	var activeConfig = configTracker ? configTracker.config : null;
-	var modeLabel = activeConfig ? "rule-based" : "proportional";
+    var activeConfig = configTracker ? configTracker.config : null;
+    var modeLabel = activeConfig ? "rule-based" : "proportional";
 
-	showConfirmationDialog(
-		"Apply Charging",
-		"Apply this charging design (" + modeLabel + ") to " + targets.length + " hole(s)?",
-		"Apply",
-		"Cancel",
-		function() {
-			var refLen = Math.abs(workingCharging.holeLength);
+    showConfirmationDialog("Apply Charging", "Apply this charging design (" + modeLabel + ") to " + targets.length + " hole(s)?", "Apply", "Cancel", function () {
+        var refLen = Math.abs(workingCharging.holeLength);
 
-			for (var i = 0; i < targets.length; i++) {
-				var hole = targets[i];
-				var hc;
+        for (var i = 0; i < targets.length; i++) {
+            var hole = targets[i];
+            var hc;
 
-				if (activeConfig && typeof window.applyChargeRule === "function") {
-					// Re-run the rule engine for each target hole individually
-					hc = window.applyChargeRule(hole, activeConfig);
-					if (!hc) {
-						// Fallback: proportional scale if rule fails
-						hc = scaleChargingToHole(workingCharging, hole, refLen);
-					}
-				} else {
-					// Manual design: proportionally scale deck depths
-					hc = scaleChargingToHole(workingCharging, hole, refLen);
-				}
+            if (activeConfig && typeof window.applyChargeRule === "function") {
+                // Re-run the rule engine for each target hole individually
+                hc = window.applyChargeRule(hole, activeConfig);
+                if (!hc) {
+                    // Fallback: proportional scale if rule fails
+                    hc = scaleChargingToHole(workingCharging, hole, refLen);
+                }
+            } else {
+                // Manual design: proportionally scale deck depths
+                hc = scaleChargingToHole(workingCharging, hole, refLen);
+            }
 
-				if (!window.loadedCharging) {
-					window.loadedCharging = new Map();
-				}
-				window.loadedCharging.set(hole.holeID, hc);
-			}
+            if (!window.loadedCharging) {
+                window.loadedCharging = new Map();
+            }
+            window.loadedCharging.set(hole.holeID, hc);
+        }
 
-			// Save to IndexedDB
-			if (typeof window.debouncedSaveCharging === "function") {
-				window.debouncedSaveCharging();
-			}
+        // Save to IndexedDB
+        if (typeof window.debouncedSaveCharging === "function") {
+            window.debouncedSaveCharging();
+        }
 
-			// Redraw
-			if (typeof window.drawData === "function") {
-				window.drawData(window.allBlastHoles, window.selectedHole);
-			}
+        // Redraw
+        if (typeof window.drawData === "function") {
+            window.drawData(window.allBlastHoles, window.selectedHole);
+        }
 
-			showModalMessage("Charging Applied", "Applied charging (" + modeLabel + ") to " + targets.length + " hole(s).", "success");
-		}
-	);
+        showModalMessage("Charging Applied", "Applied charging (" + modeLabel + ") to " + targets.length + " hole(s).", "success");
+    });
 }
 
 /**
@@ -792,42 +806,42 @@ function applyToSelectedHoles(workingCharging, refHole, configTracker) {
  * @returns {HoleCharging} New HoleCharging sized for the target hole
  */
 function scaleChargingToHole(sourceCharging, targetHole, refLen) {
-	var chargingJSON = sourceCharging.toJSON();
-	var clone = JSON.parse(JSON.stringify(chargingJSON));
+    var chargingJSON = sourceCharging.toJSON();
+    var clone = JSON.parse(JSON.stringify(chargingJSON));
 
-	var targetLen = Math.abs(targetHole.holeLengthCalculated || 0);
-	clone.holeID = targetHole.holeID;
-	clone.entityName = targetHole.entityName;
-	clone.holeDiameterMm = targetHole.holeDiameter || sourceCharging.holeDiameterMm;
-	clone.holeLength = targetLen;
+    var targetLen = Math.abs(targetHole.holeLengthCalculated || 0);
+    clone.holeID = targetHole.holeID;
+    clone.entityName = targetHole.entityName;
+    clone.holeDiameterMm = targetHole.holeDiameter || sourceCharging.holeDiameterMm;
+    clone.holeLength = targetLen;
 
-	// Scale ratio (guard against zero-length reference)
-	var ratio = (refLen > 0) ? (targetLen / refLen) : 1;
+    // Scale ratio (guard against zero-length reference)
+    var ratio = refLen > 0 ? targetLen / refLen : 1;
 
-	// Scale deck depths
-	if (clone.decks && clone.decks.length > 0) {
-		for (var d = 0; d < clone.decks.length; d++) {
-			var deck = clone.decks[d];
-			deck.topDepth = Math.max(0, Math.min(targetLen, deck.topDepth * ratio));
-			deck.baseDepth = Math.max(0, Math.min(targetLen, deck.baseDepth * ratio));
-			// Ensure minimum deck thickness
-			if (deck.baseDepth - deck.topDepth < 0.01 && d < clone.decks.length - 1) {
-				deck.baseDepth = Math.min(targetLen, deck.topDepth + 0.01);
-			}
-		}
-		// Ensure last deck extends to hole bottom
-		clone.decks[clone.decks.length - 1].baseDepth = targetLen;
-	}
+    // Scale deck depths
+    if (clone.decks && clone.decks.length > 0) {
+        for (var d = 0; d < clone.decks.length; d++) {
+            var deck = clone.decks[d];
+            deck.topDepth = Math.max(0, Math.min(targetLen, deck.topDepth * ratio));
+            deck.baseDepth = Math.max(0, Math.min(targetLen, deck.baseDepth * ratio));
+            // Ensure minimum deck thickness
+            if (deck.baseDepth - deck.topDepth < 0.01 && d < clone.decks.length - 1) {
+                deck.baseDepth = Math.min(targetLen, deck.topDepth + 0.01);
+            }
+        }
+        // Ensure last deck extends to hole bottom
+        clone.decks[clone.decks.length - 1].baseDepth = targetLen;
+    }
 
-	// Scale primer depths
-	if (clone.primers && clone.primers.length > 0) {
-		for (var p = 0; p < clone.primers.length; p++) {
-			var primer = clone.primers[p];
-			primer.lengthFromCollar = Math.max(0, Math.min(targetLen - 0.1, primer.lengthFromCollar * ratio));
-		}
-	}
+    // Scale primer depths
+    if (clone.primers && clone.primers.length > 0) {
+        for (var p = 0; p < clone.primers.length; p++) {
+            var primer = clone.primers[p];
+            primer.lengthFromCollar = Math.max(0, Math.min(targetLen - 0.1, primer.lengthFromCollar * ratio));
+        }
+    }
 
-	return HoleCharging.fromJSON(clone);
+    return HoleCharging.fromJSON(clone);
 }
 
 /**
@@ -835,113 +849,118 @@ function scaleChargingToHole(sourceCharging, targetHole, refLen) {
  * Extracts deck layout as a deckTemplate array with "fixed" or "fill" lengths.
  */
 function showSaveAsRuleDialog(workingCharging, configTracker) {
-	if (!workingCharging || workingCharging.decks.length === 0) {
-		showModalMessage("Save as Rule", "No decks to save. Build a charging design first.", "warning");
-		return;
-	}
+    if (!workingCharging || workingCharging.decks.length === 0) {
+        showModalMessage("Save as Rule", "No decks to save. Build a charging design first.", "warning");
+        return;
+    }
 
-	var fields = [
-		{ key: "configName", label: "Rule Name", type: "text", value: "Custom Rule" },
-		{ key: "description", label: "Description", type: "text", value: "" },
-		{
-			key: "fillDeckIndex", label: "Fill Deck (absorbs remaining space)", type: "select",
-			options: workingCharging.decks.map(function(d, i) {
-				var label = (i + 1) + ": " + d.deckType + " - " + (d.product ? d.product.name : "Empty");
-				return { value: String(i), label: label };
-			}),
-			value: String(findBestFillDeck(workingCharging))
-		}
-	];
+    var fields = [
+        { key: "configName", label: "Rule Name", type: "text", value: "Custom Rule" },
+        { key: "description", label: "Description", type: "text", value: "" },
+        {
+            key: "fillDeckIndex",
+            label: "Fill Deck (absorbs remaining space)",
+            type: "select",
+            options: workingCharging.decks.map(function (d, i) {
+                var label = i + 1 + ": " + d.deckType + " - " + (d.product ? d.product.name : "Empty");
+                return { value: String(i), label: label };
+            }),
+            value: String(findBestFillDeck(workingCharging))
+        }
+    ];
 
-	var formContent = createEnhancedFormContent(fields);
+    var formContent = createEnhancedFormContent(fields);
 
-	var dialog = new FloatingDialog({
-		title: "Save as Rule",
-		content: formContent,
-		width: 420,
-		showConfirm: true,
-		confirmText: "Save",
-		showCancel: true,
-		cancelText: "Cancel",
-		onConfirm: function() {
-			var data = getFormData(formContent);
-			var fillIdx = parseInt(data.fillDeckIndex, 10);
+    var dialog = new FloatingDialog({
+        title: "Save as Rule",
+        content: formContent,
+        width: 420,
+        showConfirm: true,
+        confirmText: "Save",
+        showCancel: true,
+        cancelText: "Cancel",
+        onConfirm: function () {
+            var data = getFormData(formContent);
+            var fillIdx = parseInt(data.fillDeckIndex, 10);
 
-			// Build deckTemplate from current decks
-			var template = [];
-			for (var i = 0; i < workingCharging.decks.length; i++) {
-				var deck = workingCharging.decks[i];
-				var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
-				template.push({
-					type: deck.deckType,
-					product: deck.product ? deck.product.name : "Air",
-					lengthMode: (i === fillIdx) ? "fill" : "fixed",
-					length: (i === fillIdx) ? 0 : parseFloat(deckLen.toFixed(3))
-				});
-			}
+            // Build deckTemplate from current decks
+            var template = [];
+            for (var i = 0; i < workingCharging.decks.length; i++) {
+                var deck = workingCharging.decks[i];
+                var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
+                template.push({
+                    type: deck.deckType,
+                    product: deck.product ? deck.product.name : "Air",
+                    lengthMode: i === fillIdx ? "fill" : "fixed",
+                    length: i === fillIdx ? 0 : parseFloat(deckLen.toFixed(3))
+                });
+            }
 
-			// Extract product references from first matching deck types
-			var stemmingProd = null, chargeProd = null, gasBagProd = null;
-			var boosterProd = null, detProd = null;
-			for (var d = 0; d < workingCharging.decks.length; d++) {
-				var dk = workingCharging.decks[d];
-				if (dk.deckType === DECK_TYPES.INERT && !stemmingProd && dk.product) stemmingProd = dk.product.name;
-				if ((dk.deckType === DECK_TYPES.COUPLED || dk.deckType === DECK_TYPES.DECOUPLED) && !chargeProd && dk.product) chargeProd = dk.product.name;
-				if (dk.deckType === DECK_TYPES.SPACER && !gasBagProd && dk.product) gasBagProd = dk.product.name;
-			}
-			if (workingCharging.primers && workingCharging.primers.length > 0) {
-				var primer = workingCharging.primers[0];
-				if (primer.booster) boosterProd = primer.booster.productName;
-				if (primer.detonator) detProd = primer.detonator.productName;
-			}
+            // Extract product references from first matching deck types
+            var stemmingProd = null,
+                chargeProd = null,
+                gasBagProd = null;
+            var boosterProd = null,
+                detProd = null;
+            for (var d = 0; d < workingCharging.decks.length; d++) {
+                var dk = workingCharging.decks[d];
+                if (dk.deckType === DECK_TYPES.INERT && !stemmingProd && dk.product) stemmingProd = dk.product.name;
+                if ((dk.deckType === DECK_TYPES.COUPLED || dk.deckType === DECK_TYPES.DECOUPLED) && !chargeProd && dk.product) chargeProd = dk.product.name;
+                if (dk.deckType === DECK_TYPES.SPACER && !gasBagProd && dk.product) gasBagProd = dk.product.name;
+            }
+            if (workingCharging.primers && workingCharging.primers.length > 0) {
+                var primer = workingCharging.primers[0];
+                if (primer.booster) boosterProd = primer.booster.productName;
+                if (primer.detonator) detProd = primer.detonator.productName;
+            }
 
-			var newConfig = new ChargeConfig({
-				configCode: CHARGE_CONFIG_CODES.CUSTOM,
-				configName: data.configName || "Custom Rule",
-				description: data.description || "",
-				stemmingProduct: stemmingProd,
-				chargeProduct: chargeProd,
-				gasBagProduct: gasBagProd,
-				boosterProduct: boosterProd,
-				detonatorProduct: detProd,
-				deckTemplate: template,
-				primerDepthFromCollar: "fx:chargeBase - chargeLength * 0.1"
-			});
+            var newConfig = new ChargeConfig({
+                configCode: CHARGE_CONFIG_CODES.CUSTOM,
+                configName: data.configName || "Custom Rule",
+                description: data.description || "",
+                stemmingProduct: stemmingProd,
+                chargeProduct: chargeProd,
+                gasBagProduct: gasBagProd,
+                boosterProduct: boosterProd,
+                detonatorProduct: detProd,
+                deckTemplate: template,
+                primerDepthFromCollar: "fx:chargeBase - chargeLength * 0.1"
+            });
 
-			if (!window.loadedChargeConfigs) {
-				window.loadedChargeConfigs = new Map();
-			}
-			window.loadedChargeConfigs.set(newConfig.configID, newConfig);
+            if (!window.loadedChargeConfigs) {
+                window.loadedChargeConfigs = new Map();
+            }
+            window.loadedChargeConfigs.set(newConfig.configID, newConfig);
 
-			if (typeof window.debouncedSaveConfigs === "function") {
-				window.debouncedSaveConfigs();
-			}
+            if (typeof window.debouncedSaveConfigs === "function") {
+                window.debouncedSaveConfigs();
+            }
 
-			// Update the config tracker so "Apply to Selected" uses this rule
-			if (configTracker) {
-				configTracker.config = newConfig;
-			}
+            // Update the config tracker so "Apply to Selected" uses this rule
+            if (configTracker) {
+                configTracker.config = newConfig;
+            }
 
-			showModalMessage("Rule Saved", "\"" + newConfig.configName + "\" saved with " + template.length + " deck template.", "success");
-		}
-	});
-	dialog.show();
+            showModalMessage("Rule Saved", '"' + newConfig.configName + '" saved with ' + template.length + " deck template.", "success");
+        }
+    });
+    dialog.show();
 }
 
 /**
  * Find the best candidate deck for "fill" mode (the largest non-spacer deck).
  */
 function findBestFillDeck(hc) {
-	var bestIdx = 0;
-	var bestLen = 0;
-	for (var i = 0; i < hc.decks.length; i++) {
-		var d = hc.decks[i];
-		if (d.deckType === DECK_TYPES.SPACER) continue;
-		var len = Math.abs(d.baseDepth - d.topDepth);
-		if (len > bestLen) {
-			bestLen = len;
-			bestIdx = i;
-		}
-	}
-	return bestIdx;
+    var bestIdx = 0;
+    var bestLen = 0;
+    for (var i = 0; i < hc.decks.length; i++) {
+        var d = hc.decks[i];
+        if (d.deckType === DECK_TYPES.SPACER) continue;
+        var len = Math.abs(d.baseDepth - d.topDepth);
+        if (len > bestLen) {
+            bestLen = len;
+            bestIdx = i;
+        }
+    }
+    return bestIdx;
 }

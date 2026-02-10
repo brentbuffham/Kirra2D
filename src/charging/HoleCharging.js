@@ -186,14 +186,21 @@ export class HoleCharging {
 			var deck = this.decks[i];
 			if (deck.deckType === DECK_TYPES.COUPLED) {
 				total += deck.calculateMass(self.holeDiameterMm);
-			} else if (deck.deckType === DECK_TYPES.DECOUPLED && deck.contains) {
-				for (var j = 0; j < deck.contains.length; j++) {
-					var c = deck.contains[j];
-					if (c.contentCategory === "Physical") {
-						var mass = c.calculateMass ? c.calculateMass() : 0;
-						if (mass) total += mass;
+			} else if (deck.deckType === DECK_TYPES.DECOUPLED) {
+				var contentMass = 0;
+				if (deck.contains && deck.contains.length > 0) {
+					for (var j = 0; j < deck.contains.length; j++) {
+						var c = deck.contains[j];
+						if (c.contentCategory === "Physical") {
+							var mass = c.calculateMass ? c.calculateMass() : 0;
+							if (mass) contentMass += mass;
+						}
 					}
 				}
+				if (contentMass === 0) {
+					contentMass = deck.calculateMass(self.holeDiameterMm);
+				}
+				total += contentMass;
 			}
 		}
 		for (var k = 0; k < this.primers.length; k++) {

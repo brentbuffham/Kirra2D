@@ -367,14 +367,17 @@ export function showHolePropertyEditor(hole) {
 			const loadingRow = document.createElement("div");
 			loadingRow.style.cssText = "display:flex;gap:8px;height:100%;";
 
-			// Left: Section view canvas
+			// Left: Section view canvas (wrapped in flex container like DeckBuilder)
+			const sectionDiv = document.createElement("div");
+			sectionDiv.style.cssText = "flex:1;display:flex;flex-direction:column;min-width:0;";
 			const sectionCanvas = document.createElement("canvas");
-			sectionCanvas.style.cssText = "width:200px;flex-shrink:0;height:100%;min-height:250px;";
-			loadingRow.appendChild(sectionCanvas);
+			sectionCanvas.style.cssText = "flex:1;width:100%;";
+			sectionDiv.appendChild(sectionCanvas);
+			loadingRow.appendChild(sectionDiv);
 
-			// Right: Summary text
+			// Right: Summary text (fixed width)
 			const summaryDiv = document.createElement("div");
-			summaryDiv.style.cssText = "flex:1;font-size:11px;color:#ccc;padding:4px;line-height:1.6;";
+			summaryDiv.style.cssText = "width:180px;flex-shrink:0;font-size:11px;color:#ccc;padding:4px;line-height:1.6;";
 
 			const deckCount = holeCharging.decks ? holeCharging.decks.length : 0;
 			const primerCount = holeCharging.primers ? holeCharging.primers.length : 0;
@@ -959,7 +962,8 @@ export function showHolePropertyEditor(hole) {
 					var sv = new mod.HoleSectionView({
 						canvas: sectionViewRef.canvas,
 						padding: 20,
-						holeDiameterMm: sectionViewRef.holeDiameterMm
+						holeDiameterMm: sectionViewRef.holeDiameterMm,
+						fontSizeOffset: 2
 					});
 					sv.setData(sectionViewRef.holeCharging);
 				});

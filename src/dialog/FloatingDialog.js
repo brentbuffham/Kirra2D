@@ -85,6 +85,7 @@ class FloatingDialog {
 
 		// Step 3) Focus first input if any
 		setTimeout(() => {
+			if (!this.element) return;
 			const firstInput = this.element.querySelector("input:not([type='button']), select, textarea");
 			if (firstInput && !firstInput.disabled) firstInput.focus();
 		}, 100);

@@ -46,6 +46,10 @@ class KAPParser extends BaseParser {
 		}
 
 		// ============ CLEAR EXISTING DATA ============
+		// Flush any pending debounced saves to prevent stale data overwriting new import
+		if (typeof window.clearAllPendingTimers === "function") {
+			window.clearAllPendingTimers();
+		}
 		if (typeof window.clearAllDataStructures === "function") {
 			window.clearAllDataStructures();
 		}
@@ -64,7 +68,12 @@ class KAPParser extends BaseParser {
 			try {
 				var holesData = JSON.parse(await holesFile.async("string"));
 				if (Array.isArray(holesData)) {
-					window.allBlastHoles = holesData;
+					// Push into existing array to maintain reference identity with module-scoped variable
+					// (replacing with = would break the link between window.allBlastHoles and kirra.js internal allBlastHoles)
+					window.allBlastHoles.length = 0;
+					for (var hi = 0; hi < holesData.length; hi++) {
+						window.allBlastHoles.push(holesData[hi]);
+					}
 					summary.holes = holesData.length;
 				}
 			} catch (err) {
@@ -78,7 +87,12 @@ class KAPParser extends BaseParser {
 			try {
 				var drawingsData = JSON.parse(await drawingsFile.async("string"));
 				if (Array.isArray(drawingsData)) {
-					window.allKADDrawingsMap = new Map(drawingsData);
+					// Clear and repopulate existing map to maintain reference identity with module-scoped variable
+					window.allKADDrawingsMap.clear();
+					var tempMap = new Map(drawingsData);
+					tempMap.forEach(function(value, key) {
+						window.allKADDrawingsMap.set(key, value);
+					});
 					summary.drawings = window.allKADDrawingsMap.size;
 				}
 			} catch (err) {
@@ -305,10 +319,16 @@ class KAPParser extends BaseParser {
 				window.debouncedUpdateTreeView();
 			}
 
-			// Save everything to IndexedDB
-			if (typeof window.debouncedSaveHoles === "function") window.debouncedSaveHoles();
-			if (typeof window.debouncedSaveKAD === "function") window.debouncedSaveKAD();
-			if (typeof window.debouncedSaveLayers === "function") window.debouncedSaveLayers();
+			// Save everything to IndexedDB immediately (not debounced) to prevent race conditions
+			if (typeof window.saveHolesToDB === "function" && window.allBlastHoles) {
+				window.saveHolesToDB(window.allBlastHoles);
+			}
+			if (typeof window.saveKADToDB === "function" && window.allKADDrawingsMap) {
+				window.saveKADToDB(window.allKADDrawingsMap);
+			}
+			if (typeof window.saveLayersToDB === "function") {
+				window.saveLayersToDB();
+			}
 
 			// Save surfaces to IndexedDB
 			if (typeof window.saveSurfaceToDB === "function") {
@@ -324,10 +344,10 @@ class KAPParser extends BaseParser {
 				});
 			}
 
-			// Save charging data
-			if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
-			if (typeof window.debouncedSaveCharging === "function") window.debouncedSaveCharging();
-			if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
+			// Save charging data immediately (not debounced) to prevent race conditions
+			if (typeof window.saveProductsNow === "function") window.saveProductsNow();
+			if (typeof window.saveChargingNow === "function") window.saveChargingNow();
+			if (typeof window.saveConfigsNow === "function") window.saveConfigsNow();
 		} catch (refreshErr) {
 			summary.errors.push("Refresh error: " + refreshErr.message);
 		}

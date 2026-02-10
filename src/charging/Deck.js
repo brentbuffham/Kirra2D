@@ -44,21 +44,58 @@ export class Deck {
 		return this.product ? (this.product.density || 0) : 0;
 	}
 
+	/** Number of whole packages that fit in this deck */
+	get packageCount() {
+		if (this.deckType !== DECK_TYPES.DECOUPLED) return 0;
+		if (!this.product || !this.product.lengthMm) return 0;
+		var packageLenM = this.product.lengthMm / 1000;
+		if (packageLenM <= 0) return 0;
+		return Math.floor(this.length / packageLenM);
+	}
+
 	/**
-	 * Calculate volume in cubic meters
+	 * Calculate volume in cubic meters.
+	 * DECOUPLED decks use product diameter (smaller than hole bore).
 	 * @param {number} holeDiameterMm - Hole diameter in millimeters
 	 */
 	calculateVolume(holeDiameterMm) {
+		if (this.deckType === DECK_TYPES.DECOUPLED && this.product && this.product.diameterMm) {
+			var rM = (this.product.diameterMm / 1000) / 2;
+			var count = this.packageCount;
+			if (count > 0) {
+				return count * Math.PI * rM * rM * (this.product.lengthMm / 1000);
+			}
+			return Math.PI * rM * rM * this.length;
+		}
 		var radiusM = (holeDiameterMm / 1000) / 2;
 		return Math.PI * radiusM * radiusM * this.length;
 	}
 
 	/**
-	 * Calculate mass in kilograms
-	 * density is in g/cc = tonnes/m3, so mass = volume * density * 1000 for kg
+	 * Calculate mass in kilograms.
+	 * DECOUPLED decks use discrete package counting with product dimensions.
+	 * Mass = PI * r² * packageLength * density × packageCount
+	 * Always calculated from geometry (diameter × length × density) for consistency.
+	 * COUPLED/INERT/SPACER decks use hole diameter (original behaviour).
 	 * @param {number} holeDiameterMm - Hole diameter in millimeters
 	 */
 	calculateMass(holeDiameterMm) {
+		if (this.deckType === DECK_TYPES.DECOUPLED && this.product) {
+			var count = this.packageCount;
+			// Discrete packages: count × single-package mass from geometry
+			if (count > 0 && this.product.diameterMm && this.effectiveDensity > 0) {
+				var pkgLenM = this.product.lengthMm / 1000;
+				var rM = (this.product.diameterMm / 1000) / 2;
+				var unitMassKg = Math.PI * rM * rM * pkgLenM * this.effectiveDensity * 1000;
+				return count * unitMassKg;
+			}
+			// No package length — continuous fill with product diameter
+			if (this.product.diameterMm && this.effectiveDensity > 0) {
+				var rM2 = (this.product.diameterMm / 1000) / 2;
+				return Math.PI * rM2 * rM2 * this.length * this.effectiveDensity * 1000;
+			}
+		}
+		// COUPLED / INERT / SPACER — use hole diameter (original behaviour)
 		return this.calculateVolume(holeDiameterMm) * this.effectiveDensity * 1000;
 	}
 

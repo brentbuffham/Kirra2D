@@ -818,8 +818,17 @@ function exposeGlobalsToWindow() {
 	window.deleteImageFromDB = deleteImageFromDB;
 	window.deleteAllImagesFromDB = deleteAllImagesFromDB;
 	window.clearAllDataStructures = clearAllDataStructures;
+	window.clearAllPendingTimers = clearAllPendingTimers;
 	window.rebuildTexturedMesh = rebuildTexturedMesh;
 	window.calculateTimes = calculateTimes;
+
+	// Step 6f-ii) Expose direct (non-debounced) save functions for KAP import
+	window.saveHolesToDB = saveHolesToDB;
+	window.saveKADToDB = saveKADToDB;
+	window.saveLayersToDB = saveLayersToDB;
+	window.saveProductsNow = function() { saveProductsToDB(db, loadedProducts); };
+	window.saveChargingNow = function() { saveChargingToDB(db, loadedCharging); };
+	window.saveConfigsNow = function() { saveChargeConfigsToDB(db, loadedChargeConfigs); };
 
 	// Step 6g) Expose UndoManager and action classes for undo/redo operations
 	window.undoManager = undoManager;
@@ -30531,10 +30540,15 @@ function drawData(allBlastHoles, selectedHole) {
 			// Step 3.0) Check if any KAD drawing tool is active (skip expensive hole rebuild during drawing)
 			var isAnyKADToolActive = isDrawingPoint || isDrawingLine || isDrawingPoly || isDrawingCircle || isDrawingText;
 
+			// Step 3.0a) Check if holes already have geometry in the scene
+			var holesAlreadyRendered = window.threeRenderer && window.threeRenderer.holesGroup
+				&& window.threeRenderer.holesGroup.children.length > 0;
+
 			// Step 3.1) ONLY REBUILD GEOMETRY when threeDataNeedsRebuild is true AND no drawing tool active
 			// Skip hole rebuild during KAD drawing to prevent flicker (holes remain visible unchanged)
+			// BUT always allow initial render if holesGroup is empty (e.g. switching to 3D with tool active)
 			// KAD-only rebuild (threeKADNeedsRebuild) does NOT trigger hole rebuild
-			if (window.threeDataNeedsRebuild && !isAnyKADToolActive) {
+			if (window.threeDataNeedsRebuild && (!isAnyKADToolActive || !holesAlreadyRendered)) {
 				// Step 3.1a) NEW VISIBILITY-BASED LOD SYSTEM
 				// Create ALL LOD representations at load time, then toggle visibility on zoom
 				// This eliminates geometry rebuild on zoom - just toggles .visible properties
