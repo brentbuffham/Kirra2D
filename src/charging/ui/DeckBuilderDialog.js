@@ -15,6 +15,7 @@ import { HoleCharging } from "../HoleCharging.js";
 import { Deck } from "../Deck.js";
 import { Primer } from "../Primer.js";
 import { DECK_TYPES, DECK_COLORS, CHARGE_CONFIG_CODES } from "../ChargingConstants.js";
+import { ChargeConfig } from "../ChargeConfig.js";
 
 /**
  * Determine the deck type for a product based on its category
@@ -178,6 +179,10 @@ export function showDeckBuilderDialog(referenceHole) {
 		removeDeck(workingCharging, sectionView);
 	}));
 
+	actionRow.appendChild(makeBtn("Remove Spacer", "deny", function() {
+		removeSpacer(workingCharging, sectionView);
+	}));
+
 	actionRow.appendChild(makeBtn("Remove Primer", "deny", function() {
 		removePrimer(workingCharging, sectionView);
 	}));
@@ -195,6 +200,10 @@ export function showDeckBuilderDialog(referenceHole) {
 
 	actionRow.appendChild(makeBtn("Apply Rule...", "option2", function() {
 		showRuleSelector(workingCharging, sectionView, refHole, configTracker);
+	}));
+
+	actionRow.appendChild(makeBtn("Save as Rule", "option1", function() {
+		showSaveAsRuleDialog(workingCharging, configTracker);
 	}));
 
 	actionRow.appendChild(makeBtn("Apply to Selected", "confirm", function() {
@@ -282,6 +291,35 @@ export function showDeckBuilderDialog(referenceHole) {
 		}, 3000);
 	}
 
+	function isFixedSpacer(deck) {
+		return deck && deck.deckType === DECK_TYPES.SPACER;
+	}
+
+	/**
+	 * Find the nearest non-spacer deck to absorb a gap.
+	 * Searches above (idx-1, idx-2...) then below (idx, idx+1...).
+	 */
+	function findGapFillDeck(decks, removedIdx, removedTop, removedBase) {
+		// Search above the removed position
+		for (var i = removedIdx - 1; i >= 0; i--) {
+			if (!isFixedSpacer(decks[i])) {
+				decks[i].baseDepth = removedBase;
+				return;
+			}
+		}
+		// Search below (indices shifted after splice, so removedIdx is now next deck)
+		for (var j = removedIdx; j < decks.length; j++) {
+			if (!isFixedSpacer(decks[j])) {
+				decks[j].topDepth = removedTop;
+				return;
+			}
+		}
+		// All remaining are spacers - expand last deck as fallback
+		if (decks.length > 0) {
+			decks[decks.length - 1].baseDepth = removedBase;
+		}
+	}
+
 	function removeDeck(hc, sv) {
 		var idx = sv.selectedDeckIndex;
 		if (idx < 0 || idx >= hc.decks.length) {
@@ -293,19 +331,43 @@ export function showDeckBuilderDialog(referenceHole) {
 			return;
 		}
 		var removed = hc.decks[idx];
+		var removedTop = removed.topDepth;
+		var removedBase = removed.baseDepth;
 		hc.decks.splice(idx, 1);
 
-		// Expand adjacent deck to fill the gap left by the removed deck
-		if (idx === 0 && hc.decks.length > 0) {
-			// Removed first deck: expand next deck upward
-			hc.decks[0].topDepth = removed.topDepth;
-		} else if (idx >= hc.decks.length && hc.decks.length > 0) {
-			// Removed last deck: expand previous deck downward
-			hc.decks[hc.decks.length - 1].baseDepth = removed.baseDepth;
-		} else if (hc.decks.length > 0) {
-			// Removed middle deck: expand deck above downward
-			hc.decks[idx - 1].baseDepth = removed.baseDepth;
+		// Expand nearest non-spacer deck to fill the gap
+		findGapFillDeck(hc.decks, idx, removedTop, removedBase);
+
+		hc.sortDecks();
+		sv.selectedDeckIndex = -1;
+		sv.setData(hc);
+		updateSummary();
+	}
+
+	function removeSpacer(hc, sv) {
+		var idx = sv.selectedDeckIndex;
+		// If no selection or selected deck is not a spacer, find first spacer
+		if (idx < 0 || idx >= hc.decks.length || !isFixedSpacer(hc.decks[idx])) {
+			idx = -1;
+			for (var s = 0; s < hc.decks.length; s++) {
+				if (isFixedSpacer(hc.decks[s])) { idx = s; break; }
+			}
+			if (idx < 0) {
+				showInlineWarning("No spacer decks to remove.");
+				return;
+			}
 		}
+		if (hc.decks.length <= 1) {
+			showInlineWarning("Cannot remove the last deck. Use Clear instead.");
+			return;
+		}
+		var removed = hc.decks[idx];
+		var removedTop = removed.topDepth;
+		var removedBase = removed.baseDepth;
+		hc.decks.splice(idx, 1);
+
+		// Expand nearest non-spacer deck to fill the gap
+		findGapFillDeck(hc.decks, idx, removedTop, removedBase);
 
 		hc.sortDecks();
 		sv.selectedDeckIndex = -1;
@@ -766,4 +828,120 @@ function scaleChargingToHole(sourceCharging, targetHole, refLen) {
 	}
 
 	return HoleCharging.fromJSON(clone);
+}
+
+/**
+ * Show a dialog to save the current deck layout as a reusable ChargeConfig rule.
+ * Extracts deck layout as a deckTemplate array with "fixed" or "fill" lengths.
+ */
+function showSaveAsRuleDialog(workingCharging, configTracker) {
+	if (!workingCharging || workingCharging.decks.length === 0) {
+		showModalMessage("Save as Rule", "No decks to save. Build a charging design first.", "warning");
+		return;
+	}
+
+	var fields = [
+		{ key: "configName", label: "Rule Name", type: "text", value: "Custom Rule" },
+		{ key: "description", label: "Description", type: "text", value: "" },
+		{
+			key: "fillDeckIndex", label: "Fill Deck (absorbs remaining space)", type: "select",
+			options: workingCharging.decks.map(function(d, i) {
+				var label = (i + 1) + ": " + d.deckType + " - " + (d.product ? d.product.name : "Empty");
+				return { value: String(i), label: label };
+			}),
+			value: String(findBestFillDeck(workingCharging))
+		}
+	];
+
+	var formContent = createEnhancedFormContent(fields);
+
+	var dialog = new FloatingDialog({
+		title: "Save as Rule",
+		content: formContent,
+		width: 420,
+		showConfirm: true,
+		confirmText: "Save",
+		showCancel: true,
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var data = getFormData(formContent);
+			var fillIdx = parseInt(data.fillDeckIndex, 10);
+
+			// Build deckTemplate from current decks
+			var template = [];
+			for (var i = 0; i < workingCharging.decks.length; i++) {
+				var deck = workingCharging.decks[i];
+				var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
+				template.push({
+					type: deck.deckType,
+					product: deck.product ? deck.product.name : "Air",
+					lengthMode: (i === fillIdx) ? "fill" : "fixed",
+					length: (i === fillIdx) ? 0 : parseFloat(deckLen.toFixed(3))
+				});
+			}
+
+			// Extract product references from first matching deck types
+			var stemmingProd = null, chargeProd = null, gasBagProd = null;
+			var boosterProd = null, detProd = null;
+			for (var d = 0; d < workingCharging.decks.length; d++) {
+				var dk = workingCharging.decks[d];
+				if (dk.deckType === DECK_TYPES.INERT && !stemmingProd && dk.product) stemmingProd = dk.product.name;
+				if ((dk.deckType === DECK_TYPES.COUPLED || dk.deckType === DECK_TYPES.DECOUPLED) && !chargeProd && dk.product) chargeProd = dk.product.name;
+				if (dk.deckType === DECK_TYPES.SPACER && !gasBagProd && dk.product) gasBagProd = dk.product.name;
+			}
+			if (workingCharging.primers && workingCharging.primers.length > 0) {
+				var primer = workingCharging.primers[0];
+				if (primer.booster) boosterProd = primer.booster.productName;
+				if (primer.detonator) detProd = primer.detonator.productName;
+			}
+
+			var newConfig = new ChargeConfig({
+				configCode: CHARGE_CONFIG_CODES.CUSTOM,
+				configName: data.configName || "Custom Rule",
+				description: data.description || "",
+				stemmingProduct: stemmingProd,
+				chargeProduct: chargeProd,
+				gasBagProduct: gasBagProd,
+				boosterProduct: boosterProd,
+				detonatorProduct: detProd,
+				deckTemplate: template,
+				primerDepthFromCollar: "fx:chargeBase - chargeLength * 0.1"
+			});
+
+			if (!window.loadedChargeConfigs) {
+				window.loadedChargeConfigs = new Map();
+			}
+			window.loadedChargeConfigs.set(newConfig.configID, newConfig);
+
+			if (typeof window.debouncedSaveConfigs === "function") {
+				window.debouncedSaveConfigs();
+			}
+
+			// Update the config tracker so "Apply to Selected" uses this rule
+			if (configTracker) {
+				configTracker.config = newConfig;
+			}
+
+			showModalMessage("Rule Saved", "\"" + newConfig.configName + "\" saved with " + template.length + " deck template.", "success");
+		}
+	});
+	dialog.show();
+}
+
+/**
+ * Find the best candidate deck for "fill" mode (the largest non-spacer deck).
+ */
+function findBestFillDeck(hc) {
+	var bestIdx = 0;
+	var bestLen = 0;
+	for (var i = 0; i < hc.decks.length; i++) {
+		var d = hc.decks[i];
+		if (d.deckType === DECK_TYPES.SPACER) continue;
+		var len = Math.abs(d.baseDepth - d.topDepth);
+		if (len > bestLen) {
+			bestLen = len;
+			bestIdx = i;
+		}
+	}
+	return bestIdx;
 }

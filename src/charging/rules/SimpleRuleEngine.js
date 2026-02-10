@@ -116,14 +116,20 @@ export function applyChargeRule(hole, config) {
 		case CHARGE_CONFIG_CODES.STANDARD_VENTED:
 			return applyStandardVented(hole, config);
 		case CHARGE_CONFIG_CODES.STANDARD_FIXED_STEM:
+		case "ST5050":
 			return applyStandardFixedStem(hole, config);
 		case CHARGE_CONFIG_CODES.AIR_DECK:
 			return applyAirDeck(hole, config);
 		case CHARGE_CONFIG_CODES.PRESPLIT:
+		case "PRESPLIT":
 			return applyPresplit(hole, config);
 		case CHARGE_CONFIG_CODES.NO_CHARGE:
 			return applyNoCharge(hole, config);
+		case CHARGE_CONFIG_CODES.CUSTOM:
 		default:
+			if (config.deckTemplate && config.deckTemplate.length > 0) {
+				return applyCustomTemplate(hole, config);
+			}
 			return applySimpleSingle(hole, config);
 	}
 }
@@ -430,7 +436,9 @@ function applyStandardFixedStem(hole, config) {
 }
 
 // ============================================================
-// AIRDEC: Air Deck (Stem + Charge + Air Gap + Charge)
+// AIRDEC: Air Deck (Stem → Spacer → Air → Charge)
+// Layout: Stemming at collar, gas bag spacer, air gap fills middle,
+//         single charge column at bottom with primer.
 // ============================================================
 
 function applyAirDeck(hole, config) {
@@ -447,59 +455,91 @@ function applyAirDeck(hole, config) {
 	var boosterProduct = findProduct(config.boosterProduct);
 	var detProduct = findProduct(config.detonatorProduct);
 
-	var stemLen = Math.min(config.preferredStemLength || 3.5, holeLen * 0.3);
-	var airDeckLen = config.airDeckLength || 1.0;
-	var chargeLen = (holeLen - stemLen - airDeckLen) / 2;
-	chargeLen = Math.max(chargeLen, config.minChargeLength || 2.0);
+	// 1) Stemming length (from collar)
+	var stemLen = Math.min(config.preferredStemLength || 3.5, holeLen * 0.4);
 
-	var topChargeBase = stemLen + chargeLen;
-	var airTop = topChargeBase;
-	var airBase = airTop + airDeckLen;
-	var bottomChargeTop = airBase;
-
-	// Ensure we don't exceed hole length
-	if (bottomChargeTop + chargeLen > holeLen) {
-		chargeLen = holeLen - bottomChargeTop;
+	// 2) Spacer length (fixed from gas bag product, or default 0.4m)
+	var spacerLen = 0.4;
+	if (gasBagProduct && gasBagProduct.lengthMm > 0) {
+		spacerLen = gasBagProduct.lengthMm / 1000;
 	}
 
-	// Stemming
+	// 3) Charge length (from config or default to 40% of hole)
+	var chargeLen = config.preferredChargeLength || (holeLen * 0.4);
+	// Cap charge to available space below stem + spacer
+	var available = holeLen - stemLen - spacerLen;
+	chargeLen = Math.min(chargeLen, available - 0.1);
+	chargeLen = Math.max(chargeLen, config.minChargeLength || 1.0);
+
+	// Deck boundaries (from collar down)
+	var spacerTop = stemLen;
+	var spacerBase = stemLen + spacerLen;
+	var chargeTop = holeLen - chargeLen;
+	var chargeBase = holeLen;
+	// Air deck fills the gap between spacer and charge
+	var airTop = spacerBase;
+	var airBase = chargeTop;
+
+	// Safety: if air deck has no space, collapse it
+	if (airBase <= airTop) {
+		airBase = airTop;
+	}
+
+	// Deck 1: Stemming (INERT)
 	hc.decks.push(new Deck({
 		holeID: hc.holeID,
 		deckType: DECK_TYPES.INERT,
 		topDepth: 0,
-		baseDepth: stemLen,
+		baseDepth: spacerTop,
 		product: snap(stemProduct) || { name: "Stemming", density: 2.1 }
 	}));
 
-	// Top charge
+	// Deck 2: Gas bag spacer (SPACER, fixed length)
+	hc.decks.push(new Deck({
+		holeID: hc.holeID,
+		deckType: DECK_TYPES.SPACER,
+		topDepth: spacerTop,
+		baseDepth: spacerBase,
+		product: snap(gasBagProduct) || { name: "Gas Bag", density: 0.01 }
+	}));
+
+	// Deck 3: Air deck (INERT, fills gap)
+	if (airBase > airTop + 0.01) {
+		hc.decks.push(new Deck({
+			holeID: hc.holeID,
+			deckType: DECK_TYPES.INERT,
+			topDepth: airTop,
+			baseDepth: airBase,
+			product: { name: "Air", density: 0.0012 }
+		}));
+	}
+
+	// Deck 4: Charge (COUPLED, at bottom)
 	hc.decks.push(new Deck({
 		holeID: hc.holeID,
 		deckType: DECK_TYPES.COUPLED,
-		topDepth: stemLen,
-		baseDepth: topChargeBase,
+		topDepth: chargeTop,
+		baseDepth: chargeBase,
 		product: snap(chargeProduct) || { name: "Explosive", density: 0.85 }
 	}));
 
-	// Air deck (gas bag or air)
-	hc.decks.push(new Deck({
-		holeID: hc.holeID,
-		deckType: gasBagProduct ? DECK_TYPES.SPACER : DECK_TYPES.INERT,
-		topDepth: airTop,
-		baseDepth: airBase,
-		product: snap(gasBagProduct) || { name: "Air", density: 0.0012 }
-	}));
+	// Primer depth: use formula from config, or default 90% into charge
+	var actualChargeLen = chargeBase - chargeTop;
+	var primerDepth;
+	if (config.primerDepthFromCollar != null && isFormula(String(config.primerDepthFromCollar))) {
+		primerDepth = evaluateFormula(String(config.primerDepthFromCollar), {
+			holeLength: holeLen, chargeLength: actualChargeLen,
+			chargeTop: chargeTop, chargeBase: chargeBase,
+			stemLength: stemLen, holeDiameter: (hole.holeDiameter || 115)
+		});
+		if (primerDepth == null) primerDepth = chargeBase - actualChargeLen * 0.1;
+	} else if (typeof config.primerDepthFromCollar === "number" && config.primerDepthFromCollar > 0) {
+		primerDepth = config.primerDepthFromCollar;
+	} else {
+		primerDepth = chargeBase - actualChargeLen * 0.1;
+	}
+	primerDepth = Math.max(chargeTop + 0.1, Math.min(primerDepth, chargeBase - 0.1));
 
-	// Bottom charge
-	hc.decks.push(new Deck({
-		holeID: hc.holeID,
-		deckType: DECK_TYPES.COUPLED,
-		topDepth: bottomChargeTop,
-		baseDepth: holeLen,
-		product: snap(chargeProduct) || { name: "Explosive", density: 0.85 }
-	}));
-
-	// Primer in bottom charge
-	var primerDepth = holeLen * 0.9;
 	hc.addPrimer(new Primer({
 		holeID: hc.holeID,
 		lengthFromCollar: primerDepth,
@@ -593,5 +633,117 @@ function applyPresplit(hole, config) {
 function applyNoCharge(hole, config) {
 	var hc = new HoleCharging(hole);
 	// Already initialized with default Air deck
+	return hc;
+}
+
+// ============================================================
+// CUSTOM: Apply a saved multi-deck template (deckTemplate array)
+// Each entry: { type, product, lengthMode, length, hasPrimer }
+// lengthMode "fixed" = exact meters, "fill" = absorb remainder
+// ============================================================
+
+function applyCustomTemplate(hole, config) {
+	var hc = new HoleCharging(hole);
+	hc.clear();
+	hc.decks = [];
+
+	var holeLen = Math.abs(hc.holeLength);
+	if (holeLen <= 0) return hc;
+
+	var template = config.deckTemplate;
+	var boosterProduct = findProduct(config.boosterProduct);
+	var detProduct = findProduct(config.detonatorProduct);
+
+	// First pass: sum fixed lengths, find fill deck index
+	var totalFixed = 0;
+	var fillIndex = -1;
+	for (var t = 0; t < template.length; t++) {
+		if (template[t].lengthMode === "fill") {
+			fillIndex = t;
+		} else {
+			totalFixed += template[t].length || 0;
+		}
+	}
+
+	// Calculate fill length
+	var fillLen = Math.max(0.1, holeLen - totalFixed);
+
+	// Second pass: lay out decks from collar down
+	var cursor = 0;
+	for (var i = 0; i < template.length; i++) {
+		var entry = template[i];
+		var deckLen = (entry.lengthMode === "fill") ? fillLen : (entry.length || 0);
+
+		// If we'd exceed the hole, truncate
+		if (cursor + deckLen > holeLen) {
+			deckLen = holeLen - cursor;
+		}
+		if (deckLen <= 0) continue;
+
+		var product = findProduct(entry.product);
+		var deckType = entry.type || DECK_TYPES.INERT;
+
+		hc.decks.push(new Deck({
+			holeID: hc.holeID,
+			deckType: deckType,
+			topDepth: parseFloat(cursor.toFixed(3)),
+			baseDepth: parseFloat((cursor + deckLen).toFixed(3)),
+			product: snap(product) || { name: entry.product || "Unknown", density: 0 }
+		}));
+
+		cursor += deckLen;
+	}
+
+	// Place primer in the deepest charge deck
+	var chargeDeckIdx = -1;
+	for (var c = hc.decks.length - 1; c >= 0; c--) {
+		var dt = hc.decks[c].deckType;
+		if (dt === DECK_TYPES.COUPLED || dt === DECK_TYPES.DECOUPLED) {
+			chargeDeckIdx = c;
+			break;
+		}
+	}
+
+	if (chargeDeckIdx >= 0) {
+		var chargeDeck = hc.decks[chargeDeckIdx];
+		var chargeTop = chargeDeck.topDepth;
+		var chargeBase = chargeDeck.baseDepth;
+		var actualChargeLen = chargeBase - chargeTop;
+
+		var primerDepth;
+		if (config.primerDepthFromCollar != null && isFormula(String(config.primerDepthFromCollar))) {
+			primerDepth = evaluateFormula(String(config.primerDepthFromCollar), {
+				holeLength: holeLen, chargeLength: actualChargeLen,
+				chargeTop: chargeTop, chargeBase: chargeBase,
+				stemLength: chargeTop, holeDiameter: (hole.holeDiameter || 115)
+			});
+			if (primerDepth == null) primerDepth = chargeBase - actualChargeLen * 0.1;
+		} else if (typeof config.primerDepthFromCollar === "number" && config.primerDepthFromCollar > 0) {
+			primerDepth = config.primerDepthFromCollar;
+		} else {
+			primerDepth = chargeBase - actualChargeLen * 0.1;
+		}
+		primerDepth = Math.max(chargeTop + 0.1, Math.min(primerDepth, chargeBase - 0.1));
+
+		hc.addPrimer(new Primer({
+			holeID: hc.holeID,
+			lengthFromCollar: primerDepth,
+			detonator: {
+				productID: detProduct ? detProduct.productID : null,
+				productName: detProduct ? detProduct.name : null,
+				initiatorType: detProduct ? (detProduct.initiatorType || detProduct.productType) : null,
+				deliveryVodMs: detProduct ? (detProduct.deliveryVodMs || 0) : 0,
+				delayMs: 0
+			},
+			booster: {
+				productID: boosterProduct ? boosterProduct.productID : null,
+				productName: boosterProduct ? boosterProduct.name : null,
+				quantity: 1,
+				massGrams: boosterProduct ? boosterProduct.massGrams : null
+			}
+		}));
+	}
+
+	hc.sortDecks();
 	return hc;
 }

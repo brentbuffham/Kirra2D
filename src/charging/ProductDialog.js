@@ -102,7 +102,7 @@ export function showProductManagerDialog() {
 	function refreshTable() {
 		tbody.innerHTML = "";
 		productsMap = window.loadedProducts || new Map();
-		productsMap.forEach(function(product, productID) {
+		productsMap.forEach(function (product, productID) {
 			var row = document.createElement("tr");
 			row.style.cursor = "pointer";
 			row.style.borderBottom = "1px solid #444";
@@ -120,14 +120,14 @@ export function showProductManagerDialog() {
 				'<td style="padding: 3px 6px; text-align: right;">' + (product.density != null ? product.density.toFixed(3) : "-") + "</td>" +
 				'<td style="padding: 3px 6px; text-align: center;"><span style="display:inline-block;width:16px;height:16px;border-radius:2px;border:1px solid #999;background:' + (product.colorHex || "#ccc") + ';"></span></td>';
 
-			row.addEventListener("click", function() {
+			row.addEventListener("click", function () {
 				selectedProductID = productID;
 				refreshTable();
 			});
 
-			row.addEventListener("dblclick", function() {
+			row.addEventListener("dblclick", function () {
 				selectedProductID = productID;
-				showEditProductDialog(product, function(updatedProduct) {
+				showEditProductDialog(product, function (updatedProduct) {
 					productsMap.set(productID, updatedProduct);
 					window.loadedProducts = productsMap;
 					triggerProductSave();
@@ -142,8 +142,8 @@ export function showProductManagerDialog() {
 	refreshTable();
 
 	// Button handlers - dialog stays open, sub-dialogs overlay on top
-	addBtn.addEventListener("click", function() {
-		showAddProductDialog(function(newProduct) {
+	addBtn.addEventListener("click", function () {
+		showAddProductDialog(function (newProduct) {
 			productsMap.set(newProduct.productID, newProduct);
 			window.loadedProducts = productsMap;
 			triggerProductSave();
@@ -152,11 +152,11 @@ export function showProductManagerDialog() {
 		});
 	});
 
-	editBtn.addEventListener("click", function() {
+	editBtn.addEventListener("click", function () {
 		if (!selectedProductID) return;
 		var product = productsMap.get(selectedProductID);
 		if (!product) return;
-		showEditProductDialog(product, function(updatedProduct) {
+		showEditProductDialog(product, function (updatedProduct) {
 			productsMap.set(selectedProductID, updatedProduct);
 			window.loadedProducts = productsMap;
 			triggerProductSave();
@@ -164,7 +164,7 @@ export function showProductManagerDialog() {
 		});
 	});
 
-	deleteBtn.addEventListener("click", function() {
+	deleteBtn.addEventListener("click", function () {
 		if (!selectedProductID) return;
 		var product = productsMap.get(selectedProductID);
 		if (!product) return;
@@ -173,7 +173,7 @@ export function showProductManagerDialog() {
 			"Delete product '" + product.name + "'?",
 			"Delete",
 			"Cancel",
-			function() {
+			function () {
 				productsMap.delete(selectedProductID);
 				window.loadedProducts = productsMap;
 				triggerProductSave();
@@ -235,11 +235,22 @@ function showAddProductDialog(onSave) {
 	var fieldsContainer = document.createElement("div");
 	contentDiv.appendChild(fieldsContainer);
 
-	function buildFields(cat) {
+	function buildFields(cat, existingFormData) {
 		fieldsContainer.innerHTML = "";
-		var fields = getFieldsForCategory(cat, null);
+		var fields = getFieldsForCategory(cat, existingFormData);
 		var form = createEnhancedFormContent(fields);
 		fieldsContainer.appendChild(form);
+		// For Initiator category, listen for initiatorType change to rebuild conditional fields
+		if (cat === "Initiator") {
+			var initSelect = form.querySelector('select[name="initiatorType"]');
+			if (initSelect) {
+				initSelect.addEventListener("change", function () {
+					var currentData = getFormData(fieldsContainer);
+					currentData.initiatorType = this.value;
+					buildFields(cat, currentData);
+				});
+			}
+		}
 	}
 
 	buildFields(category);
@@ -247,9 +258,9 @@ function showAddProductDialog(onSave) {
 	// Listen for category change
 	var catSelect = categoryForm.querySelector('select[name="productCategory"]');
 	if (catSelect) {
-		catSelect.addEventListener("change", function() {
+		catSelect.addEventListener("change", function () {
 			category = this.value;
-			buildFields(category);
+			buildFields(category, null);
 		});
 	}
 
@@ -264,7 +275,7 @@ function showAddProductDialog(onSave) {
 		draggable: true,
 		resizable: true,
 		layoutType: "standard",
-		onConfirm: function() {
+		onConfirm: function () {
 			var catData = getFormData(categoryForm);
 			var fieldData = getFormData(fieldsContainer);
 			var merged = Object.assign({}, catData, fieldData);
@@ -282,7 +293,6 @@ function showAddProductDialog(onSave) {
  */
 function showEditProductDialog(product, onSave) {
 	var json = product.toJSON();
-	var fields = getFieldsForCategory(json.productCategory, json);
 
 	// Add category as read-only info
 	var categoryLabel = document.createElement("div");
@@ -291,11 +301,32 @@ function showEditProductDialog(product, onSave) {
 	categoryLabel.style.color = "#999";
 	categoryLabel.textContent = "Category: " + (CATEGORY_LABELS[json.productCategory] || json.productCategory);
 
-	var formContent = createEnhancedFormContent(fields);
+	// Dynamic fields container for initiatorType rebuild
+	var fieldsContainer = document.createElement("div");
+
+	function buildEditFields(data) {
+		fieldsContainer.innerHTML = "";
+		var fields = getFieldsForCategory(json.productCategory, data);
+		var form = createEnhancedFormContent(fields);
+		fieldsContainer.appendChild(form);
+		// For Initiator category, listen for initiatorType change
+		if (json.productCategory === "Initiator") {
+			var initSelect = form.querySelector('select[name="initiatorType"]');
+			if (initSelect) {
+				initSelect.addEventListener("change", function () {
+					var currentData = getFormData(fieldsContainer);
+					currentData.initiatorType = this.value;
+					buildEditFields(currentData);
+				});
+			}
+		}
+	}
+
+	buildEditFields(json);
 
 	var contentDiv = document.createElement("div");
 	contentDiv.appendChild(categoryLabel);
-	contentDiv.appendChild(formContent);
+	contentDiv.appendChild(fieldsContainer);
 
 	var dialog = new FloatingDialog({
 		title: "Edit Product: " + product.name,
@@ -308,8 +339,8 @@ function showEditProductDialog(product, onSave) {
 		draggable: true,
 		resizable: true,
 		layoutType: "standard",
-		onConfirm: function() {
-			var formData = getFormData(formContent);
+		onConfirm: function () {
+			var formData = getFormData(fieldsContainer);
 			formData.productCategory = json.productCategory;
 			formData.productID = json.productID;
 			formData.created = json.created;
@@ -327,7 +358,7 @@ function showEditProductDialog(product, onSave) {
  */
 function getFieldsForCategory(category, existingData) {
 	var d = existingData || {};
-	var typeOptions = (PRODUCT_TYPE_OPTIONS[category] || []).map(function(t) {
+	var typeOptions = (PRODUCT_TYPE_OPTIONS[category] || []).map(function (t) {
 		return { value: t, text: t };
 	});
 
@@ -366,31 +397,52 @@ function getFieldsForCategory(category, existingData) {
 			{ label: "Cap Sensitive", name: "capSensitive", type: "checkbox", checked: d.capSensitive || false }
 		);
 	} else if (category === "Initiator") {
+		var initType = d.initiatorType || "Electronic";
 		fields.push(
-			{ label: "Initiator Type", name: "initiatorType", type: "select", value: d.initiatorType || "Electronic", options: [
-				{ value: "Electronic", text: "Electronic" },
-				{ value: "ShockTube", text: "Shock Tube" },
-				{ value: "Electric", text: "Electric" },
-				{ value: "DetonatingCord", text: "Detonating Cord" }
-			]},
-			{ label: "Delivery VOD (m/s)", name: "deliveryVodMs", type: "number", value: d.deliveryVodMs != null ? d.deliveryVodMs : "", step: "1" },
-			{ label: "Shell Dia. (mm)", name: "shellDiameterMm", type: "number", value: d.shellDiameterMm || "7.6", step: "0.1" },
-			{ label: "Shell Len. (mm)", name: "shellLengthMm", type: "number", value: d.shellLengthMm || "98", step: "0.1" },
-			{ label: "Min Delay (ms)", name: "minDelayMs", type: "number", value: d.minDelayMs != null ? d.minDelayMs : "", step: "1" },
-			{ label: "Max Delay (ms)", name: "maxDelayMs", type: "number", value: d.maxDelayMs || "", step: "1" },
-			{ label: "Delay Inc. (ms)", name: "delayIncrementMs", type: "number", value: d.delayIncrementMs || "", step: "0.1" },
-			{ label: "Delay Series (;)", name: "delaySeriesMs", type: "text", value: d.delaySeriesMs ? (Array.isArray(d.delaySeriesMs) ? d.delaySeriesMs.join(";") : d.delaySeriesMs) : "" },
-			{ label: "Core Load (g/m)", name: "coreLoadGramsPerMeter", type: "number", value: d.coreLoadGramsPerMeter || "", step: "1" }
+			{
+				label: "Initiator Type", name: "initiatorType", type: "select", value: initType, options: [
+					{ value: "Electronic", text: "Electronic" },
+					{ value: "ShockTube", text: "Shock Tube" },
+					{ value: "Electric", text: "Electric" },
+					{ value: "DetonatingCord", text: "Detonating Cord" },
+					{ value: "SurfaceConnector", text: "Surface Connector" },
+					{ value: "SurfaceWire", text: "Surface Wire" },
+					{ value: "SurfaceCord", text: "Surface Cord" }
+				]
+			},
+			{ label: "Delivery VOD (m/s)", name: "deliveryVodMs", type: "number", value: d.deliveryVodMs != null ? d.deliveryVodMs : "", step: "1" }
 		);
+		// Programmable delay fields: Electronic and SurfaceWire only
+		if (initType === "Electronic" || initType === "SurfaceWire") {
+			fields.push(
+				{ label: "Min Delay (ms)", name: "minDelayMs", type: "number", value: d.minDelayMs != null ? d.minDelayMs : "", step: "1" },
+				{ label: "Max Delay (ms)", name: "maxDelayMs", type: "number", value: d.maxDelayMs || "", step: "1" },
+				{ label: "Delay Inc. (ms)", name: "delayIncrementMs", type: "number", value: d.delayIncrementMs || "", step: "0.1" }
+			);
+		}
+		// Fixed delay series: ShockTube, SurfaceConnector, SurfaceCord, Electric
+		if (initType === "ShockTube" || initType === "SurfaceConnector" || initType === "SurfaceCord" || initType === "Electric") {
+			fields.push(
+				{ label: "Delay Series (;)", name: "delaySeriesMs", type: "text", value: d.delaySeriesMs ? (Array.isArray(d.delaySeriesMs) ? d.delaySeriesMs.join(";") : d.delaySeriesMs) : "" }
+			);
+		}
+		// Core load: DetonatingCord only
+		if (initType === "DetonatingCord") {
+			fields.push(
+				{ label: "Core Load (g/m)", name: "coreLoadGramsPerMeter", type: "number", value: d.coreLoadGramsPerMeter || "", step: "1" }
+			);
+		}
 	} else if (category === "Spacer") {
 		fields.push(
-			{ label: "Spacer Type", name: "spacerType", type: "select", value: d.spacerType || "GasBag", options: [
-				{ value: "GasBag", text: "Gas Bag" },
-				{ value: "StemCap", text: "Stem Cap" },
-				{ value: "StemBrush", text: "Stem Brush" },
-				{ value: "StemPlug", text: "Stem Plug" },
-				{ value: "StemLock", text: "Stem Lock" }
-			]},
+			{
+				label: "Spacer Type", name: "spacerType", type: "select", value: d.spacerType || "GasBag", options: [
+					{ value: "GasBag", text: "Gas Bag" },
+					{ value: "StemCap", text: "Stem Cap" },
+					{ value: "StemBrush", text: "Stem Brush" },
+					{ value: "StemPlug", text: "Stem Plug" },
+					{ value: "StemLock", text: "Stem Lock" }
+				]
+			},
 			{ label: "Length (mm)", name: "lengthMm", type: "number", value: d.lengthMm || "", step: "0.1" },
 			{ label: "Diameter (mm)", name: "diameterMm", type: "number", value: d.diameterMm || "", step: "0.1" }
 		);
@@ -453,7 +505,7 @@ function createProductFromFormData(data) {
 			opts.coreLoadGramsPerMeter = data.coreLoadGramsPerMeter ? parseFloat(data.coreLoadGramsPerMeter) : null;
 			// Parse delay series from semicolon-separated string
 			if (data.delaySeriesMs && typeof data.delaySeriesMs === "string" && data.delaySeriesMs.trim().length > 0) {
-				opts.delaySeriesMs = data.delaySeriesMs.split(";").map(function(v) { return parseFloat(v.trim()); }).filter(function(v) { return !isNaN(v); });
+				opts.delaySeriesMs = data.delaySeriesMs.split(";").map(function (v) { return parseFloat(v.trim()); }).filter(function (v) { return !isNaN(v); });
 			}
 			// Create correct subclass based on initiatorType
 			switch (opts.initiatorType) {
@@ -481,5 +533,8 @@ function createProductFromFormData(data) {
 function triggerProductSave() {
 	if (typeof window.debouncedSaveProducts === "function") {
 		window.debouncedSaveProducts();
+	}
+	if (typeof window.buildSurfaceConnectorPresets === "function") {
+		window.buildSurfaceConnectorPresets();
 	}
 }

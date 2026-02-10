@@ -108,8 +108,10 @@ var README_CONTENT = [
     "  SIMPLE_SINGLE    - One stemming deck + one coupled deck + one primer",
     "  STNDVS           - Standard vented stemming (stem + charge + air top)",
     "  STNDFS           - Standard fixed stem (stem + fill rest with explosive)",
+    "  ST5050           - 50/50 stem and charge split (alias for STNDFS with chargeRatio)",
     "  AIRDEC           - Air deck design (charge + air separation)",
     "  PRESPL           - Presplit charges (packaged products)",
+    "  PRESPLIT          - Presplit charges (alias for PRESPL)",
     "  NOCHG            - Do not charge",
     "  CUSTOM           - User-defined via drag-drop builder",
     "",
@@ -152,6 +154,29 @@ var README_CONTENT = [
     "  spacerType              |         |          |          |           |   x",
     "  description             |    o    |    o     |    o     |     o     |   o",
     "",
+    "FORMULA GUIDE (primerDepthFromCollar):",
+    "  The primerDepthFromCollar column supports formulas prefixed with fx:",
+    "  Formulas are Excel-safe (will not be interpreted as spreadsheet formulas).",
+    "",
+    "  Available variables:",
+    "    holeLength    - Total hole length in metres (collar to toe)",
+    "    chargeLength  - Length of the charge deck in metres",
+    "    chargeTop     - Depth from collar to top of charge deck (m)",
+    "    chargeBase    - Depth from collar to bottom of charge deck (m)",
+    "    stemLength    - Length of stemming from collar (m)",
+    "    holeDiameter  - Hole diameter in millimetres",
+    "",
+    "  Math functions supported:",
+    "    Math.min(a, b)   Math.max(a, b)   Math.abs(x)",
+    "    Math.sqrt(x)     Math.PI          Math.round(x)",
+    "",
+    "  Examples:",
+    "    fx:chargeBase - chargeLength * 0.1     Primer at 90% depth into charge",
+    "    fx:holeLength * 0.9                    Primer at 90% of total hole",
+    "    fx:Math.max(chargeTop + 1, chargeBase - 0.5)   At least 1m below charge top",
+    "",
+    "  If the formula is omitted or blank, primer defaults to 90% of hole length.",
+    "",
     "NOTES:",
     "  - Leave cells blank for optional/not-applicable fields",
     "  - Density is in g/cc (grams per cubic centimeter)",
@@ -174,23 +199,22 @@ var EXAMPLE_PRODUCT_DATA = [
     // --- HighExplosive ---
     { productCategory: "HighExplosive", productType: "Booster", name: "BS400G", density: 1.6, colorHex: "#FF0000", vodMs: 7500, reKjKg: 5200, waterResistant: true, massGrams: 400, diameterMm: 76, lengthMm: 110, description: "400 gram cast pentolite booster" },
     { productCategory: "HighExplosive", productType: "PackagedEmulsion", name: "PKG75mm", density: 1.15, colorHex: "#AA0044", vodMs: 5000, reKjKg: 3400, waterResistant: true, massGrams: 2300, diameterMm: 75, lengthMm: 320, description: "75mm packaged det sensitive emulsion" },
-    // Initiators all need to have a colour. We will use the colorHex field to set the colour.
+    { productCategory: "HighExplosive", productType: "PackagedEmulsion", name: "PRE32MM", density: 1.2, colorHex: "#770040", vodMs: 5000, reKjKg: 3400, waterResistant: true, massGrams: 2300, diameterMm: 32, lengthMm: 400, description: "32mm packaged det sensitive emulsion" },
     // --- Initiator --- Generic Programmable Electronic Detonator
-    { productCategory: "Initiator", productType: "Electronic", name: "GENERIC-E", initiatorType: "Electronic", deliveryVodMs: 0, shellDiameterMm: 7.6, shellLengthMm: 98, minDelayMs: 0, maxDelayMs: 20000, delayIncrementMs: 1, colorHex: "#0000FF", description: "Generic Programmable Electronic Detonator" },
+    { productCategory: "Initiator", productType: "Electronic", name: "GENERIC-E", initiatorType: "Electronic", deliveryVodMs: 0, minDelayMs: 0, maxDelayMs: 20000, delayIncrementMs: 1, colorHex: "#0000FF", description: "Generic Programmable Electronic Detonator" },
     // --- Initiator --- Shocktube Millisecond Downhole Detonator
-    { productCategory: "Initiator", productType: "ShockTube", name: "GENERIC-MS", initiatorType: "ShockTube", deliveryVodMs: 2000, shellDiameterMm: 7.6, shellLengthMm: 98, delaySeriesMs: [400, 450, 500], colorHex: "#00BFFF", description: "Shocktube Millisecond Downhole Detonator" },
-    // --- Initiator --- Surface Connector - ( this will populate the connector tool box as a preset connectors)
-    // Initiators all need to have a colour. We will use the colorHex field to set the colour.
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-009", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, shellDiameterMm: 7.6, shellLengthMm: 98, delaySeriesMs: [9], colorHex: "#FF0000", description: "9ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-017", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, shellDiameterMm: 7.6, shellLengthMm: 98, delaySeriesMs: [17], colorHex: "#FF6600", description: "17ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-025", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, shellDiameterMm: 7.6, shellLengthMm: 98, delaySeriesMs: [25], colorHex: "#FFCC00", description: "25ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-042", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, shellDiameterMm: 7.6, shellLengthMm: 98, delaySeriesMs: [42], colorHex: "#00CC00", description: "42ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-067", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, shellDiameterMm: 7.6, shellLengthMm: 98, delaySeriesMs: [67], colorHex: "#0066FF", description: "65ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-109", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, shellDiameterMm: 7.6, shellLengthMm: 98, delaySeriesMs: [109], colorHex: "#9900FF", description: "109ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    // --- Initiator --- Harness Wire - (this will be a future developement for electronic detonators)
-    { productCategory: "Initiator", productType: "HarnessWire", name: "HW-02MM", initiatorType: "HarnessWire", deliveryVodMs: 30000000, shellDiameterMm: 0, shellLengthMm: 0, delaySeriesMs: [], colorHex: "#FFD700", description: "2mm Harness Wire - Electronic Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "GENERIC-MS", initiatorType: "ShockTube", deliveryVodMs: 2000, delaySeriesMs: [400, 450, 500], colorHex: "#00BFFF", description: "Shocktube Millisecond Downhole Detonator" },
+    // --- Initiator --- Surface Connector (populates connector toolbar presets)
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-009", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [9], colorHex: "#22CC00", description: "9ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-017", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [17], colorHex: "#FFCC00", description: "17ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-025", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [25], colorHex: "#DD0000", description: "25ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-042", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [42], colorHex: "#BBBBBB", description: "42ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-067", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [67], colorHex: "#0055DD", description: "65ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-109", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [109], colorHex: "#550066", description: "109ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    // --- Initiator --- Harness Wire (future development for electronic detonators)
+    { productCategory: "Initiator", productType: "HarnessWire", name: "HW-02MM", initiatorType: "SurfaceWire", deliveryVodMs: 30000000, delaySeriesMs: [0], colorHex: "#555522", description: "2mm Harness Wire - Electronic Detonator" },
     // --- Initiator --- Detonating Cord
-    { productCategory: "Initiator", productType: "DetonatingCord", name: "10GRAMCORD", initiatorType: "DetonatingCord", deliveryVodMs: 7000, coreLoadGramsPerMeter: 10, colorHex: "#FF4500", description: "10 gram per meter detonating cord" },
+    { productCategory: "Initiator", productType: "DetonatingCord", name: "10GCORD", initiatorType: "DetonatingCord", deliveryVodMs: 7000, coreLoadGramsPerMeter: 10, colorHex: "#AA0000", description: "10 gram per meter detonating cord" },
     // --- Spacer ---
     { productCategory: "Spacer", productType: "GasBag", name: "GB230MM", density: 0.06, colorHex: "#ADD8E6", spacerType: "GasBag", diameterMm: 230, lengthMm: 400, description: "230mm gas bag 400mm in Length" }
 ];
@@ -228,7 +252,7 @@ var EXAMPLE_CONFIG_DATA = [
         description: "Single stemming + charge + primer"
     },
     {
-        configCode: "STNDFS",
+        configCode: "ST5050",
         configName: "50/50 Stem and Charge",
         stemmingProduct: "Crushed Rock Stemming",
         chargeProduct: "ANFO",
@@ -236,6 +260,7 @@ var EXAMPLE_CONFIG_DATA = [
         detonatorProduct: "GENERIC-MS",
         preferredStemLength: 3.5,
         minStemLength: 2.0,
+        preferredChargeLength: 6.0,
         minChargeLength: 2.0,
         useMassOverLength: false,
         chargeRatio: 0.5,
@@ -252,6 +277,7 @@ var EXAMPLE_CONFIG_DATA = [
         detonatorProduct: "GENERIC-MS",
         preferredStemLength: 3.5,
         minStemLength: 2.0,
+        preferredChargeLength: 6.0,
         minChargeLength: 1.0,
         useMassOverLength: true,
         targetChargeMassKg: 20,
@@ -269,17 +295,41 @@ var EXAMPLE_CONFIG_DATA = [
         gasBagProduct: "GB230MM",
         preferredStemLength: 3.0,
         minStemLength: 2.0,
+        preferredChargeLength: 6.0,
         minChargeLength: 2.0,
         useMassOverLength: false,
         airDeckLength: 1.0,
         primerInterval: 8.0,
+        primerDepthFromCollar: "fx:chargeBase - chargeLength * 0.1",
         maxPrimersPerDeck: 3,
         description: "Stem + charge + gas bag air deck + charge"
+    },
+    {
+        configCode: "PRESPLIT",
+        configName: "Presplit Charging",
+        stemmingProduct: "Air",
+        chargeProduct: "PRE32MM",
+        detonatorProduct: "10GCORD",
+        preferredStemLength: 2.2,
+        minStemLength: 2.0,
+        preferredChargeLength: 23.0,
+        minChargeLength: 7.0,
+        useMassOverLength: false,
+        primerInterval: 20.0,
+        maxPrimersPerDeck: 0,
+        description: "AirStem (Vented) + charge"
     },
     {
         configCode: "NOCHG",
         configName: "No Charge",
         stemmingProduct: "Air",
+        preferredStemLength: 3.5,
+        minStemLength: 2.5,
+        preferredChargeLength: 6.0,
+        minChargeLength: 2.0,
+        useMassOverLength: false,
+        primerInterval: 8.0,
+        maxPrimersPerDeck: 3,
         description: "Do not charge - leave hole empty"
     }
 ];
@@ -585,7 +635,7 @@ export function clearAllProducts() {
         "This will permanently remove all " + count + " product(s).\nThis cannot be reverted.\n\nExport your configuration first if needed.",
         "Clear All",
         "Cancel",
-        function() {
+        function () {
             window.loadedProducts.clear();
             if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
             // Rebuild connector presets (now empty)
@@ -615,7 +665,7 @@ export function clearAllChargeConfigs() {
         "This will permanently remove all " + count + " charge rule(s).\nThis cannot be reverted.\n\nExport your configuration first if needed.",
         "Clear All",
         "Cancel",
-        function() {
+        function () {
             window.loadedChargeConfigs.clear();
             if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
             if (typeof window.showModalMessage === "function") {
@@ -626,15 +676,8 @@ export function clearAllChargeConfigs() {
 }
 
 /**
- * Backup (export) only products as a ZIP file.
+ * Backup (export) all products and charge configs as a single ZIP file.
  */
-export async function backupProducts() {
-    await exportCurrentConfig(window.loadedProducts || new Map(), new Map());
-}
-
-/**
- * Backup (export) only charge configs as a ZIP file.
- */
-export async function backupChargeConfigs() {
-    await exportCurrentConfig(new Map(), window.loadedChargeConfigs || new Map());
+export async function backupChargingConfig() {
+    await exportCurrentConfig(window.loadedProducts || new Map(), window.loadedChargeConfigs || new Map());
 }

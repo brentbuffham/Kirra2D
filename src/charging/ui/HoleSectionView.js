@@ -163,6 +163,7 @@ export class HoleSectionView {
 		this._depthScale = 1;
 		this._minDepth = 0;
 		this._maxDepth = 10;
+		this._fontScale = 1;
 		this._dpr = window.devicePixelRatio || 1;
 
 		// Decoupled inset ratio (fraction of hole width to inset on each side)
@@ -226,6 +227,14 @@ export class HoleSectionView {
 	}
 
 	/**
+	 * Build a CSS font string scaled by _fontScale
+	 */
+	_scaledFont(basePx, weight) {
+		var sz = Math.round(basePx * this._fontScale);
+		return (weight ? weight + " " : "") + sz + "px sans-serif";
+	}
+
+	/**
 	 * Main draw method - renders the full section view
 	 */
 	draw() {
@@ -248,11 +257,14 @@ export class HoleSectionView {
 
 		if (!this.holeCharging || this.holeCharging.decks.length === 0) {
 			ctx.fillStyle = theme.textSecondary;
-			ctx.font = "13px sans-serif";
+			ctx.font = this._scaledFont(13);
 			ctx.textAlign = "center";
 			ctx.fillText("No charging data - drag products from palette", cssW / 2, cssH / 2);
 			return;
 		}
+
+		// Font scale: at 350px, scale=1.0; smaller canvases get proportionally larger text
+		this._fontScale = Math.max(0.8, Math.min(1.5, cssW / 350));
 
 		var hc = this.holeCharging;
 		var pad = this.padding;
@@ -315,7 +327,7 @@ export class HoleSectionView {
 
 		// Draw collar label
 		ctx.fillStyle = theme.collarToeLabel;
-		ctx.font = "bold 11px sans-serif";
+		ctx.font = this._scaledFont(11, "bold");
 		ctx.textAlign = "center";
 		ctx.textBaseline = "bottom";
 		ctx.fillText("COLLAR  (0.0m)", holeX + holeW / 2, holeY - 4);
@@ -421,34 +433,34 @@ export class HoleSectionView {
 
 			if (deckH > 50) {
 				// Full detail: type, name, density/length/mass
-				ctx.font = "bold 10px sans-serif";
+				ctx.font = this._scaledFont(10, "bold");
 				ctx.fillStyle = textColor;
 				ctx.fillText(deck.deckType, centerX, centerY - 16);
 
-				ctx.font = "10px sans-serif";
+				ctx.font = this._scaledFont(10);
 				var productName = deck.product ? deck.product.name : "Empty";
 				ctx.fillText(productName, centerX, centerY - 2);
 
-				ctx.font = "9px sans-serif";
+				ctx.font = this._scaledFont(9);
 				ctx.fillText(
 					density.toFixed(2) + " g/cc  " + deckLen.toFixed(1) + "m  " + mass.toFixed(1) + "kg",
 					centerX, centerY + 12
 				);
 			} else if (deckH > 35) {
 				// Name + density/length/mass
-				ctx.font = "bold 10px sans-serif";
+				ctx.font = this._scaledFont(10, "bold");
 				ctx.fillStyle = textColor;
 				var label = deck.product ? deck.product.name : deck.deckType;
 				ctx.fillText(label, centerX, centerY - 6);
 
-				ctx.font = "9px sans-serif";
+				ctx.font = this._scaledFont(9);
 				ctx.fillText(
 					density.toFixed(2) + "g/cc  " + deckLen.toFixed(1) + "m  " + mass.toFixed(1) + "kg",
 					centerX, centerY + 8
 				);
 			} else {
 				// Just name
-				ctx.font = "bold 9px sans-serif";
+				ctx.font = this._scaledFont(9, "bold");
 				ctx.fillStyle = textColor;
 				ctx.fillText(deck.product ? deck.product.name : deck.deckType, centerX, centerY);
 			}
@@ -462,7 +474,7 @@ export class HoleSectionView {
 		// Depth labels on right side
 		var labelX = hr.x + hr.w + 5;
 		ctx.fillStyle = theme.depthLabel;
-		ctx.font = "9px sans-serif";
+		ctx.font = this._scaledFont(9);
 		ctx.textAlign = "left";
 		ctx.textBaseline = "middle";
 		ctx.fillText(deck.topDepth.toFixed(1) + "m", labelX, y1);
@@ -499,14 +511,14 @@ export class HoleSectionView {
 		var infoStr = productName;
 
 		ctx.fillStyle = theme.text;
-		ctx.font = "9px sans-serif";
+		ctx.font = this._scaledFont(9);
 		ctx.textAlign = "right";
 		ctx.textBaseline = "middle";
 
 		// Line 1: name
 		ctx.fillText(infoStr, popX - 2, centerY - 7);
 		// Line 2: density, length, mass
-		ctx.font = "8px sans-serif";
+		ctx.font = this._scaledFont(8);
 		ctx.fillStyle = theme.textSecondary;
 		ctx.fillText(
 			density.toFixed(2) + "g/cc " + deckLen.toFixed(2) + "m " + mass.toFixed(1) + "kg",
@@ -643,7 +655,7 @@ export class HoleSectionView {
 		ctx.setLineDash([]);
 
 		ctx.fillStyle = theme.text;
-		ctx.font = "8px sans-serif";
+		ctx.font = this._scaledFont(8);
 		ctx.textAlign = "right";
 		ctx.textBaseline = "middle";
 		var labelStr = labelParts.join(" + ");
@@ -656,16 +668,34 @@ export class HoleSectionView {
 		ctx.fillStyle = theme.depthLabel;
 		ctx.fillText("@ " + primer.lengthFromCollar.toFixed(1) + "m", rightX, y);
 
-		// Detonating cord trace line
-		if (primer.detonator && primer.detonator.initiatorType === "DetonatingCord") {
-			ctx.strokeStyle = DECK_COLORS.DETONATING_CORD;
-			ctx.lineWidth = 1.5;
-			ctx.setLineDash([4, 3]);
-			ctx.beginPath();
-			ctx.moveTo(centerX + markerW / 2 + 2, y);
-			ctx.lineTo(centerX + markerW / 2 + 2, hr.y);
-			ctx.stroke();
-			ctx.setLineDash([]);
+		// Downhole trace line from primer to collar
+		if (primer.detonator && primer.detonator.initiatorType) {
+			var initType = primer.detonator.initiatorType;
+			var lineColor = null;
+			var lineW = 1.5;
+			var dashPattern = [4, 3];
+			if (initType === "DetonatingCord") {
+				lineColor = DECK_COLORS.DETONATING_CORD;
+				lineW = 1.5;
+			} else if (initType === "ShockTube") {
+				lineColor = DECK_COLORS.SHOCK_TUBE_LINE;
+				lineW = 1;
+				dashPattern = [3, 3];
+			} else if (initType === "Electronic") {
+				lineColor = DECK_COLORS.ELECTRONIC_LINE;
+				lineW = 1;
+				dashPattern = [2, 4];
+			}
+			if (lineColor) {
+				ctx.strokeStyle = lineColor;
+				ctx.lineWidth = lineW;
+				ctx.setLineDash(dashPattern);
+				ctx.beginPath();
+				ctx.moveTo(centerX + markerW / 2 + 2, y);
+				ctx.lineTo(centerX + markerW / 2 + 2, hr.y);
+				ctx.stroke();
+				ctx.setLineDash([]);
+			}
 		}
 	}
 

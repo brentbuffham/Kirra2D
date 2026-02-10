@@ -254,7 +254,7 @@ import {
 import { showProductManagerDialog } from "./charging/ProductDialog.js";
 import { showDeckBuilderDialog } from "./charging/ui/DeckBuilderDialog.js";
 import { applyChargeRule } from "./charging/rules/SimpleRuleEngine.js";
-import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip, clearAllProducts, clearAllChargeConfigs, backupProducts, backupChargeConfigs } from "./charging/ConfigImportExport.js";
+import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip, clearAllProducts, clearAllChargeConfigs, backupChargingConfig } from "./charging/ConfigImportExport.js";
 import { buildSurfaceConnectorPresets } from "./charging/ui/ConnectorPresets.js";
 //=================================================
 // KAP Project File IO
@@ -780,8 +780,7 @@ function exposeGlobalsToWindow() {
 	window.buildSurfaceConnectorPresets = buildSurfaceConnectorPresets;
 	window.clearAllProducts = clearAllProducts;
 	window.clearAllChargeConfigs = clearAllChargeConfigs;
-	window.backupProducts = backupProducts;
-	window.backupChargeConfigs = backupChargeConfigs;
+	window.backupChargingConfig = backupChargingConfig;
 	window.debouncedUpdateTreeView = debouncedUpdateTreeView;
 	window.clearCurrentDrawingEntity = clearCurrentDrawingEntity;
 	window.addPointDraw = addPointDraw;
@@ -35449,17 +35448,10 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	const backupProductsBtn = document.getElementById("backupProductsBtn");
-	if (backupProductsBtn) {
-		backupProductsBtn.addEventListener("click", function () {
-			backupProducts();
-		});
-	}
-
-	const backupConfigsBtn = document.getElementById("backupConfigsBtn");
-	if (backupConfigsBtn) {
-		backupConfigsBtn.addEventListener("click", function () {
-			backupChargeConfigs();
+	const backupChargingBtn = document.getElementById("backupChargingBtn");
+	if (backupChargingBtn) {
+		backupChargingBtn.addEventListener("click", function () {
+			backupChargingConfig();
 		});
 	}
 });

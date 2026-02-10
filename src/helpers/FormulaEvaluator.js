@@ -1,33 +1,50 @@
 /**
  * @fileoverview Safe formula evaluator for primer depth and charge calculations.
- * Formulas start with "=" and can reference hole/charge variables.
+ * Supports two prefixes:
+ *   "="   - internal/programmatic use (Kirra UI, IndexedDB)
+ *   "fx:" - Excel-safe prefix for CSV templates (won't trigger spreadsheet formula)
  *
  * Available variables: holeLength, chargeLength, chargeTop, chargeBase, stemLength, holeDiameter
- * Example: "=chargeBase - chargeLength * 0.1"
+ * Math functions available: Math.min(), Math.max(), Math.abs(), Math.PI, Math.sqrt(), etc.
+ * Examples: "=chargeBase - chargeLength * 0.1"  or  "fx:holeLength * 0.9"
  */
 
 /**
- * Check if a value is a formula string (starts with "=")
+ * Check if a value is a formula string (starts with "=" or "fx:")
  * @param {*} value
  * @returns {boolean}
  */
 export function isFormula(value) {
-	return typeof value === "string" && value.length > 1 && value.charAt(0) === "=";
+	if (typeof value !== "string" || value.length < 2) return false;
+	if (value.charAt(0) === "=") return true;
+	if (value.length > 3 && value.substring(0, 3) === "fx:") return true;
+	return false;
+}
+
+/**
+ * Strip the formula prefix ("=" or "fx:") and return the expression body.
+ * @param {string} formula
+ * @returns {string} Expression without prefix
+ */
+function stripPrefix(formula) {
+	if (formula.charAt(0) === "=") return formula.substring(1).trim();
+	if (formula.substring(0, 3) === "fx:") return formula.substring(3).trim();
+	return formula.trim();
 }
 
 /**
  * Evaluate a formula string with provided variables.
- * Strips the leading "=" and evaluates the expression in strict mode.
+ * Strips the prefix ("=" or "fx:") and evaluates the expression in strict mode.
  * Only numeric results are returned; NaN/Infinity returns null.
  *
- * @param {string} formula - Formula string starting with "="
+ * @param {string} formula - Formula string starting with "=" or "fx:"
  * @param {Object} variables - Map of variable names to numeric values
  * @returns {number|null} Evaluated result or null on error
  */
 export function evaluateFormula(formula, variables) {
 	if (!isFormula(formula)) return null;
 
-	var expr = formula.substring(1).trim();
+	var expr = stripPrefix(formula);
 	if (expr.length === 0) return null;
 
 	// Build argument names and values from variables

@@ -53,6 +53,10 @@ export class ChargeConfig {
 		// Air deck
 		this.airDeckLength = options.airDeckLength || null;
 
+		// Multi-deck template: array of { type, product, lengthMode, length }
+		// lengthMode: "fixed" = exact meters, "fill" = absorb remaining space
+		this.deckTemplate = options.deckTemplate || null;
+
 		this.created = options.created || new Date().toISOString();
 		this.modified = new Date().toISOString();
 	}
