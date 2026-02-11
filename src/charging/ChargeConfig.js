@@ -54,9 +54,15 @@ export class ChargeConfig {
 		// Air deck
 		this.airDeckLength = options.airDeckLength || null;
 
-		// Multi-deck template: array of { type, product, lengthMode, length }
-		// lengthMode: "fixed" = exact meters, "fill" = absorb remaining space
+		// Multi-deck template: array of { type, product, lengthMode, length, formula, massKg }
+		// lengthMode: "fixed" = exact meters, "fill" = absorb remaining,
+		//             "formula" = fx:expression, "mass" = kg-based, "product" = spacer (from product.lengthMm)
 		this.deckTemplate = options.deckTemplate || null;
+
+		// Multi-primer template: array of { depth, detonator, booster }
+		// depth: number (metres) or formula string "fx:chargeBase-0.3"
+		// Replaces single primerDepthFromCollar for configs with multiple primers
+		this.primerTemplate = options.primerTemplate || [];
 
 		this.created = options.created || new Date().toISOString();
 		this.modified = new Date().toISOString();

@@ -66,6 +66,54 @@ function getShortHoleTier(holeLength) {
 }
 
 /**
+ * Build indexed charge variables from laid-out decks for primer formula context.
+ * Counts COUPLED/DECOUPLED decks top-to-bottom with 1-based index.
+ * Sets ctx.chargeBase_1, ctx.chargeTop_1, ctx.chargeLength_1, etc.
+ * Also sets unindexed chargeBase/chargeTop/chargeLength to the deepest charge deck (backward compat).
+ * Sets ctx.stemLength to the topDepth of the first charge deck.
+ * @param {Array} decks - Array of Deck objects (sorted top-to-bottom)
+ * @param {Object} ctx - Formula context object to populate
+ */
+function buildIndexedChargeVars(decks, ctx) {
+	var chargeIndex = 0;
+	var deepestBase = 0;
+	var deepestTop = 0;
+	var deepestLen = 0;
+	var firstChargeTop = null;
+
+	for (var i = 0; i < decks.length; i++) {
+		var d = decks[i];
+		var dt = d.deckType;
+		if (dt === DECK_TYPES.COUPLED || dt === DECK_TYPES.DECOUPLED) {
+			chargeIndex++;
+			var cTop = d.topDepth;
+			var cBase = d.baseDepth;
+			var cLen = cBase - cTop;
+
+			ctx["chargeBase_" + chargeIndex] = cBase;
+			ctx["chargeTop_" + chargeIndex] = cTop;
+			ctx["chargeLength_" + chargeIndex] = cLen;
+
+			// Track deepest for unindexed vars
+			if (cBase >= deepestBase) {
+				deepestBase = cBase;
+				deepestTop = cTop;
+				deepestLen = cLen;
+			}
+			if (firstChargeTop === null) {
+				firstChargeTop = cTop;
+			}
+		}
+	}
+
+	// Unindexed = deepest charge deck (backward compat)
+	ctx.chargeBase = deepestBase;
+	ctx.chargeTop = deepestTop;
+	ctx.chargeLength = deepestLen;
+	ctx.stemLength = firstChargeTop !== null ? firstChargeTop : 0;
+}
+
+/**
  * Apply short-hole tier overrides to charge/stem lengths.
  * If the tier has chargeRatio 0, returns null (signals NO_CHARGE).
  * If the tier has chargeRatio, overrides charge length.
@@ -648,8 +696,10 @@ function applyNoCharge(hole, config) {
 
 // ============================================================
 // CUSTOM: Apply a saved multi-deck template (deckTemplate array)
-// Each entry: { type, product, lengthMode, length, hasPrimer }
-// lengthMode "fixed" = exact meters, "fill" = absorb remainder
+// Each entry: { type, product, lengthMode, length, formula, massKg }
+// lengthMode: "fixed" = exact meters, "fill" = absorb remainder,
+//             "formula" = fx:expression, "mass" = kg-based,
+//             "product" = spacer (length from product.lengthMm)
 // ============================================================
 
 function applyCustomTemplate(hole, config) {
@@ -663,48 +713,112 @@ function applyCustomTemplate(hole, config) {
 	var template = config.deckTemplate;
 	var boosterProduct = findProduct(config.boosterProduct);
 	var detProduct = findProduct(config.detonatorProduct);
+	var holeDiameterMm = hole.holeDiameter || 115;
 
-	// First pass: sum fixed lengths, find fill deck index
+	// Formula context for deck length formulas
+	var formulaCtx = {
+		holeLength: holeLen,
+		holeDiameter: holeDiameterMm,
+		benchHeight: hole.benchHeight || 0,
+		subdrillLength: hole.subdrillLength || 0,
+		chargeLength: 0,
+		chargeTop: 0,
+		chargeBase: holeLen,
+		stemLength: 0
+	};
+
+	// Pass 1: resolve all deck lengths, find fill deck
+	var resolvedLengths = [];
 	var totalFixed = 0;
 	var fillIndex = -1;
+
 	for (var t = 0; t < template.length; t++) {
-		if (template[t].lengthMode === "fill") {
-			fillIndex = t;
-		} else {
-			totalFixed += template[t].length || 0;
+		var entry = template[t];
+		var deckLen = 0;
+
+		switch (entry.lengthMode) {
+			case "fill":
+				fillIndex = t;
+				deckLen = 0; // resolved after totalling fixed
+				break;
+
+			case "formula":
+				if (entry.formula) {
+					var formulaStr = "fx:" + entry.formula;
+					var fLen = evaluateFormula(formulaStr, formulaCtx);
+					deckLen = (fLen != null && fLen > 0) ? fLen : (entry.length || 1.0);
+				} else {
+					deckLen = entry.length || 1.0;
+				}
+				totalFixed += deckLen;
+				break;
+
+			case "mass":
+				if (entry.massKg > 0) {
+					var massProduct = findProduct(entry.product);
+					var density = massProduct ? (massProduct.density || 0.85) : 0.85;
+					var diamM = holeDiameterMm / 1000;
+					var radiusM = diamM / 2;
+					var area = Math.PI * radiusM * radiusM;
+					var kgPerMetre = density * 1000 * area;
+					deckLen = kgPerMetre > 0 ? (entry.massKg / kgPerMetre) : 1.0;
+				} else {
+					deckLen = entry.length || 1.0;
+				}
+				totalFixed += deckLen;
+				break;
+
+			case "product":
+				// Spacer: length from product.lengthMm
+				var spacerProduct = findProduct(entry.product);
+				if (spacerProduct && spacerProduct.lengthMm > 0) {
+					deckLen = spacerProduct.lengthMm / 1000;
+				} else {
+					deckLen = 0.4; // default spacer length
+				}
+				totalFixed += deckLen;
+				break;
+
+			default: // "fixed"
+				deckLen = entry.length || 0;
+				totalFixed += deckLen;
+				break;
 		}
+
+		resolvedLengths.push(deckLen);
 	}
 
 	// Calculate fill length
-	var fillLen = Math.max(0.1, holeLen - totalFixed);
+	if (fillIndex >= 0) {
+		resolvedLengths[fillIndex] = Math.max(0.1, holeLen - totalFixed);
+	}
 
-	// Second pass: lay out decks from collar down
+	// Pass 2: lay out decks from collar down
 	var cursor = 0;
 	for (var i = 0; i < template.length; i++) {
-		var entry = template[i];
-		var deckLen = (entry.lengthMode === "fill") ? fillLen : (entry.length || 0);
+		var deckLen2 = resolvedLengths[i];
 
 		// If we'd exceed the hole, truncate
-		if (cursor + deckLen > holeLen) {
-			deckLen = holeLen - cursor;
+		if (cursor + deckLen2 > holeLen) {
+			deckLen2 = holeLen - cursor;
 		}
-		if (deckLen <= 0) continue;
+		if (deckLen2 <= 0) continue;
 
-		var product = findProduct(entry.product);
-		var deckType = entry.type || DECK_TYPES.INERT;
+		var product = findProduct(template[i].product);
+		var deckType = template[i].type || DECK_TYPES.INERT;
 
 		hc.decks.push(new Deck({
 			holeID: hc.holeID,
 			deckType: deckType,
 			topDepth: parseFloat(cursor.toFixed(3)),
-			baseDepth: parseFloat((cursor + deckLen).toFixed(3)),
-			product: snap(product) || { name: entry.product || "Unknown", density: 0 }
+			baseDepth: parseFloat((cursor + deckLen2).toFixed(3)),
+			product: snap(product) || { name: template[i].product || "Unknown", density: 0 }
 		}));
 
-		cursor += deckLen;
+		cursor += deckLen2;
 	}
 
-	// Place primer in the deepest charge deck
+	// Find deepest charge deck index for legacy single-primer fallback
 	var chargeDeckIdx = -1;
 	for (var c = hc.decks.length - 1; c >= 0; c--) {
 		var dt = hc.decks[c].deckType;
@@ -714,30 +828,81 @@ function applyCustomTemplate(hole, config) {
 		}
 	}
 
-	if (chargeDeckIdx >= 0) {
-		var chargeDeck = hc.decks[chargeDeckIdx];
-		var chargeTop = chargeDeck.topDepth;
-		var chargeBase = chargeDeck.baseDepth;
-		var actualChargeLen = chargeBase - chargeTop;
+	// Build primer formula context with indexed charge variables
+	var primerFormulaCtx = {
+		holeLength: holeLen,
+		holeDiameter: holeDiameterMm,
+		benchHeight: hole.benchHeight || 0,
+		subdrillLength: hole.subdrillLength || 0,
+		chargeLength: 0,
+		chargeTop: 0,
+		chargeBase: holeLen,
+		stemLength: 0
+	};
 
-		var primerDepth;
-		if (config.primerDepthFromCollar != null && isFormula(String(config.primerDepthFromCollar))) {
-			primerDepth = evaluateFormula(String(config.primerDepthFromCollar), {
-				holeLength: holeLen, chargeLength: actualChargeLen,
-				chargeTop: chargeTop, chargeBase: chargeBase,
-				stemLength: chargeTop, holeDiameter: (hole.holeDiameter || 115)
-			});
-			if (primerDepth == null) primerDepth = chargeBase - actualChargeLen * 0.1;
-		} else if (typeof config.primerDepthFromCollar === "number" && config.primerDepthFromCollar > 0) {
-			primerDepth = config.primerDepthFromCollar;
-		} else {
-			primerDepth = chargeBase - actualChargeLen * 0.1;
+	// Populate chargeBase_1, chargeTop_1, chargeLength_1, etc. + unindexed defaults
+	buildIndexedChargeVars(hc.decks, primerFormulaCtx);
+
+	// Pass 3: place primers using primerTemplate or legacy single-primer logic
+	if (config.primerTemplate && config.primerTemplate.length > 0) {
+		// Multi-primer from primerTemplate
+		for (var pi = 0; pi < config.primerTemplate.length; pi++) {
+			var pt = config.primerTemplate[pi];
+
+			// Resolve depth: formula or literal
+			var primerDepth;
+			if (pt.depth != null && isFormula(String(pt.depth))) {
+				primerDepth = evaluateFormula(String(pt.depth), primerFormulaCtx);
+				if (primerDepth == null) primerDepth = holeLen * 0.9;
+			} else if (typeof pt.depth === "number" && pt.depth > 0) {
+				primerDepth = pt.depth;
+			} else {
+				primerDepth = holeLen * 0.9;
+			}
+			primerDepth = Math.max(0.1, Math.min(primerDepth, holeLen - 0.1));
+
+			// Look up detonator and booster products
+			var ptDet = findProduct(pt.detonator) || detProduct;
+			var ptBooster = findProduct(pt.booster) || boosterProduct;
+
+			hc.addPrimer(new Primer({
+				holeID: hc.holeID,
+				lengthFromCollar: parseFloat(primerDepth.toFixed(2)),
+				detonator: {
+					productID: ptDet ? ptDet.productID : null,
+					productName: ptDet ? ptDet.name : null,
+					initiatorType: ptDet ? (ptDet.initiatorType || ptDet.productType) : null,
+					deliveryVodMs: ptDet ? (ptDet.deliveryVodMs || 0) : 0,
+					delayMs: 0
+				},
+				booster: {
+					productID: ptBooster ? ptBooster.productID : null,
+					productName: ptBooster ? ptBooster.name : null,
+					quantity: 1,
+					massGrams: ptBooster ? ptBooster.massGrams : null
+				}
+			}));
 		}
-		primerDepth = Math.max(chargeTop + 0.1, Math.min(primerDepth, chargeBase - 0.1));
+	} else if (chargeDeckIdx >= 0) {
+		// Legacy single-primer logic using primerDepthFromCollar
+		var actualChargeLen = primerFormulaCtx.chargeLength;
+		var chargeTop = primerFormulaCtx.chargeTop;
+		var chargeBase = primerFormulaCtx.chargeBase;
+
+		var primerDepth2;
+		if (config.primerDepthFromCollar != null && isFormula(String(config.primerDepthFromCollar))) {
+			primerDepth2 = evaluateFormula(String(config.primerDepthFromCollar), primerFormulaCtx);
+			if (primerDepth2 == null) primerDepth2 = chargeBase - actualChargeLen * 0.1;
+		} else if (typeof config.primerDepthFromCollar === "number" && config.primerDepthFromCollar > 0) {
+			primerDepth2 = config.primerDepthFromCollar;
+		} else {
+			primerDepth2 = chargeBase - actualChargeLen * 0.1;
+		}
+		primerDepth2 = Math.max(chargeTop + 0.1, Math.min(primerDepth2, chargeBase - 0.1));
 
 		hc.addPrimer(new Primer({
 			holeID: hc.holeID,
-			lengthFromCollar: primerDepth,
+			lengthFromCollar: parseFloat(primerDepth2.toFixed(2)),
 			detonator: {
 				productID: detProduct ? detProduct.productID : null,
 				productName: detProduct ? detProduct.name : null,

@@ -5,8 +5,9 @@
  *   "fx:" - Excel-safe prefix for CSV templates (won't trigger spreadsheet formula)
  *
  * Available variables: holeLength, chargeLength, chargeTop, chargeBase, stemLength, holeDiameter
+ * Indexed variables: chargeBase[1], chargeTop[2], etc. → internally mapped to chargeBase_1, chargeTop_2
  * Math functions available: Math.min(), Math.max(), Math.abs(), Math.PI, Math.sqrt(), etc.
- * Examples: "=chargeBase - chargeLength * 0.1"  or  "fx:holeLength * 0.9"
+ * Examples: "=chargeBase - chargeLength * 0.1"  or  "fx:chargeBase[1] - 0.3"
  */
 
 /**
@@ -46,6 +47,10 @@ export function evaluateFormula(formula, variables) {
 
 	var expr = stripPrefix(formula);
 	if (expr.length === 0) return null;
+
+	// Transform bracket notation: chargeBase[1] → chargeBase_1
+	// This allows indexed variables while keeping valid JS identifiers
+	expr = expr.replace(/([a-zA-Z_]\w*)\[(\d+)\]/g, "$1_$2");
 
 	// Build argument names and values from variables
 	var names = [];

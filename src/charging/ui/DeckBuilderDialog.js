@@ -16,6 +16,7 @@ import { Deck } from "../Deck.js";
 import { Primer } from "../Primer.js";
 import { DECK_TYPES, DECK_COLORS, CHARGE_CONFIG_CODES } from "../ChargingConstants.js";
 import { ChargeConfig } from "../ChargeConfig.js";
+import { isFormula, evaluateFormula } from "../../helpers/FormulaEvaluator.js";
 
 /**
  * Determine the deck type for a product based on its category
@@ -50,6 +51,52 @@ function productSnapshot(product) {
         lengthMm: product.lengthMm || null,
         massGrams: product.massGrams || null
     };
+}
+
+/**
+ * Build indexed charge formula context from a HoleCharging's decks.
+ * Mirrors SimpleRuleEngine.buildIndexedChargeVars() for local use in the dialog.
+ */
+function buildFormulaCtxFromDecks(workingCharging) {
+    var holeLen = Math.abs(workingCharging.holeLength);
+    var ctx = {
+        holeLength: holeLen,
+        holeDiameter: workingCharging.holeDiameterMm || 115,
+        chargeLength: 0,
+        chargeTop: 0,
+        chargeBase: holeLen,
+        stemLength: 0
+    };
+    var chargeIndex = 0;
+    var deepestBase = 0;
+    var deepestTop = 0;
+    var deepestLen = 0;
+    var firstChargeTop = null;
+
+    for (var i = 0; i < workingCharging.decks.length; i++) {
+        var d = workingCharging.decks[i];
+        var dt = d.deckType;
+        if (dt === DECK_TYPES.COUPLED || dt === DECK_TYPES.DECOUPLED) {
+            chargeIndex++;
+            var cTop = d.topDepth;
+            var cBase = d.baseDepth;
+            var cLen = cBase - cTop;
+            ctx["chargeBase_" + chargeIndex] = cBase;
+            ctx["chargeTop_" + chargeIndex] = cTop;
+            ctx["chargeLength_" + chargeIndex] = cLen;
+            if (cBase >= deepestBase) {
+                deepestBase = cBase;
+                deepestTop = cTop;
+                deepestLen = cLen;
+            }
+            if (firstChargeTop === null) firstChargeTop = cTop;
+        }
+    }
+    ctx.chargeBase = deepestBase;
+    ctx.chargeTop = deepestTop;
+    ctx.chargeLength = deepestLen;
+    ctx.stemLength = firstChargeTop !== null ? firstChargeTop : 0;
+    return ctx;
 }
 
 /**
@@ -198,6 +245,12 @@ export function showDeckBuilderDialog(referenceHole) {
     actionRow.appendChild(
         makeBtn("Add Primer", "option1", function () {
             addPrimerToCharging(workingCharging, sectionView, refHole);
+        })
+    );
+
+    actionRow.appendChild(
+        makeBtn("Edit Primer", "option2", function () {
+            editPrimer(workingCharging, sectionView, refHole);
         })
     );
 
@@ -638,7 +691,7 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
     var defaultDepth = holeLen * 0.9;
 
     var fields = [
-        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "number", value: defaultDepth.toFixed(1), step: "0.1" },
+        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "text", value: defaultDepth.toFixed(1), placeholder: "e.g. 8.5 or fx:chargeBase[1]-0.3" },
         { label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: detOptions.length > 1 ? detOptions[1].value : "" },
         { label: "Detonator Qty", name: "detonatorQty", type: "number", value: "1", step: "1", min: "1", max: "10" },
         { label: "Delay (ms)", name: "delayMs", type: "number", value: "0", step: "1" },
@@ -658,7 +711,19 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
         showCancel: true,
         onConfirm: function () {
             var data = getFormData(formContent);
-            var depth = parseFloat(data.depthFromCollar) || defaultDepth;
+            var depthInput = (data.depthFromCollar || "").trim();
+            var depth;
+
+            if (isFormula(depthInput)) {
+                var ctx = buildFormulaCtxFromDecks(workingCharging);
+                depth = evaluateFormula(depthInput, ctx);
+                if (depth == null) {
+                    showModalMessage("Formula Error", "Could not evaluate: " + depthInput, "warning");
+                    return;
+                }
+            } else {
+                depth = parseFloat(depthInput) || defaultDepth;
+            }
 
             // Find product details
             var detProduct = null;
@@ -701,6 +766,119 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
         }
     });
     primerDialog.show();
+}
+
+/**
+ * Edit an existing primer via dialog pre-populated with its current values.
+ * Updates the primer in-place on confirm.
+ */
+function editPrimer(workingCharging, sectionView, refHole) {
+    var idx = sectionView.selectedPrimerIndex;
+    if (idx < 0 || idx >= workingCharging.primers.length) {
+        var row = document.getElementById("deckBuilderPropsRow");
+        if (row) {
+            row.innerHTML = '<span style="color:#ff9800;">\u26A0 Select a primer to edit first.</span>';
+            setTimeout(function () {
+                row.innerHTML = "<span style='opacity:0.5;'>Click a deck to edit properties</span>";
+            }, 3000);
+        }
+        return;
+    }
+
+    var primer = workingCharging.primers[idx];
+
+    // Gather initiator and booster products for selection
+    var initiators = [];
+    var boosters = [];
+    if (window.loadedProducts) {
+        window.loadedProducts.forEach(function (p) {
+            if (p.productCategory === "Initiator") initiators.push(p);
+            if (p.productCategory === "HighExplosive") boosters.push(p);
+        });
+    }
+
+    var detOptions = [{ value: "", text: "-- None --" }];
+    for (var i = 0; i < initiators.length; i++) {
+        detOptions.push({ value: initiators[i].name, text: initiators[i].name });
+    }
+
+    var boosterOptions = [{ value: "", text: "-- None --" }];
+    for (var b = 0; b < boosters.length; b++) {
+        boosterOptions.push({ value: boosters[b].name, text: boosters[b].name });
+    }
+
+    var fields = [
+        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "text", value: (primer.lengthFromCollar || 0).toFixed(1), placeholder: "e.g. 8.5 or fx:chargeBase[1]-0.3" },
+        { label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: primer.detonator.productName || "" },
+        { label: "Detonator Qty", name: "detonatorQty", type: "number", value: String(primer.detonator.quantity || 1), step: "1", min: "1", max: "10" },
+        { label: "Delay (ms)", name: "delayMs", type: "number", value: String(primer.detonator.delayMs || 0), step: "1" },
+        { label: "Booster", name: "boosterName", type: "select", options: boosterOptions, value: primer.booster.productName || "" },
+        { label: "Booster Qty", name: "boosterQty", type: "number", value: String(primer.booster.quantity || 1), step: "1" }
+    ];
+
+    var formContent = createEnhancedFormContent(fields);
+
+    var editDialog = new FloatingDialog({
+        title: "Edit Primer " + (idx + 1),
+        content: formContent,
+        width: 350,
+        height: 320,
+        showConfirm: true,
+        confirmText: "Update",
+        showCancel: true,
+        onConfirm: function () {
+            var data = getFormData(formContent);
+            var depthInput = (data.depthFromCollar || "").trim();
+            var depth;
+
+            if (isFormula(depthInput)) {
+                var ctx = buildFormulaCtxFromDecks(workingCharging);
+                depth = evaluateFormula(depthInput, ctx);
+                if (depth == null) {
+                    showModalMessage("Formula Error", "Could not evaluate: " + depthInput, "warning");
+                    return;
+                }
+            } else {
+                depth = parseFloat(depthInput);
+                if (isNaN(depth)) depth = primer.lengthFromCollar;
+            }
+
+            // Clamp depth to hole range
+            var holeLen = Math.abs(workingCharging.holeLength);
+            depth = Math.max(0, Math.min(holeLen, depth));
+
+            // Find product details
+            var detProduct = null;
+            var boosterProduct = null;
+            if (data.detonatorName && window.loadedProducts) {
+                window.loadedProducts.forEach(function (p) {
+                    if (p.name === data.detonatorName) detProduct = p;
+                });
+            }
+            if (data.boosterName && window.loadedProducts) {
+                window.loadedProducts.forEach(function (p) {
+                    if (p.name === data.boosterName) boosterProduct = p;
+                });
+            }
+
+            // Update primer in-place
+            primer.lengthFromCollar = depth;
+            primer.detonator.productID = detProduct ? detProduct.productID : null;
+            primer.detonator.productName = data.detonatorName || null;
+            primer.detonator.initiatorType = detProduct ? detProduct.initiatorType || detProduct.productType : null;
+            primer.detonator.deliveryVodMs = detProduct ? detProduct.deliveryVodMs || 0 : 0;
+            primer.detonator.delayMs = parseFloat(data.delayMs) || 0;
+            primer.detonator.quantity = Math.max(1, Math.min(10, parseInt(data.detonatorQty) || 1));
+            primer.booster.productID = boosterProduct ? boosterProduct.productID : null;
+            primer.booster.productName = data.boosterName || null;
+            primer.booster.quantity = parseInt(data.boosterQty) || 1;
+            primer.booster.massGrams = boosterProduct ? boosterProduct.massGrams : null;
+
+            workingCharging.modified = new Date().toISOString();
+            sectionView.setData(workingCharging);
+        }
+    });
+    editDialog.show();
 }
 
 /**
@@ -895,8 +1073,29 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
         return;
     }
 
+    var holeLen = Math.abs(workingCharging.holeLength);
+
+    // Build list of charge decks with 1-based index for primer formula generation
+    var chargeDecks = [];
+    for (var ci = 0; ci < workingCharging.decks.length; ci++) {
+        var cd = workingCharging.decks[ci];
+        if (cd.deckType === DECK_TYPES.COUPLED || cd.deckType === DECK_TYPES.DECOUPLED) {
+            chargeDecks.push({ index: chargeDecks.length + 1, topDepth: cd.topDepth, baseDepth: cd.baseDepth });
+        }
+    }
+
     var fields = [
         { key: "configName", label: "Rule Name", type: "text", value: "Custom Rule" },
+        { key: "configCode", label: "Config Code", type: "select", options: [
+            { value: "CUSTOM", label: "CUSTOM - Explicit deck layout" },
+            { value: "STNDFS", label: "STNDFS - Standard fixed stem" },
+            { value: "AIRDEC", label: "AIRDEC - Air deck design" },
+            { value: "ST5050", label: "ST5050 - 50/50 stem/charge" },
+            { value: "SIMPLE_SINGLE", label: "SIMPLE_SINGLE - Simple single" },
+            { value: "STNDVS", label: "STNDVS - Standard vented" },
+            { value: "PRESPL", label: "PRESPL - Presplit" },
+            { value: "NOCHG", label: "NOCHG - No charge" }
+        ], value: "CUSTOM" },
         { key: "description", label: "Description", type: "text", value: "" },
         {
             key: "fillDeckIndex",
@@ -911,12 +1110,58 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
         { key: "applyShortHoleLogic", label: "Apply Short Hole Logic", type: "checkbox", checked: true }
     ];
 
+    // Add dynamic primer depth formula fields with smart defaults
+    if (workingCharging.primers && workingCharging.primers.length > 0) {
+        for (var pi = 0; pi < workingCharging.primers.length; pi++) {
+            var p = workingCharging.primers[pi];
+            var primerD = p.lengthFromCollar || 0;
+            var defaultFormula;
+
+            // Find which charge deck contains this primer
+            var containingDeck = null;
+            for (var cdi = 0; cdi < chargeDecks.length; cdi++) {
+                if (primerD >= chargeDecks[cdi].topDepth - 0.01 && primerD <= chargeDecks[cdi].baseDepth + 0.01) {
+                    containingDeck = chargeDecks[cdi];
+                    break;
+                }
+            }
+
+            if (containingDeck) {
+                var offset = containingDeck.baseDepth - primerD;
+                var offsetRounded = Math.round(offset * 100) / 100;
+                if (chargeDecks.length > 1) {
+                    // Multi-deck: use indexed variable
+                    defaultFormula = "fx:chargeBase[" + containingDeck.index + "] - " + offsetRounded;
+                } else {
+                    // Single deck: use unindexed variable
+                    defaultFormula = "fx:chargeBase - " + offsetRounded;
+                }
+            } else {
+                // Primer not in any charge deck — use fraction of holeLength
+                var fraction = holeLen > 0 ? primerD / holeLen : 0.9;
+                var rounded = Math.round(fraction * 1000) / 1000;
+                defaultFormula = "fx:holeLength * " + rounded;
+            }
+
+            fields.push({
+                key: "primerDepth_" + pi,
+                label: "Primer " + (pi + 1) + " Depth (" + primerD.toFixed(1) + "m)",
+                type: "text",
+                value: defaultFormula
+            });
+        }
+    }
+
     var formContent = createEnhancedFormContent(fields);
+
+    var primerCount = workingCharging.primers ? workingCharging.primers.length : 0;
+    var saveDialogHeight = 300 + primerCount * 50;
 
     var dialog = new FloatingDialog({
         title: "Save as Rule",
         content: formContent,
         width: 420,
+        height: saveDialogHeight,
         showConfirm: true,
         confirmText: "Save",
         showCancel: true,
@@ -925,17 +1170,60 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
             var data = getFormData(formContent);
             var fillIdx = parseInt(data.fillDeckIndex, 10);
 
-            // Build deckTemplate from current decks
+            // Build deckTemplate from current decks with correct lengthModes
             var template = [];
             for (var i = 0; i < workingCharging.decks.length; i++) {
                 var deck = workingCharging.decks[i];
                 var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
-                template.push({
+
+                var entry = {
                     type: deck.deckType,
-                    product: deck.product ? deck.product.name : "Air",
-                    lengthMode: i === fillIdx ? "fill" : "fixed",
-                    length: i === fillIdx ? 0 : parseFloat(deckLen.toFixed(3))
-                });
+                    product: deck.product ? deck.product.name : "Air"
+                };
+
+                if (i === fillIdx) {
+                    // Fill deck absorbs remaining space
+                    entry.lengthMode = "fill";
+                    entry.length = 0;
+                } else if (deck.deckType === DECK_TYPES.SPACER) {
+                    // Spacer: length derived from product.lengthMm at apply-time
+                    entry.lengthMode = "product";
+                    entry.length = null;
+                } else {
+                    // Fixed length
+                    entry.lengthMode = "fixed";
+                    entry.length = parseFloat(deckLen.toFixed(3));
+                }
+
+                template.push(entry);
+            }
+
+            // Build primerTemplate from workingCharging.primers with formula depths
+            var primerTemplate = [];
+            if (workingCharging.primers && workingCharging.primers.length > 0) {
+                for (var pi = 0; pi < workingCharging.primers.length; pi++) {
+                    var p = workingCharging.primers[pi];
+                    var depthField = (data["primerDepth_" + pi] || "").trim();
+                    var depthValue;
+
+                    if (depthField.indexOf("fx:") === 0) {
+                        // Store as formula string
+                        depthValue = depthField;
+                    } else if (depthField !== "" && !isNaN(parseFloat(depthField))) {
+                        // Plain number — store as literal
+                        depthValue = parseFloat(depthField);
+                    } else {
+                        // Empty or invalid — fallback to formula
+                        var fallbackFraction = holeLen > 0 ? p.lengthFromCollar / holeLen : 0.9;
+                        depthValue = "fx:holeLength * " + (Math.round(fallbackFraction * 1000) / 1000);
+                    }
+
+                    primerTemplate.push({
+                        depth: depthValue,
+                        detonator: p.detonator ? p.detonator.productName : null,
+                        booster: p.booster ? p.booster.productName : null
+                    });
+                }
             }
 
             // Extract product references from first matching deck types
@@ -957,7 +1245,7 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
             }
 
             var newConfig = new ChargeConfig({
-                configCode: CHARGE_CONFIG_CODES.CUSTOM,
+                configCode: data.configCode || CHARGE_CONFIG_CODES.CUSTOM,
                 configName: data.configName || "Custom Rule",
                 description: data.description || "",
                 stemmingProduct: stemmingProd,
@@ -966,7 +1254,7 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                 boosterProduct: boosterProd,
                 detonatorProduct: detProd,
                 deckTemplate: template,
-                primerDepthFromCollar: "fx:chargeBase - chargeLength * 0.1",
+                primerTemplate: primerTemplate,
                 applyShortHoleLogic: data.applyShortHoleLogic === "true" || data.applyShortHoleLogic === true
             });
 

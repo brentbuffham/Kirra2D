@@ -668,7 +668,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 			field.options.forEach(option => {
 				const optionElement = document.createElement("option");
 				optionElement.value = option.value;
-				optionElement.textContent = option.text;
+				optionElement.textContent = option.text || option.label;
 				if (option.value === field.value) {
 					optionElement.selected = true;
 				}
@@ -832,9 +832,10 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 		}
 
 		// Step 41a) Set input attributes (skip for slider and radio containers)
+		var fieldName = field.name || field.key;
 		if (field.type !== "slider" && field.type !== "radio") {
-			input.id = field.name;
-			input.name = field.name;
+			input.id = fieldName;
+			input.name = fieldName;
 			input.placeholder = field.placeholder || "";
 
 			if (field.type !== "select" && field.type !== "color" && field.type !== "checkbox") {
@@ -850,8 +851,8 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 			// Step 41b) For slider container, set name on the actual range input
 			const rangeInput = input.querySelector('input[type="range"]');
 			if (rangeInput) {
-				rangeInput.id = field.name;
-				rangeInput.name = field.name;
+				rangeInput.id = fieldName;
+				rangeInput.name = fieldName;
 			}
 		}
 		// Radio buttons already have their names set during creation
@@ -883,7 +884,7 @@ function createEnhancedFormContent(fields, isMultiple, centerCheckboxes = false)
 		}
 
 		// Step 44) Mark the row with field name for easy reference
-		row.setAttribute("data-field", field.name);
+		row.setAttribute("data-field", fieldName);
 
 		row.appendChild(label);
 		row.appendChild(input);
