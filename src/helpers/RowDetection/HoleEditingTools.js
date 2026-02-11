@@ -154,6 +154,11 @@ export function renumberHolesFunction(startNumber, selectedEntityName) {
 		}
 	});
 
+	// Remap charging keys to follow hole ID changes
+	if (window.remapChargingKeys && oldToNewHoleIDMap.size > 0) {
+		window.remapChargingKeys(oldToNewHoleIDMap);
+	}
+
 	// Trigger refresh and redraw
 	if (window.refreshPoints) window.refreshPoints();
 	if (window.drawData) window.drawData(window.allBlastHoles, window.selectedHole);
@@ -266,6 +271,7 @@ export function renumberPatternAfterClipping(entityName) {
 	}
 
 	// Step 6: Renumber starting from A1
+	var clipRemapMap = new Map();
 	var rowLetter = "A";
 	for (var rowIndex = 0; rowIndex < rows.length; rowIndex++) {
 		var row = rows[rowIndex];
@@ -273,6 +279,11 @@ export function renumberPatternAfterClipping(entityName) {
 		for (var pos = 0; pos < row.length; pos++) {
 			var holeToRename = row[pos];
 			var newHoleID = rowLetter + (pos + 1);
+
+			// Track remap for charging
+			if (holeToRename.holeID !== newHoleID) {
+				clipRemapMap.set(holeToRename.holeID, newHoleID);
+			}
 
 			// Update fromHoleID references
 			allBlastHoles.forEach(function(h) {
@@ -292,6 +303,11 @@ export function renumberPatternAfterClipping(entityName) {
 		} else {
 			rowLetter = incrementLetter(rowLetter);
 		}
+	}
+
+	// Remap charging keys to follow hole ID changes
+	if (window.remapChargingKeys && clipRemapMap.size > 0) {
+		window.remapChargingKeys(clipRemapMap);
 	}
 
 	// Step 7: Clean up temporary projection properties
@@ -332,6 +348,12 @@ export function deleteHoleAndRenumber(holeToDelete) {
 	if (holeIndex !== -1) {
 		allBlastHoles.splice(holeIndex, 1);
 		console.log("Deleted hole:", entityName + ":" + holeID);
+
+		// Remove charging data for deleted hole
+		if (window.loadedCharging && window.loadedCharging.has(holeID)) {
+			window.loadedCharging.delete(holeID);
+			console.log("Removed charging for deleted hole:", holeID);
+		}
 
 		// Clean up fromHoleID references - orphaned holes should reference themselves
 		allBlastHoles.forEach(function(hole) {
@@ -377,6 +399,7 @@ export function deleteHoleAndRenumber(holeToDelete) {
 	if (isAlphaNumerical) {
 		var deletedRowLetter = alphaMatch[1];
 		var deletedHoleNumber = parseInt(alphaMatch[2]);
+		var deleteRemapMap = new Map();
 
 		var sameRowAlphaHoles = allBlastHoles.filter(function(hole) {
 			return hole.entityName === entityName && hole.holeID && hole.holeID.toString().startsWith(deletedRowLetter);
@@ -398,6 +421,7 @@ export function deleteHoleAndRenumber(holeToDelete) {
 				if (currentHoleNumber > deletedHoleNumber) {
 					var oldID = hole.holeID;
 					var newID = deletedRowLetter + (currentHoleNumber - 1);
+					deleteRemapMap.set(oldID, newID);
 					hole.holeID = newID;
 
 					allBlastHoles.forEach(function(h) {
@@ -408,6 +432,11 @@ export function deleteHoleAndRenumber(holeToDelete) {
 				}
 			}
 		});
+
+		// Remap charging keys for renumbered holes
+		if (window.remapChargingKeys && deleteRemapMap.size > 0) {
+			window.remapChargingKeys(deleteRemapMap);
+		}
 
 		console.log("Renumbered " + sameRowAlphaHoles.length + " holes in row " + deletedRowLetter);
 	}

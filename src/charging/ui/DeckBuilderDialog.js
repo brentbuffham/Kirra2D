@@ -99,6 +99,25 @@ export function showDeckBuilderDialog(referenceHole) {
     infoBar.innerHTML = "<span>Hole: <b>" + (refHole.holeID || "N/A") + "</b></span>" + "<span>Entity: <b>" + (refHole.entityName || "N/A") + "</b></span>" + "<span>Dia: <b>" + (refHole.holeDiameter || 0) + "mm</b></span>" + "<span>Length: <b>" + (refHole.holeLengthCalculated || 0).toFixed(1) + "m</b></span>";
     contentDiv.appendChild(infoBar);
 
+    // Dimension mismatch warning (only when opening with existing charging)
+    if (existingCharging && typeof existingCharging.checkDimensionMismatch === "function") {
+        var mismatch = existingCharging.checkDimensionMismatch(refHole);
+        if (mismatch.lengthChanged || mismatch.diameterChanged) {
+            var mismatchBanner = document.createElement("div");
+            mismatchBanner.style.cssText = "background:#5a3800;color:#ffb347;padding:4px 10px;font-size:11px;flex-shrink:0;";
+            var mismatchText = "Dimension mismatch: ";
+            if (mismatch.lengthChanged) {
+                mismatchText += "Length " + mismatch.oldLength.toFixed(1) + "m \u2192 " + mismatch.newLength.toFixed(1) + "m";
+            }
+            if (mismatch.lengthChanged && mismatch.diameterChanged) mismatchText += ", ";
+            if (mismatch.diameterChanged) {
+                mismatchText += "Diameter " + mismatch.oldDiameter.toFixed(0) + "mm \u2192 " + mismatch.newDiameter.toFixed(0) + "mm";
+            }
+            mismatchBanner.textContent = mismatchText;
+            contentDiv.appendChild(mismatchBanner);
+        }
+    }
+
     // Main area: product palette + section view
     var mainArea = document.createElement("div");
     mainArea.style.cssText = "display:flex;flex:1;overflow:hidden;min-height:0;";
@@ -699,14 +718,32 @@ function showRuleSelector(workingCharging, sectionView, refHole, configTracker) 
         configOptions.push({ value: configID, text: config.configName || configID });
     });
 
-    var fields = [{ label: "Charge Configuration", name: "configID", type: "select", options: configOptions, value: configOptions[0].value }];
+    // Get initial config to read its applyShortHoleLogic default
+    var initialConfig = configs.get(configOptions[0].value);
+
+    var fields = [
+        { label: "Charge Configuration", name: "configID", type: "select", options: configOptions, value: configOptions[0].value },
+        { label: "Apply Short Hole Logic", name: "applyShortHoleLogic", type: "checkbox", checked: initialConfig ? initialConfig.applyShortHoleLogic !== false : true }
+    ];
     var formContent = createEnhancedFormContent(fields);
+
+    // Update checkbox when config selection changes
+    var configSelect = formContent.querySelector('select[name="configID"]');
+    var shortHoleCheckbox = formContent.querySelector('input[name="applyShortHoleLogic"]');
+    if (configSelect && shortHoleCheckbox) {
+        configSelect.addEventListener("change", function () {
+            var selectedConfig = configs.get(this.value);
+            if (selectedConfig) {
+                shortHoleCheckbox.checked = selectedConfig.applyShortHoleLogic !== false;
+            }
+        });
+    }
 
     var ruleDialog = new FloatingDialog({
         title: "Apply Rule",
         content: formContent,
         width: 350,
-        height: 180,
+        height: 220,
         showConfirm: true,
         confirmText: "Apply",
         showCancel: true,
@@ -714,6 +751,10 @@ function showRuleSelector(workingCharging, sectionView, refHole, configTracker) 
             var data = getFormData(formContent);
             var config = configs.get(data.configID);
             if (!config) return;
+
+            // Override short hole logic from checkbox
+            var useShortHole = data.applyShortHoleLogic === "true" || data.applyShortHoleLogic === true;
+            config.applyShortHoleLogic = useShortHole;
 
             // Apply rule via SimpleRuleEngine (imported dynamically to avoid circular deps)
             if (typeof window.applyChargeRule === "function") {
@@ -866,7 +907,8 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                 return { value: String(i), label: label };
             }),
             value: String(findBestFillDeck(workingCharging))
-        }
+        },
+        { key: "applyShortHoleLogic", label: "Apply Short Hole Logic", type: "checkbox", checked: true }
     ];
 
     var formContent = createEnhancedFormContent(fields);
@@ -924,7 +966,8 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                 boosterProduct: boosterProd,
                 detonatorProduct: detProd,
                 deckTemplate: template,
-                primerDepthFromCollar: "fx:chargeBase - chargeLength * 0.1"
+                primerDepthFromCollar: "fx:chargeBase - chargeLength * 0.1",
+                applyShortHoleLogic: data.applyShortHoleLogic === "true" || data.applyShortHoleLogic === true
             });
 
             if (!window.loadedChargeConfigs) {

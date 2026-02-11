@@ -3,8 +3,8 @@
  *
  * InitiatorProduct (base)
  * ├── ElectronicDetonator   (programmable delay, ms accuracy)
- * ├── ShockTubeDetonator    (fixed delay series, tube burn rate)
- * ├── ElectricDetonator     (fixed delay numbers)
+ * ├── ShockTubeDetonator    (fixed delay, tube burn rate)
+ * ├── ElectricDetonator     (fixed delay)
  * └── DetonatingCordProduct (continuous burn, g/m core load)
  *
  * NOTE: Leg length selection is deliberately NOT restrictive.
@@ -104,14 +104,21 @@ export class ShockTubeDetonator extends InitiatorProduct {
 			initiatorType: "ShockTube",
 			deliveryVodMs: options.deliveryVodMs != null ? options.deliveryVodMs : 2000  // 2000 m/s
 		}));
-		this.timingType = "fixed_series";
-		this.delaySeriesMs = options.delaySeriesMs || null;  // [17, 25, 42, 65, 100, ...]
+		this.timingType = "fixed";
+		// Backward compat: accept old delaySeriesMs array, take first value
+		if (options.delayMs != null) {
+			this.delayMs = options.delayMs;
+		} else if (options.delaySeriesMs && Array.isArray(options.delaySeriesMs)) {
+			this.delayMs = options.delaySeriesMs[0];
+		} else {
+			this.delayMs = null;
+		}
 	}
 
 	toJSON() {
 		return Object.assign(InitiatorProduct.prototype.toJSON.call(this), {
 			timingType: this.timingType,
-			delaySeriesMs: this.delaySeriesMs
+			delayMs: this.delayMs
 		});
 	}
 
@@ -125,13 +132,20 @@ export class ElectricDetonator extends InitiatorProduct {
 	constructor(options) {
 		super(Object.assign({}, options, { initiatorType: "Electric", deliveryVodMs: 0 }));  // instant
 		this.timingType = "fixed";
-		this.delaySeriesMs = options.delaySeriesMs || null;  // [0, 25, 50, 75, ...]
+		// Backward compat: accept old delaySeriesMs array, take first value
+		if (options.delayMs != null) {
+			this.delayMs = options.delayMs;
+		} else if (options.delaySeriesMs && Array.isArray(options.delaySeriesMs)) {
+			this.delayMs = options.delaySeriesMs[0];
+		} else {
+			this.delayMs = null;
+		}
 	}
 
 	toJSON() {
 		return Object.assign(InitiatorProduct.prototype.toJSON.call(this), {
 			timingType: this.timingType,
-			delaySeriesMs: this.delaySeriesMs
+			delayMs: this.delayMs
 		});
 	}
 

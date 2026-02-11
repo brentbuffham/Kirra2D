@@ -18,6 +18,14 @@ import {
 	SPACER_TYPES,
 	DECK_COLORS
 } from "./ChargingConstants.js";
+import {
+	exportBaseConfigTemplate,
+	exportCurrentConfig,
+	importConfigFromZip,
+	clearAllProducts,
+	clearAllChargeConfigs,
+	backupChargingConfig
+} from "./ConfigImportExport.js";
 
 // Product type options by category
 var PRODUCT_TYPE_OPTIONS = {
@@ -97,6 +105,45 @@ export function showProductManagerDialog() {
 	actionBar.appendChild(addBtn);
 	contentDiv.appendChild(actionBar);
 
+	// Second action bar: Import/Export/Clear operations
+	var ioBar = document.createElement("div");
+	ioBar.className = "floating-dialog-footer";
+	ioBar.style.borderTop = "1px solid #555";
+	ioBar.style.flexWrap = "wrap";
+	ioBar.style.gap = "4px";
+
+	var importBtn = document.createElement("button");
+	importBtn.textContent = "Import";
+	importBtn.className = "floating-dialog-btn";
+	importBtn.title = "Import products & rules from ZIP";
+
+	var exportBtn = document.createElement("button");
+	exportBtn.textContent = "Export";
+	exportBtn.className = "floating-dialog-btn";
+	exportBtn.title = "Export current products & rules as ZIP";
+
+	var exportTemplateBtn = document.createElement("button");
+	exportTemplateBtn.textContent = "Export Template";
+	exportTemplateBtn.className = "floating-dialog-btn";
+	exportTemplateBtn.title = "Export blank config template ZIP";
+
+	var clearProductsBtn = document.createElement("button");
+	clearProductsBtn.textContent = "Clear Products";
+	clearProductsBtn.className = "floating-dialog-btn";
+	clearProductsBtn.title = "Remove all products";
+
+	var clearRulesBtn = document.createElement("button");
+	clearRulesBtn.textContent = "Clear Rules";
+	clearRulesBtn.className = "floating-dialog-btn";
+	clearRulesBtn.title = "Remove all charge rules";
+
+	ioBar.appendChild(importBtn);
+	ioBar.appendChild(exportBtn);
+	ioBar.appendChild(exportTemplateBtn);
+	ioBar.appendChild(clearProductsBtn);
+	ioBar.appendChild(clearRulesBtn);
+	contentDiv.appendChild(ioBar);
+
 	var selectedProductID = null;
 
 	function refreshTable() {
@@ -108,10 +155,7 @@ export function showProductManagerDialog() {
 			row.style.borderBottom = "1px solid #444";
 			row.setAttribute("data-product-id", productID);
 
-			if (productID === selectedProductID) {
-				row.style.backgroundColor = "var(--selected-color, #1976d2)";
-				row.style.color = "#fff";
-			}
+			var isSelected = (productID === selectedProductID);
 
 			row.innerHTML =
 				'<td style="padding: 3px 6px;">' + (product.name || "") + "</td>" +
@@ -119,6 +163,14 @@ export function showProductManagerDialog() {
 				'<td style="padding: 3px 6px;">' + (product.productType || "") + "</td>" +
 				'<td style="padding: 3px 6px; text-align: right;">' + (product.density != null ? product.density.toFixed(3) : "-") + "</td>" +
 				'<td style="padding: 3px 6px; text-align: center;"><span style="display:inline-block;width:16px;height:16px;border-radius:2px;border:1px solid #999;background:' + (product.colorHex || "#ccc") + ';"></span></td>';
+
+			if (isSelected) {
+				var cells = row.querySelectorAll("td");
+				for (var c = 0; c < cells.length; c++) {
+					cells[c].style.setProperty("background-color", "#FF4455", "important");
+					cells[c].style.setProperty("color", "#fff", "important");
+				}
+			}
 
 			row.addEventListener("click", function () {
 				selectedProductID = productID;
@@ -183,6 +235,67 @@ export function showProductManagerDialog() {
 		);
 	});
 
+	// I/O button handlers
+	importBtn.addEventListener("click", function () {
+		var fileInput = document.createElement("input");
+		fileInput.type = "file";
+		fileInput.accept = ".zip";
+		fileInput.style.display = "none";
+		fileInput.addEventListener("change", async function () {
+			if (!fileInput.files || fileInput.files.length === 0) return;
+			try {
+				var results = await importConfigFromZip(fileInput.files[0]);
+				// Detect conflicts by name
+				var productConflicts = detectConflicts(results.products, window.loadedProducts || new Map(), "name");
+				var configConflicts = detectConflicts(results.configs, window.loadedChargeConfigs || new Map(), "configName");
+
+				if (productConflicts.length > 0 || configConflicts.length > 0) {
+					showImportConflictDialog(productConflicts, configConflicts, results, function () {
+						refreshTable();
+					});
+				} else {
+					// No conflicts - import directly
+					applyImportResults(results);
+					refreshTable();
+				}
+			} catch (err) {
+				console.error("Error importing config:", err);
+				showConfirmationDialog("Import Error", "Error importing config: " + err.message, "OK", null, null);
+			}
+			document.body.removeChild(fileInput);
+		});
+		document.body.appendChild(fileInput);
+		fileInput.click();
+	});
+
+	exportBtn.addEventListener("click", function () {
+		exportCurrentConfig(window.loadedProducts || new Map(), window.loadedChargeConfigs || new Map());
+	});
+
+	exportTemplateBtn.addEventListener("click", function () {
+		exportBaseConfigTemplate();
+	});
+
+	clearProductsBtn.addEventListener("click", function () {
+		var countBefore = (window.loadedProducts || new Map()).size;
+		clearAllProducts();
+		// Poll briefly to detect when products are actually cleared
+		var checkInterval = setInterval(function () {
+			var currentCount = (window.loadedProducts || new Map()).size;
+			if (currentCount !== countBefore || currentCount === 0) {
+				clearInterval(checkInterval);
+				selectedProductID = null;
+				refreshTable();
+			}
+		}, 200);
+		// Safety timeout: stop polling after 10s
+		setTimeout(function () { clearInterval(checkInterval); }, 10000);
+	});
+
+	clearRulesBtn.addEventListener("click", function () {
+		clearAllChargeConfigs();
+	});
+
 	var dialog = new FloatingDialog({
 		title: "Product Manager",
 		content: contentDiv,
@@ -193,7 +306,7 @@ export function showProductManagerDialog() {
 		cancelText: "Close",
 		draggable: true,
 		resizable: true,
-		layoutType: "standard"
+		layoutType: "default"
 	});
 
 	dialog.show();
@@ -274,7 +387,7 @@ function showAddProductDialog(onSave) {
 		confirmText: "Add",
 		draggable: true,
 		resizable: true,
-		layoutType: "standard",
+		layoutType: "default",
 		onConfirm: function () {
 			var catData = getFormData(categoryForm);
 			var fieldData = getFormData(fieldsContainer);
@@ -316,7 +429,10 @@ function showEditProductDialog(product, onSave) {
 				initSelect.addEventListener("change", function () {
 					var currentData = getFormData(fieldsContainer);
 					currentData.initiatorType = this.value;
-					buildEditFields(currentData);
+					// Merge with original JSON to preserve fields not in current form
+					// (e.g. delayMs, minDelayMs, coreLoadGramsPerMeter)
+					var mergedData = Object.assign({}, json, currentData);
+					buildEditFields(mergedData);
 				});
 			}
 		}
@@ -338,7 +454,7 @@ function showEditProductDialog(product, onSave) {
 		confirmText: "Save",
 		draggable: true,
 		resizable: true,
-		layoutType: "standard",
+		layoutType: "default",
 		onConfirm: function () {
 			var formData = getFormData(fieldsContainer);
 			formData.productCategory = json.productCategory;
@@ -420,10 +536,10 @@ function getFieldsForCategory(category, existingData) {
 				{ label: "Delay Inc. (ms)", name: "delayIncrementMs", type: "number", value: d.delayIncrementMs || "", step: "0.1" }
 			);
 		}
-		// Fixed delay series: ShockTube, SurfaceConnector, SurfaceCord, Electric
+		// Fixed delay: ShockTube, SurfaceConnector, SurfaceCord, Electric
 		if (initType === "ShockTube" || initType === "SurfaceConnector" || initType === "SurfaceCord" || initType === "Electric") {
 			fields.push(
-				{ label: "Delay Series (;)", name: "delaySeriesMs", type: "text", value: d.delaySeriesMs ? (Array.isArray(d.delaySeriesMs) ? d.delaySeriesMs.join(";") : d.delaySeriesMs) : "" }
+				{ label: "Delay (ms)", name: "delayMs", type: "number", value: d.delayMs != null ? d.delayMs : "", step: "1" }
 			);
 		}
 		// Core load: DetonatingCord only
@@ -503,16 +619,25 @@ function createProductFromFormData(data) {
 			opts.maxDelayMs = data.maxDelayMs ? parseFloat(data.maxDelayMs) : null;
 			opts.delayIncrementMs = data.delayIncrementMs ? parseFloat(data.delayIncrementMs) : null;
 			opts.coreLoadGramsPerMeter = data.coreLoadGramsPerMeter ? parseFloat(data.coreLoadGramsPerMeter) : null;
-			// Parse delay series from semicolon-separated string
-			if (data.delaySeriesMs && typeof data.delaySeriesMs === "string" && data.delaySeriesMs.trim().length > 0) {
-				opts.delaySeriesMs = data.delaySeriesMs.split(";").map(function (v) { return parseFloat(v.trim()); }).filter(function (v) { return !isNaN(v); });
-			}
+			opts.delayMs = data.delayMs != null && data.delayMs !== "" ? parseFloat(data.delayMs) : null;
 			// Create correct subclass based on initiatorType
+			// SurfaceConnector/SurfaceCord use ShockTubeDetonator; SurfaceWire uses ElectronicDetonator
 			switch (opts.initiatorType) {
 				case "Electronic": return new ElectronicDetonator(opts);
 				case "ShockTube": return new ShockTubeDetonator(opts);
 				case "Electric": return new ElectricDetonator(opts);
 				case "DetonatingCord": return new DetonatingCordProduct(opts);
+				case "SurfaceConnector":
+				case "SurfaceCord": {
+					var p = new ShockTubeDetonator(opts);
+					p.initiatorType = opts.initiatorType;
+					return p;
+				}
+				case "SurfaceWire": {
+					var p = new ElectronicDetonator(opts);
+					p.initiatorType = "SurfaceWire";
+					return p;
+				}
 				default: return new InitiatorProduct(opts);
 			}
 
@@ -536,5 +661,305 @@ function triggerProductSave() {
 	}
 	if (typeof window.buildSurfaceConnectorPresets === "function") {
 		window.buildSurfaceConnectorPresets();
+	}
+}
+
+// ============ IMPORT CONFLICT RESOLUTION ============
+
+/**
+ * Detect name-based conflicts between imported items and existing items.
+ * @param {Array} importedItems - Array of imported products or configs
+ * @param {Map} existingMap - Existing items map (productID/configID -> item)
+ * @param {string} nameField - Field to match on ("name" for products, "configName" for configs)
+ * @returns {Array<{imported, existing, existingKey}>} Array of conflicts
+ */
+function detectConflicts(importedItems, existingMap, nameField) {
+	var conflicts = [];
+	if (!importedItems || !existingMap || existingMap.size === 0) return conflicts;
+
+	for (var i = 0; i < importedItems.length; i++) {
+		var imported = importedItems[i];
+		var importedName = imported[nameField];
+		if (!importedName) continue;
+
+		existingMap.forEach(function (existing, key) {
+			if (existing[nameField] === importedName) {
+				conflicts.push({ imported: imported, existing: existing, existingKey: key });
+			}
+		});
+	}
+	return conflicts;
+}
+
+/**
+ * Show conflict resolution dialog for import.
+ * Each conflict can be resolved as Update, Skip, or Copy.
+ * @param {Array} productConflicts - Product name conflicts
+ * @param {Array} configConflicts - Config name conflicts
+ * @param {Object} results - Full import results { products, configs, errors }
+ * @param {Function} onComplete - Called after resolution is applied
+ */
+function showImportConflictDialog(productConflicts, configConflicts, results, onComplete) {
+	var allConflicts = [];
+	for (var i = 0; i < productConflicts.length; i++) {
+		allConflicts.push({ type: "product", nameField: "name", conflict: productConflicts[i] });
+	}
+	for (var j = 0; j < configConflicts.length; j++) {
+		allConflicts.push({ type: "config", nameField: "configName", conflict: configConflicts[j] });
+	}
+
+	var contentDiv = document.createElement("div");
+	contentDiv.style.display = "flex";
+	contentDiv.style.flexDirection = "column";
+	contentDiv.style.gap = "8px";
+
+	// Summary
+	var summary = document.createElement("div");
+	summary.style.fontSize = "12px";
+	summary.style.padding = "4px";
+	summary.textContent = allConflicts.length + " item(s) already exist by name. Choose how to handle each:";
+	contentDiv.appendChild(summary);
+
+	// Apply-to-all bar
+	var applyAllBar = document.createElement("div");
+	applyAllBar.style.display = "flex";
+	applyAllBar.style.gap = "6px";
+	applyAllBar.style.padding = "4px 0";
+
+	var applyAllLabel = document.createElement("span");
+	applyAllLabel.style.fontSize = "11px";
+	applyAllLabel.style.lineHeight = "24px";
+	applyAllLabel.textContent = "Apply to all:";
+	applyAllBar.appendChild(applyAllLabel);
+
+	var allUpdateBtn = document.createElement("button");
+	allUpdateBtn.textContent = "Update All";
+	allUpdateBtn.className = "floating-dialog-btn";
+	allUpdateBtn.style.fontSize = "10px";
+	allUpdateBtn.style.padding = "2px 8px";
+
+	var allSkipBtn = document.createElement("button");
+	allSkipBtn.textContent = "Skip All";
+	allSkipBtn.className = "floating-dialog-btn";
+	allSkipBtn.style.fontSize = "10px";
+	allSkipBtn.style.padding = "2px 8px";
+
+	var allCopyBtn = document.createElement("button");
+	allCopyBtn.textContent = "Copy All";
+	allCopyBtn.className = "floating-dialog-btn";
+	allCopyBtn.style.fontSize = "10px";
+	allCopyBtn.style.padding = "2px 8px";
+
+	applyAllBar.appendChild(allUpdateBtn);
+	applyAllBar.appendChild(allSkipBtn);
+	applyAllBar.appendChild(allCopyBtn);
+	contentDiv.appendChild(applyAllBar);
+
+	// Scrollable conflict table
+	var tableContainer = document.createElement("div");
+	tableContainer.style.flex = "1";
+	tableContainer.style.overflow = "auto";
+	tableContainer.style.border = "1px solid #555";
+	tableContainer.style.borderRadius = "4px";
+	tableContainer.style.maxHeight = "300px";
+
+	var table = document.createElement("table");
+	table.style.width = "100%";
+	table.style.borderCollapse = "collapse";
+	table.style.fontSize = "11px";
+
+	var thead = document.createElement("thead");
+	thead.innerHTML = '<tr style="background: #333; color: #fff; position: sticky; top: 0;">' +
+		'<th style="padding: 4px 6px; text-align: left;">Type</th>' +
+		'<th style="padding: 4px 6px; text-align: left;">Name</th>' +
+		'<th style="padding: 4px 6px; text-align: left;">Resolution</th>' +
+		"</tr>";
+	table.appendChild(thead);
+
+	var tbody = document.createElement("tbody");
+	var selects = [];
+
+	for (var k = 0; k < allConflicts.length; k++) {
+		var entry = allConflicts[k];
+		var name = entry.conflict.imported[entry.nameField] || "Unknown";
+		var row = document.createElement("tr");
+		row.style.borderBottom = "1px solid #444";
+
+		var typeCell = document.createElement("td");
+		typeCell.style.padding = "3px 6px";
+		typeCell.textContent = entry.type === "product" ? "Product" : "Config";
+		row.appendChild(typeCell);
+
+		var nameCell = document.createElement("td");
+		nameCell.style.padding = "3px 6px";
+		nameCell.textContent = name;
+		row.appendChild(nameCell);
+
+		var selectCell = document.createElement("td");
+		selectCell.style.padding = "3px 6px";
+		var select = document.createElement("select");
+		select.style.fontSize = "11px";
+		select.style.width = "100%";
+		select.innerHTML = '<option value="update">Update (overwrite)</option>' +
+			'<option value="skip">Skip (don\'t import)</option>' +
+			'<option value="copy">Copy (import with suffix)</option>';
+		selectCell.appendChild(select);
+		row.appendChild(selectCell);
+
+		tbody.appendChild(row);
+		selects.push(select);
+	}
+	table.appendChild(tbody);
+	tableContainer.appendChild(table);
+	contentDiv.appendChild(tableContainer);
+
+	// Apply-to-all handlers
+	allUpdateBtn.addEventListener("click", function () {
+		for (var s = 0; s < selects.length; s++) selects[s].value = "update";
+	});
+	allSkipBtn.addEventListener("click", function () {
+		for (var s = 0; s < selects.length; s++) selects[s].value = "skip";
+	});
+	allCopyBtn.addEventListener("click", function () {
+		for (var s = 0; s < selects.length; s++) selects[s].value = "copy";
+	});
+
+	var dialog = new FloatingDialog({
+		title: "Import Conflicts",
+		content: contentDiv,
+		width: 500,
+		height: 450,
+		showConfirm: true,
+		confirmText: "Import",
+		showCancel: true,
+		cancelText: "Cancel",
+		draggable: true,
+		resizable: true,
+		layoutType: "default",
+		onConfirm: function () {
+			// Build resolution map: index -> "update"|"skip"|"copy"
+			var resolutions = [];
+			for (var r = 0; r < selects.length; r++) {
+				resolutions.push(selects[r].value);
+			}
+
+			// Build sets of conflicting imported item names to exclude from direct import
+			var conflictProductNames = new Set();
+			var conflictConfigNames = new Set();
+
+			for (var c = 0; c < allConflicts.length; c++) {
+				var entry = allConflicts[c];
+				var resolution = resolutions[c];
+				var imported = entry.conflict.imported;
+				var existingKey = entry.conflict.existingKey;
+
+				if (entry.type === "product") {
+					conflictProductNames.add(imported.name);
+					if (resolution === "update") {
+						// Overwrite existing by key
+						(window.loadedProducts || new Map()).set(existingKey, imported);
+					} else if (resolution === "copy") {
+						// Import with suffix
+						var copyName = findUniqueName(imported.name, window.loadedProducts || new Map(), "name");
+						imported.name = copyName;
+						imported.productID = imported.productID + "_copy_" + Date.now();
+						(window.loadedProducts || new Map()).set(imported.productID, imported);
+					}
+					// "skip" = do nothing
+				} else {
+					conflictConfigNames.add(imported.configName);
+					if (resolution === "update") {
+						(window.loadedChargeConfigs || new Map()).set(existingKey, imported);
+					} else if (resolution === "copy") {
+						var copyCName = findUniqueName(imported.configName, window.loadedChargeConfigs || new Map(), "configName");
+						imported.configName = copyCName;
+						imported.configID = imported.configID + "_copy_" + Date.now();
+						(window.loadedChargeConfigs || new Map()).set(imported.configID, imported);
+					}
+				}
+			}
+
+			// Now import non-conflicting items directly
+			var prodMap = window.loadedProducts || new Map();
+			for (var p = 0; p < results.products.length; p++) {
+				var prod = results.products[p];
+				if (!conflictProductNames.has(prod.name)) {
+					prodMap.set(prod.productID, prod);
+				}
+			}
+			window.loadedProducts = prodMap;
+
+			var cfgMap = window.loadedChargeConfigs || new Map();
+			for (var q = 0; q < results.configs.length; q++) {
+				var cfg = results.configs[q];
+				if (!conflictConfigNames.has(cfg.configName)) {
+					cfgMap.set(cfg.configID, cfg);
+				}
+			}
+			window.loadedChargeConfigs = cfgMap;
+
+			// Save
+			if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
+			if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
+			if (typeof window.buildSurfaceConnectorPresets === "function") window.buildSurfaceConnectorPresets();
+
+			dialog.close();
+			if (onComplete) onComplete();
+		}
+	});
+	dialog.show();
+}
+
+/**
+ * Find a unique name by appending {N} suffix.
+ * @param {string} baseName - Original name
+ * @param {Map} existingMap - Map of existing items
+ * @param {string} nameField - Field to check ("name" or "configName")
+ * @returns {string} Unique name
+ */
+function findUniqueName(baseName, existingMap, nameField) {
+	var existingNames = new Set();
+	existingMap.forEach(function (item) {
+		existingNames.add(item[nameField]);
+	});
+
+	var counter = 1;
+	var candidate = baseName + " {" + counter + "}";
+	while (existingNames.has(candidate)) {
+		counter++;
+		candidate = baseName + " {" + counter + "}";
+	}
+	return candidate;
+}
+
+/**
+ * Apply import results directly (no conflicts).
+ * @param {Object} results - { products, configs, errors }
+ */
+function applyImportResults(results) {
+	var prodMap = window.loadedProducts || new Map();
+	for (var i = 0; i < results.products.length; i++) {
+		var product = results.products[i];
+		prodMap.set(product.productID, product);
+	}
+	window.loadedProducts = prodMap;
+
+	var cfgMap = window.loadedChargeConfigs || new Map();
+	for (var j = 0; j < results.configs.length; j++) {
+		var config = results.configs[j];
+		cfgMap.set(config.configID, config);
+	}
+	window.loadedChargeConfigs = cfgMap;
+
+	if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
+	if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
+	if (typeof window.buildSurfaceConnectorPresets === "function") window.buildSurfaceConnectorPresets();
+
+	var msg = "Imported " + results.products.length + " products and " + results.configs.length + " configs.";
+	if (results.errors.length > 0) {
+		msg += "\nWarnings: " + results.errors.join(", ");
+	}
+	if (typeof window.showModalMessage === "function") {
+		window.showModalMessage("Import Complete", msg, "success");
 	}
 }

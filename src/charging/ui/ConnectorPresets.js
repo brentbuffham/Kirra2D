@@ -45,10 +45,10 @@ export function buildSurfaceConnectorPresets() {
 
     if (surfaceProducts.length === 0) return;
 
-    // Sort by first delay value
+    // Sort by delay value
     surfaceProducts.sort(function (a, b) {
-        var aDelay = a.delaySeriesMs && a.delaySeriesMs.length > 0 ? a.delaySeriesMs[0] : 0;
-        var bDelay = b.delaySeriesMs && b.delaySeriesMs.length > 0 ? b.delaySeriesMs[0] : 0;
+        var aDelay = a.delayMs != null ? a.delayMs : 0;
+        var bDelay = b.delayMs != null ? b.delayMs : 0;
         return aDelay - bDelay;
     });
 
@@ -59,7 +59,7 @@ export function buildSurfaceConnectorPresets() {
 
     for (var i = 0; i < surfaceProducts.length; i++) {
         (function (product) {
-            var delay = product.delaySeriesMs && product.delaySeriesMs.length > 0 ? product.delaySeriesMs[0] : 0;
+            var delay = product.delayMs != null ? product.delayMs : 0;
             var color = product.colorHex || "#888888";
             var textColor = contrastText(color);
 

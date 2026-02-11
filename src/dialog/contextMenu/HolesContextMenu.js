@@ -324,7 +324,131 @@ export function showHolePropertyEditor(hole) {
 	noteDiv.textContent = isMultiple ? "Note: Use = prefix for calculations (e.g., =+0.3 to add, =-0.2 to subtract). Plain numbers set absolute values. Only changed values will be applied." : "Note: Use = prefix for calculations (e.g., =+0.3 to add, =-0.2 to subtract). Plain numbers (including negatives like -0.3) set absolute values. Curved connectors: 45° to 120° or -45° to -120°. Straight: 0°";
 	formContent.appendChild(noteDiv);
 
-	// Step 9b) Build tabbed content for single-hole edit (Properties + Loading tabs)
+	// Step 9b) For multi-hole: add Recalculate Loading section below form
+	if (isMultiple) {
+		// Gather per-hole charging stats
+		let chargedCount = 0;
+		let mismatchCount = 0;
+		let autoOnCount = 0;
+		let autoOffCount = 0;
+		const chargedHoles = []; // holes that have charging data
+		if (window.loadedCharging) {
+			holes.forEach(function(h) {
+				const hc = window.loadedCharging.get(h.holeID);
+				if (hc) {
+					chargedCount++;
+					chargedHoles.push(h);
+					if (hc.autoRecalculate !== false) { autoOnCount++; } else { autoOffCount++; }
+					if (typeof hc.checkDimensionMismatch === "function") {
+						const mm = hc.checkDimensionMismatch(h);
+						if (mm.lengthChanged || mm.diameterChanged) mismatchCount++;
+					}
+				}
+			});
+		}
+
+		if (chargedCount > 0) {
+			// Auto-recalculate on open for holes that have autoRecalculate=true
+			if (mismatchCount > 0 && autoOnCount > 0) {
+				let autoUpdated = 0;
+				chargedHoles.forEach(function(h) {
+					const hc = window.loadedCharging.get(h.holeID);
+					if (hc && hc.autoRecalculate !== false && typeof hc.updateDimensions === "function") {
+						const mm = hc.checkDimensionMismatch(h);
+						if (mm.lengthChanged || mm.diameterChanged) {
+							hc.updateDimensions(h);
+							autoUpdated++;
+						}
+					}
+				});
+				if (autoUpdated > 0) {
+					if (typeof window.debouncedSaveCharging === "function") window.debouncedSaveCharging();
+					// Recount mismatches after auto-recalc
+					mismatchCount = 0;
+					chargedHoles.forEach(function(h) {
+						const hc = window.loadedCharging.get(h.holeID);
+						if (hc && typeof hc.checkDimensionMismatch === "function") {
+							const mm = hc.checkDimensionMismatch(h);
+							if (mm.lengthChanged || mm.diameterChanged) mismatchCount++;
+						}
+					});
+					console.log("Auto-recalculated charging for", autoUpdated, "holes on multi-hole dialog open");
+				}
+			}
+
+			// Controls row: Recalculate button + Auto checkbox
+			const loadingSection = document.createElement("div");
+			loadingSection.style.cssText = "grid-column:1/-1;display:flex;align-items:center;gap:10px;padding:6px 0 4px;border-top:1px solid #444;margin-top:6px;";
+
+			// Recalculate button
+			const recalcBtn = document.createElement("button");
+			recalcBtn.className = "floating-dialog-btn";
+			recalcBtn.textContent = "Recalculate Loading";
+			recalcBtn.addEventListener("click", function() {
+				let updated = 0;
+				chargedHoles.forEach(function(h) {
+					const hc = window.loadedCharging ? window.loadedCharging.get(h.holeID) : null;
+					if (hc && typeof hc.updateDimensions === "function") {
+						const result = hc.updateDimensions(h);
+						if (result.lengthRescaled || result.diameterUpdated) updated++;
+					}
+				});
+				if (updated > 0 && typeof window.debouncedSaveCharging === "function") {
+					window.debouncedSaveCharging();
+				}
+				// Update status panel to green
+				statusPanel.style.background = "#1a3a1a";
+				statusPanel.style.color = "#6fbf6f";
+				statusPanel.textContent = chargedCount + " holes with charging \u2014 All up to date";
+				window.updateStatusMessage("Recalculated charging for " + updated + " of " + chargedCount + " holes");
+				setTimeout(function() { window.updateStatusMessage(""); }, 3000);
+			});
+			loadingSection.appendChild(recalcBtn);
+
+			// Auto Recalculate checkbox (per-hole: indeterminate if mixed)
+			const autoLabel = document.createElement("label");
+			autoLabel.style.cssText = "display:flex;align-items:center;gap:4px;font-size:11px;color:#aaa;cursor:pointer;margin-left:auto;";
+			const autoCheck = document.createElement("input");
+			autoCheck.type = "checkbox";
+			if (autoOnCount > 0 && autoOffCount > 0) {
+				// Mixed state
+				autoCheck.checked = false;
+				autoCheck.indeterminate = true;
+			} else {
+				autoCheck.checked = autoOnCount > 0;
+			}
+			autoCheck.addEventListener("change", function() {
+				// Apply to all charged holes in selection
+				chargedHoles.forEach(function(h) {
+					const hc = window.loadedCharging ? window.loadedCharging.get(h.holeID) : null;
+					if (hc) hc.autoRecalculate = autoCheck.checked;
+				});
+				autoCheck.indeterminate = false;
+				if (typeof window.debouncedSaveCharging === "function") window.debouncedSaveCharging();
+			});
+			autoLabel.appendChild(autoCheck);
+			autoLabel.appendChild(document.createTextNode("Auto Recalculate"));
+			loadingSection.appendChild(autoLabel);
+
+			formContent.appendChild(loadingSection);
+
+			// Status panel: green (all good) or orange (mismatches)
+			const statusPanel = document.createElement("div");
+			statusPanel.style.cssText = "grid-column:1/-1;padding:6px 10px;font-size:12px;border-radius:3px;text-align:center;";
+			if (mismatchCount > 0) {
+				statusPanel.style.background = "#5a3800";
+				statusPanel.style.color = "#ffb347";
+				statusPanel.textContent = chargedCount + " holes with charging, " + mismatchCount + " with dimension mismatches";
+			} else {
+				statusPanel.style.background = "#1a3a1a";
+				statusPanel.style.color = "#6fbf6f";
+				statusPanel.textContent = chargedCount + " holes with charging \u2014 All up to date";
+			}
+			formContent.appendChild(statusPanel);
+		}
+	}
+
+	// Step 9c) Build tabbed content for single-hole edit (Properties + Loading tabs)
 	let dialogContent = formContent;
 	let dialogWidth = 380;
 	let sectionViewRef = null;
@@ -357,15 +481,47 @@ export function showHolePropertyEditor(hole) {
 
 		// Tab 2: Loading panel (charging cross-section + summary)
 		const loadingPanel = document.createElement("div");
-		loadingPanel.style.cssText = "flex:1;overflow-y:auto;display:none;";
+		loadingPanel.style.cssText = "flex:1;display:none;flex-direction:column;overflow:hidden;";
 
 		// Build loading tab content
 		const singleHole = holes[0];
 		const holeCharging = window.loadedCharging ? window.loadedCharging.get(singleHole.holeID) : null;
 
 		if (holeCharging) {
+			// Check for dimension mismatch
+			const mismatch = typeof holeCharging.checkDimensionMismatch === "function"
+				? holeCharging.checkDimensionMismatch(singleHole)
+				: { lengthChanged: false, diameterChanged: false };
+			const hasMismatch = mismatch.lengthChanged || mismatch.diameterChanged;
+
+			// Auto-recalculate immediately if this hole has autoRecalculate enabled
+			if (hasMismatch && holeCharging.autoRecalculate !== false && typeof holeCharging.updateDimensions === "function") {
+				holeCharging.updateDimensions(singleHole);
+				if (typeof window.debouncedSaveCharging === "function") {
+					window.debouncedSaveCharging();
+				}
+				console.log("Auto-recalculated charging on Loading tab open for hole " + singleHole.holeID);
+			}
+
+			// Mismatch warning bar (only show if this hole's auto-recalc is OFF and mismatch exists)
+			let mismatchWarningBar = null;
+			if (hasMismatch && holeCharging.autoRecalculate === false) {
+				mismatchWarningBar = document.createElement("div");
+				mismatchWarningBar.style.cssText = "background:#5a3800;color:#ffb347;padding:6px 10px;font-size:11px;border-radius:3px;margin-bottom:4px;";
+				let warningText = "Dimension mismatch: ";
+				if (mismatch.lengthChanged) {
+					warningText += "Length " + mismatch.oldLength.toFixed(1) + "m \u2192 " + mismatch.newLength.toFixed(1) + "m";
+				}
+				if (mismatch.lengthChanged && mismatch.diameterChanged) warningText += ", ";
+				if (mismatch.diameterChanged) {
+					warningText += "Diameter " + mismatch.oldDiameter.toFixed(0) + "mm \u2192 " + mismatch.newDiameter.toFixed(0) + "mm";
+				}
+				mismatchWarningBar.textContent = warningText;
+				loadingPanel.appendChild(mismatchWarningBar);
+			}
+
 			const loadingRow = document.createElement("div");
-			loadingRow.style.cssText = "display:flex;gap:8px;height:100%;";
+			loadingRow.style.cssText = "display:flex;gap:8px;flex:1;min-height:0;";
 
 			// Left: Section view canvas (wrapped in flex container like DeckBuilder)
 			const sectionDiv = document.createElement("div");
@@ -416,6 +572,56 @@ export function showHolePropertyEditor(hole) {
 			loadingRow.appendChild(summaryDiv);
 			loadingPanel.appendChild(loadingRow);
 
+			// Controls bar: Recalculate button + Auto-recalc checkbox
+			const controlsBar = document.createElement("div");
+			controlsBar.style.cssText = "display:flex;align-items:center;gap:10px;padding:4px 6px;border-top:1px solid #444;flex-shrink:0;";
+
+			// Manual Recalculate button (uses standard floating-dialog-btn for consistent styling)
+			const recalcBtn = document.createElement("button");
+			recalcBtn.textContent = "Recalculate";
+			recalcBtn.className = "floating-dialog-btn";
+			recalcBtn.addEventListener("click", function() {
+				if (typeof holeCharging.updateDimensions === "function") {
+					const result = holeCharging.updateDimensions(singleHole);
+					if (result.lengthRescaled || result.diameterUpdated) {
+						// Persist updated charging
+						if (typeof window.debouncedSaveCharging === "function") {
+							window.debouncedSaveCharging();
+						}
+						// Refresh section view
+						if (sectionViewRef && sectionViewRef.sectionView) {
+							sectionViewRef.sectionView.setCharging(holeCharging, singleHole.holeDiameter || 115);
+						}
+						// Remove warning bar if present
+						if (mismatchWarningBar && mismatchWarningBar.parentNode) {
+							mismatchWarningBar.parentNode.removeChild(mismatchWarningBar);
+						}
+						window.updateStatusMessage("Charging recalculated for hole " + singleHole.holeID);
+						setTimeout(function() { window.updateStatusMessage(""); }, 2000);
+					} else {
+						window.updateStatusMessage("No dimension changes to apply");
+						setTimeout(function() { window.updateStatusMessage(""); }, 2000);
+					}
+				}
+			});
+			controlsBar.appendChild(recalcBtn);
+
+			// Auto-recalc checkbox (per-hole property)
+			const autoLabel = document.createElement("label");
+			autoLabel.style.cssText = "display:flex;align-items:center;gap:4px;font-size:11px;color:#aaa;cursor:pointer;margin-left:auto;";
+			const autoCheck = document.createElement("input");
+			autoCheck.type = "checkbox";
+			autoCheck.checked = holeCharging.autoRecalculate !== false;
+			autoCheck.addEventListener("change", function() {
+				holeCharging.autoRecalculate = autoCheck.checked;
+				if (typeof window.debouncedSaveCharging === "function") window.debouncedSaveCharging();
+			});
+			autoLabel.appendChild(autoCheck);
+			autoLabel.appendChild(document.createTextNode("Auto Recalculate"));
+			controlsBar.appendChild(autoLabel);
+
+			loadingPanel.appendChild(controlsBar);
+
 			// Create HoleSectionView in read-only mode after dialog shows
 			sectionViewRef = { canvas: sectionCanvas, holeCharging: holeCharging, holeDiameterMm: singleHole.holeDiameter || 115 };
 		} else {
@@ -442,7 +648,7 @@ export function showHolePropertyEditor(hole) {
 
 		tabLoading.addEventListener("click", function() {
 			propsPanel.style.display = "none";
-			loadingPanel.style.display = "block";
+			loadingPanel.style.display = "flex";
 			tabLoading.style.background = "#333";
 			tabLoading.style.color = "#fff";
 			tabLoading.style.borderBottom = "2px solid #4a9eff";
@@ -576,6 +782,9 @@ export function showHolePropertyEditor(hole) {
 								window.renumberHolesFunction(startNumber, entityName);
 							});
 
+							// Clear selection state to avoid highlighting deleted/renumbered holes
+							if (typeof window.clearHoleSelection === "function") window.clearHoleSelection();
+
 							// Debounced save and updates (USE FACTORY CODE)
 							window.debouncedSaveHoles();
 							window.debouncedUpdateTreeView();
@@ -634,6 +843,9 @@ export function showHolePropertyEditor(hole) {
 						}
 						window.undoManager.pushAction(deleteAction);
 					}
+
+					// Clear selection state to avoid highlighting deleted/renumbered holes
+					if (typeof window.clearHoleSelection === "function") window.clearHoleSelection();
 
 					// Debounced save and updates (USE FACTORY CODE)
 					window.debouncedSaveHoles();
@@ -789,6 +1001,11 @@ export function showHolePropertyEditor(hole) {
 							}
 						});
 
+						// Remap charging keys to follow hole ID changes
+						if (window.remapChargingKeys && oldToNewHoleIDMap.size > 0) {
+							window.remapChargingKeys(oldToNewHoleIDMap);
+						}
+
 						// Step 10) Increment posID for all holes from insertion point onwards
 						for (let i = globalIndex + 1; i < window.allBlastHoles.length; i++) {
 							const h = window.allBlastHoles[i];
@@ -922,6 +1139,11 @@ export function showHolePropertyEditor(hole) {
 								}
 							}
 						});
+
+						// Remap charging keys to follow hole ID changes
+						if (window.remapChargingKeys && oldToNewHoleIDMap.size > 0) {
+							window.remapChargingKeys(oldToNewHoleIDMap);
+						}
 
 						// Step 10) Increment posID for all holes after insertion
 						for (let i = globalIndex + 2; i < window.allBlastHoles.length; i++) {
@@ -1182,12 +1404,26 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 	}
 
 	if (geometryChanged) {
-		// Update 3D meshes if in 3D mode
-		// Note: updateHoleMeshes doesn't exist yet
-		// TODO: Implement or remove this function call
-		// if (window.onlyShowThreeJS && window.threeInitialized) {
-		// 	window.updateHoleMeshes(holes);
-		// }
+		// Auto-recalculate charging per-hole (only for holes with autoRecalculate=true)
+		if (window.loadedCharging) {
+			let chargingUpdated = 0;
+			holes.forEach(function(h) {
+				const hc = window.loadedCharging.get(h.holeID);
+				if (hc && hc.autoRecalculate !== false && typeof hc.updateDimensions === "function") {
+					const result = hc.updateDimensions(h);
+					if (result.lengthRescaled || result.diameterUpdated) {
+						chargingUpdated++;
+					}
+				}
+			});
+			if (chargingUpdated > 0) {
+				// Persist updated charging
+				if (typeof window.debouncedSaveCharging === "function") {
+					window.debouncedSaveCharging();
+				}
+				console.log("Auto-recalculated charging for", chargingUpdated, "holes");
+			}
+		}
 	}
 
 	// Redraw and save

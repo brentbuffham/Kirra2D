@@ -632,6 +632,12 @@ function executeRenumberHoles() {
 		if (connectionsRemapped > 0) {
 			console.log("Remapped", connectionsRemapped, "connections");
 		}
+
+		// Remap charging keys to follow hole ID changes
+		if (window.remapChargingKeys && window.extractPlainIdRemap) {
+			var plainRemap = window.extractPlainIdRemap(idRemapMap);
+			window.remapChargingKeys(plainRemap);
+		}
 	}
 
 	// Save and refresh

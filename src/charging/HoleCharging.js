@@ -13,6 +13,7 @@ export class HoleCharging {
 		this.entityName = hole.entityName || null;
 		this.holeDiameterMm = hole.holeDiameter || 0;           // mm
 		this.holeLength = hole.holeLengthCalculated || hole.measuredLength || 0;
+		this.autoRecalculate = hole.autoRecalculate !== undefined ? hole.autoRecalculate : true;
 
 		this.decks = [];
 		this.primers = [];
@@ -250,6 +251,72 @@ export class HoleCharging {
 		return { valid: errors.length === 0, errors: errors, warnings: warnings };
 	}
 
+	// ============ DIMENSION MISMATCH ============
+
+	/**
+	 * Check if hole dimensions have changed since charging was created.
+	 * @param {Object} hole - Current blast hole object
+	 * @returns {{ lengthChanged: boolean, diameterChanged: boolean, oldLength: number, newLength: number, oldDiameter: number, newDiameter: number }}
+	 */
+	checkDimensionMismatch(hole) {
+		var currentLength = hole.holeLengthCalculated || hole.measuredLength || 0;
+		var currentDiameter = hole.holeDiameter || 0;
+		var lengthDelta = Math.abs(currentLength - this.holeLength);
+		var diameterDelta = Math.abs(currentDiameter - this.holeDiameterMm);
+
+		return {
+			lengthChanged: lengthDelta > 0.01,
+			diameterChanged: diameterDelta > 0.1,
+			oldLength: this.holeLength,
+			newLength: currentLength,
+			oldDiameter: this.holeDiameterMm,
+			newDiameter: currentDiameter
+		};
+	}
+
+	/**
+	 * Update cached dimensions and proportionally rescale deck depths when length changes.
+	 * @param {Object} hole - Current blast hole object
+	 * @returns {{ lengthRescaled: boolean, diameterUpdated: boolean }}
+	 */
+	updateDimensions(hole) {
+		var currentLength = hole.holeLengthCalculated || hole.measuredLength || 0;
+		var currentDiameter = hole.holeDiameter || 0;
+		var result = { lengthRescaled: false, diameterUpdated: false };
+
+		// Rescale deck depths proportionally if length changed
+		if (this.holeLength !== 0 && Math.abs(currentLength - this.holeLength) > 0.01) {
+			var ratio = currentLength / this.holeLength;
+			for (var i = 0; i < this.decks.length; i++) {
+				this.decks[i].topDepth = this.decks[i].topDepth * ratio;
+				this.decks[i].baseDepth = this.decks[i].baseDepth * ratio;
+			}
+			// Rescale primer depths too
+			for (var j = 0; j < this.primers.length; j++) {
+				if (this.primers[j].depth != null) {
+					this.primers[j].depth = this.primers[j].depth * ratio;
+				}
+			}
+			this.holeLength = currentLength;
+			result.lengthRescaled = true;
+		} else if (this.holeLength === 0 && currentLength !== 0) {
+			this.holeLength = currentLength;
+			result.lengthRescaled = true;
+		}
+
+		// Update diameter (no rescale needed, but flag it)
+		if (Math.abs(currentDiameter - this.holeDiameterMm) > 0.1) {
+			this.holeDiameterMm = currentDiameter;
+			result.diameterUpdated = true;
+		}
+
+		if (result.lengthRescaled || result.diameterUpdated) {
+			this.modified = new Date().toISOString();
+		}
+
+		return result;
+	}
+
 	clear() {
 		this.decks = [];
 		this.primers = [];
@@ -262,6 +329,7 @@ export class HoleCharging {
 			entityName: this.entityName,
 			holeDiameterMm: this.holeDiameterMm,
 			holeLength: this.holeLength,
+			autoRecalculate: this.autoRecalculate,
 			decks: this.decks.map(function(d) { return d.toJSON(); }),
 			primers: this.primers.map(function(p) { return p.toJSON(); }),
 			created: this.created,
@@ -274,8 +342,10 @@ export class HoleCharging {
 			holeID: obj.holeID,
 			entityName: obj.entityName,
 			holeDiameter: obj.holeDiameterMm,
-			holeLengthCalculated: obj.holeLength
+			holeLengthCalculated: obj.holeLength,
+			autoRecalculate: obj.autoRecalculate
 		});
+		hc.autoRecalculate = obj.autoRecalculate !== undefined ? obj.autoRecalculate : true;
 		hc.decks = [];
 		hc.primers = [];
 		if (obj.decks) {

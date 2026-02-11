@@ -158,13 +158,15 @@ function applySimpleSingle(hole, config) {
 	var stemLen = Math.min(config.preferredStemLength || 3.5, holeLen * 0.5);
 	var chargeLen = holeLen - stemLen;
 
-	// Check short-hole tiers
-	var tier = getShortHoleTier(holeLen);
-	if (tier) {
-		var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
-		if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
-		stemLen = adjusted.stemLen;
-		chargeLen = adjusted.chargeLen;
+	// Check short-hole tiers (skipped if config disables short hole logic)
+	if (config.applyShortHoleLogic !== false) {
+		var tier = getShortHoleTier(holeLen);
+		if (tier) {
+			var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
+			if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
+			stemLen = adjusted.stemLen;
+			chargeLen = adjusted.chargeLen;
+		}
 	}
 
 	hc.decks.push(new Deck({
@@ -241,13 +243,15 @@ function applyStandardVented(hole, config) {
 	var chargeLen = config.preferredChargeLength || (holeLen - stemLen);
 	chargeLen = Math.min(chargeLen, holeLen - stemLen);
 
-	// Check short-hole tiers
-	var tier = getShortHoleTier(holeLen);
-	if (tier) {
-		var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
-		if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
-		stemLen = adjusted.stemLen;
-		chargeLen = adjusted.chargeLen;
+	// Check short-hole tiers (skipped if config disables short hole logic)
+	if (config.applyShortHoleLogic !== false) {
+		var tier = getShortHoleTier(holeLen);
+		if (tier) {
+			var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
+			if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
+			stemLen = adjusted.stemLen;
+			chargeLen = adjusted.chargeLen;
+		}
 	}
 
 	// Air at top (vented)
@@ -329,7 +333,8 @@ function applyStandardFixedStem(hole, config) {
 	var chargeBase = holeLen;
 
 	// Check short-hole tiers first - they override config ratios for very short holes
-	var tier = getShortHoleTier(holeLen);
+	// (skipped if config disables short hole logic)
+	var tier = (config.applyShortHoleLogic !== false) ? getShortHoleTier(holeLen) : null;
 	if (tier) {
 		var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
 		if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
@@ -584,12 +589,14 @@ function applyPresplit(hole, config) {
 	var stemLen = Math.min(config.preferredStemLength || 3.5, holeLen * 0.4);
 	var chargeLen = holeLen - stemLen;
 
-	// Check short-hole tiers
-	var tier = getShortHoleTier(holeLen);
-	if (tier) {
-		var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
-		if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
-		stemLen = adjusted.stemLen;
+	// Check short-hole tiers (skipped if config disables short hole logic)
+	if (config.applyShortHoleLogic !== false) {
+		var tier = getShortHoleTier(holeLen);
+		if (tier) {
+			var adjusted = applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, hole.holeDiameter || 115);
+			if (!adjusted) return applyNoCharge(hole, config); // tier says NO_CHARGE
+			stemLen = adjusted.stemLen;
+		}
 	}
 
 	// Stemming

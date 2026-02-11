@@ -41,7 +41,7 @@ var PRODUCTS_CSV_HEADER = [
     "minDelayMs",
     "maxDelayMs",
     "delayIncrementMs",
-    "delaySeriesMs",
+    "delayMs",
     "coreLoadGramsPerMeter",
     "spacerType",
     "description"
@@ -67,6 +67,7 @@ var CHARGE_CONFIGS_CSV_HEADER = [
     "primerDepthFromCollar",
     "maxPrimersPerDeck",
     "airDeckLength",
+    "applyShortHoleLogic",
     "description"
 ].join(",");
 
@@ -97,8 +98,8 @@ var README_CONTENT = [
     "",
     "INITIATOR TYPES:",
     "  Electronic        - Programmable delay (set minDelayMs, maxDelayMs, delayIncrementMs)",
-    "  ShockTube         - Fixed delay series (set delaySeriesMs as semicolon-separated: 17;25;42;65)",
-    "  Electric          - Fixed delay numbers (set delaySeriesMs)",
+    "  ShockTube         - Fixed delay in ms (set delayMs)",
+    "  Electric          - Fixed delay in ms (set delayMs)",
     "  DetonatingCord    - Continuous burn (set deliveryVodMs, coreLoadGramsPerMeter)",
     "  SurfaceConnector  - Surface shock tube connector (populates connector presets)",
     "  SurfaceWire       - Surface electronic wire connector",
@@ -149,7 +150,7 @@ var README_CONTENT = [
     "  minDelayMs              |         |          |          |     o     |",
     "  maxDelayMs              |         |          |          |     o     |",
     "  delayIncrementMs        |         |          |          |     o     |",
-    "  delaySeriesMs           |         |          |          |     o     |",
+    "  delayMs                 |         |          |          |     o     |",
     "  coreLoadGramsPerMeter   |         |          |          |     o     |",
     "  spacerType              |         |          |          |           |   x",
     "  description             |    o    |    o     |    o     |     o     |   o",
@@ -203,16 +204,16 @@ var EXAMPLE_PRODUCT_DATA = [
     // --- Initiator --- Generic Programmable Electronic Detonator
     { productCategory: "Initiator", productType: "Electronic", name: "GENERIC-E", initiatorType: "Electronic", deliveryVodMs: 0, minDelayMs: 0, maxDelayMs: 20000, delayIncrementMs: 1, colorHex: "#0000FF", description: "Generic Programmable Electronic Detonator" },
     // --- Initiator --- Shocktube Millisecond Downhole Detonator
-    { productCategory: "Initiator", productType: "ShockTube", name: "GENERIC-MS", initiatorType: "ShockTube", deliveryVodMs: 2000, delaySeriesMs: [400, 450, 500], colorHex: "#00BFFF", description: "Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "GENERIC-MS", initiatorType: "ShockTube", deliveryVodMs: 2000, delayMs: 400, colorHex: "#00BFFF", description: "Shocktube Millisecond Downhole Detonator" },
     // --- Initiator --- Surface Connector (populates connector toolbar presets)
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-009", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [9], colorHex: "#22CC00", description: "9ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-017", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [17], colorHex: "#FFCC00", description: "17ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-025", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [25], colorHex: "#DD0000", description: "25ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-042", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [42], colorHex: "#BBBBBB", description: "42ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-067", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [67], colorHex: "#0055DD", description: "65ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
-    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-109", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delaySeriesMs: [109], colorHex: "#550066", description: "109ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-009", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delayMs: 9, colorHex: "#22CC00", description: "9ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-017", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delayMs: 17, colorHex: "#FFCC00", description: "17ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-025", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delayMs: 25, colorHex: "#DD0000", description: "25ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-042", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delayMs: 42, colorHex: "#BBBBBB", description: "42ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-067", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delayMs: 67, colorHex: "#0055DD", description: "65ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
+    { productCategory: "Initiator", productType: "ShockTube", name: "SC-MS-109", initiatorType: "SurfaceConnector", deliveryVodMs: 2000, delayMs: 109, colorHex: "#550066", description: "109ms Surface Connector - Shocktube Millisecond Downhole Detonator" },
     // --- Initiator --- Harness Wire (future development for electronic detonators)
-    { productCategory: "Initiator", productType: "HarnessWire", name: "HW-02MM", initiatorType: "SurfaceWire", deliveryVodMs: 30000000, delaySeriesMs: [0], colorHex: "#555522", description: "2mm Harness Wire - Electronic Detonator" },
+    { productCategory: "Initiator", productType: "HarnessWire", name: "HW-02MM", initiatorType: "SurfaceWire", deliveryVodMs: 30000000, delayMs: 0, colorHex: "#555522", description: "2mm Harness Wire - Electronic Detonator" },
     // --- Initiator --- Detonating Cord
     { productCategory: "Initiator", productType: "DetonatingCord", name: "10GCORD", initiatorType: "DetonatingCord", deliveryVodMs: 7000, coreLoadGramsPerMeter: 10, colorHex: "#AA0000", description: "10 gram per meter detonating cord" },
     // --- Spacer ---
@@ -461,10 +462,6 @@ function escapeCSV(val) {
 
 function productToCSVRow(product) {
     var json = product.toJSON();
-    var delaySeriesStr = "";
-    if (json.delaySeriesMs && Array.isArray(json.delaySeriesMs)) {
-        delaySeriesStr = json.delaySeriesMs.join(";");
-    }
 
     return [
         escapeCSV(json.productCategory),
@@ -489,7 +486,7 @@ function productToCSVRow(product) {
         escapeCSV(json.minDelayMs != null ? json.minDelayMs : ""),
         escapeCSV(json.maxDelayMs || ""),
         escapeCSV(json.delayIncrementMs || ""),
-        escapeCSV(delaySeriesStr),
+        escapeCSV(json.delayMs != null ? json.delayMs : ""),
         escapeCSV(json.coreLoadGramsPerMeter || ""),
         escapeCSV(json.spacerType || ""),
         escapeCSV(json.description)
@@ -518,6 +515,7 @@ function configToCSVRow(config) {
         escapeCSV(json.primerDepthFromCollar || ""),
         escapeCSV(json.maxPrimersPerDeck),
         escapeCSV(json.airDeckLength || ""),
+        escapeCSV(json.applyShortHoleLogic != null ? json.applyShortHoleLogic : ""),
         escapeCSV(json.description)
     ].join(",");
 }
@@ -557,24 +555,23 @@ function parseProductsCSV(text, errors) {
             var values = parseCSVLine(lines[i]);
             var obj = {};
             for (var j = 0; j < headers.length; j++) {
+                var hdr = headers[j];
                 var val = values[j] || "";
                 // Convert types
                 if (val === "true") val = true;
                 else if (val === "false") val = false;
-                else if (val !== "" && !isNaN(val) && headers[j] !== "name" && headers[j] !== "description" && headers[j] !== "supplier" && headers[j] !== "colorHex" && headers[j] !== "delaySeriesMs") {
+                else if (val !== "" && !isNaN(val) && hdr !== "name" && hdr !== "description" && hdr !== "supplier" && hdr !== "colorHex") {
                     val = parseFloat(val);
                 }
-                // Handle semicolon-separated arrays (or single numeric values)
-                if (headers[j] === "delaySeriesMs" && val !== "") {
-                    if (typeof val === "number") {
-                        val = [val]; // Single number -> array of one
-                    } else if (typeof val === "string") {
-                        val = val.split(";").map(function (v) {
-                            return parseFloat(v.trim());
-                        });
+                // Backward compat: old CSV with delaySeriesMs header → map to delayMs
+                if (hdr === "delaySeriesMs" && val !== "") {
+                    if (typeof val === "string") {
+                        val = parseFloat(val.split(";")[0].trim());
                     }
+                    obj["delayMs"] = val;
+                } else if (val !== "") {
+                    obj[hdr] = val;
                 }
-                if (val !== "") obj[headers[j]] = val;
             }
             var product = createProductFromJSON(obj);
             products.push(product);

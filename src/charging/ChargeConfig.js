@@ -45,6 +45,7 @@ export class ChargeConfig {
 
 		// Short hole
 		this.shortHoleLength = options.shortHoleLength || CHARGING_DEFAULTS.shortHoleLength;
+		this.applyShortHoleLogic = options.applyShortHoleLogic !== false; // default true
 
 		// Charge ratio (0.0 to 1.0): fraction of available hole used for charge
 		// e.g. 0.5 = 50% charge, remaining = stemming

@@ -82,3 +82,6 @@ export { HoleSectionView } from "./ui/HoleSectionView.js";
 
 // Rule engine
 export { applyChargeRule } from "./rules/SimpleRuleEngine.js";
+
+// Charging key remapper
+export { remapChargingKeys, extractPlainIdRemap } from "./ChargingRemapper.js";

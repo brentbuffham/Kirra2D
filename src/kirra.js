@@ -256,6 +256,7 @@ import { showDeckBuilderDialog } from "./charging/ui/DeckBuilderDialog.js";
 import { applyChargeRule } from "./charging/rules/SimpleRuleEngine.js";
 import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip, clearAllProducts, clearAllChargeConfigs, backupChargingConfig } from "./charging/ConfigImportExport.js";
 import { buildSurfaceConnectorPresets } from "./charging/ui/ConnectorPresets.js";
+import { remapChargingKeys, extractPlainIdRemap } from "./charging/ChargingRemapper.js";
 //=================================================
 // KAP Project File IO
 //=================================================
@@ -748,6 +749,15 @@ function exposeGlobalsToWindow() {
 	window.updateStatusMessage = updateStatusMessage;
 	window.updateSelectionAveragesAndSliders = updateSelectionAveragesAndSliders;
 
+	// Step 6b.3) Helper function to clear hole selection state (local + window)
+	// Use after deleting holes to prevent stale highlights on remaining holes
+	window.clearHoleSelection = function () {
+		selectedHole = null;
+		selectedMultipleHoles = [];
+		window.selectedHole = null;
+		window.selectedMultipleHoles = [];
+	};
+
 	// Step 6c) Expose context menu functions for tree view and 3D interactions
 	window.showSurfaceContextMenu = showSurfaceContextMenu;
 	window.showImageContextMenu = showImageContextMenu;
@@ -774,6 +784,8 @@ function exposeGlobalsToWindow() {
 	window.showProductManagerDialog = showProductManagerDialog;
 	window.showDeckBuilderDialog = showDeckBuilderDialog;
 	window.applyChargeRule = applyChargeRule;
+	window.remapChargingKeys = remapChargingKeys;
+	window.extractPlainIdRemap = extractPlainIdRemap;
 	window.exportBaseConfigTemplate = exportBaseConfigTemplate;
 	window.exportCurrentConfig = function() { exportCurrentConfig(loadedProducts, loadedChargeConfigs); };
 	window.importConfigFromZip = importConfigFromZip;
@@ -13590,6 +13602,7 @@ function resolveDuplicatesAutoRenumber(allBlastHoles, duplicateReport) {
 	});
 
 	// Renumber duplicates using appropriate format
+	var dupRemapMap = new Map();
 	duplicateReport.duplicates.forEach((duplicate) => {
 		const entity = entitiesMap.get(duplicate.entityName);
 		const oldID = duplicate.duplicate.hole.holeID.toString();
@@ -13621,6 +13634,11 @@ function resolveDuplicatesAutoRenumber(allBlastHoles, duplicateReport) {
 			newID = (++entity.maxNumeric).toString();
 		}
 
+		// Track remap for charging
+		if (oldID !== newID) {
+			dupRemapMap.set(oldID, newID);
+		}
+
 		// Update the hole ID
 		duplicate.duplicate.hole.holeID = newID;
 
@@ -13640,6 +13658,11 @@ function resolveDuplicatesAutoRenumber(allBlastHoles, duplicateReport) {
 
 		console.log("🔧 Renumbered duplicate hole:", duplicate.entityName + ":" + oldID, "→", newID);
 	});
+
+	// Remap charging keys for renumbered duplicates
+	if (window.remapChargingKeys && dupRemapMap.size > 0) {
+		window.remapChargingKeys(dupRemapMap);
+	}
 }
 
 function resolveDuplicatesKeepFirst(allBlastHoles, duplicateReport) {
@@ -35341,62 +35364,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	const exportProductTemplateBtn = document.getElementById("exportProductTemplateBtn");
-	if (exportProductTemplateBtn) {
-		exportProductTemplateBtn.addEventListener("click", function () {
-			exportBaseConfigTemplate();
-		});
-	}
-
-	const importProductConfigBtn = document.getElementById("importProductConfigBtn");
-	if (importProductConfigBtn) {
-		importProductConfigBtn.addEventListener("click", function () {
-			// Create hidden file input for ZIP selection
-			var fileInput = document.createElement("input");
-			fileInput.type = "file";
-			fileInput.accept = ".zip";
-			fileInput.style.display = "none";
-			fileInput.addEventListener("change", async function () {
-				if (!fileInput.files || fileInput.files.length === 0) return;
-				try {
-					var results = await importConfigFromZip(fileInput.files[0]);
-					// Add imported products to loadedProducts
-					var importedCount = 0;
-					for (var i = 0; i < results.products.length; i++) {
-						var product = results.products[i];
-						loadedProducts.set(product.productID, product);
-						importedCount++;
-					}
-					window.loadedProducts = loadedProducts;
-					// Add imported configs to loadedChargeConfigs
-					var configCount = 0;
-					for (var j = 0; j < results.configs.length; j++) {
-						var config = results.configs[j];
-						loadedChargeConfigs.set(config.configID, config);
-						configCount++;
-					}
-					window.loadedChargeConfigs = loadedChargeConfigs;
-					// Save to IndexedDB
-					if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
-					if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
-					// Rebuild connector presets from imported products
-					buildSurfaceConnectorPresets();
-					// Report results
-					var msg = "Imported " + importedCount + " products and " + configCount + " configs.";
-					if (results.errors.length > 0) {
-						msg += "\n\nWarnings:\n" + results.errors.join("\n");
-					}
-					alert(msg);
-				} catch (err) {
-					console.error("Error importing config:", err);
-					alert("Error importing config: " + err.message);
-				}
-				document.body.removeChild(fileInput);
-			});
-			document.body.appendChild(fileInput);
-			fileInput.click();
-		});
-	}
 
 	// Charge Rule Builder button - opens the Deck Builder dialog
 	const chargeRuleBuilderBtn = document.getElementById("chargeRuleBuilderBtn");
@@ -35447,27 +35414,6 @@ document.addEventListener("DOMContentLoaded", () => {
 		});
 	}
 
-	// Clear/Backup buttons
-	const clearAllProductsBtn = document.getElementById("clearAllProductsBtn");
-	if (clearAllProductsBtn) {
-		clearAllProductsBtn.addEventListener("click", function () {
-			clearAllProducts();
-		});
-	}
-
-	const clearAllConfigsBtn = document.getElementById("clearAllConfigsBtn");
-	if (clearAllConfigsBtn) {
-		clearAllConfigsBtn.addEventListener("click", function () {
-			clearAllChargeConfigs();
-		});
-	}
-
-	const backupChargingBtn = document.getElementById("backupChargingBtn");
-	if (backupChargingBtn) {
-		backupChargingBtn.addEventListener("click", function () {
-			backupChargingConfig();
-		});
-	}
 });
 
 //==============================================================//
@@ -50719,13 +50665,20 @@ window.handleTreeViewRenameMultipleHoles = function (nodeIds, treeViewInstance) 
 
 			// Step 4g) Reassign holes with conflict resolution
 			var renamedCount = 0;
+			var reassignRemapMap = new Map();
 			selectedHolesList.forEach(function (hole) {
 				if (hole.entityName !== targetBlastName) {
+					var oldHoleID = hole.holeID;
 					var newHoleID = hole.holeID;
 
 					// Check for conflict and generate unique ID
 					while (existingHoleIDs.has(newHoleID)) {
 						newHoleID = hole.holeID + "_" + generateUniqueCode();
+					}
+
+					// Track remap for charging if ID changed
+					if (oldHoleID !== newHoleID) {
+						reassignRemapMap.set(oldHoleID, newHoleID);
 					}
 
 					hole.entityName = targetBlastName;
@@ -50734,6 +50687,11 @@ window.handleTreeViewRenameMultipleHoles = function (nodeIds, treeViewInstance) 
 					renamedCount++;
 				}
 			});
+
+			// Remap charging keys if any IDs changed during reassignment
+			if (window.remapChargingKeys && reassignRemapMap.size > 0) {
+				window.remapChargingKeys(reassignRemapMap);
+			}
 
 			// Step 4h) Save and update
 			if (typeof debouncedSaveHoles === "function") {
@@ -51998,6 +51956,11 @@ function renumberSelectedHoles(startNumber) {
 			}
 		}
 	});
+
+	// Remap charging keys to follow hole ID changes
+	if (window.remapChargingKeys && oldToNewHoleIDMap.size > 0) {
+		window.remapChargingKeys(oldToNewHoleIDMap);
+	}
 
 	// Refresh
 	if (window.refreshPoints) window.refreshPoints();

@@ -580,6 +580,12 @@ function executeReorderRows() {
 		if (connectionsRemapped > 0) {
 			console.log("ReorderRows: Remapped", connectionsRemapped, "connections");
 		}
+
+		// Remap charging keys to follow hole ID changes
+		if (window.remapChargingKeys && window.extractPlainIdRemap) {
+			var plainRemap = window.extractPlainIdRemap(idRemapMap);
+			window.remapChargingKeys(plainRemap);
+		}
 	}
 
 	console.log("ReorderRows: Assigned", totalHoles, "holes to", rows.length, "rows" +
