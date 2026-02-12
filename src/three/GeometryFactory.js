@@ -4103,7 +4103,7 @@ export class GeometryFactory {
 	}
 
 	/**
-	 * Create a charge deck cylinder oriented along a hole axis.
+	 * Create a charge deck tube (open-ended cylinder) oriented along a hole axis.
 	 * @param {THREE.Vector3} topPos - World position of deck top (closer to collar)
 	 * @param {THREE.Vector3} basePos - World position of deck base (closer to toe)
 	 * @param {number} radiusMeters - Radius in meters
@@ -4118,7 +4118,7 @@ export class GeometryFactory {
 		var length = Math.sqrt(dx * dx + dy * dy + dz * dz);
 		if (length < 0.001) return null;
 
-		var geometry = new THREE.CylinderGeometry(radiusMeters, radiusMeters, length, 12, 1, false);
+		var geometry = new THREE.CylinderGeometry(radiusMeters, radiusMeters, length, 10, 1, true);
 		var material = new THREE.MeshBasicMaterial({
 			color: color,
 			transparent: opacity < 1.0,

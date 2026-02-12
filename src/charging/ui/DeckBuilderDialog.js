@@ -249,26 +249,14 @@ export function showDeckBuilderDialog(referenceHole) {
     );
 
     actionRow.appendChild(
-        makeBtn("Edit Primer", "option2", function () {
-            editPrimer(workingCharging, sectionView, refHole);
+        makeBtn("Edit", "option2", function () {
+            editSelected(workingCharging, sectionView, refHole, function () { updateSummary(); });
         })
     );
 
     actionRow.appendChild(
-        makeBtn("Remove Deck", "deny", function () {
-            removeDeck(workingCharging, sectionView);
-        })
-    );
-
-    actionRow.appendChild(
-        makeBtn("Remove Spacer", "deny", function () {
-            removeSpacer(workingCharging, sectionView);
-        })
-    );
-
-    actionRow.appendChild(
-        makeBtn("Remove Primer", "deny", function () {
-            removePrimer(workingCharging, sectionView);
+        makeBtn("Remove", "deny", function () {
+            removeSelected(workingCharging, sectionView, function () { updateSummary(); }, showInlineWarning, isFixedSpacer, findGapFillDeck);
         })
     );
 
@@ -415,75 +403,6 @@ export function showDeckBuilderDialog(referenceHole) {
         }
     }
 
-    function removeDeck(hc, sv) {
-        var idx = sv.selectedDeckIndex;
-        if (idx < 0 || idx >= hc.decks.length) {
-            showInlineWarning("Select a deck to remove first.");
-            return;
-        }
-        if (hc.decks.length <= 1) {
-            showInlineWarning("Cannot remove the last deck. Use Clear instead.");
-            return;
-        }
-        var removed = hc.decks[idx];
-        var removedTop = removed.topDepth;
-        var removedBase = removed.baseDepth;
-        hc.decks.splice(idx, 1);
-
-        // Expand nearest non-spacer deck to fill the gap
-        findGapFillDeck(hc.decks, idx, removedTop, removedBase);
-
-        hc.sortDecks();
-        sv.selectedDeckIndex = -1;
-        sv.setData(hc);
-        updateSummary();
-    }
-
-    function removeSpacer(hc, sv) {
-        var idx = sv.selectedDeckIndex;
-        // If no selection or selected deck is not a spacer, find first spacer
-        if (idx < 0 || idx >= hc.decks.length || !isFixedSpacer(hc.decks[idx])) {
-            idx = -1;
-            for (var s = 0; s < hc.decks.length; s++) {
-                if (isFixedSpacer(hc.decks[s])) {
-                    idx = s;
-                    break;
-                }
-            }
-            if (idx < 0) {
-                showInlineWarning("No spacer decks to remove.");
-                return;
-            }
-        }
-        if (hc.decks.length <= 1) {
-            showInlineWarning("Cannot remove the last deck. Use Clear instead.");
-            return;
-        }
-        var removed = hc.decks[idx];
-        var removedTop = removed.topDepth;
-        var removedBase = removed.baseDepth;
-        hc.decks.splice(idx, 1);
-
-        // Expand nearest non-spacer deck to fill the gap
-        findGapFillDeck(hc.decks, idx, removedTop, removedBase);
-
-        hc.sortDecks();
-        sv.selectedDeckIndex = -1;
-        sv.setData(hc);
-        updateSummary();
-    }
-
-    function removePrimer(hc, sv) {
-        var idx = sv.selectedPrimerIndex;
-        if (idx < 0 || idx >= hc.primers.length) {
-            showInlineWarning("Select a primer to remove first.");
-            return;
-        }
-        hc.primers.splice(idx, 1);
-        sv.selectedPrimerIndex = -1;
-        sv.setData(hc);
-        updateSummary();
-    }
 }
 
 /**
@@ -876,6 +795,181 @@ function editPrimer(workingCharging, sectionView, refHole) {
 
             workingCharging.modified = new Date().toISOString();
             sectionView.setData(workingCharging);
+        }
+    });
+    editDialog.show();
+}
+
+/**
+ * Universal Edit: auto-detect whether a primer or deck is selected and open the right editor.
+ */
+function editSelected(workingCharging, sectionView, refHole, onUpdate) {
+    // Primer selection takes priority (more specific)
+    if (sectionView.selectedPrimerIndex >= 0 && sectionView.selectedPrimerIndex < workingCharging.primers.length) {
+        editPrimer(workingCharging, sectionView, refHole);
+        return;
+    }
+    if (sectionView.selectedDeckIndex >= 0 && sectionView.selectedDeckIndex < workingCharging.decks.length) {
+        editDeck(workingCharging, sectionView, refHole, onUpdate);
+        return;
+    }
+    // Nothing selected
+    var row = document.getElementById("deckBuilderPropsRow");
+    if (row) {
+        row.innerHTML = '<span style="color:#ff9800;">\u26A0 Select a deck or primer to edit first.</span>';
+        setTimeout(function () {
+            row.innerHTML = "<span style='opacity:0.5;'>Click a deck to edit properties</span>";
+        }, 3000);
+    }
+}
+
+/**
+ * Universal Remove: auto-detect whether a primer, spacer, or deck is selected and remove it.
+ */
+function removeSelected(workingCharging, sectionView, onUpdate, showInlineWarning, isFixedSpacer, findGapFillDeck) {
+    // Check primer first
+    if (sectionView.selectedPrimerIndex >= 0 && sectionView.selectedPrimerIndex < workingCharging.primers.length) {
+        workingCharging.primers.splice(sectionView.selectedPrimerIndex, 1);
+        sectionView.selectedPrimerIndex = -1;
+        sectionView.setData(workingCharging);
+        onUpdate();
+        return;
+    }
+    // Check deck
+    var idx = sectionView.selectedDeckIndex;
+    if (idx >= 0 && idx < workingCharging.decks.length) {
+        if (workingCharging.decks.length <= 1) {
+            showInlineWarning("Cannot remove the last deck. Use Clear instead.");
+            return;
+        }
+        var removed = workingCharging.decks[idx];
+        var removedTop = removed.topDepth;
+        var removedBase = removed.baseDepth;
+        workingCharging.decks.splice(idx, 1);
+        findGapFillDeck(workingCharging.decks, idx, removedTop, removedBase);
+        workingCharging.sortDecks();
+        sectionView.selectedDeckIndex = -1;
+        sectionView.setData(workingCharging);
+        onUpdate();
+        return;
+    }
+    showInlineWarning("Select a deck or primer to remove first.");
+}
+
+/**
+ * Edit an existing deck via dialog pre-populated with its current values.
+ * Supports fx: formulas for topDepth and baseDepth.
+ */
+function editDeck(workingCharging, sectionView, refHole, onUpdate) {
+    var idx = sectionView.selectedDeckIndex;
+    if (idx < 0 || idx >= workingCharging.decks.length) return;
+
+    var deck = workingCharging.decks[idx];
+
+    // Build product options filtered to categories that match this deck type
+    var productOptions = [{ value: "", text: "-- None --" }];
+    if (window.loadedProducts) {
+        window.loadedProducts.forEach(function (p) {
+            productOptions.push({ value: p.name, text: p.name + " (" + p.productCategory + ")" });
+        });
+    }
+
+    var fields = [
+        {
+            label: "Deck Type", name: "deckType", type: "select",
+            options: [
+                { value: DECK_TYPES.INERT, text: "INERT" },
+                { value: DECK_TYPES.COUPLED, text: "COUPLED" },
+                { value: DECK_TYPES.DECOUPLED, text: "DECOUPLED" },
+                { value: DECK_TYPES.SPACER, text: "SPACER" }
+            ],
+            value: deck.deckType
+        },
+        {
+            label: "Product", name: "productName", type: "select",
+            options: productOptions,
+            value: deck.product ? deck.product.name : ""
+        },
+        { label: "Top Depth (m)", name: "topDepth", type: "text", value: deck.topDepth.toFixed(3), placeholder: "e.g. 3.5 or fx:stemLength" },
+        { label: "Base Depth (m)", name: "baseDepth", type: "text", value: deck.baseDepth.toFixed(3), placeholder: "e.g. 10.0 or fx:holeLength" }
+    ];
+
+    var formContent = createEnhancedFormContent(fields);
+
+    var editDialog = new FloatingDialog({
+        title: "Edit Deck " + (idx + 1),
+        content: formContent,
+        width: 380,
+        height: 300,
+        showConfirm: true,
+        confirmText: "Update",
+        showCancel: true,
+        onConfirm: function () {
+            var data = getFormData(formContent);
+            var ctx = buildFormulaCtxFromDecks(workingCharging);
+            var holeLen = Math.abs(workingCharging.holeLength);
+
+            // Resolve topDepth
+            var topInput = (data.topDepth || "").trim();
+            var newTop;
+            if (isFormula(topInput)) {
+                newTop = evaluateFormula(topInput, ctx);
+                if (newTop == null) {
+                    showModalMessage("Formula Error", "Could not evaluate top depth: " + topInput, "warning");
+                    return;
+                }
+            } else {
+                newTop = parseFloat(topInput);
+                if (isNaN(newTop)) newTop = deck.topDepth;
+            }
+
+            // Resolve baseDepth
+            var baseInput = (data.baseDepth || "").trim();
+            var newBase;
+            if (isFormula(baseInput)) {
+                newBase = evaluateFormula(baseInput, ctx);
+                if (newBase == null) {
+                    showModalMessage("Formula Error", "Could not evaluate base depth: " + baseInput, "warning");
+                    return;
+                }
+            } else {
+                newBase = parseFloat(baseInput);
+                if (isNaN(newBase)) newBase = deck.baseDepth;
+            }
+
+            // Clamp to hole range
+            newTop = Math.max(0, Math.min(holeLen, newTop));
+            newBase = Math.max(0, Math.min(holeLen, newBase));
+            if (newBase <= newTop) {
+                showModalMessage("Deck Error", "Base depth must be greater than top depth.", "warning");
+                return;
+            }
+
+            // Update deck type
+            deck.deckType = data.deckType || deck.deckType;
+
+            // Update product
+            var newProductName = data.productName || "";
+            if (newProductName && window.loadedProducts) {
+                var found = null;
+                window.loadedProducts.forEach(function (p) {
+                    if (p.name === newProductName) found = p;
+                });
+                if (found) {
+                    deck.product = productSnapshot(found);
+                }
+            } else if (!newProductName) {
+                deck.product = null;
+            }
+
+            // Update depths
+            deck.topDepth = parseFloat(newTop.toFixed(3));
+            deck.baseDepth = parseFloat(newBase.toFixed(3));
+
+            workingCharging.modified = new Date().toISOString();
+            workingCharging.sortDecks();
+            sectionView.setData(workingCharging);
+            if (onUpdate) onUpdate();
         }
     });
     editDialog.show();

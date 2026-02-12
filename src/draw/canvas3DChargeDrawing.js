@@ -1,10 +1,12 @@
 /**
  * canvas3DChargeDrawing.js - 3D charge visualization for blast holes
  *
- * PERFORMANCE: Uses InstancedMesh to render ALL charge decks in 1 draw call
- * and ALL primer markers in 1 draw call (2 total, regardless of hole count).
+ * PERFORMANCE: Uses InstancedMesh for minimal draw calls regardless of hole count:
+ *   1) Deck tubes (open-ended, 10 segments) - 1 draw call
+ *   2) Booster solid cylinders (red, product-sized) - 1 draw call
+ *   3) Initiator solid cylinders (blue, shell-sized, inside booster) - 1 draw call
  *
- * Deck cylinders are unit CylinderGeometry(1,1,1) scaled per-instance via
+ * All geometries are unit CylinderGeometry(1,1,1) scaled per-instance via
  * the instance matrix (scaleX/Z = radius, scaleY = length).
  * Per-instance color via InstancedMesh.setColorAt().
  */
@@ -13,24 +15,56 @@ import { DECK_TYPES, DECK_COLORS, NON_EXPLOSIVE_TYPES, BULK_EXPLOSIVE_TYPES } fr
 
 // Shared template geometries (created once, reused across rebuilds)
 var _deckTemplateGeo = null;
-var _primerTemplateGeo = null;
-var CYLINDER_SEGMENTS = 8;
+var _boosterTemplateGeo = null;
+var _initiatorTemplateGeo = null;
+var CYLINDER_SEGMENTS = 10;
 
+/** Deck tubes: open-ended (no end caps) so you can see into the hole */
 function getDeckTemplateGeo() {
 	if (!_deckTemplateGeo) {
-		_deckTemplateGeo = new THREE.CylinderGeometry(1, 1, 1, CYLINDER_SEGMENTS, 1, false);
+		_deckTemplateGeo = new THREE.CylinderGeometry(1, 1, 1, CYLINDER_SEGMENTS, 1, true);
 	}
 	return _deckTemplateGeo;
 }
 
-function getPrimerTemplateGeo() {
-	if (!_primerTemplateGeo) {
-		_primerTemplateGeo = new THREE.OctahedronGeometry(1, 0);
+/** Booster: solid cylinder (closed ends) sized to product dimensions */
+function getBoosterTemplateGeo() {
+	if (!_boosterTemplateGeo) {
+		_boosterTemplateGeo = new THREE.CylinderGeometry(1, 1, 1, CYLINDER_SEGMENTS, 1, false);
 	}
-	return _primerTemplateGeo;
+	return _boosterTemplateGeo;
 }
 
-var PRIMER_COLOR = 0xdd1111;
+/** Initiator/detonator: solid cylinder (closed ends), fewer segments for small detail */
+function getInitiatorTemplateGeo() {
+	if (!_initiatorTemplateGeo) {
+		_initiatorTemplateGeo = new THREE.CylinderGeometry(1, 1, 1, 6, 1, false);
+	}
+	return _initiatorTemplateGeo;
+}
+
+// Default dimensions (meters) when product lookup fails
+var DEFAULT_BOOSTER_LENGTH_M = 0.110;   // 110mm
+var DEFAULT_BOOSTER_DIAMETER_M = 0.056; // 56mm
+var DEFAULT_INITIATOR_LENGTH_M = 0.098; // 98mm
+var DEFAULT_INITIATOR_DIAMETER_M = 0.0076; // 7.6mm
+
+/**
+ * Look up a product by ID or name from window.loadedProducts.
+ */
+function findProduct(productID, productName) {
+	if (!window.loadedProducts) return null;
+	if (productID) {
+		var p = window.loadedProducts.get(productID);
+		if (p) return p;
+	}
+	if (productName) {
+		for (var [, prod] of window.loadedProducts) {
+			if (prod.name === productName) return prod;
+		}
+	}
+	return null;
+}
 
 /**
  * Convert a hex color string (e.g. "#FF8C00") to a hex number (e.g. 0xFF8C00).
@@ -103,12 +137,10 @@ var _direction = new THREE.Vector3();
 var _quaternion = new THREE.Quaternion();
 var _position = new THREE.Vector3();
 var _scale = new THREE.Vector3();
-var _identityQuat = new THREE.Quaternion();
 
 /**
  * Draw ALL 3D charge visualizations for visible holes using instanced rendering.
- * Creates 1 InstancedMesh for all deck cylinders and 1 for all primer markers.
- * Total: 2 draw calls regardless of hole count.
+ * Creates 3 InstancedMeshes: deck tubes, booster cylinders, initiator cylinders.
  *
  * @param {Array} visibleHoles - Array of visible blast hole objects
  */
@@ -121,9 +153,10 @@ export function drawAllChargesThreeJS(visibleHoles) {
 
 	var holeScale = window.holeScale || 1;
 
-	// First pass: collect all deck and primer data across all holes
+	// First pass: collect all deck, booster and initiator data across all holes
 	var deckList = [];
-	var primerList = [];
+	var boosterList = [];    // 8 values per booster: topX,topY,topZ, baseX,baseY,baseZ, radius, colorHex
+	var initiatorList = [];  // 8 values per initiator: topX,topY,topZ, baseX,baseY,baseZ, radius, colorHex
 
 	for (var h = 0; h < visibleHoles.length; h++) {
 		var hole = visibleHoles[h];
@@ -136,6 +169,13 @@ export function drawAllChargesThreeJS(visibleHoles) {
 		var diameterMm = charging.holeDiameterMm || hole.holeDiameter || 115;
 		var radiusMeters = (diameterMm / 1000) / 2;
 		var scaledRadius = radiusMeters * holeScale * 2;
+
+		// Hole direction vector (collar to toe, normalized)
+		var hdx = hole.endXLocation - hole.startXLocation;
+		var hdy = hole.endYLocation - hole.startYLocation;
+		var hdz = hole.endZLocation - hole.startZLocation;
+		var hMag = Math.sqrt(hdx * hdx + hdy * hdy + hdz * hdz);
+		if (hMag > 0) { hdx /= hMag; hdy /= hMag; hdz /= hMag; }
 
 		for (var i = 0; i < charging.decks.length; i++) {
 			var deck = charging.decks[i];
@@ -163,10 +203,34 @@ export function drawAllChargesThreeJS(visibleHoles) {
 				var primer = charging.primers[p];
 				if (primer.lengthFromCollar == null) continue;
 
-				var pw = positionAtDepth(hole, primer.lengthFromCollar, holeLength);
-				var pl = window.worldToThreeLocal(pw.x, pw.y);
+				var primerWorld = positionAtDepth(hole, primer.lengthFromCollar, holeLength);
+				var primerLocal = window.worldToThreeLocal(primerWorld.x, primerWorld.y);
+				var px = primerLocal.x, py = primerLocal.y, pz = primerWorld.z;
 
-				primerList.push(pl.x, pl.y, pw.z, scaledRadius * 1.5);
+				// --- Booster ---
+				var boosterProd = primer.booster ? findProduct(primer.booster.productID, primer.booster.productName) : null;
+				var bLenM = (boosterProd && boosterProd.lengthMm) ? boosterProd.lengthMm / 1000 : DEFAULT_BOOSTER_LENGTH_M;
+				var bDiaM = (boosterProd && boosterProd.diameterMm) ? boosterProd.diameterMm / 1000 : DEFAULT_BOOSTER_DIAMETER_M;
+				var bRadius = (bDiaM / 2) * holeScale * 2;
+				var bHalfLen = bLenM / 2;
+
+				// Top and base of booster cylinder along hole axis (in local coords)
+				var bTopX = px - hdx * bHalfLen, bTopY = py - hdy * bHalfLen, bTopZ = pz - hdz * bHalfLen;
+				var bBaseX = px + hdx * bHalfLen, bBaseY = py + hdy * bHalfLen, bBaseZ = pz + hdz * bHalfLen;
+
+				boosterList.push(bTopX, bTopY, bTopZ, bBaseX, bBaseY, bBaseZ, bRadius, hexStringToNumber(DECK_COLORS.BOOSTER));
+
+				// --- Initiator/Detonator ---
+				var detProd = primer.detonator ? findProduct(primer.detonator.productID, primer.detonator.productName) : null;
+				var iLenM = (detProd && detProd.shellLengthMm) ? detProd.shellLengthMm / 1000 : DEFAULT_INITIATOR_LENGTH_M;
+				var iDiaM = (detProd && detProd.shellDiameterMm) ? detProd.shellDiameterMm / 1000 : DEFAULT_INITIATOR_DIAMETER_M;
+				var iRadius = (iDiaM / 2) * holeScale * 2;
+				var iHalfLen = iLenM / 2;
+
+				var iTopX = px - hdx * iHalfLen, iTopY = py - hdy * iHalfLen, iTopZ = pz - hdz * iHalfLen;
+				var iBaseX = px + hdx * iHalfLen, iBaseY = py + hdy * iHalfLen, iBaseZ = pz + hdz * iHalfLen;
+
+				initiatorList.push(iTopX, iTopY, iTopZ, iBaseX, iBaseY, iBaseZ, iRadius, hexStringToNumber(DECK_COLORS.DETONATOR));
 			}
 		}
 	}
@@ -177,7 +241,7 @@ export function drawAllChargesThreeJS(visibleHoles) {
 		var deckMesh = new THREE.InstancedMesh(getDeckTemplateGeo(), new THREE.MeshBasicMaterial({
 			color: 0xffffff,
 			transparent: true,
-			opacity: 0.7,
+			opacity: 0.4,
 			side: THREE.DoubleSide,
 			depthWrite: false,
 		}), deckCount);
@@ -215,27 +279,83 @@ export function drawAllChargesThreeJS(visibleHoles) {
 		chargesGroup.add(deckMesh);
 	}
 
-	// Build instanced mesh for primer markers (1 draw call)
-	var primerCount = primerList.length / 4; // 4 values per primer
-	if (primerCount > 0) {
-		var primerMesh = new THREE.InstancedMesh(getPrimerTemplateGeo(), new THREE.MeshBasicMaterial({
-			color: PRIMER_COLOR,
+	// Build instanced mesh for booster cylinders (1 draw call)
+	var boosterCount = boosterList.length / 8;
+	if (boosterCount > 0) {
+		var boosterMesh = new THREE.InstancedMesh(getBoosterTemplateGeo(), new THREE.MeshBasicMaterial({
+			color: 0xffffff,
+			transparent: true,
+			opacity: 0.5,
+			side: THREE.DoubleSide,
 			depthTest: true,
-			depthWrite: true,
-		}), primerCount);
-		primerMesh.name = "charge-primers-instanced";
+			depthWrite: false,
+		}), boosterCount);
+		boosterMesh.name = "charge-boosters-instanced";
 
-		for (var pi = 0; pi < primerCount; pi++) {
-			var pOff = pi * 4;
-			_position.set(primerList[pOff], primerList[pOff + 1], primerList[pOff + 2]);
-			var sz = primerList[pOff + 3];
-			_scale.set(sz, sz, sz);
-			_matrix.compose(_position, _identityQuat, _scale);
-			primerMesh.setMatrixAt(pi, _matrix);
+		for (var bi = 0; bi < boosterCount; bi++) {
+			var bOff = bi * 8;
+			var bdx = boosterList[bOff + 3] - boosterList[bOff];
+			var bdy = boosterList[bOff + 4] - boosterList[bOff + 1];
+			var bdz = boosterList[bOff + 5] - boosterList[bOff + 2];
+			var bLen = Math.sqrt(bdx * bdx + bdy * bdy + bdz * bdz);
+			if (bLen < 0.0001) bLen = 0.001;
+
+			_direction.set(bdx, bdy, bdz).normalize();
+			_quaternion.setFromUnitVectors(_yAxis, _direction);
+			_position.set(
+				(boosterList[bOff] + boosterList[bOff + 3]) / 2,
+				(boosterList[bOff + 1] + boosterList[bOff + 4]) / 2,
+				(boosterList[bOff + 2] + boosterList[bOff + 5]) / 2
+			);
+			_scale.set(boosterList[bOff + 6], bLen, boosterList[bOff + 6]);
+			_matrix.compose(_position, _quaternion, _scale);
+			boosterMesh.setMatrixAt(bi, _matrix);
+
+			_color.setHex(boosterList[bOff + 7]);
+			boosterMesh.setColorAt(bi, _color);
 		}
 
-		primerMesh.instanceMatrix.needsUpdate = true;
-		chargesGroup.add(primerMesh);
+		boosterMesh.instanceMatrix.needsUpdate = true;
+		if (boosterMesh.instanceColor) boosterMesh.instanceColor.needsUpdate = true;
+		chargesGroup.add(boosterMesh);
+	}
+
+	// Build instanced mesh for initiator/detonator cylinders (1 draw call)
+	var initiatorCount = initiatorList.length / 8;
+	if (initiatorCount > 0) {
+		var initiatorMesh = new THREE.InstancedMesh(getInitiatorTemplateGeo(), new THREE.MeshBasicMaterial({
+			color: 0xffffff,
+			depthTest: true,
+			depthWrite: true,
+		}), initiatorCount);
+		initiatorMesh.name = "charge-initiators-instanced";
+
+		for (var ii = 0; ii < initiatorCount; ii++) {
+			var iOff = ii * 8;
+			var idx = initiatorList[iOff + 3] - initiatorList[iOff];
+			var idy = initiatorList[iOff + 4] - initiatorList[iOff + 1];
+			var idz = initiatorList[iOff + 5] - initiatorList[iOff + 2];
+			var iLen = Math.sqrt(idx * idx + idy * idy + idz * idz);
+			if (iLen < 0.0001) iLen = 0.001;
+
+			_direction.set(idx, idy, idz).normalize();
+			_quaternion.setFromUnitVectors(_yAxis, _direction);
+			_position.set(
+				(initiatorList[iOff] + initiatorList[iOff + 3]) / 2,
+				(initiatorList[iOff + 1] + initiatorList[iOff + 4]) / 2,
+				(initiatorList[iOff + 2] + initiatorList[iOff + 5]) / 2
+			);
+			_scale.set(initiatorList[iOff + 6], iLen, initiatorList[iOff + 6]);
+			_matrix.compose(_position, _quaternion, _scale);
+			initiatorMesh.setMatrixAt(ii, _matrix);
+
+			_color.setHex(initiatorList[iOff + 7]);
+			initiatorMesh.setColorAt(ii, _color);
+		}
+
+		initiatorMesh.instanceMatrix.needsUpdate = true;
+		if (initiatorMesh.instanceColor) initiatorMesh.instanceColor.needsUpdate = true;
+		chargesGroup.add(initiatorMesh);
 	}
 }
 
