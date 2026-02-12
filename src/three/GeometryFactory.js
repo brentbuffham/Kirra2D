@@ -4101,4 +4101,71 @@ export class GeometryFactory {
 		
 		return lineSegments;
 	}
+
+	/**
+	 * Create a charge deck cylinder oriented along a hole axis.
+	 * @param {THREE.Vector3} topPos - World position of deck top (closer to collar)
+	 * @param {THREE.Vector3} basePos - World position of deck base (closer to toe)
+	 * @param {number} radiusMeters - Radius in meters
+	 * @param {string|number} color - Hex color
+	 * @param {number} opacity - 0..1
+	 * @returns {THREE.Mesh}
+	 */
+	static createChargeDeck(topPos, basePos, radiusMeters, color, opacity = 0.7) {
+		var dx = basePos.x - topPos.x;
+		var dy = basePos.y - topPos.y;
+		var dz = basePos.z - topPos.z;
+		var length = Math.sqrt(dx * dx + dy * dy + dz * dz);
+		if (length < 0.001) return null;
+
+		var geometry = new THREE.CylinderGeometry(radiusMeters, radiusMeters, length, 12, 1, false);
+		var material = new THREE.MeshBasicMaterial({
+			color: color,
+			transparent: opacity < 1.0,
+			opacity: opacity,
+			side: THREE.DoubleSide,
+			depthTest: true,
+			depthWrite: opacity >= 0.99,
+		});
+		var mesh = new THREE.Mesh(geometry, material);
+
+		// Position at midpoint
+		var midX = (topPos.x + basePos.x) / 2;
+		var midY = (topPos.y + basePos.y) / 2;
+		var midZ = (topPos.z + basePos.z) / 2;
+		mesh.position.set(midX, midY, midZ);
+
+		// Orient cylinder along hole axis
+		// CylinderGeometry is oriented along Y by default
+		var direction = new THREE.Vector3(dx, dy, dz).normalize();
+		var yAxis = new THREE.Vector3(0, 1, 0);
+		var quaternion = new THREE.Quaternion().setFromUnitVectors(yAxis, direction);
+		mesh.quaternion.copy(quaternion);
+
+		mesh.name = "charge-deck";
+		return mesh;
+	}
+
+	/**
+	 * Create a primer marker (small octahedron) at a position along a hole.
+	 * @param {number} x - World X
+	 * @param {number} y - World Y
+	 * @param {number} z - World Z
+	 * @param {number} size - Marker size in meters
+	 * @param {string|number} color - Hex color (default red)
+	 * @returns {THREE.Mesh}
+	 */
+	static createPrimerMarker(x, y, z, size, color = 0xdd1111) {
+		var geometry = new THREE.OctahedronGeometry(size, 0);
+		var material = new THREE.MeshBasicMaterial({
+			color: color,
+			transparent: false,
+			depthTest: true,
+			depthWrite: true,
+		});
+		var mesh = new THREE.Mesh(geometry, material);
+		mesh.position.set(x, y, z);
+		mesh.name = "primer-marker";
+		return mesh;
+	}
 }

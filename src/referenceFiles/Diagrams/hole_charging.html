@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Hole Charging Display - 2D View</title>
+<style>
+  body { margin: 0; background: #fff; display: flex; justify-content: center; align-items: center; height: 100vh; }
+</style>
+</head>
+<body>
+<canvas id="c" width="500" height="500"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const cx = 230, cy = 245;
+const TAU = Math.PI * 2;
+const deg = (d) => d * Math.PI / 180;
+
+// === Radii ===
+const boreholeR = 120;      // inert deck radius (to borehole wall)
+const coupledR = 100;       // coupled deck radius (smaller than borehole)
+const chargeR = 70;         // hole (black circle)
+const decoupledOuter = 112;
+const decoupledInner = 82;
+
+const BROWN   = '#c0937a';
+const YELLOW  = '#f0e020';
+const PINK    = '#cc8cb8';
+const BLUE_LT = '#78b0d4';
+const RED     = '#dd1111';
+const BLACK   = '#111';
+const OUTLINE = '#222';
+
+// === Layout clockwise from stem at 270° ===
+// 270° → 325° : Inert deck (brown, boreholeR)
+// 325° → 328° : Primer (red wedge, extends past borehole)
+// 328° → 35°  : Coupled deck (yellow, coupledR - smaller)
+// 35°  → 38°  : Primer (red wedge, extends past borehole)
+// 38°  → 100° : Inert deck (brown, boreholeR)
+// 100° → 145° : Spacer (blue, extends past borehole)
+// 145° → 270° : Decoupled deck (pink arc)
+
+function drawWedge(startDeg, endDeg, radius, color) {
+  ctx.beginPath();
+  ctx.moveTo(cx, cy);
+  if (endDeg < startDeg) endDeg += 360;
+  ctx.arc(cx, cy, radius, deg(startDeg), deg(endDeg));
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawArc(startDeg, endDeg, innerR, outerR, color) {
+  ctx.beginPath();
+  if (endDeg < startDeg) endDeg += 360;
+  ctx.arc(cx, cy, outerR, deg(startDeg), deg(endDeg));
+  ctx.arc(cx, cy, innerR, deg(endDeg), deg(startDeg), true);
+  ctx.closePath();
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = OUTLINE;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+// === RENDER ===
+
+// 1. SPACER (behind hole, extends past borehole)
+drawWedge(100, 145, boreholeR + 30, BLUE_LT);
+
+// 2. INERT DECK - top right
+drawWedge(270, 323, boreholeR, BROWN);
+
+// 4. COUPLED DECK - yellow (smaller radius)
+drawWedge(323, 38, coupledR, YELLOW);
+
+// 5. INERT DECK - bottom right
+drawWedge(38, 100, boreholeR, BROWN);
+
+// 7. DECOUPLED DECK arc (pink, left side)
+drawArc(145, 270, decoupledInner, decoupledOuter, PINK);
+
+// 7. PRIMERS (under the hole but over decks)
+function drawBlueDiamond(angleDeg, radius, size) {
+  const x = cx + radius * Math.cos(deg(angleDeg));
+  const y = cy + radius * Math.sin(deg(angleDeg));
+  ctx.beginPath();
+  ctx.moveTo(x, y - size);
+  ctx.lineTo(x + size, y);
+  ctx.lineTo(x, y + size);
+  ctx.lineTo(x - size, y);
+  ctx.closePath();
+  ctx.fillStyle = '#2858a8';
+  ctx.fill();
+}
+// Primer over decoupled deck ~210°
+drawWedge(207, 214, boreholeR + 18, RED);
+// Primer ~31° (over coupled deck)
+drawWedge(28, 35, boreholeR + 18, RED);
+// Blue detonator diamonds on primer wedges
+drawBlueDiamond(210.5, boreholeR + 5, 6);
+drawBlueDiamond(31.5, boreholeR + 5, 6);
+
+// 8. HOLE - black circle (no border)
+ctx.beginPath();
+ctx.arc(cx, cy, chargeR, 0, TAU);
+ctx.fillStyle = BLACK;
+ctx.fill();
+
+// 9. HOLE START/END TAG (black bar at 270°)
+const stemWidth = 14;
+const stemTop = cy - boreholeR - 12;
+const stemBottom = cy - chargeR + 8;
+ctx.fillStyle = BLACK;
+ctx.fillRect(cx - stemWidth / 2, stemTop, stemWidth, stemBottom - stemTop);
+
+// 10. BOREHOLE outline circle
+// ctx.beginPath();
+// ctx.arc(cx, cy, boreholeR, 0, TAU);
+// ctx.strokeStyle = OUTLINE;
+// ctx.lineWidth = 2;
+// ctx.stroke();
+
+
+</script>
+</body>
+</html>

@@ -77,6 +77,12 @@ export default class CBLASTWriter extends BaseWriter {
 			// Step 17) Generate STRATA record
 			var strataRecord = this.generateStrataRecord(hole);
 			lines.push(strataRecord);
+
+			// Step 17b) Generate CHARGE records from loadedCharging (if available)
+			var chargeRecords = this.generateChargeRecords(hole);
+			for (var cr = 0; cr < chargeRecords.length; cr++) {
+				lines.push(chargeRecords[cr]);
+			}
 		}
 
 		// Step 18) Join all lines with newline
@@ -197,5 +203,55 @@ export default class CBLASTWriter extends BaseWriter {
 
 		// Step 39) CBLAST STRATA record is typically minimal (geological data not used in Kirra)
 		return "STRATA,," + holeID + ",0,,,,,,,,,,";
+	}
+
+	// Step 40) Generate CHARGE and PRIMER records from loadedCharging
+	// Format: CHARGE,,holeID,deckType,topDepth,baseDepth,productName,density,mass
+	// Format: PRIMER,,holeID,lengthFromCollar,detonatorName,delayMs,boosterName,boosterMassG
+	generateChargeRecords(hole) {
+		var records = [];
+		if (!window.loadedCharging) return records;
+
+		var charging = window.loadedCharging.get(hole.holeID);
+		if (!charging) return records;
+
+		var holeID = hole.holeID || "";
+		var diamMm = charging.holeDiameterMm || hole.holeDiameter || 115;
+
+		// Write CHARGE records (one per deck)
+		if (charging.decks) {
+			for (var d = 0; d < charging.decks.length; d++) {
+				var deck = charging.decks[d];
+				var deckType = deck.deckType || "INERT";
+				var topDepth = (deck.topDepth || 0).toFixed(3);
+				var baseDepth = (deck.baseDepth || 0).toFixed(3);
+				var productName = (deck.product && deck.product.name) ? deck.product.name : "";
+				var density = (deck.product && deck.product.density) ? deck.product.density.toFixed(4) : "0";
+				var mass = (typeof deck.calculateMass === "function") ? deck.calculateMass(diamMm).toFixed(3) : "0";
+
+				// Escape commas in product name
+				if (productName.indexOf(",") > -1) {
+					productName = '"' + productName + '"';
+				}
+
+				records.push("CHARGE,," + holeID + "," + deckType + "," + topDepth + "," + baseDepth + "," + productName + "," + density + "," + mass);
+			}
+		}
+
+		// Write PRIMER records (one per primer)
+		if (charging.primers) {
+			for (var p = 0; p < charging.primers.length; p++) {
+				var primer = charging.primers[p];
+				var primerDepth = (primer.lengthFromCollar || 0).toFixed(3);
+				var detName = (primer.detonator && primer.detonator.productName) ? primer.detonator.productName : "";
+				var delayMs = (primer.detonator && primer.detonator.delayMs) ? primer.detonator.delayMs.toFixed(1) : "0";
+				var boosterName = (primer.booster && primer.booster.productName) ? primer.booster.productName : "";
+				var boosterMass = (primer.booster && primer.booster.massGrams) ? primer.booster.massGrams.toFixed(1) : "0";
+
+				records.push("PRIMER,," + holeID + "," + primerDepth + "," + detName + "," + delayMs + "," + boosterName + "," + boosterMass);
+			}
+		}
+
+		return records;
 	}
 }

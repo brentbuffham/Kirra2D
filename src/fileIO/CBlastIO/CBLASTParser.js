@@ -85,10 +85,36 @@ export default class CBLASTParser extends BaseParser {
 
 				// Step 17) Extract hole data
 				var hole = this.createHoleFromRecords(holeRecord, productRecord, detonatorRecord, strataRecord);
+
+				// Step 17b) Consume any CHARGE and PRIMER records that follow
+				var chargeRecords = [];
+				var primerRecords = [];
+				var nextIdx = i + 4;
+				while (nextIdx < lines.length) {
+					var nextLine = lines[nextIdx].trim();
+					if (!nextLine) { nextIdx++; continue; }
+					var nextUpper = nextLine.toUpperCase();
+					if (nextUpper.startsWith("CHARGE")) {
+						chargeRecords.push(this.parseCSVLine(lines[nextIdx]));
+						nextIdx++;
+					} else if (nextUpper.startsWith("PRIMER")) {
+						primerRecords.push(this.parseCSVLine(lines[nextIdx]));
+						nextIdx++;
+					} else {
+						break; // Next HOLE or unknown record
+					}
+				}
+
+				// Step 17c) Attach charging data to hole if present
+				if (chargeRecords.length > 0 || primerRecords.length > 0) {
+					hole._chargeRecords = chargeRecords;
+					hole._primerRecords = primerRecords;
+				}
+
 				holes.push(hole);
 
-				// Step 18) Move to next hole (skip 4 records)
-				i += 4;
+				// Step 18) Move past consumed records
+				i = nextIdx;
 			} catch (error) {
 				warnings.push("Line " + (i + 1) + ": Error parsing hole - " + error.message);
 				i += 4; // Skip this hole

@@ -150,6 +150,8 @@ import {
 	disposeKADThreeJS,
 	invalidate3DAnalysisCaches,
 } from "./draw/canvas3DDrawing.js";
+import { drawAllChargesThreeJS, clearChargesThreeJS } from "./draw/canvas3DChargeDrawing.js";
+import { drawCharges2D } from "./draw/canvas2DChargeDrawing.js";
 import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
 import { highlightSelectedKADThreeJS } from "./draw/canvas3DDrawSelection.js";
@@ -257,6 +259,10 @@ import { applyChargeRule } from "./charging/rules/SimpleRuleEngine.js";
 import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip, clearAllProducts, clearAllChargeConfigs, backupChargingConfig } from "./charging/ConfigImportExport.js";
 import { buildSurfaceConnectorPresets } from "./charging/ui/ConnectorPresets.js";
 import { remapChargingKeys, extractPlainIdRemap } from "./charging/ChargingRemapper.js";
+import { recalcMassPerHole } from "./helpers/ChargingMassHelper.js";
+import { HoleCharging } from "./charging/HoleCharging.js";
+import { Deck } from "./charging/Deck.js";
+import { Primer } from "./charging/Primer.js";
 //=================================================
 // KAP Project File IO
 //=================================================
@@ -784,6 +790,7 @@ function exposeGlobalsToWindow() {
 	window.showProductManagerDialog = showProductManagerDialog;
 	window.showDeckBuilderDialog = showDeckBuilderDialog;
 	window.applyChargeRule = applyChargeRule;
+	window.recalcMassPerHole = function() { recalcMassPerHole(allBlastHoles, window.loadedCharging); };
 	window.remapChargingKeys = remapChargingKeys;
 	window.extractPlainIdRemap = extractPlainIdRemap;
 	window.exportBaseConfigTemplate = exportBaseConfigTemplate;
@@ -4324,6 +4331,7 @@ class BlastHole {
 		this.burden = data.burden || 1;
 		this.spacing = data.spacing || 1;
 		this.connectorCurve = data.connectorCurve || 0;
+		this.massPerHole = data.massPerHole || 0; // Computed from charging system
 	}
 }
 
@@ -5780,12 +5788,8 @@ allToggles.forEach((opt) => {
 		});
 });
 
-const holeCountRadio = document.getElementById("holeCountRadio");
-const measuredMassRadio = document.getElementById("measuredMassRadio");
-
-//create holeCountRadio and measureMassRadio Listener
-document.getElementById("measuredMassRadio")?.addEventListener("change", timeChart);
-document.getElementById("holeCountRadio")?.addEventListener("change", timeChart);
+// Time chart mode dropdown listener
+document.getElementById("timeChartMode")?.addEventListener("change", timeChart);
 
 // Add event listeners for mouse down, move, and up events
 canvas.addEventListener("mousedown", handleMouseDown);
@@ -6145,11 +6149,8 @@ function updateTranslations(language) {
 		const timeOffsetLabel = document.querySelector("#timeOffsetLabel");
 		if (timeOffsetLabel) timeOffsetLabel.textContent = langTranslations.time_offset_label;
 
-		const holeCountLabel = document.querySelector("#holeCountLabel");
-		if (holeCountLabel) holeCountLabel.textContent = langTranslations.hole_count_label;
-
-		const measuredMassLabel = document.querySelector("#measuredMassLabel");
-		if (measuredMassLabel) measuredMassLabel.textContent = langTranslations.measured_mass_label;
+		// Time chart mode dropdown labels updated if needed
+		// (holeCountLabel and measuredMassLabel replaced by timeChartMode dropdown)
 
 		const drawingTools = document.querySelector("#drawingTools span");
 		if (drawingTools) drawingTools.textContent = langTranslations.drawing_tools;
@@ -11009,7 +11010,81 @@ document.querySelector(".cblast-input-btn")?.addEventListener("click", function 
 								if (h.stemHeight !== undefined) createdHole.stemHeight = h.stemHeight;
 								if (h.chargeLength !== undefined) createdHole.chargeLength = h.chargeLength;
 								if (h.products) createdHole.products = h.products;
+
+								// Create HoleCharging entries from CHARGE/PRIMER records
+								if (h._chargeRecords && h._chargeRecords.length > 0) {
+									try {
+										var hc = new HoleCharging(createdHole);
+										hc.decks = [];
+										hc.primers = [];
+
+										for (var ci = 0; ci < h._chargeRecords.length; ci++) {
+											var cr = h._chargeRecords[ci];
+											// Format: CHARGE,,holeID,deckType,topDepth,baseDepth,productName,density,mass
+											var crOffset = (cr[1] === "" || cr[1] === null || cr[1] === undefined) ? 1 : 0;
+											var deckType = cr[2 + crOffset] || "INERT";
+											var topD = parseFloat(cr[3 + crOffset]) || 0;
+											var baseD = parseFloat(cr[4 + crOffset]) || 0;
+											var pName = cr[5 + crOffset] || "";
+											var pDensity = parseFloat(cr[6 + crOffset]) || 0;
+
+											hc.decks.push(new Deck({
+												holeID: createdHole.holeID,
+												deckType: deckType,
+												topDepth: topD,
+												baseDepth: baseD,
+												product: pName ? { name: pName, density: pDensity } : null,
+											}));
+										}
+
+										if (h._primerRecords) {
+											for (var pi = 0; pi < h._primerRecords.length; pi++) {
+												var pr = h._primerRecords[pi];
+												// Format: PRIMER,,holeID,lengthFromCollar,detonatorName,delayMs,boosterName,boosterMassG
+												var prOffset = (pr[1] === "" || pr[1] === null || pr[1] === undefined) ? 1 : 0;
+												var primerLFC = parseFloat(pr[2 + prOffset]) || 0;
+												var detName = pr[3 + prOffset] || "";
+												var detDelay = parseFloat(pr[4 + prOffset]) || 0;
+												var bstName = pr[5 + prOffset] || "";
+												var bstMass = parseFloat(pr[6 + prOffset]) || 0;
+
+												// Find the deck this primer belongs to (by depth)
+												var bestDeckID = null;
+												for (var dk = 0; dk < hc.decks.length; dk++) {
+													if (primerLFC >= hc.decks[dk].topDepth && primerLFC <= hc.decks[dk].baseDepth) {
+														bestDeckID = hc.decks[dk].deckID;
+														break;
+													}
+												}
+
+												hc.primers.push(new Primer({
+													holeID: createdHole.holeID,
+													lengthFromCollar: primerLFC,
+													deckID: bestDeckID,
+													detonator: {
+														productName: detName,
+														delayMs: detDelay,
+													},
+													booster: {
+														productName: bstName,
+														massGrams: bstMass,
+													}
+												}));
+											}
+										}
+
+										if (!window.loadedCharging) window.loadedCharging = new Map();
+										window.loadedCharging.set(createdHole.holeID, hc);
+									} catch (chgErr) {
+										console.warn("CBLAST: Failed to create charging for hole " + createdHole.holeID + ":", chgErr);
+									}
+								}
 							}
+						}
+
+						// Recalculate massPerHole after CBLAST import
+						if (typeof window.recalcMassPerHole === "function") {
+							window.recalcMassPerHole();
 						}
 
 						// Step 5) Get imported holes for HDBSCAN
@@ -28535,29 +28610,84 @@ function timeChart() {
 	}
 	const binStart = -timeOffset;
 
-	const measuredMassRadio = document.getElementById("measuredMassRadio");
-	const holeCountRadio = document.getElementById("holeCountRadio");
-	let useMass;
-	useMass = useMass ? holeCountRadio?.checked : measuredMassRadio?.checked || false;
+	var chartMode = document.getElementById("timeChartMode")?.value || "holeCount";
 
 	let counts = Array(numBins).fill(0);
 	let massSum = Array(numBins).fill(0);
+	let deckCounts = Array(numBins).fill(0);
+	let deckMassSum = Array(numBins).fill(0);
 	let validMassCount = 0;
 
 	for (let hole of allBlastHoles) {
-		const binIndex = Math.floor((hole.holeTime - binStart) / timeRange);
+		var holeTime = hole.holeTime || 0;
+		const binIndex = Math.floor((holeTime - binStart) / timeRange);
 		if (binIndex >= 0 && binIndex < numBins) {
 			counts[binIndex]++;
-			const mass = Number(hole.measuredMass);
-			if (useMass && !isNaN(mass) && isFinite(mass)) {
-				massSum[binIndex] += mass;
-				validMassCount++;
+
+			if (chartMode === "measuredMass") {
+				var mass = Number(hole.measuredMass);
+				if (!isNaN(mass) && isFinite(mass)) {
+					massSum[binIndex] += mass;
+					validMassCount++;
+				}
+			} else if (chartMode === "massPerHole") {
+				var mph = Number(hole.massPerHole);
+				if (!isNaN(mph) && isFinite(mph)) {
+					massSum[binIndex] += mph;
+					validMassCount++;
+				}
+			}
+
+			// Deck-level binning for deckCount and massPerDeck modes
+			if ((chartMode === "deckCount" || chartMode === "massPerDeck") && window.loadedCharging) {
+				var charging = window.loadedCharging.get(hole.holeID);
+				if (charging && charging.decks) {
+					for (var di = 0; di < charging.decks.length; di++) {
+						var deck = charging.decks[di];
+						// Only count explosive decks
+						if (deck.deckType !== "COUPLED" && deck.deckType !== "DECOUPLED") continue;
+
+						// Find primer for this deck to determine deck fire time
+						var downholeDelay = 0;
+						if (charging.primers) {
+							for (var pi = 0; pi < charging.primers.length; pi++) {
+								if (charging.primers[pi].deckID === deck.deckID) {
+									downholeDelay = charging.primers[pi].totalDownholeDelayMs || 0;
+									break;
+								}
+							}
+						}
+						var deckFireTime = holeTime + downholeDelay;
+
+						var deckBinIndex = Math.floor((deckFireTime - binStart) / timeRange);
+						if (deckBinIndex >= 0 && deckBinIndex < numBins) {
+							deckCounts[deckBinIndex]++;
+							if (chartMode === "massPerDeck") {
+								var deckMass = (typeof deck.calculateMass === "function")
+									? deck.calculateMass(charging.holeDiameterMm || hole.holeDiameter || 115)
+									: 0;
+								deckMassSum[deckBinIndex] += deckMass;
+							}
+						}
+					}
+				}
 			}
 		}
 	}
 
-	const fallbackToCount = useMass && validMassCount < 2;
-	const yValues = useMass && !fallbackToCount ? massSum : counts;
+	// Determine Y values based on chart mode
+	let yValues;
+	if (chartMode === "measuredMass") {
+		yValues = validMassCount >= 2 ? massSum : counts;
+	} else if (chartMode === "massPerHole") {
+		yValues = validMassCount >= 2 ? massSum : counts;
+	} else if (chartMode === "deckCount") {
+		yValues = deckCounts;
+	} else if (chartMode === "massPerDeck") {
+		yValues = deckMassSum;
+	} else {
+		yValues = counts; // holeCount (default)
+	}
 
 	const binEdges = Array(numBins)
 		.fill(0)
@@ -28591,12 +28721,25 @@ function timeChart() {
 	});
 
 	const hoverText = entityholeIDTexts.map((text, index) => {
-		const totalMass = useMass && !fallbackToCount && massSum[index] ? massSum[index].toFixed(1) + " kg" : "";
-		return totalMass ? text + "<br>Mass: " + totalMass : text;
+		if (chartMode === "massPerDeck" && deckMassSum[index]) {
+			return text + "<br>Deck Mass: " + deckMassSum[index].toFixed(1) + " kg";
+		}
+		if ((chartMode === "measuredMass" || chartMode === "massPerHole") && massSum[index]) {
+			return text + "<br>Mass: " + massSum[index].toFixed(1) + " kg";
+		}
+		return text;
 	});
 
+	// Determine Y-axis label based on chart mode
+	var yLabelMap = {
+		holeCount: "Holes Firing",
+		measuredMass: "Total Measured Mass (kg)",
+		massPerHole: "Mass Per Hole (kg)",
+		deckCount: "Explosive Decks",
+		massPerDeck: "Deck Mass (kg)",
+	};
 	const currentLayout = chart?._fullLayout;
-	const newYLabel = useMass && !fallbackToCount ? "Total Measured Mass (kg)" : "Holes Firing";
+	const newYLabel = yLabelMap[chartMode] || "Holes Firing";
 	const currentYLabel = currentLayout?.yaxis?.title?.text;
 	const preserveYRange = currentYLabel === newYLabel;
 
@@ -28691,7 +28834,7 @@ function timeChart() {
 			// text: hoverText,
 			// textposition: "none", // ? disables labels drawn on bars
 			//hoverinfo: "text+y",
-			hovertemplate: "Bin: %{x} ms<br>" + (useMass && !fallbackToCount ? "Mass" : "Value") + ": %{y}<extra></extra>",
+			hovertemplate: "Bin: %{x} ms<br>" + (newYLabel) + ": %{y}<extra></extra>",
 		},
 	];
 
@@ -29027,6 +29170,7 @@ function getDisplayOptions() {
 		voronoiPF: document.getElementById("display16").checked,
 		displayRowAndPosId: document.getElementById("rowAndPosDisplayBtn")?.checked || false,
 		kadPointID: document.getElementById("kadPointIDDisplayBtn")?.checked || false,
+		charges: document.getElementById("displayCharges")?.checked || false,
 	};
 }
 
@@ -29962,24 +30106,33 @@ function drawData(allBlastHoles, selectedHole) {
 				toeSizeInMeters = document.getElementById("toeSlider").value;
 				connScale = document.getElementById("connSlider").value;
 
-				// Draw collar-to-toe track if angled
-				if (hole.holeAngle > 0) {
-					drawTrack(x, y, lineEndX, lineEndY, gradeX, gradeY, strokeColor, hole.subdrillAmount);
-				}
-
-				// Step 4a) Highlight selected holes for animation/time window selection (2D only)
-				// Only draw 2D highlighting when in 2D mode
-				if (!onlyShowThreeJS) {
-					handleHoleHighlighting(hole, x, y);
-				}
-
-				// Draw toe if hole length is not zero
+				// Draw order: toe > track > charges > collar > ties+labels
+				// 1. Draw toe if hole length is not zero (lowest Z)
 				if (parseFloat(hole.holeLengthCalculated).toFixed(1) != 0.0) {
 					const radiusInPixels = toeSizeInMeters * currentScale;
 					drawHoleToe(lineEndX, lineEndY, transparentFillColor, strokeColor, radiusInPixels);
 				}
 
-				// Calculate text offsets
+				// 2. Draw collar-to-toe track (includes grade marker)
+				if (hole.holeAngle > 0) {
+					drawTrack(x, y, lineEndX, lineEndY, gradeX, gradeY, strokeColor, hole.subdrillAmount);
+				}
+
+				// Step 4a) Highlight selected holes for animation/time window selection (2D only)
+				if (!onlyShowThreeJS) {
+					handleHoleHighlighting(hole, x, y);
+				}
+
+				// 3. Draw 2D charge visualization (pie-chart wedges) below the collar
+				if (displayOptions.charges) {
+					var chargeDiameterPx = parseInt((hole.holeDiameter / 1000) * currentScale * holeScale);
+					drawCharges2D(ctx, hole, x, y, chargeDiameterPx > 1.5 ? chargeDiameterPx : 1.5);
+				}
+
+				// 4. Draw main hole collar, with selection highlight logic
+				drawHoleMainShape(hole, x, y, selectedHole);
+
+				// 5. Calculate text offsets for labels
 				const textOffset = parseInt((hole.holeDiameter / 1000) * holeScale * currentScale);
 				const leftSideToe = parseInt(lineEndX) - textOffset;
 				const rightSideToe = parseInt(lineEndX) + textOffset;
@@ -29992,7 +30145,7 @@ function drawData(allBlastHoles, selectedHole) {
 				const middleSideCollar = parseInt(y + parseInt(currentFontSize / 2));
 				const bottomSideCollar = parseInt(y + textOffset + parseInt(currentFontSize));
 
-				// Draw text/labels based on displayOptions
+				// 6. Draw tie arrows + labels on top of everything
 				drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, {
 					leftSideToe,
 					rightSideToe,
@@ -30007,9 +30160,6 @@ function drawData(allBlastHoles, selectedHole) {
 					holeMap,
 					displayOptions,
 				});
-
-				// Draw main hole geometry, with selection highlight logic
-				drawHoleMainShape(hole, x, y, selectedHole);
 
 				// Step 3) DO NOT draw Three.js geometry in 2D block
 				// 3D hole rendering happens in 3D-only block at line 22587
@@ -30660,6 +30810,9 @@ function drawData(allBlastHoles, selectedHole) {
 					threeRenderer.instancedMeshManager.flushLineBatches(threeRenderer.holesGroup);
 				}
 
+				// NOTE: Charge drawing moved outside threeDataNeedsRebuild block (Step 3.1h2 below)
+				// so that toggling charges checkbox doesn't require full hole rebuild.
+
 				// Step 3.1i) LAYER 4: Create TEXT labels for ALL holes (for FULL/SIMPLE LOD)
 				// Labels are hidden at MEDIUM/LOW/MINIMAL levels
 				var hasTextOptions = displayOptions3D.holeID || displayOptions3D.holeDia || displayOptions3D.holeLen ||
@@ -30752,6 +30905,17 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 				}
 				// NOTE: threeDataNeedsRebuild flag reset moved to AFTER KAD drawing (Step 3 below)
+			}
+
+			// Step 3.1h2) Draw charge deck cylinders and primer markers (if toggle on)
+			// Runs outside threeDataNeedsRebuild so toggling charges works without full rebuild
+			// Uses InstancedMesh: 1 draw call for all decks + 1 for all primers = 2 total
+			if (displayOptions3D.charges && window.loadedCharging && window.loadedCharging.size > 0) {
+				clearChargesThreeJS();
+				var chargeHoles = allBlastHoles.filter(function (h) { return h.visible !== false; });
+				drawAllChargesThreeJS(chargeHoles);
+			} else {
+				clearChargesThreeJS();
 			}
 
 			// Step 3.5) Clear and redraw connectors when CONNECTOR data changes

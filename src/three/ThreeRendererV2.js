@@ -213,6 +213,16 @@ export class ThreeRendererV2 {
 		this.connectorsGroup = new THREE.Group();
 		this.connectorsGroup.name = "Connectors/UI";
 		this.scene.add(this.connectorsGroup);
+
+		// Charges group (deck cylinders and primer markers)
+		this.chargesGroup = new THREE.Group();
+		this.chargesGroup.name = "Charges";
+		this.scene.add(this.chargesGroup);
+
+		// Labels group (text labels for holes - separate for LOD visibility control)
+		this.labelsGroup = new THREE.Group();
+		this.labelsGroup.name = "HoleLabels";
+		this.scene.add(this.labelsGroup);
 	}
 
 	/**
@@ -964,6 +974,8 @@ export class ThreeRendererV2 {
 
 		// Dispose all groups
 		this.disposeGroup(this.holesGroup);
+		if (this.chargesGroup) this.disposeGroup(this.chargesGroup);
+		if (this.labelsGroup) this.disposeGroup(this.labelsGroup);
 		this.disposeGroup(this.surfacesGroup);
 		this.disposeGroup(this.kadGroup);
 		this.disposeGroup(this.contoursGroup);
@@ -990,6 +1002,8 @@ export class ThreeRendererV2 {
 					this.instancedMeshManager.clearLineBatches();
 				}
 				this.disposeGroup(this.holesGroup);
+				if (this.chargesGroup) this.disposeGroup(this.chargesGroup);
+				if (this.labelsGroup) this.disposeGroup(this.labelsGroup);
 				this.holeMeshMap.clear();
 				break;
 			case "surfaces":

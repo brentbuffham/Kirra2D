@@ -3261,6 +3261,21 @@ body.dark-mode .deck-builder-summary {
     color: #888;
 }
 
+.deck-builder-mismatch {
+    background: #fff3cd;
+    color: #856404;
+    padding: 4px 10px;
+    font-size: 11px;
+    flex-shrink: 0;
+    border-bottom: 1px solid #ffc107;
+}
+
+body.dark-mode .deck-builder-mismatch {
+    background: #5a3800;
+    color: #ffb347;
+    border-bottom-color: #7a5000;
+}
+
 /* ===== TOOLBAR PANEL (Tree-Panel Style) ===== */
 .toolbar-panel {
     position: fixed;

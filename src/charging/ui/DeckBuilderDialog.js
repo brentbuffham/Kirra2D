@@ -151,7 +151,7 @@ export function showDeckBuilderDialog(referenceHole) {
         var mismatch = existingCharging.checkDimensionMismatch(refHole);
         if (mismatch.lengthChanged || mismatch.diameterChanged) {
             var mismatchBanner = document.createElement("div");
-            mismatchBanner.style.cssText = "background:#5a3800;color:#ffb347;padding:4px 10px;font-size:11px;flex-shrink:0;";
+            mismatchBanner.className = "deck-builder-mismatch";
             var mismatchText = "Dimension mismatch: ";
             if (mismatch.lengthChanged) {
                 mismatchText += "Length " + mismatch.oldLength.toFixed(1) + "m \u2192 " + mismatch.newLength.toFixed(1) + "m";
@@ -1000,6 +1000,11 @@ function applyToSelectedHoles(workingCharging, refHole, configTracker) {
                 window.loadedCharging = new Map();
             }
             window.loadedCharging.set(hole.holeID, hc);
+        }
+
+        // Recalculate massPerHole for all holes
+        if (typeof window.recalcMassPerHole === "function") {
+            window.recalcMassPerHole();
         }
 
         // Save to IndexedDB

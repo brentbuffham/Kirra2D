@@ -153,6 +153,10 @@ export class ThreeRenderer {
 		this.holesGroup.name = "Holes";
 		this.scene.add(this.holesGroup);
 
+		this.chargesGroup = new THREE.Group();
+		this.chargesGroup.name = "Charges";
+		this.scene.add(this.chargesGroup);
+
 		// Step 7a) Create separate group for hole labels (for LOD visibility control)
 		// Text labels are expensive (1 draw call each) - hiding them at distance gives huge perf boost
 		this.labelsGroup = new THREE.Group();
@@ -1016,6 +1020,9 @@ export class ThreeRenderer {
 
 		// Step 21a) Dispose all groups to prevent memory leaks
 		this.disposeGroup(this.holesGroup);
+		if (this.chargesGroup) {
+			this.disposeGroup(this.chargesGroup);
+		}
 		// Step 21a.1) Also clear labels group (text labels for holes)
 		if (this.labelsGroup) {
 			this.disposeGroup(this.labelsGroup);
@@ -1078,6 +1085,9 @@ export class ThreeRenderer {
 			case "holes":
 				this.clearInstancedHoles(); // Clear BEFORE disposing group
 				this.disposeGroup(this.holesGroup);
+				if (this.chargesGroup) {
+					this.disposeGroup(this.chargesGroup);
+				}
 				// Step 22b.1) Also clear labels group (text labels for holes)
 				if (this.labelsGroup) {
 					this.disposeGroup(this.labelsGroup);

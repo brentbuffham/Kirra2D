@@ -1642,6 +1642,10 @@
 					<label for="display16" class="icon-button" title="Voronoi">
 						<img src="icons/hexagon-letter-v.png" alt="Voronoi">
 					</label>
+					<input type="checkbox" id="displayCharges" name="display" value="charges" placeholder="charges">
+					<label for="displayCharges" class="icon-button" title="Charges">
+						<img src="icons/cylinder.png" alt="Charges">
+					</label>
 				</div>
 			</div>
 		</div>
@@ -2422,17 +2426,14 @@
 				<a class="label2" id="timeOffsetLabel">Time Offset : 0 ms</a>
 				<input type="range" min="0" max="50" value="0" id="timeOffset" placeholder="Select time offset">
 				<div class="radio-button-bar">
-					<div>
-						<input type="radio" id="holeCountRadio" name="displayMode" value="holeCount" title="Hole Count"
-							checked>
-						<label class="label2" id="holeCountLabel" for="holeCountRadio">Hole Count</label>
-					</div>
-					<div>
-						<input type="radio" id="measuredMassRadio" name="displayMode" value="measuredCharge"
-							title="Measured Mass">
-						<label class="label2" id="measuredMassLabel" for="measuredMassRadio">Measured
-							Charge</label>
-					</div>
+					<label class="label2" for="timeChartMode">Chart Mode:</label>
+					<select id="timeChartMode" style="margin-left:4px; padding:2px 4px; font-size:12px;">
+						<option value="holeCount">Surface Hole Count</option>
+						<option value="measuredMass">Measured Mass</option>
+						<option value="massPerHole">Mass Per Hole</option>
+						<option value="deckCount">Deck Count</option>
+						<option value="massPerDeck">Mass Per Deck</option>
+					</select>
 				</div>
 			</div>
 			<button class="accordion" id="drawingTools">

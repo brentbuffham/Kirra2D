@@ -299,6 +299,11 @@ class KAPParser extends BaseParser {
 
 		// ============ REFRESH APPLICATION STATE ============
 		try {
+			// Recalculate massPerHole from charging
+			if (typeof window.recalcMassPerHole === "function") {
+				window.recalcMassPerHole();
+			}
+
 			// Recalculate timing
 			if (typeof window.calculateTimes === "function" && window.allBlastHoles.length > 0) {
 				window.calculateTimes(window.allBlastHoles);
