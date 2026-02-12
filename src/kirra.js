@@ -11363,6 +11363,10 @@ document.querySelector(".orica-input-btn")?.addEventListener("click", function (
 								if (h.measuredComment && h.measuredComment !== "None") {
 									createdHole.measuredComment = h.measuredComment;
 								}
+								// Copy connector color from SPF tie type
+								if (h.colorHexDecimal && h.colorHexDecimal !== "") {
+									createdHole.colorHexDecimal = h.colorHexDecimal;
+								}
 							}
 						}
 

@@ -56,10 +56,11 @@ class SPFParser extends BaseParser {
 			var blisData = this.parseBlisDataXml(blisDataXml);
 			result.holes = blisData.holes;
 			result.blastDescription = blisData.blastDescription;
+			result.tieNetwork = blisData.tieNetwork;
 		}
 
-		// Step 15) Convert to Kirra blast holes array
-		result.kirraHoles = this.convertToKirraHoles(result.holes, result.blastHeader, result.filename);
+		// Step 15) Convert to Kirra blast holes array (pass tieNetwork for connector resolution)
+		result.kirraHoles = this.convertToKirraHoles(result.holes, result.blastHeader, result.filename, result.tieNetwork);
 
 		console.log("SPF Parse complete: " + result.holes.length + " holes found");
 
@@ -121,7 +122,8 @@ class SPFParser extends BaseParser {
 
 		var result = {
 			holes: [],
-			blastDescription: null
+			blastDescription: null,
+			tieNetwork: null
 		};
 
 		// Step 20) Parse BlastDescription
@@ -147,6 +149,98 @@ class SPFParser extends BaseParser {
 				result.holes.push(hole);
 			}
 		}
+
+		// Step 21a) Parse TieTypes (delay product definitions)
+		// XML: BlisBlastData/TieTypes/Ties[] - each Ties element defines a delay product
+		// IMPORTANT: TieTypeIndex in TieTable is a 0-based ARRAY position into TieTypes,
+		// NOT the TieType's own Index field (which starts at 1). So we store as an array.
+		// Child elements (Index, Name, Delay, Color, etc.) have xmlns="" so use non-NS getters
+		var tieTypes = [];
+		var tiesElements = doc.getElementsByTagNameNS(ns, "Ties");
+		for (var tt = 0; tt < tiesElements.length; tt++) {
+			var ttElem = tiesElements[tt];
+			// Only process Ties that are children of TieTypes (not other Ties elements)
+			if (ttElem.parentNode && ttElem.parentNode.localName === "TieTypes") {
+				var ttName = this.getElementTextNS(ttElem, ns, "Name") || this.getElementText(ttElem, "Name");
+				var ttDelay = this.getElementFloatNS(ttElem, ns, "Delay") || this.getElementFloat(ttElem, "Delay");
+				var ttColor = this.getElementTextNS(ttElem, ns, "Color") || this.getElementText(ttElem, "Color");
+				// Convert "R,G,B" string to "#RRGGBB" hex
+				var colorHex = "#00FF00"; // default green
+				if (ttColor) {
+					var rgb = ttColor.split(",");
+					if (rgb.length === 3) {
+						colorHex = "#" +
+							("0" + parseInt(rgb[0].trim()).toString(16)).slice(-2) +
+							("0" + parseInt(rgb[1].trim()).toString(16)).slice(-2) +
+							("0" + parseInt(rgb[2].trim()).toString(16)).slice(-2);
+					}
+				}
+				tieTypes.push({
+					name: ttName || "",
+					delay: ttDelay || 0,
+					colorHex: colorHex.toUpperCase()
+				});
+			}
+		}
+
+		// Step 21b) Parse TieTable (hole-to-hole connections)
+		// XML: BlisBlastData/TieTable/Tie[] - Hole1 fires before Hole2
+		// So Hole2's fromHole is Hole1 (the connector points FROM Hole1 TO Hole2)
+		var tieTable = [];
+		var tieTableElem = doc.getElementsByTagNameNS(ns, "TieTable")[0];
+		if (tieTableElem) {
+			var tieElems = tieTableElem.children;
+			for (var ti = 0; ti < tieElems.length; ti++) {
+				var tieElem = tieElems[ti];
+				var hole1 = this.getElementIntNS(tieElem, ns, "Hole1Index") != null
+					? this.getElementIntNS(tieElem, ns, "Hole1Index")
+					: this.getElementInt(tieElem, "Hole1Index");
+				var hole2 = this.getElementIntNS(tieElem, ns, "Hole2Index") != null
+					? this.getElementIntNS(tieElem, ns, "Hole2Index")
+					: this.getElementInt(tieElem, "Hole2Index");
+				var tieTypeIdx = this.getElementIntNS(tieElem, ns, "TieTypeIndex") != null
+					? this.getElementIntNS(tieElem, ns, "TieTypeIndex")
+					: this.getElementInt(tieElem, "TieTypeIndex");
+				if (hole1 != null && hole2 != null) {
+					tieTable.push({ hole1Index: hole1, hole2Index: hole2, tieTypeIndex: tieTypeIdx || 0 });
+				}
+			}
+		}
+
+		// Step 21c) Parse Leadins (initiation start holes)
+		// XML: BlisBlastData/Leadins/Leadin - the root of the timing tree
+		var leadinIndices = [];
+		var leadinsElem = doc.getElementsByTagNameNS(ns, "Leadins")[0];
+		if (leadinsElem) {
+			var leadinElems = leadinsElem.children;
+			for (var li = 0; li < leadinElems.length; li++) {
+				var liElem = leadinElems[li];
+				var liIndex = this.getElementIntNS(liElem, ns, "HoleIndex") != null
+					? this.getElementIntNS(liElem, ns, "HoleIndex")
+					: this.getElementInt(liElem, "HoleIndex");
+				if (liIndex != null) {
+					leadinIndices.push(liIndex);
+				}
+			}
+		}
+
+		// Step 21d) Build fromHole map: for each hole, find which hole it connects FROM
+		// In the TieTable, Hole1 fires first -> Hole2 fires after delay
+		// So Hole2's fromHole is Hole1
+		var fromHoleMap = {}; // holeIndex -> { fromIndex, tieTypeIndex }
+		for (var fm = 0; fm < tieTable.length; fm++) {
+			var tie = tieTable[fm];
+			fromHoleMap[tie.hole2Index] = { fromIndex: tie.hole1Index, tieTypeIndex: tie.tieTypeIndex };
+		}
+
+		result.tieNetwork = {
+			tieTypes: tieTypes,
+			tieTable: tieTable,
+			leadinIndices: leadinIndices,
+			fromHoleMap: fromHoleMap
+		};
+
+		console.log("SPF TieNetwork: " + tieTable.length + " ties, " + leadinIndices.length + " leadins, " + tieTypes.length + " tie types");
 
 		return result;
 	}
@@ -268,7 +362,7 @@ class SPFParser extends BaseParser {
 	}
 
 	// Step 27) Convert SPF holes to Kirra blast hole format
-	convertToKirraHoles(spfHoles, blastHeader, filename) {
+	convertToKirraHoles(spfHoles, blastHeader, filename, tieNetwork) {
 		var kirraHoles = [];
 		var offsetX = this.offsetX;
 		var offsetY = this.offsetY;
@@ -277,6 +371,20 @@ class SPFParser extends BaseParser {
 		var blastName = filename || "SPF_Blast";
 		if (blastName.indexOf(".") !== -1) {
 			blastName = blastName.substring(0, blastName.lastIndexOf("."));
+		}
+
+		// Step 27b) Build index-to-holeId map for tie network resolution
+		var indexToHoleId = {};
+		for (var h = 0; h < spfHoles.length; h++) {
+			indexToHoleId[spfHoles[h].index] = spfHoles[h].holeId || String(h + 1);
+		}
+
+		// Step 27c) Build leadin set for quick lookup
+		var leadinSet = {};
+		if (tieNetwork && tieNetwork.leadinIndices) {
+			for (var l = 0; l < tieNetwork.leadinIndices.length; l++) {
+				leadinSet[tieNetwork.leadinIndices[l]] = true;
+			}
 		}
 
 		// Debug: Log first hole to check coordinate structure
@@ -389,11 +497,53 @@ class SPFParser extends BaseParser {
 				}
 			}
 
-			// Step 39) Create Kirra blast hole object
+			// Step 39) Resolve tie network: fromHoleID, delay, and color from TieTable
+			// Note: spf.firingTime is the ABSOLUTE firing time from initiation (e.g. 543ms)
+			// Kirra needs the INTER-HOLE delay from the tie type (e.g. 9ms, 17ms, 25ms)
+			var currentHoleId = spf.holeId || String(i + 1);
+			var fromHoleID = blastName + ":::" + currentHoleId; // default: self-connected
+			var timingDelay = 0;
+			var colorHex = "#00FF00"; // default green
+
+			if (tieNetwork && tieNetwork.fromHoleMap) {
+				var holeIndex = spf.index != null ? spf.index : i;
+
+				if (leadinSet[holeIndex]) {
+					// Step 39a) Leadin hole: root of timing tree, connects to self, delay = 0
+					fromHoleID = blastName + ":::" + currentHoleId;
+					timingDelay = 0;
+				} else if (tieNetwork.fromHoleMap[holeIndex] != null) {
+					// Step 39b) Normal hole: look up which hole it connects FROM via tie table
+					var tieInfo = tieNetwork.fromHoleMap[holeIndex];
+					var fromHoleId = indexToHoleId[tieInfo.fromIndex];
+					if (fromHoleId != null) {
+						fromHoleID = blastName + ":::" + fromHoleId;
+					}
+
+					// Step 39c) Get inter-hole delay and connector color from tie type
+					var tieType = tieNetwork.tieTypes[tieInfo.tieTypeIndex];
+					if (tieType) {
+						timingDelay = Math.round(tieType.delay || 0);
+						if (tieType.colorHex) {
+							colorHex = tieType.colorHex;
+						}
+					}
+				}
+				// Holes with no tie entry and not a leadin keep default (self-connected, delay 0)
+			} else {
+				// Step 39d) Fallback: no tie network available, use comment-based parsing
+				// Uses absolute firingTime as best-effort delay
+				if (spf.firingTime != null && spf.firingTime < 10000000) {
+					fromHoleID = this.parseFromHoleID(spf.comment, blastName, currentHoleId);
+					timingDelay = Math.round(spf.firingTime);
+				}
+			}
+
+			// Step 39e) Create Kirra blast hole object
 			var kirraHole = {
 				entityName: blastName,
 				entityType: "hole",
-				holeID: spf.holeId || String(i + 1),
+				holeID: currentHoleId,
 				startXLocation: collarX - offsetX,
 				startYLocation: collarY - offsetY,
 				startZLocation: collarZ || 0,
@@ -411,11 +561,9 @@ class SPFParser extends BaseParser {
 				holeLengthCalculated: depth,
 				holeAngle: angle,
 				holeBearing: bearing,
-				fromHoleID: (spf.firingTime != null && spf.firingTime < 10000000)
-					? this.parseFromHoleID(spf.comment, blastName, spf.holeId || String(i + 1))
-					: blastName + ":::" + (spf.holeId || String(i + 1)), // No timing or sentinel value = connect to self
-				timingDelayMilliseconds: (spf.firingTime != null && spf.firingTime < 10000000) ? Math.round(spf.firingTime) : 0,
-				colorHexDecimal: "#00FF00",
+				fromHoleID: fromHoleID,
+				timingDelayMilliseconds: timingDelay,
+				colorHexDecimal: colorHex,
 				measuredLength: 0,
 				measuredLengthTimeStamp: "09/05/1975 00:00:00",
 				measuredMass: Math.round(totalChargeMass * 10) / 10, // Round to 1 decimal place
@@ -456,6 +604,12 @@ class SPFParser extends BaseParser {
 		return text ? parseFloat(text) : null;
 	}
 
+	// Step 41b) Helper: Get element int value (non-namespace)
+	getElementInt(parent, tagName) {
+		var text = this.getElementText(parent, tagName);
+		return text ? parseInt(text, 10) : null;
+	}
+
 	// Step 42) Helper: Get element text with namespace
 	getElementTextNS(parent, ns, tagName) {
 		var elem = parent.getElementsByTagNameNS(ns, tagName)[0];
@@ -474,7 +628,7 @@ class SPFParser extends BaseParser {
 		return text ? parseInt(text, 10) : null;
 	}
 
-	// Step 45) Helper: Parse fromHoleID from SPF comment field
+	// Step 45) Helper: Parse fromHoleID from SPF comment field (fallback when no TieTable)
 	// Format: "CH01_5420_114_:::1" where "1" is the fromHoleID
 	// Returns combined format: "blastName:::holeID"
 	// If no connection found, connects to self (blastName:::currentHoleID)
@@ -500,6 +654,78 @@ class SPFParser extends BaseParser {
 		// Step 45c) Return combined format: blastName:::holeID
 		return blastName + ":::" + fromHoleNum;
 	}
+
+	// =========================================================================
+	// FUTURE: Product Import from SPF TieTypes and DesignLoading
+	// =========================================================================
+	// The SPF file contains product information in two places:
+	//
+	// 1) TieTypes (delay/initiator products):
+	//    tieNetwork.tieTypes[index] = { name: "MAXNELT", delay: 9, colorHex: "#00FF00" }
+	//    These map to Kirra's InitiatorProduct (src/charging/products/InitiatorProduct.js)
+	//    Subtypes: ShockTubeDetonator (fixed delay), ElectronicDetonator (programmable)
+	//
+	// 2) DesignLoading decks (explosive products per hole):
+	//    hole.decks[i] = { product: "POLAR SX 1100", length: 3.3, weight: 45.98, density: 1.1 }
+	//    These map to Kirra's BulkExplosiveProduct (src/charging/products/BulkExplosiveProduct.js)
+	//
+	// 3) InitSysLoading (not yet parsed - detonator/primer per hole):
+	//    Contains: Product name, Depth, FiringTime, PrimerName, PrimerWeight
+	//    Primers map to HighExplosiveProduct (src/charging/products/HighExplosiveProduct.js)
+	//
+	// To implement product import:
+	//
+	// import { createProductFromJSON } from "../../charging/products/productFactory.js";
+	//
+	// importProductsFromSPF(tieNetwork, holes) {
+	//     var products = [];
+	//
+	//     // Import initiator products from TieTypes
+	//     if (tieNetwork && tieNetwork.tieTypes) {
+	//         for (var idx in tieNetwork.tieTypes) {
+	//             var tt = tieNetwork.tieTypes[idx];
+	//             if (tt.name) {
+	//                 products.push({
+	//                     productCategory: "Initiator",
+	//                     productType: "Shock Tube Detonator",
+	//                     name: tt.name,
+	//                     supplier: "Orica",
+	//                     colorHex: tt.colorHex,
+	//                     // ShockTubeDetonator-specific: delay in ms
+	//                     initiatorType: "shockTube",
+	//                     delay: tt.delay
+	//                 });
+	//             }
+	//         }
+	//     }
+	//
+	//     // Import explosive products from deck loading (deduplicated by name)
+	//     var seenProducts = {};
+	//     for (var i = 0; i < holes.length; i++) {
+	//         if (holes[i].decks) {
+	//             for (var d = 0; d < holes[i].decks.length; d++) {
+	//                 var deck = holes[i].decks[d];
+	//                 if (deck.product && !seenProducts[deck.product]) {
+	//                     seenProducts[deck.product] = true;
+	//                     products.push({
+	//                         productCategory: "BulkExplosive",
+	//                         productType: "Emulsion",
+	//                         name: deck.product,
+	//                         supplier: "Orica",
+	//                         density: deck.density || 1.1
+	//                     });
+	//                 }
+	//             }
+	//         }
+	//     }
+	//
+	//     // Check against window.loadedProducts to avoid duplicates
+	//     // Then add via: window.loadedProducts.set(product.productID, product);
+	//     // And persist via: window.debouncedSaveProducts();
+	//
+	//     return products;
+	// }
+	// =========================================================================
 }
 
 export default SPFParser;
