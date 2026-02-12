@@ -5,6 +5,7 @@
 
 import { Deck, generateUUID } from "./Deck.js";
 import { Primer } from "./Primer.js";
+import { DecoupledContent } from "./DecoupledContent.js";
 import { DECK_TYPES, DEFAULT_DECK, VALIDATION_MESSAGES } from "./ChargingConstants.js";
 
 export class HoleCharging {
@@ -165,6 +166,57 @@ export class HoleCharging {
 		return { success: true, errors: [], warnings: val.warnings, assignedDeck: val.assignedDeck };
 	}
 
+	// ============ EMBEDDED CONTENT ============
+
+	/**
+	 * Embed a DecoupledContent item inside an existing deck (e.g. a package inside an INERT deck).
+	 * @param {string} deckID - The ID of the target deck
+	 * @param {DecoupledContent} content - The content to embed
+	 * @returns {{ success: boolean, errors?: string[] }}
+	 */
+	embedContent(deckID, content) {
+		var deck = null;
+		for (var i = 0; i < this.decks.length; i++) {
+			if (this.decks[i].deckID === deckID) { deck = this.decks[i]; break; }
+		}
+		if (!deck) return { success: false, errors: ["Deck not found: " + deckID] };
+
+		var deckMin = Math.min(deck.topDepth, deck.baseDepth);
+		var deckMax = Math.max(deck.topDepth, deck.baseDepth);
+		var contentTop = content.lengthFromCollar;
+		var contentBase = contentTop + (content.length || 0);
+
+		if (contentTop < deckMin - 0.001 || contentBase > deckMax + 0.001) {
+			return { success: false, errors: ["Content does not fit within deck bounds"] };
+		}
+
+		if (!deck.contains) deck.contains = [];
+		deck.contains.push(content);
+		this.modified = new Date().toISOString();
+		return { success: true };
+	}
+
+	/**
+	 * Remove an embedded content item by contentID from any deck.
+	 * @param {string} contentID
+	 * @returns {boolean} true if found and removed
+	 */
+	removeContent(contentID) {
+		for (var i = 0; i < this.decks.length; i++) {
+			var deck = this.decks[i];
+			if (!deck.contains) continue;
+			for (var j = 0; j < deck.contains.length; j++) {
+				if (deck.contains[j].contentID === contentID) {
+					deck.contains.splice(j, 1);
+					if (deck.contains.length === 0) deck.contains = null;
+					this.modified = new Date().toISOString();
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
 	// ============ QUERIES ============
 
 	getDeckAtDepth(depth) {
@@ -202,6 +254,15 @@ export class HoleCharging {
 					contentMass = deck.calculateMass(self.holeDiameterMm);
 				}
 				total += contentMass;
+			} else if (deck.deckType === DECK_TYPES.INERT && deck.contains && deck.contains.length > 0) {
+				// Embedded physical items inside inert decks (e.g. packages in air/water)
+				for (var ej = 0; ej < deck.contains.length; ej++) {
+					var ec = deck.contains[ej];
+					if (ec.contentCategory === "Physical") {
+						var eMass = ec.calculateMass ? ec.calculateMass() : 0;
+						if (eMass) total += eMass;
+					}
+				}
 			}
 		}
 		for (var k = 0; k < this.primers.length; k++) {
@@ -290,6 +351,12 @@ export class HoleCharging {
 			for (var i = 0; i < this.decks.length; i++) {
 				this.decks[i].topDepth = this.decks[i].topDepth * ratio;
 				this.decks[i].baseDepth = this.decks[i].baseDepth * ratio;
+				// Rescale embedded content positions
+				if (this.decks[i].contains) {
+					for (var ci = 0; ci < this.decks[i].contains.length; ci++) {
+						this.decks[i].contains[ci].lengthFromCollar = this.decks[i].contains[ci].lengthFromCollar * ratio;
+					}
+				}
 			}
 			// Rescale primer depths too
 			for (var j = 0; j < this.primers.length; j++) {

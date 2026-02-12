@@ -3,6 +3,7 @@
  */
 
 import { DECK_TYPES, VALIDATION_MESSAGES } from "./ChargingConstants.js";
+import { DecoupledContent } from "./DecoupledContent.js";
 
 export function generateUUID() {
 	if (crypto && crypto.randomUUID) {
@@ -126,7 +127,7 @@ export class Deck {
 			topDepth: this.topDepth,
 			baseDepth: this.baseDepth,
 			product: this.product,
-			contains: this.contains,
+			contains: this.contains ? this.contains.map(function(c) { return c.toJSON ? c.toJSON() : c; }) : null,
 			isCompressible: this.isCompressible,
 			averageDensity: this.averageDensity,
 			capDensity: this.capDensity,
@@ -137,6 +138,12 @@ export class Deck {
 	}
 
 	static fromJSON(obj) {
-		return new Deck(obj);
+		var deck = new Deck(obj);
+		if (obj.contains && Array.isArray(obj.contains)) {
+			deck.contains = obj.contains.map(function(c) {
+				return c instanceof DecoupledContent ? c : DecoupledContent.fromJSON(c);
+			});
+		}
+		return deck;
 	}
 }

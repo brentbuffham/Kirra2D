@@ -14,7 +14,7 @@
  * Responds to light/dark mode via window.darkModeEnabled.
  */
 
-import { DECK_TYPES, DECK_COLORS, NON_EXPLOSIVE_TYPES, BULK_EXPLOSIVE_TYPES } from "../ChargingConstants.js";
+import { DECK_TYPES, DECK_COLORS, NON_EXPLOSIVE_TYPES, BULK_EXPLOSIVE_TYPES, DECOUPLED_CONTENT_CATEGORIES } from "../ChargingConstants.js";
 
 /**
  * Get the fill color for a deck based on its type and product
@@ -98,6 +98,35 @@ function getThemeColors() {
 }
 
 /**
+ * Get the unit length (in metres) for a DECOUPLED deck's product, or null if unknown.
+ * Used for staccato snapping: deck length must be a multiple of this value.
+ * @param {Object} deck - Deck with product info
+ * @returns {number|null} Unit length in metres
+ */
+function getDecoupledUnitLength(deck) {
+    if (!deck || deck.deckType !== DECK_TYPES.DECOUPLED) return null;
+    if (!deck.product) return null;
+
+    var lengthMm = null;
+    if (deck.product.lengthMm) {
+        lengthMm = deck.product.lengthMm;
+    } else if (window.loadedProducts) {
+        if (deck.product.productID) {
+            window.loadedProducts.forEach(function (p) {
+                if (p.productID === deck.product.productID && p.lengthMm) lengthMm = p.lengthMm;
+            });
+        }
+        if (!lengthMm && deck.product.name) {
+            window.loadedProducts.forEach(function (p) {
+                if (p.name === deck.product.name && p.lengthMm) lengthMm = p.lengthMm;
+            });
+        }
+    }
+    if (lengthMm) return lengthMm / 1000;
+    return null;
+}
+
+/**
  * Get the max length (in metres) for a spacer product, or null if unconstrained
  * @param {Object} deck - Deck with product info
  * @returns {number|null} Max deck length in metres
@@ -149,11 +178,14 @@ export class HoleSectionView {
         this.onDeckSelect = options.onDeckSelect || null;
         this.onDeckResize = options.onDeckResize || null;
         this.onPrimerSelect = options.onPrimerSelect || null;
+        this.onContentSelect = options.onContentSelect || null;
         this._fontSizeOffset = options.fontSizeOffset || 0;
 
         this.holeCharging = null;
         this.selectedDeckIndex = -1;
         this.selectedPrimerIndex = -1;
+        this._selectedContentIndex = -1;
+        this._selectedContentDeckIndex = -1;
 
         // Drag state
         this._dragging = false;
@@ -225,6 +257,8 @@ export class HoleSectionView {
         this.holeCharging = holeCharging;
         this.selectedDeckIndex = -1;
         this.selectedPrimerIndex = -1;
+        this._selectedContentIndex = -1;
+        this._selectedContentDeckIndex = -1;
         this.draw();
     }
 
@@ -376,13 +410,25 @@ export class HoleSectionView {
         var drawW = hr.w;
 
         if (deck.deckType === DECK_TYPES.DECOUPLED) {
-            // Decoupled: draw narrower, showing air gap
+            // Decoupled: draw narrower, showing surrounding inert material
             var inset = hr.w * this._decoupledInset;
             drawX = hr.x + inset;
             drawW = hr.w - inset * 2;
 
-            // Draw air gap background
-            ctx.fillStyle = theme.holeWallFill;
+            // Find adjacent INERT deck color for background (air, water, etc.)
+            var inertBgColor = DECK_COLORS.INERT_AIR;
+            if (this.holeCharging && this.holeCharging.decks) {
+                var decks = this.holeCharging.decks;
+                // Check deck above and below for INERT material
+                if (index > 0 && decks[index - 1].deckType === DECK_TYPES.INERT) {
+                    inertBgColor = getDeckColor(decks[index - 1]);
+                } else if (index < decks.length - 1 && decks[index + 1].deckType === DECK_TYPES.INERT) {
+                    inertBgColor = getDeckColor(decks[index + 1]);
+                }
+            }
+
+            // Draw inert material background at full hole width
+            ctx.fillStyle = inertBgColor;
             ctx.fillRect(hr.x, y1, hr.w, deckH);
         }
 
@@ -403,6 +449,61 @@ export class HoleSectionView {
             // Fill deck rectangle
             ctx.fillStyle = fillColor;
             ctx.fillRect(drawX, y1, drawW, deckH);
+        }
+
+        // Draw embedded content items (Physical packages inside INERT decks)
+        if (deck.contains && deck.contains.length > 0) {
+            for (var ci = 0; ci < deck.contains.length; ci++) {
+                var content = deck.contains[ci];
+                if (content.contentCategory !== DECOUPLED_CONTENT_CATEGORIES.PHYSICAL) continue;
+                if (!content.length || !content.diameter) continue;
+
+                var cTop = this.depthToY(content.lengthFromCollar);
+                var cBase = this.depthToY(content.lengthFromCollar + content.length);
+                var cH = cBase - cTop;
+                if (cH < 1) cH = 1;
+
+                // Calculate inset based on content diameter vs hole diameter
+                var diaRatio = content.diameter / (this.holeDiameterMm / 1000);
+                var contentW = hr.w * Math.min(diaRatio, 0.9);
+                var contentX = hr.x + (hr.w - contentW) / 2;
+
+                // Look up product color
+                var contentColor = "#FF6600";
+                if (content.productID && window.loadedProducts) {
+                    var cProd = window.loadedProducts.get(content.productID);
+                    if (cProd && cProd.colorHex) contentColor = cProd.colorHex;
+                }
+
+                // Fill content rectangle
+                ctx.fillStyle = contentColor;
+                ctx.globalAlpha = 0.85;
+                ctx.fillRect(contentX, cTop, contentW, cH);
+                ctx.globalAlpha = 1.0;
+
+                // Border
+                ctx.strokeStyle = "rgba(0,0,0,0.5)";
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(contentX, cTop, contentW, cH);
+
+                // Label if tall enough
+                if (cH > 16) {
+                    ctx.fillStyle = getContrastColor(contentColor);
+                    ctx.font = this._scaledFont(8);
+                    ctx.textAlign = "center";
+                    ctx.textBaseline = "middle";
+                    var cLabel = content.productName || "PKG";
+                    if (cLabel.length > 12) cLabel = cLabel.substring(0, 10) + "..";
+                    ctx.fillText(cLabel, contentX + contentW / 2, cTop + cH / 2);
+                }
+
+                // Selection highlight for embedded content
+                if (index === this._selectedContentDeckIndex && ci === this._selectedContentIndex) {
+                    ctx.strokeStyle = theme.selectionOutline;
+                    ctx.lineWidth = 2.5;
+                    ctx.strokeRect(contentX + 1, cTop + 1, contentW - 2, cH - 2);
+                }
+            }
         }
 
         // Selection highlight
@@ -747,11 +848,42 @@ export class HoleSectionView {
             if (Math.abs(pos.y - primerY) < 10 && pos.x >= hr.x && pos.x <= hr.x + hr.w) {
                 this.selectedPrimerIndex = pi;
                 this.selectedDeckIndex = -1;
+                this._selectedContentIndex = -1;
+                this._selectedContentDeckIndex = -1;
                 this.draw();
                 if (this.onPrimerSelect) {
                     this.onPrimerSelect(primers[pi], pi);
                 }
                 return;
+            }
+        }
+
+        // Check for embedded content click
+        for (var edi = 0; edi < decks.length; edi++) {
+            var eDeck = decks[edi];
+            if (!eDeck.contains) continue;
+            for (var eci = 0; eci < eDeck.contains.length; eci++) {
+                var eContent = eDeck.contains[eci];
+                if (eContent.contentCategory !== DECOUPLED_CONTENT_CATEGORIES.PHYSICAL) continue;
+                if (!eContent.length || !eContent.diameter) continue;
+
+                var ecTop = this.depthToY(eContent.lengthFromCollar);
+                var ecBase = this.depthToY(eContent.lengthFromCollar + eContent.length);
+                var ecDiaRatio = eContent.diameter / (this.holeDiameterMm / 1000);
+                var ecW = hr.w * Math.min(ecDiaRatio, 0.9);
+                var ecX = hr.x + (hr.w - ecW) / 2;
+
+                if (pos.y >= ecTop && pos.y <= ecBase && pos.x >= ecX && pos.x <= ecX + ecW) {
+                    this._selectedContentDeckIndex = edi;
+                    this._selectedContentIndex = eci;
+                    this.selectedDeckIndex = -1;
+                    this.selectedPrimerIndex = -1;
+                    this.draw();
+                    if (this.onContentSelect) {
+                        this.onContentSelect(eContent, edi, eci);
+                    }
+                    return;
+                }
             }
         }
 
@@ -762,6 +894,8 @@ export class HoleSectionView {
             if (pos.y >= y1 && pos.y <= y2 && pos.x >= hr.x && pos.x <= hr.x + hr.w) {
                 this.selectedDeckIndex = di;
                 this.selectedPrimerIndex = -1;
+                this._selectedContentIndex = -1;
+                this._selectedContentDeckIndex = -1;
                 this.draw();
                 if (this.onDeckSelect) {
                     this.onDeckSelect(decks[di], di);
@@ -773,6 +907,8 @@ export class HoleSectionView {
         // Clicked outside - deselect
         this.selectedDeckIndex = -1;
         this.selectedPrimerIndex = -1;
+        this._selectedContentIndex = -1;
+        this._selectedContentDeckIndex = -1;
         this.draw();
     }
 
@@ -865,8 +1001,25 @@ export class HoleSectionView {
 
                 newDepth = Math.max(minDepth, Math.min(maxDepth, newDepth));
 
-                upperDeck.baseDepth = parseFloat(newDepth.toFixed(2));
-                lowerDeck.topDepth = parseFloat(newDepth.toFixed(2));
+                // Staccato snap for DECOUPLED decks: length must be whole multiples of product unit
+                var upperUnitLen = getDecoupledUnitLength(upperDeck);
+                var lowerUnitLen = getDecoupledUnitLength(lowerDeck);
+                if (upperUnitLen) {
+                    // Snap upper deck length to nearest whole unit from its top
+                    var rawLen = newDepth - upperDeck.topDepth;
+                    var units = Math.max(1, Math.round(rawLen / upperUnitLen));
+                    newDepth = upperDeck.topDepth + units * upperUnitLen;
+                    newDepth = Math.max(minDepth, Math.min(maxDepth, newDepth));
+                } else if (lowerUnitLen) {
+                    // Snap lower deck length to nearest whole unit from its base
+                    var rawLen = lowerDeck.baseDepth - newDepth;
+                    var units = Math.max(1, Math.round(rawLen / lowerUnitLen));
+                    newDepth = lowerDeck.baseDepth - units * lowerUnitLen;
+                    newDepth = Math.max(minDepth, Math.min(maxDepth, newDepth));
+                }
+
+                upperDeck.baseDepth = parseFloat(newDepth.toFixed(3));
+                lowerDeck.topDepth = parseFloat(newDepth.toFixed(3));
             }
 
             this.draw();

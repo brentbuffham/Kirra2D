@@ -14,7 +14,8 @@ import { HoleSectionView } from "./HoleSectionView.js";
 import { HoleCharging } from "../HoleCharging.js";
 import { Deck } from "../Deck.js";
 import { Primer } from "../Primer.js";
-import { DECK_TYPES, DECK_COLORS, CHARGE_CONFIG_CODES } from "../ChargingConstants.js";
+import { DecoupledContent } from "../DecoupledContent.js";
+import { DECK_TYPES, DECK_COLORS, DECOUPLED_CONTENT_CATEGORIES, CHARGE_CONFIG_CODES } from "../ChargingConstants.js";
 import { ChargeConfig } from "../ChargeConfig.js";
 import { isFormula, evaluateFormula } from "../../helpers/FormulaEvaluator.js";
 
@@ -206,6 +207,9 @@ export function showDeckBuilderDialog(referenceHole) {
         },
         onPrimerSelect: function (primer, index) {
             updatePrimerInfo(primer, index);
+        },
+        onContentSelect: function (content, deckIndex, contentIndex) {
+            updateContentInfo(content, deckIndex, contentIndex);
         }
     });
     sectionView.setData(workingCharging);
@@ -324,6 +328,10 @@ export function showDeckBuilderDialog(referenceHole) {
     function updateDeckPropertiesPanel(deck, index) {
         var row = document.getElementById("deckBuilderPropsRow");
         if (!row) return;
+        var qtyLabel = "";
+        if (deck.deckType === DECK_TYPES.DECOUPLED && deck.packageCount > 0) {
+            qtyLabel = "<span>Qty: " + deck.packageCount + "</span>";
+        }
         row.innerHTML =
             "<b>Deck " +
             (index + 1) +
@@ -343,6 +351,7 @@ export function showDeckBuilderDialog(referenceHole) {
             "<span>Length: " +
             deck.length.toFixed(1) +
             "m</span>" +
+            qtyLabel +
             "<span>Density: " +
             (deck.effectiveDensity || 0).toFixed(3) +
             " g/cc</span>";
@@ -355,6 +364,19 @@ export function showDeckBuilderDialog(referenceHole) {
         var detLabel = primer.detonator.productName || "None";
         if (detQty > 1) detLabel = detQty + "x " + detLabel;
         row.innerHTML = "<b>Primer " + (index + 1) + ":</b> " + "<span>Depth: " + (primer.lengthFromCollar || 0).toFixed(1) + "m</span>" + "<span>Det: " + detLabel + "</span>" + "<span>Booster: " + (primer.booster.productName || "None") + "</span>" + "<span>Delay: " + (primer.detonator.delayMs || 0) + "ms</span>";
+    }
+
+    function updateContentInfo(content, deckIndex, contentIndex) {
+        var row = document.getElementById("deckBuilderPropsRow");
+        if (!row) return;
+        var mass = content.calculateMass ? content.calculateMass() : 0;
+        row.innerHTML =
+            "<b>Embedded Content:</b> " +
+            "<span>" + (content.productName || content.contentType) + "</span>" +
+            "<span>Depth: " + (content.lengthFromCollar || 0).toFixed(2) + "m</span>" +
+            "<span>Length: " + (content.length || 0).toFixed(3) + "m</span>" +
+            "<span>Dia: " + ((content.diameter || 0) * 1000).toFixed(0) + "mm</span>" +
+            "<span>Mass: " + (mass ? mass.toFixed(1) : "0") + "kg</span>";
     }
 
     function updateSummary() {
@@ -566,7 +588,8 @@ function setupDragDrop(canvas, sectionView, workingCharging, refHole, configTrac
 
         var defaultDeckLength = 2.0;
         if (fullProduct.productCategory === "HighExplosive") {
-            defaultDeckLength = 0.5; // Short deck for packages
+            // Default to 1 package unit length
+            defaultDeckLength = fullProduct.lengthMm ? fullProduct.lengthMm / 1000 : 0.4;
         } else if (fullProduct.productCategory === "Spacer") {
             defaultDeckLength = 0.4; // Short for spacers
         }
@@ -809,6 +832,11 @@ function editSelected(workingCharging, sectionView, refHole, onUpdate) {
         editPrimer(workingCharging, sectionView, refHole);
         return;
     }
+    // Embedded content selection
+    if (sectionView._selectedContentDeckIndex >= 0 && sectionView._selectedContentIndex >= 0) {
+        editEmbeddedContent(workingCharging, sectionView, onUpdate);
+        return;
+    }
     if (sectionView.selectedDeckIndex >= 0 && sectionView.selectedDeckIndex < workingCharging.decks.length) {
         editDeck(workingCharging, sectionView, refHole, onUpdate);
         return;
@@ -833,6 +861,19 @@ function removeSelected(workingCharging, sectionView, onUpdate, showInlineWarnin
         sectionView.selectedPrimerIndex = -1;
         sectionView.setData(workingCharging);
         onUpdate();
+        return;
+    }
+    // Check embedded content
+    if (sectionView._selectedContentDeckIndex >= 0 && sectionView._selectedContentIndex >= 0) {
+        var cDeck = workingCharging.decks[sectionView._selectedContentDeckIndex];
+        if (cDeck && cDeck.contains && cDeck.contains[sectionView._selectedContentIndex]) {
+            var contentID = cDeck.contains[sectionView._selectedContentIndex].contentID;
+            workingCharging.removeContent(contentID);
+            sectionView._selectedContentDeckIndex = -1;
+            sectionView._selectedContentIndex = -1;
+            sectionView.setData(workingCharging);
+            onUpdate();
+        }
         return;
     }
     // Check deck
@@ -874,6 +915,19 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
         });
     }
 
+    // For DECOUPLED decks, compute quantity from product unit length
+    var isDecoupled = deck.deckType === DECK_TYPES.DECOUPLED;
+    var unitLenM = 0;
+    if (isDecoupled && deck.product && deck.product.lengthMm) {
+        unitLenM = deck.product.lengthMm / 1000;
+    } else if (isDecoupled && deck.product && deck.product.name && window.loadedProducts) {
+        window.loadedProducts.forEach(function (p) {
+            if (p.name === deck.product.name && p.lengthMm) unitLenM = p.lengthMm / 1000;
+        });
+    }
+    var currentQty = (unitLenM > 0) ? Math.round(deck.length / unitLenM) : 1;
+    if (currentQty < 1) currentQty = 1;
+
     var fields = [
         {
             label: "Deck Type", name: "deckType", type: "select",
@@ -890,9 +944,15 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
             options: productOptions,
             value: deck.product ? deck.product.name : ""
         },
-        { label: "Top Depth (m)", name: "topDepth", type: "text", value: deck.topDepth.toFixed(3), placeholder: "e.g. 3.5 or fx:stemLength" },
-        { label: "Base Depth (m)", name: "baseDepth", type: "text", value: deck.baseDepth.toFixed(3), placeholder: "e.g. 10.0 or fx:holeLength" }
+        { label: "Top Depth (m)", name: "topDepth", type: "text", value: deck.topDepth.toFixed(3), placeholder: "e.g. 3.5 or fx:stemLength" }
     ];
+
+    // DECOUPLED: show quantity instead of base depth (length = qty × product length)
+    if (isDecoupled && unitLenM > 0) {
+        fields.push({ label: "Quantity (units)", name: "quantity", type: "number", value: String(currentQty), step: "1", min: "1" });
+    } else {
+        fields.push({ label: "Base Depth (m)", name: "baseDepth", type: "text", value: deck.baseDepth.toFixed(3), placeholder: "e.g. 10.0 or fx:holeLength" });
+    }
 
     var formContent = createEnhancedFormContent(fields);
 
@@ -923,18 +983,24 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
                 if (isNaN(newTop)) newTop = deck.topDepth;
             }
 
-            // Resolve baseDepth
-            var baseInput = (data.baseDepth || "").trim();
             var newBase;
-            if (isFormula(baseInput)) {
-                newBase = evaluateFormula(baseInput, ctx);
-                if (newBase == null) {
-                    showModalMessage("Formula Error", "Could not evaluate base depth: " + baseInput, "warning");
-                    return;
-                }
+            // DECOUPLED with quantity: derive base from top + qty × unit length
+            if (isDecoupled && unitLenM > 0 && data.quantity != null) {
+                var qty = Math.max(1, parseInt(data.quantity) || 1);
+                newBase = newTop + qty * unitLenM;
             } else {
-                newBase = parseFloat(baseInput);
-                if (isNaN(newBase)) newBase = deck.baseDepth;
+                // Resolve baseDepth
+                var baseInput = (data.baseDepth || "").trim();
+                if (isFormula(baseInput)) {
+                    newBase = evaluateFormula(baseInput, ctx);
+                    if (newBase == null) {
+                        showModalMessage("Formula Error", "Could not evaluate base depth: " + baseInput, "warning");
+                        return;
+                    }
+                } else {
+                    newBase = parseFloat(baseInput);
+                    if (isNaN(newBase)) newBase = deck.baseDepth;
+                }
             }
 
             // Clamp to hole range
@@ -962,12 +1028,67 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
                 deck.product = null;
             }
 
-            // Update depths
+            // Update depths — also adjust adjacent INERT deck to fill gap
+            var oldBase = deck.baseDepth;
             deck.topDepth = parseFloat(newTop.toFixed(3));
             deck.baseDepth = parseFloat(newBase.toFixed(3));
 
+            // Adjust the adjacent deck below to absorb the size change
+            var nextIdx = workingCharging.decks.indexOf(deck) + 1;
+            if (nextIdx < workingCharging.decks.length) {
+                workingCharging.decks[nextIdx].topDepth = parseFloat(newBase.toFixed(3));
+            }
+
             workingCharging.modified = new Date().toISOString();
             workingCharging.sortDecks();
+            sectionView.setData(workingCharging);
+            if (onUpdate) onUpdate();
+        }
+    });
+    editDialog.show();
+}
+
+/**
+ * Edit an embedded content item (DecoupledContent) via dialog.
+ */
+function editEmbeddedContent(workingCharging, sectionView, onUpdate) {
+    var di = sectionView._selectedContentDeckIndex;
+    var ci = sectionView._selectedContentIndex;
+    if (di < 0 || di >= workingCharging.decks.length) return;
+    var deck = workingCharging.decks[di];
+    if (!deck.contains || ci < 0 || ci >= deck.contains.length) return;
+    var content = deck.contains[ci];
+
+    var fields = [
+        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "number", value: (content.lengthFromCollar || 0).toFixed(3), step: "0.001" },
+        { label: "Length (m)", name: "length", type: "number", value: (content.length || 0).toFixed(3), step: "0.001" },
+        { label: "Diameter (mm)", name: "diameterMm", type: "number", value: ((content.diameter || 0) * 1000).toFixed(0), step: "1" },
+        { label: "Density (g/cc)", name: "density", type: "number", value: (content.density || 0).toFixed(3), step: "0.001" }
+    ];
+
+    var formContent = createEnhancedFormContent(fields);
+
+    var editDialog = new FloatingDialog({
+        title: "Edit Embedded Content",
+        content: formContent,
+        width: 350,
+        height: 280,
+        showConfirm: true,
+        confirmText: "Update",
+        showCancel: true,
+        onConfirm: function () {
+            var data = getFormData(formContent);
+            var newDepth = parseFloat(data.depthFromCollar);
+            var newLength = parseFloat(data.length);
+            var newDiaMm = parseFloat(data.diameterMm);
+            var newDensity = parseFloat(data.density);
+
+            if (!isNaN(newDepth)) content.lengthFromCollar = newDepth;
+            if (!isNaN(newLength) && newLength > 0) content.length = newLength;
+            if (!isNaN(newDiaMm) && newDiaMm > 0) content.diameter = newDiaMm / 1000;
+            if (!isNaN(newDensity) && newDensity >= 0) content.density = newDensity;
+
+            workingCharging.modified = new Date().toISOString();
             sectionView.setData(workingCharging);
             if (onUpdate) onUpdate();
         }
@@ -1145,6 +1266,14 @@ function scaleChargingToHole(sourceCharging, targetHole, refLen) {
             // Ensure minimum deck thickness
             if (deck.baseDepth - deck.topDepth < 0.01 && d < clone.decks.length - 1) {
                 deck.baseDepth = Math.min(targetLen, deck.topDepth + 0.01);
+            }
+            // Scale embedded content positions
+            if (deck.contains && deck.contains.length > 0) {
+                for (var ci = 0; ci < deck.contains.length; ci++) {
+                    if (deck.contains[ci].lengthFromCollar != null) {
+                        deck.contains[ci].lengthFromCollar = deck.contains[ci].lengthFromCollar * ratio;
+                    }
+                }
             }
         }
         // Ensure last deck extends to hole bottom

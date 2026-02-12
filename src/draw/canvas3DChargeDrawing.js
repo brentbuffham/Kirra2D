@@ -157,6 +157,7 @@ export function drawAllChargesThreeJS(visibleHoles) {
 	var deckList = [];
 	var boosterList = [];    // 8 values per booster: topX,topY,topZ, baseX,baseY,baseZ, radius, colorHex
 	var initiatorList = [];  // 8 values per initiator: topX,topY,topZ, baseX,baseY,baseZ, radius, colorHex
+	var embeddedList = [];   // 8 values per embedded content: topX,topY,topZ, baseX,baseY,baseZ, radius, colorHex
 
 	for (var h = 0; h < visibleHoles.length; h++) {
 		var hole = visibleHoles[h];
@@ -196,6 +197,34 @@ export function drawAllChargesThreeJS(visibleHoles) {
 				baseLocal.x, baseLocal.y, baseWorld.z,
 				deckRadius, getDeckColor(deck)
 			);
+
+			// Collect embedded content (Physical items inside decks)
+			if (deck.contains && deck.contains.length > 0) {
+				for (var ec = 0; ec < deck.contains.length; ec++) {
+					var content = deck.contains[ec];
+					if (content.contentCategory !== "Physical") continue;
+					if (!content.length || !content.diameter) continue;
+
+					var cTopWorld = positionAtDepth(hole, content.lengthFromCollar, holeLength);
+					var cBaseWorld = positionAtDepth(hole, content.lengthFromCollar + content.length, holeLength);
+					var cTopLocal = window.worldToThreeLocal(cTopWorld.x, cTopWorld.y);
+					var cBaseLocal = window.worldToThreeLocal(cBaseWorld.x, cBaseWorld.y);
+					var cRadius = (content.diameter / 2) * holeScale * 2;
+
+					// Look up product color
+					var cColorHex = 0xFF6600; // default orange
+					var cProd = findProduct(content.productID, content.productName);
+					if (cProd && cProd.colorHex) {
+						cColorHex = hexStringToNumber(cProd.colorHex);
+					}
+
+					embeddedList.push(
+						cTopLocal.x, cTopLocal.y, cTopWorld.z,
+						cBaseLocal.x, cBaseLocal.y, cBaseWorld.z,
+						cRadius, cColorHex
+					);
+				}
+			}
 		}
 
 		if (charging.primers) {
@@ -356,6 +385,47 @@ export function drawAllChargesThreeJS(visibleHoles) {
 		initiatorMesh.instanceMatrix.needsUpdate = true;
 		if (initiatorMesh.instanceColor) initiatorMesh.instanceColor.needsUpdate = true;
 		chargesGroup.add(initiatorMesh);
+	}
+
+	// Build instanced mesh for embedded content cylinders (1 draw call)
+	var embeddedCount = embeddedList.length / 8;
+	if (embeddedCount > 0) {
+		var embeddedMesh = new THREE.InstancedMesh(getBoosterTemplateGeo(), new THREE.MeshBasicMaterial({
+			color: 0xffffff,
+			transparent: true,
+			opacity: 0.6,
+			side: THREE.DoubleSide,
+			depthTest: true,
+			depthWrite: false,
+		}), embeddedCount);
+		embeddedMesh.name = "charge-embedded-instanced";
+
+		for (var ei = 0; ei < embeddedCount; ei++) {
+			var eOff = ei * 8;
+			var edx = embeddedList[eOff + 3] - embeddedList[eOff];
+			var edy = embeddedList[eOff + 4] - embeddedList[eOff + 1];
+			var edz = embeddedList[eOff + 5] - embeddedList[eOff + 2];
+			var eLen = Math.sqrt(edx * edx + edy * edy + edz * edz);
+			if (eLen < 0.0001) eLen = 0.001;
+
+			_direction.set(edx, edy, edz).normalize();
+			_quaternion.setFromUnitVectors(_yAxis, _direction);
+			_position.set(
+				(embeddedList[eOff] + embeddedList[eOff + 3]) / 2,
+				(embeddedList[eOff + 1] + embeddedList[eOff + 4]) / 2,
+				(embeddedList[eOff + 2] + embeddedList[eOff + 5]) / 2
+			);
+			_scale.set(embeddedList[eOff + 6], eLen, embeddedList[eOff + 6]);
+			_matrix.compose(_position, _quaternion, _scale);
+			embeddedMesh.setMatrixAt(ei, _matrix);
+
+			_color.setHex(embeddedList[eOff + 7]);
+			embeddedMesh.setColorAt(ei, _color);
+		}
+
+		embeddedMesh.instanceMatrix.needsUpdate = true;
+		if (embeddedMesh.instanceColor) embeddedMesh.instanceColor.needsUpdate = true;
+		chargesGroup.add(embeddedMesh);
 	}
 }
 
