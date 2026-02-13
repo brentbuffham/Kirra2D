@@ -1057,7 +1057,176 @@ connectorCurve             || 0 // the bend of the connector.
 ---
 
 # Charging and Charging Rules/Codes
-*Not implemented yet*
+
+Kirra includes a comprehensive charging system for designing and managing blast hole loading configurations. The charging module supports template-based deck designs, primer placement, and multi-deck charge configurations with formula-driven automation.
+
+## Charging System Overview
+
+The charging system provides tools for:
+- **Charge Configuration Design**: Template-based charge rules with typed deck arrays
+- **Deck Management**: Inert (stemming), Coupled (bulk explosive), Decoupled (packaged explosive), and Spacer decks
+- **Primer Placement**: Formula-driven detonator and booster positioning with indexed targeting
+- **Mass and Length Modes**: Fixed mass, fixed length, and proportional scaling across different hole geometries
+- **Import/Export**: CSV-based configuration management with ZIP packaging
+- **Visual Design Tools**: Interactive Deck Builder with section view and 2D/3D visualization
+
+## Key Features
+
+### 1. Typed Deck Arrays
+
+Every charge configuration consists of four typed deck arrays:
+- **Inert Deck**: Non-explosive materials (stemming, water, air)
+- **Coupled Deck**: Bulk explosives in direct contact with hole wall (ANFO, emulsion)
+- **Decoupled Deck**: Packaged explosives with air gap (cartridges, primers)
+- **Spacer Deck**: Gas bags, stem caps, and deck separators
+
+### 2. Deck Scaling Modes
+
+Each deck can use one of three scaling behaviors when applied to different hole lengths:
+
+| Mode | Flag | Behavior | Use Case |
+|------|------|----------|----------|
+| **Proportional** | `PR` (default) | Deck length scales with hole length | Variable-depth blasting |
+| **Fixed Length** | `FL` | Deck maintains exact metre length | Consistent stem lengths |
+| **Fixed Mass** | `FM` | Deck maintains mass, length varies | Consistent charge mass per hole |
+
+### 3. Formula-Driven Positioning
+
+Deck lengths and primer depths can use formulas with hole properties:
+
+```
+fx:holeLength - 4           → Deck fills hole minus 4m
+fx:chargeBase - 0.3         → Primer 0.3m above deepest charge
+fx:chargeBase[4] - 0.3      → Primer 0.3m above charge at position 4
+fx:Math.min(holeLength * 0.3, 5)  → 30% of hole, max 5m
+m:50                        → 50kg of product (length varies with diameter)
+```
+
+**Available Variables:**
+- `holeLength`, `benchHeight`, `subdrillLength`, `holeDiameter`
+- `chargeBase`, `chargeTop`, `chargeLength` (deepest deck)
+- `chargeBase[N]`, `chargeTop[N]`, `chargeLength[N]` (indexed targeting)
+
+### 4. Mass-Based Length Mode
+
+The `m:` prefix specifies deck mass in kilograms. Length is calculated from:
+- Product density (from products.csv)
+- Hole diameter (from blast data)
+- Result varies per-hole to maintain constant mass
+
+**Example:** `m:50` with ANFO (0.85 g/cc)
+- 115mm hole → 5.66m
+- 250mm hole → 1.03m
+- Same mass (50kg), different lengths
+
+### 5. Primer System
+
+Primers combine detonators and boosters with formula-based depth positioning:
+
+```
+{1, fx:chargeBase-0.3, Det{GENERIC-MS}, HE{BS400G}}
+{2, fx:chargeBase[4]-0.3, Det{GENERIC-MS}, HE{BS400G}}
+```
+
+Supports:
+- Single and multi-primer configurations
+- Indexed deck targeting for multi-deck charges
+- Detonating cord (no booster): `HE{}`
+- Literal depths: `{1, 8.5, Det{GENERIC-E}, HE{BS400G}}`
+
+## Charging Visualization
+
+Kirra provides multiple views for visualizing and editing charge configurations:
+
+### 2D Charging View
+![2D Charging View](src/charging/docs/2DChargingView.jpg)
+
+The 2D radial view shows the complete charge configuration for all holes in a blast pattern, with color-coded deck types and mass distribution.
+
+### 2D Hole Loading View
+![2D Hole Loading View](src/charging/docs/2DholeLoadingView.jpg)
+
+The hole section view displays detailed deck-by-deck breakdown with lengths, masses, and product information. This view is used in the Deck Builder for designing and editing charge configurations.
+
+### 3D Charging View
+![3D Charging View](src/charging/docs/3DChargingView.jpg)
+
+The 3D view renders blast holes with their charge configurations in the spatial context, allowing visualization of deck layouts across the entire pattern.
+
+## Workflow
+
+### 1. Import Products and Configurations
+- Load `kirra-charging-config.zip` containing products.csv and chargeConfigs.csv
+- Products define explosives, detonators, stemming, and spacers
+- Configs define charge rule templates
+
+### 2. Design Charges with Deck Builder
+- Open Deck Builder dialog for a selected hole
+- Add decks (Inert, Coupled, Decoupled, Spacer)
+- Set scaling mode per deck (Proportional, Fixed Length, Fixed Mass)
+- Add primers with formula-based positioning
+- Click **Save as Rule** to create reusable template
+
+### 3. Apply Charge Rules
+- Select charge rule from configuration list
+- Apply to single hole or entire blast entity
+- Rule engine resolves formulas, lengths, and masses per-hole
+- Auto-recalculate option updates charges when hole geometry changes
+
+### 4. Export Configurations
+- Export current rules and products as ZIP
+- Edit CSV files in Excel/Sheets to modify rules
+- Re-import modified configurations for round-trip workflow
+
+## Formula Examples
+
+See the complete [Formula Reference](src/charging/docs/ChargeConfigCSV-README.md#20-useful-formula-examples-for-decks-and-charges) for 20 practical charging formulas covering:
+- Length formulas (proportional, fixed, capped)
+- Mass formulas (fixed mass decks and mass-aware spacing)
+- Primer depth formulas (single and multi-deck targeting)
+- Multi-deck formulas (indexed variables for complex configs)
+
+## File Format Reference
+
+Complete specification: [ChargeConfigCSV-README.md](src/charging/docs/ChargeConfigCSV-README.md)
+
+### Key Format Details
+
+**chargeConfigs.csv** (transposed format):
+- Row 1 = header: `Type,Description,Field,[1],[2],[3],...`
+- Each row = one field (configCode, configName, primerInterval, etc.)
+- Each column = one charge configuration
+- Add/remove columns to add/remove configurations
+
+**products.csv**:
+- Product definitions with type, density, diameter, length
+- Types: Explosive, Stemming, Detonator, Spacer, Booster
+- Referenced by name in deck entries
+
+### Deck Syntax Examples
+
+```
+Inert:       {1,3.5,Stemming,FL};{5,fill,Stemming}
+Coupled:     {2,fill,ANFO};{4,m:50,ANFO,FM}
+Decoupled:   {3,1.5,PKG75mm,FL}
+Spacer:      {3,GB230MM}
+Primer:      {1,fx:chargeBase-0.3,Det{GENERIC-MS},HE{BS400G}}
+```
+
+## Source Files
+
+| File | Purpose |
+|------|---------|
+| `src/charging/ConfigImportExport.js` | CSV parser, brace notation, ZIP handling |
+| `src/charging/ChargeConfig.js` | ChargeConfig class with typed deck arrays |
+| `src/charging/rules/SimpleRuleEngine.js` | Unified template engine with formula resolution |
+| `src/charging/Deck.js` | Deck class with scaling modes and overlap patterns |
+| `src/charging/Primer.js` | Primer class with indexed depth formulas |
+| `src/charging/HoleCharging.js` | Per-hole charge state with dimension updates |
+| `src/charging/ui/DeckBuilderDialog.js` | Interactive deck design UI |
+| `src/charging/ui/HoleSectionView.js` | Visual section view with scaling badges |
+| `src/helpers/FormulaEvaluator.js` | Formula evaluation with bracket notation |
+| `src/charging/ChargingConstants.js` | Enums for deck types and scaling modes |
 
 ---
 

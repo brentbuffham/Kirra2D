@@ -5,55 +5,38 @@
 OVERVIEW
 --------
 Kirra exports and imports charge configurations as a ZIP file containing CSV
-files. This document describes the chargeConfigs.csv format -- specifically
-the typed deck columns that define multi-deck charge designs in a
-human-readable, spreadsheet-friendly format.
+files. All charge designs use deck arrays -- there are no flat-field shortcuts.
+Every config is a template of typed deck entries plus primer entries, applied
+per-hole by the unified template engine.
 
 
 FILE STRUCTURE
 --------------
   kirra-charging-config.zip
     products.csv          Product definitions (explosives, stemming, detonators)
-    chargeConfigs.csv     Charge rule configurations (this document)
+    chargeConfigs.csv     Charge rule configurations (transposed format)
     README.txt            Quick-start instructions
 
 
 ================================================================================
-  chargeConfigs.csv COLUMNS
+  chargeConfigs.csv FIELDS
 ================================================================================
 
-  #   Column                  Type       Description
-  --  ----------------------  ---------  ----------------------------------------
-   1  configCode              string     Rule code: STNDFS, AIRDEC, CUSTOM, etc.
-   2  configName              string     Human-readable rule name
-   3  stemmingProduct         string     Stemming product name (from products.csv)
-   4  chargeProduct           string     Primary charge product name
-   5  wetChargeProduct        string     Wet hole charge product (optional)
-   6  boosterProduct          string     Default booster product name
-   7  detonatorProduct        string     Default detonator product name
-   8  gasBagProduct           string     Gas bag/spacer product name
-   9  preferredStemLength     number     Target stemming length (metres)
-  10  minStemLength           number     Minimum stemming length (metres)
-  11  preferredChargeLength   number     Target charge length (metres)
-  12  minChargeLength         number     Minimum charge length (metres)
-  13  useMassOverLength       boolean    true = charge by mass instead of length
-  14  targetChargeMassKg      number     Target charge mass in kg
-  15  chargeRatio             number     Fraction of hole for charge (0.0-1.0)
-  16  primerInterval          number     Interval between primers (metres)
-  17  primerDepthFromCollar   str/num    Single primer depth or fx: formula
-  18  maxPrimersPerDeck       number     Maximum primers per charge deck
-  19  airDeckLength           number     Air deck length (metres)
-  20  applyShortHoleLogic     boolean    Apply short-hole charging tiers
-  21  description             string     Free-text description
-  22  inertDeck               string     Inert deck entries (brace notation)
-  23  coupledDeck             string     Coupled explosive deck entries
-  24  decoupledDeck           string     Decoupled explosive deck entries
-  25  spacerDeck              string     Spacer deck entries
-  26  primer                  string     Primer entries (brace notation)
-
-Standard codes (STNDFS, AIRDEC, etc.) use columns 1-21 only.
-Custom configs (CUSTOM) use columns 22-26 for explicit deck layouts.
-Any config code can include typed deck columns to override the default layout.
+  #   Field                Type       Description
+  --  -------------------  ---------  ----------------------------------------
+   1  configCode           code       Rule code identifier (e.g. STNDFS, CUSTOM)
+   2  configName           text       Human-readable rule name
+   3  description          text       Free-text description
+   4  primerInterval       number     Interval between primers (metres)
+   5  shortHoleLogic       bool       Apply short-hole charging tiers
+   6  shortHoleLength      number     Short hole threshold length (m, default 4.0)
+   7  wetHoleSwap          bool       Swap product for wet holes
+   8  wetHoleProduct       product    Wet hole replacement product name
+   9  inertDeck            deck       Inert deck template entries (brace notation)
+  10  coupledDeck          deck       Coupled explosive deck entries
+  11  decoupledDeck        deck       Decoupled explosive deck entries
+  12  spacerDeck           deck       Spacer deck entries
+  13  primer               primer     Primer template entries (brace notation)
 
 
 ================================================================================
@@ -62,13 +45,14 @@ Any config code can include typed deck columns to override the default layout.
 
 INERT, COUPLED, AND DECOUPLED DECKS
 ------------------------------------
-Format:  {idx,length,product}
+Format:  {idx,length,product} or {idx,length,product,FLAG}
 
   Multiple entries separated by ;
 
   idx      Integer deck order from collar (1-based). Deck 1 is at the top.
   length   Deck length -- see Length Modes below
   product  Product name, must match a name in products.csv
+  FLAG     Optional scaling flag -- see Scaling Flags below
 
 Length Modes:
 
@@ -78,14 +62,35 @@ Length Modes:
   fill            Fill       Absorbs remaining hole length
   fx:holeLen-4    Formula    Calculated from hole properties at apply-time
   m:50            Mass       50 kg of product (length from density + diameter)
+  product         Product    Length from product.lengthMm
+
+Scaling Flags:
+
+  Flag    Name              Behaviour
+  ----    ----------------  ------------------------------------------------
+  FL      Fixed Length       Keeps exact metre length regardless of hole length
+  FM      Fixed Mass         Recalculates length from mass at new diameter
+  PR      Proportional       Scales proportionally with hole length (default)
+
+  When no flag is specified, the deck defaults to proportional scaling.
 
 Examples:
 
-  inertDeck:     {1,2.0,Stemming};{8,2.0,Stemming}
-  coupledDeck:   {2,fill,ANFO};{4,2.0,ANFO};{6,2.0,ANFO}
-  decoupledDeck: {3,1.5,PKG75mm}
+  inertDeck:     {1,3.5,Stemming,FL};{5,fill,Stemming}
+  coupledDeck:   {2,fill,ANFO};{4,2.0,ANFO,FL}
+  decoupledDeck: {3,1.5,PKG75mm,FL}
 
-[Screenshot placeholder: inertDeck column in Excel]
+
+OVERLAP PATTERN (DECOUPLED DECKS)
+----------------------------------
+For variable package stacking, append overlap syntax:
+
+  {idx,length,product,FLAG,overlap:base=3;base-1=2;n=1;top=2}
+
+  base     Packages at the base (bottom) position
+  base-1   Packages one position above base
+  n        Default packages for all middle positions
+  top      Packages at the top position
 
 
 SPACER DECKS
@@ -99,11 +104,7 @@ Format:  {idx,product}
 
 Example:
 
-  spacerDeck: {3,GB230MM};{5,GB230MM};{7,GB230MM}
-
-  GB230MM with lengthMm: 400 produces a 0.4m spacer deck.
-
-[Screenshot placeholder: spacerDeck column in Excel]
+  spacerDeck: {3,GB230MM};{5,GB230MM}
 
 
 PRIMER ENTRIES
@@ -115,20 +116,21 @@ Format:  {idx,depth,Det{name},HE{name}}
   idx       Primer number (1-based)
   depth     Depth from collar in metres, or fx: formula
   Det{name} Detonator product name (inside Det{...})
-  HE{name}  Booster / high-explosive product name (inside HE{...})
+  HE{name}  Booster product name (inside HE{...}). Use HE{} for no booster.
 
 Examples:
 
   Single primer:
-    {1,fx:chargeBase-chargeLength*0.1,Det{GENERIC-MS},HE{BS400G}}
+    {1,fx:chargeBase-0.3,Det{GENERIC-MS},HE{BS400G}}
 
-  Two primers:
-    {1,fx:chargeBase-0.3,Det{GENERIC-MS},HE{BS400G}};{2,fx:chargeBase-chargeLength*0.5,Det{GENERIC-MS},HE{BS400G}}
+  Two primers targeting specific charge decks (index = deck position):
+    {1,fx:chargeBase[8]-0.3,Det{GENERIC-MS},HE{BS400G}};{2,fx:chargeBase[4]-0.3,Det{GENERIC-MS},HE{BS400G}}
 
   Literal depth:
     {1,8.5,Det{GENERIC-E},HE{BS400G}}
 
-[Screenshot placeholder: primer column in Excel]
+  Detonating cord (no booster):
+    {1,fx:chargeBase-0.3,Det{10GCORD},HE{}}
 
 
 ================================================================================
@@ -139,26 +141,20 @@ Decks are ordered from collar (top) to toe (bottom) using the idx field:
 
   Collar (0m)
     +-------------------+
-    |  Deck idx=1        |  <- e.g. Stemming (INERT)
+    |  Deck idx=1        |  <- e.g. Stemming (INERT, FL)
     +-------------------+
     |  Deck idx=2        |  <- e.g. ANFO (COUPLED, fill)
     +-------------------+
     |  Deck idx=3        |  <- e.g. Gas Bag (SPACER)
     +-------------------+
-    |  Deck idx=4        |  <- e.g. ANFO (COUPLED, 2.0m)
+    |  Deck idx=4        |  <- e.g. ANFO (COUPLED, 2.0m, FL)
     +-------------------+
-    |  Deck idx=5        |  <- e.g. Gas Bag (SPACER)
-    +-------------------+
-    |  Deck idx=6        |  <- e.g. ANFO (COUPLED, 2.0m)
-    +-------------------+
-    |  Deck idx=7        |  <- e.g. Stemming (INERT)
+    |  Deck idx=5        |  <- e.g. Stemming (INERT, fill)
     +-------------------+
   Toe (holeLength)
 
 The idx values do NOT need to be sequential (gaps allowed), but must be
 unique across all four deck columns. The engine sorts by idx for order.
-
-[Screenshot placeholder: Deck Builder dialog showing 7-deck layout]
 
 
 ================================================================================
@@ -180,20 +176,79 @@ Available Variables:
   benchHeight       Bench height from hole data (m)
   subdrillLength    Subdrill length from hole data (m)
 
+Indexed Variables (use deck position number from section view):
+
+  chargeBase[N]     Base depth of the charge deck at position N
+  chargeTop[N]      Top depth of the charge deck at position N
+  chargeLength[N]   Length of the charge deck at position N
+  e.g. if COUPLED is at deck position 4, use chargeBase[4]
+
 Math Functions:
 
   Math.min(a, b)   Math.max(a, b)   Math.abs(x)
   Math.sqrt(x)     Math.PI          Math.round(x)
 
-Formula Examples:
+Custom Functions:
 
-  Formula                                     Description
-  ------------------------------------------  ----------------------------
-  fx:chargeBase - chargeLength * 0.1          Primer at 90% into charge
-  fx:holeLength * 0.9                         Primer at 90% of total hole
-  fx:Math.max(chargeTop+1, chargeBase-0.5)    At least 1m below charge top
-  fx:holeLength - 4                           Deck length = hole minus 4m
-  fx:chargeBase - 0.3                         Primer 0.3m above toe
+  massLength(kg, density)          Length (m) for a given mass at holeDiameter
+                                   density in g/cc  e.g. massLength(50, 0.85)
+  massLength(kg, "ProductName")    Length (m) using product density lookup
+                                   e.g. massLength(50, "ANFO")
+
+  How massLength works:
+    massLength = massKg / (density * 1000 * PI * (holeDiameter/2000)^2)
+    Result varies per-hole because holeDiameter comes from hole data.
+
+Primer Depth Examples:
+
+  Formula                                           Description
+  ------------------------------------------------  -----------------------------------
+  fx:chargeBase - 0.3                               Primer 0.3m above deepest charge base
+  fx:chargeBase[4] - 0.3                            Primer 0.3m above charge at deck position 4
+  fx:chargeBase[8] - 0.6                            Primer 0.6m above charge at deck position 8
+  fx:holeLength * 0.9                               Primer at 90% of total hole
+  fx:Math.max(chargeTop + 1, chargeBase - 0.5)      At least 1m below charge top
+
+Deck Length Examples:
+
+  fx:holeLength - 4                                 Deck = hole length minus 4m
+  fx:holeLength * 0.5                               Deck = 50% of hole length
+  fx:holeLength - stemLength - 2                    Fills hole minus stem and 2m
+  fx:Math.min(holeLength * 0.3, 5)                  30% of hole capped at 5m max
+
+Mass-Aware Positioning Examples:
+
+  fx:chargeTop[4] - massLength(50, 0.85)            Place above charge at position 4, 50kg ANFO
+  fx:chargeTop[4] - massLength(50, "ANFO")          Same, using product name lookup
+  fx:holeLength - 2 - massLength(30, 1.2)           Above a 2m toe charge, 30kg emulsion
+  fx:chargeBase[3] - massLength(25, "GENERIC4060")  25kg ending at charge deck position 3 base
+
+  Scenario: 2m fixed deck at position 4 (toe), 50kg mass deck at position 3 above it:
+    Deck [3]: topDepth = fx:chargeTop[4] - massLength(50, 1.2)
+    Deck [4]: fixed 2.0m at the toe
+
+    In a 165mm hole: massLength(50, 1.2) = 1.95m
+    In a 250mm hole: massLength(50, 1.2) = 0.85m
+    Mass stays 50kg; length adapts to hole diameter.
+
+
+================================================================================
+  SCALING FLAGS AND HOLE APPLICATION
+================================================================================
+
+When a config is applied to holes of different lengths, scaling flags control
+each deck's behaviour:
+
+  Proportional (default): Deck length scales proportionally with hole length
+  Fixed Length (FL):       Keeps exact metre length (e.g. 3.5m stemming)
+  Fixed Mass (FM):        Recalculates length to maintain mass at new diameter
+
+Two-pass layout algorithm:
+  Pass 1: Fixed-length and fixed-mass decks claim their space first
+  Pass 2: Remaining space is distributed among proportional decks
+
+The section view shows badges: F (blue) for fixed-length, M (orange) for
+fixed-mass. No badge for proportional (default).
 
 
 ================================================================================
@@ -221,35 +276,6 @@ In a 250mm hole the same 50kg yields only 1.03m.
 
 
 ================================================================================
-  COMPLETE CSV ROW EXAMPLE
-================================================================================
-
-A 7-deck custom config with spacers and a formula-depth primer:
-
-configCode  configName              ...  inertDeck                            coupledDeck                                   decoupledDeck  spacerDeck               primer
-CUSTOM      Multi Deck with Spacers ...  {1,2.0,Stemming};{7,2.0,Stemming}   {2,fill,ANFO};{4,2.0,ANFO};{6,2.0,ANFO}                     {3,GB230MM};{5,GB230MM}  {1,fx:chargeBase-chargeLength*0.1,Det{GENERIC-MS},HE{BS400G}}
-
-[Screenshot placeholder: Full CSV row viewed in Excel]
-
-
-================================================================================
-  CONFIG CODE REFERENCE
-================================================================================
-
-  Code          Name                Description
-  -----------   ------------------  ----------------------------------------
-  SIMPLE_SINGLE Simple Single       One stemming + one charge + one primer
-  STNDVS        Standard Vented     Air at top + stemming + charge at bottom
-  STNDFS        Standard Fixed Stem Fixed stemming, fill rest with explosive
-  ST5050        50/50 Split         50% stemming, 50% charge
-  AIRDEC        Air Deck            Stemming + spacer + air + charge
-  PRESPL        Presplit            Decoupled packaged explosive
-  PRESPLIT      Presplit (alias)    Same as PRESPL
-  NOCHG         No Charge           Leave hole empty (air-filled)
-  CUSTOM        Custom              User-defined deck layout via typed columns
-
-
-================================================================================
   WORKFLOW
 ================================================================================
 
@@ -257,7 +283,7 @@ EXPORT:
   1. Charging tab > Export Config (or File > Export Charging Config)
   2. Downloads kirra-charging-config.zip
   3. Open chargeConfigs.csv in Excel/Sheets/text editor
-  4. Edit or add rows
+  4. Each column is a config -- add columns for new configs
 
 IMPORT:
   1. Save CSV, re-ZIP all files
@@ -265,22 +291,15 @@ IMPORT:
   3. Select the ZIP file
   4. Products and configs are loaded into memory
 
+DECK BUILDER -- SAVE AS RULE:
+  1. Build a charging design in the Deck Builder
+  2. Click Save as Rule
+  3. Set scaling mode per deck (Proportional, Fixed Length, Fixed Mass)
+  4. Edit primer depth formulas (auto-generated using deck position index)
+  5. The saved rule appears in the config list and exports
+
 ROUND-TRIP VERIFICATION:
   1. Export config
   2. Re-import the same ZIP without changes
   3. Apply rules to holes
   4. Verify identical deck layouts
-
-
-================================================================================
-  SOURCE FILES
-================================================================================
-
-  File                                          Purpose
-  --------------------------------------------  ----------------------------------
-  src/charging/ConfigImportExport.js            CSV header, writer, parser
-  src/charging/ChargeConfig.js                  ChargeConfig class
-  src/charging/rules/SimpleRuleEngine.js        applyCustomTemplate() - engine
-  src/charging/ui/DeckBuilderDialog.js          Deck Builder UI - Save as Rule
-  src/helpers/FormulaEvaluator.js               fx: formula evaluation
-  src/charging/ChargingConstants.js             DECK_TYPES, CONFIG_CODES enums

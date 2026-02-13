@@ -15,7 +15,7 @@ import { HoleCharging } from "../HoleCharging.js";
 import { Deck } from "../Deck.js";
 import { Primer } from "../Primer.js";
 import { DecoupledContent } from "../DecoupledContent.js";
-import { DECK_TYPES, DECK_COLORS, DECOUPLED_CONTENT_CATEGORIES, CHARGE_CONFIG_CODES } from "../ChargingConstants.js";
+import { DECK_TYPES, DECK_COLORS, DECK_SCALING_MODES, DECOUPLED_CONTENT_CATEGORIES, CHARGE_CONFIG_CODES } from "../ChargingConstants.js";
 import { ChargeConfig } from "../ChargeConfig.js";
 import { isFormula, evaluateFormula } from "../../helpers/FormulaEvaluator.js";
 
@@ -68,7 +68,6 @@ function buildFormulaCtxFromDecks(workingCharging) {
         chargeBase: holeLen,
         stemLength: 0
     };
-    var chargeIndex = 0;
     var deepestBase = 0;
     var deepestTop = 0;
     var deepestLen = 0;
@@ -78,13 +77,14 @@ function buildFormulaCtxFromDecks(workingCharging) {
         var d = workingCharging.decks[i];
         var dt = d.deckType;
         if (dt === DECK_TYPES.COUPLED || dt === DECK_TYPES.DECOUPLED) {
-            chargeIndex++;
+            var deckPos = i + 1; // 1-based deck array position — matches UI labels
             var cTop = d.topDepth;
             var cBase = d.baseDepth;
             var cLen = cBase - cTop;
-            ctx["chargeBase_" + chargeIndex] = cBase;
-            ctx["chargeTop_" + chargeIndex] = cTop;
-            ctx["chargeLength_" + chargeIndex] = cLen;
+            // Index by deck position so chargeBase[4] matches COUPLED[4] in the UI
+            ctx["chargeBase_" + deckPos] = cBase;
+            ctx["chargeTop_" + deckPos] = cTop;
+            ctx["chargeLength_" + deckPos] = cLen;
             if (cBase >= deepestBase) {
                 deepestBase = cBase;
                 deepestTop = cTop;
@@ -116,9 +116,19 @@ export function showDeckBuilderDialog(referenceHole) {
     if (!refHole && window.allBlastHoles && window.allBlastHoles.length > 0) {
         refHole = window.allBlastHoles[0];
     }
-    if (!refHole) {
-        showModalMessage("Deck Builder", "No blast holes loaded. Import holes first.", "warning");
-        return;
+
+    // Virtual hole mode: if no holes exist, create a virtual reference
+    var isVirtualHole = !refHole;
+    if (isVirtualHole) {
+        refHole = {
+            holeID: "VIRTUAL",
+            entityName: "N/A",
+            holeDiameter: 100,
+            holeLengthCalculated: 10.0,
+            startXLocation: 0, startYLocation: 0, startZLocation: 0,
+            endXLocation: 0, endYLocation: 0, endZLocation: -10.0,
+            benchHeight: 10.0, subdrillLength: 0, burden: 1, spacing: 1
+        };
     }
 
     // Track the last applied charge config so we can re-run it per-hole.
@@ -126,7 +136,7 @@ export function showDeckBuilderDialog(referenceHole) {
     var configTracker = { config: null };
 
     // Build or clone HoleCharging for the reference hole
-    var existingCharging = window.loadedCharging ? window.loadedCharging.get(refHole.holeID) : null;
+    var existingCharging = (!isVirtualHole && window.loadedCharging) ? window.loadedCharging.get(refHole.holeID) : null;
     var workingCharging;
     if (existingCharging) {
         workingCharging = HoleCharging.fromJSON(existingCharging.toJSON());
@@ -144,7 +154,18 @@ export function showDeckBuilderDialog(referenceHole) {
     // Header info bar
     var infoBar = document.createElement("div");
     infoBar.className = "deck-builder-info";
-    infoBar.innerHTML = "<span>Hole: <b>" + (refHole.holeID || "N/A") + "</b></span>" + "<span>Entity: <b>" + (refHole.entityName || "N/A") + "</b></span>" + "<span>Dia: <b>" + (refHole.holeDiameter || 0) + "mm</b></span>" + "<span>Length: <b>" + (refHole.holeLengthCalculated || 0).toFixed(1) + "m</b></span>";
+
+    if (isVirtualHole) {
+        // Virtual hole: editable Dia and Length fields
+        infoBar.innerHTML = "<span>Hole: <b>N/A</b></span>" +
+            "<span>Entity: <b>N/A</b></span>" +
+            '<span>Dia: <input type="number" id="virtualDiaMm" value="100" min="50" max="500" step="1" ' +
+            'style="width:50px;font-size:11px;font-weight:bold;padding:1px 3px;height:18px;border:1px solid #999;">mm</span>' +
+            '<span>Length: <input type="number" id="virtualLengthM" value="10.0" min="1" max="100" step="0.1" ' +
+            'style="width:55px;font-size:11px;font-weight:bold;padding:1px 3px;height:18px;border:1px solid #999;">m</span>';
+    } else {
+        infoBar.innerHTML = "<span>Hole: <b>" + (refHole.holeID || "N/A") + "</b></span>" + "<span>Entity: <b>" + (refHole.entityName || "N/A") + "</b></span>" + "<span>Dia: <b>" + (refHole.holeDiameter || 0) + "mm</b></span>" + "<span>Length: <b>" + (refHole.holeLengthCalculated || 0).toFixed(1) + "m</b></span>";
+    }
     contentDiv.appendChild(infoBar);
 
     // Dimension mismatch warning (only when opening with existing charging)
@@ -320,6 +341,30 @@ export function showDeckBuilderDialog(referenceHole) {
             sectionView.resize(Math.max(rect.width, 200) * (window.devicePixelRatio || 1), Math.max(rect.height, 200) * (window.devicePixelRatio || 1));
         });
     });
+
+    // Virtual hole: wire up diameter and length change handlers
+    if (isVirtualHole) {
+        var diaInput = document.getElementById("virtualDiaMm");
+        var lenInput = document.getElementById("virtualLengthM");
+        var applyVirtualDimensions = function () {
+            var newDia = parseFloat(diaInput.value) || 100;
+            var newLen = parseFloat(lenInput.value) || 10.0;
+            refHole.holeDiameter = newDia;
+            refHole.holeLengthCalculated = newLen;
+            refHole.endZLocation = refHole.startZLocation - newLen;
+            workingCharging.holeDiameterMm = newDia;
+            workingCharging.holeLength = newLen;
+            sectionView.holeDiameterMm = newDia;
+            // Re-layout decks if they exist
+            if (workingCharging.decks.length > 0) {
+                workingCharging.updateDimensions(newLen, newDia);
+            }
+            sectionView.setData(workingCharging);
+            updateSummary();
+        };
+        if (diaInput) diaInput.addEventListener("change", applyVirtualDimensions);
+        if (lenInput) lenInput.addEventListener("change", applyVirtualDimensions);
+    }
 
     updateSummary();
 
@@ -633,7 +678,7 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
     var defaultDepth = holeLen * 0.9;
 
     var fields = [
-        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "text", value: defaultDepth.toFixed(1), placeholder: "e.g. 8.5 or fx:chargeBase[1]-0.3" },
+        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "text", value: defaultDepth.toFixed(1), placeholder: "e.g. 8.5 or fx:chargeBase[4]-0.3" },
         { label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: detOptions.length > 1 ? detOptions[1].value : "" },
         { label: "Detonator Qty", name: "detonatorQty", type: "number", value: "1", step: "1", min: "1", max: "10" },
         { label: "Delay (ms)", name: "delayMs", type: "number", value: "0", step: "1" },
@@ -750,7 +795,7 @@ function editPrimer(workingCharging, sectionView, refHole) {
     }
 
     var fields = [
-        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "text", value: (primer.lengthFromCollar || 0).toFixed(1), placeholder: "e.g. 8.5 or fx:chargeBase[1]-0.3" },
+        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "text", value: (primer.lengthFromCollar || 0).toFixed(1), placeholder: "e.g. 8.5 or fx:chargeBase[4]-0.3" },
         { label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: primer.detonator.productName || "" },
         { label: "Detonator Qty", name: "detonatorQty", type: "number", value: String(primer.detonator.quantity || 1), step: "1", min: "1", max: "10" },
         { label: "Delay (ms)", name: "delayMs", type: "number", value: String(primer.detonator.delayMs || 0), step: "1" },
@@ -928,6 +973,10 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
     var currentQty = (unitLenM > 0) ? Math.round(deck.length / unitLenM) : 1;
     if (currentQty < 1) currentQty = 1;
 
+    // Calculate current mass for the "Use Mass" feature
+    var currentDensity = deck.effectiveDensity || (deck.product ? deck.product.density || 0 : 0);
+    var currentMassKg = deck.calculateMass ? deck.calculateMass(workingCharging.holeDiameterMm || 115) : 0;
+
     var fields = [
         {
             label: "Deck Type", name: "deckType", type: "select",
@@ -944,23 +993,84 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
             options: productOptions,
             value: deck.product ? deck.product.name : ""
         },
-        { label: "Top Depth (m)", name: "topDepth", type: "text", value: deck.topDepth.toFixed(3), placeholder: "e.g. 3.5 or fx:stemLength" }
+        { label: "Top Depth (m)", name: "topDepth", type: "text", value: deck.topDepthFormula || deck.topDepth.toFixed(3), placeholder: "e.g. 3.5 or fx:stemLength" }
     ];
 
     // DECOUPLED: show quantity instead of base depth (length = qty × product length)
     if (isDecoupled && unitLenM > 0) {
         fields.push({ label: "Quantity (units)", name: "quantity", type: "number", value: String(currentQty), step: "1", min: "1" });
     } else {
-        fields.push({ label: "Base Depth (m)", name: "baseDepth", type: "text", value: deck.baseDepth.toFixed(3), placeholder: "e.g. 10.0 or fx:holeLength" });
+        // Show formula if present: lengthFormula → display as length expression, baseDepthFormula → display directly
+        var baseDisplayValue = deck.baseDepthFormula || deck.baseDepth.toFixed(3);
+        if (!deck.baseDepthFormula && deck.lengthFormula) {
+            // Show length formula as informational hint in the base depth field
+            baseDisplayValue = deck.lengthFormula;
+        }
+        fields.push({ label: "Base Depth (m)", name: "baseDepth", type: "text", value: baseDisplayValue, placeholder: "e.g. 10.0 or fx:holeLength or fill" });
     }
 
+    // Use Mass checkbox and Mass (kg) field
+    fields.push({ label: "Use Mass", name: "useMass", type: "checkbox", checked: deck.isFixedMass || false });
+    fields.push({ label: "Mass (kg)", name: "massKg", type: "number", value: currentMassKg.toFixed(2), step: "0.1", min: "0" });
+
+    // Overlap Pattern for DECOUPLED decks
+    if (isDecoupled) {
+        var overlapStr = "";
+        if (deck.overlapPattern) {
+            var parts = [];
+            var op = deck.overlapPattern;
+            if (op.base != null) parts.push("base=" + op.base);
+            if (op["base-1"] != null) parts.push("base-1=" + op["base-1"]);
+            if (op.n != null) parts.push("n=" + op.n);
+            if (op.top != null) parts.push("top=" + op.top);
+            overlapStr = parts.join(";");
+        }
+        fields.push({ label: "Overlap Pattern", name: "overlapPattern", type: "text", value: overlapStr, placeholder: "e.g. base=3;base-1=2;n=1;top=2" });
+    }
+
+    // Scaling mode selector
+    var currentScalingMode = deck.isFixedLength ? DECK_SCALING_MODES.FIXED_LENGTH
+        : deck.isFixedMass ? DECK_SCALING_MODES.FIXED_MASS
+        : DECK_SCALING_MODES.PROPORTIONAL;
+    fields.push({
+        label: "Scaling Mode", name: "scalingMode", type: "select",
+        options: [
+            { value: DECK_SCALING_MODES.PROPORTIONAL, text: "Proportional (scales with hole)" },
+            { value: DECK_SCALING_MODES.FIXED_LENGTH, text: "Fixed Length (stays exact)" },
+            { value: DECK_SCALING_MODES.FIXED_MASS, text: "Fixed Mass (recalcs from density)" }
+        ],
+        value: currentScalingMode
+    });
+
     var formContent = createEnhancedFormContent(fields);
+
+    // Toggle Mass (kg) field visibility based on Use Mass checkbox
+    var useMassCheckbox = formContent.querySelector('input[name="useMass"]');
+    var massField = formContent.querySelector('input[name="massKg"]');
+    var baseDepthField = formContent.querySelector('input[name="baseDepth"]') || formContent.querySelector('input[name="quantity"]');
+    if (useMassCheckbox && massField) {
+        // Walk up to the row container (parent of the input's container)
+        var massRow = massField.parentElement;
+        var baseRow = baseDepthField ? baseDepthField.parentElement : null;
+        // Initial visibility
+        massRow.style.display = useMassCheckbox.checked ? "grid" : "none";
+        if (baseRow) baseRow.style.display = useMassCheckbox.checked ? "none" : "grid";
+        useMassCheckbox.addEventListener("change", function () {
+            massRow.style.display = this.checked ? "grid" : "none";
+            if (baseRow) baseRow.style.display = this.checked ? "none" : "grid";
+        });
+    }
+
+    // Calculate dialog height based on extra fields
+    var dialogHeight = 340;
+    if (isDecoupled) dialogHeight += 45; // overlap pattern field
+    dialogHeight += 90; // useMass + massKg fields
 
     var editDialog = new FloatingDialog({
         title: "Edit Deck " + (idx + 1),
         content: formContent,
         width: 380,
-        height: 300,
+        height: dialogHeight,
         showConfirm: true,
         confirmText: "Update",
         showCancel: true,
@@ -968,11 +1078,14 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
             var data = getFormData(formContent);
             var ctx = buildFormulaCtxFromDecks(workingCharging);
             var holeLen = Math.abs(workingCharging.holeLength);
+            var holeDiamMm = workingCharging.holeDiameterMm || 115;
 
-            // Resolve topDepth
+            // Resolve topDepth — store formula if entered
             var topInput = (data.topDepth || "").trim();
             var newTop;
+            var newTopFormula = null;
             if (isFormula(topInput)) {
+                newTopFormula = topInput;
                 newTop = evaluateFormula(topInput, ctx);
                 if (newTop == null) {
                     showModalMessage("Formula Error", "Could not evaluate top depth: " + topInput, "warning");
@@ -983,15 +1096,46 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
                 if (isNaN(newTop)) newTop = deck.topDepth;
             }
 
+            // Check if "Use Mass" is active — derive base depth from mass
+            var useMass = data.useMass === "true" || data.useMass === true;
             var newBase;
-            // DECOUPLED with quantity: derive base from top + qty × unit length
-            if (isDecoupled && unitLenM > 0 && data.quantity != null) {
+            var newBaseFormula = null;
+            var newLengthFormula = null;
+
+            if (useMass) {
+                var massKg = parseFloat(data.massKg) || 0;
+                newLengthFormula = "m:" + massKg;
+                // Look up product density (prefer newly selected product)
+                var massProductName = data.productName || "";
+                var massDensity = currentDensity;
+                if (massProductName && window.loadedProducts) {
+                    window.loadedProducts.forEach(function (p) {
+                        if (p.name === massProductName) massDensity = p.density || 0;
+                    });
+                }
+                if (massDensity > 0 && massKg > 0) {
+                    var radiusM = (holeDiamMm / 1000) / 2;
+                    var area = Math.PI * radiusM * radiusM;
+                    var kgPerMetre = massDensity * 1000 * area;
+                    var massLen = kgPerMetre > 0 ? massKg / kgPerMetre : 1.0;
+                    newBase = newTop + massLen;
+                } else {
+                    showModalMessage("Mass Error", "Product density must be > 0 and mass > 0 to calculate length.", "warning");
+                    return;
+                }
+            } else if (isDecoupled && unitLenM > 0 && data.quantity != null) {
+                // DECOUPLED with quantity: derive base from top + qty × unit length
                 var qty = Math.max(1, parseInt(data.quantity) || 1);
                 newBase = newTop + qty * unitLenM;
             } else {
-                // Resolve baseDepth
+                // Resolve baseDepth — store formula if entered
                 var baseInput = (data.baseDepth || "").trim();
-                if (isFormula(baseInput)) {
+                if (baseInput === "fill") {
+                    newLengthFormula = "fill";
+                    // Fill = remaining space, approximate for now
+                    newBase = holeLen;
+                } else if (isFormula(baseInput)) {
+                    newBaseFormula = baseInput;
                     newBase = evaluateFormula(baseInput, ctx);
                     if (newBase == null) {
                         showModalMessage("Formula Error", "Could not evaluate base depth: " + baseInput, "warning");
@@ -1028,10 +1172,48 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
                 deck.product = null;
             }
 
-            // Update depths — also adjust adjacent INERT deck to fill gap
+            // Update scaling mode flags
+            var newScalingMode = data.scalingMode || DECK_SCALING_MODES.PROPORTIONAL;
+            // If "Use Mass" is checked, auto-set Fixed Mass scaling
+            if (useMass) {
+                deck.isFixedLength = false;
+                deck.isFixedMass = true;
+                deck.isProportionalDeck = false;
+            } else {
+                deck.isFixedLength = (newScalingMode === DECK_SCALING_MODES.FIXED_LENGTH);
+                deck.isFixedMass = (newScalingMode === DECK_SCALING_MODES.FIXED_MASS);
+                deck.isProportionalDeck = (newScalingMode === DECK_SCALING_MODES.PROPORTIONAL);
+            }
+
+            // Update overlap pattern for DECOUPLED decks
+            if (data.overlapPattern != null) {
+                var opStr = (data.overlapPattern || "").trim();
+                if (opStr) {
+                    var parsedOp = {};
+                    var opParts = opStr.split(";");
+                    for (var opi = 0; opi < opParts.length; opi++) {
+                        var kv = opParts[opi].split("=");
+                        if (kv.length === 2) {
+                            var key = kv[0].trim();
+                            var val = parseInt(kv[1].trim());
+                            if (!isNaN(val) && (key === "base" || key === "base-1" || key === "n" || key === "top")) {
+                                parsedOp[key] = val;
+                            }
+                        }
+                    }
+                    deck.overlapPattern = Object.keys(parsedOp).length > 0 ? parsedOp : null;
+                } else {
+                    deck.overlapPattern = null;
+                }
+            }
+
+            // Update depths and store formulas
             var oldBase = deck.baseDepth;
             deck.topDepth = parseFloat(newTop.toFixed(3));
             deck.baseDepth = parseFloat(newBase.toFixed(3));
+            deck.topDepthFormula = newTopFormula;
+            deck.baseDepthFormula = newBaseFormula;
+            deck.lengthFormula = newLengthFormula;
 
             // Adjust the adjacent deck below to absorb the size change
             var nextIdx = workingCharging.decks.indexOf(deck) + 1;
@@ -1111,23 +1293,23 @@ function showRuleSelector(workingCharging, sectionView, refHole, configTracker) 
         configOptions.push({ value: configID, text: config.configName || configID });
     });
 
-    // Get initial config to read its applyShortHoleLogic default
+    // Get initial config to read its shortHoleLogic default
     var initialConfig = configs.get(configOptions[0].value);
 
     var fields = [
         { label: "Charge Configuration", name: "configID", type: "select", options: configOptions, value: configOptions[0].value },
-        { label: "Apply Short Hole Logic", name: "applyShortHoleLogic", type: "checkbox", checked: initialConfig ? initialConfig.applyShortHoleLogic !== false : true }
+        { label: "Apply Short Hole Logic", name: "shortHoleLogic", type: "checkbox", checked: initialConfig ? initialConfig.shortHoleLogic !== false : true }
     ];
     var formContent = createEnhancedFormContent(fields);
 
     // Update checkbox when config selection changes
     var configSelect = formContent.querySelector('select[name="configID"]');
-    var shortHoleCheckbox = formContent.querySelector('input[name="applyShortHoleLogic"]');
+    var shortHoleCheckbox = formContent.querySelector('input[name="shortHoleLogic"]');
     if (configSelect && shortHoleCheckbox) {
         configSelect.addEventListener("change", function () {
             var selectedConfig = configs.get(this.value);
             if (selectedConfig) {
-                shortHoleCheckbox.checked = selectedConfig.applyShortHoleLogic !== false;
+                shortHoleCheckbox.checked = selectedConfig.shortHoleLogic !== false;
             }
         });
     }
@@ -1146,8 +1328,8 @@ function showRuleSelector(workingCharging, sectionView, refHole, configTracker) 
             if (!config) return;
 
             // Override short hole logic from checkbox
-            var useShortHole = data.applyShortHoleLogic === "true" || data.applyShortHoleLogic === true;
-            config.applyShortHoleLogic = useShortHole;
+            var useShortHole = data.shortHoleLogic === "true" || data.shortHoleLogic === true;
+            config.shortHoleLogic = useShortHole;
 
             // Apply rule via SimpleRuleEngine (imported dynamically to avoid circular deps)
             if (typeof window.applyChargeRule === "function") {
@@ -1237,8 +1419,12 @@ function applyToSelectedHoles(workingCharging, refHole, configTracker) {
 }
 
 /**
- * Proportionally scale a charging design from a reference hole to a target hole.
- * Deck depths and primer positions are scaled by (targetLength / referenceLength).
+ * Scale a charging design from a reference hole to a target hole.
+ * Uses a two-pass approach respecting per-deck scaling flags:
+ *   - isFixedLength decks: keep their length unchanged
+ *   - isFixedMass decks: recalculate length from mass at new diameter
+ *   - isProportionalDeck decks: share remaining space proportionally
+ *
  * @param {HoleCharging} sourceCharging - The reference charging design
  * @param {Object} targetHole - The target blast hole
  * @param {number} refLen - The reference hole length
@@ -1249,42 +1435,96 @@ function scaleChargingToHole(sourceCharging, targetHole, refLen) {
     var clone = JSON.parse(JSON.stringify(chargingJSON));
 
     var targetLen = Math.abs(targetHole.holeLengthCalculated || 0);
+    var targetDiameter = targetHole.holeDiameter || sourceCharging.holeDiameterMm;
     clone.holeID = targetHole.holeID;
     clone.entityName = targetHole.entityName;
-    clone.holeDiameterMm = targetHole.holeDiameter || sourceCharging.holeDiameterMm;
+    clone.holeDiameterMm = targetDiameter;
     clone.holeLength = targetLen;
 
-    // Scale ratio (guard against zero-length reference)
-    var ratio = refLen > 0 ? targetLen / refLen : 1;
-
-    // Scale deck depths
     if (clone.decks && clone.decks.length > 0) {
+        // Pass 1: classify decks and calculate fixed totals
+        var fixedTotal = 0;
+        var oldProportionalTotal = 0;
+        var proportionalIndices = [];
+
         for (var d = 0; d < clone.decks.length; d++) {
             var deck = clone.decks[d];
-            deck.topDepth = Math.max(0, Math.min(targetLen, deck.topDepth * ratio));
-            deck.baseDepth = Math.max(0, Math.min(targetLen, deck.baseDepth * ratio));
-            // Ensure minimum deck thickness
-            if (deck.baseDepth - deck.topDepth < 0.01 && d < clone.decks.length - 1) {
-                deck.baseDepth = Math.min(targetLen, deck.topDepth + 0.01);
+            var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
+
+            if (deck.isFixedLength) {
+                fixedTotal += deckLen;
+            } else if (deck.isFixedMass) {
+                // Recalculate length from mass at new diameter
+                var density = deck.averageDensity || (deck.product ? deck.product.density || 0 : 0);
+                if (density > 0 && sourceCharging.holeDiameterMm > 0) {
+                    var oldR = (sourceCharging.holeDiameterMm / 1000) / 2;
+                    var oldMass = Math.PI * oldR * oldR * deckLen * density * 1000;
+                    var newR = (targetDiameter / 1000) / 2;
+                    var newArea = Math.PI * newR * newR;
+                    var kgPerMetre = density * 1000 * newArea;
+                    if (kgPerMetre > 0) {
+                        deckLen = oldMass / kgPerMetre;
+                    }
+                }
+                fixedTotal += deckLen;
+                deck._recalcLength = deckLen;
+            } else {
+                oldProportionalTotal += deckLen;
+                proportionalIndices.push(d);
             }
-            // Scale embedded content positions
-            if (deck.contains && deck.contains.length > 0) {
-                for (var ci = 0; ci < deck.contains.length; ci++) {
-                    if (deck.contains[ci].lengthFromCollar != null) {
-                        deck.contains[ci].lengthFromCollar = deck.contains[ci].lengthFromCollar * ratio;
+        }
+
+        // Pass 2: layout sequentially from collar
+        var remainingSpace = Math.max(0, targetLen - fixedTotal);
+        var proportionalRatio = oldProportionalTotal > 0 ? remainingSpace / oldProportionalTotal : 1;
+        var cursor = 0;
+
+        for (var j = 0; j < clone.decks.length; j++) {
+            var dk = clone.decks[j];
+            var oldLen = Math.abs(dk.baseDepth - dk.topDepth);
+            var newLen;
+
+            if (dk.isFixedLength) {
+                newLen = oldLen;
+            } else if (dk.isFixedMass) {
+                newLen = dk._recalcLength || oldLen;
+                delete dk._recalcLength;
+            } else {
+                newLen = oldLen * proportionalRatio;
+            }
+
+            // Ensure minimum deck thickness
+            if (newLen < 0.01 && j < clone.decks.length - 1) {
+                newLen = 0.01;
+            }
+
+            dk.topDepth = cursor;
+            dk.baseDepth = cursor + newLen;
+
+            // Scale embedded content positions within the deck
+            if (dk.contains && dk.contains.length > 0 && oldLen > 0) {
+                var contentRatio = newLen / oldLen;
+                for (var ci = 0; ci < dk.contains.length; ci++) {
+                    if (dk.contains[ci].lengthFromCollar != null) {
+                        var relPos = dk.contains[ci].lengthFromCollar - dk.topDepth;
+                        dk.contains[ci].lengthFromCollar = cursor + relPos * contentRatio;
                     }
                 }
             }
+
+            cursor += newLen;
         }
-        // Ensure last deck extends to hole bottom
+
+        // Clamp last deck to hole bottom
         clone.decks[clone.decks.length - 1].baseDepth = targetLen;
     }
 
-    // Scale primer depths
+    // Scale primer depths proportionally
+    var overallRatio = refLen > 0 ? targetLen / refLen : 1;
     if (clone.primers && clone.primers.length > 0) {
         for (var p = 0; p < clone.primers.length; p++) {
             var primer = clone.primers[p];
-            primer.lengthFromCollar = Math.max(0, Math.min(targetLen - 0.1, primer.lengthFromCollar * ratio));
+            primer.lengthFromCollar = Math.max(0, Math.min(targetLen - 0.1, primer.lengthFromCollar * overallRatio));
         }
     }
 
@@ -1293,7 +1533,7 @@ function scaleChargingToHole(sourceCharging, targetHole, refLen) {
 
 /**
  * Show a dialog to save the current deck layout as a reusable ChargeConfig rule.
- * Extracts deck layout as a deckTemplate array with "fixed" or "fill" lengths.
+ * Extracts deck layout into typed deck arrays (inertDeckArray, etc.) with scaling flags.
  */
 function showSaveAsRuleDialog(workingCharging, configTracker) {
     if (!workingCharging || workingCharging.decks.length === 0) {
@@ -1303,27 +1543,33 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
 
     var holeLen = Math.abs(workingCharging.holeLength);
 
-    // Build list of charge decks with 1-based index for primer formula generation
+    // Build list of charge decks with deck array position index for primer formula generation
     var chargeDecks = [];
     for (var ci = 0; ci < workingCharging.decks.length; ci++) {
         var cd = workingCharging.decks[ci];
         if (cd.deckType === DECK_TYPES.COUPLED || cd.deckType === DECK_TYPES.DECOUPLED) {
-            chargeDecks.push({ index: chargeDecks.length + 1, topDepth: cd.topDepth, baseDepth: cd.baseDepth });
+            chargeDecks.push({ index: ci + 1, topDepth: cd.topDepth, baseDepth: cd.baseDepth });
         }
     }
 
+    // Auto-generate a config code like CUSTOM1, CUSTOM2, etc.
+    var nextCode = "CUSTOM1";
+    if (window.loadedChargeConfigs) {
+        var maxNum = 0;
+        window.loadedChargeConfigs.forEach(function (cfg) {
+            var code = cfg.configCode || "";
+            var match = code.match(/^CUSTOM(\d+)$/i);
+            if (match) {
+                var num = parseInt(match[1]);
+                if (num > maxNum) maxNum = num;
+            }
+        });
+        nextCode = "CUSTOM" + (maxNum + 1);
+    }
+
     var fields = [
+        { key: "configCode", label: "Config Code", type: "text", value: nextCode },
         { key: "configName", label: "Rule Name", type: "text", value: "Custom Rule" },
-        { key: "configCode", label: "Config Code", type: "select", options: [
-            { value: "CUSTOM", label: "CUSTOM - Explicit deck layout" },
-            { value: "STNDFS", label: "STNDFS - Standard fixed stem" },
-            { value: "AIRDEC", label: "AIRDEC - Air deck design" },
-            { value: "ST5050", label: "ST5050 - 50/50 stem/charge" },
-            { value: "SIMPLE_SINGLE", label: "SIMPLE_SINGLE - Simple single" },
-            { value: "STNDVS", label: "STNDVS - Standard vented" },
-            { value: "PRESPL", label: "PRESPL - Presplit" },
-            { value: "NOCHG", label: "NOCHG - No charge" }
-        ], value: "CUSTOM" },
         { key: "description", label: "Description", type: "text", value: "" },
         {
             key: "fillDeckIndex",
@@ -1335,7 +1581,8 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
             }),
             value: String(findBestFillDeck(workingCharging))
         },
-        { key: "applyShortHoleLogic", label: "Apply Short Hole Logic", type: "checkbox", checked: true }
+        { key: "shortHoleLogic", label: "Apply Short Hole Logic", type: "checkbox", checked: true },
+        { key: "shortHoleLength", label: "Short Hole Threshold (m)", type: "number", value: "4.0", step: "0.1", min: "0" }
     ];
 
     // Add dynamic primer depth formula fields with smart defaults
@@ -1345,30 +1592,32 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
             var primerD = p.lengthFromCollar || 0;
             var defaultFormula;
 
-            // Find which charge deck contains this primer
-            var containingDeck = null;
-            for (var cdi = 0; cdi < chargeDecks.length; cdi++) {
-                if (primerD >= chargeDecks[cdi].topDepth - 0.01 && primerD <= chargeDecks[cdi].baseDepth + 0.01) {
-                    containingDeck = chargeDecks[cdi];
-                    break;
-                }
-            }
-
-            if (containingDeck) {
-                var offset = containingDeck.baseDepth - primerD;
-                var offsetRounded = Math.round(offset * 100) / 100;
-                if (chargeDecks.length > 1) {
-                    // Multi-deck: use indexed variable
-                    defaultFormula = "fx:chargeBase[" + containingDeck.index + "] - " + offsetRounded;
-                } else {
-                    // Single deck: use unindexed variable
-                    defaultFormula = "fx:chargeBase - " + offsetRounded;
-                }
+            // Use existing depthFormula if available
+            if (p.depthFormula) {
+                defaultFormula = p.depthFormula;
             } else {
-                // Primer not in any charge deck — use fraction of holeLength
-                var fraction = holeLen > 0 ? primerD / holeLen : 0.9;
-                var rounded = Math.round(fraction * 1000) / 1000;
-                defaultFormula = "fx:holeLength * " + rounded;
+                // Find which charge deck contains this primer
+                var containingDeck = null;
+                for (var cdi = 0; cdi < chargeDecks.length; cdi++) {
+                    if (primerD >= chargeDecks[cdi].topDepth - 0.01 && primerD <= chargeDecks[cdi].baseDepth + 0.01) {
+                        containingDeck = chargeDecks[cdi];
+                        break;
+                    }
+                }
+
+                if (containingDeck) {
+                    var offset = containingDeck.baseDepth - primerD;
+                    var offsetRounded = Math.round(offset * 100) / 100;
+                    if (chargeDecks.length > 1) {
+                        defaultFormula = "fx:chargeBase[" + containingDeck.index + "] - " + offsetRounded;
+                    } else {
+                        defaultFormula = "fx:chargeBase - " + offsetRounded;
+                    }
+                } else {
+                    var fraction = holeLen > 0 ? primerD / holeLen : 0.9;
+                    var rounded = Math.round(fraction * 1000) / 1000;
+                    defaultFormula = "fx:holeLength * " + rounded;
+                }
             }
 
             fields.push({
@@ -1383,7 +1632,7 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
     var formContent = createEnhancedFormContent(fields);
 
     var primerCount = workingCharging.primers ? workingCharging.primers.length : 0;
-    var saveDialogHeight = 300 + primerCount * 50;
+    var saveDialogHeight = 280 + primerCount * 50;
 
     var dialog = new FloatingDialog({
         title: "Save as Rule",
@@ -1398,36 +1647,60 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
             var data = getFormData(formContent);
             var fillIdx = parseInt(data.fillDeckIndex, 10);
 
-            // Build deckTemplate from current decks with correct lengthModes
-            var template = [];
+            // Build typed deck arrays from current decks
+            var inertDeckArray = [];
+            var coupledDeckArray = [];
+            var decoupledDeckArray = [];
+            var spacerDeckArray = [];
+
             for (var i = 0; i < workingCharging.decks.length; i++) {
                 var deck = workingCharging.decks[i];
                 var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
+                var idx = i + 1;
 
                 var entry = {
+                    idx: idx,
                     type: deck.deckType,
-                    product: deck.product ? deck.product.name : "Air"
+                    product: deck.product ? deck.product.name : "Air",
+                    isFixedLength: deck.isFixedLength || false,
+                    isFixedMass: deck.isFixedMass || false,
+                    isProportionalDeck: deck.isProportionalDeck !== false
                 };
 
                 if (i === fillIdx) {
-                    // Fill deck absorbs remaining space
                     entry.lengthMode = "fill";
-                    entry.length = 0;
                 } else if (deck.deckType === DECK_TYPES.SPACER) {
-                    // Spacer: length derived from product.lengthMm at apply-time
                     entry.lengthMode = "product";
-                    entry.length = null;
+                } else if (deck.lengthFormula && deck.lengthFormula.indexOf("fx:") === 0) {
+                    // Preserve formula from template
+                    entry.lengthMode = "formula";
+                    entry.formula = deck.lengthFormula;
+                    entry.length = parseFloat(deckLen.toFixed(3));
+                } else if (deck.lengthFormula && deck.lengthFormula.indexOf("m:") === 0) {
+                    // Preserve mass formula
+                    entry.lengthMode = "mass";
+                    entry.massKg = parseFloat(deck.lengthFormula.substring(2)) || 0;
+                    entry.length = parseFloat(deckLen.toFixed(3));
                 } else {
-                    // Fixed length
                     entry.lengthMode = "fixed";
                     entry.length = parseFloat(deckLen.toFixed(3));
                 }
 
-                template.push(entry);
+                // Copy overlap pattern if present
+                if (deck.overlapPattern) {
+                    entry.overlapPattern = deck.overlapPattern;
+                }
+
+                switch (deck.deckType) {
+                    case DECK_TYPES.INERT: inertDeckArray.push(entry); break;
+                    case DECK_TYPES.COUPLED: coupledDeckArray.push(entry); break;
+                    case DECK_TYPES.DECOUPLED: decoupledDeckArray.push(entry); break;
+                    case DECK_TYPES.SPACER: spacerDeckArray.push(entry); break;
+                }
             }
 
-            // Build primerTemplate from workingCharging.primers with formula depths
-            var primerTemplate = [];
+            // Build primerArray from workingCharging.primers with formula depths
+            var primerArray = [];
             if (workingCharging.primers && workingCharging.primers.length > 0) {
                 for (var pi = 0; pi < workingCharging.primers.length; pi++) {
                     var p = workingCharging.primers[pi];
@@ -1435,18 +1708,15 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                     var depthValue;
 
                     if (depthField.indexOf("fx:") === 0) {
-                        // Store as formula string
                         depthValue = depthField;
                     } else if (depthField !== "" && !isNaN(parseFloat(depthField))) {
-                        // Plain number — store as literal
                         depthValue = parseFloat(depthField);
                     } else {
-                        // Empty or invalid — fallback to formula
                         var fallbackFraction = holeLen > 0 ? p.lengthFromCollar / holeLen : 0.9;
                         depthValue = "fx:holeLength * " + (Math.round(fallbackFraction * 1000) / 1000);
                     }
 
-                    primerTemplate.push({
+                    primerArray.push({
                         depth: depthValue,
                         detonator: p.detonator ? p.detonator.productName : null,
                         booster: p.booster ? p.booster.productName : null
@@ -1454,53 +1724,68 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                 }
             }
 
-            // Extract product references from first matching deck types
-            var stemmingProd = null,
-                chargeProd = null,
-                gasBagProd = null;
-            var boosterProd = null,
-                detProd = null;
-            for (var d = 0; d < workingCharging.decks.length; d++) {
-                var dk = workingCharging.decks[d];
-                if (dk.deckType === DECK_TYPES.INERT && !stemmingProd && dk.product) stemmingProd = dk.product.name;
-                if ((dk.deckType === DECK_TYPES.COUPLED || dk.deckType === DECK_TYPES.DECOUPLED) && !chargeProd && dk.product) chargeProd = dk.product.name;
-                if (dk.deckType === DECK_TYPES.SPACER && !gasBagProd && dk.product) gasBagProd = dk.product.name;
-            }
-            if (workingCharging.primers && workingCharging.primers.length > 0) {
-                var primer = workingCharging.primers[0];
-                if (primer.booster) boosterProd = primer.booster.productName;
-                if (primer.detonator) detProd = primer.detonator.productName;
+            var totalDecks = inertDeckArray.length + coupledDeckArray.length +
+                decoupledDeckArray.length + spacerDeckArray.length;
+
+            var configCode = (data.configCode || "").trim().toUpperCase() || nextCode;
+
+            // Check for duplicate configCode
+            var existingKey = null;
+            if (window.loadedChargeConfigs) {
+                window.loadedChargeConfigs.forEach(function (cfg, key) {
+                    if ((cfg.configCode || "").toUpperCase() === configCode) {
+                        existingKey = key;
+                    }
+                });
             }
 
-            var newConfig = new ChargeConfig({
-                configCode: data.configCode || CHARGE_CONFIG_CODES.CUSTOM,
-                configName: data.configName || "Custom Rule",
-                description: data.description || "",
-                stemmingProduct: stemmingProd,
-                chargeProduct: chargeProd,
-                gasBagProduct: gasBagProd,
-                boosterProduct: boosterProd,
-                detonatorProduct: detProd,
-                deckTemplate: template,
-                primerTemplate: primerTemplate,
-                applyShortHoleLogic: data.applyShortHoleLogic === "true" || data.applyShortHoleLogic === true
-            });
+            function doSave(overwriteKey) {
+                var opts = {
+                    configCode: configCode,
+                    configName: data.configName || "Custom Rule",
+                    description: data.description || "",
+                    shortHoleLogic: data.shortHoleLogic === "true" || data.shortHoleLogic === true,
+                    shortHoleLength: parseFloat(data.shortHoleLength) || 4.0,
+                    inertDeckArray: inertDeckArray,
+                    coupledDeckArray: coupledDeckArray,
+                    decoupledDeckArray: decoupledDeckArray,
+                    spacerDeckArray: spacerDeckArray,
+                    primerArray: primerArray
+                };
+                // If overwriting, reuse the existing configID
+                if (overwriteKey) opts.configID = overwriteKey;
+                var savedConfig = new ChargeConfig(opts);
 
-            if (!window.loadedChargeConfigs) {
-                window.loadedChargeConfigs = new Map();
+                if (!window.loadedChargeConfigs) {
+                    window.loadedChargeConfigs = new Map();
+                }
+                if (overwriteKey) {
+                    window.loadedChargeConfigs.delete(overwriteKey);
+                }
+                window.loadedChargeConfigs.set(savedConfig.configID, savedConfig);
+
+                if (typeof window.debouncedSaveConfigs === "function") {
+                    window.debouncedSaveConfigs();
+                }
+                if (configTracker) {
+                    configTracker.config = savedConfig;
+                }
+                var action = overwriteKey ? "overwritten" : "saved";
+                showModalMessage("Rule Saved", '"' + savedConfig.configName + '" ' + action + " with " + totalDecks + " deck template.", "success");
             }
-            window.loadedChargeConfigs.set(newConfig.configID, newConfig);
 
-            if (typeof window.debouncedSaveConfigs === "function") {
-                window.debouncedSaveConfigs();
+            if (existingKey) {
+                showConfirmationDialog(
+                    "Config Code Exists",
+                    'A rule with code "' + configCode + '" already exists. Overwrite it, or rename your new rule?',
+                    "Overwrite",
+                    "Cancel",
+                    function () { doSave(existingKey); },
+                    null
+                );
+            } else {
+                doSave(null);
             }
-
-            // Update the config tracker so "Apply to Selected" uses this rule
-            if (configTracker) {
-                configTracker.config = newConfig;
-            }
-
-            showModalMessage("Rule Saved", '"' + newConfig.configName + '" saved with ' + template.length + " deck template.", "success");
         }
     });
     dialog.show();

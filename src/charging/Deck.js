@@ -2,7 +2,7 @@
  * @fileoverview Deck Class - A section of a blast hole between two depths
  */
 
-import { DECK_TYPES, VALIDATION_MESSAGES } from "./ChargingConstants.js";
+import { DECK_TYPES, DECK_SCALING_MODES, VALIDATION_MESSAGES } from "./ChargingConstants.js";
 import { DecoupledContent } from "./DecoupledContent.js";
 
 export function generateUUID() {
@@ -32,6 +32,23 @@ export class Deck {
 		this.capDensity = options.capDensity || null;
 		this.maxCompressibleDensity = options.maxCompressibleDensity || null;
 
+		// Scaling flags — control how this deck behaves when hole length changes
+		this.isFixedLength = options.isFixedLength || false;
+		this.isFixedMass = options.isFixedMass || false;
+		this.isProportionalDeck = (options.isProportionalDeck !== undefined)
+			? options.isProportionalDeck
+			: (!options.isFixedLength && !options.isFixedMass);
+
+		// Decoupled overlap pattern — packages per position for variable stacking
+		// e.g. { base: 3, "base-1": 2, n: 1, top: 2 }
+		this.overlapPattern = options.overlapPattern || null;
+
+		// Formula strings for deferred evaluation (stored alongside numeric values)
+		// When present, these are shown in the Edit Deck dialog instead of numeric topDepth/baseDepth
+		this.topDepthFormula = options.topDepthFormula || null;    // e.g. "fx:stemLength"
+		this.baseDepthFormula = options.baseDepthFormula || null;  // e.g. "fx:holeLength"
+		this.lengthFormula = options.lengthFormula || null;        // e.g. "fx:holeLength-4"
+
 		this.created = options.created || new Date().toISOString();
 		this.modified = new Date().toISOString();
 	}
@@ -40,18 +57,65 @@ export class Deck {
 		return Math.abs(this.baseDepth - this.topDepth);
 	}
 
+	get scalingMode() {
+		if (this.isFixedLength) return DECK_SCALING_MODES.FIXED_LENGTH;
+		if (this.isFixedMass) return DECK_SCALING_MODES.FIXED_MASS;
+		return DECK_SCALING_MODES.PROPORTIONAL;
+	}
+
 	get effectiveDensity() {
 		if (this.isCompressible && this.averageDensity) return this.averageDensity;
 		return this.product ? (this.product.density || 0) : 0;
 	}
 
-	/** Number of whole packages that fit in this deck */
+	/** Number of whole packages that fit in this deck (simple stacking) */
 	get packageCount() {
 		if (this.deckType !== DECK_TYPES.DECOUPLED) return 0;
 		if (!this.product || !this.product.lengthMm) return 0;
 		var packageLenM = this.product.lengthMm / 1000;
 		if (packageLenM <= 0) return 0;
 		return Math.floor(this.length / packageLenM);
+	}
+
+	/**
+	 * Total package count accounting for overlap pattern stacking.
+	 * When overlapPattern is set, each position may have multiple packages stacked.
+	 * @returns {number} Total packages including overlaps
+	 */
+	get totalPackageCount() {
+		if (this.deckType !== DECK_TYPES.DECOUPLED) return 0;
+		if (!this.product || !this.product.lengthMm) return 0;
+		var packageLenM = this.product.lengthMm / 1000;
+		if (packageLenM <= 0) return 0;
+		var positions = Math.floor(this.length / packageLenM);
+		if (positions <= 0) return 0;
+		if (!this.overlapPattern) return positions;
+
+		var total = 0;
+		for (var i = 0; i < positions; i++) {
+			total += this._packagesAtPosition(i, positions);
+		}
+		return total;
+	}
+
+	/**
+	 * Get the number of packages stacked at a given position index.
+	 * Reads overlapPattern keys: "base" (bottom), "base-1" (one above base),
+	 * "top" (topmost), "n" (default for middle positions).
+	 * @param {number} posIndex - 0-based from top of deck
+	 * @param {number} totalPositions - Total positions in deck
+	 * @returns {number} Package count at this position
+	 */
+	_packagesAtPosition(posIndex, totalPositions) {
+		if (!this.overlapPattern) return 1;
+		var op = this.overlapPattern;
+		var fromBase = totalPositions - 1 - posIndex;
+
+		if (fromBase === 0 && op.base != null) return op.base;
+		if (fromBase === 1 && op["base-1"] != null) return op["base-1"];
+		if (posIndex === 0 && op.top != null) return op.top;
+		if (op.n != null) return op.n;
+		return 1;
 	}
 
 	/**
@@ -82,7 +146,7 @@ export class Deck {
 	 */
 	calculateMass(holeDiameterMm) {
 		if (this.deckType === DECK_TYPES.DECOUPLED && this.product) {
-			var count = this.packageCount;
+			var count = this.overlapPattern ? this.totalPackageCount : this.packageCount;
 			// Discrete packages: count × single-package mass from geometry
 			if (count > 0 && this.product.diameterMm && this.effectiveDensity > 0) {
 				var pkgLenM = this.product.lengthMm / 1000;
@@ -132,6 +196,13 @@ export class Deck {
 			averageDensity: this.averageDensity,
 			capDensity: this.capDensity,
 			maxCompressibleDensity: this.maxCompressibleDensity,
+			isFixedLength: this.isFixedLength,
+			isFixedMass: this.isFixedMass,
+			isProportionalDeck: this.isProportionalDeck,
+			overlapPattern: this.overlapPattern,
+			topDepthFormula: this.topDepthFormula,
+			baseDepthFormula: this.baseDepthFormula,
+			lengthFormula: this.lengthFormula,
 			created: this.created,
 			modified: this.modified
 		};

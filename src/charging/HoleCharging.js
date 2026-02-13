@@ -336,7 +336,12 @@ export class HoleCharging {
 	}
 
 	/**
-	 * Update cached dimensions and proportionally rescale deck depths when length changes.
+	 * Update cached dimensions and rescale deck depths when hole length/diameter changes.
+	 * Uses a two-pass approach respecting per-deck scaling flags:
+	 *   - isFixedLength decks: keep their length unchanged
+	 *   - isFixedMass decks: recalculate length from mass/(density*PI*r²*1000) at new diameter
+	 *   - isProportionalDeck decks: share remaining space proportionally
+	 *
 	 * @param {Object} hole - Current blast hole object
 	 * @returns {{ lengthRescaled: boolean, diameterUpdated: boolean }}
 	 */
@@ -345,34 +350,99 @@ export class HoleCharging {
 		var currentDiameter = hole.holeDiameter || 0;
 		var result = { lengthRescaled: false, diameterUpdated: false };
 
-		// Rescale deck depths proportionally if length changed
-		if (this.holeLength !== 0 && Math.abs(currentLength - this.holeLength) > 0.01) {
-			var ratio = currentLength / this.holeLength;
+		var lengthChanged = this.holeLength !== 0 && Math.abs(currentLength - this.holeLength) > 0.01;
+		var diameterChanged = Math.abs(currentDiameter - this.holeDiameterMm) > 0.1;
+
+		if (lengthChanged || diameterChanged) {
+			var newLength = currentLength;
+			var newDiameter = diameterChanged ? currentDiameter : this.holeDiameterMm;
+
+			// Pass 1: classify decks and calculate fixed totals
+			var fixedTotal = 0;
+			var oldProportionalTotal = 0;
+			var proportionalIndices = [];
+
 			for (var i = 0; i < this.decks.length; i++) {
-				this.decks[i].topDepth = this.decks[i].topDepth * ratio;
-				this.decks[i].baseDepth = this.decks[i].baseDepth * ratio;
-				// Rescale embedded content positions
-				if (this.decks[i].contains) {
-					for (var ci = 0; ci < this.decks[i].contains.length; ci++) {
-						this.decks[i].contains[ci].lengthFromCollar = this.decks[i].contains[ci].lengthFromCollar * ratio;
+				var deck = this.decks[i];
+				var deckLen = deck.length;
+
+				if (deck.isFixedLength) {
+					// Fixed length: keep as-is
+					fixedTotal += deckLen;
+				} else if (deck.isFixedMass) {
+					// Fixed mass: recalculate length from stored mass at new diameter
+					var newLen = this._lengthForMass(deck, newDiameter);
+					if (newLen != null && newLen > 0) {
+						fixedTotal += newLen;
+						deck._recalcLength = newLen;
+					} else {
+						fixedTotal += deckLen;
+						deck._recalcLength = deckLen;
+					}
+				} else {
+					// Proportional: will be rescaled
+					oldProportionalTotal += deckLen;
+					proportionalIndices.push(i);
+				}
+			}
+
+			// Pass 2: layout sequentially from collar
+			var remainingSpace = Math.max(0, newLength - fixedTotal);
+			var proportionalRatio = oldProportionalTotal > 0 ? remainingSpace / oldProportionalTotal : 1;
+			var cursor = 0;
+
+			for (var j = 0; j < this.decks.length; j++) {
+				var dk = this.decks[j];
+				var newDeckLen;
+
+				if (dk.isFixedLength) {
+					newDeckLen = dk.length;
+				} else if (dk.isFixedMass) {
+					newDeckLen = dk._recalcLength || dk.length;
+					delete dk._recalcLength;
+				} else {
+					newDeckLen = dk.length * proportionalRatio;
+				}
+
+				dk.topDepth = cursor;
+				dk.baseDepth = cursor + newDeckLen;
+
+				// Rescale embedded content positions proportionally within the deck
+				if (dk.contains && dk.length > 0) {
+					var contentRatio = newDeckLen / dk.length || 1;
+					for (var ci = 0; ci < dk.contains.length; ci++) {
+						dk.contains[ci].lengthFromCollar = dk.topDepth +
+							(dk.contains[ci].lengthFromCollar - dk.topDepth) * contentRatio;
 					}
 				}
+
+				cursor += newDeckLen;
 			}
-			// Rescale primer depths too
-			for (var j = 0; j < this.primers.length; j++) {
-				if (this.primers[j].depth != null) {
-					this.primers[j].depth = this.primers[j].depth * ratio;
+
+			// Clamp last deck to hole bottom
+			if (this.decks.length > 0) {
+				this.decks[this.decks.length - 1].baseDepth = newLength;
+			}
+
+			// Rescale primer depths proportionally
+			var overallRatio = this.holeLength > 0 ? newLength / this.holeLength : 1;
+			for (var k = 0; k < this.primers.length; k++) {
+				if (this.primers[k].lengthFromCollar != null) {
+					this.primers[k].lengthFromCollar = Math.max(0,
+						Math.min(newLength - 0.1, this.primers[k].lengthFromCollar * overallRatio));
 				}
 			}
-			this.holeLength = currentLength;
-			result.lengthRescaled = true;
+
+			this.holeLength = newLength;
+			this.holeDiameterMm = newDiameter;
+			result.lengthRescaled = lengthChanged;
+			result.diameterUpdated = diameterChanged;
 		} else if (this.holeLength === 0 && currentLength !== 0) {
 			this.holeLength = currentLength;
 			result.lengthRescaled = true;
 		}
 
-		// Update diameter (no rescale needed, but flag it)
-		if (Math.abs(currentDiameter - this.holeDiameterMm) > 0.1) {
+		if (diameterChanged && !lengthChanged) {
 			this.holeDiameterMm = currentDiameter;
 			result.diameterUpdated = true;
 		}
@@ -382,6 +452,25 @@ export class HoleCharging {
 		}
 
 		return result;
+	}
+
+	/**
+	 * Calculate required deck length from its current mass at a given diameter.
+	 * length = mass / (density * PI * r² * 1000)
+	 * @param {Object} deck - Deck object
+	 * @param {number} diameterMm - Hole diameter in mm
+	 * @returns {number|null} Length in metres, or null
+	 */
+	_lengthForMass(deck, diameterMm) {
+		var density = deck.effectiveDensity;
+		if (!density || density <= 0) return null;
+		var mass = deck.calculateMass(this.holeDiameterMm); // mass at old diameter
+		if (mass <= 0) return null;
+		var radiusM = (diameterMm / 1000) / 2;
+		var area = Math.PI * radiusM * radiusM;
+		var kgPerMetre = density * 1000 * area;
+		if (kgPerMetre <= 0) return null;
+		return mass / kgPerMetre;
 	}
 
 	clear() {

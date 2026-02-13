@@ -200,14 +200,99 @@ export class HoleSectionView {
         this._fontScale = 2;
         this._dpr = window.devicePixelRatio || 1;
 
+        // Zoom state
+        this._zoomLevel = 1.0;
+        this._containerH = 0; // unzoomed container CSS height
+
         // Decoupled inset ratio (fraction of hole width to inset on each side)
         this._decoupledInset = 0.2;
 
         // ResizeObserver for sharp rendering
         this._resizeObserver = null;
+        this._setupScrollWrapper();
+        this._setupZoomControls();
         this._setupResizeObserver();
 
         this._bindEvents();
+    }
+
+    /**
+     * Wrap the canvas in a scrollable container and add zoom button overlay.
+     * Structure: parent > _scrollWrapper > canvas
+     *            parent > _zoomOverlay (absolute positioned)
+     */
+    _setupScrollWrapper() {
+        var parent = this.canvas.parentElement;
+        if (!parent) return;
+
+        // Create scrollable wrapper
+        this._scrollWrapper = document.createElement("div");
+        this._scrollWrapper.style.cssText = "flex:1;overflow-y:auto;overflow-x:hidden;position:relative;min-height:0;";
+
+        // Move canvas into wrapper
+        parent.insertBefore(this._scrollWrapper, this.canvas);
+        this._scrollWrapper.appendChild(this.canvas);
+
+        // Canvas now fills the wrapper width, height set by zoom
+        this.canvas.style.cssText = "width:100%;display:block;";
+    }
+
+    /**
+     * Create zoom in/out buttons overlaid on the scroll wrapper
+     */
+    _setupZoomControls() {
+        var self = this;
+        if (!this._scrollWrapper) return;
+        var parent = this._scrollWrapper.parentElement;
+        if (!parent) return;
+
+        // Ensure parent is positioned for absolute children
+        var parentPos = window.getComputedStyle(parent).position;
+        if (parentPos === "static") parent.style.position = "relative";
+
+        var overlay = document.createElement("div");
+        overlay.style.cssText = "position:absolute;top:104px;right:4px;display:flex;flex-direction:column;gap:2px;z-index:10;";
+
+        var zoomIn = document.createElement("img");
+        zoomIn.src = "icons/zoom-in.png";
+        zoomIn.title = "Zoom In";
+        zoomIn.style.cssText = "width:24px;height:24px;cursor:pointer;opacity:0.7;background:rgba(255,255,255,0.7);border-radius:4px;padding:2px;";
+        zoomIn.addEventListener("mouseenter", function () { zoomIn.style.opacity = "1"; });
+        zoomIn.addEventListener("mouseleave", function () { zoomIn.style.opacity = "0.7"; });
+        zoomIn.addEventListener("click", function (e) { e.stopPropagation(); self.zoomIn(); });
+
+        var zoomOut = document.createElement("img");
+        zoomOut.src = "icons/zoom-out.png";
+        zoomOut.title = "Zoom Out";
+        zoomOut.style.cssText = "width:24px;height:24px;cursor:pointer;opacity:0.7;background:rgba(255,255,255,0.7);border-radius:4px;padding:2px;";
+        zoomOut.addEventListener("mouseenter", function () { zoomOut.style.opacity = "1"; });
+        zoomOut.addEventListener("mouseleave", function () { zoomOut.style.opacity = "0.7"; });
+        zoomOut.addEventListener("click", function (e) { e.stopPropagation(); self.zoomOut(); });
+
+        overlay.appendChild(zoomIn);
+        overlay.appendChild(zoomOut);
+        parent.appendChild(overlay);
+        this._zoomOverlay = overlay;
+    }
+
+    /** Zoom in — increase diagram height */
+    zoomIn() {
+        this._zoomLevel = Math.min(this._zoomLevel + 0.5, 6.0);
+        this._applyZoom();
+    }
+
+    /** Zoom out — decrease diagram height */
+    zoomOut() {
+        this._zoomLevel = Math.max(this._zoomLevel - 0.5, 1.0);
+        this._applyZoom();
+    }
+
+    /** Apply current zoom: resize canvas and redraw */
+    _applyZoom() {
+        if (!this._scrollWrapper || !this._containerH) return;
+        var zoomedH = this._containerH * this._zoomLevel;
+        this.canvas.style.height = zoomedH + "px";
+        this._syncCanvasSize(this._scrollWrapper.clientWidth, zoomedH);
     }
 
     /**
@@ -215,20 +300,25 @@ export class HoleSectionView {
      */
     _setupResizeObserver() {
         var self = this;
+        var target = this._scrollWrapper || (this.canvas && this.canvas.parentElement);
+        if (!target) return;
         if (typeof ResizeObserver !== "undefined") {
             this._resizeObserver = new ResizeObserver(function (entries) {
                 for (var i = 0; i < entries.length; i++) {
                     var entry = entries[i];
                     var rect = entry.contentRect;
                     if (rect.width > 0 && rect.height > 0) {
-                        self._syncCanvasSize(rect.width, rect.height);
+                        // Store unzoomed container height
+                        self._containerH = rect.height;
+                        var zoomedH = rect.height * self._zoomLevel;
+                        self.canvas.style.height = zoomedH + "px";
+                        self._syncCanvasSize(rect.width, zoomedH);
                     }
                 }
             });
-            // Observe parent once canvas is in the DOM
             requestAnimationFrame(function () {
-                if (self.canvas && self.canvas.parentElement) {
-                    self._resizeObserver.observe(self.canvas.parentElement);
+                if (target) {
+                    self._resizeObserver.observe(target);
                 }
             });
         }
@@ -263,7 +353,8 @@ export class HoleSectionView {
     }
 
     /**
-     * Build a CSS font string scaled by _fontScale
+     * Build a CSS font string scaled by _fontScale but NOT by zoom level.
+     * Font sizes remain constant regardless of zoom.
      */
     _scaledFont(basePx, weight) {
         var sz = Math.round((basePx + this._fontSizeOffset) * this._fontScale);
@@ -518,6 +609,22 @@ export class HoleSectionView {
         ctx.lineWidth = 1;
         ctx.strokeRect(drawX, y1, drawW, deckH);
 
+        // Scaling flag badge: "F" for fixed-length, "M" for fixed-mass
+        if (deck.isFixedLength || deck.isFixedMass) {
+            var badgeLabel = deck.isFixedLength ? "F" : "M";
+            var badgeW = 14;
+            var badgeH = 12;
+            var badgeX = drawX + drawW - badgeW - 2;
+            var badgeY = y1 + 2;
+            ctx.fillStyle = deck.isFixedLength ? "#2266CC" : "#CC6622";
+            ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+            ctx.fillStyle = "#FFFFFF";
+            ctx.font = this._scaledFont(7, "bold");
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(badgeLabel, badgeX + badgeW / 2, badgeY + badgeH / 2);
+        }
+
         // Calculate mass for this deck
         var mass = deck.calculateMass ? deck.calculateMass(this.holeDiameterMm) : 0;
         var density = deck.effectiveDensity || (deck.product ? deck.product.density || 0 : 0);
@@ -529,16 +636,19 @@ export class HoleSectionView {
         var centerX = drawX + drawW / 2;
         var centerY = y1 + deckH / 2;
 
+        // Build deck index label: TYPE[n] where n is 1-based position
+        var deckIndexLabel = deck.deckType + "[" + (index + 1) + "]";
+
         if (!isShort) {
             // Draw text inside the deck
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
 
             if (deckH > 50) {
-                // Full detail: type, name, density/length/mass
+                // Full detail: type[idx], name, density/length/mass
                 ctx.font = this._scaledFont(10, "bold");
                 ctx.fillStyle = textColor;
-                ctx.fillText(deck.deckType, centerX, centerY - 16);
+                ctx.fillText(deckIndexLabel, centerX, centerY - 16);
 
                 ctx.font = this._scaledFont(10);
                 var productName = deck.product ? deck.product.name : "Empty";
@@ -550,16 +660,16 @@ export class HoleSectionView {
                 // Name + density/length/mass
                 ctx.font = this._scaledFont(10, "bold");
                 ctx.fillStyle = textColor;
-                var label = deck.product ? deck.product.name : deck.deckType;
+                var label = deck.product ? deck.product.name : deckIndexLabel;
                 ctx.fillText(label, centerX, centerY - 6);
 
                 ctx.font = this._scaledFont(9);
                 ctx.fillText(density.toFixed(2) + "g/cc  " + deckLen.toFixed(1) + "m  " + mass.toFixed(1) + "kg", centerX, centerY + 8);
             } else {
-                // Just name
+                // Just name with index
                 ctx.font = this._scaledFont(9, "bold");
                 ctx.fillStyle = textColor;
-                ctx.fillText(deck.product ? deck.product.name : deck.deckType, centerX, centerY);
+                ctx.fillText(deck.product ? deck.product.name : deckIndexLabel, centerX, centerY);
             }
         }
 
@@ -603,8 +713,9 @@ export class HoleSectionView {
         ctx.stroke();
         ctx.setLineDash([]);
 
-        // Popout text
-        var productName = deck.product ? deck.product.name : deck.deckType;
+        // Popout text with deck index
+        var deckIdxLabel = deck.deckType + "[" + (index + 1) + "]";
+        var productName = deck.product ? deck.product.name : deckIdxLabel;
         var infoStr = productName;
 
         ctx.fillStyle = theme.text;
@@ -1059,13 +1170,20 @@ export class HoleSectionView {
     resize(width, height) {
         // width/height here are pixel dimensions; convert to CSS for sync
         var dpr = window.devicePixelRatio || 1;
-        this._syncCanvasSize(width / dpr, height / dpr);
+        var cssH = height / dpr;
+        this._containerH = cssH;
+        var zoomedH = cssH * this._zoomLevel;
+        this.canvas.style.height = zoomedH + "px";
+        this._syncCanvasSize(width / dpr, zoomedH);
     }
 
     destroy() {
         if (this._resizeObserver) {
             this._resizeObserver.disconnect();
             this._resizeObserver = null;
+        }
+        if (this._zoomOverlay && this._zoomOverlay.parentElement) {
+            this._zoomOverlay.parentElement.removeChild(this._zoomOverlay);
         }
         this.holeCharging = null;
     }

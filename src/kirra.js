@@ -152,7 +152,7 @@ import {
 } from "./draw/canvas3DDrawing.js";
 import { drawAllChargesThreeJS, clearChargesThreeJS } from "./draw/canvas3DChargeDrawing.js";
 import { drawCharges2D } from "./draw/canvas2DChargeDrawing.js";
-import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText } from "./draw/canvas2DDrawing.js";
+import { clearCanvas, drawText, drawRightAlignedText, drawMultilineText, drawTrack, drawHoleToe, drawHole, drawDummy, drawNoDiameterHole, drawHiHole, drawExplosion, drawHexagon, drawKADPoints, drawKADLines, drawKADPolys, drawKADCircles, drawKADTexts, drawDirectionArrow, drawArrow, drawArrowDelayText, buildMassLabels } from "./draw/canvas2DDrawing.js";
 import { drawKADHighlightSelectionVisuals } from "./draw/canvas2DDrawSelection.js";
 import { highlightSelectedKADThreeJS } from "./draw/canvas3DDrawSelection.js";
 //=================================================
@@ -5760,9 +5760,11 @@ const displayMComment = document.getElementById("display15"); //holeComment
 const displayVoronoiCells = document.getElementById("display16"); //voronoi
 const displayRowAndPosId = document.getElementById("rowAndPosDisplayBtn"); //Row and Position Display toggle button
 const displayKADPointIDs = document.getElementById("kadPointIDDisplayBtn"); //KAD Point ID Display toggle button
+const displayMassPerHole = document.getElementById("display6B"); //Mass Per Hole toggle
+const displayMassPerDeck = document.getElementById("display6C"); //Mass Per Deck toggle
 
 // after const option16 = ?
-const allToggles = [displayHoleId, displayHoleLength, displayHoleDiameter, displayHoleAngle, displayHoleDip, displayHoleBearing, displayHoleSubdrill, displayConnectors, displayDelays, displayTimes, displayContours, displaySlope, displayRelief, displayFirstMovements, displayXLocation, displayYLocation, displayElevation, displayHoleType, displayMLength, displayMMass, displayMComment, displayVoronoiCells, displayRowAndPosId, displayKADPointIDs];
+const allToggles = [displayHoleId, displayHoleLength, displayHoleDiameter, displayHoleAngle, displayHoleDip, displayHoleBearing, displayHoleSubdrill, displayConnectors, displayDelays, displayTimes, displayContours, displaySlope, displayRelief, displayFirstMovements, displayXLocation, displayYLocation, displayElevation, displayHoleType, displayMLength, displayMMass, displayMComment, displayVoronoiCells, displayRowAndPosId, displayKADPointIDs, displayMassPerHole, displayMassPerDeck];
 
 allToggles.forEach((opt) => {
 	if (opt)
@@ -29171,6 +29173,8 @@ function getDisplayOptions() {
 		displayRowAndPosId: document.getElementById("rowAndPosDisplayBtn")?.checked || false,
 		kadPointID: document.getElementById("kadPointIDDisplayBtn")?.checked || false,
 		charges: document.getElementById("displayCharges")?.checked || false,
+		massPerHole: document.getElementById("display6B")?.checked || false,
+		massPerDeck: document.getElementById("display6C")?.checked || false,
 	};
 }
 
@@ -30820,7 +30824,8 @@ function drawData(allBlastHoles, selectedHole) {
 					displayOptions3D.holeSubdrill || displayOptions3D.initiationTime || displayOptions3D.delayValue ||
 					displayOptions3D.xValue || displayOptions3D.yValue || displayOptions3D.zValue ||
 					displayOptions3D.displayRowAndPosId || displayOptions3D.measuredLength || displayOptions3D.measuredMass ||
-					displayOptions3D.measuredComment || displayOptions3D.holeDip;
+					displayOptions3D.measuredComment || displayOptions3D.holeDip ||
+					displayOptions3D.massPerHole || displayOptions3D.massPerDeck;
 
 				if (hasTextOptions) {
 					for (var holeIdx2 = 0; holeIdx2 < visibleHoles.length; holeIdx2++) {
@@ -31538,6 +31543,7 @@ function drawKADPointID(kadPoint, screenX, screenY) {
 	const textOffset = 8;
 	const fontSize = 12;
 
+	ctx.save();
 	ctx.font = fontSize + "px Arial";
 	ctx.fillStyle = kadPoint.color || textFillColor;
 	ctx.textAlign = "right";
@@ -31546,6 +31552,7 @@ function drawKADPointID(kadPoint, screenX, screenY) {
 	// Draw the point ID
 	const pointID = kadPoint.pointID !== undefined ? kadPoint.pointID : "?";
 	ctx.fillText(String(pointID), screenX - textOffset / 2, screenY - textOffset / 2);
+	ctx.restore();
 }
 
 function drawKADCoordinates(kadPoint, screenX, screenY) {
@@ -31559,6 +31566,7 @@ function drawKADCoordinates(kadPoint, screenX, screenY) {
 	const middleSide = parseInt(screenY + parseInt(currentFontSize / 2));
 	const bottomSide = parseInt(screenY + textOffset + parseInt(currentFontSize));
 
+	ctx.save();
 	// Set font for coordinate display
 	ctx.font = parseInt(currentFontSize * 0.5) + "px Arial";
 
@@ -31576,6 +31584,7 @@ function drawKADCoordinates(kadPoint, screenX, screenY) {
 	if (displayOptions.zValue) {
 		drawText(rightSide, bottomSide, parseFloat(kadPoint.pointZLocation).toFixed(2), textFillColor);
 	}
+	ctx.restore();
 }
 
 // Draws Voronoi cells only - legend is now in HUD overlay
@@ -31721,6 +31730,19 @@ function drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj) {
 	if (displayOptions.displayRowAndPosId) {
 		drawRightAlignedText(leftSideCollar, topSideCollar, "Row:" + hole.rowID, "#FF00FF");
 		drawRightAlignedText(leftSideCollar, middleSideCollar, "Pos:" + hole.posID, "#FF00FF");
+	}
+	if (displayOptions.massPerHole) {
+		var mLabels = buildMassLabels(hole.holeID);
+		if (mLabels.perHole) {
+			drawRightAlignedText(leftSideCollar, middleSideToe, mLabels.perHole, "#FF0000");
+		}
+	}
+	if (displayOptions.massPerDeck) {
+		var dLabels = buildMassLabels(hole.holeID);
+		var lineH = parseInt(currentFontSize);
+		for (var ml = 0; ml < dLabels.perDeck.length; ml++) {
+			drawRightAlignedText(leftSideCollar, middleSideToe + ml * lineH, dLabels.perDeck[ml], "#FF0000");
+		}
 	}
 }
 

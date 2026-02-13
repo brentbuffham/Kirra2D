@@ -7,14 +7,18 @@
  *
  * ZIP structure:
  *   config.zip
- *   ├── products.csv          (product definitions)
- *   ├── chargeConfigs.csv     (charge rule configurations)
- *   └── README.txt            (instructions for filling in)
+ *   ├── products.csv                    (product definitions)
+ *   ├── chargeConfigs.csv               (charge rule configurations)
+ *   ├── README.txt                      (quick-start instructions)
+ *   ├── ChargeConfigCSV-README.txt      (full reference guide - plain text)
+ *   └── ChargeConfigCSV-README.md       (full reference guide - markdown)
  */
 
 import JSZip from "jszip";
 import { createProductFromJSON } from "./products/productFactory.js";
 import { ChargeConfig } from "./ChargeConfig.js";
+import DOC_REFERENCE_TXT from "./docs/ChargeConfigCSV-README.txt?raw";
+import DOC_REFERENCE_MD from "./docs/ChargeConfigCSV-README.md?raw";
 
 // ============ CSV TEMPLATES ============
 
@@ -50,31 +54,19 @@ var PRODUCTS_CSV_HEADER = [
 // Transposed CSV field definitions: each becomes one row in chargeConfigs.csv
 // { type: data type hint, field: config key, desc: human-readable description }
 var TRANSPOSED_CONFIG_FIELDS = [
-    { type: "code",    field: "configCode",            desc: "Charge config code (STNDFS, AIRDEC, CUSTOM, etc.)" },
-    { type: "text",    field: "configName",            desc: "Human-readable config name" },
-    { type: "text",    field: "description",           desc: "Description of the charge design" },
-    { type: "product", field: "stemmingProduct",       desc: "Stemming product name" },
-    { type: "product", field: "chargeProduct",         desc: "Primary explosive product name" },
-    { type: "product", field: "boosterProduct",        desc: "Booster product name" },
-    { type: "product", field: "detonatorProduct",      desc: "Detonator product name" },
-    { type: "product", field: "gasBagProduct",         desc: "Gas bag / spacer product name" },
-    { type: "number",  field: "preferredStemLength",   desc: "Preferred stemming length (m)" },
-    { type: "number",  field: "minStemLength",         desc: "Minimum stemming length (m)" },
-    { type: "number",  field: "preferredChargeLength", desc: "Preferred charge length (m)" },
-    { type: "number",  field: "minChargeLength",       desc: "Minimum charge length (m)" },
-    { type: "bool",    field: "useMassOverLength",     desc: "Use mass-based charging instead of length" },
-    { type: "number",  field: "targetChargeMassKg",    desc: "Target charge mass in kg (when useMassOverLength)" },
-    { type: "number",  field: "chargeRatio",           desc: "Charge ratio 0.0-1.0 (fraction of hole for charge)" },
-    { type: "number",  field: "primerInterval",        desc: "Interval between primers (m)" },
-    { type: "formula", field: "primerDepthFromCollar", desc: "Primer depth: number (m) or formula fx:..." },
-    { type: "number",  field: "maxPrimersPerDeck",     desc: "Maximum primers per charge deck" },
-    { type: "number",  field: "airDeckLength",         desc: "Air deck length (m)" },
-    { type: "bool",    field: "applyShortHoleLogic",   desc: "Apply short hole tier overrides" },
-    { type: "deck",    field: "inertDeck",             desc: "Inert deck template entries" },
-    { type: "deck",    field: "coupledDeck",           desc: "Coupled deck template entries" },
-    { type: "deck",    field: "decoupledDeck",         desc: "Decoupled deck template entries" },
-    { type: "deck",    field: "spacerDeck",            desc: "Spacer deck template entries" },
-    { type: "primer",  field: "primer",                desc: "Primer template entries" }
+    { type: "code",    field: "configCode",       desc: "Charge config code (STNDFS, AIRDEC, CUSTOM, etc.)" },
+    { type: "text",    field: "configName",        desc: "Human-readable config name" },
+    { type: "text",    field: "description",       desc: "Description of the charge design" },
+    { type: "number",  field: "primerInterval",    desc: "Interval between primers (m)" },
+    { type: "bool",    field: "shortHoleLogic",    desc: "Apply short hole tier overrides" },
+    { type: "number",  field: "shortHoleLength",   desc: "Short hole threshold length (m)" },
+    { type: "bool",    field: "wetHoleSwap",       desc: "Swap product for wet holes" },
+    { type: "product", field: "wetHoleProduct",    desc: "Wet hole replacement product name" },
+    { type: "deck",    field: "inertDeck",         desc: "Inert deck template entries" },
+    { type: "deck",    field: "coupledDeck",       desc: "Coupled deck template entries" },
+    { type: "deck",    field: "decoupledDeck",     desc: "Decoupled deck template entries" },
+    { type: "deck",    field: "spacerDeck",        desc: "Spacer deck template entries" },
+    { type: "primer",  field: "primer",            desc: "Primer template entries" }
 ];
 
 var README_CONTENT = [
@@ -102,6 +94,19 @@ var README_CONTENT = [
     "  The first 3 columns (Type, Description, Field) are metadata; do not change these.",
     "  Add/remove columns to add/remove charge configurations.",
     "",
+    "SIMPLIFIED CONFIG FIELDS:",
+    "  configCode       - Unique code for the config (e.g. STNDFS, AIRDEC, CUSTOM)",
+    "  configName       - Human-readable display name",
+    "  description      - Description of the charge design",
+    "  primerInterval   - Interval between primers in metres (for long charge columns)",
+    "  shortHoleLogic   - true/false: apply short hole tier overrides",
+    "  shortHoleLength  - Threshold length below which short hole logic applies (m)",
+    "  wetHoleSwap      - true/false: swap product when hole is wet",
+    "  wetHoleProduct   - Replacement product name for wet holes",
+    "",
+    "  All charge designs are expressed as deck arrays (inertDeck, coupledDeck,",
+    "  decoupledDeck, spacerDeck) and a primer array.",
+    "",
     "PRODUCT CATEGORIES:",
     "  NonExplosive    - Air, Water, Stemming, StemGel, DrillCuttings",
     "  BulkExplosive   - ANFO, BlendGassed, BlendNonGassed, Emulsion, Molecular",
@@ -117,17 +122,6 @@ var README_CONTENT = [
     "  SurfaceConnector  - Surface shock tube connector (populates connector presets)",
     "  SurfaceWire       - Surface electronic wire connector",
     "  SurfaceCord       - Surface detonating cord connector",
-    "",
-    "CHARGE CONFIG CODES:",
-    "  SIMPLE_SINGLE    - One stemming deck + one coupled deck + one primer",
-    "  STNDVS           - Standard vented stemming (stem + charge + air top)",
-    "  STNDFS           - Standard fixed stem (stem + fill rest with explosive)",
-    "  ST5050           - 50/50 stem and charge split (alias for STNDFS with chargeRatio)",
-    "  AIRDEC           - Air deck design (charge + air separation)",
-    "  PRESPL           - Presplit charges (packaged products)",
-    "  PRESPLIT          - Presplit charges (alias for PRESPL)",
-    "  NOCHG            - Do not charge",
-    "  CUSTOM           - User-defined via drag-drop builder",
     "",
     "DELIVERY VOD (m/s):",
     "  Electronic       - 0 (instant, speed of electricity)",
@@ -169,18 +163,29 @@ var README_CONTENT = [
     "  description             |    o    |    o     |    o     |     o     |   o",
     "",
     "TYPED DECK ROWS (inertDeck, coupledDeck, decoupledDeck, spacerDeck, primer):",
-    "  These rows define custom multi-deck charge configurations.",
-    "  Standard config codes (STNDFS, AIRDEC, etc.) don't need these rows.",
+    "  These rows define multi-deck charge configurations.",
+    "  All charge designs use deck arrays — there are no flat-field shortcuts.",
     "",
     "  Deck Entry Syntax (inertDeck, coupledDeck, decoupledDeck):",
-    "    {idx,length,product}  - multiple entries separated by ;",
+    "    {idx,length,product}      - proportional scaling (default)",
+    "    {idx,length,product,FL}   - isFixedLength (length does not scale)",
+    "    {idx,length,product,FM}   - isFixedMass (mass does not scale)",
+    "    {idx,length,product,PR}   - isProportionalDeck (explicit proportional)",
+    "    Multiple entries separated by ;",
+    "",
     "    idx     = integer deck order from collar (1-based)",
     "    length  = one of:",
     "      2.0           fixed metres (lengthMode: fixed)",
     "      fill          absorbs remaining space (lengthMode: fill)",
-    "      fx:expr       formula e.g. fx:holeLength-2 (lengthMode: formula)",
+    "      fx:expr       formula e.g. fx:holeLength*0.5 (lengthMode: formula)",
     "      m:50          50kg of product (lengthMode: mass)",
+    "      product       length derived from product.lengthMm (lengthMode: product)",
     "    product = product name (matched from products.csv)",
+    "",
+    "    Overlap syntax (appended after scaling flag):",
+    "      {idx,length,product,FL,overlap:base=3;base-1=2;n=1;top=2}",
+    "      Defines how many overlap charges per position in the deck.",
+    "      Keys: base, base-1, n (general), top",
     "",
     "  Spacer Entry Syntax (spacerDeck):",
     "    {idx,product}  - length derived from product.lengthMm property",
@@ -190,9 +195,9 @@ var README_CONTENT = [
     "    idx   = primer number (1-based)",
     "    depth = number (metres) or formula (fx:chargeBase[1]-0.3)",
     "    Det{} = detonator product name",
-    "    HE{}  = booster/high-explosive product name",
+    "    HE{}  = booster/high-explosive product name (use HE{} for none)",
     "",
-    "FORMULA GUIDE (primerDepthFromCollar and deck/primer formulas):",
+    "FORMULA GUIDE (primer depth and deck formulas):",
     "  Formulas are prefixed with fx: to avoid triggering spreadsheet formula parsing.",
     "",
     "  Available variables (unindexed = deepest charge deck):",
@@ -205,22 +210,41 @@ var README_CONTENT = [
     "    benchHeight     - Bench height from hole data (m)",
     "    subdrillLength  - Subdrill length from hole data (m)",
     "",
-    "  Indexed variables (target a specific charge deck, 1-based from collar):",
-    "    chargeBase[1]   - Base depth of the 1st charge deck",
-    "    chargeTop[1]    - Top depth of the 1st charge deck",
-    "    chargeLength[1] - Length of the 1st charge deck",
-    "    chargeBase[2]   - Base depth of the 2nd charge deck, etc.",
+    "  Indexed variables (use the deck position number shown in the section view):",
+    "    chargeBase[N]   - Base depth of the charge deck at position N",
+    "    chargeTop[N]    - Top depth of the charge deck at position N",
+    "    chargeLength[N] - Length of the charge deck at position N",
+    "    e.g. if COUPLED is at deck position 4, use chargeBase[4]",
     "",
     "  Math functions supported:",
     "    Math.min(a, b)   Math.max(a, b)   Math.abs(x)",
     "    Math.sqrt(x)     Math.PI          Math.round(x)",
     "",
-    "  Examples:",
+    "  Custom functions:",
+    "    massLength(kg, density)          Length (m) for a given mass at holeDiameter",
+    "                                     density in g/cc e.g. massLength(50, 0.85)",
+    "    massLength(kg, \"ProductName\")    Length (m) using product density lookup",
+    "                                     e.g. massLength(50, \"ANFO\")",
+    "",
+    "  PRIMER DEPTH EXAMPLES:",
     "    fx:chargeBase - 0.3                  Primer 0.3m above deepest charge base",
-    "    fx:chargeBase[1] - 0.3               Primer 0.3m above 1st charge deck base",
-    "    fx:chargeBase[2] - 0.3               Primer 0.3m above 2nd charge deck base",
+    "    fx:chargeBase[4] - 0.3              Primer 0.3m above charge at deck position 4",
+    "    fx:chargeBase[8] - 0.6              Primer 0.6m above charge at deck position 8",
     "    fx:holeLength * 0.9                  Primer at 90% of total hole",
     "    fx:Math.max(chargeTop + 1, chargeBase - 0.5)   At least 1m below charge top",
+    "",
+    "  DECK LENGTH EXAMPLES:",
+    "    fx:holeLength - 4                    Deck length = hole length minus 4m",
+    "    fx:holeLength * 0.5                  Deck length = 50% of hole length",
+    "    fx:holeLength - stemLength - 2       Deck fills hole minus stem and 2m",
+    "    fx:Math.min(holeLength * 0.3, 5)     Deck is 30% of hole, capped at 5m",
+    "",
+    "  MASS-AWARE POSITIONING EXAMPLES:",
+    "    fx:chargeTop[4] - massLength(50, 0.85)    Place deck above charge at position 4,",
+    "                                               sized for 50kg of ANFO (0.85 g/cc)",
+    "    fx:chargeTop[4] - massLength(50, \"ANFO\")  Same but using product name lookup",
+    "    fx:holeLength - 2 - massLength(30, 1.2)   Position deck above a 2m toe charge,",
+    "                                               with 30kg of emulsion above it",
     "",
     "  If the formula is omitted or blank, primer defaults to 90% of hole length.",
     "",
@@ -285,157 +309,120 @@ var EXAMPLE_CONFIG_DATA = [
     {
         configCode: "STNDFS",
         configName: "Standard Single Deck",
-        stemmingProduct: "Stemming",
-        chargeProduct: "ANFO",
-        boosterProduct: "BS400G",
-        detonatorProduct: "GENERIC-MS",
-        preferredStemLength: 3.5,
-        minStemLength: 2.5,
-        preferredChargeLength: 6.0,
-        minChargeLength: 2.0,
-        useMassOverLength: false,
+        description: "Single stemming + charge + primer",
         primerInterval: 8.0,
-        maxPrimersPerDeck: 3,
-        description: "Single stemming + charge + primer"
+        inertDeckArray: [
+            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 3.5, isFixedLength: true }
+        ],
+        coupledDeckArray: [
+            { idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "fill" }
+        ],
+        primerArray: [
+            { depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }
+        ]
     },
     {
         configCode: "ST5050",
         configName: "50/50 Stem and Charge",
-        stemmingProduct: "Crushed Rock Stemming",
-        chargeProduct: "ANFO",
-        boosterProduct: "BS400G",
-        detonatorProduct: "GENERIC-MS",
-        preferredStemLength: 3.5,
-        minStemLength: 2.0,
-        preferredChargeLength: 6.0,
-        minChargeLength: 2.0,
-        useMassOverLength: false,
-        chargeRatio: 0.5,
+        description: "50% stemming 50% charge split",
         primerInterval: 8.0,
-        maxPrimersPerDeck: 3,
-        description: "50% stemming 50% charge split"
-    },
-    {
-        configCode: "STNDFS",
-        configName: "20kg Mass Based",
-        stemmingProduct: "Crushed Rock Stemming",
-        chargeProduct: "ANFO",
-        boosterProduct: "BS400G",
-        detonatorProduct: "GENERIC-MS",
-        preferredStemLength: 3.5,
-        minStemLength: 2.0,
-        preferredChargeLength: 6.0,
-        minChargeLength: 1.0,
-        useMassOverLength: true,
-        targetChargeMassKg: 20,
-        primerInterval: 8.0,
-        maxPrimersPerDeck: 3,
-        description: "Charge to target mass of 20kg then stem remainder"
+        inertDeckArray: [
+            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "formula", formula: "holeLength * 0.5" }
+        ],
+        coupledDeckArray: [
+            { idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "fill" }
+        ],
+        primerArray: [
+            { depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }
+        ]
     },
     {
         configCode: "AIRDEC",
         configName: "Air Deck with Gas Bag",
-        stemmingProduct: "Crushed Rock Stemming",
-        chargeProduct: "ANFO",
-        boosterProduct: "BS400G",
-        detonatorProduct: "GENERIC-MS",
-        gasBagProduct: "GB230MM",
-        preferredStemLength: 3.0,
-        minStemLength: 2.0,
-        preferredChargeLength: 6.0,
-        minChargeLength: 2.0,
-        useMassOverLength: false,
-        airDeckLength: 1.0,
+        description: "Stem + gas bag + air + charge",
         primerInterval: 8.0,
-        primerDepthFromCollar: "fx:chargeBase - chargeLength * 0.1",
-        maxPrimersPerDeck: 3,
-        description: "Stem + charge + gas bag air deck + charge"
+        inertDeckArray: [
+            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 3.0, isFixedLength: true },
+            { idx: 3, type: "INERT", product: "Air", lengthMode: "fill" }
+        ],
+        spacerDeckArray: [
+            { idx: 2, type: "SPACER", product: "GB230MM", lengthMode: "product" }
+        ],
+        coupledDeckArray: [
+            { idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 6.0 }
+        ],
+        primerArray: [
+            { depth: "fx:chargeBase - chargeLength * 0.1", detonator: "GENERIC-MS", booster: "BS400G" }
+        ]
     },
     {
-        configCode: "PRESPLIT",
+        configCode: "PRESPL",
         configName: "Presplit Charging",
-        stemmingProduct: "Air",
-        chargeProduct: "PRE32MM",
-        detonatorProduct: "10GCORD",
-        preferredStemLength: 2.2,
-        minStemLength: 2.0,
-        preferredChargeLength: 23.0,
-        minChargeLength: 7.0,
-        useMassOverLength: false,
+        description: "AirStem (Vented) + decoupled charge",
         primerInterval: 20.0,
-        maxPrimersPerDeck: 0,
-        description: "AirStem (Vented) + charge"
+        inertDeckArray: [
+            { idx: 1, type: "INERT", product: "Air", lengthMode: "fixed", length: 2.2, isFixedLength: true }
+        ],
+        decoupledDeckArray: [
+            { idx: 2, type: "DECOUPLED", product: "PRE32MM", lengthMode: "fill" }
+        ],
+        primerArray: [
+            { depth: "fx:holeLength * 0.9", detonator: "10GCORD", booster: null }
+        ]
     },
     {
         configCode: "NOCHG",
         configName: "No Charge",
-        stemmingProduct: "Air",
-        preferredStemLength: 3.5,
-        minStemLength: 2.5,
-        preferredChargeLength: 6.0,
-        minChargeLength: 2.0,
-        useMassOverLength: false,
+        description: "Do not charge - leave hole empty",
         primerInterval: 8.0,
-        maxPrimersPerDeck: 3,
-        description: "Do not charge - leave hole empty"
+        inertDeckArray: [
+            { idx: 1, type: "INERT", product: "Air", lengthMode: "fill" }
+        ],
+        primerArray: []
     },
     {
         configCode: "AIRDEC",
         configName: "Two Air Decks",
-        stemmingProduct: "Stemming",
-        chargeProduct: "ANFO",
-        boosterProduct: "BS400G",
-        detonatorProduct: "GENERIC-MS",
-        gasBagProduct: "GB230MM",
-        preferredStemLength: 3.0,
-        minStemLength: 2.0,
-        preferredChargeLength: 6.0,
-        minChargeLength: 2.0,
-        useMassOverLength: false,
-        primerInterval: 8.0,
-        maxPrimersPerDeck: 3,
         description: "Two air deck design with indexed primer formulas",
-        deckTemplate: [
-            { type: "INERT", product: "Stemming", lengthMode: "fill" },
-            { type: "SPACER", product: "GB230MM", lengthMode: "product" },
-            { type: "INERT", product: "Air", lengthMode: "fixed", length: 1.7 },
-            { type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.2 },
-            { type: "INERT", product: "Stemming", lengthMode: "fixed", length: 0.97 },
-            { type: "SPACER", product: "GB230MM", lengthMode: "product" },
-            { type: "INERT", product: "Air", lengthMode: "fixed", length: 1.88 },
-            { type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.025 }
+        primerInterval: 8.0,
+        inertDeckArray: [
+            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fill" },
+            { idx: 3, type: "INERT", product: "Air", lengthMode: "fixed", length: 1.7 },
+            { idx: 5, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 0.97, isFixedLength: true },
+            { idx: 7, type: "INERT", product: "Air", lengthMode: "fixed", length: 1.88 }
         ],
-        primerTemplate: [
-            { depth: "fx:chargeBase[2] - 0.3", detonator: "GENERIC-MS", booster: "BS400G" },
-            { depth: "fx:chargeBase[1] - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }
+        spacerDeckArray: [
+            { idx: 2, type: "SPACER", product: "GB230MM", lengthMode: "product" },
+            { idx: 6, type: "SPACER", product: "GB230MM", lengthMode: "product" }
+        ],
+        coupledDeckArray: [
+            { idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.2 },
+            { idx: 8, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.025 }
+        ],
+        primerArray: [
+            { depth: "fx:chargeBase[8] - 0.3", detonator: "GENERIC-MS", booster: "BS400G" },
+            { depth: "fx:chargeBase[4] - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }
         ]
     },
     {
         configCode: "CUSTOM",
         configName: "Multi Deck with Spacers",
-        stemmingProduct: "Stemming",
-        chargeProduct: "ANFO",
-        boosterProduct: "BS400G",
-        detonatorProduct: "GENERIC-MS",
-        gasBagProduct: "GB230MM",
-        preferredStemLength: 2.0,
-        minStemLength: 1.5,
-        preferredChargeLength: 6.0,
-        minChargeLength: 2.0,
-        useMassOverLength: false,
-        primerInterval: 8.0,
-        maxPrimersPerDeck: 3,
         description: "Stem + charge + spacer + charge + spacer + charge + stem",
-        deckTemplate: [
-            { type: "INERT", product: "Stemming", lengthMode: "fixed", length: 2.0 },
-            { type: "COUPLED", product: "ANFO", lengthMode: "fill", length: 0 },
-            { type: "SPACER", product: "GB230MM", lengthMode: "product", length: null },
-            { type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.0 },
-            { type: "SPACER", product: "GB230MM", lengthMode: "product", length: null },
-            { type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.0 },
-            { type: "INERT", product: "Stemming", lengthMode: "fixed", length: 2.0 }
+        primerInterval: 8.0,
+        inertDeckArray: [
+            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 2.0, isFixedLength: true },
+            { idx: 7, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 2.0, isFixedLength: true }
         ],
-        primerTemplate: [
+        coupledDeckArray: [
+            { idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "fill" },
+            { idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.0 },
+            { idx: 6, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.0 }
+        ],
+        spacerDeckArray: [
+            { idx: 3, type: "SPACER", product: "GB230MM", lengthMode: "product" },
+            { idx: 5, type: "SPACER", product: "GB230MM", lengthMode: "product" }
+        ],
+        primerArray: [
             { depth: "fx:chargeBase - chargeLength * 0.1", detonator: "GENERIC-MS", booster: "BS400G" }
         ]
     }
@@ -461,8 +448,10 @@ function buildExampleConfigs() {
 export async function exportBaseConfigTemplate() {
     var zip = new JSZip();
 
-    // Add README
+    // Add README and reference documentation
     zip.file("README.txt", README_CONTENT);
+    zip.file("ChargeConfigCSV-README.txt", DOC_REFERENCE_TXT);
+    zip.file("ChargeConfigCSV-README.md", DOC_REFERENCE_MD);
 
     // Add products CSV with header + examples (programmatically generated for alignment)
     var exampleRows = buildExampleProductRows();
@@ -513,6 +502,8 @@ export async function exportCurrentConfig(productsMap, configsMap) {
     zip.file("chargeConfigs.csv", configsToTransposedCSV(configsArray));
 
     zip.file("README.txt", README_CONTENT);
+    zip.file("ChargeConfigCSV-README.txt", DOC_REFERENCE_TXT);
+    zip.file("ChargeConfigCSV-README.md", DOC_REFERENCE_MD);
 
     // Generate and download
     var blob = await zip.generateAsync({ type: "blob" });
@@ -599,9 +590,40 @@ function productToCSVRow(product) {
 }
 
 /**
+ * Serialize a scaling flag suffix for a deck entry.
+ * Returns "FL", "FM", "PR", or "" (empty for default proportional).
+ * @param {Object} entry - Deck entry with optional isFixedLength, isFixedMass, isProportionalDeck
+ * @returns {string}
+ */
+function getScalingFlagSuffix(entry) {
+    if (entry.isFixedLength) return "FL";
+    if (entry.isFixedMass) return "FM";
+    if (entry.isProportionalDeck) return "PR";
+    return "";
+}
+
+/**
+ * Serialize an overlap pattern object to overlap syntax string.
+ * Input: { base: 3, "base-1": 2, n: 1, top: 2 }
+ * Output: "overlap:base=3;base-1=2;n=1;top=2"
+ * @param {Object} overlapPattern
+ * @returns {string}
+ */
+function serializeOverlapPattern(overlapPattern) {
+    if (!overlapPattern) return "";
+    var parts = [];
+    var keys = Object.keys(overlapPattern);
+    for (var i = 0; i < keys.length; i++) {
+        parts.push(keys[i] + "=" + overlapPattern[keys[i]]);
+    }
+    if (parts.length === 0) return "";
+    return "overlap:" + parts.join(";");
+}
+
+/**
  * Convert a ChargeConfig into a flat field->value map keyed by TRANSPOSED_CONFIG_FIELDS.field.
- * Serializes deckTemplate into typed deck columns (inertDeck, coupledDeck, etc.) and
- * primerTemplate into the primer column using brace notation.
+ * Serializes deck arrays into typed deck columns (inertDeck, coupledDeck, etc.) and
+ * primerArray into the primer column using brace notation.
  * @param {ChargeConfig} config
  * @returns {Object} field -> string value
  */
@@ -613,52 +635,72 @@ function configToFieldMap(config) {
     map.configCode = json.configCode || "";
     map.configName = json.configName || "";
     map.description = json.description || "";
-    map.stemmingProduct = json.stemmingProduct || "";
-    map.chargeProduct = json.chargeProduct || "";
-    map.boosterProduct = json.boosterProduct || "";
-    map.detonatorProduct = json.detonatorProduct || "";
-    map.gasBagProduct = json.gasBagProduct || "";
-    map.preferredStemLength = json.preferredStemLength != null ? String(json.preferredStemLength) : "";
-    map.minStemLength = json.minStemLength != null ? String(json.minStemLength) : "";
-    map.preferredChargeLength = json.preferredChargeLength != null ? String(json.preferredChargeLength) : "";
-    map.minChargeLength = json.minChargeLength != null ? String(json.minChargeLength) : "";
-    map.useMassOverLength = json.useMassOverLength != null ? String(json.useMassOverLength) : "";
-    map.targetChargeMassKg = json.targetChargeMassKg ? String(json.targetChargeMassKg) : "";
-    map.chargeRatio = json.chargeRatio != null ? String(json.chargeRatio) : "";
     map.primerInterval = json.primerInterval != null ? String(json.primerInterval) : "";
-    map.primerDepthFromCollar = json.primerDepthFromCollar != null ? String(json.primerDepthFromCollar) : "";
-    map.maxPrimersPerDeck = json.maxPrimersPerDeck != null ? String(json.maxPrimersPerDeck) : "";
-    map.airDeckLength = json.airDeckLength ? String(json.airDeckLength) : "";
-    map.applyShortHoleLogic = json.applyShortHoleLogic != null ? String(json.applyShortHoleLogic) : "";
+    map.shortHoleLogic = json.shortHoleLogic != null ? String(json.shortHoleLogic) : "";
+    map.shortHoleLength = json.shortHoleLength != null ? String(json.shortHoleLength) : "";
+    map.wetHoleSwap = json.wetHoleSwap != null ? String(json.wetHoleSwap) : "";
+    map.wetHoleProduct = json.wetHoleProduct || "";
 
-    // Serialize deckTemplate into typed deck columns
+    // Serialize deck arrays into typed deck columns
     var inertEntries = [];
     var coupledEntries = [];
     var decoupledEntries = [];
     var spacerEntries = [];
 
-    if (json.deckTemplate && json.deckTemplate.length > 0) {
-        for (var d = 0; d < json.deckTemplate.length; d++) {
-            var entry = json.deckTemplate[d];
-            var idx = d + 1;
-            var type = entry.type || "INERT";
+    // Serialize inertDeckArray
+    if (json.inertDeckArray && json.inertDeckArray.length > 0) {
+        for (var ia = 0; ia < json.inertDeckArray.length; ia++) {
+            var ie = json.inertDeckArray[ia];
+            var idx = ie.idx || (ia + 1);
+            var lengthStr = serializeDeckLength(ie);
+            var flag = getScalingFlagSuffix(ie);
+            var overlap = serializeOverlapPattern(ie.overlapPattern);
+            var deckStr = "{" + idx + "," + lengthStr + "," + (ie.product || "Unknown");
+            if (flag) deckStr += "," + flag;
+            if (overlap) deckStr += "," + overlap;
+            deckStr += "}";
+            inertEntries.push(deckStr);
+        }
+    }
 
-            if (type === "SPACER") {
-                spacerEntries.push("{" + idx + "," + (entry.product || "Unknown") + "}");
-            } else {
-                var lengthStr;
-                switch (entry.lengthMode) {
-                    case "fill": lengthStr = "fill"; break;
-                    case "formula": lengthStr = "fx:" + (entry.formula || "holeLength"); break;
-                    case "mass": lengthStr = "m:" + (entry.massKg || 0); break;
-                    case "product": lengthStr = "fill"; break;
-                    default: lengthStr = String(entry.length || 0); break;
-                }
-                var deckStr = "{" + idx + "," + lengthStr + "," + (entry.product || "Unknown") + "}";
-                if (type === "INERT") inertEntries.push(deckStr);
-                else if (type === "COUPLED") coupledEntries.push(deckStr);
-                else if (type === "DECOUPLED") decoupledEntries.push(deckStr);
-            }
+    // Serialize coupledDeckArray
+    if (json.coupledDeckArray && json.coupledDeckArray.length > 0) {
+        for (var ca = 0; ca < json.coupledDeckArray.length; ca++) {
+            var ce = json.coupledDeckArray[ca];
+            var cidx = ce.idx || (ca + 1);
+            var clengthStr = serializeDeckLength(ce);
+            var cflag = getScalingFlagSuffix(ce);
+            var coverlap = serializeOverlapPattern(ce.overlapPattern);
+            var cdeckStr = "{" + cidx + "," + clengthStr + "," + (ce.product || "Unknown");
+            if (cflag) cdeckStr += "," + cflag;
+            if (coverlap) cdeckStr += "," + coverlap;
+            cdeckStr += "}";
+            coupledEntries.push(cdeckStr);
+        }
+    }
+
+    // Serialize decoupledDeckArray
+    if (json.decoupledDeckArray && json.decoupledDeckArray.length > 0) {
+        for (var da = 0; da < json.decoupledDeckArray.length; da++) {
+            var de = json.decoupledDeckArray[da];
+            var didx = de.idx || (da + 1);
+            var dlengthStr = serializeDeckLength(de);
+            var dflag = getScalingFlagSuffix(de);
+            var doverlap = serializeOverlapPattern(de.overlapPattern);
+            var ddeckStr = "{" + didx + "," + dlengthStr + "," + (de.product || "Unknown");
+            if (dflag) ddeckStr += "," + dflag;
+            if (doverlap) ddeckStr += "," + doverlap;
+            ddeckStr += "}";
+            decoupledEntries.push(ddeckStr);
+        }
+    }
+
+    // Serialize spacerDeckArray
+    if (json.spacerDeckArray && json.spacerDeckArray.length > 0) {
+        for (var sa = 0; sa < json.spacerDeckArray.length; sa++) {
+            var se = json.spacerDeckArray[sa];
+            var sidx = se.idx || (sa + 1);
+            spacerEntries.push("{" + sidx + "," + (se.product || "Unknown") + "}");
         }
     }
 
@@ -667,11 +709,11 @@ function configToFieldMap(config) {
     map.decoupledDeck = decoupledEntries.join(";");
     map.spacerDeck = spacerEntries.join(";");
 
-    // Serialize primerTemplate
+    // Serialize primerArray
     var primerEntries = [];
-    if (json.primerTemplate && json.primerTemplate.length > 0) {
-        for (var p = 0; p < json.primerTemplate.length; p++) {
-            var pt = json.primerTemplate[p];
+    if (json.primerArray && json.primerArray.length > 0) {
+        for (var p = 0; p < json.primerArray.length; p++) {
+            var pt = json.primerArray[p];
             var primerIdx = p + 1;
             var depthStr = pt.depth != null ? String(pt.depth) : "";
             var detStr = pt.detonator ? "Det{" + pt.detonator + "}" : "";
@@ -682,6 +724,21 @@ function configToFieldMap(config) {
     map.primer = primerEntries.join(";");
 
     return map;
+}
+
+/**
+ * Serialize a deck entry's length to brace notation length string.
+ * @param {Object} entry - Deck template entry
+ * @returns {string} Length string (e.g. "2.0", "fill", "fx:expr", "m:50", "product")
+ */
+function serializeDeckLength(entry) {
+    switch (entry.lengthMode) {
+        case "fill": return "fill";
+        case "formula": return "fx:" + (entry.formula || "holeLength");
+        case "mass": return "m:" + (entry.massKg || 0);
+        case "product": return "product";
+        default: return String(entry.length || 0);
+    }
 }
 
 /**
@@ -794,6 +851,8 @@ function parseProductsCSV(text, errors) {
 /**
  * Parse a typed deck column (inertDeck, coupledDeck, decoupledDeck) from brace notation.
  * Input: "{1,2.0,Stemming};{8,fill,Stemming}"
+ * Supports 4th element scaling flag: FL (isFixedLength), FM (isFixedMass), PR (isProportionalDeck)
+ * Supports optional overlap syntax: {idx,length,product,FL,overlap:base=3;base-1=2;n=1;top=2}
  * Returns array of deck template entries with idx for sorting.
  * @param {string} text - Raw cell value
  * @param {string} deckType - "INERT", "COUPLED", "DECOUPLED", or "SPACER"
@@ -828,7 +887,7 @@ function parseDeckColumn(text, deckType) {
                 length: null
             });
         } else {
-            // Non-spacer: {idx,length,product}
+            // Non-spacer: {idx,length,product} or {idx,length,product,FLAG} or {idx,length,product,FLAG,overlap:...}
             if (parts.length < 3) continue;
             var lengthStr = parts[1].trim();
             var product = parts[2].trim();
@@ -843,6 +902,8 @@ function parseDeckColumn(text, deckType) {
 
             if (lengthStr === "fill") {
                 templateEntry.lengthMode = "fill";
+            } else if (lengthStr === "product") {
+                templateEntry.lengthMode = "product";
             } else if (lengthStr.length > 3 && lengthStr.substring(0, 3) === "fx:") {
                 templateEntry.lengthMode = "formula";
                 templateEntry.formula = lengthStr.substring(3);
@@ -854,11 +915,60 @@ function parseDeckColumn(text, deckType) {
                 templateEntry.length = parseFloat(lengthStr) || 0;
             }
 
+            // Parse optional 4th element: scaling flag (FL, FM, PR)
+            if (parts.length >= 4) {
+                var fourthPart = parts[3].trim();
+                // Check if it's a scaling flag or overlap syntax
+                if (fourthPart === "FL") {
+                    templateEntry.isFixedLength = true;
+                } else if (fourthPart === "FM") {
+                    templateEntry.isFixedMass = true;
+                } else if (fourthPart === "PR") {
+                    templateEntry.isProportionalDeck = true;
+                } else if (fourthPart.length > 8 && fourthPart.substring(0, 8) === "overlap:") {
+                    templateEntry.overlapPattern = parseOverlapSyntax(fourthPart);
+                }
+            }
+
+            // Parse optional 5th element: overlap syntax (when flag was 4th)
+            if (parts.length >= 5) {
+                var fifthPart = parts[4].trim();
+                if (fifthPart.length > 8 && fifthPart.substring(0, 8) === "overlap:") {
+                    templateEntry.overlapPattern = parseOverlapSyntax(fifthPart);
+                }
+            }
+
             result.push(templateEntry);
         }
     }
 
     return result;
+}
+
+/**
+ * Parse overlap syntax string into an object.
+ * Input: "overlap:base=3;base-1=2;n=1;top=2"
+ * Output: { base: 3, "base-1": 2, n: 1, top: 2 }
+ * @param {string} overlapStr
+ * @returns {Object}
+ */
+function parseOverlapSyntax(overlapStr) {
+    var pattern = {};
+    // Strip "overlap:" prefix
+    var body = overlapStr.substring(8);
+    var pairs = body.split(";");
+    for (var i = 0; i < pairs.length; i++) {
+        var pair = pairs[i].trim();
+        if (pair.length === 0) continue;
+        var eqIdx = pair.indexOf("=");
+        if (eqIdx === -1) continue;
+        var key = pair.substring(0, eqIdx).trim();
+        var val = parseFloat(pair.substring(eqIdx + 1).trim());
+        if (!isNaN(val)) {
+            pattern[key] = val;
+        }
+    }
+    return pattern;
 }
 
 /**
@@ -921,7 +1031,7 @@ function parsePrimerColumn(text) {
 
         var heMatch = entry.match(/HE\{([^}]*)\}/);
         if (heMatch) {
-            booster = heMatch[1];
+            booster = heMatch[1] || null;
             entry = entry.replace(heMatch[0], "").trim();
         }
 
@@ -994,9 +1104,7 @@ function parseTransposedChargeConfigsCSV(lines, headers, errors) {
 
     // String fields that should never be auto-parsed as numbers
     var stringFields = {
-        configName: true, description: true, stemmingProduct: true,
-        chargeProduct: true, boosterProduct: true,
-        detonatorProduct: true, gasBagProduct: true, primerDepthFromCollar: true,
+        configName: true, description: true, wetHoleProduct: true,
         inertDeck: true, coupledDeck: true, decoupledDeck: true,
         spacerDeck: true, primer: true
     };
@@ -1032,41 +1140,26 @@ function parseTransposedChargeConfigsCSV(lines, headers, errors) {
         }
     }
 
-    // Convert to ChargeConfig objects, parsing deck/primer columns
+    // Convert to ChargeConfig objects, parsing deck/primer columns into deck arrays
     var configs = [];
     for (var k = 0; k < configObjs.length; k++) {
         try {
             var obj = configObjs[k];
             if (!obj.configCode && !obj.configName) continue; // Skip empty columns
 
-            // Parse typed deck columns into deckTemplate
-            var allDecks = [];
-            if (obj.inertDeck) allDecks = allDecks.concat(parseDeckColumn(obj.inertDeck, "INERT"));
-            if (obj.coupledDeck) allDecks = allDecks.concat(parseDeckColumn(obj.coupledDeck, "COUPLED"));
-            if (obj.decoupledDeck) allDecks = allDecks.concat(parseDeckColumn(obj.decoupledDeck, "DECOUPLED"));
-            if (obj.spacerDeck) allDecks = allDecks.concat(parseDeckColumn(obj.spacerDeck, "SPACER"));
+            // Parse typed deck columns directly into deck arrays
+            obj.inertDeckArray = obj.inertDeck ? parseDeckColumn(obj.inertDeck, "INERT") : [];
+            obj.coupledDeckArray = obj.coupledDeck ? parseDeckColumn(obj.coupledDeck, "COUPLED") : [];
+            obj.decoupledDeckArray = obj.decoupledDeck ? parseDeckColumn(obj.decoupledDeck, "DECOUPLED") : [];
+            obj.spacerDeckArray = obj.spacerDeck ? parseDeckColumn(obj.spacerDeck, "SPACER") : [];
 
-            allDecks.sort(function (a, b) { return a.idx - b.idx; });
-
-            if (allDecks.length > 0) {
-                obj.deckTemplate = [];
-                for (var dk = 0; dk < allDecks.length; dk++) {
-                    var d = allDecks[dk];
-                    var tplEntry = { type: d.type, product: d.product, lengthMode: d.lengthMode, length: d.length };
-                    if (d.formula) tplEntry.formula = d.formula;
-                    if (d.massKg != null) tplEntry.massKg = d.massKg;
-                    obj.deckTemplate.push(tplEntry);
-                }
-                if (!obj.configCode) obj.configCode = "CUSTOM";
-            }
-
-            // Parse primer column into primerTemplate
+            // Parse primer column into primerArray
             if (obj.primer) {
                 var primers = parsePrimerColumn(obj.primer);
                 if (primers.length > 0) {
-                    obj.primerTemplate = [];
+                    obj.primerArray = [];
                     for (var pk = 0; pk < primers.length; pk++) {
-                        obj.primerTemplate.push({
+                        obj.primerArray.push({
                             depth: primers[pk].depth,
                             detonator: primers[pk].detonator,
                             booster: primers[pk].booster
@@ -1101,9 +1194,7 @@ function parseLegacyChargeConfigsCSV(lines, headers, errors) {
     var hasLegacyDeckTemplate = headers.indexOf("deckTemplate") !== -1;
 
     var stringHeaders = {
-        configName: true, description: true, stemmingProduct: true,
-        chargeProduct: true, wetChargeProduct: true, boosterProduct: true,
-        detonatorProduct: true, gasBagProduct: true, primerDepthFromCollar: true,
+        configName: true, description: true, wetHoleProduct: true,
         inertDeck: true, coupledDeck: true, decoupledDeck: true,
         spacerDeck: true, primer: true, deckTemplate: true
     };
@@ -1135,31 +1226,23 @@ function parseLegacyChargeConfigsCSV(lines, headers, errors) {
             }
 
             if (hasTypedDeckCols) {
-                var allDecks = [];
-                allDecks = allDecks.concat(parseDeckColumn(typedDeckColumns.inertDeck, "INERT"));
-                allDecks = allDecks.concat(parseDeckColumn(typedDeckColumns.coupledDeck, "COUPLED"));
-                allDecks = allDecks.concat(parseDeckColumn(typedDeckColumns.decoupledDeck, "DECOUPLED"));
-                allDecks = allDecks.concat(parseDeckColumn(typedDeckColumns.spacerDeck, "SPACER"));
+                // Parse typed deck columns directly into deck arrays
+                obj.inertDeckArray = parseDeckColumn(typedDeckColumns.inertDeck, "INERT");
+                obj.coupledDeckArray = parseDeckColumn(typedDeckColumns.coupledDeck, "COUPLED");
+                obj.decoupledDeckArray = parseDeckColumn(typedDeckColumns.decoupledDeck, "DECOUPLED");
+                obj.spacerDeckArray = parseDeckColumn(typedDeckColumns.spacerDeck, "SPACER");
 
-                allDecks.sort(function (a, b) { return a.idx - b.idx; });
-
-                if (allDecks.length > 0) {
-                    obj.deckTemplate = [];
-                    for (var dk = 0; dk < allDecks.length; dk++) {
-                        var d = allDecks[dk];
-                        var tplEntry = { type: d.type, product: d.product, lengthMode: d.lengthMode, length: d.length };
-                        if (d.formula) tplEntry.formula = d.formula;
-                        if (d.massKg != null) tplEntry.massKg = d.massKg;
-                        obj.deckTemplate.push(tplEntry);
-                    }
-                    if (!obj.configCode) obj.configCode = "CUSTOM";
+                if (!obj.configCode &&
+                    (obj.inertDeckArray.length > 0 || obj.coupledDeckArray.length > 0 ||
+                     obj.decoupledDeckArray.length > 0 || obj.spacerDeckArray.length > 0)) {
+                    obj.configCode = "CUSTOM";
                 }
 
                 var primers = parsePrimerColumn(typedDeckColumns.primer);
                 if (primers.length > 0) {
-                    obj.primerTemplate = [];
+                    obj.primerArray = [];
                     for (var pk = 0; pk < primers.length; pk++) {
-                        obj.primerTemplate.push({
+                        obj.primerArray.push({
                             depth: primers[pk].depth,
                             detonator: primers[pk].detonator,
                             booster: primers[pk].booster

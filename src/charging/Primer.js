@@ -30,6 +30,11 @@ export class Primer {
 		};
 
 		this.deckID = options.deckID || null;  // Which deck this primer sits in
+
+		// Formula string for deferred evaluation (e.g. "fx:chargeBase[1]-0.3")
+		// When set, lengthFromCollar is only valid after evaluation at apply-time
+		this.depthFormula = options.depthFormula || null;
+
 		this.created = options.created || new Date().toISOString();
 		this.modified = new Date().toISOString();
 	}
@@ -82,6 +87,7 @@ export class Primer {
 			primerID: this.primerID,
 			holeID: this.holeID,
 			lengthFromCollar: this.lengthFromCollar,
+			depthFormula: this.depthFormula,
 			detonator: Object.assign({}, this.detonator),
 			booster: Object.assign({}, this.booster),
 			deckID: this.deckID,

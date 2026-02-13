@@ -5,9 +5,17 @@
  *   "fx:" - Excel-safe prefix for CSV templates (won't trigger spreadsheet formula)
  *
  * Available variables: holeLength, chargeLength, chargeTop, chargeBase, stemLength, holeDiameter
- * Indexed variables: chargeBase[1], chargeTop[2], etc. → internally mapped to chargeBase_1, chargeTop_2
+ * Indexed variables: chargeBase[N], chargeTop[N], etc. where N = deck position from section view
+ *   Internally mapped: chargeBase[4] → chargeBase_4
  * Math functions available: Math.min(), Math.max(), Math.abs(), Math.PI, Math.sqrt(), etc.
- * Examples: "=chargeBase - chargeLength * 0.1"  or  "fx:chargeBase[1] - 0.3"
+ *
+ * Custom functions:
+ *   massLength(kg, density)         - Length from mass using numeric density (g/cc) and holeDiameter
+ *   massLength(kg, "ProductName")   - Length from mass using product name lookup for density
+ *
+ * Examples: "=chargeBase - chargeLength * 0.1"  or  "fx:chargeBase[4] - 0.3"
+ *           "fx:chargeTop[4] - massLength(50, 1.2)"
+ *           "fx:chargeTop[4] - massLength(50, \"GENERIC4060\")"
  */
 
 /**
@@ -31,6 +39,53 @@ function stripPrefix(formula) {
 	if (formula.charAt(0) === "=") return formula.substring(1).trim();
 	if (formula.substring(0, 3) === "fx:") return formula.substring(3).trim();
 	return formula.trim();
+}
+
+/**
+ * Create a massLength function bound to a specific hole diameter.
+ * Calculates the deck length required to hold a given mass of product.
+ *
+ * Formula: length = massKg / (density * 1000 * PI * (holeDiameter/2000)^2)
+ *
+ * @param {number} holeDiameterMm - Hole diameter in millimetres
+ * @returns {Function} massLength(kg, densityOrProductName)
+ */
+function createMassLengthFn(holeDiameterMm) {
+	return function massLength(massKg, densityOrProduct) {
+		if (!massKg || massKg <= 0) return 0;
+
+		var density = 0;
+
+		if (typeof densityOrProduct === "number") {
+			// Direct density in g/cc
+			density = densityOrProduct;
+		} else if (typeof densityOrProduct === "string") {
+			// Product name lookup
+			if (window.loadedProducts) {
+				window.loadedProducts.forEach(function (p) {
+					if (p.name === densityOrProduct && p.density) {
+						density = p.density;
+					}
+				});
+			}
+			if (density <= 0) {
+				console.warn("massLength: product '" + densityOrProduct + "' not found or has no density");
+				return 0;
+			}
+		} else {
+			return 0;
+		}
+
+		if (density <= 0) return 0;
+
+		var diamM = (holeDiameterMm || 115) / 1000;
+		var radiusM = diamM / 2;
+		var area = Math.PI * radiusM * radiusM;
+		var kgPerMetre = density * 1000 * area;
+		if (kgPerMetre <= 0) return 0;
+
+		return massKg / kgPerMetre;
+	};
 }
 
 /**
@@ -61,6 +116,11 @@ export function evaluateFormula(formula, variables) {
 			values.push(Number(variables[key]) || 0);
 		}
 	}
+
+	// Add massLength as a callable function bound to holeDiameter
+	var holeDia = variables.holeDiameter || 115;
+	names.push("massLength");
+	values.push(createMassLengthFn(holeDia));
 
 	try {
 		// Create function with variable names as parameters

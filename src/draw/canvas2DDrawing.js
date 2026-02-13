@@ -332,8 +332,8 @@ export function drawKADTexts(x, y, z, text, color, fontHeight) {
 		}
 	} else {
 		// Step B3b) Use HersheySimplex TTF (fast native canvas rendering)
+		window.ctx.save(); // Save context state before modifying font
 		window.ctx.font = parseInt(fontSize) + "px HersheySimplex, Arial";
-		window.ctx.save(); // Save the context state before setting shadow
 		drawMultilineText(window.ctx, text, x, y, fontSize, "left", color, color, false);
 		window.ctx.restore(); // Restore context state
 	}
@@ -567,4 +567,52 @@ export function drawArrowDelayText(startX, startY, endX, endY, color, text, conn
 	ctx.fillText(text, -textWidth / 2, 0);
 
 	ctx.restore();
+}
+
+//=================================================
+// Mass Label Helpers (shared by 2D and 3D)
+//=================================================
+
+/**
+ * Build mass label strings for a hole from its charging data.
+ * @param {string} holeID - The hole ID to look up charging for
+ * @returns {{ perHole: string, perDeck: string[] }} Label strings
+ */
+export function buildMassLabels(holeID) {
+	var result = { perHole: "", perDeck: [] };
+	if (!window.loadedCharging) return result;
+	var charging = window.loadedCharging.get(holeID);
+	if (!charging) return result;
+
+	// Total mass (includes primers)
+	var totalMass = charging.getTotalExplosiveMass();
+	if (totalMass > 0) {
+		result.perHole = totalMass.toFixed(1);
+	}
+
+	// Per-deck masses (COUPLED + DECOUPLED only)
+	var masses = [];
+	for (var i = 0; i < charging.decks.length; i++) {
+		var d = charging.decks[i];
+		if (d.deckType === "COUPLED" || d.deckType === "DECOUPLED") {
+			masses.push(d.calculateMass(charging.holeDiameterMm).toFixed(1));
+		}
+	}
+
+	if (masses.length <= 2) {
+		// 1 or 2 values: one per line
+		result.perDeck = masses;
+	} else {
+		// 3+: wrap in braces, ~2 per line
+		var lines = [];
+		for (var j = 0; j < masses.length; j += 2) {
+			var chunk = masses.slice(j, Math.min(j + 2, masses.length)).join(", ");
+			if (j === 0) chunk = "{" + chunk;
+			if (j + 2 >= masses.length) chunk += "}";
+			else chunk += ",";
+			lines.push(chunk);
+		}
+		result.perDeck = lines;
+	}
+	return result;
 }

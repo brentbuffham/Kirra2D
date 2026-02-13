@@ -1,7 +1,15 @@
 /**
- * @fileoverview ChargeConfig - Rule template for auto-generating charge profiles
- * Defined in Week 1 so products, decks, and rules share the same vocabulary.
- * Rule engine implementation comes in Week 4.
+ * @fileoverview ChargeConfig - Template-only rule for auto-generating charge profiles
+ *
+ * All charge rules are expressed as deck arrays + primer arrays.
+ * No hardcoded rule dispatch — the rule engine applies templates directly.
+ *
+ * Deck array entries:
+ *   { idx, type, product, lengthMode, length, formula, massKg,
+ *     isFixedLength, isFixedMass, isProportionalDeck, overlapPattern }
+ *
+ * Primer array entries:
+ *   { depth (number or "fx:" formula), detonator, booster }
  */
 
 import { generateUUID } from "./Deck.js";
@@ -10,71 +18,69 @@ import { CHARGE_CONFIG_CODES, CHARGING_DEFAULTS } from "./ChargingConstants.js";
 export class ChargeConfig {
 	constructor(options) {
 		this.configID = options.configID || generateUUID();
-		this.configCode = options.configCode || CHARGE_CONFIG_CODES.SIMPLE_SINGLE;
+		this.configCode = options.configCode || CHARGE_CONFIG_CODES.CUSTOM;
 		this.configName = options.configName || "Unnamed Config";
 		this.description = options.description || "";
 
-		// Product references (productID or name)
-		this.stemmingProduct = options.stemmingProduct || null;
-		this.chargeProduct = options.chargeProduct || null;
-		this.wetChargeProduct = options.wetChargeProduct || null;
-		this.dampChargeProduct = options.dampChargeProduct || null;
-		this.boosterProduct = options.boosterProduct || null;
-		this.detonatorProduct = options.detonatorProduct || null;
-		this.gasBagProduct = options.gasBagProduct || null;
-
-		// Stemming parameters
-		this.preferredStemLength = options.preferredStemLength || CHARGING_DEFAULTS.preferredStemLength;
-		this.minStemLength = options.minStemLength || CHARGING_DEFAULTS.minStemLength;
-
-		// Charge parameters
-		this.preferredChargeLength = options.preferredChargeLength || CHARGING_DEFAULTS.preferredChargeLength;
-		this.minChargeLength = options.minChargeLength || CHARGING_DEFAULTS.minChargeLength;
-		this.useMassOverLength = options.useMassOverLength || false;
-		this.targetChargeMassKg = options.targetChargeMassKg || null;
-
-		// Primer parameters
+		// Primer spacing interval (metres between primers in long charge columns)
 		this.primerInterval = options.primerInterval || CHARGING_DEFAULTS.primerInterval;
-		this.primerOffsetFromToe = options.primerOffsetFromToe || CHARGING_DEFAULTS.bottomOffsetRatio;
-		this.maxPrimersPerDeck = options.maxPrimersPerDeck || CHARGING_DEFAULTS.maxPrimersPerDeck;
-		this.primerDepthFromCollar = options.primerDepthFromCollar || null; // For simple rules
 
-		// Moisture handling
-		this.wetTolerance = options.wetTolerance || CHARGING_DEFAULTS.wetTolerance;
-		this.dampTolerance = options.dampTolerance || CHARGING_DEFAULTS.dampTolerance;
-
-		// Short hole
+		// Short hole logic
+		this.shortHoleLogic = options.shortHoleLogic !== false;
 		this.shortHoleLength = options.shortHoleLength || CHARGING_DEFAULTS.shortHoleLength;
-		this.applyShortHoleLogic = options.applyShortHoleLogic !== false; // default true
 
-		// Charge ratio (0.0 to 1.0): fraction of available hole used for charge
-		// e.g. 0.5 = 50% charge, remaining = stemming
-		this.chargeRatio = options.chargeRatio != null ? options.chargeRatio : null;
+		// Wet hole product swap (future)
+		this.wetHoleSwap = options.wetHoleSwap || false;
+		this.wetHoleProduct = options.wetHoleProduct || null;
 
-		// Air deck
-		this.airDeckLength = options.airDeckLength || null;
+		// Typed deck arrays — merged at apply-time sorted by idx
+		this.inertDeckArray = options.inertDeckArray || [];
+		this.coupledDeckArray = options.coupledDeckArray || [];
+		this.decoupledDeckArray = options.decoupledDeckArray || [];
+		this.spacerDeckArray = options.spacerDeckArray || [];
 
-		// Multi-deck template: array of { type, product, lengthMode, length, formula, massKg }
-		// lengthMode: "fixed" = exact meters, "fill" = absorb remaining,
-		//             "formula" = fx:expression, "mass" = kg-based, "product" = spacer (from product.lengthMm)
-		this.deckTemplate = options.deckTemplate || null;
-
-		// Multi-primer template: array of { depth, detonator, booster }
-		// depth: number (metres) or formula string "fx:chargeBase-0.3"
-		// Replaces single primerDepthFromCollar for configs with multiple primers
-		this.primerTemplate = options.primerTemplate || [];
+		// Primer template array
+		// Each: { depth: number|"fx:formula", detonator: productName, booster: productName }
+		this.primerArray = options.primerArray || [];
 
 		this.created = options.created || new Date().toISOString();
 		this.modified = new Date().toISOString();
 	}
 
+	/**
+	 * Merge all deck arrays into a single sorted sequence by idx.
+	 * @returns {Array} Sorted deck template entries
+	 */
+	getMergedDeckSequence() {
+		var all = [].concat(
+			this.inertDeckArray,
+			this.coupledDeckArray,
+			this.decoupledDeckArray,
+			this.spacerDeckArray
+		);
+		all.sort(function(a, b) { return (a.idx || 0) - (b.idx || 0); });
+		return all;
+	}
+
 	toJSON() {
-		var result = {};
-		var keys = Object.keys(this);
-		for (var i = 0; i < keys.length; i++) {
-			result[keys[i]] = this[keys[i]];
-		}
-		return result;
+		return {
+			configID: this.configID,
+			configCode: this.configCode,
+			configName: this.configName,
+			description: this.description,
+			primerInterval: this.primerInterval,
+			shortHoleLogic: this.shortHoleLogic,
+			shortHoleLength: this.shortHoleLength,
+			wetHoleSwap: this.wetHoleSwap,
+			wetHoleProduct: this.wetHoleProduct,
+			inertDeckArray: this.inertDeckArray,
+			coupledDeckArray: this.coupledDeckArray,
+			decoupledDeckArray: this.decoupledDeckArray,
+			spacerDeckArray: this.spacerDeckArray,
+			primerArray: this.primerArray,
+			created: this.created,
+			modified: this.modified
+		};
 	}
 
 	static fromJSON(obj) {

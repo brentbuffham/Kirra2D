@@ -1581,31 +1581,52 @@
 					<label for="display6A" class="icon-button" title="Hole Time">
 						<img src="icons/holetimes.png" alt="Hole Time">
 					</label>
-					<!-- <input type="checkbox" id="display7" name="display" value="Times" placeholder="Times"> -->
+					<!-- Mass Per Hole is the NEQ Net Explosive Quantity per hole -->
+					<input type="checkbox" id="display6B" name="display" value="MassPerHole" placeholder="MassPerHole">
+					<label for="display6B" class="icon-button" title="Mass Per Hole">
+						<img src="icons/holemass-per-hole.png" alt="Mass Per Hole">
+					</label>
+					<!-- Mass Per Deck is the NEQ Net Explosive Quantity per Deck -->
+					<input type="checkbox" id="display6C" name="display" value="MassPerDeck" placeholder="MassPerDeck">
+					<label for="display6C" class="icon-button" title="Mass Per Deck">
+						<img src="icons/holemass-perdeck.png" alt="Mass Per Deck">
+					</label>
+					<!-- Charging Display ON/OFF -->
+					<input type="checkbox" id="displayCharges" name="display" value="charges" placeholder="charges">
+					<label for="displayCharges" class="icon-button" title="Charges">
+						<img src="icons/cylinder.png" alt="Charges">
+					</label>
+					<!-- Contours Display ON/OFF -->
 					<input type="checkbox" id="display8" name="display" value="Contours" placeholder="Contours">
 					<label for="display8" class="icon-button" title="Contours">
 						<img src="icons/contours.png" alt="Contours">
 					</label>
+					<!-- Slope Display ON/OFF -->
 					<input type="checkbox" id="display8A" name="display" value="Slope" placeholder="slope">
 					<label for="display8A" class="icon-button" title="Slope">
 						<img src="icons/slopemap.png" alt="Slope">
 					</label>
+					<!-- Relief Display ON/OFF -->
 					<input type="checkbox" id="display8B" name="display" value="Relief" placeholder="relief">
 					<label for="display8B" class="icon-button" title="Relief">
 						<img src="icons/reliefmap.png" alt="Relief">
 					</label>
+					<!-- First Movement Display ON/OFF -->
 					<input type="checkbox" id="display8C" name="display" value="direction" placeholder="direction">
 					<label for="display8C" class="icon-button" title="First Movement">
 						<img src="icons/firstmovement.png" alt="First Movement">
 					</label>
+					<!-- Hole X Location Display ON/OFF -->
 					<input type="checkbox" id="display9" name="display" value="xlocation" placeholder="xlocation">
 					<label for="display9" class="icon-button" title="Hole X Location">
 						<img src="icons/xmeterseast.png" alt="Hole X Location">
 					</label>
+					<!-- Hole Y Location Display ON/OFF -->
 					<input type="checkbox" id="display10" name="display" value="ylocation" placeholder="ylocation">
 					<label for="display10" class="icon-button" title="Hole Y Location">
 						<img src="icons/ymetersnorth.png" alt="Hole Y Location">
 					</label>
+					<!-- Hole Z Location Display ON/OFF -->
 					<input type="checkbox" id="display11" name="display" value="zlocation" placeholder="zlocation">
 					<label for="display11" class="icon-button" title="Hole Z Location">
 						<img src="icons/zmetersalt.png" alt="Hole Z Location">
@@ -1616,18 +1637,22 @@
 					<label for="rowAndPosDisplayBtn" class="icon-button" title="Row and Position">
 						<img src="icons/brackets-contain.png" alt="Row and Position">
 					</label>
+					<!-- Hole Type Display ON/OFF -->
 					<input type="checkbox" id="display12" name="display" value="holeType" placeholder="holeType">
 					<label for="display12" class="icon-button" title="Hole Type">
 						<img src="icons/holetype.png" alt="Hole Type">
 					</label>
+					<!-- Measured Length Display ON/OFF -->
 					<input type="checkbox" id="display13" name="display" value="measure" placeholder="measure">
 					<label for="display13" class="icon-button" title="Measured Length">
 						<img src="icons/measuredlength.png" alt="Measured Length">
 					</label>
+					<!-- Measured Mass Display ON/OFF -->
 					<input type="checkbox" id="display14" name="display" value="mass" placeholder="mass">
 					<label for="display14" class="icon-button" title="Measured Mass">
 						<img src="icons/measuredmass.png" alt="Measured Mass">
 					</label>
+					<!-- Comment Display ON/OFF -->
 					<input type="checkbox" id="display15" name="display" value="comment" placeholder="comment">
 					<label for="display15" class="icon-button" title="Comment">
 						<img src="icons/measuredcomment.png" alt="Comment">
@@ -1638,14 +1663,12 @@
 					<label for="kadPointIDDisplayBtn" class="icon-button" title="KAD Point IDs">
 						<img src="icons/north-star.png" alt="KAD Point IDs">
 					</label>
+					<!-- Voronoi Display ON/OFF -->
 					<input type="checkbox" id="display16" name="display" value="voronoi" placeholder="voronoi">
 					<label for="display16" class="icon-button" title="Voronoi">
 						<img src="icons/hexagon-letter-v.png" alt="Voronoi">
 					</label>
-					<input type="checkbox" id="displayCharges" name="display" value="charges" placeholder="charges">
-					<label for="displayCharges" class="icon-button" title="Charges">
-						<img src="icons/cylinder.png" alt="Charges">
-					</label>
+
 				</div>
 			</div>
 		</div>
@@ -2761,7 +2784,7 @@
 				<button id="removeChargeRuleBtn" class="toggle-buttons-custom icon-button" title="Remove Charges">
 					<img src="icons/cylinder-off.png" alt="Remove Charge Rule">
 				</button>
-				</div>
+			</div>
 		</div>
 	</div>
 

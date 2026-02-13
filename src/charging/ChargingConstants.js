@@ -152,7 +152,14 @@ export const DECK_COLORS = Object.freeze({
 	ELECTRONIC_LINE: "#1E90FF"
 });
 
-// CHARGE CONFIG CODES
+// DECK SCALING MODES
+export const DECK_SCALING_MODES = Object.freeze({
+	FIXED_LENGTH: "fixedLength",
+	FIXED_MASS: "fixedMass",
+	PROPORTIONAL: "proportional"
+});
+
+// CHARGE CONFIG CODES (informational label only, not a dispatch key)
 export const CHARGE_CONFIG_CODES = Object.freeze({
 	SIMPLE_SINGLE: "SIMPLE_SINGLE",
 	STANDARD_VENTED: "STNDVS",

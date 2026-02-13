@@ -7,6 +7,7 @@
 
 import * as THREE from "three";
 import { GeometryFactory } from "../three/GeometryFactory.js";
+import { buildMassLabels } from "./canvas2DDrawing.js";
 
 //=================================================
 // 3D ANALYSIS CACHE - Prevents rebuilding geometry every frame
@@ -631,6 +632,21 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 		// Step 5a) Use topSideToe for Y position to match 2D layout (left side, toe vertical position)
 		const massPosWorld = canvasToWorld(leftSideCollar, topSideToe);
 		drawHoleTextThreeJS(massPosWorld.x, massPosWorld.y, collarZ, hole.measuredMass, fontSize / 1.5, "#FF6600", "right");
+	}
+	if (displayOptions.massPerHole) {
+		var mLabels = buildMassLabels(hole.holeID);
+		if (mLabels.perHole) {
+			var mphPos = canvasToWorld(leftSideCollar, middleSideToe);
+			drawHoleTextThreeJS(mphPos.x, mphPos.y, collarZ, mLabels.perHole, fontSize / 1.5, "#FF0000", "right");
+		}
+	}
+	if (displayOptions.massPerDeck) {
+		var dLabels = buildMassLabels(hole.holeID);
+		var massLineH = BASE_FONT_SIZE;
+		for (var ml = 0; ml < dLabels.perDeck.length; ml++) {
+			var mpdPos = canvasToWorld(leftSideCollar, middleSideToe + ml * massLineH);
+			drawHoleTextThreeJS(mpdPos.x, mpdPos.y, collarZ, dLabels.perDeck[ml], fontSize / 1.5, "#FF0000", "right");
+		}
 	}
 }
 
