@@ -253,6 +253,65 @@ export function showDeckBuilderDialog(referenceHole) {
     summaryRow.id = "deckBuilderSummary";
     bottomArea.appendChild(summaryRow);
 
+    // Per-hole short hole override row (matches deck-builder-summary styling)
+    if (!isVirtualHole) {
+        var shortHoleRow = document.createElement("div");
+        shortHoleRow.className = "deck-builder-summary";
+        shortHoleRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:4px;";
+
+        var shLabel = document.createElement("span");
+        shLabel.textContent = "Short Hole:";
+        shortHoleRow.appendChild(shLabel);
+
+        // Use a select instead of tri-state checkbox for clarity
+        var shSelect = document.createElement("select");
+        shSelect.id = "perHoleShortHole";
+        shSelect.style.cssText = "font-size:10px;padding:1px 2px;height:18px;border:1px solid #999;border-radius:2px;";
+        var optConfig = document.createElement("option");
+        optConfig.value = "config";
+        optConfig.textContent = "Config default";
+        shSelect.appendChild(optConfig);
+        var optYes = document.createElement("option");
+        optYes.value = "true";
+        optYes.textContent = "Yes";
+        shSelect.appendChild(optYes);
+        var optNo = document.createElement("option");
+        optNo.value = "false";
+        optNo.textContent = "No";
+        shSelect.appendChild(optNo);
+
+        var currentShVal = refHole.applyShortHoleCharging;
+        if (currentShVal === true) {
+            shSelect.value = "true";
+        } else if (currentShVal === false) {
+            shSelect.value = "false";
+        } else {
+            shSelect.value = "config";
+        }
+        shortHoleRow.appendChild(shSelect);
+
+        var shThreshLabel = document.createElement("span");
+        shThreshLabel.textContent = "Threshold:";
+        shThreshLabel.style.marginLeft = "6px";
+        shortHoleRow.appendChild(shThreshLabel);
+
+        var shThreshInput = document.createElement("input");
+        shThreshInput.type = "number";
+        shThreshInput.id = "perHoleShortHoleThreshold";
+        shThreshInput.min = "0";
+        shThreshInput.step = "0.1";
+        shThreshInput.style.cssText = "width:45px;font-size:10px;padding:1px 3px;height:18px;border:1px solid #999;border-radius:2px;";
+        shThreshInput.value = refHole.shortHoleThreshold != null ? refHole.shortHoleThreshold : "";
+        shThreshInput.placeholder = "auto";
+        shortHoleRow.appendChild(shThreshInput);
+
+        var shUnit = document.createElement("span");
+        shUnit.textContent = "m";
+        shortHoleRow.appendChild(shUnit);
+
+        bottomArea.appendChild(shortHoleRow);
+    }
+
     // Action buttons
     var actionRow = document.createElement("div");
     actionRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
@@ -1031,13 +1090,15 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
     // Scaling mode selector
     var currentScalingMode = deck.isFixedLength ? DECK_SCALING_MODES.FIXED_LENGTH
         : deck.isFixedMass ? DECK_SCALING_MODES.FIXED_MASS
+        : deck.isVariable ? DECK_SCALING_MODES.VARIABLE
         : DECK_SCALING_MODES.PROPORTIONAL;
     fields.push({
         label: "Scaling Mode", name: "scalingMode", type: "select",
         options: [
             { value: DECK_SCALING_MODES.PROPORTIONAL, text: "Proportional (scales with hole)" },
             { value: DECK_SCALING_MODES.FIXED_LENGTH, text: "Fixed Length (stays exact)" },
-            { value: DECK_SCALING_MODES.FIXED_MASS, text: "Fixed Mass (recalcs from density)" }
+            { value: DECK_SCALING_MODES.FIXED_MASS, text: "Fixed Mass (recalcs from density)" },
+            { value: DECK_SCALING_MODES.VARIABLE, text: "Variable (re-evaluates formula)" }
         ],
         value: currentScalingMode
     });
@@ -1178,10 +1239,12 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
             if (useMass) {
                 deck.isFixedLength = false;
                 deck.isFixedMass = true;
+                deck.isVariable = false;
                 deck.isProportionalDeck = false;
             } else {
                 deck.isFixedLength = (newScalingMode === DECK_SCALING_MODES.FIXED_LENGTH);
                 deck.isFixedMass = (newScalingMode === DECK_SCALING_MODES.FIXED_MASS);
+                deck.isVariable = (newScalingMode === DECK_SCALING_MODES.VARIABLE);
                 deck.isProportionalDeck = (newScalingMode === DECK_SCALING_MODES.PROPORTIONAL);
             }
 
@@ -1377,8 +1440,28 @@ function applyToSelectedHoles(workingCharging, refHole, configTracker) {
     showConfirmationDialog("Apply Charging", "Apply this charging design (" + modeLabel + ") to " + targets.length + " hole(s)?", "Apply", "Cancel", function () {
         var refLen = Math.abs(workingCharging.holeLength);
 
+        // Read per-hole short hole override values from UI
+        var shSelect = document.getElementById("perHoleShortHole");
+        var shThreshInput = document.getElementById("perHoleShortHoleThreshold");
+        var perHoleShortVal = null; // null = use config default
+        if (shSelect) {
+            if (shSelect.value === "true") perHoleShortVal = true;
+            else if (shSelect.value === "false") perHoleShortVal = false;
+            // "config" stays null
+        }
+        var perHoleThreshVal = null;
+        if (shThreshInput && shThreshInput.value !== "") {
+            perHoleThreshVal = parseFloat(shThreshInput.value);
+            if (isNaN(perHoleThreshVal)) perHoleThreshVal = null;
+        }
+
         for (var i = 0; i < targets.length; i++) {
             var hole = targets[i];
+
+            // Apply per-hole short hole overrides
+            hole.applyShortHoleCharging = perHoleShortVal;
+            hole.shortHoleThreshold = perHoleThreshVal;
+
             var hc;
 
             if (activeConfig && typeof window.applyChargeRule === "function") {
@@ -1404,9 +1487,20 @@ function applyToSelectedHoles(workingCharging, refHole, configTracker) {
             window.recalcMassPerHole();
         }
 
-        // Save to IndexedDB
+        // Invalidate analysis caches so 3D Voronoi rebuilds with new mass data
+        if (typeof window.bumpDataVersion === "function") {
+            window.bumpDataVersion();
+        }
+        if (typeof window.invalidate3DAnalysisCaches === "function") {
+            window.invalidate3DAnalysisCaches();
+        }
+
+        // Save to IndexedDB (charging data + blast hole data for per-hole overrides)
         if (typeof window.debouncedSaveCharging === "function") {
             window.debouncedSaveCharging();
+        }
+        if (typeof window.debouncedSaveHoles === "function") {
+            window.debouncedSaveHoles();
         }
 
         // Redraw
@@ -1468,6 +1562,18 @@ function scaleChargingToHole(sourceCharging, targetHole, refLen) {
                 }
                 fixedTotal += deckLen;
                 deck._recalcLength = deckLen;
+            } else if (deck.isVariable && deck.lengthFormula) {
+                // Variable: re-evaluate formula with target hole context
+                var formulaCtx = {
+                    holeLength: targetLen,
+                    holeDiameter: targetDiameter,
+                    benchHeight: targetHole.benchHeight || 0,
+                    subdrillLength: targetHole.subdrillLength || 0
+                };
+                var fLen = evaluateFormula(deck.lengthFormula, formulaCtx);
+                var varLen = (fLen != null && fLen > 0) ? fLen : deckLen;
+                fixedTotal += varLen;
+                deck._recalcLength = varLen;
             } else {
                 oldProportionalTotal += deckLen;
                 proportionalIndices.push(d);
@@ -1489,8 +1595,16 @@ function scaleChargingToHole(sourceCharging, targetHole, refLen) {
             } else if (dk.isFixedMass) {
                 newLen = dk._recalcLength || oldLen;
                 delete dk._recalcLength;
+            } else if (dk.isVariable) {
+                newLen = dk._recalcLength || oldLen;
+                delete dk._recalcLength;
             } else {
                 newLen = oldLen * proportionalRatio;
+            }
+
+            // Truncate if exceeding hole length
+            if (cursor + newLen > targetLen) {
+                newLen = Math.max(0, targetLen - cursor);
             }
 
             // Ensure minimum deck thickness
@@ -1664,6 +1778,7 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                     product: deck.product ? deck.product.name : "Air",
                     isFixedLength: deck.isFixedLength || false,
                     isFixedMass: deck.isFixedMass || false,
+                    isVariable: deck.isVariable || false,
                     isProportionalDeck: deck.isProportionalDeck !== false
                 };
 

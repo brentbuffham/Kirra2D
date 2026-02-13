@@ -170,6 +170,7 @@ var README_CONTENT = [
     "    {idx,length,product}      - proportional scaling (default)",
     "    {idx,length,product,FL}   - isFixedLength (length does not scale)",
     "    {idx,length,product,FM}   - isFixedMass (mass does not scale)",
+    "    {idx,length,product,VR}   - isVariable (re-evaluates formula per hole)",
     "    {idx,length,product,PR}   - isProportionalDeck (explicit proportional)",
     "    Multiple entries separated by ;",
     "",
@@ -220,6 +221,12 @@ var README_CONTENT = [
     "    Math.min(a, b)   Math.max(a, b)   Math.abs(x)",
     "    Math.sqrt(x)     Math.PI          Math.round(x)",
     "",
+    "  Conditional operators (ternary):",
+    "    condition ? valueIfTrue : valueIfFalse    JavaScript ternary operator",
+    "    Comparison: < > <= >= == !=",
+    "    Logical: && (AND), || (OR), ! (NOT)",
+    "    Example: holeLength < 5 ? 2.0 : 3.0   (if hole < 5m use 2.0m, else 3.0m)",
+    "",
     "  Custom functions:",
     "    massLength(kg, density)          Length (m) for a given mass at holeDiameter",
     "                                     density in g/cc e.g. massLength(50, 0.85)",
@@ -238,6 +245,12 @@ var README_CONTENT = [
     "    fx:holeLength * 0.5                  Deck length = 50% of hole length",
     "    fx:holeLength - stemLength - 2       Deck fills hole minus stem and 2m",
     "    fx:Math.min(holeLength * 0.3, 5)     Deck is 30% of hole, capped at 5m",
+    "",
+    "  CONDITIONAL EXAMPLES (ternary operators):",
+    "    fx:holeLength < 5 ? holeLength * 0.4 : 2.0           If hole < 5m use 40%, else 2m",
+    "    fx:holeLength < 3 ? holeLength * 0.5 : holeLength < 4 ? holeLength * 0.4 : holeLength * 0.3",
+    "                                                         Tiered: <3m=50%, <4m=40%, else 30%",
+    "    fx:holeDiameter < 150 ? m:30 : m:50                  Mass by diameter",
     "",
     "  MASS-AWARE POSITIONING EXAMPLES:",
     "    fx:chargeTop[4] - massLength(50, 0.85)    Place deck above charge at position 4,",
@@ -598,6 +611,7 @@ function productToCSVRow(product) {
 function getScalingFlagSuffix(entry) {
     if (entry.isFixedLength) return "FL";
     if (entry.isFixedMass) return "FM";
+    if (entry.isVariable) return "VR";
     if (entry.isProportionalDeck) return "PR";
     return "";
 }
@@ -915,7 +929,7 @@ function parseDeckColumn(text, deckType) {
                 templateEntry.length = parseFloat(lengthStr) || 0;
             }
 
-            // Parse optional 4th element: scaling flag (FL, FM, PR)
+            // Parse optional 4th element: scaling flag (FL, FM, PR, VR)
             if (parts.length >= 4) {
                 var fourthPart = parts[3].trim();
                 // Check if it's a scaling flag or overlap syntax
@@ -923,6 +937,8 @@ function parseDeckColumn(text, deckType) {
                     templateEntry.isFixedLength = true;
                 } else if (fourthPart === "FM") {
                     templateEntry.isFixedMass = true;
+                } else if (fourthPart === "VR") {
+                    templateEntry.isVariable = true;
                 } else if (fourthPart === "PR") {
                     templateEntry.isProportionalDeck = true;
                 } else if (fourthPart.length > 8 && fourthPart.substring(0, 8) === "overlap:") {

@@ -192,10 +192,16 @@ function applyTemplate(hole, config, deckSequence) {
 		}
 	}
 
-	// Apply short-hole tier if enabled
+	// Apply short-hole tier if enabled — per-hole override takes priority over config
 	var shortHoleTier = null;
-	if (config.shortHoleLogic !== false) {
-		shortHoleTier = getShortHoleTier(holeLen, config.shortHoleLength);
+	var useShortHole = (hole.applyShortHoleCharging != null)
+		? hole.applyShortHoleCharging
+		: (config.shortHoleLogic !== false);
+	var shortHoleThreshold = (hole.shortHoleThreshold != null)
+		? hole.shortHoleThreshold
+		: config.shortHoleLength;
+	if (useShortHole) {
+		shortHoleTier = getShortHoleTier(holeLen, shortHoleThreshold);
 		if (shortHoleTier && shortHoleTier.chargeRatio === 0) {
 			// NO_CHARGE: return empty hole
 			return hc;
@@ -336,6 +342,7 @@ function applyTemplate(hole, config, deckSequence) {
 			lengthFormula = "m:" + entry.massKg;
 		}
 
+		var isVariableDeck = (entry.lengthMode === "formula") || (entry.isVariable || false);
 		var deckOpts = {
 			holeID: hc.holeID,
 			deckType: deckType,
@@ -345,9 +352,10 @@ function applyTemplate(hole, config, deckSequence) {
 			// Copy scaling flags from template entry
 			isFixedLength: entry.isFixedLength || false,
 			isFixedMass: entry.isFixedMass || false,
+			isVariable: isVariableDeck,
 			isProportionalDeck: entry.isProportionalDeck !== undefined
 				? entry.isProportionalDeck
-				: (!entry.isFixedLength && !entry.isFixedMass),
+				: (!entry.isFixedLength && !entry.isFixedMass && !isVariableDeck),
 			// Copy overlap pattern for DECOUPLED decks
 			overlapPattern: entry.overlapPattern || null,
 			// Store formula for display in Edit Deck dialog

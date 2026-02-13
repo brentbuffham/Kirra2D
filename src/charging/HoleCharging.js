@@ -7,6 +7,7 @@ import { Deck, generateUUID } from "./Deck.js";
 import { Primer } from "./Primer.js";
 import { DecoupledContent } from "./DecoupledContent.js";
 import { DECK_TYPES, DEFAULT_DECK, VALIDATION_MESSAGES } from "./ChargingConstants.js";
+import { evaluateFormula } from "../helpers/FormulaEvaluator.js";
 
 export class HoleCharging {
 	constructor(hole) {
@@ -379,6 +380,18 @@ export class HoleCharging {
 						fixedTotal += deckLen;
 						deck._recalcLength = deckLen;
 					}
+				} else if (deck.isVariable && deck.lengthFormula) {
+					// Variable: re-evaluate formula with current hole context
+					var formulaCtx = {
+						holeLength: newLength,
+						holeDiameter: newDiameter,
+						benchHeight: hole.benchHeight || 0,
+						subdrillLength: hole.subdrillLength || 0
+					};
+					var fLen = evaluateFormula(deck.lengthFormula, formulaCtx);
+					var varLen = (fLen != null && fLen > 0) ? fLen : deckLen;
+					fixedTotal += varLen;
+					deck._recalcLength = varLen;
 				} else {
 					// Proportional: will be rescaled
 					oldProportionalTotal += deckLen;
@@ -400,8 +413,16 @@ export class HoleCharging {
 				} else if (dk.isFixedMass) {
 					newDeckLen = dk._recalcLength || dk.length;
 					delete dk._recalcLength;
+				} else if (dk.isVariable) {
+					newDeckLen = dk._recalcLength || dk.length;
+					delete dk._recalcLength;
 				} else {
 					newDeckLen = dk.length * proportionalRatio;
+				}
+
+				// Truncate if exceeding hole length
+				if (cursor + newDeckLen > newLength) {
+					newDeckLen = Math.max(0, newLength - cursor);
 				}
 
 				dk.topDepth = cursor;

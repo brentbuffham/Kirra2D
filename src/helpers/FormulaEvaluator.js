@@ -7,7 +7,11 @@
  * Available variables: holeLength, chargeLength, chargeTop, chargeBase, stemLength, holeDiameter
  * Indexed variables: chargeBase[N], chargeTop[N], etc. where N = deck position from section view
  *   Internally mapped: chargeBase[4] → chargeBase_4
- * Math functions available: Math.min(), Math.max(), Math.abs(), Math.PI, Math.sqrt(), etc.
+ * Math functions available: Math.min(), Math.max(), Math.abs(), Math.PI, Math.sqrt(), Math.round()
+ *
+ * Conditional operators (ternary): condition ? valueIfTrue : valueIfFalse
+ * Comparison operators: < > <= >= == !=
+ * Logical operators: && (AND), || (OR), ! (NOT)
  *
  * Custom functions:
  *   massLength(kg, density)         - Length from mass using numeric density (g/cc) and holeDiameter
@@ -16,6 +20,7 @@
  * Examples: "=chargeBase - chargeLength * 0.1"  or  "fx:chargeBase[4] - 0.3"
  *           "fx:chargeTop[4] - massLength(50, 1.2)"
  *           "fx:chargeTop[4] - massLength(50, \"GENERIC4060\")"
+ *           "fx:holeLength < 5 ? holeLength * 0.4 : 2.0"
  */
 
 /**

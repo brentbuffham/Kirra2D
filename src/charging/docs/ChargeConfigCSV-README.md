@@ -85,15 +85,16 @@ Format: `{idx,length,product}` or `{idx,length,product,FLAG}` — multiple entri
 |------|------|--------------------------------------------------|
 | `FL` | Fixed Length | Deck keeps its exact metre length regardless of hole length |
 | `FM` | Fixed Mass | Deck recalculates length from mass at the new hole diameter |
+| `VR` | Variable | Deck re-evaluates its formula with the current hole's properties (auto-set for formula decks) |
 | `PR` | Proportional | Deck scales proportionally with hole length (default) |
 
-When no flag is specified, the deck defaults to **proportional** scaling.
+When no flag is specified, the deck defaults to **proportional** scaling. Formula decks (`fx:...` length mode) are automatically set to **Variable** scaling so their formula is re-evaluated for each hole rather than being proportionally stretched.
 
 **Examples:**
 
 ```
 inertDeck:     {1,3.5,Stemming,FL};{5,fill,Stemming}
-coupledDeck:   {2,fill,ANFO};{4,2.0,ANFO,FL}
+coupledDeck:   {2,fx:(holeLength<3.5)?(holeLength*0.3):3.5,ANFO,VR};{4,2.0,ANFO,FL}
 decoupledDeck: {3,1.5,PKG75mm,FL}
 ```
 
@@ -215,6 +216,18 @@ The index `N` is the 1-based deck array position, matching the `[N]` shown in th
 
 `Math.min(a, b)` `Math.max(a, b)` `Math.abs(x)` `Math.sqrt(x)` `Math.PI` `Math.round(x)`
 
+### Conditional Operators
+
+`condition ? valueIfTrue : valueIfFalse` (JavaScript ternary operator)
+
+Comparison operators: `<` `>` `<=` `>=` `==` `!=`
+
+Logical operators: `&&` (AND), `||` (OR), `!` (NOT)
+
+**Examples:**
+- `holeLength < 5 ? 2.0 : 3.0` → If hole < 5m use 2.0m, else 3.0m
+- `benchHeight > 8 && holeDiameter > 150 ? m:75 : m:50` → 75kg if bench >8m AND diameter >150mm
+
 ### Custom Functions
 
 | Function | Description |
@@ -248,6 +261,35 @@ The result varies per-hole because `holeDiameter` comes from the hole data. This
 | `fx:holeLength * 0.5` | Deck length = 50% of hole length |
 | `fx:holeLength - stemLength - 2` | Deck fills hole minus stem and 2m subdrill |
 | `fx:Math.min(holeLength * 0.3, 5)` | 30% of hole capped at 5m max |
+
+### Formula Examples — Conditional (Ternary) Expressions
+
+Kirra supports JavaScript ternary operators for conditional logic in formulas. Syntax: `condition ? valueIfTrue : valueIfFalse`
+
+| Example # | Function (fx:) | Description | Example Result |
+|-----------|----------------|-------------|----------------|
+| 1 | `fx:holeLength < 5 ? holeLength * 0.4 : 2.0` | If hole < 5m use 40%, else use fixed 2.0m | 4m hole → 1.6m<br>8m hole → 2.0m |
+| 2 | `fx:holeLength < 3 ? holeLength * 0.5 : holeLength < 4 ? holeLength * 0.4 : holeLength * 0.3` | Tiered stem: <3m=50%, <4m=40%, else 30% | 2.5m → 1.25m<br>3.5m → 1.4m<br>6m → 1.8m |
+| 3 | `fx:holeDiameter < 150 ? m:30 : holeDiameter < 200 ? m:50 : m:75` | Mass by diameter: <150mm=30kg, <200mm=50kg, else 75kg | 115mm → 30kg<br>165mm → 50kg<br>250mm → 75kg |
+| 4 | `fx:benchHeight < 6 ? chargeBase - 0.2 : benchHeight < 10 ? chargeBase - 0.4 : chargeBase - 0.6` | Primer offset by bench: <6m=0.2m, <10m=0.4m, else 0.6m | 5m bench → base-0.2m<br>8m bench → base-0.4m<br>12m bench → base-0.6m |
+| 5 | `fx:subdrillLength > 1 ? (holeLength - subdrillLength) * 0.8 : holeLength * 0.7` | If subdrill >1m charge to 80% above grade, else 70% of hole | 10m hole, 2m sub → 6.4m<br>10m hole, 0.5m sub → 7m |
+
+**Nested Ternary Readability Tip:**
+
+Complex nested conditions can be made clearer with parentheses:
+
+```
+fx:(holeLength < 3) ? (holeLength * 0.5) : (holeLength < 4) ? (holeLength * 0.4) : (holeLength * 0.3)
+```
+
+**Combining Conditionals with Math Functions:**
+
+```
+fx:holeLength < 5 ? Math.min(holeLength * 0.4, 2.5) : Math.max(holeLength * 0.3, 2.0)
+```
+Short holes: 40% capped at 2.5m | Long holes: 30% with 2m minimum
+
+---
 
 ### Formula Examples — Mass-Aware Positioning
 
@@ -308,12 +350,13 @@ When a charge config is applied to holes of different lengths, each deck's scali
 - **Proportional** (default): Deck length scales proportionally with hole length
 - **Fixed Length** (`FL`): Deck keeps its exact metre length. Stemming stays 3.5m whether the hole is 8m or 15m.
 - **Fixed Mass** (`FM`): Deck recalculates its length to maintain the same mass at the new hole diameter.
+- **Variable** (`VR`): Deck re-evaluates its formula expression using the current hole's properties (holeLength, holeDiameter, benchHeight, subdrillLength). Formula decks are automatically set to Variable mode so the formula result adapts per hole instead of being proportionally stretched.
 
 The template engine uses a two-pass layout:
-1. **Pass 1**: Fixed-length and fixed-mass decks claim their space first
+1. **Pass 1**: Fixed-length, fixed-mass, and variable decks claim their space first (variable decks re-evaluate their formula)
 2. **Pass 2**: Remaining space is distributed among proportional decks
 
-The section view shows badges: **F** (blue) for fixed-length, **M** (orange) for fixed-mass.
+The section view shows badges: **F** (blue) for fixed-length, **M** (orange) for fixed-mass, **VR** (green) for variable.
 
 ---
 
@@ -371,11 +414,11 @@ This table provides practical formula examples for common charging scenarios. Al
 | 13 | **Dynamic Deck Split** | `fx:(holeLength - 4) * 0.5` | Half of available charge zone | Even split after stem |
 | 14 | **Mass Above Charge Deck** | `fx:chargeTop[4] - massLength(50, 0.85)` | 50kg ANFO above position 4 | Mass-aware spacing |
 | 15 | **Mass by Product Name** | `fx:chargeTop[4] - massLength(50, "ANFO")` | 50kg using product lookup | Product density auto-lookup |
-| 16 | **Toe Charge with Mass Gap** | `fx:holeLength - 2 - massLength(30, 1.2)` | 30kg above 2m toe deck | Mass gap above fixed deck |
-| 17 | **Primer Between Decks** | `fx:(chargeBase[2] + chargeTop[3]) * 0.5` | Midpoint between deck 2 & 3 | Multi-deck primer placement |
-| 18 | **Adaptive Collar Primer** | `fx:Math.max(chargeTop + 1, chargeBase - 0.5)` | At least 1m below charge top | Safe primer depth |
-| 19 | **Proportional Deck in Zone** | `fx:(holeLength - stemLength - 2) * 0.6` | 60% of charge zone | Zone-based proportional |
-| 20 | **Sqrt-Based Deck Scaling** | `fx:Math.sqrt(holeLength) * 2` | Deck length grows slower | Non-linear scaling |
+| 16 | **Conditional Stem Length** | `fx:holeLength < 5 ? holeLength * 0.4 : 2.0` | <5m use 40%, else fixed 2m | Short hole adaptive stem |
+| 17 | **Tiered Stem Percentage** | `fx:holeLength < 3 ? holeLength * 0.5 : holeLength < 4 ? holeLength * 0.4 : holeLength * 0.3` | Multi-tier: 50%/40%/30% | Variable stem by depth |
+| 18 | **Diameter-Based Mass** | `fx:holeDiameter < 150 ? m:30 : holeDiameter < 200 ? m:50 : m:75` | Mass scales with diameter | Adaptive charge mass |
+| 19 | **Bench-Dependent Primer** | `fx:benchHeight < 6 ? chargeBase - 0.2 : benchHeight < 10 ? chargeBase - 0.4 : chargeBase - 0.6` | Primer offset by bench height | Safety depth scaling |
+| 20 | **Subdrill Conditional** | `fx:subdrillLength > 1 ? (holeLength - subdrillLength) * 0.8 : holeLength * 0.7` | Charge strategy by subdrill | Adapt to toe conditions |
 
 ### Formula Categories
 
@@ -386,16 +429,20 @@ This table provides practical formula examples for common charging scenarios. Al
 
 #### **Mass Formulas** (Fixed Mass Decks)
 - Formulas 7-8: Direct mass specification with `m:` prefix
-- Formulas 14-16: Mass-aware positioning using `massLength()` function
+- Formulas 14-15: Mass-aware positioning using `massLength()` function
 - Mass varies in length but stays constant in kg across different hole diameters
 
 #### **Primer Depth Formulas** (Detonator Positioning)
 - Formulas 4-6: Depth-based primer placement (% or offset from charge)
-- Formula 17: Inter-deck primer placement
-- Formula 18: Adaptive primer with safety bounds
+- Formula 19: Bench-dependent primer positioning with tiered offsets
+
+#### **Conditional Formulas** (Ternary Operators)
+- Formulas 16-20: Use ternary operators for adaptive charging logic
+- Support hole length, diameter, bench height, and subdrill conditions
+- Enable multi-tier strategies that respond to hole geometry
 
 #### **Multi-Deck Formulas** (Indexed Variables)
-- Formulas 6, 14-17: Use bracket notation `[N]` to target specific deck positions
+- Formulas 6, 14-15: Use bracket notation `[N]` to target specific deck positions
 - Enables precise control in complex multi-deck configurations
 
 ### Using These Formulas

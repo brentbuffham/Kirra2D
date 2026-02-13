@@ -785,12 +785,14 @@ function exposeGlobalsToWindow() {
 	window.loadedCharging = loadedCharging;
 	window.loadedChargeConfigs = loadedChargeConfigs;
 	window.debouncedSaveProducts = function() { debouncedSaveProducts(db, loadedProducts); };
-	window.debouncedSaveCharging = function() { debouncedSaveCharging(db, loadedCharging); };
+	window.debouncedSaveCharging = function() { debouncedSaveCharging(db, window.loadedCharging || loadedCharging); };
 	window.debouncedSaveConfigs = function() { debouncedSaveConfigs(db, loadedChargeConfigs); };
 	window.showProductManagerDialog = showProductManagerDialog;
 	window.showDeckBuilderDialog = showDeckBuilderDialog;
 	window.applyChargeRule = applyChargeRule;
 	window.recalcMassPerHole = function() { recalcMassPerHole(allBlastHoles, window.loadedCharging); };
+	window.bumpDataVersion = bumpDataVersion;
+	window.invalidate3DAnalysisCaches = invalidate3DAnalysisCaches;
 	window.remapChargingKeys = remapChargingKeys;
 	window.extractPlainIdRemap = extractPlainIdRemap;
 	window.exportBaseConfigTemplate = exportBaseConfigTemplate;
@@ -4332,6 +4334,9 @@ class BlastHole {
 		this.spacing = data.spacing || 1;
 		this.connectorCurve = data.connectorCurve || 0;
 		this.massPerHole = data.massPerHole || 0; // Computed from charging system
+		// Per-hole short hole overrides (null = use config setting)
+		this.applyShortHoleCharging = data.applyShortHoleCharging != null ? data.applyShortHoleCharging : null;
+		this.shortHoleThreshold = data.shortHoleThreshold != null ? data.shortHoleThreshold : null;
 	}
 }
 
@@ -6238,8 +6243,14 @@ function updateTranslations(language) {
 					case "powderFactor":
 						option.textContent = langTranslations.powder_factor;
 						break;
+					case "powderFactorDesigned":
+						option.textContent = langTranslations.powder_factor_designed;
+						break;
 					case "mass":
 						option.textContent = langTranslations.mass;
+						break;
+					case "designedMass":
+						option.textContent = langTranslations.designed_mass;
 						break;
 					case "volume":
 						option.textContent = langTranslations.volume;
@@ -6255,12 +6266,6 @@ function updateTranslations(language) {
 						break;
 					case "holeFiringTime":
 						option.textContent = langTranslations.hole_firing_time;
-						break;
-					case "heelanVibration":
-						option.textContent = langTranslations.heelan_vibration;
-						break;
-					case "unknown":
-						option.textContent = langTranslations.unknown;
 						break;
 				}
 			});
@@ -7880,6 +7885,8 @@ for (i = 0; i < acc.length; i++) {
 
 const voronoiMetricDropdown = document.getElementById("voronoiSelect");
 if (voronoiMetricDropdown) {
+	// Sync JS variable with the HTML dropdown's current value on load
+	selectedVoronoiMetric = voronoiMetricDropdown.value || "powderFactor";
 	voronoiMetricDropdown.addEventListener("change", function (e) {
 		selectedVoronoiMetric = e.target.value;
 		drawData(allBlastHoles, selectedHole); // Redraw with the new metric
@@ -19575,9 +19582,12 @@ function getVoronoiMetrics(allBlastHoles, useToeLocation) {
 			const designedLength = parseFloat(h.holeLengthCalculated || 0);
 			const holeFiringTime = parseFloat(h.holeTime || 0);
 			const mass = parseFloat(h.measuredMass || 0);
+			const designedMass = parseFloat(h.massPerHole || 0);
 			const volume = area * length;
 			const powderFactor = volume > 0 ? mass / volume : null;
-			//Add more metrics here
+			// Designed PF uses burden × spacing × holeLength (matching charging system)
+			const bsVolume = (parseFloat(h.burden) || 1) * (parseFloat(h.spacing) || 1) * (parseFloat(h.holeLengthCalculated) || 1);
+			const powderFactorDesigned = designedMass > 0 && bsVolume > 0 ? designedMass / bsVolume : null;
 
 			voronoiResults.push({
 				index: i,
@@ -19590,8 +19600,9 @@ function getVoronoiMetrics(allBlastHoles, useToeLocation) {
 				holeFiringTime: holeFiringTime,
 				volume: volume,
 				mass: mass,
+				designedMass: designedMass,
 				powderFactor: powderFactor,
-				//add a scaled heelan vibration calculation here
+				powderFactorDesigned: powderFactorDesigned,
 			});
 		}
 
@@ -20608,6 +20619,7 @@ function clipVoronoiCells(voronoiMetrics) {
 					area,
 					volume,
 					powderFactor,
+					// powderFactorDesigned uses burden×spacing×holeLength, not cell area — keep original value
 				});
 				cellSuccessfullyClippedAndAdded = true;
 				break; // Important: Cell is clipped by this boundary, no need to check others
@@ -29608,10 +29620,10 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
 					if (!onlyShowThreeJS) {
-						drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getPFColor(value, minPF, maxPF), "Legend Powder Factor", minPF, maxPF, intervalPF);
+						drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getPFColor(value, minPF, maxPF), "Legend PF Measured", minPF, maxPF, intervalPF);
 					}
 					// HUD: Show Voronoi legend
-					showVoronoiLegend("Powder Factor (kg/m\u00b3)", minPF, maxPF);
+					showVoronoiLegend("PF - Measured (kg/m\u00b3)", minPF, maxPF);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
 					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
@@ -29663,10 +29675,10 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					// Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
 					if (!onlyShowThreeJS) {
-						drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getMassColor(value, minMass, maxMass), "Legend Mass", minMass, maxMass, intervalMass);
+						drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getMassColor(value, minMass, maxMass), "Legend Measured Mass", minMass, maxMass, intervalMass);
 					}
 					// HUD: Show Voronoi legend
-					showVoronoiLegend("Mass (kg)", minMass, maxMass);
+					showVoronoiLegend("Measured Mass (kg)", minMass, maxMass);
 					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
 					// OPTIMIZED: Skip check happens inside, calculations only if needed
 					if (threeInitialized && onlyShowThreeJS) {
@@ -29963,6 +29975,104 @@ function drawData(allBlastHoles, selectedHole) {
 							0.2,
 							useToeLocation,
 							"holeFiringTime",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
+						);
+					}
+					break;
+				}
+				case "powderFactorDesigned": {
+					let minPFD, maxPFD, intervalPFD, deltaPFD;
+
+					if (!isVoronoiLegendFixed) {
+						const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+						const clippedCells = clipVoronoiCells(voronoiMetrics);
+						const values = clippedCells.map((c) => c.powderFactorDesigned).filter((v) => v != null && !isNaN(v));
+						minPFD = 0;
+						maxPFD = values.length > 0 ? Math.max(...values) : 3;
+						if (maxPFD - minPFD > 0) {
+							deltaPFD = maxPFD - minPFD;
+							intervalPFD = deltaPFD / 4;
+						} else {
+							minPFD = 0;
+							maxPFD = 1;
+							intervalPFD = 0.2;
+						}
+					} else {
+						minPFD = 0;
+						maxPFD = 3;
+						if (maxPFD - minPFD > 0) {
+							deltaPFD = maxPFD - minPFD;
+							intervalPFD = deltaPFD > 0 ? Math.ceil(deltaPFD / 10) : 0.5;
+						} else {
+							minPFD = 0;
+							maxPFD = 1;
+							intervalPFD = 0.2;
+						}
+					}
+					if (!onlyShowThreeJS) {
+						drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getPFColor(value, minPFD, maxPFD), "Legend PF Designed", minPFD, maxPFD, intervalPFD);
+					}
+					showVoronoiLegend("PF - Designed (kg/m\u00b3)", minPFD, maxPFD);
+					if (threeInitialized && onlyShowThreeJS) {
+						drawVoronoiCellsThreeJS(
+							function (value) {
+								return getPFColor(value, minPFD, maxPFD);
+							},
+							allBlastHoles,
+							0.2,
+							useToeLocation,
+							"powderFactorDesigned",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
+						);
+					}
+					break;
+				}
+				case "designedMass": {
+					let minDMass, maxDMass, intervalDMass, deltaDMass;
+
+					if (!isVoronoiLegendFixed) {
+						const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+						const clippedCells = clipVoronoiCells(voronoiMetrics);
+						const values = clippedCells.map((c) => c.designedMass).filter((v) => v != null && !isNaN(v));
+						minDMass = values.length > 0 ? Math.min(...values) : 0;
+						maxDMass = values.length > 0 ? Math.max(...values) : 500;
+						if (maxDMass - minDMass > 0) {
+							deltaDMass = maxDMass - minDMass;
+							intervalDMass = deltaDMass / 4;
+						} else {
+							minDMass = 0;
+							maxDMass = 1;
+							intervalDMass = 0.2;
+						}
+					} else {
+						minDMass = 0;
+						maxDMass = 1000;
+						if (maxDMass - minDMass > 0) {
+							deltaDMass = maxDMass - minDMass;
+							intervalDMass = deltaDMass > 0 ? Math.ceil(deltaDMass / 10) : 250;
+						} else {
+							minDMass = 0;
+							maxDMass = 1;
+							intervalDMass = 0.2;
+						}
+					}
+					if (!onlyShowThreeJS) {
+						drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getMassColor(value, minDMass, maxDMass), "Legend Designed Mass", minDMass, maxDMass, intervalDMass);
+					}
+					showVoronoiLegend("Designed Mass (kg)", minDMass, maxDMass);
+					if (threeInitialized && onlyShowThreeJS) {
+						drawVoronoiCellsThreeJS(
+							function (value) {
+								return getMassColor(value, minDMass, maxDMass);
+							},
+							allBlastHoles,
+							0.2,
+							useToeLocation,
+							"designedMass",
 							getCachedVoronoiCells,
 							getVoronoiMetrics,
 							clipVoronoiCells
@@ -30617,6 +30727,46 @@ function drawData(allBlastHoles, selectedHole) {
 							return getHoleFiringTimeColor(value, minHTime3D, maxHTime3D);
 						};
 						break;
+					case "powderFactorDesigned":
+						var minPFD3D, maxPFD3D;
+						if (!isVoronoiLegendFixed) {
+							var pfdValues3D = clippedCells3D
+								.map(function (c) {
+									return c.powderFactorDesigned;
+								})
+								.filter(function (v) {
+									return v != null && !isNaN(v);
+								});
+							minPFD3D = 0;
+							maxPFD3D = pfdValues3D.length > 0 ? Math.max.apply(null, pfdValues3D) : 3;
+						} else {
+							minPFD3D = 0;
+							maxPFD3D = 3;
+						}
+						colorFunction3D = function (value) {
+							return getPFColor(value, minPFD3D, maxPFD3D);
+						};
+						break;
+					case "designedMass":
+						var minDMass3D, maxDMass3D;
+						if (!isVoronoiLegendFixed) {
+							var dMassValues3D = clippedCells3D
+								.map(function (c) {
+									return c.designedMass;
+								})
+								.filter(function (v) {
+									return v != null && !isNaN(v);
+								});
+							minDMass3D = dMassValues3D.length > 0 ? Math.min.apply(null, dMassValues3D) : 0;
+							maxDMass3D = dMassValues3D.length > 0 ? Math.max.apply(null, dMassValues3D) : 500;
+						} else {
+							minDMass3D = 0;
+							maxDMass3D = 1000;
+						}
+						colorFunction3D = function (value) {
+							return getMassColor(value, minDMass3D, maxDMass3D);
+						};
+						break;
 					default:
 						// Step 3.3c.15) Default to PF with fixed range
 						colorFunction3D = function (value) {
@@ -30639,10 +30789,16 @@ function drawData(allBlastHoles, selectedHole) {
 				// HUD: Show appropriate Voronoi legend in 3D mode
 				switch (selectedMetric3D) {
 					case "powderFactor":
-						showVoronoiLegend("Powder Factor (kg/m\u00b3)", minPF3D, maxPF3D);
+						showVoronoiLegend("PF - Measured (kg/m\u00b3)", minPF3D, maxPF3D);
+						break;
+					case "powderFactorDesigned":
+						showVoronoiLegend("PF - Designed (kg/m\u00b3)", minPFD3D, maxPFD3D);
 						break;
 					case "mass":
-						showVoronoiLegend("Mass (kg)", minMass3D, maxMass3D);
+						showVoronoiLegend("Measured Mass (kg)", minMass3D, maxMass3D);
+						break;
+					case "designedMass":
+						showVoronoiLegend("Designed Mass (kg)", minDMass3D, maxDMass3D);
 						break;
 					case "volume":
 						showVoronoiLegend("Volume (m\u00b3)", minVol3D, maxVol3D);

@@ -609,14 +609,14 @@ export class HoleSectionView {
         ctx.lineWidth = 1;
         ctx.strokeRect(drawX, y1, drawW, deckH);
 
-        // Scaling flag badge: "F" for fixed-length, "M" for fixed-mass
-        if (deck.isFixedLength || deck.isFixedMass) {
-            var badgeLabel = deck.isFixedLength ? "F" : "M";
-            var badgeW = 14;
+        // Scaling flag badge: "F" for fixed-length, "M" for fixed-mass, "VR" for variable
+        if (deck.isFixedLength || deck.isFixedMass || deck.isVariable) {
+            var badgeLabel = deck.isFixedLength ? "F" : deck.isFixedMass ? "M" : "VR";
+            var badgeW = deck.isVariable ? 18 : 14;
             var badgeH = 12;
             var badgeX = drawX + drawW - badgeW - 2;
             var badgeY = y1 + 2;
-            ctx.fillStyle = deck.isFixedLength ? "#2266CC" : "#CC6622";
+            ctx.fillStyle = deck.isFixedLength ? "#2266CC" : deck.isFixedMass ? "#CC6622" : "#22AA44";
             ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
             ctx.fillStyle = "#FFFFFF";
             ctx.font = this._scaledFont(7, "bold");

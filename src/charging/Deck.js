@@ -35,9 +35,10 @@ export class Deck {
 		// Scaling flags — control how this deck behaves when hole length changes
 		this.isFixedLength = options.isFixedLength || false;
 		this.isFixedMass = options.isFixedMass || false;
+		this.isVariable = options.isVariable || false;
 		this.isProportionalDeck = (options.isProportionalDeck !== undefined)
 			? options.isProportionalDeck
-			: (!options.isFixedLength && !options.isFixedMass);
+			: (!options.isFixedLength && !options.isFixedMass && !options.isVariable);
 
 		// Decoupled overlap pattern — packages per position for variable stacking
 		// e.g. { base: 3, "base-1": 2, n: 1, top: 2 }
@@ -60,6 +61,7 @@ export class Deck {
 	get scalingMode() {
 		if (this.isFixedLength) return DECK_SCALING_MODES.FIXED_LENGTH;
 		if (this.isFixedMass) return DECK_SCALING_MODES.FIXED_MASS;
+		if (this.isVariable) return DECK_SCALING_MODES.VARIABLE;
 		return DECK_SCALING_MODES.PROPORTIONAL;
 	}
 
@@ -198,6 +200,7 @@ export class Deck {
 			maxCompressibleDensity: this.maxCompressibleDensity,
 			isFixedLength: this.isFixedLength,
 			isFixedMass: this.isFixedMass,
+			isVariable: this.isVariable,
 			isProportionalDeck: this.isProportionalDeck,
 			overlapPattern: this.overlapPattern,
 			topDepthFormula: this.topDepthFormula,

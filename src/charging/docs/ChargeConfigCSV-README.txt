@@ -188,6 +188,17 @@ Math Functions:
   Math.min(a, b)   Math.max(a, b)   Math.abs(x)
   Math.sqrt(x)     Math.PI          Math.round(x)
 
+Conditional Operators:
+
+  condition ? valueIfTrue : valueIfFalse    (JavaScript ternary operator)
+
+  Comparison operators: < > <= >= == !=
+  Logical operators: && (AND), || (OR), ! (NOT)
+
+  Examples:
+    holeLength < 5 ? 2.0 : 3.0                   If hole < 5m use 2.0m, else 3.0m
+    benchHeight > 8 && holeDiameter > 150 ? m:75 : m:50   75kg if bench >8m AND dia >150mm
+
 Custom Functions:
 
   massLength(kg, density)          Length (m) for a given mass at holeDiameter
@@ -215,6 +226,17 @@ Deck Length Examples:
   fx:holeLength * 0.5                               Deck = 50% of hole length
   fx:holeLength - stemLength - 2                    Fills hole minus stem and 2m
   fx:Math.min(holeLength * 0.3, 5)                  30% of hole capped at 5m max
+
+Conditional Examples (Ternary Operators):
+
+  fx:holeLength < 5 ? holeLength * 0.4 : 2.0                           If hole < 5m use 40%, else fixed 2m
+  fx:holeLength < 3 ? holeLength * 0.5 : holeLength < 4 ? holeLength * 0.4 : holeLength * 0.3
+                                                                       Tiered stem: <3m=50%, <4m=40%, else 30%
+  fx:holeDiameter < 150 ? m:30 : holeDiameter < 200 ? m:50 : m:75     Mass by diameter: <150mm=30kg, <200mm=50kg, else 75kg
+  fx:benchHeight < 6 ? chargeBase - 0.2 : benchHeight < 10 ? chargeBase - 0.4 : chargeBase - 0.6
+                                                                       Primer offset by bench height
+  fx:subdrillLength > 1 ? (holeLength - subdrillLength) * 0.8 : holeLength * 0.7
+                                                                       Charge strategy adapts to subdrill
 
 Mass-Aware Positioning Examples:
 

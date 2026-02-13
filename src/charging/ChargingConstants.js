@@ -156,7 +156,8 @@ export const DECK_COLORS = Object.freeze({
 export const DECK_SCALING_MODES = Object.freeze({
 	FIXED_LENGTH: "fixedLength",
 	FIXED_MASS: "fixedMass",
-	PROPORTIONAL: "proportional"
+	PROPORTIONAL: "proportional",
+	VARIABLE: "variable"
 });
 
 // CHARGE CONFIG CODES (informational label only, not a dispatch key)
