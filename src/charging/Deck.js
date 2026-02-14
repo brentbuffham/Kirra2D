@@ -95,7 +95,7 @@ export class Deck {
 
 		var total = 0;
 		for (var i = 0; i < positions; i++) {
-			total += this._packagesAtPosition(i, positions);
+			total += this.packagesAtPosition(i, positions);
 		}
 		return total;
 	}
@@ -108,7 +108,7 @@ export class Deck {
 	 * @param {number} totalPositions - Total positions in deck
 	 * @returns {number} Package count at this position
 	 */
-	_packagesAtPosition(posIndex, totalPositions) {
+	packagesAtPosition(posIndex, totalPositions) {
 		if (!this.overlapPattern) return 1;
 		var op = this.overlapPattern;
 		var fromBase = totalPositions - 1 - posIndex;

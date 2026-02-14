@@ -25,10 +25,6 @@ export class ChargeConfig {
 		// Primer spacing interval (metres between primers in long charge columns)
 		this.primerInterval = options.primerInterval || CHARGING_DEFAULTS.primerInterval;
 
-		// Short hole logic
-		this.shortHoleLogic = options.shortHoleLogic !== false;
-		this.shortHoleLength = options.shortHoleLength || CHARGING_DEFAULTS.shortHoleLength;
-
 		// Wet hole product swap (future)
 		this.wetHoleSwap = options.wetHoleSwap || false;
 		this.wetHoleProduct = options.wetHoleProduct || null;
@@ -69,8 +65,6 @@ export class ChargeConfig {
 			configName: this.configName,
 			description: this.description,
 			primerInterval: this.primerInterval,
-			shortHoleLogic: this.shortHoleLogic,
-			shortHoleLength: this.shortHoleLength,
 			wetHoleSwap: this.wetHoleSwap,
 			wetHoleProduct: this.wetHoleProduct,
 			inertDeckArray: this.inertDeckArray,

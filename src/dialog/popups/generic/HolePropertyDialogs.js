@@ -784,79 +784,6 @@ export function measuredCommentPopup() {
 }
 
 // =====================================
-// SHORT HOLE OVERRIDE DIALOG
-// =====================================
-export function editShortHoleOverridePopup() {
-	if (!window.selectedHole || !window.isHoleVisible(window.selectedHole)) {
-		console.log("Cannot edit hidden hole: " + (window.selectedHole ? window.selectedHole.holeID : "none"));
-		return;
-	}
-
-	var hole = window.selectedHole;
-	var currentApply = hole.applyShortHoleCharging;
-	var currentThreshold = hole.shortHoleThreshold;
-
-	var fields = [
-		{
-			label: "Apply Short Hole Charging",
-			name: "applyShortHole",
-			type: "select",
-			options: [
-				{ value: "config", text: "Use config default" },
-				{ value: "true", text: "Yes" },
-				{ value: "false", text: "No" }
-			],
-			value: currentApply == null ? "config" : (currentApply ? "true" : "false")
-		},
-		{
-			label: "Short Hole Threshold (m)",
-			name: "shortHoleThreshold",
-			value: currentThreshold != null ? String(currentThreshold) : "",
-			placeholder: "config default"
-		}
-	];
-
-	var formContent = window.createFormContent(fields);
-
-	var dialog = new window.FloatingDialog({
-		title: "Short Hole Override — " + hole.holeID,
-		content: formContent,
-		layoutType: "default",
-		width: 380,
-		height: 180,
-		showConfirm: true,
-		showCancel: true,
-		confirmText: "Save",
-		cancelText: "Cancel",
-		onConfirm: function () {
-			var formData = window.getFormData(formContent);
-
-			// Parse apply value: "config" -> null, "true" -> true, "false" -> false
-			if (formData.applyShortHole === "config") {
-				hole.applyShortHoleCharging = null;
-			} else {
-				hole.applyShortHoleCharging = formData.applyShortHole === "true";
-			}
-
-			// Parse threshold: empty -> null, number -> number
-			var threshStr = (formData.shortHoleThreshold || "").trim();
-			if (threshStr === "") {
-				hole.shortHoleThreshold = null;
-			} else {
-				var val = parseFloat(threshStr);
-				hole.shortHoleThreshold = isNaN(val) ? null : val;
-			}
-
-			if (typeof window.debouncedSaveHoles === "function") {
-				window.debouncedSaveHoles();
-			}
-			if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
-		}
-	});
-	dialog.show();
-}
-
-// =====================================
 // EXPOSE GLOBALLY
 // =====================================
 window.renameEntityDialog = renameEntityDialog;
@@ -866,6 +793,5 @@ window.editHoleLengthPopup = editHoleLengthPopup;
 window.measuredLengthPopup = measuredLengthPopup;
 window.measuredMassPopup = measuredMassPopup;
 window.measuredCommentPopup = measuredCommentPopup;
-window.editShortHoleOverridePopup = editShortHoleOverridePopup;
 
-console.log("✅ HolePropertyDialogs.js: All 8 property dialog functions loaded and exposed globally");
+console.log("✅ HolePropertyDialogs.js: All 7 property dialog functions loaded and exposed globally");

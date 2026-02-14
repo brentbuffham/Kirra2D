@@ -177,6 +177,8 @@ function hexToThreeColor(hexColor) {
 export function clearThreeJS() {
 	if (window.threeInitialized && window.threeRenderer) {
 		window.threeRenderer.clearAllGeometry();
+		// Invalidate analysis caches since geometry was removed
+		invalidate3DAnalysisCaches();
 	}
 }
 

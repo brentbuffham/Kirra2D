@@ -138,9 +138,6 @@ class BlastHoleCSVParser extends BaseParser {
 				burden = hvf("burden") || 0;
 				spacing = hvf("spacing") || 0;
 				connectorCurve = hvi("connectorCurve") || 0;
-				// Per-hole short hole overrides
-				var applyShortHoleVal = hv("applyShortHoleCharging");
-				var shortHoleThresholdVal = hvf("shortHoleThreshold");
 			}
 			// Step 15) Parse based on column count (35 column format - full data)
 			else if (len === 35) {
@@ -355,13 +352,7 @@ class BlastHoleCSVParser extends BaseParser {
 					posID: posID || null,
 					burden: burden || 1,
 					spacing: spacing || 1,
-					connectorCurve: connectorCurve || 0,
-					applyShortHoleCharging: (typeof applyShortHoleVal !== "undefined" && applyShortHoleVal != null && applyShortHoleVal !== "")
-						? (applyShortHoleVal === "true" || applyShortHoleVal === true)
-						: null,
-					shortHoleThreshold: (typeof shortHoleThresholdVal !== "undefined" && shortHoleThresholdVal != null && !isNaN(shortHoleThresholdVal))
-						? shortHoleThresholdVal
-						: null
+					connectorCurve: connectorCurve || 0
 				};
 
 				// Step 26) Add to parsed holes array

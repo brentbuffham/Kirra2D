@@ -4334,9 +4334,6 @@ class BlastHole {
 		this.spacing = data.spacing || 1;
 		this.connectorCurve = data.connectorCurve || 0;
 		this.massPerHole = data.massPerHole || 0; // Computed from charging system
-		// Per-hole short hole overrides (null = use config setting)
-		this.applyShortHoleCharging = data.applyShortHoleCharging != null ? data.applyShortHoleCharging : null;
-		this.shortHoleThreshold = data.shortHoleThreshold != null ? data.shortHoleThreshold : null;
 	}
 }
 

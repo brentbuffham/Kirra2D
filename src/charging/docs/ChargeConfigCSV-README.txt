@@ -24,19 +24,17 @@ FILE STRUCTURE
 
   #   Field                Type       Description
   --  -------------------  ---------  ----------------------------------------
-   1  configCode           code       Rule code identifier (e.g. STNDFS, CUSTOM)
+   1  configCode           code       Rule code identifier (e.g. STNDFS, MULTDEC)
    2  configName           text       Human-readable rule name
    3  description          text       Free-text description
    4  primerInterval       number     Interval between primers (metres)
-   5  shortHoleLogic       bool       Apply short-hole charging tiers
-   6  shortHoleLength      number     Short hole threshold length (m, default 4.0)
-   7  wetHoleSwap          bool       Swap product for wet holes
-   8  wetHoleProduct       product    Wet hole replacement product name
-   9  inertDeck            deck       Inert deck template entries (brace notation)
-  10  coupledDeck          deck       Coupled explosive deck entries
-  11  decoupledDeck        deck       Decoupled explosive deck entries
-  12  spacerDeck           deck       Spacer deck entries
-  13  primer               primer     Primer template entries (brace notation)
+   5  wetHoleSwap          bool       Swap product for wet holes
+   6  wetHoleProduct       product    Wet hole replacement product name
+   7  inertDeck            deck       Inert deck template entries (brace notation)
+   8  coupledDeck          deck       Coupled explosive deck entries
+   9  decoupledDeck        deck       Decoupled explosive deck entries
+  10  spacerDeck           deck       Spacer deck entries
+  11  primer               primer     Primer template entries (brace notation)
 
 
 ================================================================================
@@ -59,7 +57,6 @@ Length Modes:
   Syntax          Mode       Description
   -----------     -------    -------------------------------------------
   2.0             Fixed      Exact length in metres
-  fill            Fill       Absorbs remaining hole length
   fx:holeLen-4    Formula    Calculated from hole properties at apply-time
   m:50            Mass       50 kg of product (length from density + diameter)
   product         Product    Length from product.lengthMm
@@ -76,8 +73,8 @@ Scaling Flags:
 
 Examples:
 
-  inertDeck:     {1,3.5,Stemming,FL};{5,fill,Stemming}
-  coupledDeck:   {2,fill,ANFO};{4,2.0,ANFO,FL}
+  inertDeck:     {1,3.5,Stemming,FL};{5,fx:holeLength - 3.5,Stemming,VR}
+  coupledDeck:   {2,fx:holeLength - 3.5,ANFO,VR};{4,2.0,ANFO,FL}
   decoupledDeck: {3,1.5,PKG75mm,FL}
 
 
@@ -143,13 +140,13 @@ Decks are ordered from collar (top) to toe (bottom) using the idx field:
     +-------------------+
     |  Deck idx=1        |  <- e.g. Stemming (INERT, FL)
     +-------------------+
-    |  Deck idx=2        |  <- e.g. ANFO (COUPLED, fill)
+    |  Deck idx=2        |  <- e.g. ANFO (COUPLED, formula)
     +-------------------+
     |  Deck idx=3        |  <- e.g. Gas Bag (SPACER)
     +-------------------+
     |  Deck idx=4        |  <- e.g. ANFO (COUPLED, 2.0m, FL)
     +-------------------+
-    |  Deck idx=5        |  <- e.g. Stemming (INERT, fill)
+    |  Deck idx=5        |  <- e.g. Stemming (INERT, formula)
     +-------------------+
   Toe (holeLength)
 

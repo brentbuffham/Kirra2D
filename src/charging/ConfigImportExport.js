@@ -54,19 +54,17 @@ var PRODUCTS_CSV_HEADER = [
 // Transposed CSV field definitions: each becomes one row in chargeConfigs.csv
 // { type: data type hint, field: config key, desc: human-readable description }
 var TRANSPOSED_CONFIG_FIELDS = [
-    { type: "code",    field: "configCode",       desc: "Charge config code (STNDFS, AIRDEC, CUSTOM, etc.)" },
-    { type: "text",    field: "configName",        desc: "Human-readable config name" },
-    { type: "text",    field: "description",       desc: "Description of the charge design" },
-    { type: "number",  field: "primerInterval",    desc: "Interval between primers (m)" },
-    { type: "bool",    field: "shortHoleLogic",    desc: "Apply short hole tier overrides" },
-    { type: "number",  field: "shortHoleLength",   desc: "Short hole threshold length (m)" },
-    { type: "bool",    field: "wetHoleSwap",       desc: "Swap product for wet holes" },
-    { type: "product", field: "wetHoleProduct",    desc: "Wet hole replacement product name" },
-    { type: "deck",    field: "inertDeck",         desc: "Inert deck template entries" },
-    { type: "deck",    field: "coupledDeck",       desc: "Coupled deck template entries" },
-    { type: "deck",    field: "decoupledDeck",     desc: "Decoupled deck template entries" },
-    { type: "deck",    field: "spacerDeck",        desc: "Spacer deck template entries" },
-    { type: "primer",  field: "primer",            desc: "Primer template entries" }
+    { type: "code", field: "configCode", desc: "Charge config code (STNDFS, AIRDEC, MULTDEC, etc.)" },
+    { type: "text", field: "configName", desc: "Human-readable config name" },
+    { type: "text", field: "description", desc: "Description of the charge design" },
+    { type: "number", field: "primerInterval", desc: "Interval between primers (m)" },
+    { type: "bool", field: "wetHoleSwap", desc: "Swap product for wet holes" },
+    { type: "product", field: "wetHoleProduct", desc: "Wet hole replacement product name" },
+    { type: "deck", field: "inertDeck", desc: "Inert deck template entries" },
+    { type: "deck", field: "coupledDeck", desc: "Coupled deck template entries" },
+    { type: "deck", field: "decoupledDeck", desc: "Decoupled deck template entries" },
+    { type: "deck", field: "spacerDeck", desc: "Spacer deck template entries" },
+    { type: "primer", field: "primer", desc: "Primer template entries" }
 ];
 
 var README_CONTENT = [
@@ -95,12 +93,10 @@ var README_CONTENT = [
     "  Add/remove columns to add/remove charge configurations.",
     "",
     "SIMPLIFIED CONFIG FIELDS:",
-    "  configCode       - Unique code for the config (e.g. STNDFS, AIRDEC, CUSTOM)",
+    "  configCode       - Unique code for the config (e.g. STNDFS, AIRDEC, MULTDEC)",
     "  configName       - Human-readable display name",
     "  description      - Description of the charge design",
     "  primerInterval   - Interval between primers in metres (for long charge columns)",
-    "  shortHoleLogic   - true/false: apply short hole tier overrides",
-    "  shortHoleLength  - Threshold length below which short hole logic applies (m)",
     "  wetHoleSwap      - true/false: swap product when hole is wet",
     "  wetHoleProduct   - Replacement product name for wet holes",
     "",
@@ -177,7 +173,6 @@ var README_CONTENT = [
     "    idx     = integer deck order from collar (1-based)",
     "    length  = one of:",
     "      2.0           fixed metres (lengthMode: fixed)",
-    "      fill          absorbs remaining space (lengthMode: fill)",
     "      fx:expr       formula e.g. fx:holeLength*0.5 (lengthMode: formula)",
     "      m:50          50kg of product (lengthMode: mass)",
     "      product       length derived from product.lengthMm (lengthMode: product)",
@@ -230,8 +225,8 @@ var README_CONTENT = [
     "  Custom functions:",
     "    massLength(kg, density)          Length (m) for a given mass at holeDiameter",
     "                                     density in g/cc e.g. massLength(50, 0.85)",
-    "    massLength(kg, \"ProductName\")    Length (m) using product density lookup",
-    "                                     e.g. massLength(50, \"ANFO\")",
+    '    massLength(kg, "ProductName")    Length (m) using product density lookup',
+    '                                     e.g. massLength(50, "ANFO")',
     "",
     "  PRIMER DEPTH EXAMPLES:",
     "    fx:chargeBase - 0.3                  Primer 0.3m above deepest charge base",
@@ -255,7 +250,7 @@ var README_CONTENT = [
     "  MASS-AWARE POSITIONING EXAMPLES:",
     "    fx:chargeTop[4] - massLength(50, 0.85)    Place deck above charge at position 4,",
     "                                               sized for 50kg of ANFO (0.85 g/cc)",
-    "    fx:chargeTop[4] - massLength(50, \"ANFO\")  Same but using product name lookup",
+    '    fx:chargeTop[4] - massLength(50, "ANFO")  Same but using product name lookup',
     "    fx:holeLength - 2 - massLength(30, 1.2)   Position deck above a 2m toe charge,",
     "                                               with 30kg of emulsion above it",
     "",
@@ -323,83 +318,57 @@ var EXAMPLE_CONFIG_DATA = [
         configCode: "STNDFS",
         configName: "Standard Single Deck",
         description: "Single stemming + charge + primer",
-        primerInterval: 8.0,
-        inertDeckArray: [
-            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 3.5, isFixedLength: true }
-        ],
-        coupledDeckArray: [
-            { idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "fill" }
-        ],
-        primerArray: [
-            { depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }
-        ]
+        primerInterval: 10.0,
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 3.5, isFixedLength: true }],
+        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "formula", formula: "holeLength - 3.5" }],
+        primerArray: [{ depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }]
     },
     {
         configCode: "ST5050",
         configName: "50/50 Stem and Charge",
         description: "50% stemming 50% charge split",
-        primerInterval: 8.0,
-        inertDeckArray: [
-            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "formula", formula: "holeLength * 0.5" }
-        ],
-        coupledDeckArray: [
-            { idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "fill" }
-        ],
-        primerArray: [
-            { depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }
-        ]
+        primerInterval: 10.0,
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", lengthMode: "formula", formula: "holeLength * 0.5" }],
+        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "formula", formula: "holeLength * 0.5" }],
+        primerArray: [{ depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }]
     },
     {
         configCode: "AIRDEC",
         configName: "Air Deck with Gas Bag",
         description: "Stem + gas bag + air + charge",
-        primerInterval: 8.0,
+        primerInterval: 10.0,
         inertDeckArray: [
             { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 3.0, isFixedLength: true },
-            { idx: 3, type: "INERT", product: "Air", lengthMode: "fill" }
+            { idx: 3, type: "INERT", product: "Air", lengthMode: "formula", formula: "holeLength - 3.0 - 6.0" }
         ],
-        spacerDeckArray: [
-            { idx: 2, type: "SPACER", product: "GB230MM", lengthMode: "product" }
-        ],
-        coupledDeckArray: [
-            { idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 6.0 }
-        ],
-        primerArray: [
-            { depth: "fx:chargeBase - chargeLength * 0.1", detonator: "GENERIC-MS", booster: "BS400G" }
-        ]
+        spacerDeckArray: [{ idx: 2, type: "SPACER", product: "GB230MM", lengthMode: "product" }],
+        coupledDeckArray: [{ idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 6.0 }],
+        primerArray: [{ depth: "fx:chargeBase - chargeLength * 0.1", detonator: "GENERIC-MS", booster: "BS400G" }]
     },
     {
         configCode: "PRESPL",
         configName: "Presplit Charging",
         description: "AirStem (Vented) + decoupled charge",
         primerInterval: 20.0,
-        inertDeckArray: [
-            { idx: 1, type: "INERT", product: "Air", lengthMode: "fixed", length: 2.2, isFixedLength: true }
-        ],
-        decoupledDeckArray: [
-            { idx: 2, type: "DECOUPLED", product: "PRE32MM", lengthMode: "fill" }
-        ],
-        primerArray: [
-            { depth: "fx:holeLength * 0.9", detonator: "10GCORD", booster: null }
-        ]
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Air", lengthMode: "fixed", length: 2.2, isFixedLength: true }],
+        decoupledDeckArray: [{ idx: 2, type: "DECOUPLED", product: "PRE32MM", lengthMode: "formula", formula: "holeLength - 2.2" }],
+        primerArray: [{ depth: "fx:chargeTop[2]", detonator: "10GCORD", booster: null }]
     },
     {
         configCode: "NOCHG",
         configName: "No Charge",
         description: "Do not charge - leave hole empty",
-        primerInterval: 8.0,
-        inertDeckArray: [
-            { idx: 1, type: "INERT", product: "Air", lengthMode: "fill" }
-        ],
+        primerInterval: 10.0,
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Air", lengthMode: "formula", formula: "holeLength" }],
         primerArray: []
     },
     {
         configCode: "AIRDEC",
         configName: "Two Air Decks",
         description: "Two air deck design with indexed primer formulas",
-        primerInterval: 8.0,
+        primerInterval: 10.0,
         inertDeckArray: [
-            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fill" },
+            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "formula", formula: "holeLength - 1.7 - 0.97 - 1.88 - 2.2 - 2.025" },
             { idx: 3, type: "INERT", product: "Air", lengthMode: "fixed", length: 1.7 },
             { idx: 5, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 0.97, isFixedLength: true },
             { idx: 7, type: "INERT", product: "Air", lengthMode: "fixed", length: 1.88 }
@@ -418,16 +387,16 @@ var EXAMPLE_CONFIG_DATA = [
         ]
     },
     {
-        configCode: "CUSTOM",
+        configCode: "MULTDEC",
         configName: "Multi Deck with Spacers",
         description: "Stem + charge + spacer + charge + spacer + charge + stem",
-        primerInterval: 8.0,
+        primerInterval: 10.0,
         inertDeckArray: [
             { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 2.0, isFixedLength: true },
             { idx: 7, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 2.0, isFixedLength: true }
         ],
         coupledDeckArray: [
-            { idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "fill" },
+            { idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "formula", formula: "holeLength - 4.0 - 2.0 - 2.0" },
             { idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.0 },
             { idx: 6, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.0 }
         ],
@@ -435,9 +404,43 @@ var EXAMPLE_CONFIG_DATA = [
             { idx: 3, type: "SPACER", product: "GB230MM", lengthMode: "product" },
             { idx: 5, type: "SPACER", product: "GB230MM", lengthMode: "product" }
         ],
-        primerArray: [
-            { depth: "fx:chargeBase - chargeLength * 0.1", detonator: "GENERIC-MS", booster: "BS400G" }
-        ]
+        primerArray: [{ depth: "fx:chargeBase - chargeLength * 0.1", detonator: "GENERIC-MS", booster: "BS400G" }]
+    },
+    {
+        configCode: "PRESPLDBL",
+        configName: "Presplit Double Column",
+        description: "Air stem + decoupled presplit with overlap pattern, package-aligned lengths",
+        primerInterval: 20.0,
+        inertDeckArray: [
+            {
+                idx: 1,
+                type: "INERT",
+                product: "Air",
+                lengthMode: "formula",
+                formula: "(holeLength-(Math.floor((holeLength-1.8)/0.4)*0.4))"
+            }
+        ],
+        decoupledDeckArray: [
+            {
+                idx: 2,
+                type: "DECOUPLED",
+                product: "PRE32MM",
+                lengthMode: "formula",
+                formula: "(Math.floor((holeLength-1.8)/0.4)*0.4)",
+                isVariable: true,
+                overlapPattern: { base: 3, "base-1": 2, n: 1 }
+            }
+        ],
+        primerArray: [{ depth: "fx:chargeTop[2]", detonator: "10GCORD", booster: null }]
+    },
+    {
+        configCode: "SINGVAR",
+        configName: "Single Variable Stem",
+        description: "Ternary stem logic: <3m=65%, 3-5m=50%, >=5m=2.5m fixed",
+        primerInterval: 10.0,
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", lengthMode: "formula", formula: "(holeLength < 3 ? holeLength*0.65 : holeLength < 5 ? holeLength*0.5 : 2.5)", isVariable: true }],
+        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "formula", formula: "(holeLength < 3 ? holeLength*0.35 : holeLength < 5 ? holeLength*0.5 : holeLength - 2.5)", isVariable: true }],
+        primerArray: [{ depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }]
     }
 ];
 
@@ -650,8 +653,6 @@ function configToFieldMap(config) {
     map.configName = json.configName || "";
     map.description = json.description || "";
     map.primerInterval = json.primerInterval != null ? String(json.primerInterval) : "";
-    map.shortHoleLogic = json.shortHoleLogic != null ? String(json.shortHoleLogic) : "";
-    map.shortHoleLength = json.shortHoleLength != null ? String(json.shortHoleLength) : "";
     map.wetHoleSwap = json.wetHoleSwap != null ? String(json.wetHoleSwap) : "";
     map.wetHoleProduct = json.wetHoleProduct || "";
 
@@ -665,7 +666,7 @@ function configToFieldMap(config) {
     if (json.inertDeckArray && json.inertDeckArray.length > 0) {
         for (var ia = 0; ia < json.inertDeckArray.length; ia++) {
             var ie = json.inertDeckArray[ia];
-            var idx = ie.idx || (ia + 1);
+            var idx = ie.idx || ia + 1;
             var lengthStr = serializeDeckLength(ie);
             var flag = getScalingFlagSuffix(ie);
             var overlap = serializeOverlapPattern(ie.overlapPattern);
@@ -681,7 +682,7 @@ function configToFieldMap(config) {
     if (json.coupledDeckArray && json.coupledDeckArray.length > 0) {
         for (var ca = 0; ca < json.coupledDeckArray.length; ca++) {
             var ce = json.coupledDeckArray[ca];
-            var cidx = ce.idx || (ca + 1);
+            var cidx = ce.idx || ca + 1;
             var clengthStr = serializeDeckLength(ce);
             var cflag = getScalingFlagSuffix(ce);
             var coverlap = serializeOverlapPattern(ce.overlapPattern);
@@ -697,7 +698,7 @@ function configToFieldMap(config) {
     if (json.decoupledDeckArray && json.decoupledDeckArray.length > 0) {
         for (var da = 0; da < json.decoupledDeckArray.length; da++) {
             var de = json.decoupledDeckArray[da];
-            var didx = de.idx || (da + 1);
+            var didx = de.idx || da + 1;
             var dlengthStr = serializeDeckLength(de);
             var dflag = getScalingFlagSuffix(de);
             var doverlap = serializeOverlapPattern(de.overlapPattern);
@@ -713,7 +714,7 @@ function configToFieldMap(config) {
     if (json.spacerDeckArray && json.spacerDeckArray.length > 0) {
         for (var sa = 0; sa < json.spacerDeckArray.length; sa++) {
             var se = json.spacerDeckArray[sa];
-            var sidx = se.idx || (sa + 1);
+            var sidx = se.idx || sa + 1;
             spacerEntries.push("{" + sidx + "," + (se.product || "Unknown") + "}");
         }
     }
@@ -747,11 +748,14 @@ function configToFieldMap(config) {
  */
 function serializeDeckLength(entry) {
     switch (entry.lengthMode) {
-        case "fill": return "fill";
-        case "formula": return "fx:" + (entry.formula || "holeLength");
-        case "mass": return "m:" + (entry.massKg || 0);
-        case "product": return "product";
-        default: return String(entry.length || 0);
+        case "formula":
+            return "fx:" + (entry.formula || "holeLength");
+        case "mass":
+            return "m:" + (entry.massKg || 0);
+        case "product":
+            return "product";
+        default:
+            return String(entry.length || 0);
     }
 }
 
@@ -875,7 +879,8 @@ function parseProductsCSV(text, errors) {
 function parseDeckColumn(text, deckType) {
     if (!text || text.trim().length === 0) return [];
 
-    var entries = text.split(";");
+    // Use brace-aware splitting so overlap semicolons inside {} are preserved
+    var entries = splitBraceEntries(text);
     var result = [];
 
     for (var i = 0; i < entries.length; i++) {
@@ -914,9 +919,7 @@ function parseDeckColumn(text, deckType) {
                 length: null
             };
 
-            if (lengthStr === "fill") {
-                templateEntry.lengthMode = "fill";
-            } else if (lengthStr === "product") {
+            if (lengthStr === "product") {
                 templateEntry.lengthMode = "product";
             } else if (lengthStr.length > 3 && lengthStr.substring(0, 3) === "fx:") {
                 templateEntry.lengthMode = "formula";
@@ -988,11 +991,12 @@ function parseOverlapSyntax(overlapStr) {
 }
 
 /**
- * Split primer entries on ";" respecting nested braces (e.g. Det{...}, HE{...}).
+ * Split brace-notation entries on ";" respecting nested braces.
+ * Used for both deck entries (overlap syntax) and primer entries (Det{...}, HE{...}).
  * @param {string} text
  * @returns {string[]}
  */
-function splitPrimerEntries(text) {
+function splitBraceEntries(text) {
     var entries = [];
     var depth = 0;
     var current = "";
@@ -1025,7 +1029,7 @@ function parsePrimerColumn(text) {
     if (!text || text.trim().length === 0) return [];
 
     var result = [];
-    var entries = splitPrimerEntries(text);
+    var entries = splitBraceEntries(text);
 
     for (var i = 0; i < entries.length; i++) {
         var entry = entries[i].trim();
@@ -1055,8 +1059,10 @@ function parsePrimerColumn(text) {
         entry = entry.replace(/,\s*,/g, ",").replace(/^,|,$/g, "").trim();
 
         // Remaining: idx,depth
-        var parts = entry.split(",").filter(function (p) { return p.trim().length > 0; });
-        var idx = parts.length >= 1 ? parseInt(parts[0].trim(), 10) : (i + 1);
+        var parts = entry.split(",").filter(function (p) {
+            return p.trim().length > 0;
+        });
+        var idx = parts.length >= 1 ? parseInt(parts[0].trim(), 10) : i + 1;
         var depth = null;
         if (parts.length >= 2) {
             var depthStr = parts[1].trim();
@@ -1120,9 +1126,14 @@ function parseTransposedChargeConfigsCSV(lines, headers, errors) {
 
     // String fields that should never be auto-parsed as numbers
     var stringFields = {
-        configName: true, description: true, wetHoleProduct: true,
-        inertDeck: true, coupledDeck: true, decoupledDeck: true,
-        spacerDeck: true, primer: true
+        configName: true,
+        description: true,
+        wetHoleProduct: true,
+        inertDeck: true,
+        coupledDeck: true,
+        decoupledDeck: true,
+        spacerDeck: true,
+        primer: true
     };
 
     // Deck column fields that need special parsing
@@ -1210,9 +1221,15 @@ function parseLegacyChargeConfigsCSV(lines, headers, errors) {
     var hasLegacyDeckTemplate = headers.indexOf("deckTemplate") !== -1;
 
     var stringHeaders = {
-        configName: true, description: true, wetHoleProduct: true,
-        inertDeck: true, coupledDeck: true, decoupledDeck: true,
-        spacerDeck: true, primer: true, deckTemplate: true
+        configName: true,
+        description: true,
+        wetHoleProduct: true,
+        inertDeck: true,
+        coupledDeck: true,
+        decoupledDeck: true,
+        spacerDeck: true,
+        primer: true,
+        deckTemplate: true
     };
 
     for (var i = 1; i < lines.length; i++) {
@@ -1220,8 +1237,11 @@ function parseLegacyChargeConfigsCSV(lines, headers, errors) {
             var values = parseCSVLine(lines[i]);
             var obj = {};
             var typedDeckColumns = {
-                inertDeck: "", coupledDeck: "", decoupledDeck: "",
-                spacerDeck: "", primer: ""
+                inertDeck: "",
+                coupledDeck: "",
+                decoupledDeck: "",
+                spacerDeck: "",
+                primer: ""
             };
 
             for (var j = 0; j < headers.length; j++) {
@@ -1248,9 +1268,7 @@ function parseLegacyChargeConfigsCSV(lines, headers, errors) {
                 obj.decoupledDeckArray = parseDeckColumn(typedDeckColumns.decoupledDeck, "DECOUPLED");
                 obj.spacerDeckArray = parseDeckColumn(typedDeckColumns.spacerDeck, "SPACER");
 
-                if (!obj.configCode &&
-                    (obj.inertDeckArray.length > 0 || obj.coupledDeckArray.length > 0 ||
-                     obj.decoupledDeckArray.length > 0 || obj.spacerDeckArray.length > 0)) {
+                if (!obj.configCode && (obj.inertDeckArray.length > 0 || obj.coupledDeckArray.length > 0 || obj.decoupledDeckArray.length > 0 || obj.spacerDeckArray.length > 0)) {
                     obj.configCode = "CUSTOM";
                 }
 
@@ -1296,21 +1314,15 @@ export function clearAllProducts() {
 
     var count = window.loadedProducts.size;
 
-    window.showConfirmationDialog(
-        "Clear All Products",
-        "This will permanently remove all " + count + " product(s).\nThis cannot be reverted.\n\nExport your configuration first if needed.",
-        "Clear All",
-        "Cancel",
-        function () {
-            window.loadedProducts.clear();
-            if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
-            // Rebuild connector presets (now empty)
-            if (typeof window.buildSurfaceConnectorPresets === "function") window.buildSurfaceConnectorPresets();
-            if (typeof window.showModalMessage === "function") {
-                window.showModalMessage("Products Cleared", "Removed " + count + " product(s).", "success");
-            }
+    window.showConfirmationDialog("Clear All Products", "This will permanently remove all " + count + " product(s).\nThis cannot be reverted.\n\nExport your configuration first if needed.", "Clear All", "Cancel", function () {
+        window.loadedProducts.clear();
+        if (typeof window.debouncedSaveProducts === "function") window.debouncedSaveProducts();
+        // Rebuild connector presets (now empty)
+        if (typeof window.buildSurfaceConnectorPresets === "function") window.buildSurfaceConnectorPresets();
+        if (typeof window.showModalMessage === "function") {
+            window.showModalMessage("Products Cleared", "Removed " + count + " product(s).", "success");
         }
-    );
+    });
 }
 
 /**
@@ -1326,19 +1338,13 @@ export function clearAllChargeConfigs() {
 
     var count = window.loadedChargeConfigs.size;
 
-    window.showConfirmationDialog(
-        "Clear All Charge Rules",
-        "This will permanently remove all " + count + " charge rule(s).\nThis cannot be reverted.\n\nExport your configuration first if needed.",
-        "Clear All",
-        "Cancel",
-        function () {
-            window.loadedChargeConfigs.clear();
-            if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
-            if (typeof window.showModalMessage === "function") {
-                window.showModalMessage("Charge Rules Cleared", "Removed " + count + " charge rule(s).", "success");
-            }
+    window.showConfirmationDialog("Clear All Charge Rules", "This will permanently remove all " + count + " charge rule(s).\nThis cannot be reverted.\n\nExport your configuration first if needed.", "Clear All", "Cancel", function () {
+        window.loadedChargeConfigs.clear();
+        if (typeof window.debouncedSaveConfigs === "function") window.debouncedSaveConfigs();
+        if (typeof window.showModalMessage === "function") {
+            window.showModalMessage("Charge Rules Cleared", "Removed " + count + " charge rule(s).", "success");
         }
-    );
+    });
 }
 
 /**

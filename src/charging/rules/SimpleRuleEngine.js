@@ -2,13 +2,13 @@
  * @fileoverview SimpleRuleEngine - Unified template engine for charge rules
  *
  * All charge configs are template-based: deck arrays merged by idx → applyTemplate().
- * No hardcoded per-configCode functions. Short-hole logic integrated into the template engine.
+ * No hardcoded per-configCode functions. All deck lengths are formula, mass, product, or fixed.
  */
 
 import { HoleCharging } from "../HoleCharging.js";
 import { Deck } from "../Deck.js";
 import { Primer } from "../Primer.js";
-import { DECK_TYPES, SHORT_HOLE_TIERS, CHARGING_DEFAULTS } from "../ChargingConstants.js";
+import { DECK_TYPES } from "../ChargingConstants.js";
 import { isFormula, evaluateFormula } from "../../helpers/FormulaEvaluator.js";
 
 /**
@@ -43,56 +43,6 @@ function snap(product) {
 		lengthMm: product.lengthMm || null,
 		massGrams: product.massGrams || null
 	};
-}
-
-/**
- * Look up the SHORT_HOLE_TIERS entry for a given hole length.
- * @param {number} holeLength - Hole length in metres
- * @param {number} [shortHoleThreshold] - Custom threshold (default 4.0)
- * @returns {Object|null} Tier with chargeRatio or fixedMassKg, or null
- */
-function getShortHoleTier(holeLength, shortHoleThreshold) {
-	var threshold = shortHoleThreshold || CHARGING_DEFAULTS.shortHoleLength || 4.0;
-	if (holeLength >= threshold) return null;
-	for (var i = 0; i < SHORT_HOLE_TIERS.length; i++) {
-		var tier = SHORT_HOLE_TIERS[i];
-		if (holeLength >= tier.minLength && holeLength < tier.maxLength) {
-			return tier;
-		}
-	}
-	return null;
-}
-
-/**
- * Apply short-hole tier overrides to charge/stem lengths.
- * @param {number} holeLen
- * @param {number} stemLen
- * @param {number} chargeLen
- * @param {Object} tier
- * @param {Object} [chargeProduct]
- * @param {number} holeDiameterMm
- * @returns {{ stemLen: number, chargeLen: number }|null} null = NO_CHARGE
- */
-function applyShortHoleTier(holeLen, stemLen, chargeLen, tier, chargeProduct, holeDiameterMm) {
-	if (tier.chargeRatio === 0) return null;
-
-	if (tier.chargeRatio != null) {
-		chargeLen = holeLen * tier.chargeRatio;
-		stemLen = holeLen - chargeLen;
-	} else if (tier.fixedMassKg != null && tier.fixedMassKg > 0) {
-		var density = chargeProduct ? (chargeProduct.density || 0.85) : 0.85;
-		var diamM = (holeDiameterMm || 115) / 1000;
-		var radiusM = diamM / 2;
-		var area = Math.PI * radiusM * radiusM;
-		var kgPerMetre = density * 1000 * area;
-		if (kgPerMetre > 0) {
-			chargeLen = tier.fixedMassKg / kgPerMetre;
-			chargeLen = Math.min(chargeLen, holeLen * 0.8);
-			stemLen = holeLen - chargeLen;
-		}
-	}
-
-	return { stemLen: stemLen, chargeLen: chargeLen };
 }
 
 /**
@@ -162,7 +112,6 @@ export function applyChargeRule(hole, config) {
  *
  * LengthModes:
  *   "fixed"   - exact metres
- *   "fill"    - absorbs remaining space after all fixed/formula/mass/product decks
  *   "formula" - fx:expression evaluated with hole variables
  *   "mass"    - kg-based length calculation from product density
  *   "product" - length from product.lengthMm (spacers)
@@ -178,35 +127,13 @@ function applyTemplate(hole, config, deckSequence) {
 	hc.decks = [];
 
 	var holeLen = Math.abs(hc.holeLength);
-	if (holeLen <= 0) return hc;
+	if (holeLen <= 0) {
+		console.warn("[applyTemplate] holeLen=0 for hole " + hole.holeID + ", holeLengthCalc=" + hole.holeLengthCalculated + ", measuredLen=" + hole.measuredLength);
+		return hc;
+	}
 
 	var holeDiameterMm = hole.holeDiameter || 115;
-
-	// Short-hole check: find the charge product for tier calculations
-	var chargeProduct = null;
-	for (var si = 0; si < deckSequence.length; si++) {
-		var sEntry = deckSequence[si];
-		if (sEntry.type === DECK_TYPES.COUPLED || sEntry.type === DECK_TYPES.DECOUPLED) {
-			chargeProduct = findProduct(sEntry.product);
-			break;
-		}
-	}
-
-	// Apply short-hole tier if enabled — per-hole override takes priority over config
-	var shortHoleTier = null;
-	var useShortHole = (hole.applyShortHoleCharging != null)
-		? hole.applyShortHoleCharging
-		: (config.shortHoleLogic !== false);
-	var shortHoleThreshold = (hole.shortHoleThreshold != null)
-		? hole.shortHoleThreshold
-		: config.shortHoleLength;
-	if (useShortHole) {
-		shortHoleTier = getShortHoleTier(holeLen, shortHoleThreshold);
-		if (shortHoleTier && shortHoleTier.chargeRatio === 0) {
-			// NO_CHARGE: return empty hole
-			return hc;
-		}
-	}
+	console.log("[applyTemplate] hole=" + hole.holeID + " holeLen=" + holeLen.toFixed(3) + " dia=" + holeDiameterMm);
 
 	// Formula context for deck length formulas
 	var formulaCtx = {
@@ -220,21 +147,15 @@ function applyTemplate(hole, config, deckSequence) {
 		stemLength: 0
 	};
 
-	// Pass 1: resolve all deck lengths, find fill deck
+	// Pass 1: resolve all deck lengths
 	var resolvedLengths = [];
 	var totalFixed = 0;
-	var fillIndex = -1;
 
 	for (var t = 0; t < deckSequence.length; t++) {
 		var entry = deckSequence[t];
 		var deckLen = 0;
 
 		switch (entry.lengthMode) {
-			case "fill":
-				fillIndex = t;
-				deckLen = 0;
-				break;
-
 			case "formula":
 				if (entry.formula) {
 					var formulaStr = entry.formula;
@@ -243,6 +164,7 @@ function applyTemplate(hole, config, deckSequence) {
 					}
 					var fLen = evaluateFormula(formulaStr, formulaCtx);
 					deckLen = (fLen != null && fLen > 0) ? fLen : (entry.length || 1.0);
+					console.log("[applyTemplate] formula='" + formulaStr + "' ctx.holeLength=" + formulaCtx.holeLength + " → " + deckLen.toFixed(3));
 				} else {
 					deckLen = entry.length || 1.0;
 				}
@@ -283,38 +205,6 @@ function applyTemplate(hole, config, deckSequence) {
 		resolvedLengths.push(deckLen);
 	}
 
-	// Short-hole tier adjustment: scale the fill deck's share
-	// If short-hole tier provides a chargeRatio, adjust total charge vs stem
-	if (shortHoleTier && fillIndex >= 0) {
-		var fillEntry = deckSequence[fillIndex];
-		var isFillCharge = fillEntry.type === DECK_TYPES.COUPLED || fillEntry.type === DECK_TYPES.DECOUPLED;
-		if (isFillCharge && shortHoleTier.chargeRatio != null) {
-			// Limit total charge to the tier ratio
-			var maxCharge = holeLen * shortHoleTier.chargeRatio;
-			var currentCharge = 0;
-			for (var sc = 0; sc < deckSequence.length; sc++) {
-				if (sc === fillIndex) continue;
-				var scType = deckSequence[sc].type;
-				if (scType === DECK_TYPES.COUPLED || scType === DECK_TYPES.DECOUPLED) {
-					currentCharge += resolvedLengths[sc];
-				}
-			}
-			// Fill deck gets whatever charge allocation remains
-			resolvedLengths[fillIndex] = Math.max(0.1, maxCharge - currentCharge);
-			// Recalculate totalFixed minus fill (fill was 0)
-			var newTotal = 0;
-			for (var ns = 0; ns < resolvedLengths.length; ns++) {
-				if (ns !== fillIndex) newTotal += resolvedLengths[ns];
-			}
-			totalFixed = newTotal;
-		}
-	}
-
-	// Calculate fill length
-	if (fillIndex >= 0 && resolvedLengths[fillIndex] === 0) {
-		resolvedLengths[fillIndex] = Math.max(0.1, holeLen - totalFixed);
-	}
-
 	// Pass 2: lay out decks from collar down
 	var cursor = 0;
 	for (var i = 0; i < deckSequence.length; i++) {
@@ -336,8 +226,6 @@ function applyTemplate(hole, config, deckSequence) {
 		if (entry.lengthMode === "formula" && entry.formula) {
 			lengthFormula = entry.formula;
 			if (lengthFormula.indexOf("fx:") !== 0) lengthFormula = "fx:" + lengthFormula;
-		} else if (entry.lengthMode === "fill") {
-			lengthFormula = "fill";
 		} else if (entry.lengthMode === "mass" && entry.massKg > 0) {
 			lengthFormula = "m:" + entry.massKg;
 		}

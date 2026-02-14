@@ -113,11 +113,7 @@ export function showDeckBuilderDialog(referenceHole) {
     if (!refHole && window.selectedMultipleHoles && window.selectedMultipleHoles.length > 0) {
         refHole = window.selectedMultipleHoles[0];
     }
-    if (!refHole && window.allBlastHoles && window.allBlastHoles.length > 0) {
-        refHole = window.allBlastHoles[0];
-    }
-
-    // Virtual hole mode: if no holes exist, create a virtual reference
+    // Virtual hole mode: if no hole is specifically selected, use virtual reference
     var isVirtualHole = !refHole;
     if (isVirtualHole) {
         refHole = {
@@ -253,65 +249,6 @@ export function showDeckBuilderDialog(referenceHole) {
     summaryRow.id = "deckBuilderSummary";
     bottomArea.appendChild(summaryRow);
 
-    // Per-hole short hole override row (matches deck-builder-summary styling)
-    if (!isVirtualHole) {
-        var shortHoleRow = document.createElement("div");
-        shortHoleRow.className = "deck-builder-summary";
-        shortHoleRow.style.cssText = "display:flex;align-items:center;gap:6px;margin-bottom:4px;";
-
-        var shLabel = document.createElement("span");
-        shLabel.textContent = "Short Hole:";
-        shortHoleRow.appendChild(shLabel);
-
-        // Use a select instead of tri-state checkbox for clarity
-        var shSelect = document.createElement("select");
-        shSelect.id = "perHoleShortHole";
-        shSelect.style.cssText = "font-size:10px;padding:1px 2px;height:18px;border:1px solid #999;border-radius:2px;";
-        var optConfig = document.createElement("option");
-        optConfig.value = "config";
-        optConfig.textContent = "Config default";
-        shSelect.appendChild(optConfig);
-        var optYes = document.createElement("option");
-        optYes.value = "true";
-        optYes.textContent = "Yes";
-        shSelect.appendChild(optYes);
-        var optNo = document.createElement("option");
-        optNo.value = "false";
-        optNo.textContent = "No";
-        shSelect.appendChild(optNo);
-
-        var currentShVal = refHole.applyShortHoleCharging;
-        if (currentShVal === true) {
-            shSelect.value = "true";
-        } else if (currentShVal === false) {
-            shSelect.value = "false";
-        } else {
-            shSelect.value = "config";
-        }
-        shortHoleRow.appendChild(shSelect);
-
-        var shThreshLabel = document.createElement("span");
-        shThreshLabel.textContent = "Threshold:";
-        shThreshLabel.style.marginLeft = "6px";
-        shortHoleRow.appendChild(shThreshLabel);
-
-        var shThreshInput = document.createElement("input");
-        shThreshInput.type = "number";
-        shThreshInput.id = "perHoleShortHoleThreshold";
-        shThreshInput.min = "0";
-        shThreshInput.step = "0.1";
-        shThreshInput.style.cssText = "width:45px;font-size:10px;padding:1px 3px;height:18px;border:1px solid #999;border-radius:2px;";
-        shThreshInput.value = refHole.shortHoleThreshold != null ? refHole.shortHoleThreshold : "";
-        shThreshInput.placeholder = "auto";
-        shortHoleRow.appendChild(shThreshInput);
-
-        var shUnit = document.createElement("span");
-        shUnit.textContent = "m";
-        shortHoleRow.appendChild(shUnit);
-
-        bottomArea.appendChild(shortHoleRow);
-    }
-
     // Action buttons
     var actionRow = document.createElement("div");
     actionRow.style.cssText = "display:flex;gap:6px;flex-wrap:wrap;";
@@ -411,13 +348,15 @@ export function showDeckBuilderDialog(referenceHole) {
             refHole.holeDiameter = newDia;
             refHole.holeLengthCalculated = newLen;
             refHole.endZLocation = refHole.startZLocation - newLen;
+            sectionView.holeDiameterMm = newDia;
+            // Re-layout decks if they exist (call BEFORE updating holeLength/dia
+            // so updateDimensions can detect the change)
+            if (workingCharging.decks.length > 0) {
+                workingCharging.updateDimensions(refHole);
+            }
+            // Sync stored dimensions after rescale
             workingCharging.holeDiameterMm = newDia;
             workingCharging.holeLength = newLen;
-            sectionView.holeDiameterMm = newDia;
-            // Re-layout decks if they exist
-            if (workingCharging.decks.length > 0) {
-                workingCharging.updateDimensions(newLen, newDia);
-            }
             sectionView.setData(workingCharging);
             updateSummary();
         };
@@ -788,6 +727,7 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
             var primer = new Primer({
                 holeID: workingCharging.holeID,
                 lengthFromCollar: depth,
+                depthFormula: isFormula(depthInput) ? depthInput : null,
                 detonator: {
                     productID: detProduct ? detProduct.productID : null,
                     productName: data.detonatorName || null,
@@ -853,8 +793,9 @@ function editPrimer(workingCharging, sectionView, refHole) {
         boosterOptions.push({ value: boosters[b].name, text: boosters[b].name });
     }
 
+    var depthDisplayValue = primer.depthFormula ? primer.depthFormula : (primer.lengthFromCollar || 0).toFixed(1);
     var fields = [
-        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "text", value: (primer.lengthFromCollar || 0).toFixed(1), placeholder: "e.g. 8.5 or fx:chargeBase[4]-0.3" },
+        { label: "Depth from Collar (m)", name: "depthFromCollar", type: "text", value: depthDisplayValue, placeholder: "e.g. 8.5 or fx:chargeBase[4]-0.3" },
         { label: "Detonator", name: "detonatorName", type: "select", options: detOptions, value: primer.detonator.productName || "" },
         { label: "Detonator Qty", name: "detonatorQty", type: "number", value: String(primer.detonator.quantity || 1), step: "1", min: "1", max: "10" },
         { label: "Delay (ms)", name: "delayMs", type: "number", value: String(primer.detonator.delayMs || 0), step: "1" },
@@ -909,6 +850,7 @@ function editPrimer(workingCharging, sectionView, refHole) {
 
             // Update primer in-place
             primer.lengthFromCollar = depth;
+            primer.depthFormula = isFormula(depthInput) ? depthInput : null;
             primer.detonator.productID = detProduct ? detProduct.productID : null;
             primer.detonator.productName = data.detonatorName || null;
             primer.detonator.initiatorType = detProduct ? detProduct.initiatorType || detProduct.productType : null;
@@ -1271,12 +1213,26 @@ function editDeck(workingCharging, sectionView, refHole, onUpdate) {
             }
 
             // Update depths and store formulas
-            var oldBase = deck.baseDepth;
+            var oldDeckLen = deck.length; // Capture BEFORE updating depths
             deck.topDepth = parseFloat(newTop.toFixed(3));
             deck.baseDepth = parseFloat(newBase.toFixed(3));
             deck.topDepthFormula = newTopFormula;
             deck.baseDepthFormula = newBaseFormula;
-            deck.lengthFormula = newLengthFormula;
+            // Preserve existing lengthFormula if no new formula was derived.
+            // This prevents VARIABLE deck formulas from being wiped by Edit Deck.
+            if (newLengthFormula != null) {
+                deck.lengthFormula = newLengthFormula;
+            } else if (newBaseFormula && !newTopFormula) {
+                // Base depth formula with no top formula → treat as length formula
+                deck.lengthFormula = newBaseFormula;
+            } else if (!newBaseFormula && !useMass) {
+                // User entered plain numbers — only clear formula if depth actually changed
+                var newDeckLen = deck.length;
+                if (Math.abs(oldDeckLen - newDeckLen) > 0.01) {
+                    deck.lengthFormula = null;
+                }
+                // Otherwise keep existing deck.lengthFormula (e.g. VARIABLE formula)
+            }
 
             // Adjust the adjacent deck below to absorb the size change
             var nextIdx = workingCharging.decks.indexOf(deck) + 1;
@@ -1356,26 +1312,10 @@ function showRuleSelector(workingCharging, sectionView, refHole, configTracker) 
         configOptions.push({ value: configID, text: config.configName || configID });
     });
 
-    // Get initial config to read its shortHoleLogic default
-    var initialConfig = configs.get(configOptions[0].value);
-
     var fields = [
-        { label: "Charge Configuration", name: "configID", type: "select", options: configOptions, value: configOptions[0].value },
-        { label: "Apply Short Hole Logic", name: "shortHoleLogic", type: "checkbox", checked: initialConfig ? initialConfig.shortHoleLogic !== false : true }
+        { label: "Charge Configuration", name: "configID", type: "select", options: configOptions, value: configOptions[0].value }
     ];
     var formContent = createEnhancedFormContent(fields);
-
-    // Update checkbox when config selection changes
-    var configSelect = formContent.querySelector('select[name="configID"]');
-    var shortHoleCheckbox = formContent.querySelector('input[name="shortHoleLogic"]');
-    if (configSelect && shortHoleCheckbox) {
-        configSelect.addEventListener("change", function () {
-            var selectedConfig = configs.get(this.value);
-            if (selectedConfig) {
-                shortHoleCheckbox.checked = selectedConfig.shortHoleLogic !== false;
-            }
-        });
-    }
 
     var ruleDialog = new FloatingDialog({
         title: "Apply Rule",
@@ -1390,18 +1330,22 @@ function showRuleSelector(workingCharging, sectionView, refHole, configTracker) 
             var config = configs.get(data.configID);
             if (!config) return;
 
-            // Override short hole logic from checkbox
-            var useShortHole = data.shortHoleLogic === "true" || data.shortHoleLogic === true;
-            config.shortHoleLogic = useShortHole;
-
-            // Apply rule via SimpleRuleEngine (imported dynamically to avoid circular deps)
+            // Apply rule via SimpleRuleEngine
             if (typeof window.applyChargeRule === "function") {
+                console.log("[ApplyRule] Applying config=" + config.configCode + " to refHole=" + refHole.holeID + " len=" + (refHole.holeLengthCalculated || 0));
                 var newCharging = window.applyChargeRule(refHole, config);
                 if (newCharging) {
                     workingCharging.decks = newCharging.decks;
                     workingCharging.primers = newCharging.primers;
                     workingCharging.modified = new Date().toISOString();
                     if (configTracker) configTracker.config = config;
+                    // Log formula deck info for diagnostics
+                    for (var di = 0; di < newCharging.decks.length; di++) {
+                        var dk = newCharging.decks[di];
+                        if (dk.isVariable || dk.lengthFormula) {
+                            console.log("[ApplyRule] deck[" + di + "] isVariable=" + dk.isVariable + " formula='" + dk.lengthFormula + "' len=" + dk.length.toFixed(3));
+                        }
+                    }
                     sectionView.setData(workingCharging);
                 }
             } else {
@@ -1425,12 +1369,12 @@ function applyToSelectedHoles(workingCharging, refHole, configTracker) {
         targets = window.selectedMultipleHoles;
     } else if (window.selectedHole) {
         targets = [window.selectedHole];
-    } else {
+    } else if (refHole && refHole.holeID !== "VIRTUAL") {
         targets = [refHole];
     }
 
     if (targets.length === 0) {
-        showModalMessage("Apply Charging", "No holes selected.", "warning");
+        showModalMessage("Apply Charging", "No holes selected. Select holes on the canvas before applying.", "warning");
         return;
     }
 
@@ -1440,40 +1384,35 @@ function applyToSelectedHoles(workingCharging, refHole, configTracker) {
     showConfirmationDialog("Apply Charging", "Apply this charging design (" + modeLabel + ") to " + targets.length + " hole(s)?", "Apply", "Cancel", function () {
         var refLen = Math.abs(workingCharging.holeLength);
 
-        // Read per-hole short hole override values from UI
-        var shSelect = document.getElementById("perHoleShortHole");
-        var shThreshInput = document.getElementById("perHoleShortHoleThreshold");
-        var perHoleShortVal = null; // null = use config default
-        if (shSelect) {
-            if (shSelect.value === "true") perHoleShortVal = true;
-            else if (shSelect.value === "false") perHoleShortVal = false;
-            // "config" stays null
-        }
-        var perHoleThreshVal = null;
-        if (shThreshInput && shThreshInput.value !== "") {
-            perHoleThreshVal = parseFloat(shThreshInput.value);
-            if (isNaN(perHoleThreshVal)) perHoleThreshVal = null;
-        }
+        console.log("[ApplyCharging] mode=" + modeLabel + ", targets=" + targets.length + ", refLen=" + refLen + ", activeConfig=" + (activeConfig ? activeConfig.configCode : "null"));
 
         for (var i = 0; i < targets.length; i++) {
             var hole = targets[i];
-
-            // Apply per-hole short hole overrides
-            hole.applyShortHoleCharging = perHoleShortVal;
-            hole.shortHoleThreshold = perHoleThreshVal;
 
             var hc;
 
             if (activeConfig && typeof window.applyChargeRule === "function") {
                 // Re-run the rule engine for each target hole individually
-                hc = window.applyChargeRule(hole, activeConfig);
+                try {
+                    hc = window.applyChargeRule(hole, activeConfig);
+                } catch (ruleErr) {
+                    console.error("[ApplyCharging] applyChargeRule threw for hole " + hole.holeID + ":", ruleErr);
+                    hc = null;
+                }
                 if (!hc) {
                     // Fallback: proportional scale if rule fails
+                    console.warn("[ApplyCharging] Rule returned null for hole " + hole.holeID + ", falling back to scale");
                     hc = scaleChargingToHole(workingCharging, hole, refLen);
                 }
             } else {
-                // Manual design: proportionally scale deck depths
+                // Manual design or no config tracked: scale deck depths with formula re-evaluation
                 hc = scaleChargingToHole(workingCharging, hole, refLen);
+            }
+
+            // Log first deck length for diagnostic tracing
+            if (hc && hc.decks && hc.decks.length > 0) {
+                var firstDk = hc.decks[0];
+                console.log("[ApplyCharging] hole=" + hole.holeID + " len=" + (hole.holeLengthCalculated || 0).toFixed(2) + " → deck[0]=" + firstDk.topDepth.toFixed(3) + "-" + firstDk.baseDepth.toFixed(3) + " (" + (firstDk.isVariable ? "VR" : firstDk.isFixedLength ? "FL" : "PR") + ")");
             }
 
             if (!window.loadedCharging) {
@@ -1572,6 +1511,7 @@ function scaleChargingToHole(sourceCharging, targetHole, refLen) {
                 };
                 var fLen = evaluateFormula(deck.lengthFormula, formulaCtx);
                 var varLen = (fLen != null && fLen > 0) ? fLen : deckLen;
+                console.log("[ScaleCharging] VR deck formula='" + deck.lengthFormula + "' holeLen=" + targetLen + " → " + varLen.toFixed(3));
                 fixedTotal += varLen;
                 deck._recalcLength = varLen;
             } else {
@@ -1684,20 +1624,31 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
     var fields = [
         { key: "configCode", label: "Config Code", type: "text", value: nextCode },
         { key: "configName", label: "Rule Name", type: "text", value: "Custom Rule" },
-        { key: "description", label: "Description", type: "text", value: "" },
-        {
-            key: "fillDeckIndex",
-            label: "Fill Deck (absorbs remaining space)",
-            type: "select",
-            options: workingCharging.decks.map(function (d, i) {
-                var label = i + 1 + ": " + d.deckType + " - " + (d.product ? d.product.name : "Empty");
-                return { value: String(i), label: label };
-            }),
-            value: String(findBestFillDeck(workingCharging))
-        },
-        { key: "shortHoleLogic", label: "Apply Short Hole Logic", type: "checkbox", checked: true },
-        { key: "shortHoleLength", label: "Short Hole Threshold (m)", type: "number", value: "4.0", step: "0.1", min: "0" }
+        { key: "description", label: "Description", type: "text", value: "" }
     ];
+
+    // Add editable deck length formula fields
+    for (var di = 0; di < workingCharging.decks.length; di++) {
+        var deck = workingCharging.decks[di];
+        var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
+        var productName = deck.product ? deck.product.name : "Empty";
+        var defaultVal;
+        if (deck.deckType === DECK_TYPES.SPACER) {
+            defaultVal = "product";
+        } else if (deck.lengthFormula && deck.lengthFormula.indexOf("fx:") === 0) {
+            defaultVal = deck.lengthFormula;
+        } else if (deck.lengthFormula && deck.lengthFormula.indexOf("m:") === 0) {
+            defaultVal = deck.lengthFormula;
+        } else {
+            defaultVal = String(parseFloat(deckLen.toFixed(3)));
+        }
+        fields.push({
+            key: "deckLength_" + di,
+            label: "[" + (di + 1) + "] " + deck.deckType + " - " + productName,
+            type: "text",
+            value: defaultVal
+        });
+    }
 
     // Add dynamic primer depth formula fields with smart defaults
     if (workingCharging.primers && workingCharging.primers.length > 0) {
@@ -1746,7 +1697,8 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
     var formContent = createEnhancedFormContent(fields);
 
     var primerCount = workingCharging.primers ? workingCharging.primers.length : 0;
-    var saveDialogHeight = 280 + primerCount * 50;
+    var deckCount = workingCharging.decks.length;
+    var saveDialogHeight = 220 + deckCount * 40 + primerCount * 50;
 
     var dialog = new FloatingDialog({
         title: "Save as Rule",
@@ -1759,9 +1711,8 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
         cancelText: "Cancel",
         onConfirm: function () {
             var data = getFormData(formContent);
-            var fillIdx = parseInt(data.fillDeckIndex, 10);
 
-            // Build typed deck arrays from current decks
+            // Build typed deck arrays from current decks using editable formula fields
             var inertDeckArray = [];
             var coupledDeckArray = [];
             var decoupledDeckArray = [];
@@ -1782,23 +1733,23 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                     isProportionalDeck: deck.isProportionalDeck !== false
                 };
 
-                if (i === fillIdx) {
-                    entry.lengthMode = "fill";
-                } else if (deck.deckType === DECK_TYPES.SPACER) {
+                // Read user-edited length value from form field
+                var userVal = (data["deckLength_" + i] || "").trim();
+
+                if (deck.deckType === DECK_TYPES.SPACER) {
                     entry.lengthMode = "product";
-                } else if (deck.lengthFormula && deck.lengthFormula.indexOf("fx:") === 0) {
-                    // Preserve formula from template
+                } else if (userVal.indexOf("fx:") === 0) {
                     entry.lengthMode = "formula";
-                    entry.formula = deck.lengthFormula;
+                    entry.formula = userVal;
                     entry.length = parseFloat(deckLen.toFixed(3));
-                } else if (deck.lengthFormula && deck.lengthFormula.indexOf("m:") === 0) {
-                    // Preserve mass formula
+                } else if (userVal.indexOf("m:") === 0) {
                     entry.lengthMode = "mass";
-                    entry.massKg = parseFloat(deck.lengthFormula.substring(2)) || 0;
+                    entry.massKg = parseFloat(userVal.substring(2)) || 0;
                     entry.length = parseFloat(deckLen.toFixed(3));
                 } else {
+                    var numVal = parseFloat(userVal);
                     entry.lengthMode = "fixed";
-                    entry.length = parseFloat(deckLen.toFixed(3));
+                    entry.length = !isNaN(numVal) && numVal > 0 ? numVal : parseFloat(deckLen.toFixed(3));
                 }
 
                 // Copy overlap pattern if present
@@ -1859,8 +1810,6 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                     configCode: configCode,
                     configName: data.configName || "Custom Rule",
                     description: data.description || "",
-                    shortHoleLogic: data.shortHoleLogic === "true" || data.shortHoleLogic === true,
-                    shortHoleLength: parseFloat(data.shortHoleLength) || 4.0,
                     inertDeckArray: inertDeckArray,
                     coupledDeckArray: coupledDeckArray,
                     decoupledDeckArray: decoupledDeckArray,
@@ -1906,20 +1855,3 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
     dialog.show();
 }
 
-/**
- * Find the best candidate deck for "fill" mode (the largest non-spacer deck).
- */
-function findBestFillDeck(hc) {
-    var bestIdx = 0;
-    var bestLen = 0;
-    for (var i = 0; i < hc.decks.length; i++) {
-        var d = hc.decks[i];
-        if (d.deckType === DECK_TYPES.SPACER) continue;
-        var len = Math.abs(d.baseDepth - d.topDepth);
-        if (len > bestLen) {
-            bestLen = len;
-            bestIdx = i;
-        }
-    }
-    return bestIdx;
-}

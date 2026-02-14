@@ -28,7 +28,7 @@ Each subsequent row contains one field. Columns 4+ hold config values:
 
 ```
 Type,Description,Field,[1],[2],[3]
-code,Charge config code,configCode,STNDFS,AIRDEC,CUSTOM
+code,Charge config code,configCode,STNDFS,AIRDEC,MULTDEC
 text,Human-readable config name,configName,Standard Single Deck,Air Deck,Multi Deck
 text,Description,description,Single deck,Gas bag air deck,Custom layout
 ...
@@ -40,19 +40,17 @@ The first 3 columns (`Type`, `Description`, `Field`) are metadata — do not cha
 
 | # | Type | Field | Description |
 |---|------|-------|-------------|
-| 1 | code | `configCode` | Rule code identifier (e.g. `STNDFS`, `AIRDEC`, `CUSTOM`) |
+| 1 | code | `configCode` | Rule code identifier (e.g. `STNDFS`, `AIRDEC`, `MULTDEC`) |
 | 2 | text | `configName` | Human-readable rule name |
 | 3 | text | `description` | Free-text description |
 | 4 | number | `primerInterval` | Interval between primers in long charges (metres) |
-| 5 | bool | `shortHoleLogic` | Apply short-hole charging tiers |
-| 6 | number | `shortHoleLength` | Short hole threshold length in metres (default 4.0) |
-| 7 | bool | `wetHoleSwap` | Swap product for wet holes |
-| 8 | product | `wetHoleProduct` | Wet hole replacement product name |
-| 9 | deck | `inertDeck` | Inert deck entries (brace notation) |
-| 10 | deck | `coupledDeck` | Coupled explosive deck entries (brace notation) |
-| 11 | deck | `decoupledDeck` | Decoupled explosive deck entries (brace notation) |
-| 12 | deck | `spacerDeck` | Spacer deck entries (brace notation) |
-| 13 | primer | `primer` | Primer entries (brace notation) |
+| 5 | bool | `wetHoleSwap` | Swap product for wet holes |
+| 6 | product | `wetHoleProduct` | Wet hole replacement product name |
+| 7 | deck | `inertDeck` | Inert deck entries (brace notation) |
+| 8 | deck | `coupledDeck` | Coupled explosive deck entries (brace notation) |
+| 9 | deck | `decoupledDeck` | Decoupled explosive deck entries (brace notation) |
+| 10 | deck | `spacerDeck` | Spacer deck entries (brace notation) |
+| 11 | primer | `primer` | Primer entries (brace notation) |
 
 ---
 
@@ -74,7 +72,6 @@ Format: `{idx,length,product}` or `{idx,length,product,FLAG}` — multiple entri
 | Syntax | Mode | Description |
 |--------|------|-------------|
 | `2.0` | Fixed | Exact length in metres |
-| `fill` | Fill | Absorbs all remaining hole length after fixed decks are placed |
 | `fx:holeLength-4` | Formula | Calculated from hole properties at apply-time |
 | `m:50` | Mass | 50 kg of product — length calculated from density and hole diameter |
 | `product` | Product | Length derived from product.lengthMm (for spacer-like entries) |
@@ -93,7 +90,7 @@ When no flag is specified, the deck defaults to **proportional** scaling. Formul
 **Examples:**
 
 ```
-inertDeck:     {1,3.5,Stemming,FL};{5,fill,Stemming}
+inertDeck:     {1,3.5,Stemming,FL};{5,fx:holeLength - 3.5,Stemming,VR}
 coupledDeck:   {2,fx:(holeLength<3.5)?(holeLength*0.3):3.5,ANFO,VR};{4,2.0,ANFO,FL}
 decoupledDeck: {3,1.5,PKG75mm,FL}
 ```
@@ -166,13 +163,13 @@ Collar (0m)
   ┌─────────────────┐
   │  Deck idx=1      │  ← e.g. Stemming (INERT, FL)
   ├─────────────────┤
-  │  Deck idx=2      │  ← e.g. ANFO (COUPLED, fill)
+  │  Deck idx=2      │  ← e.g. ANFO (COUPLED, formula)
   ├─────────────────┤
   │  Deck idx=3      │  ← e.g. Gas Bag (SPACER)
   ├─────────────────┤
   │  Deck idx=4      │  ← e.g. ANFO (COUPLED, 2.0m, FL)
   ├─────────────────┤
-  │  Deck idx=5      │  ← e.g. Stemming (INERT, fill)
+  │  Deck idx=5      │  ← e.g. Stemming (INERT, formula)
   └─────────────────┘
 Toe (holeLength)
 ```

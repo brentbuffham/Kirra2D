@@ -90,21 +90,11 @@ export const CHARGING_DEFAULTS = Object.freeze({
 	minChargeLength: 2.0,
 	wetTolerance: 0.5,
 	dampTolerance: 1.0,
-	shortHoleLength: 4.0,
 	primerInterval: 8.0,
 	bottomOffsetRatio: 0.1,
 	maxPrimersPerDeck: 3,
 	hotHoleTemperature: 50
 });
-
-// SHORT HOLE TIERS
-export const SHORT_HOLE_TIERS = Object.freeze([
-	{ minLength: 4.0, maxLength: Infinity, chargeRatio: 0.50 },
-	{ minLength: 3.0, maxLength: 4.0, chargeRatio: 0.40 },
-	{ minLength: 2.0, maxLength: 3.0, chargeRatio: 0.25 },
-	{ minLength: 1.0, maxLength: 2.0, fixedMassKg: 5 },
-	{ minLength: 0.0, maxLength: 1.0, chargeRatio: 0 }
-]);
 
 // VALIDATION MESSAGES
 export const VALIDATION_MESSAGES = Object.freeze({
