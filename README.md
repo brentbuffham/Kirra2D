@@ -49,6 +49,99 @@ Kirra2D/
 ---
 ---
 
+## TreeView Node ID Convention (CRITICAL - DO NOT CHANGE)
+
+The TreeView panel uses the **Braille Pattern U+28FF character `⣿`** as a separator in all tree node IDs. This character was deliberately chosen because it will **never appear in user data** (entity names, file names, hole IDs, etc.), making it a safe and unambiguous delimiter for composite keys.
+
+> **WARNING**: This separator has been accidentally replaced with `?` (question mark) on multiple occasions during edits, breaking all show/hide, selection, and visibility cascading in the TreeView. If show/hide stops working, check that `⣿` has not been corrupted to `?` or any other character in `kirra.js` and `TreeView.js`.
+
+### Node ID Formats
+
+All node IDs follow the pattern: `prefix⣿part1⣿part2⣿...`
+
+| Node Type | Format | Parts | Example |
+|---|---|---|---|
+| **Blast Entity** | `entity⣿entityName` | 2 | `entity⣿Pattern_A` |
+| **Hole** | `hole⣿entityName⣿holeID` | 3 | `hole⣿Pattern_A⣿H001` |
+| **KAD Point Entity** | `points⣿entityName` | 2 | `points⣿SurveyPts` |
+| **KAD Line Entity** | `line⣿entityName` | 2 | `line⣿Boundary` |
+| **KAD Polygon Entity** | `poly⣿entityName` | 2 | `poly⣿Pit_Shell` |
+| **KAD Circle Entity** | `circle⣿entityName` | 2 | `circle⣿DrillHoles` |
+| **KAD Text Entity** | `text⣿entityName` | 2 | `text⣿Labels` |
+| **KAD Element (vertex)** | `entityType⣿entityName⣿element⣿pointID` | 4 | `line⣿Boundary⣿element⣿42` |
+| **KAD Chunk (lazy load)** | `entityType⣿entityName⣿chunk⣿start-end` | 4 | `points⣿SurveyPts⣿chunk⣿1-50` |
+| **Surface** | `surface⣿surfaceId` | 2 | `surface⣿dtm_001` |
+| **Image** | `image⣿imageId` | 2 | `image⣿ortho_01` |
+| **Drawing Layer** | `layer-drawing⣿layerId` | 2 | `layer-drawing⣿layer_default_drawings` |
+| **Drawing Layer Folder** | `layer-drawing⣿layerId⣿entityTypeFolder` | 3 | `layer-drawing⣿layer_default_drawings⣿points` |
+| **Surface Layer** | `layer-surface⣿layerId` | 2 | `layer-surface⣿layer_default_surfaces` |
+
+### Entity Type Prefix Mapping
+
+Note the discrepancy between `entityType` values stored in data vs the node ID prefix for entity-level nodes:
+
+| Data entityType | Entity-Level Node Prefix | Element-Level Node Prefix |
+|---|---|---|
+| `"point"` | `"points"` (with 's') | `"point"` (no 's') |
+| `"line"` | `"line"` | `"line"` |
+| `"poly"` | `"poly"` | `"poly"` |
+| `"circle"` | `"circle"` | `"circle"` |
+| `"text"` | `"text"` | `"text"` |
+
+The `"point"` -> `"points"` mapping is the only exception. When constructing entity-level node IDs programmatically, always use:
+
+```javascript
+var entityTypePrefix = entity.entityType === "point" ? "points" : entity.entityType;
+var nodeId = entityTypePrefix + "⣿" + entityName;
+```
+
+### Tree Hierarchy (Layer-Based Structure)
+
+```
+blast                                          (top-level)
+  entity⣿entityName                           (blast entity group)
+    hole⣿entityName⣿holeID                   (individual hole)
+
+drawings                                       (top-level)
+  layer-drawing⣿layerId                       (drawing layer)
+    layer-drawing⣿layerId⣿points             (entity type folder)
+      points⣿entityName                       (individual KAD entity)
+        points⣿entityName⣿element⣿pointID   (individual vertex)
+    layer-drawing⣿layerId⣿lines
+      line⣿entityName
+    layer-drawing⣿layerId⣿polygons
+      poly⣿entityName
+    layer-drawing⣿layerId⣿circles
+      circle⣿entityName
+    layer-drawing⣿layerId⣿texts
+      text⣿entityName
+
+surfaces                                       (top-level)
+  layer-surface⣿layerId                       (surface layer)
+    surface⣿surfaceId                         (individual surface)
+
+images                                         (top-level)
+  image⣿imageId                               (individual image)
+```
+
+### Parsing Node IDs
+
+Always split on `⣿` to extract parts:
+
+```javascript
+var parts = nodeId.split("⣿");
+var type = parts[0];         // e.g. "hole", "line", "layer-drawing"
+var itemId = parts.slice(1).join("⣿");  // remaining parts rejoined
+```
+
+### Files That Use This Convention
+
+- `src/dialog/tree/TreeView.js` - Tree rendering, selection, hide/show, expand/collapse
+- `src/kirra.js` - `updateTreeViewVisibilityStates()`, `handleTreeViewVisibility()`, visibility setters
+
+---
+---
+
 ## IndexedDB Database Schema
 
 Kirra uses IndexedDB for client-side data persistence. The database structure consists of four main object stores that manage blast holes, drawings, surfaces, and layer organization.

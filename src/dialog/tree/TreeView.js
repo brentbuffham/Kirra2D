@@ -735,6 +735,18 @@ export class TreeView {
 				element.style.opacity = "0.5";
 				element.classList.add("hidden-node");
 
+				// Step 0) Cascade hidden visual state to all child tree-items in the DOM
+				var parentLi = element.closest(".tree-node");
+				if (parentLi) {
+					var childItems = parentLi.querySelectorAll(".tree-item");
+					childItems.forEach(function (child) {
+						if (child !== element) {
+							child.style.opacity = "0.5";
+							child.classList.add("hidden-node");
+						}
+					});
+				}
+
 				var parts = nodeId.split("⣿");
 				var type = parts[0];
 				var itemId = parts.slice(1).join("⣿");
@@ -806,6 +818,18 @@ export class TreeView {
 			if (element) {
 				element.style.opacity = "1";
 				element.classList.remove("hidden-node");
+
+				// Step 0) Cascade show visual state to all child tree-items in the DOM
+				var parentLi = element.closest(".tree-node");
+				if (parentLi) {
+					var childItems = parentLi.querySelectorAll(".tree-item");
+					childItems.forEach(function (child) {
+						if (child !== element) {
+							child.style.opacity = "1";
+							child.classList.remove("hidden-node");
+						}
+					});
+				}
 
 				var parts = nodeId.split("⣿");
 				var type = parts[0];

@@ -49354,23 +49354,23 @@ function updateTreeViewVisibilityStates() {
 			visible: imagesGroupVisible,
 		},
 		{
-			nodeId: "drawings?points",
+			nodeId: "drawings⣿points",
 			visible: pointsGroupVisible && drawingsGroupVisible,
 		},
 		{
-			nodeId: "drawings?lines",
+			nodeId: "drawings⣿lines",
 			visible: linesGroupVisible && drawingsGroupVisible,
 		},
 		{
-			nodeId: "drawings?polygons",
+			nodeId: "drawings⣿polygons",
 			visible: polygonsGroupVisible && drawingsGroupVisible,
 		},
 		{
-			nodeId: "drawings?circles",
+			nodeId: "drawings⣿circles",
 			visible: circlesGroupVisible && drawingsGroupVisible,
 		},
 		{
-			nodeId: "drawings?texts",
+			nodeId: "drawings⣿texts",
 			visible: textsGroupVisible && drawingsGroupVisible,
 		},
 	];
@@ -49391,7 +49391,9 @@ function updateTreeViewVisibilityStates() {
 	// ? FIX: Update entity visibility states (inherit from parent group)
 	if (typeof allKADDrawingsMap !== "undefined" && allKADDrawingsMap) {
 		for (const [entityName, entity] of allKADDrawingsMap.entries()) {
-			const nodeId = entity.entityType + "?" + entityName;
+			// Step 1) Map entityType to tree node ID prefix (point→points, others stay same)
+			var entityTypePrefix = entity.entityType === "point" ? "points" : entity.entityType;
+			const nodeId = entityTypePrefix + "⣿" + entityName;
 			const element = treeView.container.querySelector('[data-node-id="' + nodeId + '"]');
 			if (element) {
 				// Check both entity visibility AND parent group visibility
@@ -49444,9 +49446,10 @@ function updateTreeViewVisibilityStates() {
 	}
 
 	// ? FIX: Update hole visibility states with correct node ID pattern
+	// Step 2) Node ID format: "hole⣿entityName⣿holeID" (3 parts)
 	if (typeof allBlastHoles !== "undefined" && allBlastHoles) {
 		allBlastHoles.forEach((hole) => {
-			const nodeId = "hole⣿" + hole.holeID; // ? FIX: Correct node ID pattern
+			const nodeId = "hole⣿" + (hole.entityName || "Unknown") + "⣿" + hole.holeID;
 			const element = treeView.container.querySelector('[data-node-id="' + nodeId + '"]');
 			if (element) {
 				const isVisible = hole.visible !== false && blastGroupVisible;
@@ -49487,6 +49490,95 @@ function updateTreeViewVisibilityStates() {
 				} else {
 					element.style.opacity = "0.5";
 					element.classList.add("hidden-node");
+				}
+			}
+		});
+	}
+
+	// Step 3) Update drawing layer node visibility states
+	if (typeof allDrawingLayers !== "undefined" && allDrawingLayers) {
+		allDrawingLayers.forEach(function (layer, layerId) {
+			var layerNodeId = "layer-drawing⣿" + layerId;
+			var layerElement = treeView.container.querySelector("[data-node-id=\"" + layerNodeId + "\"]");
+			if (layerElement) {
+				var layerIsVisible = layer.visible !== false && drawingsGroupVisible;
+				if (layerIsVisible) {
+					layerElement.style.opacity = "1";
+					layerElement.classList.remove("hidden-node");
+				} else {
+					layerElement.style.opacity = "0.5";
+					layerElement.classList.add("hidden-node");
+				}
+			}
+
+			// Step 3a) Also update entity type folders within this layer
+			var entityTypeFolders = ["points", "lines", "polygons", "circles", "texts"];
+			entityTypeFolders.forEach(function (folder) {
+				var folderNodeId = "layer-drawing⣿" + layerId + "⣿" + folder;
+				var folderElement = treeView.container.querySelector("[data-node-id=\"" + folderNodeId + "\"]");
+				if (folderElement) {
+					var folderVisible = layer.visible !== false && drawingsGroupVisible;
+					if (folderVisible) {
+						folderElement.style.opacity = "1";
+						folderElement.classList.remove("hidden-node");
+					} else {
+						folderElement.style.opacity = "0.5";
+						folderElement.classList.add("hidden-node");
+					}
+				}
+			});
+		});
+	}
+
+	// Step 4) Update surface layer node visibility states
+	if (typeof allSurfaceLayers !== "undefined" && allSurfaceLayers) {
+		allSurfaceLayers.forEach(function (layer, layerId) {
+			var layerNodeId = "layer-surface⣿" + layerId;
+			var layerElement = treeView.container.querySelector("[data-node-id=\"" + layerNodeId + "\"]");
+			if (layerElement) {
+				var layerIsVisible = layer.visible !== false && surfacesGroupVisible;
+				if (layerIsVisible) {
+					layerElement.style.opacity = "1";
+					layerElement.classList.remove("hidden-node");
+				} else {
+					layerElement.style.opacity = "0.5";
+					layerElement.classList.add("hidden-node");
+				}
+			}
+		});
+	}
+
+	// Step 5) Update individual surface visibility states
+	if (typeof loadedSurfaces !== "undefined" && loadedSurfaces) {
+		loadedSurfaces.forEach(function (surface, surfaceId) {
+			var surfaceNodeId = "surface⣿" + surfaceId;
+			var surfaceElement = treeView.container.querySelector("[data-node-id=\"" + surfaceNodeId + "\"]");
+			if (surfaceElement) {
+				var surfaceIsVisible = surface.visible !== false && surfacesGroupVisible;
+				if (surfaceIsVisible) {
+					surfaceElement.style.opacity = "1";
+					surfaceElement.classList.remove("hidden-node");
+				} else {
+					surfaceElement.style.opacity = "0.5";
+					surfaceElement.classList.add("hidden-node");
+				}
+			}
+		});
+	}
+
+	// Step 6) Update individual image visibility states
+	if (typeof loadedImages !== "undefined" && loadedImages) {
+		loadedImages.forEach(function (image, imageId) {
+			var imageNodeId = "image⣿" + imageId;
+			var imageElement = treeView.container.querySelector("[data-node-id=\"" + imageNodeId + "\"]");
+			if (imageElement) {
+				var imageIsVisible = image.visible !== false && imagesGroupVisible;
+				if (imageIsVisible) {
+					imageElement.style.opacity = "1";
+					imageElement.classList.remove("hidden-node");
+				} else {
+					imageElement.style.opacity = "0.5";
+					imageElement.classList.add("hidden-node");
 				}
 			}
 		});
@@ -49957,16 +50049,16 @@ window.handleTreeViewVisibility = function (nodeId, type, itemId, isVisible) {
 	} else if (nodeId === "images") {
 		setImagesGroupVisibility(isVisible);
 	}
-	// Drawing subgroup visibility
-	else if (nodeId === "drawings?points") {
+	// Drawing subgroup visibility (node ID uses ⣿ separator)
+	else if (nodeId === "drawings⣿points") {
 		setPointsGroupVisibility(isVisible);
-	} else if (nodeId === "drawings?lines") {
+	} else if (nodeId === "drawings⣿lines") {
 		setLinesGroupVisibility(isVisible);
-	} else if (nodeId === "drawings?polygons") {
+	} else if (nodeId === "drawings⣿polygons") {
 		setPolygonsGroupVisibility(isVisible);
-	} else if (nodeId === "drawings?circles") {
+	} else if (nodeId === "drawings⣿circles") {
 		setCirclesGroupVisibility(isVisible);
-	} else if (nodeId === "drawings?texts") {
+	} else if (nodeId === "drawings⣿texts") {
 		setTextsGroupVisibility(isVisible);
 	}
 	// Individual item visibility
