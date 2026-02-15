@@ -21,8 +21,8 @@
 ### Architecture and System Design
 - [Application Architecture](Application-Architecture) - File structure and source organization
 - [File Formats](File-Formats) - Comprehensive file I/O system documentation
-- [IndexedDB Schema](IndexedDB-Schema) - Database structure with ER diagrams
-- [Data Persistence](Data-Persistence) - localStorage and IndexedDB usage
+- [IndexedDB Schema](IndexedDB-Schema) - Database structure with ER diagrams ✨ **NEW**
+- [Data Persistence](Data-Persistence) - localStorage and IndexedDB usage ✨ **NEW**
 
 ### Blast Hole Design
 - [Blast Hole Management](Blast-Hole-Management) - Field definitions and data structures
@@ -37,13 +37,13 @@
 ### User Interface
 - [User Interface](User-Interface) - Menu structure, themes, and internationalization
 - [Measurement Tools](Measurement-Tools) - Distance, area, and snap tools
-- [TreeView Convention](TreeView-Convention) - Node ID formats and separator warnings
+- [TreeView Convention](TreeView-Convention) - Node ID formats and separator warnings ✨ **NEW**
 - [Print and PDF System](Print-and-PDF-System) - SVG-based export system
 
 ### Analysis and Workflow
 - [Statistics and Reporting](Statistics-and-Reporting) - Per-entity statistics and Voronoi analysis
-- [Blast Design Workflow](Blast-Design-Workflow) - Complete design process from setup to export
-- [Advanced Features](Advanced-Features) - Duplicate detection, grade control, clustering
+- [Blast Design Workflow](Blast-Design-Workflow) - Complete design process from setup to export ✨ **NEW**
+- [Advanced Features](Advanced-Features) - Duplicate detection, grade control, clustering ✨ **NEW**
 
 ## About
 
