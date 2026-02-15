@@ -149,6 +149,10 @@ import {
 	clearProtractorThreeJS,
 	disposeKADThreeJS,
 	invalidate3DAnalysisCaches,
+	drawBlastAnalyticsThreeJS,
+	clearBlastAnalyticsThreeJS,
+	getAvailableAnalyticsModels,
+	getShaderMaterialForModel,
 } from "./draw/canvas3DDrawing.js";
 import { drawAllChargesThreeJS, clearChargesThreeJS } from "./draw/canvas3DChargeDrawing.js";
 import { drawCharges2D } from "./draw/canvas2DChargeDrawing.js";
@@ -794,6 +798,13 @@ function exposeGlobalsToWindow() {
 	window.recalcMassPerHole = function() { recalcMassPerHole(allBlastHoles, window.loadedCharging); };
 	window.bumpDataVersion = bumpDataVersion;
 	window.invalidate3DAnalysisCaches = invalidate3DAnalysisCaches;
+
+	// Blast analytics shader functions
+	window.getAvailableAnalyticsModels = getAvailableAnalyticsModels;
+	window.drawBlastAnalyticsThreeJS = drawBlastAnalyticsThreeJS;
+	window.clearBlastAnalyticsThreeJS = clearBlastAnalyticsThreeJS;
+	window.getShaderMaterialForModel = getShaderMaterialForModel;
+
 	window.remapChargingKeys = remapChargingKeys;
 	window.extractPlainIdRemap = extractPlainIdRemap;
 	window.exportBaseConfigTemplate = exportBaseConfigTemplate;
@@ -35593,6 +35604,30 @@ document.addEventListener("DOMContentLoaded", function () {
 });
 document.addEventListener("DOMContentLoaded", function () {
 	document.getElementById("closeNavRightBtn").addEventListener("click", closeNavRight);
+});
+
+// Blast Analysis Shader button handler
+document.addEventListener("DOMContentLoaded", function () {
+	const blastAnalysisBtn = document.getElementById("blastAnalysisShaderBtn");
+	if (blastAnalysisBtn) {
+		blastAnalysisBtn.addEventListener("click", async function () {
+			try {
+				const { showBlastAnalysisShaderDialog } = await import("./dialog/popups/analytics/BlastAnalysisShaderDialog.js");
+				const { applyBlastAnalysisShader } = await import("./helpers/BlastAnalysisShaderHelper.js");
+
+				showBlastAnalysisShaderDialog(function(config) {
+					applyBlastAnalysisShader(config);
+
+					// Redraw to show shader
+					if (window.drawData) {
+						window.drawData(window.allBlastHoles, window.selectedHole);
+					}
+				});
+			} catch (error) {
+				console.error("Failed to load Blast Analysis Shader:", error);
+			}
+		});
+	}
 });
 
 function openNavLeft() {

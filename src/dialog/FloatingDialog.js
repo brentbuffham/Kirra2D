@@ -117,8 +117,8 @@ class FloatingDialog {
 		this.element.appendChild(header);
 
 		// Step 8) Create content
-		const content = this.createContent();
-		this.element.appendChild(content);
+		this.content = this.createContent();
+		this.element.appendChild(this.content);
 
 		// Step 9) Create footer with buttons
 		if (this.options.showConfirm || this.options.showCancel || this.options.showOption1 || this.options.showOption2 || this.options.showOption3) {

@@ -13,7 +13,8 @@ var activeLegends = {
     slope: null,
     relief: null,
     voronoi: null,
-    surfaces: [] // Step 1a) Changed from single object to array for multiple surfaces
+    surfaces: [], // Step 1a) Changed from single object to array for multiple surfaces
+    shaderAnalytics: null // Step 1b) Shader analytics legend
 };
 
 // Step 2) Legend type definitions
@@ -21,7 +22,8 @@ var LegendTypes = {
     SLOPE: "slope",
     RELIEF: "relief",
     VORONOI: "voronoi",
-    SURFACE: "surface"
+    SURFACE: "surface",
+    SHADER_ANALYTICS: "shader_analytics"
 };
 
 // Step 3) Default slope legend colors (match existing drawLegend)
@@ -107,8 +109,28 @@ function buildGradientLegendHTML(title, minVal, maxVal, colorStops) {
     
     html += "<div class='hud-legend-gradient' style='background: " + gradientCSS + ";'></div>";
     html += "<div class='hud-legend-gradient-labels'>";
-    html += "<span class='hud-legend-label'>" + (minVal !== undefined ? minVal.toFixed(1) : "0.0") + "</span>";
-    html += "<span class='hud-legend-label'>" + (maxVal !== undefined ? maxVal.toFixed(1) : "3.0") + "</span>";
+
+    // Add more tick marks for better readability
+    var min = (minVal !== undefined ? minVal : 0);
+    var max = (maxVal !== undefined ? maxVal : 3);
+    var range = max - min;
+
+    // Generate 5 tick marks: min, 25%, 50%, 75%, max
+    var tickValues = [
+        min,
+        min + range * 0.25,
+        min + range * 0.5,
+        min + range * 0.75,
+        max
+    ];
+
+    for (var i = 0; i < tickValues.length; i++) {
+        var tickVal = tickValues[i];
+        var tickPos = (i / (tickValues.length - 1)) * 100; // 0%, 25%, 50%, 75%, 100%
+        html += "<span class='hud-legend-label' style='position: absolute; top: " + tickPos + "%;";
+        html += "transform: translateY(-50%); font-size: 11px;'>" + tickVal.toFixed(1) + "</span>";
+    }
+
     html += "</div>";
     html += "</div>";
     html += "</div>";
@@ -245,7 +267,19 @@ function updateDisplay() {
         html += buildSurfacesLegendHTML(activeLegends.surfaces);
         hasAnyLegend = true;
     }
-    
+
+    // Step 5d-2) Shader analytics legend
+    if (activeLegends.shaderAnalytics) {
+        var shaderData = activeLegends.shaderAnalytics;
+        html += buildGradientLegendHTML(
+            shaderData.title || "Blast Analysis",
+            shaderData.minVal,
+            shaderData.maxVal,
+            shaderData.colorStops
+        );
+        hasAnyLegend = true;
+    }
+
     // Step 5e) Update panel visibility
     if (hasAnyLegend) {
         panelElement.innerHTML = html;
@@ -276,6 +310,7 @@ function handleLegendUpdate(data) {
         else if (type === LegendTypes.RELIEF) activeLegends.relief = null;
         else if (type === LegendTypes.VORONOI) activeLegends.voronoi = null;
         else if (type === LegendTypes.SURFACE) activeLegends.surfaces = [];
+        else if (type === LegendTypes.SHADER_ANALYTICS) activeLegends.shaderAnalytics = null;
     } else {
         // Step 6c) Show specific legend
         if (type === LegendTypes.SLOPE) {
@@ -304,6 +339,14 @@ function handleLegendUpdate(data) {
                     hillshadeColor: data.hillshadeColor || null
                 }];
             }
+        } else if (type === LegendTypes.SHADER_ANALYTICS) {
+            // Step 6e) Shader analytics legend
+            activeLegends.shaderAnalytics = {
+                title: data.title || "Blast Analysis",
+                minVal: data.minVal,
+                maxVal: data.maxVal,
+                colorStops: data.colorStops
+            };
         }
     }
     
@@ -410,6 +453,22 @@ export function showSurfacesLegend(surfaces) {
 
 export function hideSurfaceLegend() {
     OverlayEventBus.emit(OverlayEvents.LEGEND, { visible: false, type: LegendTypes.SURFACE });
+}
+
+// Step 9f) Show shader analytics legend
+export function showShaderAnalyticsLegend(title, minVal, maxVal, colorStops) {
+    OverlayEventBus.emit(OverlayEvents.LEGEND, {
+        visible: true,
+        type: LegendTypes.SHADER_ANALYTICS,
+        title: title,
+        minVal: minVal,
+        maxVal: maxVal,
+        colorStops: colorStops
+    });
+}
+
+export function hideShaderAnalyticsLegend() {
+    OverlayEventBus.emit(OverlayEvents.LEGEND, { visible: false, type: LegendTypes.SHADER_ANALYTICS });
 }
 
 export function hideLegend() {

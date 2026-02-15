@@ -8,6 +8,7 @@
 import * as THREE from "three";
 import { GeometryFactory } from "../three/GeometryFactory.js";
 import { buildMassLabels } from "./canvas2DDrawing.js";
+import { BlastAnalyticsShader } from "../shaders/analytics/BlastAnalyticsShader.js";
 
 //=================================================
 // 3D ANALYSIS CACHE - Prevents rebuilding geometry every frame
@@ -2876,4 +2877,212 @@ export function disposeKADThreeJS() {
 	}
 
 	console.log("🗑️ Disposed " + objectCount + " KAD ThreeJS objects and freed GPU memory");
+}
+
+//=================================================
+// Blast Analytics Shader Functions
+//=================================================
+
+// Global shader instance
+var _blastAnalyticsShader = null;
+
+/**
+ * Get or create the blast analytics shader instance
+ */
+function _getAnalyticsShader() {
+	if (!_blastAnalyticsShader && window.threeRenderer) {
+		_blastAnalyticsShader = new BlastAnalyticsShader(window.threeRenderer);
+	}
+	return _blastAnalyticsShader;
+}
+
+/**
+ * Draw blast analytics shader on surface in 3D
+ */
+export function drawBlastAnalyticsThreeJS(model, holes, params, options) {
+	if (!window.threeInitialized || !window.threeRenderer) {
+		console.warn("Three.js not initialized");
+		return;
+	}
+
+	options = options || {};
+
+	var shader = _getAnalyticsShader();
+	if (!shader) {
+		console.error("Failed to create BlastAnalyticsShader");
+		return;
+	}
+
+	// Set the model and parameters
+	shader.setModel(model, params);
+
+	// Update with hole data
+	shader.update(holes, { useToeLocation: options.useToeLocation || false });
+
+	// Build mesh based on options
+	var mesh;
+	var usedSurface = false;
+
+	if (options.surfaceId && options.surfaceId !== "__PLANE__" && window.loadedSurfaces) {
+		// Try to render on existing surface
+		var surface = window.loadedSurfaces.get(options.surfaceId);
+
+		// Try to find surface mesh in scene
+		var surfaceMesh = null;
+		if (window.threeRenderer && window.threeRenderer.surfacesGroup) {
+			window.threeRenderer.surfacesGroup.traverse(function(obj) {
+				if (obj.userData && obj.userData.surfaceId === options.surfaceId && obj.geometry) {
+					surfaceMesh = obj;
+				}
+			});
+		}
+
+		if (surfaceMesh && surfaceMesh.geometry) {
+			// Use surface geometry from scene
+			var surfaceGeom = surfaceMesh.geometry.clone();
+			var worldOffset = {
+				x: window.threeLocalOriginX || 0,
+				y: window.threeLocalOriginY || 0,
+				z: 0
+			};
+			mesh = shader.buildOnGeometry(surfaceGeom, worldOffset);
+			usedSurface = true;
+			console.log("✅ Using surface geometry from scene:", options.surfaceId);
+		} else if (surface && surface.threeJSMesh && surface.threeJSMesh.geometry) {
+			// Fallback: use from surface object
+			var surfaceGeom = surface.threeJSMesh.geometry.clone();
+			var worldOffset = {
+				x: window.threeLocalOriginX || 0,
+				y: window.threeLocalOriginY || 0,
+				z: 0
+			};
+			mesh = shader.buildOnGeometry(surfaceGeom, worldOffset);
+			usedSurface = true;
+			console.log("✅ Using surface geometry from object:", options.surfaceId);
+		} else {
+			console.warn("⚠️ Surface geometry not found, falling back to analysis plane");
+		}
+	}
+
+	// Fallback to analysis plane if no surface or surface not found
+	if (!mesh) {
+		var bounds = _calculateHoleBounds(holes);
+		var avgCollarZ = _calculateAverageCollarZ(holes);
+		var padding = options.planePadding || 50;
+
+		mesh = shader.buildPlane(bounds, avgCollarZ, padding);
+		console.log("✅ Created analysis plane");
+	}
+
+	// Add to scene
+	if (mesh && window.threeRenderer.surfacesGroup) {
+		// Remove any existing analytics mesh
+		clearBlastAnalyticsThreeJS();
+
+		// Debug mesh properties
+		console.log("📊 Shader Mesh Debug:");
+		console.log("  - Position:", mesh.position.toArray());
+		console.log("  - Geometry vertices:", mesh.geometry.attributes.position ? mesh.geometry.attributes.position.count : 0);
+		console.log("  - Material type:", mesh.material.type);
+		console.log("  - Material visible:", mesh.material.visible);
+		console.log("  - Material transparent:", mesh.material.transparent);
+		console.log("  - Material opacity:", mesh.material.uniforms.uOpacity ? mesh.material.uniforms.uOpacity.value : "N/A");
+		console.log("  - Hole count uniform:", mesh.material.uniforms.uHoleCount ? mesh.material.uniforms.uHoleCount.value : "N/A");
+
+		// Make sure mesh is visible
+		mesh.visible = true;
+		mesh.renderOrder = 100; // Render after other objects
+
+		window.threeRenderer.surfacesGroup.add(mesh);
+		mesh.userData.isBlastAnalytics = true;
+
+		console.log("✅ Blast analytics shader applied:", model, "on", holes.length, "holes");
+		console.log("  Mesh added to scene at position:", mesh.position.toArray());
+	}
+}
+
+/**
+ * Clear blast analytics shader from 3D scene
+ */
+export function clearBlastAnalyticsThreeJS() {
+	if (!window.threeRenderer || !window.threeRenderer.surfacesGroup) return;
+
+	var toRemove = [];
+	window.threeRenderer.surfacesGroup.children.forEach(function(child) {
+		if (child.userData && child.userData.isBlastAnalytics) {
+			toRemove.push(child);
+		}
+	});
+
+	toRemove.forEach(function(obj) {
+		window.threeRenderer.surfacesGroup.remove(obj);
+		if (obj.geometry) obj.geometry.dispose();
+	});
+
+	if (toRemove.length > 0) {
+		console.log("🗑️ Cleared blast analytics shader");
+	}
+}
+
+/**
+ * Get available analytics models
+ */
+export function getAvailableAnalyticsModels() {
+	var shader = _getAnalyticsShader();
+	if (shader) {
+		return shader.getAvailableModels();
+	}
+
+	// Fallback if shader not initialized
+	return [
+		{ name: "ppv", displayName: "PPV (Simple)", unit: "mm/s" },
+		{ name: "scaled_heelan", displayName: "Scaled Heelan (Blair & Minchinton 2006)", unit: "mm/s" },
+		{ name: "heelan_original", displayName: "Original Heelan Waveform", unit: "mm/s" },
+		{ name: "nonlinear_damage", displayName: "Non-Linear Damage (Blair 2008)", unit: "damage index" }
+	];
+}
+
+/**
+ * Get shader material for a model (for texture baking)
+ */
+export function getShaderMaterialForModel(model, holes, params) {
+	var shader = _getAnalyticsShader();
+	if (!shader) return null;
+
+	shader.setModel(model, params);
+	shader.update(holes, { useToeLocation: false });
+
+	return shader.material;
+}
+
+/**
+ * Calculate bounding box for holes
+ * @private
+ */
+function _calculateHoleBounds(holes) {
+	var bounds = {
+		minX: Infinity, maxX: -Infinity,
+		minY: Infinity, maxY: -Infinity
+	};
+
+	holes.forEach(function(hole) {
+		if (hole.startXLocation < bounds.minX) bounds.minX = hole.startXLocation;
+		if (hole.startXLocation > bounds.maxX) bounds.maxX = hole.startXLocation;
+		if (hole.startYLocation < bounds.minY) bounds.minY = hole.startYLocation;
+		if (hole.startYLocation > bounds.maxY) bounds.maxY = hole.startYLocation;
+	});
+
+	return bounds;
+}
+
+/**
+ * Calculate average collar Z elevation
+ * @private
+ */
+function _calculateAverageCollarZ(holes) {
+	var sum = 0;
+	holes.forEach(function(hole) {
+		sum += hole.startZLocation || 0;
+	});
+	return holes.length > 0 ? sum / holes.length : 0;
 }

@@ -4029,10 +4029,13 @@ body.dark-mode .segmented-control label:hover {
 }
 
 .hud-legend-gradient-labels {
+    position: relative;
     display: flex;
     flex-direction: column;
     justify-content: space-between;
     font-size: 7pt;
+    height: 100px; /* Match gradient bar height */
+    min-width: 40px; /* Ensure space for labels */
 }
 
 /* Step 6) Surface legend panel - left side below other legends */
@@ -4135,6 +4138,7 @@ body.dark-mode .segmented-control label:hover {
     font-size: 6pt;
     justify-content: space-between;
     align-items: flex-end;
+    height: 60px; /* Match compact gradient bar height */
 }
 
 .hud-legend-label-mid {

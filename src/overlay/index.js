@@ -17,7 +17,7 @@ export { emitStats, emitCoords, emitCentroid, emitRuler, emitProtractor, clearMe
 // Step 4) Legend panel exports
 // Step 4a) New export for multiple surfaces
 // Step 4b) Added getActiveLegends for print system integration
-export { showSlopeLegend, showReliefLegend, showVoronoiLegend, showSurfaceLegend, showSurfacesLegend, hideSlopeLegend, hideReliefLegend, hideVoronoiLegend, hideSurfaceLegend, hideLegend, LegendTypes, getActiveLegends } from "./panels/LegendPanel.js";
+export { showSlopeLegend, showReliefLegend, showVoronoiLegend, showSurfaceLegend, showSurfacesLegend, showShaderAnalyticsLegend, hideSlopeLegend, hideReliefLegend, hideVoronoiLegend, hideSurfaceLegend, hideShaderAnalyticsLegend, hideLegend, LegendTypes, getActiveLegends } from "./panels/LegendPanel.js";
 
 // Step 5) Surface legend panel - additional exports (main show/hide from LegendPanel)
 export { updateSurface, removeSurface } from "./panels/SurfaceLegendPanel.js";
