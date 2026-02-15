@@ -70,6 +70,9 @@ export function buildSurfaceConnectorPresets() {
             btn.style.cssText = "background:" + color + ";color:" + textColor + ";border:1px solid #555;border-radius:4px;padding:2px 6px;font-size:10px;cursor:pointer;font-weight:bold;min-width:36px;";
 
             btn.addEventListener("click", function () {
+                // Store the product's VOD so connector logic can calculate travel time
+                window.activeConnectorVodMs = product.deliveryVodMs || 0;
+
                 // Set the floating delay input
                 var delayInput = document.getElementById("floatingDelay");
                 if (delayInput) delayInput.value = delay;

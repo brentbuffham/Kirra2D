@@ -69,7 +69,7 @@ export class PPVModel {
 
             vec4 getHoleData(int index, int row) {
                 float u = (float(index) + 0.5) / uHoleDataWidth;
-                float v = (float(row) + 0.5) / 2.0;
+                float v = (float(row) + 0.5) / 4.0;  // 4 rows per hole
                 return texture2D(uHoleData, vec2(u, v));
             }
 

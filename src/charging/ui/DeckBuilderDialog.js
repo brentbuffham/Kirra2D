@@ -55,6 +55,16 @@ function productSnapshot(product) {
 }
 
 /**
+ * Returns true for detonator types whose delay is a fixed physical property
+ * of the product (not user-programmable).
+ */
+function isFixedDelayType(initiatorType) {
+    var t = (initiatorType || "").toLowerCase();
+    return t === "shocktube" || t === "electric" || t === "detonatingcord" ||
+           t === "surfaceconnector" || t === "surfacecord";
+}
+
+/**
  * Build indexed charge formula context from a HoleCharging's decks.
  * Mirrors SimpleRuleEngine.buildIndexedChargeVars() for local use in the dialog.
  */
@@ -406,7 +416,13 @@ export function showDeckBuilderDialog(referenceHole) {
         var detQty = primer.detonator.quantity || 1;
         var detLabel = primer.detonator.productName || "None";
         if (detQty > 1) detLabel = detQty + "x " + detLabel;
-        row.innerHTML = "<b>Primer " + (index + 1) + ":</b> " + "<span>Depth: " + (primer.lengthFromCollar || 0).toFixed(1) + "m</span>" + "<span>Det: " + detLabel + "</span>" + "<span>Booster: " + (primer.booster.productName || "None") + "</span>" + "<span>Delay: " + (primer.detonator.delayMs || 0) + "ms</span>";
+        var totalDelay = primer.totalDownholeDelayMs;
+        var travelTime = totalDelay - (primer.detonator.delayMs || 0);
+        var delayLabel = (primer.detonator.delayMs || 0) + "ms";
+        if (travelTime > 0.01) {
+            delayLabel += " + " + travelTime.toFixed(1) + "ms travel = " + totalDelay.toFixed(1) + "ms";
+        }
+        row.innerHTML = "<b>Primer " + (index + 1) + ":</b> " + "<span>Depth: " + (primer.lengthFromCollar || 0).toFixed(1) + "m</span>" + "<span>Det: " + detLabel + "</span>" + "<span>Booster: " + (primer.booster.productName || "None") + "</span>" + "<span>Delay: " + delayLabel + "</span>";
     }
 
     function updateContentInfo(content, deckIndex, contentIndex) {
@@ -614,7 +630,7 @@ function setupDragDrop(canvas, sectionView, workingCharging, refHole, configTrac
                     productName: fullProduct.name,
                     initiatorType: fullProduct.initiatorType || fullProduct.productType || null,
                     deliveryVodMs: fullProduct.deliveryVodMs || 0,
-                    delayMs: 0
+                    delayMs: fullProduct.delayMs || 0
                 },
                 booster: {
                     productName: null,
@@ -686,6 +702,30 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
 
     var formContent = createEnhancedFormContent(fields);
 
+    // Wire delay field to detonator selection: fixed-delay types inherit from product
+    var detSelect = formContent.querySelector('select[name="detonatorName"]');
+    var delayInput = formContent.querySelector('input[name="delayMs"]');
+    function syncDelayField() {
+        if (!detSelect || !delayInput) return;
+        var selName = detSelect.value;
+        var product = null;
+        if (selName && window.loadedProducts) {
+            window.loadedProducts.forEach(function (p) { if (p.name === selName) product = p; });
+        }
+        if (product && isFixedDelayType(product.initiatorType || product.productType)) {
+            delayInput.value = product.delayMs || 0;
+            delayInput.readOnly = true;
+            delayInput.style.backgroundColor = "#e0e0e0";
+            delayInput.style.color = "#666";
+        } else {
+            delayInput.readOnly = false;
+            delayInput.style.backgroundColor = "";
+            delayInput.style.color = "";
+        }
+    }
+    if (detSelect) detSelect.addEventListener("change", syncDelayField);
+    syncDelayField(); // set initial state
+
     var primerDialog = new FloatingDialog({
         title: "Add Primer",
         content: formContent,
@@ -724,6 +764,15 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
                 });
             }
 
+            // Fixed-delay types: inherit delayMs from product, ignore form value
+            var resolvedDelay;
+            var detInitType = detProduct ? detProduct.initiatorType || detProduct.productType : null;
+            if (isFixedDelayType(detInitType)) {
+                resolvedDelay = detProduct.delayMs || 0;
+            } else {
+                resolvedDelay = parseFloat(data.delayMs) || 0;
+            }
+
             var primer = new Primer({
                 holeID: workingCharging.holeID,
                 lengthFromCollar: depth,
@@ -731,9 +780,9 @@ function addPrimerToCharging(workingCharging, sectionView, refHole) {
                 detonator: {
                     productID: detProduct ? detProduct.productID : null,
                     productName: data.detonatorName || null,
-                    initiatorType: detProduct ? detProduct.initiatorType || detProduct.productType : null,
+                    initiatorType: detInitType,
                     deliveryVodMs: detProduct ? detProduct.deliveryVodMs || 0 : 0,
-                    delayMs: parseFloat(data.delayMs) || 0,
+                    delayMs: resolvedDelay,
                     quantity: Math.max(1, Math.min(10, parseInt(data.detonatorQty) || 1))
                 },
                 booster: {
@@ -805,6 +854,30 @@ function editPrimer(workingCharging, sectionView, refHole) {
 
     var formContent = createEnhancedFormContent(fields);
 
+    // Wire delay field to detonator selection: fixed-delay types inherit from product
+    var detSelect = formContent.querySelector('select[name="detonatorName"]');
+    var delayInput = formContent.querySelector('input[name="delayMs"]');
+    function syncDelayField() {
+        if (!detSelect || !delayInput) return;
+        var selName = detSelect.value;
+        var product = null;
+        if (selName && window.loadedProducts) {
+            window.loadedProducts.forEach(function (p) { if (p.name === selName) product = p; });
+        }
+        if (product && isFixedDelayType(product.initiatorType || product.productType)) {
+            delayInput.value = product.delayMs || 0;
+            delayInput.readOnly = true;
+            delayInput.style.backgroundColor = "#e0e0e0";
+            delayInput.style.color = "#666";
+        } else {
+            delayInput.readOnly = false;
+            delayInput.style.backgroundColor = "";
+            delayInput.style.color = "";
+        }
+    }
+    if (detSelect) detSelect.addEventListener("change", syncDelayField);
+    syncDelayField(); // set initial state from current primer's detonator
+
     var editDialog = new FloatingDialog({
         title: "Edit Primer " + (idx + 1),
         content: formContent,
@@ -848,14 +921,23 @@ function editPrimer(workingCharging, sectionView, refHole) {
                 });
             }
 
+            // Fixed-delay types: inherit delayMs from product, ignore form value
+            var detInitType = detProduct ? detProduct.initiatorType || detProduct.productType : null;
+            var resolvedDelay;
+            if (isFixedDelayType(detInitType)) {
+                resolvedDelay = detProduct.delayMs || 0;
+            } else {
+                resolvedDelay = parseFloat(data.delayMs) || 0;
+            }
+
             // Update primer in-place
             primer.lengthFromCollar = depth;
             primer.depthFormula = isFormula(depthInput) ? depthInput : null;
             primer.detonator.productID = detProduct ? detProduct.productID : null;
             primer.detonator.productName = data.detonatorName || null;
-            primer.detonator.initiatorType = detProduct ? detProduct.initiatorType || detProduct.productType : null;
+            primer.detonator.initiatorType = detInitType;
             primer.detonator.deliveryVodMs = detProduct ? detProduct.deliveryVodMs || 0 : 0;
-            primer.detonator.delayMs = parseFloat(data.delayMs) || 0;
+            primer.detonator.delayMs = resolvedDelay;
             primer.detonator.quantity = Math.max(1, Math.min(10, parseInt(data.detonatorQty) || 1));
             primer.booster.productID = boosterProduct ? boosterProduct.productID : null;
             primer.booster.productName = data.boosterName || null;
@@ -1785,7 +1867,8 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                     primerArray.push({
                         depth: depthValue,
                         detonator: p.detonator ? p.detonator.productName : null,
-                        booster: p.booster ? p.booster.productName : null
+                        booster: p.booster ? p.booster.productName : null,
+                        delayMs: p.detonator ? (p.detonator.delayMs || 0) : 0
                     });
                 }
             }

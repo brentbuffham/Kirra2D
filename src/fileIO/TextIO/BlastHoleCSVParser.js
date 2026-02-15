@@ -102,6 +102,7 @@ class BlastHoleCSVParser extends BaseParser {
 			var burden = 0;
 			var spacing = 0;
 			var connectorCurve = 0;
+			var connectorVodMs = 0;
 
 			// Step 14a) Header-based parsing for dynamic column formats (e.g. "allcolumns" export)
 			// When a header was detected and column count doesn't match fixed formats, use column names
@@ -138,6 +139,7 @@ class BlastHoleCSVParser extends BaseParser {
 				burden = hvf("burden") || 0;
 				spacing = hvf("spacing") || 0;
 				connectorCurve = hvi("connectorCurve") || 0;
+				connectorVodMs = hvf("connectorVodMs") || 0;
 			}
 			// Step 15) Parse based on column count (35 column format - full data)
 			else if (len === 35) {
@@ -352,7 +354,8 @@ class BlastHoleCSVParser extends BaseParser {
 					posID: posID || null,
 					burden: burden || 1,
 					spacing: spacing || 1,
-					connectorCurve: connectorCurve || 0
+					connectorCurve: connectorCurve || 0,
+					connectorVodMs: connectorVodMs || 0
 				};
 
 				// Step 26) Add to parsed holes array

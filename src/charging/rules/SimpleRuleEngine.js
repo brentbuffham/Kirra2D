@@ -41,7 +41,8 @@ function snap(product) {
 		colorHex: product.colorHex || null,
 		diameterMm: product.diameterMm || null,
 		lengthMm: product.lengthMm || null,
-		massGrams: product.massGrams || null
+		massGrams: product.massGrams || null,
+		vodMs: product.vodMs || null
 	};
 }
 
@@ -303,7 +304,7 @@ function applyTemplate(hole, config, deckSequence) {
 					productName: ptDet ? ptDet.name : (pt.detonator || null),
 					initiatorType: ptDet ? (ptDet.initiatorType || ptDet.productType) : null,
 					deliveryVodMs: ptDet ? (ptDet.deliveryVodMs || 0) : 0,
-					delayMs: 0
+					delayMs: pt.delayMs || (ptDet ? (ptDet.delayMs || 0) : 0)
 				},
 				booster: {
 					productID: ptBooster ? ptBooster.productID : null,

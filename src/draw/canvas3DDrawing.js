@@ -9,6 +9,7 @@ import * as THREE from "three";
 import { GeometryFactory } from "../three/GeometryFactory.js";
 import { buildMassLabels } from "./canvas2DDrawing.js";
 import { BlastAnalyticsShader } from "../shaders/analytics/BlastAnalyticsShader.js";
+import { calculateDownholeTimings, getTimingRange, fireTimeToColor, normalizeFireTime } from "../helpers/DownholeTimingCalculator.js";
 
 //=================================================
 // 3D ANALYSIS CACHE - Prevents rebuilding geometry every frame
@@ -180,6 +181,8 @@ export function clearThreeJS() {
 		window.threeRenderer.clearAllGeometry();
 		// Invalidate analysis caches since geometry was removed
 		invalidate3DAnalysisCaches();
+		// Clear cached downhole timing range so it recalculates on next draw
+		window._downholeTimingRange = null;
 	}
 }
 
@@ -649,6 +652,30 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 		for (var ml = 0; ml < dLabels.perDeck.length; ml++) {
 			var mpdPos = canvasToWorld(leftSideCollar, middleSideToe + ml * massLineH);
 			drawHoleTextThreeJS(mpdPos.x, mpdPos.y, collarZ, dLabels.perDeck[ml], fontSize / 1.5, "#FF0000", "right");
+		}
+	}
+	if (displayOptions.downholeTiming) {
+		var chargingMap = window.loadedCharging;
+		if (chargingMap && chargingMap.has(hole.holeID)) {
+			var timingEntries = calculateDownholeTimings([hole], chargingMap, { visibleOnly: false });
+			if (timingEntries.length > 0) {
+				// Get global timing range for consistent coloring
+				if (!window._downholeTimingRange) {
+					var allEntries = calculateDownholeTimings(window.allBlastHoles, chargingMap);
+					window._downholeTimingRange = getTimingRange(allEntries);
+				}
+				var range = window._downholeTimingRange;
+				var timingLineH = BASE_FONT_SIZE;
+				for (var ti = 0; ti < timingEntries.length; ti++) {
+					var entry = timingEntries[ti];
+					var t = normalizeFireTime(entry.totalFireTimeMs, range.minMs, range.rangeMs);
+					var tColor = fireTimeToColor(t);
+					var tLabel = entry.totalFireTimeMs.toFixed(0) + "ms";
+					// Position below the massPerDeck labels on the right side of the toe
+					var tPos = canvasToWorld(rightSideToe, middleSideToe + ti * timingLineH);
+					drawHoleTextThreeJS(tPos.x, tPos.y, toeZ, tLabel, fontSize / 1.5, tColor, "left");
+				}
+			}
 		}
 	}
 }

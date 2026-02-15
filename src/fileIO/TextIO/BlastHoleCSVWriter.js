@@ -4,10 +4,12 @@
 //=============================================================
 // Step 1) Writes blast hole data to CSV files in various formats
 // Step 2) Extracted from kirra.js convertPointsTo*CSV() functions (lines 11125-11268)
-// Step 3) Supports all CSV formats: 4, 7, 9, 12, 14, 30, 32, 35 columns, actual (measured), and allcolumns (dynamic)
+// Step 3) Supports all CSV formats: 4, 7, 9, 12, 14, 30, 32, 35 columns, actual (measured), allcolumns (dynamic),
+//          charging-summary, charging-detail, charging-primers, charging-timing
 // Step 4) Created: 2026-01-03
 // Step 5) Updated: 2026-01-04 - Added generateAllColumnsCSV() for future-proof export
 // Step 6) Updated: 2026-01-04 - Added all remaining column formats (4, 7, 9, 30, 32)
+// Step 7) Updated: 2026-02-15 - Added charging CSV formats (summary, detail, primers, timing)
 
 import BaseWriter from "../BaseWriter.js";
 
@@ -17,8 +19,9 @@ class BlastHoleCSVWriter extends BaseWriter {
 		super(options);
 
 		// Step 6) Writer options
-		this.format = options.format || "35column"; // 4column, 7column, 9column, 12column, 14column, 30column, 32column, 35column, actual, allcolumns
+		this.format = options.format || "35column"; // 4column, 7column, ..., charging-summary, charging-detail, charging-primers, charging-timing
 		this.decimalPlaces = options.decimalPlaces || 4;
+		this.chargingMap = options.chargingMap || null; // Map<holeID, HoleCharging> for charging formats
 	}
 
 	// Step 7) Helper function to safely format numeric values
@@ -45,6 +48,9 @@ class BlastHoleCSVWriter extends BaseWriter {
 			throw new Error("No visible holes to export");
 		}
 
+		// Accept chargingMap from data or constructor
+		var chargingMap = data.chargingMap || this.chargingMap || null;
+
 		// Step 10) Generate CSV based on format
 		var csv = "";
 
@@ -68,6 +74,14 @@ class BlastHoleCSVWriter extends BaseWriter {
 			csv = this.generateActualDataCSV(visibleHoles);
 		} else if (this.format === "allcolumns" || this.format === "all") {
 			csv = this.generateAllColumnsCSV(visibleHoles);
+		} else if (this.format === "charging-summary") {
+			csv = this.generateChargingSummaryCSV(visibleHoles, chargingMap);
+		} else if (this.format === "charging-detail") {
+			csv = this.generateChargingDetailCSV(visibleHoles, chargingMap);
+		} else if (this.format === "charging-primers") {
+			csv = this.generateChargingPrimersCSV(visibleHoles, chargingMap);
+		} else if (this.format === "charging-timing") {
+			csv = this.generateChargingTimingCSV(visibleHoles, chargingMap);
 		} else {
 			throw new Error("Unsupported CSV format: " + this.format);
 		}
@@ -285,10 +299,10 @@ class BlastHoleCSVWriter extends BaseWriter {
 		return csv;
 	}
 
-	// Step 14) Generate 35 column CSV format (all data)
+	// Step 14) Generate 35 column CSV format (all data) + connectorVodMs (36 columns)
 	generate35ColumnCSV(holes) {
 		var csv = "";
-		var header = "entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation,gradeYLocation,gradeZLocation,subdrillAmount,subdrillLength,benchHeight,holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp,rowID,posID,burden,spacing,connectorCurve";
+		var header = "entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation,gradeYLocation,gradeZLocation,subdrillAmount,subdrillLength,benchHeight,holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp,rowID,posID,burden,spacing,connectorCurve,connectorVodMs";
 		csv += header + "\n";
 
 		var dp = this.decimalPlaces;
@@ -331,7 +345,8 @@ class BlastHoleCSVWriter extends BaseWriter {
 				(hole.posID || "") + "," +
 				this.safeToFixed(hole.burden, dp) + "," +
 				this.safeToFixed(hole.spacing, dp) + "," +
-				(hole.connectorCurve || "");
+				(hole.connectorCurve || "") + "," +
+				(hole.connectorVodMs || 0);
 
 			csv += row + "\n";
 		}
@@ -416,6 +431,253 @@ class BlastHoleCSVWriter extends BaseWriter {
 
 		console.log("All Columns CSV: Exported " + holes.length + " holes with " + allProperties.length + " columns");
 		return csv;
+	}
+
+	// ============ CHARGING CSV FORMATS ============
+
+	// Charging Summary: One row per hole with charging totals
+	generateChargingSummaryCSV(holes, chargingMap) {
+		var csv = "";
+		var header = "entityName,holeID,holeType,holeDiameterMm,holeLengthCalculated," +
+			"collarX,collarY,collarZ,toeX,toeY,toeZ," +
+			"surfaceDelayMs,totalExplosiveMassKg,powderFactor," +
+			"deckCount,explosiveDeckCount,primerCount," +
+			"stemLengthM,chargeLengthM,hasCharging";
+		csv += header + "\n";
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			var charging = chargingMap ? chargingMap.get(hole.holeID) : null;
+
+			var totalMass = 0;
+			var deckCount = 0;
+			var explosiveDeckCount = 0;
+			var primerCount = 0;
+			var stemLength = 0;
+			var chargeLength = 0;
+			var powderFactor = 0;
+
+			if (charging) {
+				totalMass = charging.getTotalExplosiveMass();
+				deckCount = charging.decks.length;
+				primerCount = charging.primers.length;
+				powderFactor = charging.calculatePowderFactor(hole.burden || 1, hole.spacing || 1);
+
+				for (var d = 0; d < charging.decks.length; d++) {
+					var deck = charging.decks[d];
+					if (deck.deckType === "COUPLED" || deck.deckType === "DECOUPLED") {
+						explosiveDeckCount++;
+						chargeLength += deck.length;
+					} else if (deck.deckType === "INERT" && deck.product && deck.product.name !== "Air") {
+						stemLength += deck.length;
+					}
+				}
+				// If no non-air inert found, first inert from collar is stem
+				if (stemLength === 0 && charging.decks.length > 0) {
+					var firstDeck = charging.decks[0];
+					if (firstDeck.deckType === "INERT") {
+						stemLength = firstDeck.length;
+					}
+				}
+			}
+
+			var row = (hole.entityName || "") + "," +
+				(hole.holeID || "") + "," +
+				(hole.holeType || "") + "," +
+				this.safeToFixed(hole.holeDiameter, dp) + "," +
+				this.safeToFixed(hole.holeLengthCalculated, dp) + "," +
+				this.safeToFixed(hole.startXLocation, dp) + "," +
+				this.safeToFixed(hole.startYLocation, dp) + "," +
+				this.safeToFixed(hole.startZLocation, dp) + "," +
+				this.safeToFixed(hole.endXLocation, dp) + "," +
+				this.safeToFixed(hole.endYLocation, dp) + "," +
+				this.safeToFixed(hole.endZLocation, dp) + "," +
+				(hole.timingDelayMilliseconds || 0) + "," +
+				this.safeToFixed(totalMass, dp) + "," +
+				this.safeToFixed(powderFactor, dp) + "," +
+				deckCount + "," +
+				explosiveDeckCount + "," +
+				primerCount + "," +
+				this.safeToFixed(stemLength, dp) + "," +
+				this.safeToFixed(chargeLength, dp) + "," +
+				(charging ? "true" : "false");
+
+			csv += row + "\n";
+		}
+
+		console.log("Charging Summary CSV: Exported " + holes.length + " holes");
+		return csv;
+	}
+
+	// Charging Detail: One row per deck per hole
+	generateChargingDetailCSV(holes, chargingMap) {
+		var csv = "";
+		var header = "entityName,holeID,deckIndex,deckID,deckType," +
+			"topDepthM,baseDepthM,lengthM," +
+			"productName,productDensity,massKg," +
+			"scalingMode,holeDiameterMm";
+		csv += header + "\n";
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			var charging = chargingMap ? chargingMap.get(hole.holeID) : null;
+
+			if (!charging) continue;
+
+			for (var d = 0; d < charging.decks.length; d++) {
+				var deck = charging.decks[d];
+				var massKg = deck.calculateMass(charging.holeDiameterMm);
+				var productName = deck.product ? deck.product.name : "";
+				var productDensity = deck.effectiveDensity;
+
+				var row = (hole.entityName || "") + "," +
+					(hole.holeID || "") + "," +
+					d + "," +
+					(deck.deckID || "") + "," +
+					(deck.deckType || "") + "," +
+					this.safeToFixed(deck.topDepth, dp) + "," +
+					this.safeToFixed(deck.baseDepth, dp) + "," +
+					this.safeToFixed(deck.length, dp) + "," +
+					this.escapeCSV(productName) + "," +
+					this.safeToFixed(productDensity, dp) + "," +
+					this.safeToFixed(massKg, dp) + "," +
+					(deck.scalingMode || "") + "," +
+					this.safeToFixed(charging.holeDiameterMm, dp);
+
+				csv += row + "\n";
+			}
+		}
+
+		var totalDecks = csv.split("\n").length - 2; // minus header and trailing newline
+		console.log("Charging Detail CSV: Exported " + totalDecks + " decks");
+		return csv;
+	}
+
+	// Charging Primers: One row per primer per hole
+	generateChargingPrimersCSV(holes, chargingMap) {
+		var csv = "";
+		var header = "entityName,holeID,primerIndex,primerID," +
+			"lengthFromCollarM,deckID," +
+			"detonatorName,detonatorType,detonatorDelayMs,detonatorVodMs,detonatorQty," +
+			"boosterName,boosterMassGrams,boosterQty," +
+			"totalDownholeDelayMs,totalBoosterMassGrams";
+		csv += header + "\n";
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			var charging = chargingMap ? chargingMap.get(hole.holeID) : null;
+
+			if (!charging) continue;
+
+			for (var p = 0; p < charging.primers.length; p++) {
+				var primer = charging.primers[p];
+
+				var row = (hole.entityName || "") + "," +
+					(hole.holeID || "") + "," +
+					p + "," +
+					(primer.primerID || "") + "," +
+					this.safeToFixed(primer.lengthFromCollar, dp) + "," +
+					(primer.deckID || "") + "," +
+					this.escapeCSV(primer.detonator.productName || "") + "," +
+					(primer.detonator.initiatorType || "") + "," +
+					this.safeToFixed(primer.detonator.delayMs, dp) + "," +
+					this.safeToFixed(primer.detonator.deliveryVodMs, dp) + "," +
+					(primer.detonator.quantity || 1) + "," +
+					this.escapeCSV(primer.booster.productName || "") + "," +
+					this.safeToFixed(primer.booster.massGrams || 0, dp) + "," +
+					(primer.booster.quantity || 1) + "," +
+					this.safeToFixed(primer.totalDownholeDelayMs, dp) + "," +
+					this.safeToFixed(primer.totalBoosterMassGrams, dp);
+
+				csv += row + "\n";
+			}
+		}
+
+		var totalPrimers = csv.split("\n").length - 2;
+		console.log("Charging Primers CSV: Exported " + totalPrimers + " primers");
+		return csv;
+	}
+
+	// Charging Timing: One row per explosive deck with fire time calculation
+	generateChargingTimingCSV(holes, chargingMap) {
+		var csv = "";
+		var header = "entityName,holeID,deckIndex,deckType," +
+			"topDepthM,baseDepthM,lengthM," +
+			"productName,massKg," +
+			"surfaceDelayMs,downholeDelayMs,totalFireTimeMs";
+		csv += header + "\n";
+		var dp = this.decimalPlaces;
+
+		for (var i = 0; i < holes.length; i++) {
+			var hole = holes[i];
+			var charging = chargingMap ? chargingMap.get(hole.holeID) : null;
+
+			if (!charging) continue;
+
+			var surfaceDelay = hole.timingDelayMilliseconds || 0;
+
+			for (var d = 0; d < charging.decks.length; d++) {
+				var deck = charging.decks[d];
+				// Only export explosive decks
+				if (deck.deckType !== "COUPLED" && deck.deckType !== "DECOUPLED") continue;
+
+				var massKg = deck.calculateMass(charging.holeDiameterMm);
+
+				// Find primer assigned to this deck (or closest primer)
+				var downholeDelay = 0;
+				for (var p = 0; p < charging.primers.length; p++) {
+					var primer = charging.primers[p];
+					if (primer.deckID === deck.deckID) {
+						downholeDelay = primer.totalDownholeDelayMs;
+						break;
+					}
+				}
+				// Fallback: find primer within deck bounds
+				if (downholeDelay === 0) {
+					for (var p2 = 0; p2 < charging.primers.length; p2++) {
+						var pr = charging.primers[p2];
+						if (deck.containsDepth(pr.lengthFromCollar)) {
+							downholeDelay = pr.totalDownholeDelayMs;
+							break;
+						}
+					}
+				}
+
+				var totalFireTime = surfaceDelay + downholeDelay;
+
+				var row = (hole.entityName || "") + "," +
+					(hole.holeID || "") + "," +
+					d + "," +
+					(deck.deckType || "") + "," +
+					this.safeToFixed(deck.topDepth, dp) + "," +
+					this.safeToFixed(deck.baseDepth, dp) + "," +
+					this.safeToFixed(deck.length, dp) + "," +
+					this.escapeCSV(deck.product ? deck.product.name : "") + "," +
+					this.safeToFixed(massKg, dp) + "," +
+					this.safeToFixed(surfaceDelay, dp) + "," +
+					this.safeToFixed(downholeDelay, dp) + "," +
+					this.safeToFixed(totalFireTime, dp);
+
+				csv += row + "\n";
+			}
+		}
+
+		var totalRows = csv.split("\n").length - 2;
+		console.log("Charging Timing CSV: Exported " + totalRows + " explosive decks with timing");
+		return csv;
+	}
+
+	// Helper: Escape a string value for CSV (handle commas, quotes, newlines)
+	escapeCSV(value) {
+		if (value === null || value === undefined) return "";
+		var str = String(value);
+		if (str.indexOf(",") !== -1 || str.indexOf('"') !== -1 || str.indexOf("\n") !== -1) {
+			return '"' + str.replace(/"/g, '""') + '"';
+		}
+		return str;
 	}
 }
 

@@ -9,7 +9,7 @@
  *     isFixedLength, isFixedMass, isProportionalDeck, overlapPattern }
  *
  * Primer array entries:
- *   { depth (number or "fx:" formula), detonator, booster }
+ *   { depth (number or "fx:" formula), detonator, booster, delayMs }
  */
 
 import { generateUUID } from "./Deck.js";

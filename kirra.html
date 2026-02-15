@@ -1590,6 +1590,11 @@
 						<label for="displayCharges" class="icon-button" title="Charges">
 							<img src="icons/cylinder.png" alt="Charges">
 						</label>
+						<!-- Downhole Timing Display ON/OFF -->
+						<input type="checkbox" id="display6D" name="display" value="DownholeTiming" placeholder="DownholeTiming">
+						<label for="display6D" class="icon-button" title="Downhole Timing">
+							<img src="icons/hole-time-deck.png" alt="Downhole Timing">
+						</label>
 						<!-- Contours Display ON/OFF -->
 						<input type="checkbox" id="display8" name="display" value="Contours" placeholder="Contours">
 						<label for="display8" class="icon-button" title="Contours">
@@ -1742,6 +1747,12 @@
 									<option value="32">32 Column</option>
 									<option value="35">35 Column</option>
 									<option value="all">All Columns</option>
+									<optgroup label="Charging">
+										<option value="charging-summary">Charging Summary</option>
+										<option value="charging-detail">Charging Detail</option>
+										<option value="charging-primers">Charging Primers</option>
+										<option value="charging-timing">Charging Timing</option>
+									</optgroup>
 								</select>
 								<label class="icon-button holes-input-btn" id="fileInputHolesColumn" title="Import Holes CSV">
 									<img src="icons/file-import.png" alt="Import">

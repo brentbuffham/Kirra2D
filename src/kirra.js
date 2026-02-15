@@ -25,6 +25,7 @@ import pdfMake from "pdfmake/build/pdfmake";
 import pdfFonts from "pdfmake/build/vfs_fonts";
 import { evaluate } from "mathjs";
 import { deduplicatePoints, decimatePoints } from "./helpers/PointDeduplication.js";
+import { BlastHole } from "./models/BlastHole.js";
 //=================================================
 // Undo/Redo System
 //=================================================
@@ -170,6 +171,8 @@ import { showImportProgressDialog, IMPORT_STAGES } from "./dialog/popups/generic
 import { TreeView, initializeTreeView } from "./dialog/tree/TreeView.js";
 // DXF Export Dialog Module
 import "./dialog/popups/export/DXFExportDialog.js";
+// Charging Export Dialog Module
+import "./dialog/popups/export/ChargingExportDialog.js";
 // Helper Modules
 import { exportImagesAsGeoTIFF, exportSurfacesAsElevationGeoTIFF } from "./helpers/GeoTIFFExporter.js";
 import { CoordinateDebugger } from "./helpers/CoordinateDebugger.js";
@@ -265,6 +268,7 @@ import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip, cle
 import { buildSurfaceConnectorPresets } from "./charging/ui/ConnectorPresets.js";
 import { remapChargingKeys, extractPlainIdRemap } from "./charging/ChargingRemapper.js";
 import { recalcMassPerHole } from "./helpers/ChargingMassHelper.js";
+import { calculateDownholeTimings, getTimingRange, fireTimeToColor, normalizeFireTime } from "./helpers/DownholeTimingCalculator.js";
 import { HoleCharging } from "./charging/HoleCharging.js";
 import { Deck } from "./charging/Deck.js";
 import { Primer } from "./charging/Primer.js";
@@ -4259,95 +4263,11 @@ window.canvas = canvas;
 
 let scale = 5; // adjust the scale to fit the allBlastHoles in the canvas
 let fontSize = document.getElementById("fontSlider").value;
-//TODO Eventually use this class for all holes.
-class BlastHole {
-	/**
-	 * The BlastHole class is used to store the data for a blast hole.
-	 * 
-	 * @param {*} data 
-	 * @param {string} entityName - The entity name
-	 * @param {string} entityType - The entity type (default: "hole")
-	 * @param {*} holeID - The hole identifier
-	 * @param {number} startXLocation - The start X location
-	 * @param {number} startYLocation - The start Y location
-	 * @param {number} startZLocation - The start Z location
-	 * @param {number} endXLocation - The end X location
-	 * @param {number} endYLocation - The end Y location
-	 * @param {number} endZLocation - The end Z location
-	 * @param {number} gradeXLocation - The grade X location
-	 * @param {number} gradeYLocation - The grade Y location
-	 * @param {number} gradeZLocation - The grade Z location
-	 * @param {number} subdrillAmount - The subdrill amount (deltaZ of gradeZ to toeZ -> downhole =+ve uphole =-ve)
-	 * @param {number} subdrillLength - The subdrill length (distance of subdrill from gradeXYZ to toeXYZ -> downhole =+ve uphole =-ve)
-	 * @param {number} benchHeight - The bench height (deltaZ of collarZ to gradeZ -> always Absolute)
-	 * @param {number} holeDiameter - The hole diameter
-	 * @param {string} holeType - The hole type
-	 * @param {string} fromHoleID - The from hole identifier
-	 * @param {number} timingDelayMilliseconds - The timing delay in milliseconds
-	 * @param {string} colorHexDecimal - The color in hex decimal format
-	 * @param {number} holeLengthCalculated - The calculated hole length (Distance from the collarXYZ to the ToeXYZ)
-	 * @param {number} holeAngle - The hole angle from Collar to Toe (0° = Vertical) --> 0° = Vertical, 90° = Horizontal, 180° = Inverted, 270° = Upside Down
-	 * @param {number} holeBearing - The hole bearing
-	 * @param {number} holeTime - The initiation time (holeTime and initiationTime are the same)
-	 * @param {number} measuredLength - The measured length
-	 * @param {string} measuredLengthTimeStamp - The measured length timestamp
-	 * @param {number} measuredMass - The measured mass
-	 * @param {string} measuredMassTimeStamp - The measured mass timestamp
-	 * @param {string} measuredComment - The measured comment
-	 * @param {string} measuredCommentTimeStamp - The measured comment timestamp
-	 * @param {*} rowID - The row identifier
-	 * @param {*} posID - The position identifier
-	 * @param {number} burden - The burden
-	 * @param {number} spacing - The spacing
-	 * @param {number} connectorCurve - The connector curve
-	 * @param {boolean} visible - The visibility flag
-	 * future properties:
-	 * @params {colorHexDecimal} holeColor - The color of the hole
-	 * @params {string} holeMarkerShape - The shape of the hole marker shape at collar - currently X for Dummy(no depth hole), square for no diameter hole and circle for a diameter hole
-	 * @params {float} holeMarkerSize - The size of the hole marker shape at collar - currently controlled by holescale and diameter.
-	 */
+// BlastHole class moved to src/models/BlastHole.js
 
-
-	constructor(data = {}) {
-		this.entityName = data.entityName || "";
-		this.entityType = data.entityType || "hole";
-		this.holeID = data.holeID || null;
-		this.startXLocation = data.startXLocation || 0;
-		this.startYLocation = data.startYLocation || 0;
-		this.startZLocation = data.startZLocation || 0;
-		this.endXLocation = data.endXLocation || 0;
-		this.endYLocation = data.endYLocation || 0;
-		this.endZLocation = data.endZLocation || 0;
-		this.gradeXLocation = data.gradeXLocation || 0;
-		this.gradeYLocation = data.gradeYLocation || 0;
-		this.gradeZLocation = data.gradeZLocation || 0;
-		this.subdrillAmount = data.subdrillAmount || 0; //deltaZ of gradeZ to toeZ -> downhole =+ve uphole =-ve
-		this.subdrillLength = data.subdrillLength || 0; //distance of subdrill from gradeXYZ to toeXYZ -> downhole =+ve uphole =-ve
-		this.benchHeight = data.benchHeight || 0; //deltaZ of collarZ to gradeZ -> always Absolute
-		this.holeDiameter = data.holeDiameter || 115;
-		this.holeType = data.holeType || "Undefined";
-		this.fromHoleID = data.fromHoleID || "";
-		this.timingDelayMilliseconds = data.timingDelayMilliseconds || 0;
-		this.colorHexDecimal = data.colorHexDecimal || "red";
-		this.holeTime = data.holeTime || 0; //initiation time and holrTime are the same
-		this.holeLengthCalculated = data.holeLengthCalculated || 0; //Distance from the collarXYZ to the ToeXYZ
-		this.holeAngle = data.holeAngle || 0; //Angle of the blast hole from Collar to Toe --> 0° = Vertical
-		this.holeBearing = data.holeBearing || 0;
-		this.measuredLength = data.measuredLength || 0;
-		this.measuredLengthTimeStamp = data.measuredLengthTimeStamp || "09/05/1975 00:00:00";
-		this.measuredMass = data.measuredMass || 0;
-		this.measuredMassTimeStamp = data.measuredMassTimeStamp || "09/05/1975 00:00:00";
-		this.measuredComment = data.measuredComment || "None";
-		this.measuredCommentTimeStamp = data.measuredCommentTimeStamp || "09/05/1975 00:00:00";
-		this.rowID = data.rowID || null;
-		this.posID = data.posID || null;
-		this.visible = data.visible !== false;
-		this.burden = data.burden || 1;
-		this.spacing = data.spacing || 1;
-		this.connectorCurve = data.connectorCurve || 0;
-		this.massPerHole = data.massPerHole || 0; // Computed from charging system
-	}
-}
+// Connector VOD: stores the VOD (m/s) of the currently selected surface connector product.
+// Set by ConnectorPresets button click, reset to 0 on manual delay input.
+window.activeConnectorVodMs = 0;
 
 let allBlastHoles = [];
 let dxfEntities = [];
@@ -5780,9 +5700,11 @@ const displayRowAndPosId = document.getElementById("rowAndPosDisplayBtn"); //Row
 const displayKADPointIDs = document.getElementById("kadPointIDDisplayBtn"); //KAD Point ID Display toggle button
 const displayMassPerHole = document.getElementById("display6B"); //Mass Per Hole toggle
 const displayMassPerDeck = document.getElementById("display6C"); //Mass Per Deck toggle
+const displayChargesToggle = document.getElementById("displayCharges"); //Charges toggle
+const displayDownholeTiming = document.getElementById("display6D"); //Downhole Timing toggle
 
 // after const option16 = ?
-const allToggles = [displayHoleId, displayHoleLength, displayHoleDiameter, displayHoleAngle, displayHoleDip, displayHoleBearing, displayHoleSubdrill, displayConnectors, displayDelays, displayTimes, displayContours, displaySlope, displayRelief, displayFirstMovements, displayXLocation, displayYLocation, displayElevation, displayHoleType, displayMLength, displayMMass, displayMComment, displayVoronoiCells, displayRowAndPosId, displayKADPointIDs, displayMassPerHole, displayMassPerDeck];
+const allToggles = [displayHoleId, displayHoleLength, displayHoleDiameter, displayHoleAngle, displayHoleDip, displayHoleBearing, displayHoleSubdrill, displayConnectors, displayDelays, displayTimes, displayContours, displaySlope, displayRelief, displayFirstMovements, displayXLocation, displayYLocation, displayElevation, displayHoleType, displayMLength, displayMMass, displayMComment, displayVoronoiCells, displayRowAndPosId, displayKADPointIDs, displayMassPerHole, displayMassPerDeck, displayChargesToggle, displayDownholeTiming];
 
 allToggles.forEach((opt) => {
 	if (opt)
@@ -8569,6 +8491,16 @@ document.querySelectorAll(".holes-output-btn").forEach(function (button) {
 		// Step 2) Handle custom CSV format - show column selection dialog
 		if (format === "custom-csv") {
 			showCustomCsvExportModal();
+			return;
+		}
+
+		// Step 2a) Handle charging formats - delegate to ChargingExportDialog
+		if (format && format.startsWith("charging-")) {
+			if (window.showChargingExportDialog) {
+				window.showChargingExportDialog();
+			} else {
+				showModalMessage("Not Available", "Charging export dialog not loaded", "warning");
+			}
 			return;
 		}
 
@@ -16873,7 +16805,7 @@ function convertPointsToAllDataCSV() {
 
 	let csv = "";
 	const header =
-		"entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID, burden, spacing, connectorCurve";
+		"entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation, gradeYLocation, gradeZLocation, subdrillAmount, subdrillLength, benchHeight, holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp, rowID, posID, burden, spacing, connectorCurve, connectorVodMs";
 	csv += header + "\n";
 	const decimalPlaces = 4;
 
@@ -16883,7 +16815,7 @@ function convertPointsToAllDataCSV() {
 			decimalPlaces
 		)},${hole.subdrillLength.toFixed(decimalPlaces)},${hole.benchHeight.toFixed(decimalPlaces)},${hole.holeDiameter.toFixed(decimalPlaces)},${hole.holeType},${hole.fromHoleID},${hole.timingDelayMilliseconds},${hole.colorHexDecimal},${hole.holeLengthCalculated.toFixed(decimalPlaces)},${hole.holeAngle.toFixed(decimalPlaces)},${hole.holeBearing.toFixed(decimalPlaces)},${hole.holeTime},${hole.measuredLength.toFixed(decimalPlaces)},${hole.measuredLengthTimeStamp},${hole.measuredMass.toFixed(
 			decimalPlaces
-		)},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve}`;
+		)},${hole.measuredMassTimeStamp},${hole.measuredComment},${hole.measuredCommentTimeStamp},${hole.rowID},${hole.posID},${hole.burden},${hole.spacing},${hole.connectorCurve},${hole.connectorVodMs || 0}`;
 		csv += row + "\n";
 	}
 	return csv;
@@ -16985,15 +16917,33 @@ function calculateTimes(allBlastHoles) {
 		const surfaces = {};
 		holeTimes = {};
 
+		// Build collar coordinate lookup for VOD travel time calculation
+		const holeCoords = {};
+		for (let i = 0; i < allBlastHoles.length; i++) {
+			const hole = allBlastHoles[i];
+			if (hole.entityName && hole.holeID) {
+				const cid = `${hole.entityName}:::${hole.holeID}`;
+				holeCoords[cid] = { x: hole.startXLocation, y: hole.startYLocation, z: hole.startZLocation };
+			}
+		}
+
 		// Build initial structures for surfaces and hole times
 		for (let i = 0; i < allBlastHoles.length; i++) {
 			const hole = allBlastHoles[i];
 			if (hole.entityName && hole.holeID && !isNaN(hole.timingDelayMilliseconds)) {
 				const combinedHoleID = `${hole.entityName}:::${hole.holeID}`;
 				const combinedFromHoleID = hole.fromHoleID;
+				const fromCoords = holeCoords[combinedFromHoleID] || null;
 				surfaces[combinedFromHoleID + ">=|=<" + combinedHoleID] = {
 					time: 0,
 					delay: hole.timingDelayMilliseconds,
+					vodMs: hole.connectorVodMs || 0,
+					toX: hole.startXLocation,
+					toY: hole.startYLocation,
+					toZ: hole.startZLocation,
+					fromX: fromCoords ? fromCoords.x : null,
+					fromY: fromCoords ? fromCoords.y : null,
+					fromZ: fromCoords ? fromCoords.z : null,
 				};
 
 				holeTimes[combinedHoleID] = null;
@@ -17048,7 +16998,16 @@ function updateSurfaceTimes(combinedHoleID, time, surfaces, holeTimes, visited =
 			const surface = surfaces[id];
 			const delay = surface.delay;
 			if (!isNaN(delay)) {
-				const toTime = parseInt(time) + parseInt(delay);
+				// Calculate VOD travel time if connector has a VOD value and from-coords are known
+				var travelTime = 0;
+				if (surface.vodMs > 0 && surface.fromX != null) {
+					var dx = surface.toX - surface.fromX;
+					var dy = surface.toY - surface.fromY;
+					var dz = surface.toZ - surface.fromZ;
+					travelTime = (Math.sqrt(dx * dx + dy * dy + dz * dz) / surface.vodMs) * 1000;
+				}
+				var totalDelay = delay + travelTime;
+				const toTime = Math.round(parseInt(time) + totalDelay);
 				if (!visited.has(toHoleID) && (toTime < surface.time || surface.time === 0)) {
 					surface.time = toTime;
 					holeTimes[toHoleID] = toTime;
@@ -24330,10 +24289,12 @@ const floatingDelayElement = document.getElementById("floatingDelay");
 
 delayElement.addEventListener("input", function () {
 	floatingDelayElement.value = this.value;
+	window.activeConnectorVodMs = 0; // Manual delay entry resets VOD travel time
 });
 
 floatingDelayElement.addEventListener("input", function () {
 	delayElement.value = this.value;
+	window.activeConnectorVodMs = 0; // Manual delay entry resets VOD travel time
 });
 
 function getDelayValue() {
@@ -24387,6 +24348,7 @@ function handleConnectorClick(event) {
 					allBlastHoles[clickedHoleIndex].fromHoleID = `${fromHoleStore.entityName}:::${fromHoleStore.holeID}`;
 					allBlastHoles[clickedHoleIndex].timingDelayMilliseconds = delay;
 					allBlastHoles[clickedHoleIndex].colorHexDecimal = getJSColorHex();
+					allBlastHoles[clickedHoleIndex].connectorVodMs = window.activeConnectorVodMs || 0;
 				}
 				fromHoleStore = null;
 				holeTimes = calculateTimes(allBlastHoles);
@@ -24498,6 +24460,7 @@ function connectHolesInLine(pointsInLine) {
 			allBlastHoles[holeIndex].fromHoleID = previousHoleID;
 			allBlastHoles[holeIndex].timingDelayMilliseconds = getDelayValue();
 			allBlastHoles[holeIndex].colorHexDecimal = getJSColorHex();
+			allBlastHoles[holeIndex].connectorVodMs = window.activeConnectorVodMs || 0;
 		}
 
 		previousHoleID = `${hole.entityName}:::${hole.holeID}`;
@@ -29248,6 +29211,7 @@ function getDisplayOptions() {
 		charges: document.getElementById("displayCharges")?.checked || false,
 		massPerHole: document.getElementById("display6B")?.checked || false,
 		massPerDeck: document.getElementById("display6C")?.checked || false,
+		downholeTiming: document.getElementById("display6D")?.checked || false,
 	};
 }
 
@@ -29313,6 +29277,9 @@ function drawMouseCrossHairs(mouseX, mouseY, snapRadiusPixels, showSnapRadius = 
 
 // Main draw function
 function drawData(allBlastHoles, selectedHole) {
+
+	// Clear per-draw-cycle caches
+	window._downholeTimingRange2D = null;
 
 	// Expose globals to window for canvas3DDrawing.js module
 	exposeGlobalsToWindow();
@@ -31206,6 +31173,7 @@ function drawData(allBlastHoles, selectedHole) {
 					const fromHole2 = holeMap3D.get(splitEntityName2 + ":::" + splitFromHoleID2);
 					if (fromHole2) {
 						const delayColor = hole.colorHexDecimal || hole.holeColor || "#FF0000";
+						// Show raw programmed delay only — VOD travel is included in holeTime
 						drawConnectorDelayTextThreeJS(fromHole2, hole, delayColor, hole.connectorCurve || 0, hole.timingDelayMilliseconds);
 					}
 				}
@@ -31919,7 +31887,8 @@ function drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj) {
 		if (fromHole) {
 			const [startX, startY] = worldToCanvas(fromHole.startXLocation, fromHole.startYLocation);
 			const connColor = hole.colorHexDecimal;
-			const pointDelay = hole.timingDelayMilliseconds;
+			// Show raw programmed delay only — VOD travel is included in holeTime
+			var pointDelay = hole.timingDelayMilliseconds;
 			drawArrowDelayText(startX, startY, x, y, connColor, pointDelay, hole.connectorCurve || 0);
 		}
 	}
@@ -31959,6 +31928,30 @@ function drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj) {
 		var lineH = parseInt(currentFontSize);
 		for (var ml = 0; ml < dLabels.perDeck.length; ml++) {
 			drawRightAlignedText(leftSideCollar, middleSideToe + ml * lineH, dLabels.perDeck[ml], "#FF0000");
+		}
+	}
+	if (displayOptions.downholeTiming) {
+		var chargingMap = window.loadedCharging;
+		if (chargingMap && chargingMap.has(hole.holeID)) {
+			var timingEntries = calculateDownholeTimings([hole], chargingMap, { visibleOnly: false });
+			if (timingEntries.length > 0) {
+				// Get global timing range for consistent coloring (cache per draw cycle)
+				if (!window._downholeTimingRange2D) {
+					var allEntries = calculateDownholeTimings(window.allBlastHoles, chargingMap);
+					window._downholeTimingRange2D = getTimingRange(allEntries);
+				}
+				var range = window._downholeTimingRange2D;
+				var tLineH = parseInt(currentFontSize);
+				for (var ti = 0; ti < timingEntries.length; ti++) {
+					var entry = timingEntries[ti];
+					var t = normalizeFireTime(entry.totalFireTimeMs, range.minMs, range.rangeMs);
+					var tColor = fireTimeToColor(t);
+					var tLabel = entry.totalFireTimeMs.toFixed(0) + "ms";
+					ctx.fillStyle = tColor;
+					ctx.textAlign = "left";
+					ctx.fillText(tLabel, rightSideToe, middleSideToe + ti * tLineH);
+				}
+			}
 		}
 	}
 }
