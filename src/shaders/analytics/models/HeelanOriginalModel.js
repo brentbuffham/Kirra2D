@@ -197,8 +197,9 @@ export class HeelanOriginalModel {
                         float R = max(length(toObs), uCutoff);
 
                         // Angle phi between hole axis and direction to observation point
-                        float cosPhi = abs(dot(normalize(toObs), holeAxis));
-                        float sinPhi = sqrt(1.0 - cosPhi * cosPhi);
+                        // Signed cosPhi for correct wave superposition across elements
+                        float cosPhi = dot(normalize(toObs), holeAxis);
+                        float sinPhi = sqrt(max(1.0 - cosPhi * cosPhi, 0.0));
 
                         // Radiation pattern amplitudes
                         float f1 = F1(sinPhi, cosPhi);
@@ -226,6 +227,18 @@ export class HeelanOriginalModel {
                         // Resolve into radial and vertical components
                         sumVr += vP * sinPhi + vSV * cosPhi;
                         sumVz += vP * cosPhi - vSV * sinPhi;
+                    }
+
+                    // Attenuate below the toe — physical confinement limits damage
+                    // The Heelan model radiates symmetrically, but rock below the
+                    // toe is confined with no free face, so PPV decays rapidly.
+                    float projOnAxis = dot(vWorldPos - collarPos, holeAxis);
+                    float belowToe = projOnAxis - holeLen;
+                    if (belowToe > 0.0) {
+                        float decayLen = max(chargeLen * 0.15, holeRadius * 4.0);
+                        float att = exp(-belowToe / decayLen);
+                        sumVr *= att;
+                        sumVz *= att;
                     }
 
                     // Vector peak particle velocity (mm/s)

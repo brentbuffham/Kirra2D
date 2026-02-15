@@ -207,8 +207,8 @@ export class ScaledHeelanModel {
                         vec3 toObs = vWorldPos - elemPos;
                         float R = max(length(toObs), uCutoff);
 
-                        // Angle phi from hole axis
-                        float cosPhi = abs(dot(normalize(toObs), holeAxis));
+                        // Angle phi from hole axis (signed for correct wave superposition)
+                        float cosPhi = dot(normalize(toObs), holeAxis);
                         float sinPhi = sqrt(max(1.0 - cosPhi * cosPhi, 0.0));
 
                         // === BLAIR'S NON-LINEAR SUPERPOSITION (Blair 2008) ===
@@ -245,6 +245,18 @@ export class ScaledHeelanModel {
                         // Resolve into radial and vertical components
                         sumVr += vP * sinPhi + vSV * cosPhi;
                         sumVz += vP * cosPhi - vSV * sinPhi;
+                    }
+
+                    // Attenuate below the toe — physical confinement limits damage
+                    // The Heelan model radiates symmetrically, but rock below the
+                    // toe is confined with no free face, so PPV decays rapidly.
+                    float projOnAxis = dot(vWorldPos - collarPos, holeAxis);
+                    float belowToe = projOnAxis - holeLen;
+                    if (belowToe > 0.0) {
+                        float decayLen = max(chargeLen * 0.15, holeRadius * 4.0);
+                        float att = exp(-belowToe / decayLen);
+                        sumVr *= att;
+                        sumVz *= att;
                     }
 
                     // Vector peak particle velocity
