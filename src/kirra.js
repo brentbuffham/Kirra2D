@@ -251,7 +251,8 @@ import {
 	saveChargeConfigsToDB,
 	debouncedSaveProducts,
 	debouncedSaveCharging,
-	debouncedSaveConfigs
+	debouncedSaveConfigs,
+	cancelAllDebouncedSaves
 } from "./charging/ChargingDatabase.js";
 import { showProductManagerDialog } from "./charging/ProductDialog.js";
 import { showDeckBuilderDialog } from "./charging/ui/DeckBuilderDialog.js";
@@ -5497,12 +5498,16 @@ function clearAllPendingTimers() {
 		clearTimeout(holesSaveTimeout);
 		holesSaveTimeout = null;
 	}
-	// Step 1d) Clear animation interval if exists
+	// Step 1d) Clear charging system debounced saves
+	if (typeof cancelAllDebouncedSaves === "function") {
+		cancelAllDebouncedSaves();
+	}
+	// Step 1e) Clear animation interval if exists
 	if (animationInterval) {
 		clearInterval(animationInterval);
 		animationInterval = null;
 	}
-	// Step 1e) Clear animation frame if exists
+	// Step 1f) Clear animation frame if exists
 	if (animationFrameId) {
 		cancelAnimationFrame(animationFrameId);
 		animationFrameId = null;
@@ -14411,15 +14416,23 @@ async function createImageSurfaceFromParser(result) {
 		// Step 1) Generate unique ID for this image
 		var imageId = "image_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
 
+		// BONUS FIX: Generate blob from canvas for KAP export
+		var blob = await new Promise(function(resolve) {
+			result.canvas.toBlob(function(b) { resolve(b); }, "image/png");
+		});
+
 		// Step 2) Store in loadedImages Map
 		loadedImages.set(imageId, {
 			id: imageId,
 			name: result.filename || imageId,
 			canvas: result.canvas,
+			blob: blob, // CRITICAL: Store blob for KAP export
 			bbox: result.bbox,
 			type: "imagery",
 			visible: true,
-			transparency: 1.0
+			transparency: 1.0,
+			width: result.canvas.width,
+			height: result.canvas.height
 		});
 
 		// Step 3) Update centroids to include GeoTIFF extents
@@ -15110,28 +15123,31 @@ async function loadOBJWithTextureThreeJS(fileName, objContent, mtlContent, textu
 }
 
 // Step 1) Rebuild textured mesh from stored data (called on app reload)
+// CRITICAL: Now returns a Promise to allow KAPParser to await completion
 function rebuildTexturedMesh(surfaceId) {
 	var surface = loadedSurfaces.get(surfaceId);
 	if (!surface || !surface.isTexturedMesh) {
 		console.warn("🚨 Cannot rebuild mesh - not a textured surface:", surfaceId);
-		return;
+		return Promise.reject(new Error("Not a textured surface"));
 	}
 
 	if (!surface.objContent) {
 		console.warn("🚨 Cannot rebuild mesh - missing OBJ content:", surfaceId);
-		return;
+		return Promise.reject(new Error("Missing OBJ content"));
 	}
 
 	// Step 1a) Prevent multiple rebuilds - if mesh already exists, skip
 	if (surface.threeJSMesh) {
 		console.log("🎨 Mesh already rebuilt for: " + surfaceId + ", skipping rebuild");
-		return;
+		return Promise.resolve(surfaceId);
 	}
 
-	try {
-		// Step 2) Create texture URLs from stored blobs
-		var textureURLs = {};
-		var blobURLs = [];
+	// CRITICAL: Return a Promise so KAPParser can await completion
+	return new Promise(function(resolveRebuild, rejectRebuild) {
+		try {
+			// Step 2) Create texture URLs from stored blobs
+			var textureURLs = {};
+			var blobURLs = [];
 
 		if (surface.textureBlobs) {
 			console.log("🎨 REBUILD: Found " + Object.keys(surface.textureBlobs).length + " texture blob(s) for " + surfaceId);
@@ -15171,6 +15187,21 @@ function rebuildTexturedMesh(surfaceId) {
 						// DIAGNOSTIC: Check if image data is valid
 						if (texture.image) {
 							console.log("🎨 REBUILD TEXTURE: Image loaded - width: " + texture.image.width + ", height: " + texture.image.height + ", complete: " + texture.image.complete);
+
+							// CRITICAL DIAGNOSTIC: Check if image is actually black (corrupted blob)
+							if (texture.image.complete && texture.image.naturalWidth > 0) {
+								var testCanvas = document.createElement('canvas');
+								testCanvas.width = Math.min(10, texture.image.width);
+								testCanvas.height = Math.min(10, texture.image.height);
+								var testCtx = testCanvas.getContext('2d');
+								testCtx.drawImage(texture.image, 0, 0, testCanvas.width, testCanvas.height);
+								var imgData = testCtx.getImageData(0, 0, testCanvas.width, testCanvas.height);
+								var hasColor = imgData.data.some(function(val) { return val !== 0; });
+								console.log("🎨 REBUILD TEXTURE: Pixel check - hasNonZeroPixels=" + hasColor);
+								if (!hasColor) {
+									console.error("🚨 REBUILD TEXTURE: Image is ALL BLACK - blob may be corrupted!");
+								}
+							}
 						} else {
 							console.error("🚨 REBUILD TEXTURE: No image data in texture!");
 						}
@@ -15189,6 +15220,7 @@ function rebuildTexturedMesh(surfaceId) {
 
 		// Step 4) Wait for ALL textures to pre-load before proceeding
 		Promise.all(texturePromises).then(function () {
+			try {
 			// Step 5) Parse OBJ WITHOUT materials (we'll apply materials manually from stored properties)
 			var objLoader = new OBJLoader();
 			var object3D = objLoader.parse(surface.objContent);
@@ -15228,6 +15260,10 @@ function rebuildTexturedMesh(surfaceId) {
 			// Step 5a) Create materials from stored properties + texture blobs
 			// This is more reliable than MTLLoader which expects file URLs
 			var materialMap = {};
+			console.log("🎨 REBUILD: surface.materialProperties exists: " + !!surface.materialProperties);
+			if (surface.materialProperties) {
+				console.log("🎨 REBUILD: materialProperties keys: " + Object.keys(surface.materialProperties).length);
+			}
 			if (surface.materialProperties && Object.keys(surface.materialProperties).length > 0) {
 				console.log("🎨 Creating materials from stored properties");
 				Object.keys(surface.materialProperties).forEach(function (matName) {
@@ -15359,10 +15395,23 @@ function rebuildTexturedMesh(surfaceId) {
 			} else if (!threeInitialized || threeInitializationFailed) {
 				console.warn("🚨 Skipping texture flattening - ThreeJS not available, will retry when ThreeJS initializes");
 			}
+
+			// CRITICAL: Resolve promise after mesh is fully rebuilt
+			resolveRebuild(surfaceId);
+
+		} catch (innerError) {
+			console.error("❌ Error during mesh rebuild (inner):", innerError);
+			rejectRebuild(innerError);
+		}
+		}).catch(function(textureError) {
+			console.error("❌ Error loading textures:", textureError);
+			rejectRebuild(textureError);
 		});
 	} catch (error) {
 		console.error("❌ Error rebuilding textured mesh:", error);
+		rejectRebuild(error);
 	}
+	});
 }
 
 // Step 0) Load flattened image from saved data URL (avoids WebGL context creation)
@@ -15578,56 +15627,60 @@ function flattenTexturedMeshToImage(surfaceId, mesh, meshBounds, fileName) {
 		img.onload = function () {
 			imageCtx.drawImage(img, 0, 0);
 
-			// Step 11) Create georeferenced image entry for loadedImages
-			var imageEntry = {
-				id: imageId,
-				name: fileName + "_flattened",
-				canvas: imageCanvas, // HTMLCanvasElement - required by drawBackgroundImageThreeJS
-				bbox: [meshBounds.minX, meshBounds.minY, meshBounds.maxX, meshBounds.maxY], // Array format [minX, minY, maxX, maxY]
-				width: imgWidth,
-				height: imgHeight,
-				visible: true,
-				transparency: 1.0,
-				zElevation: window.drawingZLevel || meshBounds.minZ || 0, // Z elevation for 3D positioning
+			// BONUS FIX: Generate blob from canvas for KAP export
+			imageCanvas.toBlob(function(blob) {
+				// Step 11) Create georeferenced image entry for loadedImages
+				var imageEntry = {
+					id: imageId,
+					name: fileName + "_flattened",
+					canvas: imageCanvas, // HTMLCanvasElement - required by drawBackgroundImageThreeJS
+					blob: blob, // CRITICAL: Store blob for KAP export
+					bbox: [meshBounds.minX, meshBounds.minY, meshBounds.maxX, meshBounds.maxY], // Array format [minX, minY, maxX, maxY]
+					width: imgWidth,
+					height: imgHeight,
+					visible: true,
+					transparency: 1.0,
+					zElevation: window.drawingZLevel || meshBounds.minZ || 0, // Z elevation for 3D positioning
 
-				// Georeferencing data
-				isGeoReferenced: true,
-				bounds: {
-					minX: meshBounds.minX,
-					maxX: meshBounds.maxX,
-					minY: meshBounds.minY,
-					maxY: meshBounds.maxY,
-				},
+					// Georeferencing data
+					isGeoReferenced: true,
+					bounds: {
+						minX: meshBounds.minX,
+						maxX: meshBounds.maxX,
+						minY: meshBounds.minY,
+						maxY: meshBounds.maxY,
+					},
 
-				// Pixel to world transformation
-				pixelWidth: worldWidth / imgWidth,
-				pixelHeight: worldHeight / imgHeight,
+					// Pixel to world transformation
+					pixelWidth: worldWidth / imgWidth,
+					pixelHeight: worldHeight / imgHeight,
 
-				// Source info
-				sourceType: "flattened_obj",
-				sourceSurfaceId: surfaceId,
-			};
+					// Source info
+					sourceType: "flattened_obj",
+					sourceSurfaceId: surfaceId,
+				};
 
-			// Step 12) Store in loadedImages
-			loadedImages.set(imageId, imageEntry);
+				// Step 12) Store in loadedImages
+				loadedImages.set(imageId, imageEntry);
 
-			console.log("🏞️ Created flattened image for 2D canvas: " + imageId);
+				console.log("🏞️ Created flattened image for 2D canvas: " + imageId);
 
-			// Step 12a) Save flattened image data URL back to surface for IndexedDB persistence
-			var surface = loadedSurfaces.get(surfaceId);
-			if (surface) {
-				surface.flattenedImageDataURL = imageDataURL;
-				surface.flattenedImageBounds = meshBounds;
-				surface.flattenedImageDimensions = { width: imgWidth, height: imgHeight };
+				// Step 12a) Save flattened image data URL back to surface for IndexedDB persistence
+				var surface = loadedSurfaces.get(surfaceId);
+				if (surface) {
+					surface.flattenedImageDataURL = imageDataURL;
+					surface.flattenedImageBounds = meshBounds;
+					surface.flattenedImageDimensions = { width: imgWidth, height: imgHeight };
 
-				// Step 12b) Save to IndexedDB
-				saveSurfaceToDB(surfaceId).catch(function (err) {
-					console.warn("🚨 Failed to save flattened image to DB:", err);
-				});
-			}
+					// Step 12b) Save to IndexedDB
+					saveSurfaceToDB(surfaceId).catch(function (err) {
+						console.warn("🚨 Failed to save flattened image to DB:", err);
+					});
+				}
 
-			// Step 13) Update tree view to show new image
-			debouncedUpdateTreeView();
+				// Step 13) Update tree view to show new image
+				debouncedUpdateTreeView();
+			}, "image/png"); // End of toBlob callback
 		};
 		img.onerror = function () {
 			console.error("❌ Failed to create canvas from flattened image");
@@ -33039,6 +33092,12 @@ let holesSaveTimeout;
 let _cacheInvalidationPending = false;
 
 function debouncedSaveHoles() {
+	// CRITICAL: Skip debounced saves during KAP import to prevent overwriting imported data
+	if (window._kapImporting) {
+		console.log("Skipping debounced holes save during KAP import");
+		return;
+	}
+
 	// Step 3.0) Only invalidate caches ONCE per batch of changes
 	// Multiple rapid calls should not trigger repeated invalidations
 	if (!_cacheInvalidationPending) {
@@ -34101,27 +34160,44 @@ async function loadImageIntoMemory(imageId) {
 					const canvas = document.createElement("canvas");
 					const ctx = canvas.getContext("2d");
 
+					// FIX 5: Create blob URL that will be revoked after loading
+					const blobURL = URL.createObjectURL(imageData.blob);
+
 					img.onload = () => {
 						canvas.width = img.width;
 						canvas.height = img.height;
 						ctx.drawImage(img, 0, 0);
 
+						// FIX 2: Preserve blob in memory for KAP export
 						loadedImages.set(imageId, {
 							id: imageId,
 							name: imageData.name,
 							canvas: canvas,
+							blob: imageData.blob, // CRITICAL: Store blob for export
 							bbox: imageData.bbox,
 							type: imageData.type,
 							visible: imageData.visible !== false,
 							transparency: imageData.transparency || 1.0,
 							zElevation: imageData.zElevation !== undefined ? imageData.zElevation : window.drawingZLevel || 0,
+							// Additional metadata for KAP export
+							isGeoReferenced: imageData.isGeoReferenced || false,
+							bounds: imageData.bounds || null,
+							pixelWidth: imageData.pixelWidth || null,
+							pixelHeight: imageData.pixelHeight || null,
+							sourceType: imageData.sourceType || null,
+							sourceSurfaceId: imageData.sourceSurfaceId || null,
+							width: img.width,
+							height: img.height
 						});
+
+						// FIX 5: Revoke blob URL to prevent memory leak
+						URL.revokeObjectURL(blobURL);
 
 						console.log("✅ Image " + imageData.name + " loaded into memory");
 						resolve(imageData);
 					};
 
-					img.src = URL.createObjectURL(imageData.blob);
+					img.src = blobURL;
 				} else {
 					resolve(null);
 				}
@@ -34154,26 +34230,47 @@ async function loadAllImagesIntoMemory() {
 					const ctx = canvas.getContext("2d");
 
 					await new Promise((imgResolve) => {
+						// FIX 5: Create blob URL that will be revoked after loading
+						const blobURL = URL.createObjectURL(imageData.blob);
+
 						img.onload = () => {
 							canvas.width = img.width;
 							canvas.height = img.height;
 							ctx.drawImage(img, 0, 0);
 
+							// FIX 2: Preserve blob in memory for KAP export
 							loadedImages.set(imageData.id, {
 								id: imageData.id,
 								name: imageData.name,
 								canvas: canvas,
+								blob: imageData.blob, // CRITICAL: Store blob for export
 								bbox: imageData.bbox,
 								type: imageData.type,
 								visible: imageData.visible !== false,
 								transparency: imageData.transparency || 1.0,
 								zElevation: imageData.zElevation !== undefined ? imageData.zElevation : window.drawingZLevel || 0,
+								// Additional metadata for KAP export
+								isGeoReferenced: imageData.isGeoReferenced || false,
+								bounds: imageData.bounds || null,
+								pixelWidth: imageData.pixelWidth || null,
+								pixelHeight: imageData.pixelHeight || null,
+								sourceType: imageData.sourceType || null,
+								sourceSurfaceId: imageData.sourceSurfaceId || null,
+								width: img.width,
+								height: img.height
 							});
+
+							// FIX 5: Revoke blob URL to prevent memory leak
+							URL.revokeObjectURL(blobURL);
 
 							imgResolve();
 						};
-						img.onerror = () => imgResolve(); // Continue even if image fails
-						img.src = URL.createObjectURL(imageData.blob);
+						img.onerror = () => {
+							// FIX 5: Revoke even on error
+							URL.revokeObjectURL(blobURL);
+							imgResolve(); // Continue even if image fails
+						};
+						img.src = blobURL;
 					});
 				}
 
@@ -44312,18 +44409,17 @@ function createMaterialFromProperties(materialProps, texture, textureName) {
 
 	// CRITICAL FIX: Use MeshPhongMaterial to match MTLLoader's behavior
 	// MTLLoader creates MeshPhongMaterial, not MeshStandardMaterial
-	// CRITICAL FIX 2: Use ColorManagement.toWorkingColorSpace() to match MTLLoader EXACTLY
-	var diffuseColor = THREE.ColorManagement.toWorkingColorSpace(
-		new THREE.Color().fromArray(materialProps.Kd || [1, 1, 1]),
-		THREE.SRGBColorSpace
-	);
+	// CRITICAL FIX 2: Use color space conversion to match MTLLoader EXACTLY
+	// CRITICAL FIX 3: Updated to use new Three.js API (colorSpaceToWorking instead of toWorkingColorSpace)
+	var diffuseColor = new THREE.Color().fromArray(materialProps.Kd || [1, 1, 1]);
+	if (THREE.ColorManagement.colorSpaceToWorking) {
+		diffuseColor = THREE.ColorManagement.colorSpaceToWorking(diffuseColor, THREE.SRGBColorSpace);
+	}
 
-	var specularColor = materialProps.Ks
-		? THREE.ColorManagement.toWorkingColorSpace(
-			new THREE.Color().fromArray(materialProps.Ks),
-			THREE.SRGBColorSpace
-		)
-		: new THREE.Color(0, 0, 0);
+	var specularColor = materialProps.Ks ? new THREE.Color().fromArray(materialProps.Ks) : new THREE.Color(0, 0, 0);
+	if (materialProps.Ks && THREE.ColorManagement.colorSpaceToWorking) {
+		specularColor = THREE.ColorManagement.colorSpaceToWorking(specularColor, THREE.SRGBColorSpace);
+	}
 
 	var hasTexture = !!(texture && texture instanceof THREE.Texture);
 	var material = new THREE.MeshPhongMaterial({

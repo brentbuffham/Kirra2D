@@ -296,6 +296,11 @@ var _configsSaveTimeout;
  * @param {Map} productsMap
  */
 export function debouncedSaveProducts(db, productsMap) {
+	// CRITICAL: Skip debounced saves during KAP import to prevent overwriting imported data
+	if (window._kapImporting) {
+		console.log("Skipping debounced products save during KAP import");
+		return;
+	}
 	clearTimeout(_productsSaveTimeout);
 	_productsSaveTimeout = setTimeout(function() {
 		console.log("Auto-saving products to DB...");
@@ -311,6 +316,11 @@ export function debouncedSaveProducts(db, productsMap) {
  * @param {Map} chargingMap
  */
 export function debouncedSaveCharging(db, chargingMap) {
+	// CRITICAL: Skip debounced saves during KAP import to prevent overwriting imported data
+	if (window._kapImporting) {
+		console.log("Skipping debounced charging save during KAP import");
+		return;
+	}
 	clearTimeout(_chargingSaveTimeout);
 	_chargingSaveTimeout = setTimeout(function() {
 		console.log("Auto-saving charging data to DB...");
@@ -326,6 +336,11 @@ export function debouncedSaveCharging(db, chargingMap) {
  * @param {Map} configsMap
  */
 export function debouncedSaveConfigs(db, configsMap) {
+	// CRITICAL: Skip debounced saves during KAP import to prevent overwriting imported data
+	if (window._kapImporting) {
+		console.log("Skipping debounced configs save during KAP import");
+		return;
+	}
 	clearTimeout(_configsSaveTimeout);
 	_configsSaveTimeout = setTimeout(function() {
 		console.log("Auto-saving charge configs to DB...");
@@ -333,4 +348,23 @@ export function debouncedSaveConfigs(db, configsMap) {
 			saveChargeConfigsToDB(db, configsMap);
 		}
 	}, 2000);
+}
+
+/**
+ * Cancel all pending debounced saves (used during KAP import)
+ * CRITICAL: Prevents debounced saves from overwriting imported data
+ */
+export function cancelAllDebouncedSaves() {
+	if (_productsSaveTimeout) {
+		clearTimeout(_productsSaveTimeout);
+		_productsSaveTimeout = null;
+	}
+	if (_chargingSaveTimeout) {
+		clearTimeout(_chargingSaveTimeout);
+		_chargingSaveTimeout = null;
+	}
+	if (_configsSaveTimeout) {
+		clearTimeout(_configsSaveTimeout);
+		_configsSaveTimeout = null;
+	}
 }

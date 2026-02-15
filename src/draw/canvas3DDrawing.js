@@ -934,6 +934,15 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 	// Only use texture rendering if gradient is "texture" AND mesh has textures
 	var useTextureRendering = surfaceData && surfaceData.isTexturedMesh && surfaceData.threeJSMesh && gradient === "texture" && hasTexture;
 
+	// Diagnostic: Show why texture rendering is NOT being used
+	if (surfaceData && surfaceData.isTexturedMesh && gradient === "texture" && !useTextureRendering) {
+		console.warn("⚠️ Texture rendering DISABLED for " + surfaceId + " - Checks: hasSurfaceData=" + !!surfaceData +
+			", isTexturedMesh=" + surfaceData.isTexturedMesh +
+			", hasMesh=" + !!surfaceData.threeJSMesh +
+			", gradient=" + gradient +
+			", hasTexture=" + hasTexture);
+	}
+
 	if (useTextureRendering) {
 		if (developerModeEnabled) {
 			console.log("🎨 drawSurfaceThreeJS: Using textured mesh rendering for " + surfaceId + ", gradient: " + gradient + ", hasTexture: " + hasTexture);

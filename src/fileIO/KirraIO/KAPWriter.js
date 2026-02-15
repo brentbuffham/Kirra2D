@@ -89,7 +89,7 @@ class KAPWriter extends BaseWriter {
 					triangles: surface.triangles,
 					visible: surface.visible !== undefined ? surface.visible : true,
 					gradient: surface.isTexturedMesh ? "texture" : (surface.gradient || "default"),
-					transparency: surface.transparency || 1.0,
+					transparency: (surface.transparency !== undefined && surface.transparency !== null) ? surface.transparency : 1.0,
 					hillshadeColor: surface.hillshadeColor || null,
 					minLimit: surface.minLimit || null,
 					maxLimit: surface.maxLimit || null,
@@ -97,7 +97,11 @@ class KAPWriter extends BaseWriter {
 					created: surface.created || null,
 					metadata: surface.metadata || {},
 					isTexturedMesh: surface.isTexturedMesh || false,
-					meshBounds: surface.meshBounds || null
+					meshBounds: surface.meshBounds || null,
+					// Flattened image properties (for textured OBJ meshes - saved for restoration)
+					flattenedImageDataURL: surface.flattenedImageDataURL || null,
+					flattenedImageBounds: surface.flattenedImageBounds || null,
+					flattenedImageDimensions: surface.flattenedImageDimensions || null
 				};
 
 				// For textured meshes, include OBJ/MTL content and material properties
@@ -105,6 +109,13 @@ class KAPWriter extends BaseWriter {
 					record.objContent = surface.objContent || null;
 					record.mtlContent = surface.mtlContent || null;
 					record.materialProperties = surface.materialProperties || null;
+					console.log("📦 KAP EXPORT: Surface " + surfaceId + " - materialProperties: " +
+						(surface.materialProperties ? Object.keys(surface.materialProperties).length + " materials" : "NULL"));
+					console.log("📦 KAP EXPORT: Surface " + surfaceId + " - flattenedImageDataURL: " +
+						(surface.flattenedImageDataURL ? "EXISTS (" + (surface.flattenedImageDataURL.length / 1024).toFixed(1) + " KB)" : "MISSING"));
+					if (surface.flattenedImageBounds) {
+						console.log("📦 KAP EXPORT: Surface " + surfaceId + " - flattenedImageBounds: " + JSON.stringify(surface.flattenedImageBounds));
+					}
 
 					// Store texture blobs as separate files in ZIP
 					if (surface.textureBlobs) {
@@ -132,27 +143,51 @@ class KAPWriter extends BaseWriter {
 			var imagesData = [];
 			var imagesFolder = zip.folder("images");
 
-			imagesMap.forEach(function(image, imageId) {
+			// CRITICAL FIX: Use for...of instead of forEach to support async blob generation
+			for (const [imageId, image] of imagesMap) {
 				var record = {
 					id: imageId,
 					name: image.name || imageId,
 					type: image.type || "imagery",
 					bbox: image.bbox || null,
 					visible: image.visible !== undefined ? image.visible : true,
-					transparency: image.transparency || 1.0,
+					transparency: (image.transparency !== undefined && image.transparency !== null) ? image.transparency : 1.0,
 					zElevation: image.zElevation || 0,
-					savedAt: image.savedAt || null
+					savedAt: image.savedAt || null,
+					// FIX 3: Export all metadata
+					isGeoReferenced: image.isGeoReferenced || false,
+					bounds: image.bounds || null,
+					pixelWidth: image.pixelWidth || null,
+					pixelHeight: image.pixelHeight || null,
+					sourceType: image.sourceType || null,
+					sourceSurfaceId: image.sourceSurfaceId || null,
+					width: image.width || null,
+					height: image.height || null
 				};
 
+				// FIX 1 (CRITICAL): Generate blob from canvas if not present
+				var blobToExport = image.blob;
+				if (!blobToExport && image.canvas) {
+					console.log("📦 Generating blob from canvas for image: " + imageId);
+					blobToExport = await new Promise(function(resolve) {
+						image.canvas.toBlob(function(result) {
+							resolve(result);
+						}, "image/png");
+					});
+				}
+
 				// Store image blob as separate file in ZIP
-				if (image.blob) {
+				if (blobToExport) {
 					var safeImageId = imageId.replace(/[^a-zA-Z0-9_\-\.]/g, "_");
-					imagesFolder.file(safeImageId + ".blob", image.blob);
+					imagesFolder.file(safeImageId + ".blob", blobToExport);
 					record.blobFileName = safeImageId + ".blob";
+					console.log("📦 Exported image blob: " + imageId + " (" + (blobToExport.size / 1024).toFixed(1) + " KB)");
+				} else {
+					console.warn("⚠️ Image has no blob or canvas, skipping blob export: " + imageId);
 				}
 
 				imagesData.push(record);
-			});
+			}
 
 			zip.file("images.json", JSON.stringify(imagesData));
 		}
