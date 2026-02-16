@@ -953,6 +953,163 @@ class TransformKADAction extends UndoableAction {
 }
 
 // Step 17) Export all action classes
+// ============================================================
+// SURFACE ACTIONS
+// ============================================================
+
+// AddSurfaceAction - Undo: remove surface, Redo: add surface back
+class AddSurfaceAction extends UndoableAction {
+    constructor(surfaceData) {
+        super(ActionTypes.ADD_SURFACE, false, false);
+        this.affectsSurfaces = true;
+        this.surfaceId = surfaceData.id;
+        // Store a serialisable copy (exclude threeJSMesh, analysisTexture etc.)
+        this.surfaceData = _cloneSurfaceData(surfaceData);
+        this.description = "Add surface " + (surfaceData.name || surfaceData.id);
+    }
+
+    execute() {
+        if (window.loadedSurfaces) {
+            window.loadedSurfaces.set(this.surfaceId, _cloneSurfaceData(this.surfaceData));
+        }
+    }
+
+    undo() {
+        _removeSurfaceFromScene(this.surfaceId);
+        if (window.loadedSurfaces) {
+            window.loadedSurfaces.delete(this.surfaceId);
+        }
+        if (window.deleteSurfaceFromDB) {
+            window.deleteSurfaceFromDB(this.surfaceId).catch(function() {});
+        }
+        if (window.invalidateSurfaceCache) {
+            window.invalidateSurfaceCache(this.surfaceId);
+        }
+    }
+
+    redo() {
+        this.execute();
+    }
+}
+
+// EditSurfacePropsAction - Undo: restore old props, Redo: apply new props
+class EditSurfacePropsAction extends UndoableAction {
+    constructor(surfaceId, oldProps, newProps) {
+        super(ActionTypes.EDIT_SURFACE_PROPS, false, false);
+        this.affectsSurfaces = true;
+        this.surfaceId = surfaceId;
+        this.oldProps = JSON.parse(JSON.stringify(oldProps));
+        this.newProps = JSON.parse(JSON.stringify(newProps));
+        this.description = "Edit surface " + surfaceId;
+    }
+
+    execute() {
+        _applySurfaceProps(this.surfaceId, this.newProps);
+    }
+
+    undo() {
+        _applySurfaceProps(this.surfaceId, this.oldProps);
+        _removeSurfaceFromScene(this.surfaceId);
+        if (window.invalidateSurfaceCache) {
+            window.invalidateSurfaceCache(this.surfaceId);
+        }
+    }
+
+    redo() {
+        this.execute();
+        _removeSurfaceFromScene(this.surfaceId);
+        if (window.invalidateSurfaceCache) {
+            window.invalidateSurfaceCache(this.surfaceId);
+        }
+    }
+}
+
+// DeleteSurfaceAction - Undo: restore surface, Redo: delete again
+class DeleteSurfaceAction extends UndoableAction {
+    constructor(surfaceData) {
+        super(ActionTypes.DELETE_SURFACE, false, false);
+        this.affectsSurfaces = true;
+        this.surfaceId = surfaceData.id;
+        this.surfaceData = _cloneSurfaceData(surfaceData);
+        this.description = "Delete surface " + (surfaceData.name || surfaceData.id);
+    }
+
+    execute() {
+        _removeSurfaceFromScene(this.surfaceId);
+        if (window.loadedSurfaces) {
+            window.loadedSurfaces.delete(this.surfaceId);
+        }
+        if (window.deleteSurfaceFromDB) {
+            window.deleteSurfaceFromDB(this.surfaceId).catch(function() {});
+        }
+        if (window.invalidateSurfaceCache) {
+            window.invalidateSurfaceCache(this.surfaceId);
+        }
+    }
+
+    undo() {
+        if (window.loadedSurfaces) {
+            window.loadedSurfaces.set(this.surfaceId, _cloneSurfaceData(this.surfaceData));
+        }
+    }
+
+    redo() {
+        this.execute();
+    }
+}
+
+/**
+ * Clone surface data for undo storage (excludes non-serialisable Three.js objects).
+ */
+function _cloneSurfaceData(surface) {
+    var clone = {};
+    for (var key in surface) {
+        if (!surface.hasOwnProperty(key)) continue;
+        // Skip Three.js objects and canvas elements
+        if (key === "threeJSMesh" || key === "analysisTexture" || key === "analysisCanvas") continue;
+        try {
+            clone[key] = JSON.parse(JSON.stringify(surface[key]));
+        } catch (e) {
+            // Skip non-serialisable values (Blobs, ArrayBuffers etc.)
+        }
+    }
+    return clone;
+}
+
+/**
+ * Remove a surface mesh from the Three.js scene.
+ */
+function _removeSurfaceFromScene(surfaceId) {
+    if (window.threeRenderer && window.threeRenderer.surfaceMeshMap) {
+        var mesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
+        if (mesh) {
+            if (mesh.parent) mesh.parent.remove(mesh);
+            mesh.traverse(function(child) {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (child.material.map) child.material.map.dispose();
+                    child.material.dispose();
+                }
+            });
+            window.threeRenderer.surfaceMeshMap.delete(surfaceId);
+        }
+    }
+}
+
+/**
+ * Apply property overrides to a surface.
+ */
+function _applySurfaceProps(surfaceId, props) {
+    if (!window.loadedSurfaces) return;
+    var surface = window.loadedSurfaces.get(surfaceId);
+    if (!surface) return;
+    for (var key in props) {
+        if (props.hasOwnProperty(key)) {
+            surface[key] = props[key];
+        }
+    }
+}
+
 export {
     // Hole actions
     AddHoleAction,
@@ -974,5 +1131,10 @@ export {
     MoveKADVertexAction,
     MoveMultipleKADVerticesAction,
     EditKADPropsAction,
-    TransformKADAction
+    TransformKADAction,
+
+    // Surface actions
+    AddSurfaceAction,
+    EditSurfacePropsAction,
+    DeleteSurfaceAction
 };

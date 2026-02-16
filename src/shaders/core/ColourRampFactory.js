@@ -32,7 +32,10 @@ export class ColourRampFactory {
         "compliance": [[0, 0.8, 0], [1, 1, 0], [1, 0, 0]],
 
         // Greyscale
-        "grey": [[0, 0, 0], [1, 1, 1]]
+        "grey": [[0, 0, 0], [1, 1, 1]],
+
+        // SDoB: Red (0, flyrock risk) → Orange → Lime green (target ~1.5) → Cyan → Blue (safe)
+        "sdob": [[1, 0, 0], [1, 0.4, 0], [0.2, 1, 0], [0, 0.8, 1], [0, 0.2, 1]]
     };
 
     /**

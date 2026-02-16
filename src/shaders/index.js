@@ -12,6 +12,7 @@ export { PPVModel } from "./analytics/models/PPVModel.js";
 export { HeelanOriginalModel } from "./analytics/models/HeelanOriginalModel.js";
 export { ScaledHeelanModel } from "./analytics/models/ScaledHeelanModel.js";
 export { NonLinearDamageModel } from "./analytics/models/NonLinearDamageModel.js";
+export { SDoBModel } from "./analytics/models/SDoBModel.js";
 
 // Main analytics orchestrator
 export { BlastAnalyticsShader } from "./analytics/BlastAnalyticsShader.js";

@@ -33279,6 +33279,24 @@ async function saveSurfaceToDB(surfaceId) {
 				console.log("💾 Saving textured mesh data for surface: " + surfaceId);
 			}
 
+			// Save flyrock shroud flags
+			if (surface.isFlyrockShroud) {
+				surfaceRecord.isFlyrockShroud = true;
+				surfaceRecord.flyrockParams = surface.flyrockParams || null;
+			}
+
+			// Save analysis surface data (baked shader as GLB)
+			if (surface.isAnalysisSurface) {
+				surfaceRecord.isAnalysisSurface = true;
+				surfaceRecord.analysisModelName = surface.analysisModelName || null;
+				surfaceRecord.analysisParams = surface.analysisParams || null;
+				surfaceRecord.analysisUVBounds = surface.analysisUVBounds || null;
+				if (surface.analysisGLB) {
+					surfaceRecord.analysisGLB = surface.analysisGLB;  // ArrayBuffer
+					console.log("💾 Saving analysis GLB for surface: " + surfaceId);
+				}
+			}
+
 			// ? FIX: Add proper transaction handlers
 			transaction.oncomplete = () => {
 				console.log("✅ Surface saved successfully to database:", surfaceId);
@@ -33358,6 +33376,36 @@ async function loadSurfaceIntoMemory(surfaceId) {
 						setTimeout(function () {
 							rebuildTexturedMesh(surfaceData.id);
 						}, 100);
+					}
+
+					// Load flyrock shroud flags
+					if (surfaceData.isFlyrockShroud) {
+						surfaceEntry.isFlyrockShroud = true;
+						surfaceEntry.flyrockParams = surfaceData.flyrockParams || null;
+					}
+
+					// Load analysis surface data (baked shader as GLB)
+					if (surfaceData.isAnalysisSurface) {
+						surfaceEntry.isAnalysisSurface = true;
+						surfaceEntry.analysisModelName = surfaceData.analysisModelName || null;
+						surfaceEntry.analysisParams = surfaceData.analysisParams || null;
+						surfaceEntry.analysisUVBounds = surfaceData.analysisUVBounds || null;
+						surfaceEntry.gradient = "analysis";
+
+						if (surfaceData.analysisGLB) {
+							// Rebuild baked analysis mesh from GLB asynchronously
+							setTimeout(function() {
+								import("./helpers/AnalysisTextureRebuilder.js").then(function(module) {
+									module.rebuildAnalysisFromGLB(surfaceData.id, surfaceData.analysisGLB, {
+										modelName: surfaceData.analysisModelName,
+										params: surfaceData.analysisParams,
+										uvBounds: surfaceData.analysisUVBounds
+									});
+								}).catch(function(err) {
+									console.error("Failed to rebuild analysis GLB:", err);
+								});
+							}, 200);
+						}
 					}
 
 					loadedSurfaces.set(surfaceData.id, surfaceEntry);
@@ -35637,6 +35685,25 @@ document.addEventListener("DOMContentLoaded", function () {
 				});
 			} catch (error) {
 				console.error("Failed to load Blast Analysis Shader:", error);
+			}
+		});
+	}
+});
+
+// Flyrock Shroud button handler
+document.addEventListener("DOMContentLoaded", function () {
+	const flyrockShroudBtn = document.getElementById("flyrockShroudBtn");
+	if (flyrockShroudBtn) {
+		flyrockShroudBtn.addEventListener("click", async function () {
+			try {
+				const { showFlyrockShroudDialog } = await import("./dialog/popups/analytics/FlyrockShroudDialog.js");
+				const { applyFlyrockShroud } = await import("./helpers/FlyrockShroudHelper.js");
+
+				showFlyrockShroudDialog(function(config) {
+					applyFlyrockShroud(config);
+				});
+			} catch (error) {
+				console.error("Failed to load Flyrock Shroud:", error);
 			}
 		});
 	}
@@ -43936,6 +44003,71 @@ function renderSurfaceToCache(surfaceId, surface, surfaceMinZ, surfaceMaxZ) {
 	var gradient = surface.gradient || "default";
 	var transparency = surface.transparency || 1.0;
 
+	// Step 8a) Analysis surfaces: render baked texture by sampling per-triangle
+	if ((gradient === "analysis" || gradient === "shader_overlay") && surface.analysisCanvas && surface.analysisUVBounds) {
+		var texCanvas = surface.analysisCanvas;
+		var texCtx = texCanvas.getContext("2d");
+		var texData = texCtx.getImageData(0, 0, texCanvas.width, texCanvas.height);
+		var texW = texCanvas.width;
+		var texH = texCanvas.height;
+		var uvBounds = surface.analysisUVBounds;
+		var uvW = uvBounds.maxU - uvBounds.minU;
+		var uvH = uvBounds.maxV - uvBounds.minV;
+
+		surface.triangles.forEach(function (triangle) {
+			var p1 = triangle.vertices[0];
+			var p2 = triangle.vertices[1];
+			var p3 = triangle.vertices[2];
+
+			var x1 = (p1.x - minX) * cacheScale;
+			var y1 = (maxY - p1.y) * cacheScale;
+			var x2 = (p2.x - minX) * cacheScale;
+			var y2 = (maxY - p2.y) * cacheScale;
+			var x3 = (p3.x - minX) * cacheScale;
+			var y3 = (maxY - p3.y) * cacheScale;
+
+			// Sample texture at triangle centroid UV
+			var uCentroid = ((p1.x + p2.x + p3.x) / 3 - uvBounds.minU) / uvW;
+			var vCentroid = ((p1.y + p2.y + p3.y) / 3 - uvBounds.minV) / uvH;
+			var texX = Math.max(0, Math.min(texW - 1, Math.floor(uCentroid * texW)));
+			var texY = Math.max(0, Math.min(texH - 1, Math.floor(vCentroid * texH)));
+			var pixIdx = (texY * texW + texX) * 4;
+			var r = texData.data[pixIdx];
+			var g = texData.data[pixIdx + 1];
+			var b = texData.data[pixIdx + 2];
+			var a = texData.data[pixIdx + 3];
+
+			if (a === 0) return; // Skip transparent pixels
+
+			cacheCtx.globalAlpha = transparency * (a / 255);
+			cacheCtx.beginPath();
+			cacheCtx.moveTo(x1, y1);
+			cacheCtx.lineTo(x2, y2);
+			cacheCtx.lineTo(x3, y3);
+			cacheCtx.closePath();
+			cacheCtx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+			cacheCtx.fill();
+		});
+
+		// Store cache entry and return
+		surface2DCache.set(surfaceId, {
+			canvas: cacheCanvas,
+			zoom: currentScale,
+			bounds: { minX: minX, maxX: maxX, minY: minY, maxY: maxY },
+			gradient: gradient,
+			minLimit: surface.minLimit,
+			maxLimit: surface.maxLimit,
+			transparency: transparency,
+			hillshadeColor: surface.hillshadeColor || null
+		});
+
+		if (developerModeEnabled) {
+			console.log("📦 Analysis surface cache created for " + surfaceId + ": " + cacheWidth + "x" + cacheHeight);
+		}
+
+		return surface2DCache.get(surfaceId);
+	}
+
 	surface.triangles.forEach(function (triangle) {
 		var p1 = triangle.vertices[0];
 		var p2 = triangle.vertices[1];
@@ -45715,6 +45847,28 @@ function drawSurface() {
 			});
 		}
 	});
+
+	// Draw flattened blast analysis overlay on 2D canvas (if available)
+	if (!onlyShowThreeJS && window.blastAnalyticsFlattenedCanvas && window.blastAnalyticsFlattenedBounds) {
+		var flatCanvas = window.blastAnalyticsFlattenedCanvas;
+		var flatBounds = window.blastAnalyticsFlattenedBounds; // [minX, minY, maxX, maxY]
+
+		// Transform world bounds to canvas pixel coordinates
+		var canvasLeft = (flatBounds[0] - centroidX) * currentScale + canvas.width / 2;
+		var canvasRight = (flatBounds[2] - centroidX) * currentScale + canvas.width / 2;
+		var canvasTop = -(flatBounds[3] - centroidY) * currentScale + canvas.height / 2;
+		var canvasBottom = -(flatBounds[1] - centroidY) * currentScale + canvas.height / 2;
+
+		var canvasW = canvasRight - canvasLeft;
+		var canvasH = canvasBottom - canvasTop;
+
+		if (canvasW > 0 && canvasH > 0) {
+			ctx.save();
+			ctx.globalAlpha = 0.8;
+			ctx.drawImage(flatCanvas, canvasLeft, canvasTop, canvasW, canvasH);
+			ctx.restore();
+		}
+	}
 }
 // Step #) Surface legend - now uses CSS panel stacked with other legends
 function drawSurfaceLegend() {
@@ -45885,6 +46039,9 @@ function elevationToColor(z, minZ, maxZ, gradient = "default", minLimit = null, 
 
 	// Apply selected gradient (now surface-specific)
 	switch (gradient) {
+		case "analysis":
+		case "shader_overlay":
+			return "rgb(128, 128, 128)"; // Grey fallback for 2D analysis surfaces
 		case "hillshade":
 			// For hillshade, we'll handle coloring in drawTriangleWithGradient
 			// This is just a fallback

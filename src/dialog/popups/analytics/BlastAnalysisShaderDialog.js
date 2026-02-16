@@ -6,6 +6,34 @@ import { FloatingDialog, createEnhancedFormContent, getFormData } from "../../Fl
  *
  * @param {Function} callback - Called with { model, surfaceId, blastName, params } on Apply
  */
+var SETTINGS_STORAGE_KEY = "kirra_blast_analysis_settings";
+
+/**
+ * Load saved settings from localStorage.
+ * @returns {Object|null}
+ */
+function loadSavedSettings() {
+	try {
+		var json = localStorage.getItem(SETTINGS_STORAGE_KEY);
+		return json ? JSON.parse(json) : null;
+	} catch (e) {
+		console.warn("Failed to load blast analysis settings from localStorage:", e);
+		return null;
+	}
+}
+
+/**
+ * Save settings to localStorage.
+ * @param {Object} settings
+ */
+function saveSettingsToStorage(settings) {
+	try {
+		localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+	} catch (e) {
+		console.warn("Failed to save blast analysis settings to localStorage:", e);
+	}
+}
+
 export function showBlastAnalysisShaderDialog(callback) {
 	// Get available models from the shader system
 	var models = window.getAvailableAnalyticsModels ? window.getAvailableAnalyticsModels() : [];
@@ -16,6 +44,9 @@ export function showBlastAnalysisShaderDialog(callback) {
 		return;
 	}
 	console.log("Available models:", models);
+
+	// Load saved settings: window.blastAnalyticsSettings > localStorage > defaults
+	var saved = window.blastAnalyticsSettings || loadSavedSettings();
 
 	// Get available surfaces
 	var surfaces = [];
@@ -55,13 +86,13 @@ export function showBlastAnalysisShaderDialog(callback) {
 		};
 	});
 
-	// Get current settings if they exist
-	var currentModel = window.blastAnalyticsSettings ? window.blastAnalyticsSettings.model : "scaled_heelan";
-	var currentSurface = window.blastAnalyticsSettings ? window.blastAnalyticsSettings.surfaceId : "__PLANE__";
-	var currentBlast = window.blastAnalyticsSettings ? window.blastAnalyticsSettings.blastName : "__ALL__";
-	var currentApplyMode = window.blastAnalyticsSettings ? window.blastAnalyticsSettings.applyMode : "overlay";
-	var currentPlanePadding = window.blastAnalyticsSettings ? window.blastAnalyticsSettings.planePadding : 200;
-	var currentApplyAsTexture = window.blastAnalyticsSettings ? window.blastAnalyticsSettings.applyAsTexture : false;
+	// Get current settings from in-memory or localStorage
+	var currentModel = saved ? saved.model : "scaled_heelan";
+	var currentSurface = saved ? saved.surfaceId : "__PLANE__";
+	var currentBlast = saved ? saved.blastName : "__ALL__";
+	var currentApplyMode = saved ? saved.applyMode : "overlay";
+	var currentPlanePadding = saved ? saved.planePadding : 200;
+	var currentApplyAsTexture = saved ? saved.applyAsTexture : false;
 
 	var fields = [
 		{
@@ -198,7 +229,7 @@ export function showBlastAnalysisShaderDialog(callback) {
 			// Parse plane padding
 			var planePadding = parseFloat(formData.planePadding) || 200;
 
-			// Store settings
+			// Store settings in memory and localStorage
 			window.blastAnalyticsSettings = {
 				model: formData.model,
 				surfaceId: formData.surfaceId,
@@ -208,6 +239,7 @@ export function showBlastAnalysisShaderDialog(callback) {
 				planePadding: planePadding,
 				params: params
 			};
+			saveSettingsToStorage(window.blastAnalyticsSettings);
 
 			callback({
 				model: formData.model,
@@ -335,6 +367,21 @@ function getModelInfo(modelName) {
 				<p style="margin-top: 8px; font-style: italic;">🎯 Use for: Fragmentation analysis, overbreak prediction, damage zone mapping.</p>
 			`;
 
+		case "sdob":
+			return `
+				<p><strong>Scaled Depth of Burial (McKenzie 2022)</strong></p>
+				<p>Assesses flyrock risk by computing the ratio of stemming to charge mass.</p>
+				<p><strong>Formula:</strong> SDoB = S<sub>t</sub> / W<sub>t,m</sub><sup>1/3</sup></p>
+				<ul style="margin: 5px 0; padding-left: 20px;">
+					<li><strong>S<sub>t</sub></strong> - Stemming length (m), depth from collar to first explosive deck</li>
+					<li><strong>W<sub>t,m</sub></strong> - Contributing charge mass (kg), capped at 10 diameters</li>
+					<li><strong>Target SDoB</strong> - Threshold contour (typical 1.5 m/kg<sup>1/3</sup>)</li>
+					<li><strong>Max Display Distance</strong> - Voronoi cell radius limit (m)</li>
+				</ul>
+				<p style="margin-top: 8px;">Colour: <span style="color:#ff0000;">Red</span> = Low SDoB (flyrock risk) | <span style="color:#00cc00;">Green</span> = High SDoB (well confined)</p>
+				<p style="font-style: italic;">Use for: Flyrock risk assessment, stemming adequacy checks, clearance zone planning.</p>
+			`;
+
 		default:
 			return "<p>Select a model to see detailed information.</p>";
 	}
@@ -357,6 +404,16 @@ function updateModelParameters(modelName, dialogContent) {
 
 	// Get default parameters for the model
 	var params = getDefaultParametersForModel(modelName);
+
+	// Override defaults with saved values if model matches
+	var savedSettings = window.blastAnalyticsSettings || loadSavedSettings();
+	if (savedSettings && savedSettings.model === modelName && savedSettings.params) {
+		for (var key in params) {
+			if (params.hasOwnProperty(key) && savedSettings.params[key] !== undefined) {
+				params[key].value = savedSettings.params[key];
+			}
+		}
+	}
 	console.log("Parameters for model:", params);
 
 	var html = "";
@@ -437,6 +494,13 @@ function getDefaultParametersForModel(modelName) {
 				ppvCritical: { label: "Critical PPV", value: 700, min: 100, max: 2000, step: 50, unit: "mm/s" },
 				numElements: { label: "Charge Elements", value: 20, min: 5, max: 50, step: 1, unit: "" },
 				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m" }
+			};
+
+		case "sdob":
+			return {
+				targetSDoB: { label: "Target SDoB Threshold", value: 1.5, min: 0.5, max: 5.0, step: 0.1, unit: "m/kg^(1/3)" },
+				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" },
+				fallbackDensity: { label: "Fallback Explosive Density (no charging)", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L" }
 			};
 
 		default:

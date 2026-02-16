@@ -28,6 +28,11 @@ var ActionTypes = {
     MOVE_KAD_VERTEX: "MOVE_KAD_VERTEX",
     EDIT_KAD_PROPS: "EDIT_KAD_PROPS",
     
+    // Surface actions
+    ADD_SURFACE: "ADD_SURFACE",
+    DELETE_SURFACE: "DELETE_SURFACE",
+    EDIT_SURFACE_PROPS: "EDIT_SURFACE_PROPS",
+
     // Batch action (wraps multiple actions)
     BATCH: "BATCH"
 };
@@ -38,6 +43,8 @@ class UndoableAction {
         this.type = type;
         this.affectsHoles = affectsHoles || false;
         this.affectsKAD = affectsKAD || false;
+        this.affectsSurfaces = false; // Set true for surface actions
+        this.surfaceId = null; // Surface ID for save/delete
         this.description = "";
         this.timestamp = Date.now();
     }
@@ -74,6 +81,11 @@ class UndoableAction {
         }
         if (this.affectsKAD && window.debouncedSaveKAD) {
             window.debouncedSaveKAD();
+        }
+        if (this.affectsSurfaces && this.surfaceId && window.saveSurfaceToDB) {
+            window.saveSurfaceToDB(this.surfaceId).catch(function(err) {
+                console.warn("Surface save after undo/redo failed:", err);
+            });
         }
         
         // Step 6d) Update TreeView

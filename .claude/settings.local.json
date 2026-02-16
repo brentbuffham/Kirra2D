@@ -36,7 +36,12 @@
       "Bash(gh api:*)",
       "Bash(where:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(pdftotext:*)",
+      "WebFetch(domain:iseeaustralia.org)",
+      "Bash(brew list:*)",
+      "Bash(python3:*)",
+      "WebFetch(domain:claude.ai)"
     ]
   }
 }

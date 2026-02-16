@@ -8,6 +8,7 @@ import { PPVModel } from "./models/PPVModel.js";
 import { HeelanOriginalModel } from "./models/HeelanOriginalModel.js";
 import { ScaledHeelanModel } from "./models/ScaledHeelanModel.js";
 import { NonLinearDamageModel } from "./models/NonLinearDamageModel.js";
+import { SDoBModel } from "./models/SDoBModel.js";
 
 // Shared vertex shader
 var VERT_SOURCE = `
@@ -45,6 +46,7 @@ export class BlastAnalyticsShader extends BaseAnalyticsShader {
         this._registerModel(new HeelanOriginalModel());
         this._registerModel(new ScaledHeelanModel());
         this._registerModel(new NonLinearDamageModel());
+        this._registerModel(new SDoBModel());
 
         // Active model
         this.activeModel = null;

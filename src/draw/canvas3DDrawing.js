@@ -10,6 +10,7 @@ import { GeometryFactory } from "../three/GeometryFactory.js";
 import { buildMassLabels } from "./canvas2DDrawing.js";
 import { BlastAnalyticsShader } from "../shaders/analytics/BlastAnalyticsShader.js";
 import { calculateDownholeTimings, getTimingRange, fireTimeToColor, normalizeFireTime } from "../helpers/DownholeTimingCalculator.js";
+import { rebuildAnalysisFromGLB } from "../helpers/AnalysisTextureRebuilder.js";
 
 //=================================================
 // 3D ANALYSIS CACHE - Prevents rebuilding geometry every frame
@@ -1164,6 +1165,30 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 
 	// Step 12i) For textured meshes with non-texture gradient, fall through to standard rendering
 	// This allows textured OBJs to use elevation-based color gradients
+
+	// Step 12j) Analysis surface: has baked shader texture — preserve it, don't rebuild
+	if ((gradient === "analysis" || gradient === "shader_overlay")
+		&& surfaceData && surfaceData.isAnalysisSurface) {
+		var existingAnalysisMesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
+		if (existingAnalysisMesh) {
+			// Mesh already has baked texture — ensure visible and in scene
+			if (!existingAnalysisMesh.parent) {
+				window.threeRenderer.surfacesGroup.add(existingAnalysisMesh);
+			}
+			existingAnalysisMesh.visible = true;
+			return; // CRITICAL: Don't rebuild — preserve baked texture
+		}
+		// No existing mesh — try to rebuild from GLB
+		if (surfaceData.analysisGLB) {
+			rebuildAnalysisFromGLB(surfaceId, surfaceData.analysisGLB, {
+				modelName: surfaceData.analysisModelName,
+				params: surfaceData.analysisParams,
+				uvBounds: surfaceData.analysisUVBounds
+			});
+			return;
+		}
+		// Fallback: no GLB, fall through to vertex coloring
+	}
 
 	// Step 9a) Standard surface rendering - Convert triangle vertices from world coordinates to local Three.js coordinates
 	var validTriangleCount = 0;

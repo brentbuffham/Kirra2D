@@ -139,6 +139,17 @@ export async function exportImagesAsGeoTIFF(surface2DCache, loadedSurfaces, load
 			}
 		});
 
+		// Step 3b) Include flattened blast analysis overlay if available
+		if (window.blastAnalyticsFlattenedCanvas && window.blastAnalyticsFlattenedBounds) {
+			var analysisBounds = window.blastAnalyticsFlattenedBounds; // [minX, minY, maxX, maxY]
+			exportImages.push({
+				type: "analysis",
+				name: "BlastAnalysis_" + (window.blastAnalyticsSettings ? window.blastAnalyticsSettings.model : "overlay"),
+				canvas: window.blastAnalyticsFlattenedCanvas,
+				bbox: analysisBounds
+			});
+		}
+
 		if (exportSurfaces.length === 0 && exportImages.length === 0) {
 			showModalMessage("No Images", "No visible surfaces or images to export", "info");
 			return;

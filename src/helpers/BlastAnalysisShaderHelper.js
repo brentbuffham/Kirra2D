@@ -1,4 +1,5 @@
 // src/helpers/BlastAnalysisShaderHelper.js
+import * as THREE from "three";
 import {
 	drawBlastAnalyticsThreeJS,
 	clearBlastAnalyticsThreeJS,
@@ -12,6 +13,8 @@ import {
 } from "../overlay/index.js";
 
 import { ShaderTextureBaker } from "./ShaderTextureBaker.js";
+import { exportAnalysisMeshToGLB } from "./AnalysisTextureRebuilder.js";
+import { AddSurfaceAction, EditSurfacePropsAction } from "../tools/UndoActions.js";
 
 /**
  * BlastAnalysisShaderHelper manages the blast analysis shader overlay.
@@ -71,7 +74,12 @@ export function applyBlastAnalysisShader(config) {
 		legendInfo.colorStops
 	);
 
-	console.log("✅ Blast analysis shader applied: " + config.model + " on " + holes.length + " holes");
+	// Auto-flatten to 2D after a short delay for render to complete
+	setTimeout(function() {
+		flattenAnalysisTo2D(1.0);
+	}, 150);
+
+	console.log("Blast analysis shader applied: " + config.model + " on " + holes.length + " holes");
 }
 
 /**
@@ -94,6 +102,14 @@ function bakeShaderToSurfaceTexture(config, holes) {
 	}
 
 	console.log("🎨 Baking shader to texture for surface: " + config.surfaceId);
+
+	// Capture old properties for undo
+	var oldProps = {
+		gradient: surface.gradient,
+		isAnalysisSurface: surface.isAnalysisSurface || false,
+		analysisModelName: surface.analysisModelName || null,
+		analysisParams: surface.analysisParams || null
+	};
 
 	// Get shader material configured for this model
 	var shaderMaterial = getShaderMaterialForModel(config.model, holes, config.params);
@@ -118,6 +134,11 @@ function bakeShaderToSurfaceTexture(config, holes) {
 	// Update surface gradient to "analysis" to trigger texture rendering
 	surface.gradient = "analysis";
 
+	// Store analysis metadata on surface for persistence
+	surface.isAnalysisSurface = true;
+	surface.analysisModelName = config.model;
+	surface.analysisParams = config.params;
+
 	// Apply baked texture to 3D mesh
 	if (window.threeRenderer && window.threeRenderer.surfaceMeshMap) {
 		var surfaceMesh = window.threeRenderer.surfaceMeshMap.get(config.surfaceId);
@@ -128,13 +149,24 @@ function bakeShaderToSurfaceTexture(config, holes) {
 				surface,
 				bakeResult.uvBounds
 			);
-		}
-	}
 
-	// Save surface with baked texture to IndexedDB
-	if (window.saveSurfaceToDB) {
-		// Note: Canvas will be recreated from stored data on reload
-		window.saveSurfaceToDB(config.surfaceId);
+			// Export baked mesh as GLB for IndexedDB persistence
+			exportAnalysisMeshToGLB(surfaceMesh).then(function(glbData) {
+				if (glbData) {
+					surface.analysisGLB = glbData;
+					console.log("GLB export complete: " + (glbData.byteLength / 1024).toFixed(1) + " KB");
+				}
+				// Save surface with GLB data to IndexedDB
+				if (window.saveSurfaceToDB) {
+					window.saveSurfaceToDB(config.surfaceId);
+				}
+			}).catch(function(err) {
+				console.warn("GLB export failed, saving without GLB:", err);
+				if (window.saveSurfaceToDB) {
+					window.saveSurfaceToDB(config.surfaceId);
+				}
+			});
+		}
 	}
 
 	// Invalidate 2D cache to trigger re-render with new texture
@@ -147,7 +179,24 @@ function bakeShaderToSurfaceTexture(config, holes) {
 		window.drawData(window.allBlastHoles, window.selectedHole);
 	}
 
-	console.log("✅ Shader baked to texture: " + config.model);
+	// Update TreeView to reflect gradient change
+	if (window.debouncedUpdateTreeView) {
+		window.debouncedUpdateTreeView();
+	}
+
+	// Push undo action for the surface property change
+	if (window.undoManager) {
+		var newProps = {
+			gradient: "analysis",
+			isAnalysisSurface: true,
+			analysisModelName: config.model,
+			analysisParams: config.params
+		};
+		var editAction = new EditSurfacePropsAction(config.surfaceId, oldProps, newProps);
+		window.undoManager.pushAction(editAction);
+	}
+
+	console.log("Shader baked to texture: " + config.model);
 }
 
 /**
@@ -187,7 +236,7 @@ function duplicateSurfaceWithShader(config, holes) {
 		}
 	};
 
-	// Add to loaded surfaces
+	// Add to loaded surfaces (directly, undo action pushed after baking)
 	window.loadedSurfaces.set(duplicateId, duplicateSurface);
 
 	// Store reference to duplicate for cleanup
@@ -202,7 +251,7 @@ function duplicateSurfaceWithShader(config, holes) {
 	// Check if texture baking is requested for duplicate
 	if (config.applyAsTexture) {
 		// Bake shader to texture on duplicate surface
-		console.log("🎨 Baking shader to texture for duplicate surface: " + duplicateId);
+		console.log("Baking shader to texture for duplicate surface: " + duplicateId);
 
 		var shaderMaterial = getShaderMaterialForModel(config.model, holes, config.params);
 		if (shaderMaterial) {
@@ -217,8 +266,14 @@ function duplicateSurfaceWithShader(config, holes) {
 			duplicateSurface.analysisUVBounds = bakeResult.uvBounds;
 			duplicateSurface.analysisModel = config.model;
 			duplicateSurface.gradient = "analysis";
+			duplicateSurface.isAnalysisSurface = true;
+			duplicateSurface.analysisModelName = config.model;
+			duplicateSurface.analysisParams = config.params;
 
-			console.log("✅ Shader baked to duplicate surface texture");
+			// Build the textured mesh directly (avoids race condition with drawData)
+			buildAndRegisterAnalysisMesh(duplicateId, duplicateSurface, bakeResult);
+
+			console.log("Shader baked to duplicate surface texture");
 		}
 	} else {
 		// Apply shader to duplicate (overlay mode)
@@ -226,19 +281,113 @@ function duplicateSurfaceWithShader(config, holes) {
 			useToeLocation: false,
 			surfaceId: duplicateId
 		});
+
+		// Save duplicate to IndexedDB
+		if (window.saveSurfaceToDB) {
+			window.saveSurfaceToDB(duplicateId);
+		}
 	}
 
-	// Save duplicate to IndexedDB (pass surface ID, not object)
-	if (window.saveSurfaceToDB) {
-		window.saveSurfaceToDB(duplicateId);
+	console.log("Shader applied to duplicate surface: " + duplicateId);
+
+	// Push undo action for the new duplicate surface
+	if (window.undoManager) {
+		var action = new AddSurfaceAction(duplicateSurface);
+		window.undoManager.pushAction(action);
 	}
 
-	console.log("✅ Shader applied to duplicate surface: " + duplicateId);
+	// Update TreeView to show new surface
+	if (window.debouncedUpdateTreeView) {
+		window.debouncedUpdateTreeView();
+	}
 
 	// Redraw to show new surface
 	if (window.drawData) {
 		window.drawData(window.allBlastHoles, window.selectedHole);
 	}
+}
+
+/**
+ * Build a textured analysis mesh directly and register it in the scene.
+ * This avoids the race condition where drawData() hasn't created the mesh yet.
+ *
+ * @param {string} surfaceId - Surface ID
+ * @param {Object} surface - Surface object with triangles/points
+ * @param {Object} bakeResult - { texture, canvas, uvBounds }
+ */
+function buildAndRegisterAnalysisMesh(surfaceId, surface, bakeResult) {
+	if (!window.threeRenderer || !surface.triangles || surface.triangles.length === 0) {
+		if (window.saveSurfaceToDB) {
+			window.saveSurfaceToDB(surfaceId);
+		}
+		return;
+	}
+
+	// Build BufferGeometry directly with positions + UVs (no vertex colors)
+	var triCount = surface.triangles.length;
+	var positions = new Float32Array(triCount * 9); // 3 verts × 3 coords
+	var uvs = new Float32Array(triCount * 6);       // 3 verts × 2 UV coords
+
+	var uvBounds = bakeResult.uvBounds;
+	var uvW = uvBounds.maxU - uvBounds.minU;
+	var uvH = uvBounds.maxV - uvBounds.minV;
+
+	for (var i = 0; i < triCount; i++) {
+		var tri = surface.triangles[i];
+		if (!tri.vertices || tri.vertices.length !== 3) continue;
+
+		for (var j = 0; j < 3; j++) {
+			var v = tri.vertices[j];
+			var local = window.worldToThreeLocal(v.x, v.y);
+
+			// Position in local Three.js space
+			positions[i * 9 + j * 3]     = local.x;
+			positions[i * 9 + j * 3 + 1] = local.y;
+			positions[i * 9 + j * 3 + 2] = v.z;
+
+			// Planar UV from world XY
+			uvs[i * 6 + j * 2]     = (v.x - uvBounds.minU) / uvW;
+			uvs[i * 6 + j * 2 + 1] = (v.y - uvBounds.minV) / uvH;
+		}
+	}
+
+	var geometry = new THREE.BufferGeometry();
+	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+	geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+	geometry.computeVertexNormals();
+
+	// Texture-only material — no vertex colors
+	var material = new THREE.MeshBasicMaterial({
+		map: bakeResult.texture,
+		side: THREE.DoubleSide,
+		transparent: true,
+		opacity: surface.transparency || 1.0
+	});
+
+	var mesh = new THREE.Mesh(geometry, material);
+	mesh.userData = { type: "analysisSurface", surfaceId: surfaceId };
+
+	// Register in scene and surfaceMeshMap
+	window.threeRenderer.surfacesGroup.add(mesh);
+	window.threeRenderer.surfaceMeshMap.set(surfaceId, mesh);
+
+	// Export to GLB for IndexedDB persistence
+	exportAnalysisMeshToGLB(mesh).then(function(glbData) {
+		if (glbData) {
+			surface.analysisGLB = glbData;
+			console.log("GLB export for analysis: " + (glbData.byteLength / 1024).toFixed(1) + " KB");
+		}
+		if (window.saveSurfaceToDB) {
+			window.saveSurfaceToDB(surfaceId);
+		}
+	}).catch(function(err) {
+		console.warn("GLB export failed:", err);
+		if (window.saveSurfaceToDB) {
+			window.saveSurfaceToDB(surfaceId);
+		}
+	});
+
+	console.log("Built and registered texture-mapped analysis mesh for " + surfaceId);
 }
 
 /**
@@ -296,6 +445,18 @@ function getShaderLegendInfo(modelName) {
 				{ pos: 0.75, color: "rgb(255, 0, 0)" },     // Red - major
 				{ pos: 1, color: "rgb(76, 0, 0)" }          // Dark red - crushing
 			]
+		},
+		sdob: {
+			title: "SDoB (m/kg^1/3)",
+			minVal: 0,
+			maxVal: 3,
+			colorStops: [
+				{ pos: 0, color: "rgb(255, 0, 0)" },        // Red - 0 SDoB (flyrock risk)
+				{ pos: 0.25, color: "rgb(255, 102, 0)" },   // Orange
+				{ pos: 0.5, color: "rgb(51, 255, 0)" },     // Lime green - target (~1.5)
+				{ pos: 0.75, color: "rgb(0, 204, 255)" },   // Cyan
+				{ pos: 1, color: "rgb(0, 51, 255)" }        // Blue - safe (high SDoB)
+			]
 		}
 	};
 
@@ -338,7 +499,8 @@ export function clearBlastAnalysisShader() {
 
 	clearBlastAnalyticsThreeJS();
 	hideShaderAnalyticsLegend();
-	console.log("🗑️ Blast analysis shader cleared");
+	clearFlattenedAnalysis();
+	console.log("Blast analysis shader cleared");
 }
 
 /**
@@ -380,6 +542,11 @@ export function revertShaderOnSurface(surfaceId) {
 		// Original surface - just clear shader overlay
 		clearBlastAnalyticsThreeJS();
 		console.log("🗑️ Cleared shader from original surface");
+	}
+
+	// Update TreeView after surface removal
+	if (window.debouncedUpdateTreeView) {
+		window.debouncedUpdateTreeView();
 	}
 
 	// Redraw
@@ -469,4 +636,40 @@ export function exportShaderTo2D(pixelsPerMetre) {
 		}
 		return null;
 	});
+}
+
+/**
+ * Flatten the current analysis shader to a 2D canvas and store globally
+ * for overlay rendering in the 2D view and GeoTIFF export.
+ *
+ * @param {number} pixelsPerMetre - Resolution (default 1.0)
+ */
+export function flattenAnalysisTo2D(pixelsPerMetre) {
+	pixelsPerMetre = pixelsPerMetre || 1.0;
+
+	import("../draw/canvas3DDrawing.js").then(function(module) {
+		if (!module.flattenBlastAnalytics) return;
+
+		var result = module.flattenBlastAnalytics(pixelsPerMetre);
+		if (result && result.canvas) {
+			window.blastAnalyticsFlattenedCanvas = result.canvas;
+			window.blastAnalyticsFlattenedBounds = result.bounds; // [minX, minY, maxX, maxY]
+			console.log("Analysis flattened to 2D: " + result.width + "x" + result.height + " px");
+
+			// Redraw 2D to show overlay
+			if (window.drawData) {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
+		}
+	}).catch(function(err) {
+		console.warn("Failed to flatten analysis to 2D:", err);
+	});
+}
+
+/**
+ * Clear the flattened analysis overlay from 2D view.
+ */
+export function clearFlattenedAnalysis() {
+	window.blastAnalyticsFlattenedCanvas = null;
+	window.blastAnalyticsFlattenedBounds = null;
 }
