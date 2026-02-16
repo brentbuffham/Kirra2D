@@ -242,6 +242,7 @@ import "./dialog/popups/info/InfoDialogs.js";
 import "./dialog/popups/generic/PatternGenerationDialogs.js";
 import "./dialog/popups/generic/AddHoleDialog.js";
 import "./dialog/popups/generic/HolePropertyDialogs.js";
+import "./dialog/popups/generic/AssignBlastDialog.js";
 import "./dialog/popups/generic/ExportDialogs.js";
 import "./dialog/popups/generic/KADDialogs.js";
 import "./dialog/popups/generic/SurfaceAssignmentDialogs.js";
@@ -7224,103 +7225,109 @@ addPatternSwitch.addEventListener("change", function () {
 	}
 });
 
-editHoleTypePopupSwitch.addEventListener("change", function () {
-	if (this.checked) {
-		switches.forEach((switchElement) => {
-			if (switchElement) switchElement.checked = false;
-		});
-		setAllBoolsToFalse();
-		//resetFloatingToolbarButtons("rulerTool", "bearingTool");
-		resetSwitchesTogglesOptionalDisplay(true);
-		if (currentFontSize < 14) {
-			currentFontSize = 14;
-			fontSlider.value = 14;
+if (editHoleTypePopupSwitch) {
+	editHoleTypePopupSwitch.addEventListener("change", function () {
+		if (this.checked) {
+			switches.forEach((switchElement) => {
+				if (switchElement) switchElement.checked = false;
+			});
+			setAllBoolsToFalse();
+			//resetFloatingToolbarButtons("rulerTool", "bearingTool");
+			resetSwitchesTogglesOptionalDisplay(true);
+			if (currentFontSize < 14) {
+				currentFontSize = 14;
+				fontSlider.value = 14;
 
+				drawData(allBlastHoles, selectedHole);
+			}
+			//setSelectionModeToFalse();
+			isTypeEditing = true;
+			editHoleTypePopupSwitch.checked = true;
+			displayHoleId.checked = true;
+			displayHoleType.checked = true;
+			// This function did not work and was causing issues with the tool
+			// removeEventListenersExcluding(["editHoleTypeSwitch", "defaultListeners"]);
+			canvas.addEventListener("click", handleHoleTypeEditClick);
+			canvas.addEventListener("touchstart", handleHoleTypeEditClick);
+			drawData(allBlastHoles, selectedHole);
+		} else {
+			isTypeEditing = false;
+			canvas.removeEventListener("click", handleHoleTypeEditClick);
+			canvas.removeEventListener("touchstart", handleHoleTypeEditClick);
+			selectedHole = null;
+			selectedPoint = null;
+			//selectedMultiplePoints = []
+			firstSelectedHole = null;
+			secondSelectedHole = null;
+			fromHoleStore = null;
+			clickedHole = null;
 			drawData(allBlastHoles, selectedHole);
 		}
-		//setSelectionModeToFalse();
-		isTypeEditing = true;
-		editHoleTypePopupSwitch.checked = true;
-		displayHoleId.checked = true;
-		displayHoleType.checked = true;
-		// This function did not work and was causing issues with the tool
-		// removeEventListenersExcluding(["editHoleTypeSwitch", "defaultListeners"]);
-		canvas.addEventListener("click", handleHoleTypeEditClick);
-		canvas.addEventListener("touchstart", handleHoleTypeEditClick);
-		drawData(allBlastHoles, selectedHole);
-	} else {
-		isTypeEditing = false;
-		canvas.removeEventListener("click", handleHoleTypeEditClick);
-		canvas.removeEventListener("touchstart", handleHoleTypeEditClick);
-		selectedHole = null;
-		selectedPoint = null;
-		//selectedMultiplePoints = []
-		firstSelectedHole = null;
-		secondSelectedHole = null;
-		fromHoleStore = null;
-		clickedHole = null;
-		drawData(allBlastHoles, selectedHole);
-	}
-});
+	});
+}
 
-editBlastNameSwitch.addEventListener("change", function () {
-	if (this.checked) {
-		switches.forEach((switchElement) => {
-			if (switchElement) switchElement.checked = false;
-		});
-		setAllBoolsToFalse();
-		setMultipleSelectionModeToFalse();
-		editBlastNameSwitch.checked = true;
-		isBlastNameEditing = true;
-		// This function did not work and was causing issues with the tool
-		// removeEventListenersExcluding(["editBlastNameSwitch", "defaultListeners"]);
-		canvas.addEventListener("click", handleBlastNameClick);
-		canvas.addEventListener("touchstart", handleBlastNameClick);
-		drawData(allBlastHoles, selectedHole);
-	} else {
-		isBlastNameEditing = false;
-		canvas.removeEventListener("click", handleBlastNameClick);
-		canvas.removeEventListener("touchstart", handleBlastNameClick);
-		selectedHole = null;
-		selectedPoint = null;
-		//selectedMultiplePoints = []
-		firstSelectedHole = null;
-		secondSelectedHole = null;
-		fromHoleStore = null;
-		clickedHole = null;
-		drawData(allBlastHoles, selectedHole);
-	}
-});
+if (editBlastNameSwitch) {
+	editBlastNameSwitch.addEventListener("change", function () {
+		if (this.checked) {
+			switches.forEach((switchElement) => {
+				if (switchElement) switchElement.checked = false;
+			});
+			setAllBoolsToFalse();
+			setMultipleSelectionModeToFalse();
+			editBlastNameSwitch.checked = true;
+			isBlastNameEditing = true;
+			// This function did not work and was causing issues with the tool
+			// removeEventListenersExcluding(["editBlastNameSwitch", "defaultListeners"]);
+			canvas.addEventListener("click", handleBlastNameClick);
+			canvas.addEventListener("touchstart", handleBlastNameClick);
+			drawData(allBlastHoles, selectedHole);
+		} else {
+			isBlastNameEditing = false;
+			canvas.removeEventListener("click", handleBlastNameClick);
+			canvas.removeEventListener("touchstart", handleBlastNameClick);
+			selectedHole = null;
+			selectedPoint = null;
+			//selectedMultiplePoints = []
+			firstSelectedHole = null;
+			secondSelectedHole = null;
+			fromHoleStore = null;
+			clickedHole = null;
+			drawData(allBlastHoles, selectedHole);
+		}
+	});
+}
 
-editLengthPopupSwitch.addEventListener("change", function () {
-	if (this.checked) {
-		switches.forEach((switchElement) => {
-			if (switchElement) switchElement.checked = false;
-		});
-		setAllBoolsToFalse();
-		//setSelectionModeToFalse();
-		editLengthPopupSwitch.checked = true;
-		isLengthPopupEditing = true;
-		displayHoleLength.checked = true;
-		// This function did not work and was causing issues with the tool
-		// removeEventListenersExcluding(["editLengthPopupSwitch", "defaultListeners"]);
-		canvas.addEventListener("click", handleHoleLengthEditClick);
-		canvas.addEventListener("touchstart", handleHoleLengthEditClick);
-		drawData(allBlastHoles, selectedHole);
-	} else {
-		isLengthPopupEditing = false;
-		canvas.removeEventListener("click", handleHoleLengthEditClick);
-		canvas.removeEventListener("touchstart", handleHoleLengthEditClick);
-		selectedHole = null;
-		selectedPoint = null;
-		//selectedMultiplePoints = []
-		firstSelectedHole = null;
-		secondSelectedHole = null;
-		fromHoleStore = null;
-		clickedHole = null;
-		drawData(allBlastHoles, selectedHole);
-	}
-});
+if (editLengthPopupSwitch) {
+	editLengthPopupSwitch.addEventListener("change", function () {
+		if (this.checked) {
+			switches.forEach((switchElement) => {
+				if (switchElement) switchElement.checked = false;
+			});
+			setAllBoolsToFalse();
+			//setSelectionModeToFalse();
+			editLengthPopupSwitch.checked = true;
+			isLengthPopupEditing = true;
+			displayHoleLength.checked = true;
+			// This function did not work and was causing issues with the tool
+			// removeEventListenersExcluding(["editLengthPopupSwitch", "defaultListeners"]);
+			canvas.addEventListener("click", handleHoleLengthEditClick);
+			canvas.addEventListener("touchstart", handleHoleLengthEditClick);
+			drawData(allBlastHoles, selectedHole);
+		} else {
+			isLengthPopupEditing = false;
+			canvas.removeEventListener("click", handleHoleLengthEditClick);
+			canvas.removeEventListener("touchstart", handleHoleLengthEditClick);
+			selectedHole = null;
+			selectedPoint = null;
+			//selectedMultiplePoints = []
+			firstSelectedHole = null;
+			secondSelectedHole = null;
+			fromHoleStore = null;
+			clickedHole = null;
+			drawData(allBlastHoles, selectedHole);
+		}
+	});
+}
 
 /// Event listener for the edit hole Easting switch
 // All previous slider enabling toggles/switches will be grouped into one switch
@@ -27080,7 +27087,7 @@ function handleBlastNameClick(event) {
 		const clickY = event.clientY - rect.top;
 		const clickedHole = getClickedHole(clickX, clickY);
 
-		if (clickedHole && editBlastNameSwitch.checked == false) {
+		if (clickedHole && (!editBlastNameSwitch || editBlastNameSwitch.checked == false)) {
 			if (!fromHoleStore) {
 				fromHoleStore = clickedHole;
 				selectedHole = clickedHole;
@@ -27089,7 +27096,7 @@ function handleBlastNameClick(event) {
 				drawData(allBlastHoles, selectedHole);
 			}
 		}
-		if (clickedHole && editBlastNameSwitch.checked == true) {
+		if (clickedHole && editBlastNameSwitch && editBlastNameSwitch.checked == true) {
 			editBlastNamePopup(selectedHole);
 		}
 	}
@@ -27100,7 +27107,7 @@ function handleBlastNameClick(event) {
 	selectedPoint = null;
 	//selectedMultiplePoints = []
 	isBlastNameEditing = false;
-	editBlastNameSwitch.checked = false;
+	if (editBlastNameSwitch) editBlastNameSwitch.checked = false;
 	drawData(allBlastHoles, selectedHole);
 	debouncedUpdateTreeView(); // Use debounced version
 }
@@ -27664,7 +27671,7 @@ function handleHoleTypeEditClick(event) {
 		const clickedHole = getClickedHole(clickX, clickY);
 		drawData(allBlastHoles, selectedHole);
 
-		if (clickedHole && editHoleTypePopupSwitch.checked == false) {
+		if (clickedHole && (!editHoleTypePopupSwitch || editHoleTypePopupSwitch.checked == false)) {
 			if (!fromHoleStore) {
 				// Set the selected fromHole
 				fromHoleStore = clickedHole;
@@ -27676,11 +27683,11 @@ function handleHoleTypeEditClick(event) {
 				debouncedUpdateTreeView();
 				//console.log("centroidX: " + centroidX + " centroidY: " + centroidY);
 			}
-		} else if (clickedHole && editHoleTypePopupSwitch.checked == true) {
+		} else if (clickedHole && editHoleTypePopupSwitch && editHoleTypePopupSwitch.checked == true) {
 			editHoleTypePopup();
 		}
 		const multipleClickedHoles = getMultipleClickedHoles(clickX, clickY);
-		if (multipleClickedHoles.length > 0 && isMultiHoleSelectionEnabled && editHoleTypePopupSwitch.checked == false) {
+		if (multipleClickedHoles.length > 0 && isMultiHoleSelectionEnabled && (!editHoleTypePopupSwitch || editHoleTypePopupSwitch.checked == false)) {
 			selectedMultipleHoles = [...multipleClickedHoles]; // Update the selection
 			drawData(allBlastHoles, selectedHole); // You might need to modify this function to handle multiple selected holes
 			debouncedUpdateTreeView();
@@ -27699,7 +27706,7 @@ function handleHoleLengthEditClick(event) {
 		const clickedHole = getClickedHole(clickX, clickY);
 		drawData(allBlastHoles, selectedHole);
 
-		if (clickedHole && editLengthPopupSwitch.checked == false) {
+		if (clickedHole && (!editLengthPopupSwitch || editLengthPopupSwitch.checked == false)) {
 			if (!fromHoleStore) {
 				// Set the selected fromHole
 				fromHoleStore = clickedHole;
@@ -27711,12 +27718,12 @@ function handleHoleLengthEditClick(event) {
 				debouncedUpdateTreeView();
 				//console.log("centroidX: " + centroidX + " centroidY: " + centroidY);
 			}
-		} else if (clickedHole && editLengthPopupSwitch.checked == true) {
+		} else if (clickedHole && editLengthPopupSwitch && editLengthPopupSwitch.checked == true) {
 			editHoleLengthPopup();
 		}
 		// Replace the problematic lines with null-safe versions:
 		const multipleClickedHoles = getMultipleClickedHoles(clickX, clickY);
-		if (multipleClickedHoles && multipleClickedHoles.length > 0 && isMultiHoleSelectionEnabled && editLengthPopupSwitch.checked == false) {
+		if (multipleClickedHoles && multipleClickedHoles.length > 0 && isMultiHoleSelectionEnabled && (!editLengthPopupSwitch || editLengthPopupSwitch.checked == false)) {
 			selectedMultipleHoles = [...multipleClickedHoles]; // Update the selection
 			drawData(allBlastHoles, selectedHole);
 			debouncedUpdateTreeView();

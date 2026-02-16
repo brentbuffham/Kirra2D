@@ -4,6 +4,8 @@
 //=============================================================
 // Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
+import { assignBlastDialog } from '../popups/generic/AssignBlastDialog.js';
+
 // Step 1) Show hole property editor for single or multiple holes
 export function showHolePropertyEditor(hole) {
 	// Step 1a) CHECK VISIBILITY FIRST - Filter out hidden holes
@@ -670,11 +672,13 @@ export function showHolePropertyEditor(hole) {
 		showOption1: true, // Hide button
 		showOption2: true, // Delete button
 		showOption3: !isMultiple, // Insert button (only for single hole)
+		showOption4: true, // Assign Blast button (always shown)
 		confirmText: "Apply",
 		cancelText: "Cancel",
 		option1Text: "Hide",
 		option2Text: "Delete",
 		option3Text: "Insert",
+		option4Text: "Assign Blast",
 		width: dialogWidth,
 		height: 600,
 		onConfirm: () => {
@@ -859,6 +863,11 @@ export function showHolePropertyEditor(hole) {
 					setTimeout(() => window.updateStatusMessage(""), 2000);
 				}
 			);
+		},
+		onOption4: () => {
+			// Step 10f) Assign Blast - reassign selected holes to a different blast
+			dialog.close();
+			assignBlastDialog(holes);
 		},
 		onOption3: () => {
 			// Step 10e) Insert hole before or after selected hole

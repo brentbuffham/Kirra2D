@@ -601,6 +601,15 @@ export class TreeView {
 			renameItem.style.display = showRename ? "flex" : "none";
 		}
 
+		// Step 276d) Show "Assign Blast" for holes and entity nodes
+		var assignBlastItem = menu.querySelector("[data-action=\"assign-blast\"]");
+		if (assignBlastItem) {
+			var hasHolesOrEntities = hasHoles || selectedNodeIds.some(function (id) {
+				return id.startsWith("entity⣿");
+			});
+			assignBlastItem.style.display = hasHolesOrEntities ? "flex" : "none";
+		}
+
 		menu.style.left = x + "px";
 		menu.style.top = y + "px";
 		menu.style.display = "block";
@@ -628,6 +637,9 @@ export class TreeView {
 				break;
 			case "rename":
 				this.renameEntity();
+				break;
+			case "assign-blast":
+				this.assignBlast();
 				break;
 			case "delete":
 				this.deleteSelected();
@@ -2005,6 +2017,51 @@ export class TreeView {
 			if (allAreHoles && typeof window.handleTreeViewRenameMultipleHoles === "function") {
 				window.handleTreeViewRenameMultipleHoles(nodeIds, this);
 			}
+		}
+	}
+
+	// Step 947c) Assign Blast - collect selected holes and open the assign blast dialog
+	assignBlast() {
+		if (this.selectedNodes.size === 0) return;
+
+		var nodeIds = Array.from(this.selectedNodes);
+		var selectedHolesList = [];
+
+		nodeIds.forEach(function (nodeId) {
+			var parts = nodeId.split("⣿");
+
+			// Handle individual hole nodes: "hole⣿entityName⣿holeID"
+			if (parts[0] === "hole" && parts.length === 3) {
+				var entityName = parts[1];
+				var holeID = parts[2];
+				var hole = window.allBlastHoles.find(function (h) {
+					return h.entityName === entityName && h.holeID === holeID;
+				});
+				if (hole) selectedHolesList.push(hole);
+			}
+			// Handle entity nodes: "entity⣿entityName" (select all holes in entity)
+			else if (parts[0] === "entity" && parts.length === 2) {
+				var entityName = parts[1];
+				window.allBlastHoles.forEach(function (h) {
+					if (h.entityName === entityName) {
+						selectedHolesList.push(h);
+					}
+				});
+			}
+		});
+
+		if (selectedHolesList.length === 0) {
+			if (typeof window.showModalMessage === "function") {
+				window.showModalMessage("No Holes", "No blast holes found in the selection.", "warning");
+			}
+			return;
+		}
+
+		// Delegate to global assignBlastDialog
+		if (typeof window.assignBlastDialog === "function") {
+			window.assignBlastDialog(selectedHolesList);
+		} else {
+			console.error("assignBlastDialog function not found in window scope");
 		}
 	}
 

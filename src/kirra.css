@@ -2346,6 +2346,16 @@ body.dark-mode .tree-meta {
     content: "";
 }
 
+.tree-context-item[data-action="assign-blast"] span:first-child:before {
+    background-image: url("/icons/transition-right.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
 /* General icon sizing for all tree icons */
 .tree-icon:before {
     width: 18px;
@@ -2574,6 +2584,7 @@ body.dark-mode .tree-context-item[data-action="show"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="properties"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="delete"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="rename"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="assign-blast"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="reset-connections"] span:first-child:before {
     filter: invert(1);
 }
