@@ -24,7 +24,19 @@
       "Bash(brew install:*)",
       "WebFetch(domain:www.esenmining.com)",
       "WebSearch",
-      "WebFetch(domain:downloads.o-pitblast.com)"
+      "WebFetch(domain:downloads.o-pitblast.com)",
+      "WebFetch(domain:www.scribd.com)",
+      "WebFetch(domain:onlinelibrary.wiley.com)",
+      "WebFetch(domain:stacks.cdc.gov)",
+      "WebFetch(domain:chooser.crossref.org)",
+      "WebFetch(domain:link.springer.com)",
+      "Bash(python -c:*)",
+      "Bash(python:*)",
+      "Bash(pip install:*)",
+      "Bash(gh api:*)",
+      "Bash(where:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

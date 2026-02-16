@@ -22,18 +22,22 @@ export class ScaledHeelanModel {
     /**
      * Scaled Heelan parameters.
      *
-     * The key insight from Blair & Minchinton (2006) is that each charge
-     * element of mass w_e produces a peak velocity at distance R given by:
+     * The Scaled Heelan model (Blair & Minchinton 2006) scales each elemental
+     * Heelan waveform so its peak matches the site law: vppv_m = K * w_e^A * R^(-B).
      *
-     *   vppv_element = K * (R / w_e^A)^(-B) * F(phi)
+     * Blair (2008) non-linear superposition replaces w_e^A with Em:
+     *   Em = [m*w_e]^A - [(m-1)*w_e]^A
+     *   vppv_element = K * Em * R^(-B) * F(phi)
      *
      * where:
      *   K, B = site law constants (from regression of field data)
      *   A    = charge exponent (typically 0.5 for square-root scaling)
-     *   w_e  = element mass (kg) = linear_density x dL
+     *   Em   = incremental effective charge factor (replaces w_e^A)
      *   R    = distance from element to observation point
      *   phi  = angle from hole axis to observation direction
      *   F(phi) = combined radiation pattern (retains Heelan directional structure)
+     *
+     * Total: Σ Em = (M*w_e)^A = totalCharge^A (independent of M)
      */
     getDefaultParams() {
         return {
@@ -74,10 +78,14 @@ export class ScaledHeelanModel {
      * 3. Divide the charge column into M elements starting from the bottom
      * 4. For each element:
      *    a. Compute distance R and angle phi to observation point
-     *    b. Compute element PPV using site law with Blair's non-linear superposition
+     *    b. Compute element PPV: K * Em * R^(-B) (Blair 2008, Eq. 3)
      *    c. Apply Heelan radiation patterns F1(phi), F2(phi)
-     *    d. Decompose into radial and vertical velocity components
-     * 5. Superpose all elements (envelope for static map)
+     *    d. Compute P-wave and SV-wave velocity amplitudes
+     * 5. Incoherent (RMS) superposition: sum squared amplitudes across elements
+     *    This avoids interference artefacts from coherent phase superposition
+     *    and produces a smooth merged pattern per hole rather than per-element
+     *    butterflies. Note: |vP|² + |vSV|² is equivalent to vr² + vz² since
+     *    the rotation to (vr,vz) is orthogonal.
      * 6. Take peak across all holes
      */
     getFragmentSource() {
@@ -191,9 +199,10 @@ export class ScaledHeelanModel {
                     float dL = chargeLen / float(uNumElements);
                     float elementMass = (totalCharge / chargeLen) * dL;  // w_e (kg)
 
-                    // Superpose elemental contributions
-                    float sumVr = 0.0;
-                    float sumVz = 0.0;
+                    // Incoherent (RMS) superposition — sum squared amplitudes
+                    // Avoids coherent phase interference that creates per-element
+                    // butterfly artefacts in a static (time-independent) map.
+                    float sumEnergy = 0.0;
 
                     for (int m = 0; m < 64; m++) {
                         if (m >= uNumElements) break;
@@ -211,19 +220,20 @@ export class ScaledHeelanModel {
                         float cosPhi = dot(normalize(toObs), holeAxis);
                         float sinPhi = sqrt(max(1.0 - cosPhi * cosPhi, 0.0));
 
-                        // === BLAIR'S NON-LINEAR SUPERPOSITION (Blair 2008) ===
+                        // === BLAIR'S NON-LINEAR SUPERPOSITION (Blair 2008, Eq. 3) ===
                         // Em = [m*we]^A - [(m-1)*we]^A
-                        // This gives the incremental effective mass contribution of element m
+                        // Em replaces we^A in the Scaled Heelan amplitude factor.
+                        // Total: Σ Em = (M*we)^A = totalCharge^A  (independent of M)
+                        //
+                        // Element PPV factor = K * Em * R^(-B)  (three-parameter form)
+                        // NOT K * (R/Em)^(-B) which gives K * Em^B / R^B and breaks
+                        // the telescoping sum when B ≠ 1.
                         float mwe = float(m + 1) * elementMass;      // (m+1)*we (m starts at 0)
                         float m1we = float(m) * elementMass;         // m*we
-                        float Em = pow(mwe, uChargeExp) - pow(m1we, uChargeExp);
+                        float Em = pow(mwe, uChargeExp) - (m1we > 0.0 ? pow(m1we, uChargeExp) : 0.0);
 
-                        // Scaled distance using Em (not raw elementMass)
-                        // SD = R / Em  (Em already has charge exponent applied)
-                        float scaledDist = R / Em;
-
-                        // PPV_element = K * SD^(-B)  [mm/s]
-                        float vppvElement = uK * pow(scaledDist, -uB);
+                        // PPV_element = K * Em * R^(-B)  [mm/s]
+                        float vppvElement = uK * Em * pow(R, -uB);
 
                         // Radiation patterns
                         float f1 = F1(sinPhi, cosPhi);
@@ -242,9 +252,9 @@ export class ScaledHeelanModel {
                         float vP  = vppvElement * f1 * uPWeight * attP;
                         float vSV = vppvElement * f2 * uSVWeight * attS;
 
-                        // Resolve into radial and vertical components
-                        sumVr += vP * sinPhi + vSV * cosPhi;
-                        sumVz += vP * cosPhi - vSV * sinPhi;
+                        // Accumulate squared amplitudes (incoherent sum)
+                        // |vP|² + |vSV|² == vr² + vz² (orthogonal rotation)
+                        sumEnergy += vP * vP + vSV * vSV;
                     }
 
                     // Attenuate below the toe — physical confinement limits damage
@@ -255,12 +265,11 @@ export class ScaledHeelanModel {
                     if (belowToe > 0.0) {
                         float decayLen = max(chargeLen * 0.15, holeRadius * 4.0);
                         float att = exp(-belowToe / decayLen);
-                        sumVr *= att;
-                        sumVz *= att;
+                        sumEnergy *= att * att;  // att² because energy ∝ amplitude²
                     }
 
-                    // Vector peak particle velocity
-                    float vppv = sqrt(sumVr * sumVr + sumVz * sumVz);
+                    // RMS peak particle velocity = sqrt(Σ(vP² + vSV²))
+                    float vppv = sqrt(sumEnergy);
                     peakVPPV = max(peakVPPV, vppv);
                 }
 

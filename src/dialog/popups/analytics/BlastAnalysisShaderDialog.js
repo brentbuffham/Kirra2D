@@ -431,12 +431,12 @@ function getDefaultParametersForModel(modelName) {
 
 		case "nonlinear_damage":
 			return {
-				rockUCS: { label: "Rock UCS", value: 120, min: 10, max: 300, step: 5, unit: "MPa" },
-				rockTensile: { label: "Rock Tensile", value: 12, min: 1, max: 50, step: 1, unit: "MPa" },
-				ppvCritical: { label: "Critical PPV", value: 700, min: 100, max: 2000, step: 50, unit: "mm/s" },
 				K_hp: { label: "H-P Constant K", value: 700, min: 100, max: 2000, step: 50, unit: "" },
-				alpha_hp: { label: "H-P Alpha", value: 0.8, min: 0.3, max: 1.5, step: 0.05, unit: "" },
-				beta_hp: { label: "H-P Beta", value: 1.4, min: 1.0, max: 2.5, step: 0.1, unit: "" }
+				alpha_hp: { label: "H-P Alpha (α)", value: 0.7, min: 0.3, max: 1.5, step: 0.05, unit: "" },
+				beta_hp: { label: "H-P Beta (β)", value: 1.5, min: 1.0, max: 2.5, step: 0.1, unit: "" },
+				ppvCritical: { label: "Critical PPV", value: 700, min: 100, max: 2000, step: 50, unit: "mm/s" },
+				numElements: { label: "Charge Elements", value: 20, min: 5, max: 50, step: 1, unit: "" },
+				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m" }
 			};
 
 		default:
