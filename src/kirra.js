@@ -12721,10 +12721,17 @@ floatingDelay.addEventListener("change", function () {
 let drawingZValue = 0.0;
 //Numbers like elevation and circle radius and polygon radius
 const drawingElevation = document.getElementById("drawingElevation");
-// Step #) Initialize drawingZValue to match the HTML input's initial value
+// Step #) Initialize drawingZValue from localStorage or HTML input default
+var savedDrawingElevation = localStorage.getItem("drawingElevation");
+if (savedDrawingElevation !== null) {
+	drawingElevation.value = savedDrawingElevation;
+}
 drawingZValue = parseFloat(drawingElevation.value) || 0.0;
+window.drawingZLevel = drawingZValue;
 drawingElevation.addEventListener("change", function () {
 	drawingZValue = parseFloat(drawingElevation.value);
+	window.drawingZLevel = drawingZValue;
+	localStorage.setItem("drawingElevation", drawingElevation.value);
 });
 
 const lineThickness = document.getElementById("drawingLineWidth");
@@ -24229,6 +24236,8 @@ document.addEventListener("DOMContentLoaded", function () {
 	var drawingElevationToolbarElement = document.getElementById("drawingElevationToolbar");
 	var drawingElevationElement = document.getElementById("drawingElevation");
 	if (drawingElevationToolbarElement && drawingElevationElement) {
+		// Initialize toolbar from main (which may have been loaded from localStorage)
+		drawingElevationToolbarElement.value = drawingElevationElement.value;
 		// Sync from main drawingElevation to toolbar
 		drawingElevationElement.addEventListener("input", function () {
 			drawingElevationToolbarElement.value = this.value;
@@ -24241,10 +24250,13 @@ document.addEventListener("DOMContentLoaded", function () {
 		drawingElevationToolbarElement.addEventListener("input", function () {
 			drawingElevationElement.value = this.value;
 			drawingZValue = parseFloat(this.value) || 0.0;
+			window.drawingZLevel = drawingZValue;
 		});
 		drawingElevationToolbarElement.addEventListener("change", function () {
 			drawingElevationElement.value = this.value;
 			drawingZValue = parseFloat(this.value) || 0.0;
+			window.drawingZLevel = drawingZValue;
+			localStorage.setItem("drawingElevation", this.value);
 		});
 	}
 
@@ -47020,6 +47032,7 @@ function saveViewControlsSliderValues() {
 
 	// Drawing controls
 	localStorage.setItem("drawingColor", drawingColor.jscolor.toHEXString());
+	localStorage.setItem("drawingElevation", drawingElevation.value);
 	localStorage.setItem("lineThickness", lineThickness.value);
 	localStorage.setItem("drawingRadius", circleRadius.value);
 	localStorage.setItem("drawingText", drawingText.value);
@@ -47060,6 +47073,14 @@ function loadViewControlsSliderValues() {
 		if (floatingKADColorEl && floatingKADColorEl.jscolor) {
 			floatingKADColorEl.jscolor.fromString(localStorage.getItem("drawingColor"));
 		}
+	}
+	if (localStorage.getItem("drawingElevation")) {
+		drawingElevation.value = localStorage.getItem("drawingElevation");
+		drawingZValue = parseFloat(drawingElevation.value) || 0.0;
+		window.drawingZLevel = drawingZValue;
+		// Also sync toolbar
+		var toolbarEl = document.getElementById("drawingElevationToolbar");
+		if (toolbarEl) toolbarEl.value = drawingElevation.value;
 	}
 	if (localStorage.getItem("drawingRadius")) circleRadius.value = localStorage.getItem("drawingRadius");
 	if (localStorage.getItem("drawingText")) drawingText.value = localStorage.getItem("drawingText");

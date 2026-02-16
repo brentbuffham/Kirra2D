@@ -2994,11 +2994,14 @@ export function drawBlastAnalyticsThreeJS(model, holes, params, options) {
 	// Fallback to analysis plane if no surface or surface not found
 	if (!mesh) {
 		var bounds = _calculateHoleBounds(holes);
-		var avgCollarZ = _calculateAverageCollarZ(holes);
+		// Use Drawing Z elevation if set, otherwise fall back to average collar Z
+		var planeZ = (window.drawingZLevel !== undefined && isFinite(window.drawingZLevel) && window.drawingZLevel !== 0)
+			? window.drawingZLevel
+			: _calculateAverageCollarZ(holes);
 		var padding = options.planePadding || 50;
 
-		mesh = shader.buildPlane(bounds, avgCollarZ, padding);
-		console.log("✅ Created analysis plane");
+		mesh = shader.buildPlane(bounds, planeZ, padding);
+		console.log("✅ Created analysis plane at Z=" + planeZ);
 	}
 
 	// Add to scene
