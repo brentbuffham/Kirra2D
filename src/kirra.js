@@ -35766,6 +35766,25 @@ document.addEventListener("DOMContentLoaded", function () {
 	}
 });
 
+// Surface Intersection button handler
+document.addEventListener("DOMContentLoaded", function () {
+	var surfaceIxBtn = document.getElementById("surfaceIntersectionBtn");
+	if (surfaceIxBtn) {
+		surfaceIxBtn.addEventListener("click", async function () {
+			try {
+				var { showSurfaceIntersectionDialog } = await import("./dialog/popups/surface/SurfaceIntersectionDialog.js");
+				var { computeSurfaceIntersections } = await import("./helpers/SurfaceIntersectionHelper.js");
+
+				showSurfaceIntersectionDialog(function(config) {
+					computeSurfaceIntersections(config);
+				});
+			} catch (error) {
+				console.error("Failed to load Surface Intersection:", error);
+			}
+		});
+	}
+});
+
 function openNavLeft() {
 	console.log(isMobile);
 	const sidenavHeight = 350;
