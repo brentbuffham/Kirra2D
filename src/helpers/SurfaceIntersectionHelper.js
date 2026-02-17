@@ -349,11 +349,15 @@ function triTriIntersection(triA, triB) {
     lineDir.y /= lineDirLen;
     lineDir.z /= lineDirLen;
 
-    // Project triA edges onto intersection line to find interval
-    var intervalA = computeTriInterval(triA, lineDir, dA0, dA1, dA2);
+    // Find a point on the intersection line FIRST (needed for relative projection)
+    var linePoint = findLinePoint(nA, dA, nB, dB, lineDir);
+    if (!linePoint) return null;
+
+    // Project triA/triB edges onto intersection line to find intervals (relative to linePoint)
+    var intervalA = computeTriInterval(triA, lineDir, linePoint, dA0, dA1, dA2);
     if (!intervalA) return null;
 
-    var intervalB = computeTriInterval(triB, lineDir, dB0, dB1, dB2);
+    var intervalB = computeTriInterval(triB, lineDir, linePoint, dB0, dB1, dB2);
     if (!intervalB) return null;
 
     // Overlap of intervals
@@ -361,10 +365,6 @@ function triTriIntersection(triA, triB) {
     var overlapMax = Math.min(intervalA.max, intervalB.max);
 
     if (overlapMin >= overlapMax - 1e-10) return null;
-
-    // Find a point on the intersection line
-    var linePoint = findLinePoint(nA, dA, nB, dB, lineDir);
-    if (!linePoint) return null;
 
     // Convert parametric overlap back to 3D
     var p0 = {
@@ -405,7 +405,7 @@ function cross(a, b) {
  * Compute the parametric interval where a triangle crosses the
  * intersection line, projected along lineDir.
  */
-function computeTriInterval(tri, lineDir, d0, d1, d2) {
+function computeTriInterval(tri, lineDir, linePoint, d0, d1, d2) {
     var verts = [tri.v0, tri.v1, tri.v2];
     var dists = [d0, d1, d2];
     var params = [];
@@ -424,11 +424,12 @@ function computeTriInterval(tri, lineDir, d0, d1, d2) {
                 y: verts[i].y + t * (verts[j].y - verts[i].y),
                 z: verts[i].z + t * (verts[j].z - verts[i].z)
             };
-            var param = pt.x * lineDir.x + pt.y * lineDir.y + pt.z * lineDir.z;
+            // Relative projection onto line (relative to linePoint for UTM precision)
+            var param = (pt.x - linePoint.x) * lineDir.x + (pt.y - linePoint.y) * lineDir.y + (pt.z - linePoint.z) * lineDir.z;
             params.push(param);
         } else if (Math.abs(di) < 1e-10) {
-            // Vertex on the plane
-            var param2 = verts[i].x * lineDir.x + verts[i].y * lineDir.y + verts[i].z * lineDir.z;
+            // Vertex on the plane — relative projection
+            var param2 = (verts[i].x - linePoint.x) * lineDir.x + (verts[i].y - linePoint.y) * lineDir.y + (verts[i].z - linePoint.z) * lineDir.z;
             params.push(param2);
         }
     }
@@ -456,26 +457,26 @@ function findLinePoint(nA, dA, nB, dB, lineDir) {
     var px, py, pz;
 
     if (az >= ax && az >= ay) {
-        // Set z = 0, solve for x, y
+        // Set z = 0, solve for x, y via Cramer's rule
         var det = nA.x * nB.y - nA.y * nB.x;
         if (Math.abs(det) < 1e-12) return null;
         px = (-dA * nB.y + dB * nA.y) / det;
-        py = (-nA.x * (-dB) + nB.x * (-dA)) / det;
+        py = (nA.x * (-dB) - nB.x * (-dA)) / det;
         pz = 0;
     } else if (ay >= ax) {
-        // Set y = 0, solve for x, z
+        // Set y = 0, solve for x, z via Cramer's rule
         var det2 = nA.x * nB.z - nA.z * nB.x;
         if (Math.abs(det2) < 1e-12) return null;
         px = (-dA * nB.z + dB * nA.z) / det2;
         py = 0;
-        pz = (-nA.x * (-dB) + nB.x * (-dA)) / det2;
+        pz = (nA.x * (-dB) - nB.x * (-dA)) / det2;
     } else {
-        // Set x = 0, solve for y, z
+        // Set x = 0, solve for y, z via Cramer's rule
         var det3 = nA.y * nB.z - nA.z * nB.y;
         if (Math.abs(det3) < 1e-12) return null;
         px = 0;
         py = (-dA * nB.z + dB * nA.z) / det3;
-        pz = (-nA.y * (-dB) + nB.y * (-dA)) / det3;
+        pz = (nA.y * (-dB) - nB.y * (-dA)) / det3;
     }
 
     return { x: px, y: py, z: pz };
