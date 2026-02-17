@@ -42,8 +42,16 @@
 
 ### Analysis and Workflow
 - [Statistics and Reporting](Statistics-and-Reporting) - Per-entity statistics and Voronoi analysis
-- [Blast Design Workflow](Blast-Design-Workflow) - Complete design process from setup to export ✨ **NEW**
-- [Advanced Features](Advanced-Features) - Duplicate detection, grade control, clustering ✨ **NEW**
+- [Blast Design Workflow](Blast-Design-Workflow) - Complete design process from setup to export
+- [Advanced Features](Advanced-Features) - Duplicate detection, grade control, clustering
+
+### Flyrock Modelling
+- [Flyrock Model: Richards & Moore](Flyrock-Model-Richards-Moore) - Empirical face burst, cratering, and stem eject model (2004)
+- [Flyrock Model: Lundborg](Flyrock-Model-Lundborg) - Diameter-based conservative upper-bound estimate (1975/1981)
+- [Flyrock Model: McKenzie](Flyrock-Model-McKenzie) - SDoB-based range and velocity prediction (2009/2022)
+
+### Three.js 3D Rendering
+- [Three.js Material Notes](ThreeJS-Material-Notes) - Material choices, Phong vs Basic pitfalls, depthWrite rules
 
 ## About
 

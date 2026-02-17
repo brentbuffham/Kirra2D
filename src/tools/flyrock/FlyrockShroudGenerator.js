@@ -73,9 +73,9 @@ export function generate(holes, params) {
 
 		switch (algorithm) {
 			case "lundborg":
-				var lundRange = lundborg(holeParams.holeDiameterMm);
-				maxDistance = lundRange * (params.factorOfSafety || 2); // FoS-scaled clearance
-				maxVelocity = Math.sqrt(lundRange * GRAVITY); // velocity from BASE range
+				var lundResult = lundborg(holeParams);
+				maxDistance = lundResult.clearance; // FoS-scaled clearance
+				maxVelocity = Math.sqrt(lundResult.rangeMax * GRAVITY); // velocity from BASE range
 				break;
 
 			case "mckenzie":
@@ -421,10 +421,13 @@ function getHoleFlyrockParams(hole, config) {
 		return null;
 	}
 
-	// Geometry from the hole object — burden, benchHeight, subdrill
+	// Geometry from the hole object — burden, benchHeight, subdrill, spacing
 	// Burden of 1 is the data model default placeholder — not a real value
 	var holeBurden = parseFloat(hole.burden);
 	var burden = (holeBurden && holeBurden > 1.5) ? holeBurden : 4.5;
+
+	var holeSpacing = parseFloat(hole.spacing);
+	var spacing = (holeSpacing && holeSpacing > 1.5) ? holeSpacing : burden * 1.15;
 
 	// benchHeight: absolute vertical from collar to grade
 	var holeBenchHeight = parseFloat(hole.benchHeight);
@@ -439,6 +442,7 @@ function getHoleFlyrockParams(hole, config) {
 		benchHeight: benchHeight,
 		stemmingLength: stemmingLength,
 		burden: burden,
+		spacing: spacing,
 		subdrill: subdrill,
 		inholeDensity: inholeDensity,
 		rockDensity: config.rockDensity || 2600,

@@ -26,8 +26,12 @@ This directory contains comprehensive documentation for the Kirra application - 
 | Data-Persistence.md | 27KB | 921 | localStorage and IndexedDB usage |
 | Blast-Design-Workflow.md | 23KB | 865 | Complete workflow guide |
 | Advanced-Features.md | 24KB | 865 | Duplicate detection, clustering, etc. |
+| Flyrock-Model-Richards-Moore.md | 5KB | 145 | Richards & Moore (2004) flyrock model |
+| Flyrock-Model-Lundborg.md | 4KB | 120 | Lundborg (1975/1981) flyrock model |
+| Flyrock-Model-McKenzie.md | 6KB | 170 | McKenzie (2009/2022) SDoB-based flyrock model |
+| ThreeJS-Material-Notes.md | 4KB | 110 | Three.js material choices and Phong vs Basic pitfalls |
 
-**Total: 312 KB across 9,821 lines**
+**Total: 331 KB across 10,366 lines**
 
 ## Key Documentation Highlights
 

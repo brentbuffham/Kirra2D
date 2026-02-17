@@ -1265,19 +1265,13 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		return;
 	}
 
-	// Flyrock shroud: unlit, see-through from all angles, renders after terrain
+	// Flyrock shroud: lit (Phong) so it darkens with terrain on the shadow side,
+	// keeping the see-through effect consistent from all viewing angles.
 	if (surfaceData && surfaceData.isFlyrockShroud && surfaceMesh.material) {
-		var oldMat = surfaceMesh.material;
-		surfaceMesh.material = new THREE.MeshBasicMaterial({
-			vertexColors: oldMat.vertexColors,
-			side: THREE.DoubleSide,
-			transparent: true,
-			opacity: oldMat.opacity,
-			depthWrite: false,
-			depthTest: true
-		});
+		surfaceMesh.material.side = THREE.DoubleSide;
+		surfaceMesh.material.transparent = true;
+		surfaceMesh.material.depthWrite = false;
 		surfaceMesh.renderOrder = 999; // render after terrain so depth test works correctly
-		oldMat.dispose();
 	}
 
 	surfaceMesh.userData = { type: "surface", surfaceId: surfaceId };

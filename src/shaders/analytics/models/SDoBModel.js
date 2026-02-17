@@ -1,10 +1,11 @@
 // src/shaders/analytics/models/SDoBModel.js
 
 /**
- * SDoBModel implements Scaled Depth of Burial analysis (McKenzie 2022).
+ * SDoBModel implements Scaled Depth of Burial analysis (Chiappetta & Treleven 1997).
  *
- * Formula: SDoB = St / Wt_m^(1/3)  (m/kg^(1/3))
+ * Formula: SDoB = D / Wt_m^(1/3)  (m/kg^(1/3))
  * where:
+ *   D    = St + 0.5 × contributingLen  (distance from surface to centre of contributing charge)
  *   St   = stemming length (m) = chargeTopDepth from ShaderUniformManager Row 3
  *   Wt_m = mass (kg) of explosive in contributing charge length
  *   Contributing length = min(chargeLen, m × ø)
@@ -115,7 +116,9 @@ export class SDoBModel {
 
 				if (Wt_m <= 0.0 || St <= 0.0) return 0.0;
 
-				return St / pow(Wt_m, 1.0 / 3.0);
+				// Chiappetta SDoB: D = stemming + half the contributing charge length
+				float D = St + 0.5 * contributingLen;
+				return D / pow(Wt_m, 1.0 / 3.0);
 			}
 
 			void main() {

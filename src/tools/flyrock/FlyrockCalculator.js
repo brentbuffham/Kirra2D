@@ -107,24 +107,51 @@ export function envelopeAltitude(distance, maxVelocity) {
 
 /**
  * Lundborg (1981) maximum flyrock range.
- * Simple diameter-based empirical formula.
  *
- * Range = 260 × d^(2/3)  where d is hole diameter in inches, range in metres.
+ * Empirical upper-bound formula based on hole diameter only.
+ * Lmax (feet) = 260 × d^(2/3)   where d = hole diameter in inches
  *
- * @param {number} holeDiameterMm - Hole diameter (mm)
- * @returns {number} - Maximum range (m)
+ * Ref: Lundborg, N. et al. (1975) "Keeping the lid on flyrock in open-pit blasting",
+ *      Engineering and Mining Journal, 176, pp. 77-81.
+ * Ref: Roth, J.A. (1979) — cited Lundborg formula with d in inches, Lmax in feet.
+ *
+ * @param {Object} params
+ * @param {number} params.holeDiameterMm - Hole diameter (mm)
+ * @param {number} params.factorOfSafety - Safety factor (default 2)
+ * @returns {Object} { rangeMax, clearance }
  */
-export function lundborg(holeDiameterMm) {
-	var dInches = (holeDiameterMm || 115) / 25.4;
-	return 260 * Math.pow(dInches, 2.0 / 3.0);
+export function lundborg(params) {
+	var holeDiamMm = params.holeDiameterMm || 115;
+	var FoS = params.factorOfSafety || 2;
+
+	var dInches = holeDiamMm / 25.4;
+
+	// Lundborg: Lmax(feet) = 260 × d^(2/3), convert feet → metres
+	var rangeMaxFt = 260 * Math.pow(dInches, 2.0 / 3.0);
+	var rangeMax = rangeMaxFt * 0.3048;
+	var clearance = rangeMax * FoS;
+
+	console.log("Lundborg: d=" + dInches.toFixed(2) + "in (" + holeDiamMm + "mm), " +
+		"Lmax=" + rangeMaxFt.toFixed(0) + "ft = " + rangeMax.toFixed(1) + "m, " +
+		"clearance=" + clearance.toFixed(1) + "m (FoS=" + FoS + ")");
+
+	return {
+		rangeMax: rangeMax,
+		clearance: clearance
+	};
 }
 
 /**
  * McKenzie (2009/2022) SDoB-based flyrock prediction.
  *
- * SDoB = St / Wt_m^(1/3)                         [McKenzie 2022 Eq.4]
- * Kv = 0.0728 × SDoB^(-3.251)                    [McKenzie 2009 Eq.5]
- * Rangemax = 9.74 × (ø_mm / SDoB^2.167)^(2/3)   [McKenzie 2022 Eq.5]
+ * Uses Chiappetta Scaled Depth of Burial:
+ *   D    = St + 0.5 × contributingLen              [distance to centre of contributing charge]
+ *   SDoB = D / Wt_m^(1/3)                          [Chiappetta & Treleven 1997]
+ * Kv = 0.0728 × SDoB^(-3.251)                      [McKenzie 2009 Eq.5]
+ * Rangemax = 9.74 × (ø_mm / SDoB^2.167)^(2/3)     [McKenzie 2022 Eq.5]
+ *
+ * Contributing charge: top m hole-diameters of explosive column
+ *   m = 10 for ø >= 100mm, 8 for smaller holes
  *
  * @param {Object} params
  * @param {number} params.holeDiameterMm - Hole diameter (mm)
@@ -155,8 +182,10 @@ export function mckenzie(params) {
 	// Contributing charge mass
 	var Wt_m = massPerMetre * contributingLen;
 
-	// SDoB = St / Wt_m^(1/3)
-	var sdob = Wt_m > 0 ? stemming / Math.pow(Wt_m, 1.0 / 3.0) : 999;
+	// Chiappetta SDoB: D = stemming + half the contributing charge length
+	// D is the distance from surface to the centre of the contributing charge
+	var D = stemming + 0.5 * contributingLen;
+	var sdob = Wt_m > 0 ? D / Math.pow(Wt_m, 1.0 / 3.0) : 999;
 
 	// Velocity coefficient (McKenzie 2009 Eq.5)
 	var kv = sdob > 0 ? 0.0728 * Math.pow(sdob, -3.251) : 0;
