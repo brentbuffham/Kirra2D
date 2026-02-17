@@ -53,17 +53,26 @@ export function richardsMoore(params) {
 	var radiusM = (holeDiamMm / 2) / 1000;
 	var massPerMetre = PI * (radiusM * radiusM) * inholeDensity * 1000; // kg/m
 
-	// Max horizontal distances (from Perl lines 183-192)
-	var faceBurst = (Math.pow(K, 2) / GRAVITY) * Math.pow(Math.sqrt(massPerMetre) / burden, 2.6) * FoS;
-	var cratering = (Math.pow(K, 2) / GRAVITY) * Math.pow(Math.sqrt(massPerMetre) / stemming, 2.6) * FoS;
-	var stemEject = cratering * Math.sin(2 * stemAngleDeg * (PI / 180)) * FoS;
+	// Base distances (FoS=1) — matching Perl lines 183-192
+	var stemAngleRad = stemAngleDeg * (PI / 180);
+	var faceBurstBase = (Math.pow(K, 2) / GRAVITY) * Math.pow(Math.sqrt(massPerMetre) / burden, 2.6);
+	var crateringBase = (Math.pow(K, 2) / GRAVITY) * Math.pow(Math.sqrt(massPerMetre) / stemming, 2.6);
+	var stemEjectBase = crateringBase * Math.sin(2 * stemAngleRad); // NO FoS here — derived from crateringBase
+
+	// FoS-scaled distances (for clearance zone)
+	var faceBurst = faceBurstBase * FoS;
+	var cratering = crateringBase * FoS;
+	var stemEject = stemEjectBase * FoS;
 
 	var maxDistance = Math.max(faceBurst, cratering, stemEject);
 
-	// Launch velocities (from Perl lines 200-206)
-	var launchVelocityFB = Math.sqrt(faceBurst * GRAVITY);
-	var launchVelocityCR = Math.sqrt((cratering * GRAVITY) / Math.sin(2 * 45 * (PI / 180)));
-	var launchVelocitySE = Math.sqrt((stemEject * GRAVITY) / Math.sin(2 * stemAngleDeg * (PI / 180)));
+	// Launch velocities from BASE distances (matching Excel Sheet 2)
+	// V = sqrt(range × g / sin(2×launchAngle)), where range = V²sin(2θ)/g
+	var launchVelocityFB = Math.sqrt(faceBurstBase * GRAVITY);
+	var sin2x45 = Math.sin(2 * 45 * (PI / 180)); // = 1.0
+	var sin2xStem = Math.sin(2 * stemAngleRad);
+	var launchVelocityCR = sin2x45 > 0 ? Math.sqrt((crateringBase * GRAVITY) / sin2x45) : 0;
+	var launchVelocitySE = sin2xStem > 0 ? Math.sqrt((stemEjectBase * GRAVITY) / sin2xStem) : 0;
 	var maxVelocity = Math.max(launchVelocityFB, launchVelocityCR, launchVelocitySE);
 
 	return {
@@ -159,8 +168,8 @@ export function mckenzie(params) {
 	// Clearance distance with safety factor
 	var clearance = rangeMax * FoS;
 
-	// Launch velocity derived from clearance range so envelope matches predicted distance
-	var v0 = clearance > 0 ? Math.sqrt(clearance * GRAVITY) : 0;
+	// Launch velocity from BASE range (not FoS-scaled) — same principle as R&M fix
+	var v0 = rangeMax > 0 ? Math.sqrt(rangeMax * GRAVITY) : 0;
 
 	return {
 		sdob: sdob,

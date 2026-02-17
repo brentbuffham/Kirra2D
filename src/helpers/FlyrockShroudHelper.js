@@ -3,13 +3,15 @@
 /**
  * FlyrockShroudHelper orchestrates the flyrock shroud generation workflow:
  *   1. Filter holes by blast pattern selection
- *   2. Call FlyrockShroudGenerator to create 3D triangulated surface
- *   3. Add surface to loadedSurfaces via undo-able action
- *   4. Undo action refresh handles: save to IndexedDB, update TreeView, redraw
+ *   2. Check charging data availability (required)
+ *   3. Call FlyrockShroudGenerator to create 3D triangulated surface
+ *   4. Add surface to loadedSurfaces via undo-able action
+ *   5. Undo action refresh handles: save to IndexedDB, update TreeView, redraw
  */
 
 import { generate } from "../tools/flyrock/FlyrockShroudGenerator.js";
 import { AddSurfaceAction } from "../tools/UndoActions.js";
+import { FloatingDialog } from "../dialog/FloatingDialog.js";
 
 /**
  * Apply flyrock shroud: filter holes, generate surface, add to scene.
@@ -20,7 +22,6 @@ import { AddSurfaceAction } from "../tools/UndoActions.js";
  * @param {number} config.K - Flyrock constant
  * @param {number} config.factorOfSafety - Safety factor
  * @param {number} config.stemEjectAngleDeg - Stem eject angle
- * @param {number} config.inholeDensity - Explosive density
  * @param {number} config.rockDensity - Rock density
  * @param {number} config.iterations - Grid resolution factor
  * @param {number} config.endAngleDeg - Face angle culling threshold (degrees from horizontal)
@@ -45,17 +46,38 @@ export function applyFlyrockShroud(config) {
 	}
 
 	if (holes.length === 0) {
-		console.warn("FlyrockShroudHelper: No holes found for blast: " + config.blastName);
+		showWarning("No blast holes found for the selected pattern.");
 		return;
 	}
 
 	console.log("Generating flyrock shroud for " + holes.length + " holes using " + config.algorithm);
 
 	// Generate the shroud surface
-	var surface = generate(holes, config);
-	if (!surface) {
+	var result = generate(holes, config);
+
+	// Handle error return (no charging data)
+	if (result && result.error === "NO_CHARGING") {
+		showWarning(
+			"Flyrock shroud requires charging data.\n\n" +
+			result.total + " hole(s) selected but none have charging assigned.\n\n" +
+			"Use the Deck Builder (right-click a hole) to assign explosive " +
+			"products before generating a flyrock shroud."
+		);
+		return;
+	}
+
+	if (!result || result.error) {
 		console.error("FlyrockShroudHelper: Failed to generate shroud surface");
 		return;
+	}
+
+	var surface = result;
+
+	// Log if some holes were skipped
+	if (surface.flyrockParams && surface.flyrockParams.holesSkipped > 0) {
+		console.warn("Flyrock shroud: " + surface.flyrockParams.holesSkipped +
+			" hole(s) skipped (no charging data), " +
+			surface.flyrockParams.holeCount + " hole(s) used");
 	}
 
 	// Execute via UndoManager (handles: add to loadedSurfaces, save, TreeView, redraw)
@@ -82,4 +104,26 @@ export function applyFlyrockShroud(config) {
 
 	console.log("Flyrock shroud surface added: " + surface.id +
 		" (" + surface.points.length + " points, " + surface.triangles.length + " triangles)");
+}
+
+/**
+ * Show a warning dialog using FloatingDialog.
+ * @param {string} message - Warning text
+ */
+function showWarning(message) {
+	var content = document.createElement("div");
+	content.style.padding = "15px";
+	content.style.whiteSpace = "pre-wrap";
+	content.textContent = message;
+
+	var dialog = new FloatingDialog({
+		title: "Flyrock Shroud - Warning",
+		content: content,
+		width: 450,
+		height: 250,
+		showConfirm: true,
+		confirmText: "OK",
+		showCancel: false
+	});
+	dialog.show();
 }

@@ -47,9 +47,14 @@ export function generate(holes, params) {
 	var iterations = params.iterations || 40;
 	var endAngleDeg = params.endAngleDeg !== undefined ? params.endAngleDeg : 85;
 	var transparency = params.transparency !== undefined ? params.transparency : 0.5;
+	var extendBelowCollar = params.extendBelowCollar || 0;
 
-	// Step 1: Compute per-hole flyrock parameters
+	// Step 1: Compute per-hole flyrock parameters (requires charging data)
 	var holeData = [];
+	var skippedNoCharging = 0;
+	var worstHoleIdx = -1;
+	var worstVelocity = 0;
+
 	for (var h = 0; h < holes.length; h++) {
 		var hole = holes[h];
 		var cx = hole.startXLocation || 0;
@@ -57,25 +62,31 @@ export function generate(holes, params) {
 		var cz = hole.startZLocation || 0;
 
 		var holeParams = getHoleFlyrockParams(hole, params);
+		if (!holeParams) {
+			skippedNoCharging++;
+			continue;
+		}
 
 		var maxDistance;
 		var maxVelocity;
+		var rmResult;
 
 		switch (algorithm) {
 			case "lundborg":
-				maxDistance = lundborg(holeParams.holeDiameterMm);
-				maxVelocity = Math.sqrt(maxDistance * GRAVITY);
+				var lundRange = lundborg(holeParams.holeDiameterMm);
+				maxDistance = lundRange * (params.factorOfSafety || 2); // FoS-scaled clearance
+				maxVelocity = Math.sqrt(lundRange * GRAVITY); // velocity from BASE range
 				break;
 
 			case "mckenzie":
 				var mckResult = mckenzie(holeParams);
-				maxDistance = mckResult.clearance;
-				maxVelocity = mckResult.v0 || Math.sqrt(maxDistance * GRAVITY);
+				maxDistance = mckResult.clearance; // FoS-scaled for grid bounds
+				maxVelocity = mckResult.v0 || Math.sqrt(mckResult.rangeMax * GRAVITY); // BASE velocity
 				break;
 
 			case "richardsMoore":
 			default:
-				var rmResult = richardsMoore(holeParams);
+				rmResult = richardsMoore(holeParams);
 				maxDistance = rmResult.maxDistance;
 				maxVelocity = rmResult.maxVelocity;
 				break;
@@ -83,31 +94,73 @@ export function generate(holes, params) {
 
 		if (maxDistance <= 0 || maxVelocity <= 0) continue;
 
+		// Log every hole for diagnostics
+		var hMaxH = (maxVelocity * maxVelocity) / (2 * GRAVITY);
+		console.log("Flyrock [" + hole.entityName + ":" + hole.holeID + "] " +
+			"diam=" + holeParams.holeDiameterMm + "mm " +
+			"burden=" + holeParams.burden.toFixed(1) + "m " +
+			"stemming=" + holeParams.stemmingLength.toFixed(1) + "m " +
+			"chgLen=" + holeParams.chargeLength.toFixed(1) + "m " +
+			"density=" + holeParams.inholeDensity.toFixed(2) + "g/cc " +
+			"mpm=" + (rmResult ? rmResult.massPerMetre.toFixed(1) : "?") + "kg/m " +
+			(rmResult ? "FB=" + rmResult.faceBurst.toFixed(0) + " CR=" + rmResult.cratering.toFixed(0) + " SE=" + rmResult.stemEject.toFixed(0) + "m " : "") +
+			"V=" + maxVelocity.toFixed(1) + "m/s " +
+			"H=" + hMaxH.toFixed(0) + "m");
+
+		if (maxVelocity > worstVelocity) {
+			worstVelocity = maxVelocity;
+			worstHoleIdx = holeData.length;
+		}
+
 		holeData.push({
 			cx: cx,
 			cy: cy,
 			cz: cz,
 			maxDistance: maxDistance,
-			maxVelocity: maxVelocity
+			maxVelocity: maxVelocity,
+			holeID: hole.entityName + ":" + hole.holeID
 		});
 	}
 
-	if (holeData.length === 0) {
-		console.warn("FlyrockShroudGenerator: No valid hole data");
-		return null;
+	if (skippedNoCharging > 0) {
+		console.warn("FlyrockShroudGenerator: Skipped " + skippedNoCharging + " of " +
+			holes.length + " holes (no charging data)");
 	}
 
-	// Step 2: Compute grid bounding box from hole positions + max distance
+	if (worstHoleIdx >= 0) {
+		var worst = holeData[worstHoleIdx];
+		var wH = (worst.maxVelocity * worst.maxVelocity) / (2 * GRAVITY);
+		var wR = (worst.maxVelocity * worst.maxVelocity) / GRAVITY;
+		console.log("Flyrock WORST CASE [" + worst.holeID + "]: " +
+			"V=" + worst.maxVelocity.toFixed(1) + " m/s, " +
+			"envelope height=" + wH.toFixed(0) + "m, " +
+			"envelope radius=" + wR.toFixed(0) + "m");
+	}
+
+	if (holeData.length === 0) {
+		console.warn("FlyrockShroudGenerator: No valid hole data — all holes missing charging");
+		return { error: "NO_CHARGING", skipped: skippedNoCharging, total: holes.length };
+	}
+
+	// Step 2: Compute grid bounding box from hole positions + envelope radius
+	// When extendBelowCollar > 0, the parabola extends beyond maxDistance.
+	// Radius where alt = -E: d = V/g × sqrt(V² + 2gE)
 	var overallMaxDist = 0;
 	var gridMinX = Infinity, gridMaxX = -Infinity;
 	var gridMinY = Infinity, gridMaxY = -Infinity;
 	for (var i = 0; i < holeData.length; i++) {
 		var hd = holeData[i];
-		if (hd.maxDistance > overallMaxDist) overallMaxDist = hd.maxDistance;
-		if (hd.cx - hd.maxDistance < gridMinX) gridMinX = hd.cx - hd.maxDistance;
-		if (hd.cx + hd.maxDistance > gridMaxX) gridMaxX = hd.cx + hd.maxDistance;
-		if (hd.cy - hd.maxDistance < gridMinY) gridMinY = hd.cy - hd.maxDistance;
-		if (hd.cy + hd.maxDistance > gridMaxY) gridMaxY = hd.cy + hd.maxDistance;
+		var padding = hd.maxDistance;
+		if (extendBelowCollar > 0) {
+			var V2 = hd.maxVelocity * hd.maxVelocity;
+			var extRadius = (hd.maxVelocity / GRAVITY) * Math.sqrt(V2 + 2 * GRAVITY * extendBelowCollar);
+			if (extRadius > padding) padding = extRadius;
+		}
+		if (padding > overallMaxDist) overallMaxDist = padding;
+		if (hd.cx - padding < gridMinX) gridMinX = hd.cx - padding;
+		if (hd.cx + padding > gridMaxX) gridMaxX = hd.cx + padding;
+		if (hd.cy - padding < gridMinY) gridMinY = hd.cy - padding;
+		if (hd.cy + padding > gridMaxY) gridMaxY = hd.cy + padding;
 	}
 
 	// Step 3: Compute grid spacing from iterations parameter
@@ -127,12 +180,13 @@ export function generate(holes, params) {
 	}
 
 	// Step 4: Compute grid Z values (max envelope altitude across all holes)
-	// gridZ[row][col] stores {z: absolute Z, alt: altitude above ground level}
+	// gridZ[row][col] = absolute Z elevation
+	// gridInside[row][col] = 1 if inside envelope, 0 if outside
 	var gridZ = new Array(rows);
-	var gridAlt = new Array(rows);
+	var gridInside = new Array(rows);
 	for (var r = 0; r < rows; r++) {
 		gridZ[r] = new Float64Array(cols);
-		gridAlt[r] = new Float64Array(cols);
+		gridInside[r] = new Uint8Array(cols); // 0 = outside
 	}
 
 	for (var r = 0; r < rows; r++) {
@@ -141,24 +195,33 @@ export function generate(holes, params) {
 			var gx = gridMinX + c * gridSpacing;
 
 			var bestAbsZ = -Infinity;
-			var bestAlt = 0;
+			var pointInside = false;
 
 			for (var hi = 0; hi < holeData.length; hi++) {
 				var hd = holeData[hi];
 				var dx = gx - hd.cx;
 				var dy = gy - hd.cy;
 				var dist = Math.sqrt(dx * dx + dy * dy);
-				var alt = envelopeAltitude(dist, hd.maxVelocity);
-				var absZ = hd.cz + alt;
 
-				if (absZ > bestAbsZ) {
-					bestAbsZ = absZ;
-					bestAlt = alt;
+				// Compute raw Chernigovskii altitude — goes negative beyond ballistic range
+				// alt = (V⁴ - g²d²) / (2gV²)
+				var V2 = hd.maxVelocity * hd.maxVelocity;
+				var alt = (V2 * V2 - GRAVITY * GRAVITY * dist * dist) / (2 * GRAVITY * V2);
+
+				// Determine if this point is inside the envelope for this hole
+				var minAlt = extendBelowCollar > 0 ? -extendBelowCollar : 0;
+				if (alt >= minAlt) {
+					// Inside envelope (dome surface or parabolic extension)
+					var absZ = hd.cz + alt;
+					if (absZ > bestAbsZ) {
+						bestAbsZ = absZ;
+					}
+					pointInside = true;
 				}
 			}
 
-			gridZ[r][c] = bestAbsZ;
-			gridAlt[r][c] = bestAlt;
+			gridZ[r][c] = pointInside ? bestAbsZ : 0;
+			gridInside[r][c] = pointInside ? 1 : 0;
 		}
 	}
 
@@ -184,19 +247,18 @@ export function generate(holes, params) {
 
 	for (var r = 0; r < rows - 1; r++) {
 		for (var c = 0; c < cols - 1; c++) {
-			// Four corners of the cell
-			var a00 = gridAlt[r][c];
-			var a10 = gridAlt[r + 1][c];
-			var a01 = gridAlt[r][c + 1];
-			var a11 = gridAlt[r + 1][c + 1];
+			// Check which corners are inside the envelope
+			var in00 = gridInside[r][c];
+			var in10 = gridInside[r + 1][c];
+			var in01 = gridInside[r][c + 1];
+			var in11 = gridInside[r + 1][c + 1];
 
-			// Triangle 1: (r,c) (r+1,c) (r,c+1)
-			if (!(a00 <= 0 && a10 <= 0 && a01 <= 0)) {
+			// Triangle 1: (r,c) (r+1,c) (r,c+1) — ALL vertices must be inside for circular edge
+			if (in00 && in10 && in01) {
 				var i0 = getOrCreatePoint(r, c);
 				var i1 = getOrCreatePoint(r + 1, c);
 				var i2 = getOrCreatePoint(r, c + 1);
 
-				// Face angle culling
 				if (passesAngleCull(allPoints[i0], allPoints[i1], allPoints[i2], cosEndAngle)) {
 					allTriangles.push({
 						vertices: [allPoints[i0], allPoints[i1], allPoints[i2]]
@@ -204,8 +266,8 @@ export function generate(holes, params) {
 				}
 			}
 
-			// Triangle 2: (r+1,c) (r+1,c+1) (r,c+1)
-			if (!(a10 <= 0 && a11 <= 0 && a01 <= 0)) {
+			// Triangle 2: (r+1,c) (r+1,c+1) (r,c+1) — ALL vertices must be inside for circular edge
+			if (in10 && in11 && in01) {
 				var i0 = getOrCreatePoint(r + 1, c);
 				var i1 = getOrCreatePoint(r + 1, c + 1);
 				var i2 = getOrCreatePoint(r, c + 1);
@@ -243,8 +305,8 @@ export function generate(holes, params) {
 			K: params.K,
 			factorOfSafety: params.factorOfSafety,
 			stemEjectAngleDeg: params.stemEjectAngleDeg,
-			inholeDensity: params.inholeDensity,
-			holeCount: holes.length,
+			holeCount: holeData.length,
+			holesSkipped: skippedNoCharging,
 			endAngleDeg: endAngleDeg,
 			gridSpacing: gridSpacing,
 			gridSize: cols + "x" + rows
@@ -287,49 +349,90 @@ function passesAngleCull(v0, v1, v2, cosEndAngle) {
 }
 
 /**
- * Extract flyrock-relevant parameters from a hole, using charging data when available.
+ * Extract flyrock-relevant parameters from a hole, deriving values from
+ * hole geometry and charging data. Returns null if charging data is missing.
+ *
+ * Priority: per-hole charging data > per-hole geometry > null (skip hole)
  *
  * @param {Object} hole - Blast hole object
- * @param {Object} defaults - Default parameters from dialog
- * @returns {Object} - Parameters for FlyrockCalculator functions
+ * @param {Object} config - Algorithm parameters from dialog (K, FoS, stemAngle, rockDensity)
+ * @returns {Object|null} - Parameters for FlyrockCalculator, or null if charging unavailable
  */
-function getHoleFlyrockParams(hole, defaults) {
-	var holeDiamMm = parseFloat(hole.holeDiameter) || defaults.holeDiameterMm || 115;
-	var burden = parseFloat(hole.burden) || defaults.burden || 3.6;
-	var benchHeight = parseFloat(hole.benchHeight) || defaults.benchHeight || 12;
-	var subdrill = parseFloat(hole.subdrillAmount) || defaults.subdrill || 1;
-	var inholeDensity = defaults.inholeDensity || 1.2;
-	var rockDensity = defaults.rockDensity || 2600;
+function getHoleFlyrockParams(hole, config) {
+	// Charging data is required — it provides stemming, charge length, and explosive density
+	if (!window.loadedCharging || !window.loadedCharging.has(hole.holeID)) {
+		return null;
+	}
 
-	// Try to get stemming from charging data
-	var stemmingLength = defaults.stemmingLength || 2;
-	var chargeLength = benchHeight + subdrill - stemmingLength;
+	var charging = window.loadedCharging.get(hole.holeID);
+	if (!charging || !charging.decks || charging.decks.length === 0) {
+		return null;
+	}
 
-	if (window.loadedCharging && window.loadedCharging.has(hole.holeID)) {
-		var charging = window.loadedCharging.get(hole.holeID);
-		if (charging && charging.decks && charging.decks.length > 0) {
-			// Find topmost explosive deck depth (stemming length)
-			var topExplosiveDepth = null;
-			var bottomExplosiveDepth = 0;
-			for (var i = 0; i < charging.decks.length; i++) {
-				var deck = charging.decks[i];
-				if (deck.deckType === "COUPLED" || deck.deckType === "DECOUPLED") {
-					var deckTop = Math.min(deck.topDepth, deck.baseDepth);
-					var deckBase = Math.max(deck.topDepth, deck.baseDepth);
-					if (topExplosiveDepth === null || deckTop < topExplosiveDepth) {
-						topExplosiveDepth = deckTop;
-					}
-					if (deckBase > bottomExplosiveDepth) {
-						bottomExplosiveDepth = deckBase;
-					}
-				}
+	// Extract stemming length, charge length, and weighted-average density from charging decks
+	var topExplosiveDepth = null;
+	var bottomExplosiveDepth = 0;
+	var totalExplosiveVolume = 0;
+	var densityWeightedSum = 0;
+	var holeDiamMm = parseFloat(hole.holeDiameter) || (charging.holeDiameterMm || 115);
+	var radiusM = (holeDiamMm / 1000) / 2;
+	var holeArea = Math.PI * radiusM * radiusM; // cross-sectional area in m²
+
+	for (var i = 0; i < charging.decks.length; i++) {
+		var deck = charging.decks[i];
+		if (deck.deckType === "COUPLED" || deck.deckType === "DECOUPLED") {
+			var deckTop = Math.min(deck.topDepth, deck.baseDepth);
+			var deckBase = Math.max(deck.topDepth, deck.baseDepth);
+			if (topExplosiveDepth === null || deckTop < topExplosiveDepth) {
+				topExplosiveDepth = deckTop;
 			}
-			if (topExplosiveDepth !== null) {
-				stemmingLength = topExplosiveDepth;
-				chargeLength = bottomExplosiveDepth - topExplosiveDepth;
+			if (deckBase > bottomExplosiveDepth) {
+				bottomExplosiveDepth = deckBase;
 			}
+
+			// Weighted-average density across explosive decks
+			var deckLength = deckBase - deckTop;
+			var deckVolume = holeArea * deckLength; // m³
+			var deckDensity = deck.effectiveDensity || (deck.product ? deck.product.density : 0) || 1.2; // g/cc
+			totalExplosiveVolume += deckVolume;
+			densityWeightedSum += deckVolume * deckDensity;
 		}
 	}
+
+	// No explosive decks found — hole has charging structure but no actual explosives
+	if (topExplosiveDepth === null || totalExplosiveVolume <= 0) {
+		return null;
+	}
+
+	var stemmingLength = topExplosiveDepth;
+	var chargeLength = bottomExplosiveDepth - topExplosiveDepth;
+	// Weighted average density in g/cc → convert to kg/L (same numeric value)
+	var inholeDensity = densityWeightedSum / totalExplosiveVolume;
+
+	// Minimum stemming check — presplit and unstemmed holes have explosive to the collar.
+	// The Richards & Moore cratering formula divides by stemming^2.6, so near-zero
+	// stemming produces infinite distances. These holes are not flyrock risks in the
+	// same way; skip them with a warning.
+	var MIN_STEMMING = 0.5; // metres
+	if (stemmingLength < MIN_STEMMING) {
+		console.warn("Flyrock: Skipping " + hole.entityName + ":" + hole.holeID +
+			" — stemming " + stemmingLength.toFixed(2) + "m < " + MIN_STEMMING + "m " +
+			"(unstemmed/presplit hole, R&M model not applicable)");
+		return null;
+	}
+
+	// Geometry from the hole object — burden, benchHeight, subdrill
+	// Burden of 1 is the data model default placeholder — not a real value
+	var holeBurden = parseFloat(hole.burden);
+	var burden = (holeBurden && holeBurden > 1.5) ? holeBurden : 4.5;
+
+	// benchHeight: absolute vertical from collar to grade
+	var holeBenchHeight = parseFloat(hole.benchHeight);
+	var benchHeight = (holeBenchHeight && holeBenchHeight > 1) ? holeBenchHeight : 12;
+
+	// subdrillAmount: vertical delta from grade to toe
+	var holeSubdrill = parseFloat(hole.subdrillAmount);
+	var subdrill = (holeSubdrill && holeSubdrill > 0) ? holeSubdrill : 1.5;
 
 	return {
 		holeDiameterMm: holeDiamMm,
@@ -338,10 +441,10 @@ function getHoleFlyrockParams(hole, defaults) {
 		burden: burden,
 		subdrill: subdrill,
 		inholeDensity: inholeDensity,
-		rockDensity: rockDensity,
+		rockDensity: config.rockDensity || 2600,
 		chargeLength: chargeLength,
-		K: defaults.K || 20,
-		factorOfSafety: defaults.factorOfSafety || 2,
-		stemEjectAngleDeg: defaults.stemEjectAngleDeg || 80
+		K: config.K || 20,
+		factorOfSafety: config.factorOfSafety || 2,
+		stemEjectAngleDeg: config.stemEjectAngleDeg || 80
 	};
 }
