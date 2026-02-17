@@ -44099,8 +44099,17 @@ function renderSurfaceToCache(surfaceId, surface, surfaceMinZ, surfaceMaxZ) {
 		var destW = (uvBounds.maxU - uvBounds.minU) * cacheScale;
 		var destH = (uvBounds.maxV - uvBounds.minV) * cacheScale;
 
+		// Flip the baked canvas vertically: the Three.js bake renders with
+		// Y-up (North at pixel row 0), but the cache canvas is Y-down screen
+		// space (row 0 = maxY/North). drawImage without flip would invert the
+		// image.  Use a canvas transform to flip within the destination rect.
+		cacheCtx.save();
 		cacheCtx.globalAlpha = transparency;
-		cacheCtx.drawImage(texCanvas, destX, destY, destW, destH);
+		cacheCtx.translate(destX, destY);
+		cacheCtx.translate(0, destH);
+		cacheCtx.scale(1, -1);
+		cacheCtx.drawImage(texCanvas, 0, 0, destW, destH);
+		cacheCtx.restore();
 
 		// Store cache entry and return
 		surface2DCache.set(surfaceId, {
