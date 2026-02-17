@@ -95,11 +95,12 @@ export function applyBlastAnalysisShader(config) {
 
 	// Build permanent surface object
 	var modelDisplayName = MODEL_DISPLAY_NAMES[config.model] || config.model;
+	var uid4 = Math.random().toString(36).slice(2, 6); // 4-char uid for unique display names
 	var surfaceId = "Analysis_" + config.model + "_" + Date.now();
 
 	var surface = {
 		id: surfaceId,
-		name: "Analysis " + modelDisplayName,
+		name: "Analysis " + modelDisplayName + "_" + uid4,
 		type: "triangulated",
 		points: surfaceData.points,
 		triangles: surfaceData.triangles,

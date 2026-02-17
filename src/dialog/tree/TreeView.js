@@ -8,6 +8,9 @@
 const TREE_CHUNK_SIZE = 50;       // Points per chunk group
 const TREE_CHUNK_THRESHOLD = 20;  // Only chunk if more than this many points
 
+// TreeView-Convention: Braille Pattern U+28FF separator - use constant to prevent corruption
+const TREE_NODE_SEPARATOR = "\u28FF";
+
 import { formatEntityStatistics } from '../../helpers/GeometryStatistics.js';
 
 export class TreeView {
@@ -1691,7 +1694,7 @@ export class TreeView {
 			}
 
 			layerSurfaceMap.get(layerId).push({
-				id: "surface⣿" + surfaceId,
+				id: "surface" + TREE_NODE_SEPARATOR + surfaceId,
 				type: surfaceType,
 				label: surface.name,
 				meta: "(" + (surface.points ? surface.points.length : 0) + " pts | " + (surface.triangles ? surface.triangles.length : 0) + " tris)",
@@ -1718,7 +1721,7 @@ export class TreeView {
 			var layerSurfaces = layerSurfaceMap.get(layerId) || [];
 
 			surfaceChildren.push({
-				id: "layer-surface⣿" + layerId,
+				id: "layer-surface" + TREE_NODE_SEPARATOR + layerId,
 				type: "layer-surface",
 				label: layerName,
 				meta: "(" + layerSurfaces.length + " surfaces)",

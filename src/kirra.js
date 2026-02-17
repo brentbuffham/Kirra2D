@@ -34109,6 +34109,7 @@ function setSurfacesGroupVisibility(visible) {
 	surfacesGroupVisible = visible;
 	console.log("👁️ Surfaces Group visibility: " + visible);
 	clearHiddenFromSelections();
+	window.threeDataNeedsRebuild = true; // Force 3D geometry rebuild on visibility change (match Blast/Drawings)
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
 }
@@ -34117,6 +34118,7 @@ function setImagesGroupVisibility(visible) {
 	imagesGroupVisible = visible;
 	console.log("👁️ Images Group visibility: " + visible);
 	clearHiddenFromSelections();
+	window.threeDataNeedsRebuild = true; // Force 3D geometry rebuild on visibility change (match Blast/Drawings)
 	drawData(allBlastHoles, selectedHole);
 	updateTreeViewVisibilityStates(); // ? ADD: Update tree visual states
 }
@@ -50705,17 +50707,44 @@ window.setLayerVisibility = function (layerId, layerType, isVisible) {
 	var layersMap = layerType === "drawing" ? allDrawingLayers : allSurfaceLayers;
 	var layer = layersMap.get(layerId);
 
-	if (!layer) {
+	// Step 12f-0) For surface layers: layer may not exist in allSurfaceLayers yet (e.g. surfaces
+	// created before migration, or from buildSurfaceData layerSurfaceMap). Create it if missing
+	// so Hide/Show works on Surface Layer nodes.
+	if (layerType === "surface" && !layer) {
+		var defaultLayerId = DEFAULT_SURFACE_LAYER_ID;
+		var layerName = layerId === defaultLayerId ? "Default Layer" : layerId;
+		allSurfaceLayers.set(layerId, {
+			layerId: layerId,
+			layerName: layerName,
+			visible: isVisible,
+			sourceFile: null,
+			importDate: new Date().toISOString(),
+			entities: new Set()
+		});
+		layer = allSurfaceLayers.get(layerId);
+		// Step 12f-0a) Populate entities from loadedSurfaces so future lookups work
+		if (loadedSurfaces) {
+			loadedSurfaces.forEach(function (surface, surfaceId) {
+				if ((surface.layerId || defaultLayerId) === layerId) {
+					layer.entities.add(surfaceId);
+				}
+			});
+		}
+	}
+
+	if (layerType === "drawing" && !layer) {
 		console.warn("⚠️ [Layer] Layer not found:", layerId);
 		return;
 	}
 
-	layer.visible = isVisible;
+	if (layer) {
+		layer.visible = isVisible;
+	}
 
 	// Step 12f-1) Set visibility for all entities in the layer
 	if (layerType === "drawing") {
 		// Method 1: Use layer.entities if populated
-		if (layer.entities && layer.entities.size > 0) {
+		if (layer && layer.entities && layer.entities.size > 0) {
 			layer.entities.forEach(function (entityName) {
 				var entity = allKADDrawingsMap.get(entityName);
 				if (entity) {
@@ -50734,7 +50763,7 @@ window.setLayerVisibility = function (layerId, layerType, isVisible) {
 		debouncedSaveKAD();
 	} else if (layerType === "surface") {
 		// Method 1: Use layer.entities if populated
-		if (layer.entities && layer.entities.size > 0) {
+		if (layer && layer.entities && layer.entities.size > 0) {
 			layer.entities.forEach(function (surfaceId) {
 				if (loadedSurfaces && loadedSurfaces.has(surfaceId)) {
 					var surface = loadedSurfaces.get(surfaceId);
@@ -50742,18 +50771,29 @@ window.setLayerVisibility = function (layerId, layerType, isVisible) {
 				}
 			});
 		}
-		// Method 2: Also iterate all surfaces to catch any with matching layerId
+		// Method 2: Iterate all surfaces - use surface.layerId OR defaultLayerId for matching
+		// (surfaces without layerId belong to default layer)
+		var defaultSurfaceLayerId = DEFAULT_SURFACE_LAYER_ID;
 		if (loadedSurfaces) {
 			loadedSurfaces.forEach(function (surface, surfaceId) {
-				if (surface.layerId === layerId) {
+				var surfLayerId = surface.layerId || defaultSurfaceLayerId;
+				if (surfLayerId === layerId) {
 					surface.visible = isVisible;
 				}
 			});
 		}
+		if (typeof debouncedSaveSurfaces === "function") {
+			debouncedSaveSurfaces();
+		}
 	}
 
-	console.log("✅ [Layer] Set visibility for layer", layer.layerName, "to", isVisible);
+	var layerNameForLog = layer ? layer.layerName : layerId;
+	console.log("✅ [Layer] Set visibility for layer", layerNameForLog, "to", isVisible);
 	debouncedSaveLayers();
+	window.threeDataNeedsRebuild = true; // Force 3D rebuild when layer visibility changes
+	if (typeof updateTreeViewVisibilityStates === "function") {
+		updateTreeViewVisibilityStates();
+	}
 	drawData(allBlastHoles, selectedHole);
 };
 
