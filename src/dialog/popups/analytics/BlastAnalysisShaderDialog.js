@@ -90,9 +90,7 @@ export function showBlastAnalysisShaderDialog(callback) {
 	var currentModel = saved ? saved.model : "scaled_heelan";
 	var currentSurface = saved ? saved.surfaceId : "__PLANE__";
 	var currentBlast = saved ? saved.blastName : "__ALL__";
-	var currentApplyMode = saved ? saved.applyMode : "overlay";
 	var currentPlanePadding = saved ? saved.planePadding : 200;
-	var currentApplyAsTexture = saved ? saved.applyAsTexture : false;
 
 	var fields = [
 		{
@@ -118,23 +116,6 @@ export function showBlastAnalysisShaderDialog(callback) {
 			value: currentBlast,
 			options: blasts,
 			required: true
-		},
-		{
-			label: "Apply Mode",
-			name: "applyMode",
-			type: "select",
-			value: currentApplyMode,
-			options: [
-				{ value: "overlay", text: "Overlay on Original" },
-				{ value: "duplicate", text: "Create Duplicate Surface" }
-			],
-			required: true
-		},
-		{
-			label: "Bake as Texture (UV-mapped, persistent)",
-			name: "applyAsTexture",
-			type: "checkbox",
-			value: currentApplyAsTexture
 		},
 		{
 			label: "Analysis Plane Distance from Blast Holes (m)",
@@ -234,8 +215,6 @@ export function showBlastAnalysisShaderDialog(callback) {
 				model: formData.model,
 				surfaceId: formData.surfaceId,
 				blastName: formData.blastName,
-				applyMode: formData.applyMode,
-				applyAsTexture: formData.applyAsTexture === 'on' || formData.applyAsTexture === true,
 				planePadding: planePadding,
 				params: params
 			};
@@ -245,8 +224,6 @@ export function showBlastAnalysisShaderDialog(callback) {
 				model: formData.model,
 				surfaceId: formData.surfaceId,
 				blastName: formData.blastName,
-				applyMode: formData.applyMode,
-				applyAsTexture: formData.applyAsTexture === 'on' || formData.applyAsTexture === true,
 				planePadding: planePadding,
 				params: params
 			});

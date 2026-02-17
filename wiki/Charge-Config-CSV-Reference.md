@@ -465,5 +465,5 @@ This table provides practical formula examples for common charging scenarios. Al
 ---
 
 See also:
-- [Charging-System.md](Charging-System.md) — Complete charging system overview
-- [File-Formats.md](File-Formats.md) — Other import/export formats
+- [Charging System](Charging-System) — Complete charging system overview
+- [File Formats](File-Formats) — Other import/export formats

@@ -37,6 +37,13 @@ export class ShaderTextureBaker {
         var width = bounds.maxX - bounds.minX;
         var height = bounds.maxY - bounds.minY;
 
+        // Center point in world coordinates — used to avoid float32 precision loss
+        // UTM coords like 500000, 6000000 exceed Float32 precision (~7 digits).
+        // By centering geometry around (0,0) and using uWorldOffset, the vertex
+        // shader reconstructs world positions: vWorldPos = localPos + uWorldOffset
+        var centerX = (bounds.minX + bounds.maxX) / 2;
+        var centerY = (bounds.minY + bounds.maxY) / 2;
+
         // Create offscreen rendering setup
         var offscreenCanvas = document.createElement("canvas");
         offscreenCanvas.width = resolution;
@@ -51,43 +58,52 @@ export class ShaderTextureBaker {
         offscreenRenderer.setSize(resolution, resolution);
         offscreenRenderer.setClearColor(0x000000, 0); // Transparent background
 
-        // Create orthographic camera looking down (top-down view)
+        // Create orthographic camera in LOCAL space (centered at origin)
+        var halfW = width / 2;
+        var halfH = height / 2;
         var camera = new THREE.OrthographicCamera(
-            bounds.minX, bounds.maxX, // left, right
-            bounds.maxY, bounds.minY, // top, bottom (Y inverted for texture space)
-            -1000, 1000               // near, far
+            -halfW, halfW,   // left, right
+            halfH, -halfH,   // top, bottom (Y inverted for texture space)
+            -1000, 1000      // near, far
         );
-        camera.position.set(
-            (bounds.minX + bounds.maxX) / 2,
-            (bounds.minY + bounds.maxY) / 2,
-            500
-        );
-        camera.lookAt(
-            (bounds.minX + bounds.maxX) / 2,
-            (bounds.minY + bounds.maxY) / 2,
-            0
-        );
+        camera.position.set(0, 0, 500);
+        camera.lookAt(0, 0, 0);
 
         // Create scene with shader mesh
         var scene = new THREE.Scene();
 
-        // Build mesh from surface triangles
-        var geometry = this._buildSurfaceGeometry(surface, window.threeLocalOriginX, window.threeLocalOriginY);
+        // Build mesh in LOCAL space (centered around bounds center)
+        var geometry = this._buildSurfaceGeometry(surface, centerX, centerY);
+
+        // Set uWorldOffset so the shader reconstructs world positions:
+        // vWorldPos = localPos + uWorldOffset = (worldPos - center) + center = worldPos
+        if (shaderMaterial.uniforms && shaderMaterial.uniforms.uWorldOffset) {
+            shaderMaterial.uniforms.uWorldOffset.value.set(centerX, centerY, 0);
+        }
+
         var mesh = new THREE.Mesh(geometry, shaderMaterial);
         scene.add(mesh);
 
-        // Render to offscreen canvas
+        // Render to offscreen WebGL canvas
         offscreenRenderer.render(scene, camera);
 
-        // Create THREE.CanvasTexture from rendered canvas
-        var texture = new THREE.CanvasTexture(offscreenCanvas);
+        // Copy WebGL result to a standard 2D canvas
+        // (WebGL canvas can't get a 2D context — needed for 2D rendering + getImageData)
+        var canvas2D = document.createElement("canvas");
+        canvas2D.width = resolution;
+        canvas2D.height = resolution;
+        var ctx2D = canvas2D.getContext("2d");
+        ctx2D.drawImage(offscreenCanvas, 0, 0);
+
+        // Create texture from the 2D canvas copy
+        var texture = new THREE.CanvasTexture(canvas2D);
         texture.needsUpdate = true;
         texture.minFilter = THREE.LinearFilter;
         texture.magFilter = THREE.LinearFilter;
         texture.wrapS = THREE.ClampToEdgeWrapping;
         texture.wrapT = THREE.ClampToEdgeWrapping;
 
-        // Cleanup
+        // Cleanup WebGL resources
         geometry.dispose();
         offscreenRenderer.dispose();
 
@@ -96,7 +112,7 @@ export class ShaderTextureBaker {
 
         return {
             texture: texture,
-            canvas: offscreenCanvas,
+            canvas: canvas2D,
             uvBounds: {
                 minU: bounds.minX,
                 maxU: bounds.maxX,
@@ -195,30 +211,29 @@ export class ShaderTextureBaker {
         for (var i = 0; i < surface.triangles.length; i++) {
             var tri = surface.triangles[i];
 
-            // Handle multiple triangle formats
-            var idx0, idx1, idx2;
-            if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
-                // OBJ format: {vertices: [0, 1, 2]}
-                idx0 = tri.vertices[0];
-                idx1 = tri.vertices[1];
-                idx2 = tri.vertices[2];
+            // Resolve triangle vertices — handle multiple formats
+            var p0, p1, p2;
+            if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
+                p0 = surface.points[tri.a];
+                p1 = surface.points[tri.b];
+                p2 = surface.points[tri.c];
             } else if (tri.indices && Array.isArray(tri.indices)) {
-                // Format: {indices: [0, 1, 2]}
-                idx0 = tri.indices[0];
-                idx1 = tri.indices[1];
-                idx2 = tri.indices[2];
-            } else if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
-                // Format: {a: 0, b: 1, c: 2}
-                idx0 = tri.a;
-                idx1 = tri.b;
-                idx2 = tri.c;
+                p0 = surface.points[tri.indices[0]];
+                p1 = surface.points[tri.indices[1]];
+                p2 = surface.points[tri.indices[2]];
+            } else if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
+                if (typeof tri.vertices[0] === "object") {
+                    p0 = tri.vertices[0];
+                    p1 = tri.vertices[1];
+                    p2 = tri.vertices[2];
+                } else {
+                    p0 = surface.points[tri.vertices[0]];
+                    p1 = surface.points[tri.vertices[1]];
+                    p2 = surface.points[tri.vertices[2]];
+                }
             } else {
                 continue;
             }
-
-            var p0 = surface.points[idx0];
-            var p1 = surface.points[idx1];
-            var p2 = surface.points[idx2];
 
             if (!p0 || !p1 || !p2) continue;
 
@@ -303,53 +318,51 @@ export class ShaderTextureBaker {
      * Build THREE.js BufferGeometry from surface triangles.
      *
      * @param {Object} surface - Surface with points and triangles
-     * @param {number} originX - Three.js local origin X
-     * @param {number} originY - Three.js local origin Y
+     * @param {number} centerX - Center X to subtract (for float precision)
+     * @param {number} centerY - Center Y to subtract (for float precision)
      * @returns {THREE.BufferGeometry}
      * @private
      */
-    static _buildSurfaceGeometry(surface, originX, originY) {
+    static _buildSurfaceGeometry(surface, centerX, centerY) {
+        centerX = centerX || 0;
+        centerY = centerY || 0;
         var vertices = [];
 
         for (var i = 0; i < surface.triangles.length; i++) {
             var tri = surface.triangles[i];
 
-            // Handle multiple triangle formats
-            var idx0, idx1, idx2;
-            if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
-                // OBJ format: {vertices: [0, 1, 2]}
-                idx0 = tri.vertices[0];
-                idx1 = tri.vertices[1];
-                idx2 = tri.vertices[2];
+            // Resolve triangle vertices — handle multiple formats
+            var p0, p1, p2;
+            if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
+                p0 = surface.points[tri.a];
+                p1 = surface.points[tri.b];
+                p2 = surface.points[tri.c];
             } else if (tri.indices && Array.isArray(tri.indices)) {
-                // Format: {indices: [0, 1, 2]}
-                idx0 = tri.indices[0];
-                idx1 = tri.indices[1];
-                idx2 = tri.indices[2];
-            } else if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
-                // Format: {a: 0, b: 1, c: 2}
-                idx0 = tri.a;
-                idx1 = tri.b;
-                idx2 = tri.c;
+                p0 = surface.points[tri.indices[0]];
+                p1 = surface.points[tri.indices[1]];
+                p2 = surface.points[tri.indices[2]];
+            } else if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
+                if (typeof tri.vertices[0] === "object") {
+                    p0 = tri.vertices[0];
+                    p1 = tri.vertices[1];
+                    p2 = tri.vertices[2];
+                } else {
+                    p0 = surface.points[tri.vertices[0]];
+                    p1 = surface.points[tri.vertices[1]];
+                    p2 = surface.points[tri.vertices[2]];
+                }
             } else {
-                console.warn("ShaderTextureBaker: Invalid triangle format at index " + i);
                 continue;
             }
 
-            var p0 = surface.points[idx0];
-            var p1 = surface.points[idx1];
-            var p2 = surface.points[idx2];
+            if (!p0 || !p1 || !p2) continue;
 
-            if (!p0 || !p1 || !p2) {
-                console.warn("ShaderTextureBaker: Missing points for triangle " + i);
-                continue;
-            }
-
-            // Transform to Three.js local space
+            // Local space — subtract center to keep coords small for Float32
+            // Shader reconstructs world positions via uWorldOffset
             vertices.push(
-                p0.x - originX, p0.y - originY, p0.z,
-                p1.x - originX, p1.y - originY, p1.z,
-                p2.x - originX, p2.y - originY, p2.z
+                p0.x - centerX, p0.y - centerY, p0.z,
+                p1.x - centerX, p1.y - centerY, p1.z,
+                p2.x - centerX, p2.y - centerY, p2.z
             );
         }
 

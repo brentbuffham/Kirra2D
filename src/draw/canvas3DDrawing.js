@@ -939,6 +939,69 @@ export function drawKADPointIDThreeJS(worldX, worldY, worldZ, pointID, color) {
 // Surface & Other 3D Drawing
 //=================================================
 
+/**
+ * Rebuild an analysis mesh from stored texture/canvas data (same session).
+ * Called when surfaceMeshMap was cleared (e.g. by clearAllGeometry) but the
+ * surface still has its baked texture in memory.
+ */
+function _rebuildAnalysisMeshFromTexture(surfaceId, surfaceData) {
+	var triCount = surfaceData.triangles ? surfaceData.triangles.length : 0;
+	if (triCount === 0) return;
+
+	var uvBounds = surfaceData.analysisUVBounds;
+	var uvW = uvBounds.maxU - uvBounds.minU;
+	var uvH = uvBounds.maxV - uvBounds.minV;
+
+	var positions = new Float32Array(triCount * 9);
+	var uvs = new Float32Array(triCount * 6);
+
+	for (var i = 0; i < triCount; i++) {
+		var tri = surfaceData.triangles[i];
+		var verts;
+		if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
+			verts = [surfaceData.points[tri.a], surfaceData.points[tri.b], surfaceData.points[tri.c]];
+		} else if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
+			if (typeof tri.vertices[0] === "object") {
+				verts = tri.vertices;
+			} else {
+				verts = [surfaceData.points[tri.vertices[0]], surfaceData.points[tri.vertices[1]], surfaceData.points[tri.vertices[2]]];
+			}
+		} else {
+			continue;
+		}
+		if (!verts[0] || !verts[1] || !verts[2]) continue;
+
+		for (var j = 0; j < 3; j++) {
+			var v = verts[j];
+			var local = window.worldToThreeLocal(v.x, v.y);
+			positions[i * 9 + j * 3]     = local.x;
+			positions[i * 9 + j * 3 + 1] = local.y;
+			positions[i * 9 + j * 3 + 2] = v.z;
+			uvs[i * 6 + j * 2]     = (v.x - uvBounds.minU) / uvW;
+			uvs[i * 6 + j * 2 + 1] = (v.y - uvBounds.minV) / uvH;
+		}
+	}
+
+	var geometry = new THREE.BufferGeometry();
+	geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+	geometry.setAttribute("uv", new THREE.BufferAttribute(uvs, 2));
+	geometry.computeVertexNormals();
+
+	var material = new THREE.MeshBasicMaterial({
+		map: surfaceData.analysisTexture,
+		side: THREE.DoubleSide,
+		transparent: true,
+		opacity: surfaceData.transparency || 1.0
+	});
+
+	var mesh = new THREE.Mesh(geometry, material);
+	mesh.userData = { type: "surface", surfaceId: surfaceId, isAnalysisSurface: true };
+
+	window.threeRenderer.surfacesGroup.add(mesh);
+	window.threeRenderer.surfaceMeshMap.set(surfaceId, mesh);
+	console.log("Rebuilt analysis mesh from stored texture for " + surfaceId);
+}
+
 // Step 12) Draw surface in Three.js
 export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, transparency, surfaceData) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
@@ -1178,12 +1241,22 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 			existingAnalysisMesh.visible = true;
 			return; // CRITICAL: Don't rebuild — preserve baked texture
 		}
-		// No existing mesh — try to rebuild from GLB
+		// No mesh in surfaceMeshMap — try rebuild from stored canvas/texture (same session)
+		if (surfaceData.analysisTexture && surfaceData.analysisUVBounds) {
+			_rebuildAnalysisMeshFromTexture(surfaceId, surfaceData);
+			return;
+		}
+		// No canvas — try to rebuild from GLB (page reload from IndexedDB)
 		if (surfaceData.analysisGLB) {
 			rebuildAnalysisFromGLB(surfaceId, surfaceData.analysisGLB, {
 				modelName: surfaceData.analysisModelName,
 				params: surfaceData.analysisParams,
 				uvBounds: surfaceData.analysisUVBounds
+			}).then(function() {
+				// Trigger redraw so 2D cache picks up the restored analysisCanvas
+				if (window.drawData) {
+					window.drawData(window.allBlastHoles, window.selectedHole);
+				}
 			});
 			return;
 		}

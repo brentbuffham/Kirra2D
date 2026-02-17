@@ -33295,6 +33295,13 @@ async function saveSurfaceToDB(surfaceId) {
 					surfaceRecord.analysisGLB = surface.analysisGLB;  // ArrayBuffer
 					console.log("💾 Saving analysis GLB for surface: " + surfaceId);
 				}
+				// Save flattened image for 2D rendering persistence
+				if (surface.flattenedImageDataURL) {
+					surfaceRecord.flattenedImageDataURL = surface.flattenedImageDataURL;
+					surfaceRecord.flattenedImageBounds = surface.flattenedImageBounds;
+					surfaceRecord.flattenedImageDimensions = surface.flattenedImageDimensions;
+					console.log("💾 Saving flattened analysis image for surface: " + surfaceId);
+				}
 			}
 
 			// ? FIX: Add proper transaction handlers
@@ -33405,6 +33412,14 @@ async function loadSurfaceIntoMemory(surfaceId) {
 									console.error("Failed to rebuild analysis GLB:", err);
 								});
 							}, 200);
+						}
+
+						// Restore flattened image for 2D rendering (same as OBJ pattern)
+						if (surfaceData.flattenedImageDataURL && surfaceData.flattenedImageBounds && surfaceData.flattenedImageDimensions) {
+							surfaceEntry.flattenedImageDataURL = surfaceData.flattenedImageDataURL;
+							surfaceEntry.flattenedImageBounds = surfaceData.flattenedImageBounds;
+							surfaceEntry.flattenedImageDimensions = surfaceData.flattenedImageDimensions;
+							loadFlattenedImageFromData(surfaceData.id, surfaceData.flattenedImageDataURL, surfaceData.flattenedImageBounds, surfaceData.flattenedImageDimensions, surfaceData.name || "Analysis");
 						}
 					}
 
@@ -33634,6 +33649,48 @@ async function loadAllSurfacesIntoMemory() {
 						// Track for later rebuilding
 						texturedSurfaceIds.push(surfaceData.id);
 						console.log("📝 Added to rebuild list: " + surfaceData.id + ", total textured surfaces: " + texturedSurfaceIds.length);
+					}
+
+					// Step 2b) Check if this is an analysis surface (baked shader)
+					if (surfaceData.isAnalysisSurface) {
+						surfaceEntry.isAnalysisSurface = true;
+						surfaceEntry.analysisModelName = surfaceData.analysisModelName || null;
+						surfaceEntry.analysisParams = surfaceData.analysisParams || null;
+						surfaceEntry.analysisUVBounds = surfaceData.analysisUVBounds || null;
+						surfaceEntry.analysisGLB = surfaceData.analysisGLB || null;
+						surfaceEntry.gradient = "analysis";
+
+						// Rebuild 3D mesh from GLB
+						if (surfaceData.analysisGLB) {
+							var capturedId = surfaceData.id;
+							var capturedGLB = surfaceData.analysisGLB;
+							var capturedParams = {
+								modelName: surfaceData.analysisModelName,
+								params: surfaceData.analysisParams,
+								uvBounds: surfaceData.analysisUVBounds
+							};
+							setTimeout(function() {
+								import("./helpers/AnalysisTextureRebuilder.js").then(function(module) {
+									module.rebuildAnalysisFromGLB(capturedId, capturedGLB, capturedParams);
+								}).catch(function(err) {
+									console.error("Failed to rebuild analysis GLB:", err);
+								});
+							}, 200);
+						}
+
+						// Restore flattened image for 2D rendering
+						if (surfaceData.flattenedImageDataURL && surfaceData.flattenedImageBounds && surfaceData.flattenedImageDimensions) {
+							surfaceEntry.flattenedImageDataURL = surfaceData.flattenedImageDataURL;
+							surfaceEntry.flattenedImageBounds = surfaceData.flattenedImageBounds;
+							surfaceEntry.flattenedImageDimensions = surfaceData.flattenedImageDimensions;
+							loadFlattenedImageFromData(surfaceData.id, surfaceData.flattenedImageDataURL, surfaceData.flattenedImageBounds, surfaceData.flattenedImageDimensions, surfaceData.name || "Analysis");
+						}
+					}
+
+					// Save flyrock shroud flags
+					if (surfaceData.isFlyrockShroud) {
+						surfaceEntry.isFlyrockShroud = true;
+						surfaceEntry.flyrockParams = surfaceData.flyrockParams || null;
 					}
 
 					loadedSurfaces.set(surfaceData.id, surfaceEntry);
@@ -44003,51 +44060,22 @@ function renderSurfaceToCache(surfaceId, surface, surfaceMinZ, surfaceMaxZ) {
 	var gradient = surface.gradient || "default";
 	var transparency = surface.transparency || 1.0;
 
-	// Step 8a) Analysis surfaces: render baked texture by sampling per-triangle
+	// Step 8a) Analysis surfaces: draw baked texture canvas as image
+	// The analysisCanvas contains the full shader output; draw it directly
+	// mapped from UV world bounds to cache canvas coordinates.
 	if ((gradient === "analysis" || gradient === "shader_overlay") && surface.analysisCanvas && surface.analysisUVBounds) {
 		var texCanvas = surface.analysisCanvas;
-		var texCtx = texCanvas.getContext("2d");
-		var texData = texCtx.getImageData(0, 0, texCanvas.width, texCanvas.height);
-		var texW = texCanvas.width;
-		var texH = texCanvas.height;
 		var uvBounds = surface.analysisUVBounds;
-		var uvW = uvBounds.maxU - uvBounds.minU;
-		var uvH = uvBounds.maxV - uvBounds.minV;
 
-		surface.triangles.forEach(function (triangle) {
-			var p1 = triangle.vertices[0];
-			var p2 = triangle.vertices[1];
-			var p3 = triangle.vertices[2];
+		// Map UV world bounds to cache canvas coordinates
+		// Cache canvas: X = (worldX - minX) * cacheScale, Y = (maxY - worldY) * cacheScale
+		var destX = (uvBounds.minU - minX) * cacheScale;
+		var destY = (maxY - uvBounds.maxV) * cacheScale;  // maxV is top in world, which is lower Y in canvas
+		var destW = (uvBounds.maxU - uvBounds.minU) * cacheScale;
+		var destH = (uvBounds.maxV - uvBounds.minV) * cacheScale;
 
-			var x1 = (p1.x - minX) * cacheScale;
-			var y1 = (maxY - p1.y) * cacheScale;
-			var x2 = (p2.x - minX) * cacheScale;
-			var y2 = (maxY - p2.y) * cacheScale;
-			var x3 = (p3.x - minX) * cacheScale;
-			var y3 = (maxY - p3.y) * cacheScale;
-
-			// Sample texture at triangle centroid UV
-			var uCentroid = ((p1.x + p2.x + p3.x) / 3 - uvBounds.minU) / uvW;
-			var vCentroid = ((p1.y + p2.y + p3.y) / 3 - uvBounds.minV) / uvH;
-			var texX = Math.max(0, Math.min(texW - 1, Math.floor(uCentroid * texW)));
-			var texY = Math.max(0, Math.min(texH - 1, Math.floor(vCentroid * texH)));
-			var pixIdx = (texY * texW + texX) * 4;
-			var r = texData.data[pixIdx];
-			var g = texData.data[pixIdx + 1];
-			var b = texData.data[pixIdx + 2];
-			var a = texData.data[pixIdx + 3];
-
-			if (a === 0) return; // Skip transparent pixels
-
-			cacheCtx.globalAlpha = transparency * (a / 255);
-			cacheCtx.beginPath();
-			cacheCtx.moveTo(x1, y1);
-			cacheCtx.lineTo(x2, y2);
-			cacheCtx.lineTo(x3, y3);
-			cacheCtx.closePath();
-			cacheCtx.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
-			cacheCtx.fill();
-		});
+		cacheCtx.globalAlpha = transparency;
+		cacheCtx.drawImage(texCanvas, destX, destY, destW, destH);
 
 		// Store cache entry and return
 		surface2DCache.set(surfaceId, {

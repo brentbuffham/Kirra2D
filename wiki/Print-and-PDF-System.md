@@ -192,7 +192,7 @@ Print layout divided into distinct areas:
 
 **Process:**
 1. Group holes by entity
-2. Calculate per-entity statistics (see [Statistics-and-Reporting.md](Statistics-and-Reporting.md))
+2. Calculate per-entity statistics (see [Statistics and Reporting](Statistics-and-Reporting))
 3. Format values with appropriate units and precision
 4. Render to SVG elements
 
@@ -623,6 +623,6 @@ Line weights scale with output size to maintain visibility.
 ---
 
 See also:
-- [Statistics-and-Reporting.md](Statistics-and-Reporting.md) — Statistics calculation
-- [User-Interface.md](User-Interface.md) — Print dialog and settings
-- [File-Formats.md](File-Formats.md) — PDF format details
+- [Statistics and Reporting](Statistics-and-Reporting) — Statistics calculation
+- [User Interface](User-Interface) — Print dialog and settings
+- [File Formats](File-Formats) — PDF format details

@@ -417,6 +417,6 @@ Spatial visualization of charge configurations:
 ---
 
 See also:
-- [Charge-Config-CSV-Reference.md](Charge-Config-CSV-Reference.md) — Complete CSV format specification
-- [Blast-Hole-Management.md](Blast-Hole-Management.md) — Hole data structure and geometry
-- [File-Formats.md](File-Formats.md) — Import/export formats
+- [Charge Config CSV Reference](Charge-Config-CSV-Reference) — Complete CSV format specification
+- [Blast Hole Management](Blast-Hole-Management) — Hole data structure and geometry
+- [File Formats](File-Formats) — Import/export formats

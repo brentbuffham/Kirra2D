@@ -44,6 +44,7 @@
 - [Statistics and Reporting](Statistics-and-Reporting) - Per-entity statistics and Voronoi analysis
 - [Blast Design Workflow](Blast-Design-Workflow) - Complete design process from setup to export
 - [Advanced Features](Advanced-Features) - Duplicate detection, grade control, clustering
+- [Blast Analytics](Blast-Analytics) - GPU-accelerated PPV, Heelan, and damage modelling
 
 ### Flyrock Modelling
 - [Flyrock Model: Richards & Moore](Flyrock-Model-Richards-Moore) - Empirical face burst, cratering, and stem eject model (2004)

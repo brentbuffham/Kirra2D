@@ -647,5 +647,5 @@ The bottom status bar displays real-time information:
 ---
 
 See also:
-- [Application-Architecture.md](Application-Architecture.md) — UI component structure
-- [Home.md](Home.md) — Getting started guide
+- [Application Architecture](Application-Architecture) — UI component structure
+- [Home](Home) — Getting started guide

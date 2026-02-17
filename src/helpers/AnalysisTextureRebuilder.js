@@ -44,6 +44,7 @@ export async function exportAnalysisMeshToGLB(mesh) {
 
 /**
  * Rebuild a baked analysis mesh from a GLB ArrayBuffer stored in IndexedDB.
+ * Also restores analysisCanvas/analysisTexture on the surface for 2D rendering.
  *
  * @param {string} surfaceId - Surface ID to apply the rebuilt mesh to
  * @param {ArrayBuffer} glbData - GLB binary data from IndexedDB
@@ -87,33 +88,51 @@ export async function rebuildAnalysisFromGLB(surfaceId, glbData, analysisParams)
 						existingMesh.parent.remove(existingMesh);
 					}
 
-					// Position the rebuilt mesh in scene space
-					var threeLocalOriginX = window.threeLocalOriginX || 0;
-					var threeLocalOriginY = window.threeLocalOriginY || 0;
-
 					// Tag for identification
 					scene.userData = {
-						type: "analysisSurface",
+						type: "surface",
+						isAnalysisSurface: true,
 						surfaceId: surfaceId,
 						modelName: analysisParams ? analysisParams.modelName : null
 					};
 
 					// Make all child materials double-sided and transparent
+					// Also extract the texture for 2D rendering
+					var extractedTexture = null;
 					scene.traverse(function(child) {
 						if (child.isMesh && child.material) {
 							child.material.side = THREE.DoubleSide;
 							child.material.transparent = true;
 							child.material.opacity = surface ? (surface.transparency || 1.0) : 1.0;
+							// Extract texture from first mesh that has one
+							if (!extractedTexture && child.material.map) {
+								extractedTexture = child.material.map;
+							}
 						}
 					});
 
 					window.threeRenderer.surfaceMeshMap.set(surfaceId, scene);
-					window.threeRenderer.scene.add(scene);
+					window.threeRenderer.surfacesGroup.add(scene);
+
+					// Restore analysisTexture and analysisCanvas on the surface
+					// so the 2D renderer can use drawImage with the baked texture
+					if (surface && extractedTexture && extractedTexture.image) {
+						var img = extractedTexture.image;
+						var canvas2D = document.createElement("canvas");
+						canvas2D.width = img.width || img.naturalWidth || 1024;
+						canvas2D.height = img.height || img.naturalHeight || 1024;
+						var ctx2D = canvas2D.getContext("2d");
+						ctx2D.drawImage(img, 0, 0, canvas2D.width, canvas2D.height);
+
+						surface.analysisCanvas = canvas2D;
+						surface.analysisTexture = extractedTexture;
+						console.log("Restored analysis canvas from GLB texture: " + canvas2D.width + "x" + canvas2D.height);
+					}
 
 					console.log("Rebuilt analysis mesh from GLB for surface: " + surfaceId);
 				}
 
-				// Invalidate 2D cache
+				// Invalidate 2D cache so it redraws with the restored canvas
 				if (window.invalidateSurfaceCache) {
 					window.invalidateSurfaceCache(surfaceId);
 				}

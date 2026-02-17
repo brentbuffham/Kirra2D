@@ -23,9 +23,9 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 	// Step 2) Get the specific surface if ID provided, otherwise first visible surface
 	var surface = surfaceId
 		? window.loadedSurfaces.get(surfaceId)
-		: Array.from(window.loadedSurfaces.values()).find(function(s) {
-				return s.visible;
-			});
+		: Array.from(window.loadedSurfaces.values()).find(function (s) {
+			return s.visible;
+		});
 	if (!surface) return;
 
 	// Step 3) Store reference for dialog callbacks
@@ -105,7 +105,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 
 	// Step 6a) Fallback if createEnhancedFormContent doesn't exist
 	if (!window.createEnhancedFormContent) {
-		fields.forEach(function(field) {
+		fields.forEach(function (field) {
 			var fieldDiv = document.createElement("div");
 			fieldDiv.className = "form-field";
 			fieldDiv.style.marginBottom = "10px";
@@ -119,7 +119,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 			if (field.type === "select") {
 				var select = document.createElement("select");
 				select.name = field.name;
-				field.options.forEach(function(opt) {
+				field.options.forEach(function (opt) {
 					var option = document.createElement("option");
 					option.value = opt.value;
 					option.textContent = opt.text;
@@ -177,7 +177,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 	// Step 6b-1) Listen for gradient change to show/hide hillshade color picker
 	var gradientSelect = formContent.querySelector("select[name='gradient']");
 	if (gradientSelect) {
-		gradientSelect.addEventListener("change", function() {
+		gradientSelect.addEventListener("change", function () {
 			var isHillshade = gradientSelect.value === "hillshade";
 			hillshadeSection.style.display = isHillshade ? "flex" : "none";
 		});
@@ -204,7 +204,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 	legendLabel.style.fontSize = "12px";
 	legendLabel.style.color = "#aaa";
 	legendLabel.style.cursor = "pointer";
-	legendLabel.onclick = function() {
+	legendLabel.onclick = function () {
 		legendCheckbox.click();
 	};
 
@@ -232,7 +232,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 		cancelText: "Cancel",
 		option1Text: "Delete",
 		option2Text: currentSurface.visible ? "Hide" : "Show",
-		onConfirm: function() {
+		onConfirm: function () {
 			// Step 7a) Get form values and commit changes
 			var formData = window.getFormData ? window.getFormData(formContent) : {};
 			var newTransparency = formData.transparency !== undefined ? parseFloat(formData.transparency) / 100 : currentSurface.transparency;
@@ -273,7 +273,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 			}
 
 			// Save to database
-			window.saveSurfaceToDB(currentSurface.id).catch(function(err) {
+			window.saveSurfaceToDB(currentSurface.id).catch(function (err) {
 				console.error("Failed to save surface:", err);
 			});
 
@@ -283,14 +283,14 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 				window.drawData(window.allBlastHoles, window.selectedHole);
 			}
 		},
-		onCancel: function() {
+		onCancel: function () {
 			// Step 7b) Just close, no changes
 		},
-		onOption1: function() {
+		onOption1: function () {
 			// Step 7c) Delete surface
 			window
 				.deleteSurfaceFromDB(currentSurface.id)
-				.then(function() {
+				.then(function () {
 					window.loadedSurfaces.delete(currentSurface.id);
 					if (typeof window.redraw3D === "function") {
 						window.redraw3D();
@@ -300,7 +300,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 					window.debouncedUpdateTreeView();
 					console.log("Surface removed from both memory and database");
 				})
-				.catch(function(error) {
+				.catch(function (error) {
 					console.error("Error removing surface:", error);
 					window.loadedSurfaces.delete(currentSurface.id);
 					if (typeof window.redraw3D === "function") {
@@ -310,7 +310,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 					}
 				});
 		},
-		onOption2: function() {
+		onOption2: function () {
 			// Step 7d) Toggle visibility
 			window.setSurfaceVisibility(currentSurface.id, !currentSurface.visible);
 			if (typeof window.redraw3D === "function") {
@@ -325,7 +325,7 @@ export function showSurfaceContextMenu(x, y, surfaceId = null) {
 
 	// Step 8) Position dialog near click location (adjusted for viewport bounds)
 	if (dialog.element) {
-		var dialogWidth = 350;
+		var dialogWidth = 370;
 		var dialogHeight = 250;
 		var posX = Math.min(x, window.innerWidth - dialogWidth - 20);
 		var posY = Math.min(y, window.innerHeight - dialogHeight - 20);

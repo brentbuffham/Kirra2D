@@ -19,8 +19,8 @@ export class ColourRampFactory {
         // PPV-style: green → yellow → orange → red
         "ppv": [[0, 0.8, 0], [0.5, 1, 0], [1, 1, 0], [1, 0.6, 0], [1, 0, 0]],
 
-        // Jet: blue → cyan → green → yellow → red
-        "jet": [[0, 0, 0.5], [0, 0, 1], [0, 1, 1], [0, 1, 0], [1, 1, 0], [1, 0, 0], [0.5, 0, 0]],
+        // Jet: blue → cyan → green → yellow → orange → red
+        "jet": [[0, 0, 1], [0, 0.5, 1], [0, 1, 1], [0, 1, 0], [1, 1, 0], [1, 0.5, 0], [1, 0, 0]],
 
         // Viridis-style (scientific colormap)
         "viridis": [[0.267, 0.004, 0.329], [0.283, 0.141, 0.458], [0.127, 0.566, 0.551], [0.544, 0.774, 0.286], [0.993, 0.906, 0.144]],

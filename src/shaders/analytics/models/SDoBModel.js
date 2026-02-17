@@ -15,8 +15,8 @@
  * DataTexture packed by ShaderUniformManager. The fallback explosive density
  * is only used when a hole has NO charging data at all.
  *
- * Each pixel shows the SDoB of its nearest hole, rendered as a smooth
- * gradient ramp: Red (0, flyrock risk) → Lime green (target) → Blue (high, safe).
+ * Each pixel shows an inverse-distance-weighted blend of all nearby hole SDoB values,
+ * rendered as a smooth gradient ramp: Red (0, flyrock risk) → Lime green (target) → Blue (high, safe).
  */
 export class SDoBModel {
 	constructor() {
@@ -122,48 +122,41 @@ export class SDoBModel {
 			}
 
 			void main() {
-				float nearestDist = 1e10;
-				float nearestSDoB = 0.0;
+				float weightedSum = 0.0;
+				float weightTotal = 0.0;
+				float minDist = 1e10;
 
 				for (int i = 0; i < 512; i++) {
 					if (i >= uHoleCount) break;
 
 					vec4 posCharge = getHoleData(i, 0);
-					vec3 holePos = posCharge.xyz;
-
-					// 2D plan-view distance
-					float dist = distance(vWorldPos.xy, holePos.xy);
-
+					float dist = distance(vWorldPos.xy, posCharge.xy);
 					if (dist > uMaxDisplayDistance) continue;
 
-					if (dist < nearestDist) {
-						nearestDist = dist;
-						nearestSDoB = computeHoleSDoB(i);
-					}
+					float sdob = computeHoleSDoB(i);
+					if (sdob <= 0.0) continue;
+
+					float w = 1.0 / max(dist * dist, 0.01);
+					weightedSum += sdob * w;
+					weightTotal += w;
+					minDist = min(minDist, dist);
 				}
 
-				// Discard beyond range or no valid SDoB
-				if (nearestDist > uMaxDisplayDistance) discard;
-				if (nearestSDoB <= 0.0) discard;
+				if (weightTotal <= 0.0 || minDist > uMaxDisplayDistance) discard;
 
-				// Normalise to [0,1] for colour ramp
-				float t = clamp((nearestSDoB - uMinValue) / (uMaxValue - uMinValue), 0.0, 1.0);
-
-				// Sample colour ramp (red=0 → lime green=target → blue=safe)
+				float blendedSDoB = weightedSum / weightTotal;
+				float t = clamp((blendedSDoB - uMinValue) / (uMaxValue - uMinValue), 0.0, 1.0);
 				vec4 colour = texture2D(uColourRamp, vec2(t, 0.5));
 
-				// Fade alpha near the edge of display distance
-				float edgeFade = 1.0 - smoothstep(uMaxDisplayDistance * 0.85, uMaxDisplayDistance, nearestDist);
+				// Edge fade
+				float edgeFade = 1.0 - smoothstep(uMaxDisplayDistance * 0.85, uMaxDisplayDistance, minDist);
 				colour.a *= uOpacity * edgeFade;
 
-				// Target SDoB contour — lime green highlight band
+				// Target SDoB contour
 				if (uTargetSDoB > 0.0) {
-					float targetT = (uTargetSDoB - uMinValue) / (uMaxValue - uMinValue);
+					float distToTarget = abs(blendedSDoB - uTargetSDoB);
 					float lineWidth = (uMaxValue - uMinValue) * 0.015;
-					float distToTarget = abs(nearestSDoB - uTargetSDoB);
-
 					if (distToTarget < lineWidth) {
-						// Bright lime green contour at target SDoB
 						float lineFactor = 1.0 - (distToTarget / lineWidth);
 						colour.rgb = mix(colour.rgb, vec3(0.2, 1.0, 0.0), lineFactor * 0.8);
 						colour.a = max(colour.a, uOpacity * lineFactor);

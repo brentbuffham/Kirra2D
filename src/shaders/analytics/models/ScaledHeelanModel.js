@@ -14,7 +14,7 @@ export class ScaledHeelanModel {
         this.name = "scaled_heelan";
         this.displayName = "Scaled Heelan (Blair & Minchinton 2006)";
         this.unit = "mm/s";
-        this.defaultColourRamp = "ppv";
+        this.defaultColourRamp = "jet";
         this.defaultMin = 0;
         this.defaultMax = 300;  // mm/s VPPV
     }

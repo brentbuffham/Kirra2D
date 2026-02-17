@@ -429,6 +429,6 @@ Measure terrain features:
 ---
 
 See also:
-- [Coordinate-System.md](Coordinate-System.md) — Coordinate conventions and transformations
-- [User-Interface.md](User-Interface.md) — UI components and tools
-- [Statistics-and-Reporting.md](Statistics-and-Reporting.md) — Analysis and reporting
+- [Coordinate System](Coordinate-System) — Coordinate conventions and transformations
+- [User Interface](User-Interface) — UI components and tools
+- [Statistics and Reporting](Statistics-and-Reporting) — Analysis and reporting

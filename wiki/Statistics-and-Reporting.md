@@ -526,6 +526,6 @@ Display statistics directly on canvas:
 ---
 
 See also:
-- [Blast-Hole-Management.md](Blast-Hole-Management.md) — Hole data structure
-- [Charging-System.md](Charging-System.md) — Charge mass calculations
-- [Print-and-PDF-System.md](Print-and-PDF-System.md) — Statistics in PDF reports
+- [Blast Hole Management](Blast-Hole-Management) — Hole data structure
+- [Charging System](Charging-System) — Charge mass calculations
+- [Print and PDF System](Print-and-PDF-System) — Statistics in PDF reports

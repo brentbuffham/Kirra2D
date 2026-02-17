@@ -5,7 +5,7 @@
 The Blast Analytics system provides GPU-accelerated vibration and damage modelling overlaid on blast patterns. All calculations run in real-time on the GPU via WebGL fragment shaders, enabling interactive what-if analysis as holes are moved or charges are modified.
 
 **Key Features:**
-- **Four Analytics Models**: PPV Site Law, Heelan Original, Scaled Heelan, and Non-Linear Damage
+- **Five Analytics Models**: PPV Site Law, Heelan Original, Scaled Heelan, Non-Linear Damage, and Scaled Depth of Burial (SDoB)
 - **GPU-Accelerated**: All per-pixel calculations run in GLSL fragment shaders
 - **Reactive Updates**: Shader refreshes in real-time during hole drag or charge edits
 - **Charging-Aware**: Reads actual charge column bounds, product VOD, and deck masses from the charging system
@@ -23,7 +23,7 @@ The Blast Analysis Shader dialog is accessed from the application menu. It prese
 
 | Field | Description |
 |-------|-------------|
-| **Analytics Model** | Select from PPV, Heelan Original, Scaled Heelan, or Non-Linear Damage |
+| **Analytics Model** | Select from PPV, Heelan Original, Scaled Heelan, Non-Linear Damage, or SDoB |
 | **Render On** | Choose a loaded surface or "Generate Analysis Plane" for a flat rectangle |
 | **Blast Pattern** | Filter to a specific blast entity or "All Blast Holes" |
 | **Apply Mode** | "Overlay on Original" or "Create Duplicate Surface" |
@@ -175,6 +175,55 @@ DamageIndex = cumulative_PPV / PPV_critical
 
 **Best for:** Fragmentation analysis, overbreak prediction, damage zone mapping.
 
+### 5. Scaled Depth of Burial (`sdob`)
+
+Implements the Chiappetta & Treleven (1997) Scaled Depth of Burial analysis. Each pixel shows the SDoB of its nearest hole, rendered as a colour gradient from red (flyrock risk) through lime green (target) to blue (safe). An optional contour line highlights the target SDoB value.
+
+**Formula (Chiappetta & Treleven 1997):**
+```
+D    = St + 0.5 × contributingLen     (distance from surface to centre of contributing charge)
+SDoB = D / Wt_m^(1/3)                 (m/kg^(1/3))
+```
+
+**Contributing charge:**
+```
+m = 10 for ø >= 100mm, 8 for smaller holes
+contributingLen = min(chargeLen, m × ø_m)
+Wt_m = massPerMetre × contributingLen
+```
+
+Where `massPerMetre = π × r² × density × 1000` (kg/m).
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| targetSDoB | 1.5 m/kg^(1/3) | Target SDoB contour (lime green highlight band) |
+| maxDisplayDistance | 50 m | Maximum distance from nearest hole to render |
+| fallbackDensity | 1.2 kg/L | Fallback explosive density when no charging data |
+
+**Output unit:** m/kg^(1/3)
+**Default colour ramp:** `sdob` (red-orange-lime green-cyan-blue)
+**Default range:** 0-3.0 m/kg^(1/3)
+
+**SDoB risk levels:**
+
+| SDoB (m/kg^(1/3)) | Colour | Interpretation |
+|---|---|---|
+| < 0.8 | Red | Severe flyrock risk — crater formation likely |
+| 0.8 – 1.2 | Orange | Elevated flyrock risk — review stemming |
+| 1.2 – 1.8 | Lime green | Normal blast conditions (target zone) |
+| 1.8 – 2.5 | Cyan | Well-confined blast |
+| > 2.5 | Blue | Over-confined — may affect fragmentation |
+
+**Features:**
+- Reads actual per-hole charging data (stemming, charge column, density) from the DataTexture
+- Fallback explosive density only used when a hole has no charging data at all
+- Target SDoB contour rendered as a bright lime green band
+- Edge fade near the maximum display distance for smooth visualisation
+
+**References:**
+- Chiappetta, R.F. & Treleven, J.P. (1997). Scaled Depth of Burial concept
+- McKenzie, C. (2009/2022). Flyrock range prediction using SDoB — see [Flyrock Model: McKenzie](Flyrock-Model-McKenzie)
+
 ---
 
 ## Architecture
@@ -190,6 +239,7 @@ src/shaders/
       HeelanOriginalModel.js        -- Heelan (1953) model
       ScaledHeelanModel.js          -- Blair & Minchinton (2006) model
       NonLinearDamageModel.js        -- Holmberg-Persson damage model
+      SDoBModel.js                  -- Chiappetta Scaled Depth of Burial
   core/
     BaseAnalyticsShader.js          -- Abstract base class
     ShaderUniformManager.js         -- Packs hole data into GPU textures
@@ -255,6 +305,7 @@ Available ramps defined in `ColourRampFactory`:
 | `viridis` | purple-teal-green-yellow | Scientific visualization |
 | `damage` | blue-green-yellow-red-dark red | Damage index |
 | `compliance` | green-yellow-red | Pass/fail compliance |
+| `sdob` | red-orange-lime green-cyan-blue | Scaled Depth of Burial |
 | `grey` | black-white | Greyscale output |
 
 ---
