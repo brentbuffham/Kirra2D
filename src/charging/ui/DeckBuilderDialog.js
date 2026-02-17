@@ -11,7 +11,7 @@
 
 import { FloatingDialog, createEnhancedFormContent, getFormData, showModalMessage, showConfirmationDialog } from "../../dialog/FloatingDialog.js";
 import { HoleSectionView } from "./HoleSectionView.js";
-import { HoleCharging } from "../HoleCharging.js";
+import { HoleCharging, chargingKey } from "../HoleCharging.js";
 import { Deck } from "../Deck.js";
 import { Primer } from "../Primer.js";
 import { DecoupledContent } from "../DecoupledContent.js";
@@ -142,7 +142,7 @@ export function showDeckBuilderDialog(referenceHole) {
     var configTracker = { config: null };
 
     // Build or clone HoleCharging for the reference hole
-    var existingCharging = (!isVirtualHole && window.loadedCharging) ? window.loadedCharging.get(refHole.holeID) : null;
+    var existingCharging = (!isVirtualHole && window.loadedCharging) ? window.loadedCharging.get(chargingKey(refHole)) : null;
     var workingCharging;
     if (existingCharging) {
         workingCharging = HoleCharging.fromJSON(existingCharging.toJSON());
@@ -1500,7 +1500,7 @@ function applyToSelectedHoles(workingCharging, refHole, configTracker) {
             if (!window.loadedCharging) {
                 window.loadedCharging = new Map();
             }
-            window.loadedCharging.set(hole.holeID, hc);
+            window.loadedCharging.set(chargingKey(hole), hc);
         }
 
         // Recalculate massPerHole for all holes
@@ -1709,26 +1709,46 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
         { key: "description", label: "Description", type: "text", value: "" }
     ];
 
-    // Add editable deck length formula fields
+    // Add editable top/base depth formula fields per deck
     for (var di = 0; di < workingCharging.decks.length; di++) {
         var deck = workingCharging.decks[di];
-        var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
         var productName = deck.product ? deck.product.name : "Empty";
-        var defaultVal;
+        var deckLabel = "[" + (di + 1) + "] " + deck.deckType + " - " + productName;
+
         if (deck.deckType === DECK_TYPES.SPACER) {
-            defaultVal = "product";
-        } else if (deck.lengthFormula && deck.lengthFormula.indexOf("fx:") === 0) {
-            defaultVal = deck.lengthFormula;
-        } else if (deck.lengthFormula && deck.lengthFormula.indexOf("m:") === 0) {
-            defaultVal = deck.lengthFormula;
+            // Spacer: only top field (base derived from product length)
+            var defaultTop = deck.topDepthFormula || String(parseFloat(deck.topDepth.toFixed(3)));
+            fields.push({
+                key: "deckTop_" + di,
+                label: deckLabel + " Top",
+                type: "text",
+                value: defaultTop
+            });
         } else {
-            defaultVal = String(parseFloat(deckLen.toFixed(3)));
+            // Non-spacer: top and base fields
+            var defaultTopVal = deck.topDepthFormula || String(parseFloat(deck.topDepth.toFixed(3)));
+            var defaultBaseVal = deck.baseDepthFormula || String(parseFloat(deck.baseDepth.toFixed(3)));
+            fields.push({
+                key: "deckTop_" + di,
+                label: deckLabel + " Top",
+                type: "text",
+                value: defaultTopVal
+            });
+            fields.push({
+                key: "deckBase_" + di,
+                label: deckLabel + " Base",
+                type: "text",
+                value: defaultBaseVal
+            });
         }
+
+        // Swap field for all deck types
         fields.push({
-            key: "deckLength_" + di,
-            label: "[" + (di + 1) + "] " + deck.deckType + " - " + productName,
+            key: "deckSwap_" + di,
+            label: deckLabel + " Swap",
             type: "text",
-            value: defaultVal
+            value: deck.swap || "",
+            placeholder: "e.g. w{WR-ANFO}|r{Emulsion}|t{Emulsion,C>50}"
         });
     }
 
@@ -1780,7 +1800,13 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
 
     var primerCount = workingCharging.primers ? workingCharging.primers.length : 0;
     var deckCount = workingCharging.decks.length;
-    var saveDialogHeight = 220 + deckCount * 40 + primerCount * 50;
+    // Two fields per non-spacer deck (top + base), one field per spacer
+    var spacerCount = 0;
+    for (var sc = 0; sc < workingCharging.decks.length; sc++) {
+        if (workingCharging.decks[sc].deckType === DECK_TYPES.SPACER) spacerCount++;
+    }
+    var nonSpacerCount = deckCount - spacerCount;
+    var saveDialogHeight = 220 + nonSpacerCount * 80 + spacerCount * 40 + deckCount * 40 + primerCount * 50;
 
     var dialog = new FloatingDialog({
         title: "Save as Rule",
@@ -1802,7 +1828,6 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
 
             for (var i = 0; i < workingCharging.decks.length; i++) {
                 var deck = workingCharging.decks[i];
-                var deckLen = Math.abs(deck.baseDepth - deck.topDepth);
                 var idx = i + 1;
 
                 var entry = {
@@ -1815,29 +1840,23 @@ function showSaveAsRuleDialog(workingCharging, configTracker) {
                     isProportionalDeck: deck.isProportionalDeck !== false
                 };
 
-                // Read user-edited length value from form field
-                var userVal = (data["deckLength_" + i] || "").trim();
-
                 if (deck.deckType === DECK_TYPES.SPACER) {
-                    entry.lengthMode = "product";
-                } else if (userVal.indexOf("fx:") === 0) {
-                    entry.lengthMode = "formula";
-                    entry.formula = userVal;
-                    entry.length = parseFloat(deckLen.toFixed(3));
-                } else if (userVal.indexOf("m:") === 0) {
-                    entry.lengthMode = "mass";
-                    entry.massKg = parseFloat(userVal.substring(2)) || 0;
-                    entry.length = parseFloat(deckLen.toFixed(3));
+                    // Spacer: only top field
+                    entry.top = (data["deckTop_" + i] || "0").trim();
                 } else {
-                    var numVal = parseFloat(userVal);
-                    entry.lengthMode = "fixed";
-                    entry.length = !isNaN(numVal) && numVal > 0 ? numVal : parseFloat(deckLen.toFixed(3));
+                    // Non-spacer: read top and base from form fields
+                    entry.top = (data["deckTop_" + i] || "0").trim();
+                    entry.base = (data["deckBase_" + i] || "fx:holeLength").trim();
                 }
 
                 // Copy overlap pattern if present
                 if (deck.overlapPattern) {
                     entry.overlapPattern = deck.overlapPattern;
                 }
+
+                // Read swap field from form
+                var swapVal = (data["deckSwap_" + i] || "").trim();
+                if (swapVal) entry.swap = swapVal;
 
                 switch (deck.deckType) {
                     case DECK_TYPES.INERT: inertDeckArray.push(entry); break;

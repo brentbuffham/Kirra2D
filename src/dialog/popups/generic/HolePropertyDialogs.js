@@ -784,6 +784,149 @@ export function measuredCommentPopup() {
 }
 
 // =====================================
+// MEASURED TEMPERATURE DIALOG
+// =====================================
+export function measuredTemperaturePopup() {
+	if (!window.selectedHole || !window.isHoleVisible(window.selectedHole)) {
+		return;
+	}
+
+	var hole = window.selectedHole;
+	var currentTemp = hole.measuredTemperature || 0;
+	var currentUnit = hole.measuredTemperatureUnit || "C";
+
+	var fields = [
+		{
+			label: "Temperature",
+			name: "temperature",
+			type: "number",
+			value: String(currentTemp),
+			placeholder: "Temperature value",
+			step: "0.1",
+		},
+		{
+			label: "Unit",
+			name: "tempUnit",
+			type: "select",
+			options: [
+				{ value: "C", text: "Celsius" },
+				{ value: "F", text: "Fahrenheit" },
+			],
+			value: currentUnit,
+		},
+	];
+
+	var formContent = window.createFormContent(fields);
+
+	var dialog = new window.FloatingDialog({
+		title: "Record Temperature - Hole: " + hole.holeID,
+		content: formContent,
+		layoutType: "default",
+		width: 350,
+		height: 180,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Confirm",
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var tempInput = formContent.querySelector("input[name='temperature']");
+			var unitSelect = formContent.querySelector("select[name='tempUnit']");
+			var tempVal = parseFloat(tempInput.value) || 0;
+			var unitVal = unitSelect ? unitSelect.value : "C";
+
+			var index = window.allBlastHoles.findIndex(function(h) { return h === window.selectedHole; });
+			if (index !== -1) {
+				window.allBlastHoles[index].measuredTemperature = tempVal;
+				window.allBlastHoles[index].measuredTemperatureUnit = unitVal;
+				window.allBlastHoles[index].measuredTemperatureTimeStamp = window.setMeasuredDate();
+
+				if (typeof window.debouncedSaveHoles === "function") {
+					window.debouncedSaveHoles();
+				}
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+			}
+		},
+	});
+	dialog.show();
+
+	setTimeout(function() {
+		var tempInput = formContent.querySelector("input[name='temperature']");
+		if (tempInput) { tempInput.focus(); tempInput.select(); }
+	}, 100);
+}
+
+// =====================================
+// HOLE CONDITIONS DIALOG
+// =====================================
+export function holeConditionsPopup() {
+	if (!window.selectedHole || !window.isHoleVisible(window.selectedHole)) {
+		return;
+	}
+
+	var hole = window.selectedHole;
+	var currentConditions = hole.holeConditions || "";
+	var condSet = {};
+	if (currentConditions) {
+		var parts = currentConditions.split(",");
+		for (var i = 0; i < parts.length; i++) {
+			var c = parts[i].trim();
+			if (c) condSet[c] = true;
+		}
+	}
+
+	var fields = [
+		{ label: "Wet (w)", name: "cond_w", type: "checkbox", checked: !!condSet["w"] },
+		{ label: "Damp (d)", name: "cond_d", type: "checkbox", checked: !!condSet["d"] },
+		{ label: "Reactive (r)", name: "cond_r", type: "checkbox", checked: !!condSet["r"] },
+		{
+			label: "Per-Hole Swap Override",
+			name: "perHoleCondition",
+			type: "text",
+			value: hole.perHoleCondition || "",
+			placeholder: "e.g. w{WR-ANFO}|r{Emulsion}",
+		},
+	];
+
+	var formContent = window.createFormContent(fields);
+
+	var dialog = new window.FloatingDialog({
+		title: "Hole Conditions - Hole: " + hole.holeID,
+		content: formContent,
+		layoutType: "default",
+		width: 380,
+		height: 240,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "Confirm",
+		cancelText: "Cancel",
+		onConfirm: function() {
+			var conditions = [];
+			var wCheck = formContent.querySelector("input[name='cond_w']");
+			var dCheck = formContent.querySelector("input[name='cond_d']");
+			var rCheck = formContent.querySelector("input[name='cond_r']");
+			if (wCheck && wCheck.checked) conditions.push("w");
+			if (dCheck && dCheck.checked) conditions.push("d");
+			if (rCheck && rCheck.checked) conditions.push("r");
+
+			var perHoleInput = formContent.querySelector("input[name='perHoleCondition']");
+			var perHoleVal = perHoleInput ? perHoleInput.value.trim() : "";
+
+			var index = window.allBlastHoles.findIndex(function(h) { return h === window.selectedHole; });
+			if (index !== -1) {
+				window.allBlastHoles[index].holeConditions = conditions.join(",");
+				window.allBlastHoles[index].perHoleCondition = perHoleVal;
+
+				if (typeof window.debouncedSaveHoles === "function") {
+					window.debouncedSaveHoles();
+				}
+				if (typeof window.redraw3D === "function") { window.redraw3D(); } else { window.drawData(window.allBlastHoles, window.selectedHole); }
+			}
+		},
+	});
+	dialog.show();
+}
+
+// =====================================
 // EXPOSE GLOBALLY
 // =====================================
 window.renameEntityDialog = renameEntityDialog;
@@ -793,5 +936,7 @@ window.editHoleLengthPopup = editHoleLengthPopup;
 window.measuredLengthPopup = measuredLengthPopup;
 window.measuredMassPopup = measuredMassPopup;
 window.measuredCommentPopup = measuredCommentPopup;
+window.measuredTemperaturePopup = measuredTemperaturePopup;
+window.holeConditionsPopup = holeConditionsPopup;
 
-console.log("✅ HolePropertyDialogs.js: All 7 property dialog functions loaded and exposed globally");
+console.log("HolePropertyDialogs.js: All 9 property dialog functions loaded and exposed globally");

@@ -16,6 +16,7 @@
  */
 
 import { richardsMoore, envelopeAltitude, lundborg, mckenzie } from "./FlyrockCalculator.js";
+import { chargingKey } from "../../charging/HoleCharging.js";
 
 var PI = Math.PI;
 var GRAVITY = 9.80665;
@@ -360,11 +361,11 @@ function passesAngleCull(v0, v1, v2, cosEndAngle) {
  */
 function getHoleFlyrockParams(hole, config) {
 	// Charging data is required — it provides stemming, charge length, and explosive density
-	if (!window.loadedCharging || !window.loadedCharging.has(hole.holeID)) {
+	if (!window.loadedCharging || !window.loadedCharging.has(chargingKey(hole))) {
 		return null;
 	}
 
-	var charging = window.loadedCharging.get(hole.holeID);
+	var charging = window.loadedCharging.get(chargingKey(hole));
 	if (!charging || !charging.decks || charging.decks.length === 0) {
 		return null;
 	}

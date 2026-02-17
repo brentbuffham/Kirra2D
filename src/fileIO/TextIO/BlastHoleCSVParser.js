@@ -140,6 +140,12 @@ class BlastHoleCSVParser extends BaseParser {
 				spacing = hvf("spacing") || 0;
 				connectorCurve = hvi("connectorCurve") || 0;
 				connectorVodMs = hvf("connectorVodMs") || 0;
+				// Hole condition fields for per-deck product swap
+				var holeConditionsVal = hv("holeConditions");
+				var measuredTempVal = hvf("measuredTemperature");
+				var measuredTempUnitVal = hv("measuredTemperatureUnit");
+				var measuredTempTSVal = hv("measuredTemperatureTimeStamp");
+				var perHoleConditionVal = hv("perHoleCondition");
 			}
 			// Step 15) Parse based on column count (35 column format - full data)
 			else if (len === 35) {
@@ -355,7 +361,12 @@ class BlastHoleCSVParser extends BaseParser {
 					burden: burden || 1,
 					spacing: spacing || 1,
 					connectorCurve: connectorCurve || 0,
-					connectorVodMs: connectorVodMs || 0
+					connectorVodMs: connectorVodMs || 0,
+					holeConditions: (typeof holeConditionsVal === "string") ? holeConditionsVal : "",
+					measuredTemperature: (typeof measuredTempVal === "number" && !isNaN(measuredTempVal)) ? measuredTempVal : 0,
+					measuredTemperatureUnit: measuredTempUnitVal || "C",
+					measuredTemperatureTimeStamp: measuredTempTSVal || "09/05/1975 00:00:00",
+					perHoleCondition: (typeof perHoleConditionVal === "string") ? perHoleConditionVal : ""
 				};
 
 				// Step 26) Add to parsed holes array

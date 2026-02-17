@@ -302,7 +302,7 @@ class BlastHoleCSVWriter extends BaseWriter {
 	// Step 14) Generate 35 column CSV format (all data) + connectorVodMs (36 columns)
 	generate35ColumnCSV(holes) {
 		var csv = "";
-		var header = "entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation,gradeYLocation,gradeZLocation,subdrillAmount,subdrillLength,benchHeight,holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp,rowID,posID,burden,spacing,connectorCurve,connectorVodMs";
+		var header = "entityName,entityType,holeID,startXLocation,startYLocation,startZLocation,endXLocation,endYLocation,endZLocation,gradeXLocation,gradeYLocation,gradeZLocation,subdrillAmount,subdrillLength,benchHeight,holeDiameter,holeType,fromHoleID,timingDelayMilliseconds,colorHexDecimal,holeLengthCalculated,holeAngle,holeBearing,holeTime,measuredLength,measuredLengthTimeStamp,measuredMass,measuredMassTimeStamp,measuredComment,measuredCommentTimeStamp,rowID,posID,burden,spacing,connectorCurve,connectorVodMs,holeConditions,measuredTemperature,measuredTemperatureUnit,measuredTemperatureTimeStamp,perHoleCondition";
 		csv += header + "\n";
 
 		var dp = this.decimalPlaces;
@@ -346,7 +346,12 @@ class BlastHoleCSVWriter extends BaseWriter {
 				this.safeToFixed(hole.burden, dp) + "," +
 				this.safeToFixed(hole.spacing, dp) + "," +
 				(hole.connectorCurve || "") + "," +
-				(hole.connectorVodMs || 0);
+				(hole.connectorVodMs || 0) + "," +
+				(hole.holeConditions || "") + "," +
+				this.safeToFixed(hole.measuredTemperature, dp) + "," +
+				(hole.measuredTemperatureUnit || "C") + "," +
+				(hole.measuredTemperatureTimeStamp || "") + "," +
+				(hole.perHoleCondition || "");
 
 			csv += row + "\n";
 		}

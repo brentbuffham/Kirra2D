@@ -50,6 +50,11 @@ export class Deck {
 		this.baseDepthFormula = options.baseDepthFormula || null;  // e.g. "fx:holeLength"
 		this.lengthFormula = options.lengthFormula || null;        // e.g. "fx:holeLength-4"
 
+		// Per-deck swap rules string: "w{WR-ANFO}|r{Emulsion}|t{Emulsion,C>50}"
+		this.swap = options.swap || null;
+		// Original product name if swapped by condition evaluation
+		this.swappedFrom = options.swappedFrom || null;
+
 		this.created = options.created || new Date().toISOString();
 		this.modified = new Date().toISOString();
 	}
@@ -206,6 +211,8 @@ export class Deck {
 			topDepthFormula: this.topDepthFormula,
 			baseDepthFormula: this.baseDepthFormula,
 			lengthFormula: this.lengthFormula,
+			swap: this.swap,
+			swappedFrom: this.swappedFrom,
 			created: this.created,
 			modified: this.modified
 		};

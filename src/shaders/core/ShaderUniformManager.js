@@ -1,5 +1,6 @@
 // src/shaders/core/ShaderUniformManager.js
 import * as THREE from "three";
+import { chargingKey } from "../../charging/HoleCharging.js";
 
 /**
  * ShaderUniformManager packs blast hole data into DataTextures for GPU consumption.
@@ -163,11 +164,11 @@ export class ShaderUniformManager {
             totalMassKg: parseFloat(hole.measuredMass) || 0
         };
 
-        if (!window.loadedCharging || !window.loadedCharging.has(hole.holeID)) {
+        if (!window.loadedCharging || !window.loadedCharging.has(chargingKey(hole))) {
             return result;
         }
 
-        var charging = window.loadedCharging.get(hole.holeID);
+        var charging = window.loadedCharging.get(chargingKey(hole));
         if (!charging || !charging.decks || charging.decks.length === 0) {
             return result;
         }
@@ -240,8 +241,8 @@ export class ShaderUniformManager {
      */
     _getMIC(hole) {
         // If charging data exists, find the largest explosive deck
-        if (window.loadedCharging && window.loadedCharging.has(hole.holeID)) {
-            var charging = window.loadedCharging.get(hole.holeID);
+        if (window.loadedCharging && window.loadedCharging.has(chargingKey(hole))) {
+            var charging = window.loadedCharging.get(chargingKey(hole));
             if (charging && charging.decks) {
                 var maxDeckMass = 0;
                 charging.decks.forEach(function(deck) {

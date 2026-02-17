@@ -581,10 +581,9 @@ function executeReorderRows() {
 			console.log("ReorderRows: Remapped", connectionsRemapped, "connections");
 		}
 
-		// Remap charging keys to follow hole ID changes
-		if (window.remapChargingKeys && window.extractPlainIdRemap) {
-			var plainRemap = window.extractPlainIdRemap(idRemapMap);
-			window.remapChargingKeys(plainRemap);
+		// Remap charging keys to follow hole ID changes (keys are already composite entityName:::holeID)
+		if (window.remapChargingKeys) {
+			window.remapChargingKeys(idRemapMap);
 		}
 	}
 

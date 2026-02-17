@@ -1,8 +1,17 @@
 /**
  * @fileoverview SimpleRuleEngine - Unified template engine for charge rules
  *
- * All charge configs are template-based: deck arrays merged by idx → applyTemplate().
- * No hardcoded per-configCode functions. All deck lengths are formula, mass, product, or fixed.
+ * All charge configs are template-based: deck arrays merged by idx -> applyTemplate().
+ * No hardcoded per-configCode functions.
+ *
+ * Template entries use top/base depth formulas:
+ *   top  = "0" | "fx:deckBase[1]" | "2.5"  (depth from collar)
+ *   base = "fx:holeLength" | "3.5" | "fx:deckBase[1]"  (depth from collar)
+ *
+ * Mass field modes:
+ *   null     = no mass tracking
+ *   number   = target kg (derive missing top or base from mass length)
+ *   "mass"   = calculate mass from (base - top) for display
  */
 
 import { HoleCharging } from "../HoleCharging.js";
@@ -10,6 +19,7 @@ import { Deck } from "../Deck.js";
 import { Primer } from "../Primer.js";
 import { DECK_TYPES } from "../ChargingConstants.js";
 import { isFormula, evaluateFormula } from "../../helpers/FormulaEvaluator.js";
+import { resolveProductSwap } from "../SwapCondition.js";
 
 /**
  * Find a product by name from the loaded products Map
@@ -48,6 +58,7 @@ function snap(product) {
 
 /**
  * Build indexed charge variables from laid-out decks for primer formula context.
+ * Only indexes COUPLED and DECOUPLED decks for chargeBase[N], chargeTop[N], chargeLength[N].
  * @param {Array} decks - Array of Deck objects (sorted top-to-bottom)
  * @param {Object} ctx - Formula context object to populate
  */
@@ -61,12 +72,11 @@ function buildIndexedChargeVars(decks, ctx) {
 		var d = decks[i];
 		var dt = d.deckType;
 		if (dt === DECK_TYPES.COUPLED || dt === DECK_TYPES.DECOUPLED) {
-			var deckPos = i + 1; // 1-based deck array position — matches UI labels
+			var deckPos = i + 1; // 1-based deck array position
 			var cTop = d.topDepth;
 			var cBase = d.baseDepth;
 			var cLen = cBase - cTop;
 
-			// Index by deck array position so chargeBase[4] matches COUPLED[4] in the UI
 			ctx["chargeBase_" + deckPos] = cBase;
 			ctx["chargeTop_" + deckPos] = cTop;
 			ctx["chargeLength_" + deckPos] = cLen;
@@ -86,6 +96,86 @@ function buildIndexedChargeVars(decks, ctx) {
 	ctx.chargeTop = deepestTop;
 	ctx.chargeLength = deepestLen;
 	ctx.stemLength = firstChargeTop !== null ? firstChargeTop : 0;
+}
+
+/**
+ * Build indexed deck variables from resolved decks for deckBase[N]/deckTop[N]/deckLength[N].
+ * ALL deck types get indexed (not just charge decks).
+ * @param {Array} resolvedDecks - Array of {topDepth, baseDepth} objects
+ * @param {Object} ctx - Formula context object to populate
+ */
+function buildIndexedDeckVars(resolvedDecks, ctx) {
+	for (var i = 0; i < resolvedDecks.length; i++) {
+		var d = resolvedDecks[i];
+		var deckPos = i + 1;
+		ctx["deckBase_" + deckPos] = d.baseDepth;
+		ctx["deckTop_" + deckPos] = d.topDepth;
+		ctx["deckLength_" + deckPos] = d.baseDepth - d.topDepth;
+	}
+}
+
+/**
+ * Resolve a top or base depth value from a template entry field.
+ * Handles: numeric string, "fx:formula", null/empty.
+ * @param {string|null} depthStr - The depth field value
+ * @param {number} fallback - Fallback value if null/empty/error
+ * @param {Object} ctx - Formula context
+ * @returns {{ value: number, formula: string|null }} Resolved depth and original formula
+ */
+function resolveDepth(depthStr, fallback, ctx) {
+	if (depthStr == null || depthStr === "") {
+		return { value: fallback, formula: null };
+	}
+	var str = String(depthStr).trim();
+	if (isFormula(str)) {
+		var result = evaluateFormula(str, ctx);
+		return { value: (result != null && isFinite(result)) ? result : fallback, formula: str };
+	}
+	var num = parseFloat(str);
+	if (!isNaN(num) && isFinite(num)) {
+		return { value: num, formula: null };
+	}
+	return { value: fallback, formula: null };
+}
+
+/**
+ * Calculate the length of explosive column needed to hold a given mass.
+ * length = massKg / (density * 1000 * PI * (diameter/2000)^2)
+ * @param {number} massKg - Target mass in kilograms
+ * @param {number} density - Product density in g/cc
+ * @param {number} holeDiameterMm - Hole diameter in millimetres
+ * @returns {number} Length in metres
+ */
+function massToLength(massKg, density, holeDiameterMm) {
+	if (!massKg || massKg <= 0 || !density || density <= 0) return 0;
+	var diamM = (holeDiameterMm || 115) / 1000;
+	var radiusM = diamM / 2;
+	var area = Math.PI * radiusM * radiusM;
+	var kgPerMetre = density * 1000 * area;
+	if (kgPerMetre <= 0) return 0;
+	return massKg / kgPerMetre;
+}
+
+/**
+ * Build hole state object for swap condition evaluation.
+ * @param {Object} hole - Blast hole object
+ * @returns {{ conditions: Set<string>, temperature: number, tempUnit: string }}
+ */
+function buildHoleState(hole) {
+	var conditions = new Set();
+	var condStr = hole.holeConditions || "";
+	if (condStr) {
+		var parts = condStr.split(",");
+		for (var i = 0; i < parts.length; i++) {
+			var trimmed = parts[i].trim();
+			if (trimmed) conditions.add(trimmed);
+		}
+	}
+	return {
+		conditions: conditions,
+		temperature: hole.measuredTemperature || 0,
+		tempUnit: hole.measuredTemperatureUnit || "C"
+	};
 }
 
 /**
@@ -111,11 +201,8 @@ export function applyChargeRule(hole, config) {
 /**
  * Unified template engine. Lays out decks from a template sequence into a HoleCharging.
  *
- * LengthModes:
- *   "fixed"   - exact metres
- *   "formula" - fx:expression evaluated with hole variables
- *   "mass"    - kg-based length calculation from product density
- *   "product" - length from product.lengthMm (spacers)
+ * Each template entry has top/base depth fields (numeric or fx:formula).
+ * Decks are resolved sequentially by idx so deckBase[M] is available for M < current.
  *
  * @param {Object} hole - Blast hole object
  * @param {Object} config - ChargeConfig
@@ -136,7 +223,7 @@ function applyTemplate(hole, config, deckSequence) {
 	var holeDiameterMm = hole.holeDiameter || 115;
 	console.log("[applyTemplate] hole=" + hole.holeID + " holeLen=" + holeLen.toFixed(3) + " dia=" + holeDiameterMm);
 
-	// Formula context for deck length formulas
+	// Formula context — grows incrementally as each deck is resolved
 	var formulaCtx = {
 		holeLength: holeLen,
 		holeDiameter: holeDiameterMm,
@@ -148,107 +235,115 @@ function applyTemplate(hole, config, deckSequence) {
 		stemLength: 0
 	};
 
-	// Pass 1: resolve all deck lengths
-	var resolvedLengths = [];
-	var totalFixed = 0;
+	// Track resolved decks for deckBase[N]/deckTop[N] variables
+	var resolvedDecks = [];
 
+	// Single pass: resolve each deck sequentially by idx
 	for (var t = 0; t < deckSequence.length; t++) {
 		var entry = deckSequence[t];
-		var deckLen = 0;
+		var deckType = entry.type || DECK_TYPES.INERT;
+		var product = findProduct(entry.product);
+		var topDepth, baseDepth;
+		var topFormula = null, baseFormula = null;
 
-		switch (entry.lengthMode) {
-			case "formula":
-				if (entry.formula) {
-					var formulaStr = entry.formula;
-					if (formulaStr.indexOf("fx:") !== 0 && formulaStr.indexOf("=") !== 0) {
-						formulaStr = "fx:" + formulaStr;
-					}
-					var fLen = evaluateFormula(formulaStr, formulaCtx);
-					deckLen = (fLen != null && fLen > 0) ? fLen : (entry.length || 1.0);
-					console.log("[applyTemplate] formula='" + formulaStr + "' ctx.holeLength=" + formulaCtx.holeLength + " → " + deckLen.toFixed(3));
-				} else {
-					deckLen = entry.length || 1.0;
+		if (deckType === DECK_TYPES.SPACER) {
+			// Spacer: top from entry.top, base derived from product length
+			var spacerProduct = product;
+			var spacerLen = (spacerProduct && spacerProduct.lengthMm > 0) ? spacerProduct.lengthMm / 1000 : 0.4;
+
+			var spacerTop = resolveDepth(entry.top, resolvedDecks.length > 0 ? resolvedDecks[resolvedDecks.length - 1].baseDepth : 0, formulaCtx);
+			topDepth = spacerTop.value;
+			topFormula = spacerTop.formula;
+			baseDepth = topDepth + spacerLen;
+			baseFormula = null;
+		} else {
+			// Non-spacer: resolve top and base from entry
+			var prevBase = resolvedDecks.length > 0 ? resolvedDecks[resolvedDecks.length - 1].baseDepth : 0;
+			var topResult = resolveDepth(entry.top, prevBase, formulaCtx);
+			var baseResult = resolveDepth(entry.base, holeLen, formulaCtx);
+			topDepth = topResult.value;
+			baseDepth = baseResult.value;
+			topFormula = topResult.formula;
+			baseFormula = baseResult.formula;
+
+			// Handle mass field
+			var massKg = entry.massKg;
+			if (massKg != null && massKg !== "mass" && typeof massKg !== "string") {
+				// Numeric mass target — derive missing end
+				var density = product ? (product.density || 0.85) : 0.85;
+				var massLen = massToLength(massKg, density, holeDiameterMm);
+
+				if (entry.top == null || entry.top === "") {
+					// Top is unset — derive from base
+					topDepth = baseDepth - massLen;
+				} else if (entry.base == null || entry.base === "") {
+					// Base is unset — derive from top
+					baseDepth = topDepth + massLen;
 				}
-				totalFixed += deckLen;
-				break;
+				// If both are set, mass is informational only
+			}
 
-			case "mass":
-				if (entry.massKg > 0) {
-					var massProduct = findProduct(entry.product);
-					var density = massProduct ? (massProduct.density || 0.85) : 0.85;
-					var diamM = holeDiameterMm / 1000;
-					var radiusM = diamM / 2;
-					var area = Math.PI * radiusM * radiusM;
-					var kgPerMetre = density * 1000 * area;
-					deckLen = kgPerMetre > 0 ? (entry.massKg / kgPerMetre) : 1.0;
-				} else {
-					deckLen = entry.length || 1.0;
-				}
-				totalFixed += deckLen;
-				break;
-
-			case "product":
-				var spacerProduct = findProduct(entry.product);
-				if (spacerProduct && spacerProduct.lengthMm > 0) {
-					deckLen = spacerProduct.lengthMm / 1000;
-				} else {
-					deckLen = 0.4;
-				}
-				totalFixed += deckLen;
-				break;
-
-			default: // "fixed"
-				deckLen = entry.length || 0;
-				totalFixed += deckLen;
-				break;
+			console.log("[applyTemplate] deck idx=" + entry.idx + " top=" + topDepth.toFixed(3) + " base=" + baseDepth.toFixed(3));
 		}
 
-		resolvedLengths.push(deckLen);
-	}
+		// Clamp to 3 decimal places
+		topDepth = parseFloat(topDepth.toFixed(3));
+		baseDepth = parseFloat(baseDepth.toFixed(3));
 
-	// Pass 2: lay out decks from collar down
-	var cursor = 0;
-	for (var i = 0; i < deckSequence.length; i++) {
-		var deckLen2 = resolvedLengths[i];
-
-		// Truncate if exceeding hole
-		if (cursor + deckLen2 > holeLen) {
-			deckLen2 = holeLen - cursor;
-		}
-		if (deckLen2 <= 0) continue;
-
-		var product = findProduct(deckSequence[i].product);
-		var deckType = deckSequence[i].type || DECK_TYPES.INERT;
-
-		var entry = deckSequence[i];
-
-		// Preserve formula strings from template entries
-		var lengthFormula = null;
-		if (entry.lengthMode === "formula" && entry.formula) {
-			lengthFormula = entry.formula;
-			if (lengthFormula.indexOf("fx:") !== 0) lengthFormula = "fx:" + lengthFormula;
-		} else if (entry.lengthMode === "mass" && entry.massKg > 0) {
-			lengthFormula = "m:" + entry.massKg;
+		// Clamp to hole bounds
+		if (topDepth < 0) topDepth = 0;
+		if (baseDepth > holeLen) baseDepth = parseFloat(holeLen.toFixed(3));
+		if (baseDepth <= topDepth) {
+			// Zero or negative length — skip this deck
+			resolvedDecks.push({ topDepth: topDepth, baseDepth: topDepth });
+			buildIndexedDeckVars(resolvedDecks, formulaCtx);
+			continue;
 		}
 
-		var isVariableDeck = (entry.lengthMode === "formula") || (entry.isVariable || false);
+		// Determine scaling flags
+		var isVariableDeck = entry.isVariable || false;
+		if (!isVariableDeck && (topFormula || baseFormula)) {
+			isVariableDeck = true;
+		}
+
+		// Resolve product — check for swap conditions
+		var resolvedProduct = snap(product) || { name: entry.product || "Unknown", density: 0 };
+		var swappedFrom = null;
+		var swapField = entry.swap || null;
+
+		if (swapField || hole.perHoleCondition) {
+			var holeState = buildHoleState(hole);
+			var swapProduct = resolveProductSwap(swapField, hole.perHoleCondition, holeState);
+			if (swapProduct) {
+				var altProduct = findProduct(swapProduct);
+				if (altProduct) {
+					swappedFrom = resolvedProduct.name || entry.product;
+					resolvedProduct = snap(altProduct);
+				} else {
+					console.warn("[applyTemplate] swap product not found: " + swapProduct);
+				}
+			}
+		}
+
 		var deckOpts = {
 			holeID: hc.holeID,
 			deckType: deckType,
-			topDepth: parseFloat(cursor.toFixed(3)),
-			baseDepth: parseFloat((cursor + deckLen2).toFixed(3)),
-			product: snap(product) || { name: entry.product || "Unknown", density: 0 },
-			// Copy scaling flags from template entry
+			topDepth: topDepth,
+			baseDepth: baseDepth,
+			product: resolvedProduct,
 			isFixedLength: entry.isFixedLength || false,
 			isFixedMass: entry.isFixedMass || false,
 			isVariable: isVariableDeck,
 			isProportionalDeck: entry.isProportionalDeck !== undefined
 				? entry.isProportionalDeck
 				: (!entry.isFixedLength && !entry.isFixedMass && !isVariableDeck),
-			// Copy overlap pattern for DECOUPLED decks
 			overlapPattern: entry.overlapPattern || null,
-			// Store formula for display in Edit Deck dialog
-			lengthFormula: lengthFormula
+			topDepthFormula: topFormula,
+			baseDepthFormula: baseFormula,
+			// Keep lengthFormula for backward compat display
+			lengthFormula: null,
+			swap: swapField,
+			swappedFrom: swappedFrom
 		};
 
 		// DECOUPLED decks get empty contains array for package tracking
@@ -257,7 +352,10 @@ function applyTemplate(hole, config, deckSequence) {
 		}
 
 		hc.decks.push(new Deck(deckOpts));
-		cursor += deckLen2;
+
+		// Track resolved position for deckBase[N]/deckTop[N]
+		resolvedDecks.push({ topDepth: topDepth, baseDepth: baseDepth });
+		buildIndexedDeckVars(resolvedDecks, formulaCtx);
 	}
 
 	// Build primer formula context with indexed charge variables
@@ -272,8 +370,9 @@ function applyTemplate(hole, config, deckSequence) {
 		stemLength: 0
 	};
 	buildIndexedChargeVars(hc.decks, primerFormulaCtx);
+	buildIndexedDeckVars(resolvedDecks, primerFormulaCtx);
 
-	// Pass 3: place primers from primerArray
+	// Place primers from primerArray
 	if (config.primerArray && config.primerArray.length > 0) {
 		for (var pi = 0; pi < config.primerArray.length; pi++) {
 			var pt = config.primerArray[pi];

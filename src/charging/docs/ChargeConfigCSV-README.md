@@ -5,6 +5,8 @@
 Kirra exports and imports charge configurations as a **ZIP file** containing CSV files.
 All charge designs use **deck arrays** — there are no flat-field shortcuts. Every config is a template of typed deck entries plus primer entries, applied per-hole by the unified template engine.
 
+Each deck defines its position using **top and base depth values** (from collar), which can be fixed numbers or `fx:` formulas. Decks can reference each other using `deckBase[N]`/`deckTop[N]` indexed variables.
+
 ---
 
 ## File Structure
@@ -58,41 +60,56 @@ The first 3 columns (`Type`, `Description`, `Field`) are metadata — do not cha
 
 ### Inert, Coupled, and Decoupled Decks
 
-Format: `{idx,length,product}` or `{idx,length,product,FLAG}` — multiple entries separated by `;`
+Format: `{idx,top,base,product}` or `{idx,top,base,product,FLAG}` — multiple entries separated by `|`
 
 | Field | Description |
 |-------|-------------|
 | `idx` | Integer deck order position from collar (1-based). Deck 1 is at the top (collar), higher numbers go deeper. |
-| `length` | Deck length — see Length Modes below |
+| `top` | Depth from collar to deck top — number or `fx:formula` |
+| `base` | Depth from collar to deck base — number or `fx:formula` |
 | `product` | Product name, must match a name in `products.csv` |
 | `FLAG` | Optional scaling flag — see Scaling Flags below |
 
-**Length Modes:**
+**With mass field:** `{idx,top,base,mass,product}` or `{idx,top,base,mass,product,FLAG}`
 
-| Syntax | Mode | Description |
-|--------|------|-------------|
-| `2.0` | Fixed | Exact length in metres |
-| `fx:holeLength-4` | Formula | Calculated from hole properties at apply-time |
-| `m:50` | Mass | 50 kg of product — length calculated from density and hole diameter |
-| `product` | Product | Length derived from product.lengthMm (for spacer-like entries) |
+| Value | Meaning | Engine Behaviour |
+|-------|---------|------------------|
+| `50` (number) | Target 50 kg | If top empty → `top = base - massLength(50, density)`. If base empty → `base = top + massLength(50, density)`. If both given → mass is informational. |
+| `"mass"` (keyword) | Calculate from length | `mass = (base - top) * PI * (diam/2000)^2 * density * 1000` |
+
+**Parse rule:** If the 4th field is numeric or the keyword `mass`, it is the mass field and product is the 5th field. Otherwise the 4th field is the product name.
+
+**Top/Base Values:**
+
+| Syntax | Description |
+|--------|-------------|
+| `0` | Fixed depth at collar |
+| `3.5` | Fixed depth at 3.5m from collar |
+| `fx:deckBase[1]` | Start where deck 1 ends (formula) |
+| `fx:holeLength` | At the toe of the hole |
+| `fx:holeLength * 0.5` | At 50% of hole length |
+| `fx:(holeLength<3 ? holeLength*0.65 : 2.5)` | Variable depth with ternary logic |
 
 **Scaling Flags:**
 
 | Flag | Name | Behaviour when applied to different hole lengths |
 |------|------|--------------------------------------------------|
-| `FL` | Fixed Length | Deck keeps its exact metre length regardless of hole length |
-| `FM` | Fixed Mass | Deck recalculates length from mass at the new hole diameter |
-| `VR` | Variable | Deck re-evaluates its formula with the current hole's properties (auto-set for formula decks) |
-| `PR` | Proportional | Deck scales proportionally with hole length (default) |
+| `FL` | Fixed Length | Deck keeps its exact top/base positions regardless of hole length |
+| `FM` | Fixed Mass | Deck recalculates its length to maintain the same mass at the new hole diameter |
+| `VR` | Variable | Deck re-evaluates its top/base formula expressions using the current hole's properties. Formula decks are automatically set to Variable. |
+| `PR` | Proportional | Deck scales top/base proportionally with hole length (default) |
 
-When no flag is specified, the deck defaults to **proportional** scaling. Formula decks (`fx:...` length mode) are automatically set to **Variable** scaling so their formula is re-evaluated for each hole rather than being proportionally stretched.
+When no flag is specified, the deck defaults to **proportional** scaling. Formula decks (`fx:...` in top or base) are automatically set to **Variable** scaling so the formula result adapts per hole instead of being proportionally stretched.
 
 **Examples:**
 
 ```
-inertDeck:     {1,3.5,Stemming,FL};{5,fx:holeLength - 3.5,Stemming,VR}
-coupledDeck:   {2,fx:(holeLength<3.5)?(holeLength*0.3):3.5,ANFO,VR};{4,2.0,ANFO,FL}
-decoupledDeck: {3,1.5,PKG75mm,FL}
+inertDeck:     {1,0,3.5,Stemming,FL}|{5,fx:deckBase[4],fx:holeLength,Stemming,VR}
+coupledDeck:   {2,fx:deckBase[1],fx:holeLength,ANFO,VR}|{4,fx:deckBase[3],fx:deckBase[3]+2.0,ANFO,FL}
+decoupledDeck: {3,fx:deckBase[2],fx:deckBase[2]+1.5,PKG75mm,FL}
+
+With mass:     {2,,fx:holeLength,50,ANFO,FM}     (top derived from 50kg mass)
+Mass info:     {2,2.5,fx:holeLength,mass,ANFO}   (mass calculated from length)
 ```
 
 ### Overlap Pattern (Decoupled Decks)
@@ -100,7 +117,7 @@ decoupledDeck: {3,1.5,PKG75mm,FL}
 For DECOUPLED decks with variable package stacking, an overlap pattern can be appended:
 
 ```
-{idx,length,product,FLAG,overlap:base=3;base-1=2;n=1;top=2}
+{idx,top,base,product,FLAG,overlap:base=3|base-1=2|n=1|top=2}
 ```
 
 | Key | Description |
@@ -110,24 +127,51 @@ For DECOUPLED decks with variable package stacking, an overlap pattern can be ap
 | `n` | Default number of packages for all middle positions |
 | `top` | Number of packages at the top position |
 
+### Swap Conditions (Per-Deck Product Swap)
+
+Swap rules are appended after the scaling flag/overlap using `swap:` prefix. When the hole matches a condition, the deck product is replaced.
+
+```
+{idx,top,base,product,VR,swap:w{WR-ANFO}|r{Emulsion}|t{Emulsion,C>50}}
+```
+
+**Condition Codes:**
+
+| Code | Condition | Threshold | Example |
+|------|-----------|-----------|---------|
+| `w` | Wet hole | — | `w{WR-ANFO}` |
+| `d` | Damp hole | — | `d{WR-ANFO}` |
+| `r` | Reactive ground | — | `r{Emulsion}` |
+| `t` | Temperature | `C>50`, `F>=122`, `C<30` | `t{Emulsion,C>50}` |
+| `x1`..`x20` | Future | — | `x1{SpecialProduct}` |
+
+**Temperature threshold format:** `[C|F][>|<|>=|<=]number`
+
+Multiple rules separated by `|` — first match wins.
+
+**Per-hole override:** Blast holes have a `perHoleCondition` field that uses the same syntax. Per-hole override takes priority over deck-level swap rules.
+
+Spacer with swap: `{idx,top,product,swap:r{ALT-SPACER}}`
+
 ### Spacer Decks
 
-Format: `{idx,product}` — no length field (derived from product)
+Format: `{idx,top,product}` — no base field (derived from `top + product.lengthMm / 1000`)
 
 | Field | Description |
 |-------|-------------|
 | `idx` | Deck order position (1-based) |
-| `product` | Spacer product name — length is `product.lengthMm / 1000` |
+| `top` | Depth from collar to spacer position (number or `fx:formula`) |
+| `product` | Spacer product name |
 
 **Example:**
 
 ```
-spacerDeck: {3,GB230MM};{5,GB230MM}
+spacerDeck: {3,fx:deckBase[2],GB230MM}|{5,fx:deckBase[4],GB230MM}
 ```
 
 ### Primer Entries
 
-Format: `{idx,depth,Det{name},HE{name}}` — multiple entries separated by `;`
+Format: `{idx,depth,Det{name},HE{name}}` — multiple entries separated by `|`
 
 | Field | Description |
 |-------|-------------|
@@ -143,7 +187,7 @@ Single primer:
   {1,fx:chargeBase-0.3,Det{GENERIC-MS},HE{BS400G}}
 
 Two primers targeting specific charge decks (index = deck position):
-  {1,fx:chargeBase[8]-0.3,Det{GENERIC-MS},HE{BS400G}};{2,fx:chargeBase[4]-0.3,Det{GENERIC-MS},HE{BS400G}}
+  {1,fx:chargeBase[8]-0.3,Det{GENERIC-MS},HE{BS400G}}|{2,fx:chargeBase[4]-0.3,Det{GENERIC-MS},HE{BS400G}}
 
 Literal depth:
   {1,8.5,Det{GENERIC-E},HE{BS400G}}
@@ -156,20 +200,20 @@ Detonating cord (no booster):
 
 ## Deck Order and Hole Layout
 
-Decks are ordered from collar (top) to toe (bottom) using the `idx` field:
+Decks are ordered from collar (top) to toe (bottom) using the `idx` field. Each deck's top/base formulas are resolved sequentially by idx, so `deckBase[1]` is available when resolving deck 2, `deckBase[2]` when resolving deck 3, etc.
 
 ```
 Collar (0m)
   ┌─────────────────┐
-  │  Deck idx=1      │  ← e.g. Stemming (INERT, FL)
+  │  Deck idx=1      │  ← e.g. Stemming (INERT, top=0, base=3.5)
   ├─────────────────┤
-  │  Deck idx=2      │  ← e.g. ANFO (COUPLED, formula)
+  │  Deck idx=2      │  ← e.g. ANFO (COUPLED, top=fx:deckBase[1], base=fx:holeLength)
   ├─────────────────┤
-  │  Deck idx=3      │  ← e.g. Gas Bag (SPACER)
+  │  Deck idx=3      │  ← e.g. Gas Bag (SPACER, top=fx:deckBase[2])
   ├─────────────────┤
-  │  Deck idx=4      │  ← e.g. ANFO (COUPLED, 2.0m, FL)
+  │  Deck idx=4      │  ← e.g. ANFO (COUPLED, top=fx:deckBase[3])
   ├─────────────────┤
-  │  Deck idx=5      │  ← e.g. Stemming (INERT, formula)
+  │  Deck idx=5      │  ← e.g. Stemming (INERT, top=fx:deckBase[4])
   └─────────────────┘
 Toe (holeLength)
 ```
@@ -197,17 +241,27 @@ Unindexed variables refer to the **deepest** charge deck:
 | `benchHeight` | Bench height from hole data (m) |
 | `subdrillLength` | Subdrill length from hole data (m) |
 
-### Indexed Charge Variables
+### Indexed Deck Variables (ALL Deck Types)
 
-For **multi-deck** configs, indexed variables target a specific charge deck (COUPLED or DECOUPLED) by its **deck position number** — the same number shown in the section view labels (e.g. `COUPLED[4]`):
+Available during the sequential resolution pass — `deckBase[M]` is available when `M` was resolved in a prior iteration:
+
+| Variable | Description |
+|----------|-------------|
+| `deckBase[N]` | Base depth of any deck at position N |
+| `deckTop[N]` | Top depth of any deck at position N |
+| `deckLength[N]` | Length of any deck at position N |
+
+Use these to chain decks together: `top = fx:deckBase[1]` means "start where deck 1 ends".
+
+### Indexed Charge Variables (COUPLED/DECOUPLED Only)
+
+For **multi-deck** configs, indexed charge variables target a specific charge deck by its **deck position number**:
 
 | Variable | Description |
 |----------|-------------|
 | `chargeBase[N]` | Base depth of the charge deck at position N |
 | `chargeTop[N]` | Top depth of the charge deck at position N |
 | `chargeLength[N]` | Length of the charge deck at position N |
-
-The index `N` is the 1-based deck array position, matching the `[N]` shown in the section view. For example, if your layout is `INERT[1], INERT[2], COUPLED[3], COUPLED[4]`, use `chargeBase[3]` and `chargeBase[4]` to target those charge decks.
 
 ### Supported Math Functions
 
@@ -238,7 +292,17 @@ Logical operators: `&&` (AND), `||` (OR), `!` (NOT)
 massLength(massKg, density) = massKg / (density * 1000 * PI * (holeDiameter/2000)^2)
 ```
 
-The result varies per-hole because `holeDiameter` comes from the hole data. This makes it possible to write formulas that position decks relative to mass-derived lengths — something that can't be done with a fixed number.
+The result varies per-hole because `holeDiameter` comes from the hole data.
+
+### Formula Examples — Deck Top/Base
+
+| Top | Base | Description |
+|-----|------|-------------|
+| `0` | `3.5` | Fixed 3.5m stemming from collar |
+| `fx:deckBase[1]` | `fx:holeLength` | Charge from end of deck 1 to toe |
+| `0` | `fx:(holeLength<3 ? holeLength*0.65 : 2.5)` | Variable stem with ternary logic |
+| `fx:deckBase[1]` | `fx:deckBase[1] + 2.0` | Fixed 2m deck starting after deck 1 |
+| `fx:deckBase[3]` | `fx:holeLength` | Charge from end of deck 3 to toe |
 
 ### Formula Examples — Primer Depth
 
@@ -250,43 +314,17 @@ The result varies per-hole because `holeDiameter` comes from the hole data. This
 | `fx:holeLength * 0.9` | Primer at 90% of total hole |
 | `fx:Math.max(chargeTop + 1, chargeBase - 0.5)` | At least 1m below charge top |
 
-### Formula Examples — Deck Length
-
-| Formula | Description |
-|---------|-------------|
-| `fx:holeLength - 4` | Deck length = hole length minus 4m |
-| `fx:holeLength * 0.5` | Deck length = 50% of hole length |
-| `fx:holeLength - stemLength - 2` | Deck fills hole minus stem and 2m subdrill |
-| `fx:Math.min(holeLength * 0.3, 5)` | 30% of hole capped at 5m max |
-
 ### Formula Examples — Conditional (Ternary) Expressions
 
 Kirra supports JavaScript ternary operators for conditional logic in formulas. Syntax: `condition ? valueIfTrue : valueIfFalse`
 
-| Example # | Function (fx:) | Description | Example Result |
-|-----------|----------------|-------------|----------------|
+| # | Function (fx:) | Description | Example Result |
+|---|----------------|-------------|----------------|
 | 1 | `fx:holeLength < 5 ? holeLength * 0.4 : 2.0` | If hole < 5m use 40%, else use fixed 2.0m | 4m hole → 1.6m<br>8m hole → 2.0m |
 | 2 | `fx:holeLength < 3 ? holeLength * 0.5 : holeLength < 4 ? holeLength * 0.4 : holeLength * 0.3` | Tiered stem: <3m=50%, <4m=40%, else 30% | 2.5m → 1.25m<br>3.5m → 1.4m<br>6m → 1.8m |
 | 3 | `fx:holeDiameter < 150 ? m:30 : holeDiameter < 200 ? m:50 : m:75` | Mass by diameter: <150mm=30kg, <200mm=50kg, else 75kg | 115mm → 30kg<br>165mm → 50kg<br>250mm → 75kg |
 | 4 | `fx:benchHeight < 6 ? chargeBase - 0.2 : benchHeight < 10 ? chargeBase - 0.4 : chargeBase - 0.6` | Primer offset by bench: <6m=0.2m, <10m=0.4m, else 0.6m | 5m bench → base-0.2m<br>8m bench → base-0.4m<br>12m bench → base-0.6m |
 | 5 | `fx:subdrillLength > 1 ? (holeLength - subdrillLength) * 0.8 : holeLength * 0.7` | If subdrill >1m charge to 80% above grade, else 70% of hole | 10m hole, 2m sub → 6.4m<br>10m hole, 0.5m sub → 7m |
-
-**Nested Ternary Readability Tip:**
-
-Complex nested conditions can be made clearer with parentheses:
-
-```
-fx:(holeLength < 3) ? (holeLength * 0.5) : (holeLength < 4) ? (holeLength * 0.4) : (holeLength * 0.3)
-```
-
-**Combining Conditionals with Math Functions:**
-
-```
-fx:holeLength < 5 ? Math.min(holeLength * 0.4, 2.5) : Math.max(holeLength * 0.3, 2.0)
-```
-Short holes: 40% capped at 2.5m | Long holes: 30% with 2m minimum
-
----
 
 ### Formula Examples — Mass-Aware Positioning
 
@@ -302,41 +340,26 @@ These formulas use `massLength()` to position decks relative to mass-derived len
 **Scenario:** You have a 2m fixed deck at position 4 (toe) and want to place a 50kg mass deck at position 3 directly above it:
 
 ```
-Deck [3] (50kg emulsion):  topDepth = fx:chargeTop[4] - massLength(50, 1.2)
-Deck [4] (2m ANFO):        fixed 2.0m at the toe
+Deck [3] (50kg emulsion):  top = fx:chargeTop[4] - massLength(50, 1.2), base = fx:chargeTop[4]
+Deck [4] (2m ANFO):        top = fx:holeLength - 2.0, base = fx:holeLength
 ```
 
-When applied to a 165mm hole: `massLength(50, 1.2) = 50 / (1.2 × 1000 × π × 0.0825²) = 1.95m`
-When applied to a 250mm hole: `massLength(50, 1.2) = 50 / (1.2 × 1000 × π × 0.125²) = 0.85m`
+When applied to a 165mm hole: `massLength(50, 1.2) = 50 / (1.2 x 1000 x PI x 0.0825^2) = 1.95m`
+When applied to a 250mm hole: `massLength(50, 1.2) = 50 / (1.2 x 1000 x PI x 0.125^2) = 0.85m`
 
 The mass stays constant at 50kg; the length adapts to the hole diameter.
 
 ---
 
-## Mass-Based Length Mode
+## Mass Field Modes
 
-The `m:` prefix calculates deck length from a target mass in kilograms.
+The mass field in deck entries controls mass-aware positioning:
 
-**Formula used internally:**
-
-```
-length = massKg / (density * 1000 * PI * (diameter/2000)^2)
-```
-
-Where:
-- `density` = product density in g/cc (from products.csv)
-- `diameter` = hole diameter in mm (from blast hole data)
-- Result varies per-hole based on diameter
-
-**Example:** `m:50` with ANFO (0.85 g/cc) in a 115mm hole:
-
-```
-area   = PI * (0.0575)^2 = 0.01039 m^2
-kg/m   = 0.85 * 1000 * 0.01039 = 8.83 kg/m
-length = 50 / 8.83 = 5.66 m
-```
-
-In a 250mm hole the same 50kg yields only 1.03m — the mass is constant, the length adapts.
+| Value | Meaning | Engine Behaviour |
+|-------|---------|------------------|
+| (empty) | No mass tracking | Use top and base as given |
+| `50` (number) | Target 50 kg | If top empty → `top = base - massLength(50, density)`. If base empty → `base = top + massLength(50, density)`. If both given → mass is informational. |
+| `"mass"` (keyword) | Calculate from length | `mass = (base - top) * PI * (diam/2000)^2 * density * 1000` |
 
 ---
 
@@ -344,14 +367,10 @@ In a 250mm hole the same 50kg yields only 1.03m — the mass is constant, the le
 
 When a charge config is applied to holes of different lengths, each deck's scaling flag controls its behaviour:
 
-- **Proportional** (default): Deck length scales proportionally with hole length
-- **Fixed Length** (`FL`): Deck keeps its exact metre length. Stemming stays 3.5m whether the hole is 8m or 15m.
+- **Variable** (`VR`): Deck re-evaluates its top/base formula expressions using the current hole's properties (holeLength, holeDiameter, benchHeight, subdrillLength, deckBase[N], etc.). Formula decks are automatically set to Variable mode.
+- **Fixed Length** (`FL`): Deck keeps its exact top/base positions unchanged.
 - **Fixed Mass** (`FM`): Deck recalculates its length to maintain the same mass at the new hole diameter.
-- **Variable** (`VR`): Deck re-evaluates its formula expression using the current hole's properties (holeLength, holeDiameter, benchHeight, subdrillLength). Formula decks are automatically set to Variable mode so the formula result adapts per hole instead of being proportionally stretched.
-
-The template engine uses a two-pass layout:
-1. **Pass 1**: Fixed-length, fixed-mass, and variable decks claim their space first (variable decks re-evaluate their formula)
-2. **Pass 2**: Remaining space is distributed among proportional decks
+- **Proportional** (default): Deck scales top/base proportionally with hole length.
 
 The section view shows badges: **F** (blue) for fixed-length, **M** (orange) for fixed-mass, **VR** (green) for variable.
 
@@ -377,8 +396,8 @@ The section view shows badges: **F** (blue) for fixed-length, **M** (orange) for
 
 1. Build a charging design in the Deck Builder
 2. Click **Save as Rule**
-3. Set scaling mode per deck (Proportional, Fixed Length, Fixed Mass)
-4. Edit primer depth formulas — indexed formulas like `fx:chargeBase[4] - 0.3` are auto-generated using deck position
+3. Edit top/base depth formulas per deck — use `fx:deckBase[N]` to chain decks
+4. Edit primer depth formulas — indexed formulas like `fx:chargeBase[4] - 0.3` are auto-generated
 5. The saved rule appears in the config list and is included in exports
 
 ### Round-trip Verification
@@ -392,76 +411,30 @@ The section view shows badges: **F** (blue) for fixed-length, **M** (orange) for
 
 ## 20 Useful Formula Examples for Decks and Charges
 
-This table provides practical formula examples for common charging scenarios. All formulas use the `fx:` prefix to avoid spreadsheet formula interpretation.
+This table provides practical formula examples for common charging scenarios. All formulas use the `fx:` prefix.
 
-| # | Scenario | Formula | Description | Use Case |
-|---|----------|---------|-------------|----------|
-| 1 | **Stem Length as % of Hole** | `fx:holeLength * 0.3` | 30% of total hole length | Variable stem matching hole depth |
-| 2 | **Fixed Stem Minus Charge** | `fx:holeLength - 8` | Hole length minus 8m charge | Leave 8m for explosives |
-| 3 | **Charge to 2m Above Toe** | `fx:holeLength - 2` | Fill to 2m from bottom | Bottom charge with toe gap |
-| 4 | **Primer at 95% Depth** | `fx:holeLength * 0.95` | Primer at 95% of hole depth | Deep primer positioning |
-| 5 | **Primer Above Charge Base** | `fx:chargeBase - 0.3` | 0.3m above deepest charge | Standard primer offset |
-| 6 | **Primer in Multi-Deck** | `fx:chargeBase[4] - 0.3` | 0.3m above deck position 4 | Target specific charge deck |
-| 7 | **Mass-Based Deck (50kg)** | `m:50` | 50kg at hole diameter | Fixed mass, variable length |
-| 8 | **Mass-Based Deck (30kg)** | `m:30` | 30kg at hole diameter | Smaller mass deck |
-| 9 | **Capped Proportional Deck** | `fx:Math.min(holeLength * 0.4, 6)` | 40% of hole, max 6m | Proportional with upper limit |
-| 10 | **Min/Max Charge Length** | `fx:Math.max(holeLength - 4, 2)` | Hole minus 4m, minimum 2m | Ensure minimum charge |
-| 11 | **Subdrill Charge Length** | `fx:subdrillLength - 0.5` | Subdrill minus 0.5m | Fill subdrill zone |
-| 12 | **Bench-Based Charge** | `fx:benchHeight - 1` | Bench height minus 1m | Charge to near-grade |
-| 13 | **Dynamic Deck Split** | `fx:(holeLength - 4) * 0.5` | Half of available charge zone | Even split after stem |
-| 14 | **Mass Above Charge Deck** | `fx:chargeTop[4] - massLength(50, 0.85)` | 50kg ANFO above position 4 | Mass-aware spacing |
-| 15 | **Mass by Product Name** | `fx:chargeTop[4] - massLength(50, "ANFO")` | 50kg using product lookup | Product density auto-lookup |
-| 16 | **Conditional Stem Length** | `fx:holeLength < 5 ? holeLength * 0.4 : 2.0` | <5m use 40%, else fixed 2m | Short hole adaptive stem |
-| 17 | **Tiered Stem Percentage** | `fx:holeLength < 3 ? holeLength * 0.5 : holeLength < 4 ? holeLength * 0.4 : holeLength * 0.3` | Multi-tier: 50%/40%/30% | Variable stem by depth |
-| 18 | **Diameter-Based Mass** | `fx:holeDiameter < 150 ? m:30 : holeDiameter < 200 ? m:50 : m:75` | Mass scales with diameter | Adaptive charge mass |
-| 19 | **Bench-Dependent Primer** | `fx:benchHeight < 6 ? chargeBase - 0.2 : benchHeight < 10 ? chargeBase - 0.4 : chargeBase - 0.6` | Primer offset by bench height | Safety depth scaling |
-| 20 | **Subdrill Conditional** | `fx:subdrillLength > 1 ? (holeLength - subdrillLength) * 0.8 : holeLength * 0.7` | Charge strategy by subdrill | Adapt to toe conditions |
-
-### Formula Categories
-
-#### **Length Formulas** (Deck Sizing)
-- Formulas 1-3: Basic proportional and fixed-offset lengths
-- Formulas 9-10: Capped and bounded lengths using Math functions
-- Formulas 12-13: Zone-based calculations using hole properties
-
-#### **Mass Formulas** (Fixed Mass Decks)
-- Formulas 7-8: Direct mass specification with `m:` prefix
-- Formulas 14-15: Mass-aware positioning using `massLength()` function
-- Mass varies in length but stays constant in kg across different hole diameters
-
-#### **Primer Depth Formulas** (Detonator Positioning)
-- Formulas 4-6: Depth-based primer placement (% or offset from charge)
-- Formula 19: Bench-dependent primer positioning with tiered offsets
-
-#### **Conditional Formulas** (Ternary Operators)
-- Formulas 16-20: Use ternary operators for adaptive charging logic
-- Support hole length, diameter, bench height, and subdrill conditions
-- Enable multi-tier strategies that respond to hole geometry
-
-#### **Multi-Deck Formulas** (Indexed Variables)
-- Formulas 6, 14-15: Use bracket notation `[N]` to target specific deck positions
-- Enables precise control in complex multi-deck configurations
-
-### Using These Formulas
-
-1. **Copy Formula to CSV**: Paste the formula directly into the appropriate field (deck length or primer depth)
-2. **Adjust Parameters**: Modify numbers (0.3, 50, 4, etc.) to match your design requirements
-3. **Combine Functions**: Mix Math functions and variables for complex logic
-4. **Test with Real Holes**: Apply config to holes with different lengths/diameters to verify behavior
-
-### Formula Variables Quick Reference
-
-| Variable | Scope | Description |
-|----------|-------|-------------|
-| `holeLength` | Global | Total hole length (m) |
-| `benchHeight` | Global | Collar to grade (m) |
-| `subdrillLength` | Global | Grade to toe along hole (m) |
-| `chargeBase` | Deepest | Base of deepest charge deck |
-| `chargeTop` | Deepest | Top of deepest charge deck |
-| `chargeLength` | Deepest | Length of deepest charge |
-| `chargeBase[N]` | Indexed | Base of charge at position N |
-| `chargeTop[N]` | Indexed | Top of charge at position N |
-| `holeDiameter` | Global | Diameter in mm |
+| # | Scenario | Top | Base | Description |
+|---|----------|-----|------|-------------|
+| 1 | **Stem 30% of Hole** | `0` | `fx:holeLength * 0.3` | Stemming fills top 30% |
+| 2 | **Fixed 3.5m Stem** | `0` | `3.5` | Fixed stemming with FL flag |
+| 3 | **Charge After Stem** | `fx:deckBase[1]` | `fx:holeLength` | ANFO from end of stem to toe |
+| 4 | **Fixed 2m Mid-Deck** | `fx:deckBase[2]` | `fx:deckBase[2] + 2.0` | 2m deck after deck 2 |
+| 5 | **Charge Ends 2m Above Toe** | `fx:deckBase[1]` | `fx:holeLength - 2` | Leave 2m toe gap |
+| 6 | **Variable Stem (Ternary)** | `0` | `fx:(holeLength<3 ? holeLength*0.65 : holeLength<5 ? holeLength*0.5 : 2.5)` | Tiered stem |
+| 7 | **Spacer After Charge** | `fx:deckBase[2]` | (spacer) | Gas bag after deck 2 |
+| 8 | **Air Deck** | `fx:deckBase[2]` | `fx:holeLength - 6.0` | Air gap above toe charge |
+| 9 | **Toe Charge 6m** | `fx:holeLength - 6.0` | `fx:holeLength` | 6m at hole bottom |
+| 10 | **Capped Proportional** | `0` | `fx:Math.min(holeLength * 0.4, 6)` | 40% capped at 6m |
+| 11 | **Subdrill Charge** | `fx:holeLength - subdrillLength` | `fx:holeLength` | Fill subdrill zone |
+| 12 | **Bench-Based** | `0` | `fx:benchHeight - 1` | Stem to near-grade |
+| 13 | **50kg ANFO Mass** | (empty) | `fx:holeLength` | `mass=50` derives top from mass |
+| 14 | **Mass Above Deck 4** | `fx:deckBase[3] - massLength(50, 0.85)` | `fx:deckBase[3]` | 50kg ANFO above deck 3 |
+| 15 | **Conditional Stem** | `0` | `fx:holeLength < 5 ? holeLength * 0.4 : 2.0` | <5m=40%, else 2m |
+| 16 | **Mass by Diameter** | (empty) | `fx:holeLength` | `mass=fx:holeDiameter<150?30:50` adapts |
+| 17 | **Primer at 95%** | — | — | `fx:holeLength * 0.95` (primer depth) |
+| 18 | **Primer Above Charge** | — | — | `fx:chargeBase - 0.3` |
+| 19 | **Primer Multi-Deck** | — | — | `fx:chargeBase[4] - 0.3` |
+| 20 | **Bench-Dependent Primer** | — | — | `fx:benchHeight<6?chargeBase-0.2:chargeBase-0.4` |
 
 ---
 
@@ -490,13 +463,13 @@ The 3D view renders blast holes with their charge configurations in the spatial 
 
 | File | Purpose |
 |------|---------|
-| `src/charging/ConfigImportExport.js` | CSV writer, parser, brace notation with FL/FM/PR flags |
+| `src/charging/ConfigImportExport.js` | CSV writer, parser, brace notation with top/base and FL/FM/PR/VR flags |
 | `src/charging/ChargeConfig.js` | ChargeConfig class with typed deck arrays and primerArray |
-| `src/charging/rules/SimpleRuleEngine.js` | Unified `applyTemplate()` engine — resolves lengths, formulas, mass, primers |
-| `src/charging/Deck.js` | Deck class with `isFixedLength`, `isFixedMass`, `isProportionalDeck`, `overlapPattern` |
+| `src/charging/rules/SimpleRuleEngine.js` | Unified `applyTemplate()` engine — resolves top/base formulas, mass, primers |
+| `src/charging/Deck.js` | Deck class with `topDepthFormula`, `baseDepthFormula`, scaling flags, `overlapPattern` |
 | `src/charging/Primer.js` | Primer class with `depthFormula` for deferred evaluation |
-| `src/charging/HoleCharging.js` | Flag-aware `updateDimensions()` for scaling |
-| `src/charging/ui/DeckBuilderDialog.js` | Deck Builder UI — scaling mode selector, "Save as Rule" |
-| `src/charging/ui/HoleSectionView.js` | Section view with scaling flag badges (F/M) |
-| `src/helpers/FormulaEvaluator.js` | `fx:` formula evaluation with bracket notation |
+| `src/charging/HoleCharging.js` | Flag-aware `updateDimensions()` for top/base formula re-evaluation |
+| `src/charging/ui/DeckBuilderDialog.js` | Deck Builder UI — "Save as Rule" with top/base fields |
+| `src/charging/ui/HoleSectionView.js` | Section view with scaling flag badges (F/M/VR) |
+| `src/helpers/FormulaEvaluator.js` | `fx:` formula evaluation with bracket notation (`deckBase[N]`, `chargeBase[N]`) |
 | `src/charging/ChargingConstants.js` | `DECK_TYPES`, `DECK_SCALING_MODES` enums |

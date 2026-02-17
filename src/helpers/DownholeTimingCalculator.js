@@ -7,6 +7,7 @@
 // downholeDelay: primer.totalDownholeDelayMs (detonator delay + burn time to depth)
 
 import { DECK_TYPES } from "../charging/ChargingConstants.js";
+import { chargingKey } from "../charging/HoleCharging.js";
 
 /**
  * @typedef {Object} DeckTimingEntry
@@ -49,7 +50,7 @@ export function calculateDownholeTimings(allBlastHoles, chargingMap, options) {
 		if (visibleOnly && hole.visible === false) continue;
 		if (entityFilter && hole.entityName !== entityFilter) continue;
 
-		var charging = chargingMap.get(hole.holeID);
+		var charging = chargingMap.get(chargingKey(hole));
 		if (!charging) continue;
 
 		// Use accumulated hole time (includes all upstream surface delays + VOD travel)

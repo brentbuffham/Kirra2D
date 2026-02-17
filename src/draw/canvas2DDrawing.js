@@ -13,6 +13,7 @@
 
 // Step 0) Import VectorFont for optional Hershey Simplex text rendering
 import * as VectorFont from "../three/VectorFont.js";
+import { chargingKey } from "../charging/HoleCharging.js";
 
 //=================================================
 // Canvas Utilities
@@ -575,13 +576,13 @@ export function drawArrowDelayText(startX, startY, endX, endY, color, text, conn
 
 /**
  * Build mass label strings for a hole from its charging data.
- * @param {string} holeID - The hole ID to look up charging for
+ * @param {Object} hole - Hole object with entityName and holeID
  * @returns {{ perHole: string, perDeck: string[] }} Label strings
  */
-export function buildMassLabels(holeID) {
+export function buildMassLabels(hole) {
 	var result = { perHole: "", perDeck: [] };
 	if (!window.loadedCharging) return result;
-	var charging = window.loadedCharging.get(holeID);
+	var charging = window.loadedCharging.get(chargingKey(hole));
 	if (!charging) return result;
 
 	// Total mass (includes primers)

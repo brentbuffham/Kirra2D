@@ -13,6 +13,7 @@
  */
 import * as THREE from "three";
 import { DECK_TYPES, DECK_COLORS, NON_EXPLOSIVE_TYPES, BULK_EXPLOSIVE_TYPES } from "../charging/ChargingConstants.js";
+import { chargingKey } from "../charging/HoleCharging.js";
 
 // Shared template geometries (created once, reused across rebuilds)
 var _deckTemplateGeo = null;
@@ -270,7 +271,7 @@ export function drawAllChargesThreeJS(visibleHoles) {
 
 	for (var h = 0; h < visibleHoles.length; h++) {
 		var hole = visibleHoles[h];
-		var charging = window.loadedCharging.get(hole.holeID);
+		var charging = window.loadedCharging.get(chargingKey(hole));
 		if (!charging || !charging.decks || charging.decks.length === 0) continue;
 
 		var holeLength = charging.holeLength || hole.holeLengthCalculated || 0;

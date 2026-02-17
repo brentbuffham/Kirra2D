@@ -9,6 +9,10 @@ files. All charge designs use deck arrays -- there are no flat-field shortcuts.
 Every config is a template of typed deck entries plus primer entries, applied
 per-hole by the unified template engine.
 
+Each deck defines its position using top and base depth values (from collar),
+which can be fixed numbers or fx: formulas. Decks can reference each other
+using deckBase[N]/deckTop[N] indexed variables.
+
 
 FILE STRUCTURE
 --------------
@@ -43,46 +47,62 @@ FILE STRUCTURE
 
 INERT, COUPLED, AND DECOUPLED DECKS
 ------------------------------------
-Format:  {idx,length,product} or {idx,length,product,FLAG}
+Format:  {idx,top,base,product} or {idx,top,base,product,FLAG}
 
-  Multiple entries separated by ;
+  Multiple entries separated by |
 
   idx      Integer deck order from collar (1-based). Deck 1 is at the top.
-  length   Deck length -- see Length Modes below
+  top      Depth from collar to deck top (number or fx:formula)
+  base     Depth from collar to deck base (number or fx:formula)
   product  Product name, must match a name in products.csv
   FLAG     Optional scaling flag -- see Scaling Flags below
 
-Length Modes:
+With mass field:  {idx,top,base,mass,product} or {idx,top,base,mass,product,FLAG}
 
-  Syntax          Mode       Description
-  -----------     -------    -------------------------------------------
-  2.0             Fixed      Exact length in metres
-  fx:holeLen-4    Formula    Calculated from hole properties at apply-time
-  m:50            Mass       50 kg of product (length from density + diameter)
-  product         Product    Length from product.lengthMm
+  mass     Mass field:
+           number (e.g. 50)  = target kg, derive missing top or base from mass length
+           "mass"            = calculate mass from (base - top) for display
+
+  Parse rule: If 4th field is numeric or "mass", it is the mass field and
+  product is the 5th field. Otherwise 4th field is the product name.
+
+Top/Base Values:
+
+  Syntax              Description
+  ------------------  -------------------------------------------
+  0                   Fixed depth at collar (0m)
+  3.5                 Fixed depth at 3.5m from collar
+  fx:deckBase[1]      Start where deck 1 ends (formula)
+  fx:holeLength       At the toe of the hole (formula)
+  fx:holeLength*0.5   At 50% of hole length (formula)
 
 Scaling Flags:
 
   Flag    Name              Behaviour
   ----    ----------------  ------------------------------------------------
-  FL      Fixed Length       Keeps exact metre length regardless of hole length
+  FL      Fixed Length       Keeps exact top/base positions regardless of hole
   FM      Fixed Mass         Recalculates length from mass at new diameter
-  PR      Proportional       Scales proportionally with hole length (default)
+  VR      Variable           Re-evaluates top/base formulas per hole
+  PR      Proportional       Scales positions proportionally with hole length
 
   When no flag is specified, the deck defaults to proportional scaling.
+  Formula decks (fx: top or base) are automatically set to Variable.
 
 Examples:
 
-  inertDeck:     {1,3.5,Stemming,FL};{5,fx:holeLength - 3.5,Stemming,VR}
-  coupledDeck:   {2,fx:holeLength - 3.5,ANFO,VR};{4,2.0,ANFO,FL}
-  decoupledDeck: {3,1.5,PKG75mm,FL}
+  inertDeck:     {1,0,3.5,Stemming,FL}|{5,fx:deckBase[4],fx:holeLength,Stemming,VR}
+  coupledDeck:   {2,fx:deckBase[1],fx:holeLength,ANFO,VR}|{4,fx:deckBase[3],fx:deckBase[3]+2.0,ANFO,FL}
+  decoupledDeck: {3,fx:deckBase[2],fx:deckBase[2]+1.5,PKG75mm,FL}
+
+  With mass: {2,,fx:holeLength,50,ANFO,FM}  (top derived from 50kg mass length)
+  Mass info: {2,2.5,fx:holeLength,mass,ANFO}  (mass calculated from top/base)
 
 
 OVERLAP PATTERN (DECOUPLED DECKS)
 ----------------------------------
 For variable package stacking, append overlap syntax:
 
-  {idx,length,product,FLAG,overlap:base=3;base-1=2;n=1;top=2}
+  {idx,top,base,product,FLAG,overlap:base=3|base-1=2|n=1|top=2}
 
   base     Packages at the base (bottom) position
   base-1   Packages one position above base
@@ -90,25 +110,54 @@ For variable package stacking, append overlap syntax:
   top      Packages at the top position
 
 
+SWAP CONDITIONS (PER-DECK PRODUCT SWAP)
+-----------------------------------------
+Swap rules are appended after the scaling flag/overlap using swap: prefix.
+When the hole matches a condition, the deck product is replaced.
+
+  {idx,top,base,product,VR,swap:w{WR-ANFO}|r{Emulsion}|t{Emulsion,C>50}}
+
+Condition codes:
+  w          Wet hole
+  d          Damp hole
+  r          Reactive ground
+  t          Temperature threshold (with C/F and operator)
+  x1..x20    Future user-defined conditions
+
+Temperature threshold format:  [C|F][>|<|>=|<=]number
+  t{Emulsion,C>50}      Celsius greater than 50
+  t{Emulsion,F>=122}    Fahrenheit greater than or equal to 122
+  t{Emulsion,C<30}      Celsius less than 30
+
+Multiple rules separated by | -- first match wins.
+
+Per-hole override: blast holes have a perHoleCondition field that uses the
+same syntax. Per-hole override takes priority over deck-level swap rules.
+
+Spacer with swap:
+  {idx,top,product,swap:r{ALT-SPACER}}
+
+
 SPACER DECKS
 ------------
-Format:  {idx,product}
+Format:  {idx,top,product}
 
-  No length field -- length is derived from product.lengthMm / 1000.
+  No base field -- base is derived from top + product.lengthMm / 1000.
 
   idx      Deck order position (1-based)
+  top      Depth from collar to spacer position (number or fx:formula)
   product  Spacer product name
 
 Example:
 
-  spacerDeck: {3,GB230MM};{5,GB230MM}
+  spacerDeck: {3,fx:deckBase[2],GB230MM}|{5,fx:deckBase[4],GB230MM}
 
 
 PRIMER ENTRIES
 --------------
 Format:  {idx,depth,Det{name},HE{name}}
 
-  Multiple entries separated by ;
+  Multiple entries separated by |
 
   idx       Primer number (1-based)
   depth     Depth from collar in metres, or fx: formula
@@ -121,7 +170,7 @@ Examples:
     {1,fx:chargeBase-0.3,Det{GENERIC-MS},HE{BS400G}}
 
   Two primers targeting specific charge decks (index = deck position):
-    {1,fx:chargeBase[8]-0.3,Det{GENERIC-MS},HE{BS400G}};{2,fx:chargeBase[4]-0.3,Det{GENERIC-MS},HE{BS400G}}
+    {1,fx:chargeBase[8]-0.3,Det{GENERIC-MS},HE{BS400G}}|{2,fx:chargeBase[4]-0.3,Det{GENERIC-MS},HE{BS400G}}
 
   Literal depth:
     {1,8.5,Det{GENERIC-E},HE{BS400G}}
@@ -138,20 +187,24 @@ Decks are ordered from collar (top) to toe (bottom) using the idx field:
 
   Collar (0m)
     +-------------------+
-    |  Deck idx=1        |  <- e.g. Stemming (INERT, FL)
+    |  Deck idx=1        |  <- e.g. Stemming (INERT, top=0, base=3.5)
     +-------------------+
-    |  Deck idx=2        |  <- e.g. ANFO (COUPLED, formula)
+    |  Deck idx=2        |  <- e.g. ANFO (COUPLED, top=fx:deckBase[1], base=fx:holeLength)
     +-------------------+
-    |  Deck idx=3        |  <- e.g. Gas Bag (SPACER)
+    |  Deck idx=3        |  <- e.g. Gas Bag (SPACER, top=fx:deckBase[2])
     +-------------------+
-    |  Deck idx=4        |  <- e.g. ANFO (COUPLED, 2.0m, FL)
+    |  Deck idx=4        |  <- e.g. ANFO (COUPLED, top=fx:deckBase[3])
     +-------------------+
-    |  Deck idx=5        |  <- e.g. Stemming (INERT, formula)
+    |  Deck idx=5        |  <- e.g. Stemming (INERT, top=fx:deckBase[4])
     +-------------------+
   Toe (holeLength)
 
 The idx values do NOT need to be sequential (gaps allowed), but must be
 unique across all four deck columns. The engine sorts by idx for order.
+
+Each deck's top/base formulas are resolved sequentially by idx. This means
+deckBase[1] is available when resolving deck 2, deckBase[2] when resolving
+deck 3, etc. Circular references are naturally prevented.
 
 
 ================================================================================
@@ -173,7 +226,16 @@ Available Variables:
   benchHeight       Bench height from hole data (m)
   subdrillLength    Subdrill length from hole data (m)
 
-Indexed Variables (use deck position number from section view):
+Indexed Deck Variables (ALL deck types):
+
+  deckBase[N]       Base depth of any deck at position N
+  deckTop[N]        Top depth of any deck at position N
+  deckLength[N]     Length of any deck at position N
+  e.g. deckBase[1] = base of stemming at deck 1
+
+  Available during sequential resolution: deckBase[M] available when M < current
+
+Indexed Charge Variables (COUPLED/DECOUPLED only, for primer formulas):
 
   chargeBase[N]     Base depth of the charge deck at position N
   chargeTop[N]      Top depth of the charge deck at position N
@@ -207,6 +269,15 @@ Custom Functions:
     massLength = massKg / (density * 1000 * PI * (holeDiameter/2000)^2)
     Result varies per-hole because holeDiameter comes from hole data.
 
+Deck Top/Base Examples:
+
+  Formula                                           Description
+  ------------------------------------------------  -----------------------------------
+  top=0, base=3.5                                   Fixed 3.5m stemming from collar
+  top=fx:deckBase[1], base=fx:holeLength            Charge from end of deck 1 to toe
+  top=0, base=fx:(holeLength<3?holeLength*0.65:2.5) Variable stem with ternary logic
+  top=fx:deckBase[1], base=fx:deckBase[1]+2.0       Fixed 2m deck starting after deck 1
+
 Primer Depth Examples:
 
   Formula                                           Description
@@ -216,13 +287,6 @@ Primer Depth Examples:
   fx:chargeBase[8] - 0.6                            Primer 0.6m above charge at deck position 8
   fx:holeLength * 0.9                               Primer at 90% of total hole
   fx:Math.max(chargeTop + 1, chargeBase - 0.5)      At least 1m below charge top
-
-Deck Length Examples:
-
-  fx:holeLength - 4                                 Deck = hole length minus 4m
-  fx:holeLength * 0.5                               Deck = 50% of hole length
-  fx:holeLength - stemLength - 2                    Fills hole minus stem and 2m
-  fx:Math.min(holeLength * 0.3, 5)                  30% of hole capped at 5m max
 
 Conditional Examples (Ternary Operators):
 
@@ -258,40 +322,32 @@ Mass-Aware Positioning Examples:
 When a config is applied to holes of different lengths, scaling flags control
 each deck's behaviour:
 
-  Proportional (default): Deck length scales proportionally with hole length
-  Fixed Length (FL):       Keeps exact metre length (e.g. 3.5m stemming)
-  Fixed Mass (FM):        Recalculates length to maintain mass at new diameter
+  Variable (VR):       Re-evaluates top/base formulas with new hole properties
+  Fixed Length (FL):    Keeps exact top/base positions unchanged
+  Fixed Mass (FM):     Recalculates length to maintain mass at new diameter
+  Proportional (PR):   Scales top/base proportionally with hole length (default)
 
-Two-pass layout algorithm:
-  Pass 1: Fixed-length and fixed-mass decks claim their space first
-  Pass 2: Remaining space is distributed among proportional decks
+Formula decks (fx: in top or base) are automatically set to Variable mode.
 
 The section view shows badges: F (blue) for fixed-length, M (orange) for
-fixed-mass. No badge for proportional (default).
+fixed-mass, VR (green) for variable. No badge for proportional (default).
 
 
 ================================================================================
-  MASS-BASED LENGTH MODE
+  MASS FIELD MODES
 ================================================================================
 
-The m: prefix calculates deck length from a target mass in kilograms.
+The mass field in deck entries controls mass-aware positioning:
 
-Formula used internally:
+  Value     Meaning                Engine Behaviour
+  --------  ---------------------  ------------------------------------------------
+  (empty)   No mass tracking       Use top and base as given
+  50        Target 50 kg           If top empty: top = base - massLength(50, density)
+                                   If base empty: base = top + massLength(50, density)
+                                   If both given: mass is informational only
+  "mass"    Calculate from length  mass = (base - top) * PI * (diam/2000)^2 * density * 1000
 
-  length = massKg / (density * 1000 * PI * (diameter/2000)^2)
-
-Where:
-  density  = product density in g/cc (from products.csv)
-  diameter = hole diameter in mm (from blast hole data)
-  Result varies per-hole based on diameter
-
-Example: m:50 with ANFO (0.85 g/cc) in a 115mm hole:
-
-  area   = PI * (0.0575)^2 = 0.01039 m^2
-  kg/m   = 0.85 * 1000 * 0.01039 = 8.83 kg/m
-  length = 50 / 8.83 = 5.66 m
-
-In a 250mm hole the same 50kg yields only 1.03m.
+Mass varies in length but stays constant in kg across different hole diameters.
 
 
 ================================================================================
@@ -313,7 +369,7 @@ IMPORT:
 DECK BUILDER -- SAVE AS RULE:
   1. Build a charging design in the Deck Builder
   2. Click Save as Rule
-  3. Set scaling mode per deck (Proportional, Fixed Length, Fixed Mass)
+  3. Edit top/base depth formulas per deck (e.g. fx:deckBase[1], fx:holeLength)
   4. Edit primer depth formulas (auto-generated using deck position index)
   5. The saved rule appears in the config list and exports
 

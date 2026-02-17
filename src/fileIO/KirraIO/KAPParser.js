@@ -16,7 +16,7 @@ import BaseParser from "../BaseParser.js";
 import JSZip from "jszip";
 import { KAP_VERSION } from "../../charging/ChargingConstants.js";
 import { createProductFromJSON } from "../../charging/products/productFactory.js";
-import { HoleCharging } from "../../charging/HoleCharging.js";
+import { HoleCharging, chargingKey } from "../../charging/HoleCharging.js";
 import { ChargeConfig } from "../../charging/ChargeConfig.js";
 
 class KAPParser extends BaseParser {
@@ -401,21 +401,27 @@ class KAPParser extends BaseParser {
 				if (Array.isArray(chargingData)) {
 					for (var ci = 0; ci < chargingData.length; ci++) {
 						var cEntry = chargingData[ci];
-						var holeID = cEntry[0];
+						var storedKey = cEntry[0];
 						var chargingJSON = cEntry[1];
-
-						// Check for duplicates in merge mode
-						if (shouldMerge && window.loadedCharging && window.loadedCharging.has(holeID)) {
-							console.log("Skipping duplicate charging for hole: " + holeID);
-							continue; // Skip duplicate charging
-						}
 
 						try {
 							var holeCharging = HoleCharging.fromJSON(chargingJSON);
-							window.loadedCharging.set(holeID, holeCharging);
+							// Migrate old plain-holeID keys to composite keys
+							var key = storedKey;
+							if (storedKey.indexOf(":::") === -1) {
+								key = (holeCharging.entityName || "") + ":::" + (holeCharging.holeID || storedKey);
+							}
+
+							// Check for duplicates in merge mode
+							if (shouldMerge && window.loadedCharging && window.loadedCharging.has(key)) {
+								console.log("Skipping duplicate charging for key: " + key);
+								continue; // Skip duplicate charging
+							}
+
+							window.loadedCharging.set(key, holeCharging);
 							summary.charging++;
 						} catch (chgErr) {
-							summary.errors.push("Charging for hole " + holeID + ": " + chgErr.message);
+							summary.errors.push("Charging for key " + storedKey + ": " + chgErr.message);
 						}
 					}
 				}

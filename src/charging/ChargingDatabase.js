@@ -4,13 +4,13 @@
  *
  * Stores:
  *   CHARGING_PRODUCTS  - Product definitions (Map: productID -> Product)
- *   CHARGING_DATA      - HoleCharging per hole (Map: holeID -> HoleCharging)
+ *   CHARGING_DATA      - HoleCharging per hole (Map: entityName:::holeID -> HoleCharging)
  *   CHARGE_CONFIGS     - ChargeConfig templates (Map: configID -> ChargeConfig)
  *
  * Uses the same DB instance as kirra.js (window.db / passed db reference)
  */
 
-import { HoleCharging } from "./HoleCharging.js";
+import { HoleCharging, chargingKey } from "./HoleCharging.js";
 import { ChargeConfig } from "./ChargeConfig.js";
 import { createProductFromJSON } from "./products/productFactory.js";
 
@@ -172,18 +172,27 @@ export function loadChargingFromDB(db) {
 			var chargingMap = new Map();
 
 			if (result && result.data && result.data.length > 0) {
+				var migrated = 0;
 				for (var i = 0; i < result.data.length; i++) {
 					var entry = result.data[i];
-					var holeID = entry[0];
+					var storedKey = entry[0];
 					var chargingJSON = entry[1];
 					try {
 						var holeCharging = HoleCharging.fromJSON(chargingJSON);
-						chargingMap.set(holeID, holeCharging);
+						// Migrate old plain-holeID keys to composite keys
+						var key = storedKey;
+						if (storedKey.indexOf(":::") === -1) {
+							// Old format: key was just holeID — rebuild composite key
+							key = (holeCharging.entityName || "") + ":::" + (holeCharging.holeID || storedKey);
+							migrated++;
+						}
+						chargingMap.set(key, holeCharging);
 					} catch (err) {
-						console.error("Error deserializing charging for hole " + holeID + ":", err);
+						console.error("Error deserializing charging for key " + storedKey + ":", err);
 					}
 				}
-				console.log("Loaded " + chargingMap.size + " hole charging records from IndexedDB");
+				console.log("Loaded " + chargingMap.size + " hole charging records from IndexedDB" +
+					(migrated > 0 ? " (" + migrated + " migrated to composite keys)" : ""));
 			} else {
 				console.log("No charging data found in IndexedDB");
 			}

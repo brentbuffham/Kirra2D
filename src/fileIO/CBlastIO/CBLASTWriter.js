@@ -8,6 +8,7 @@
 // Step 4) Created: 2026-01-07
 
 import BaseWriter from "../BaseWriter.js";
+import { chargingKey } from "../../charging/HoleCharging.js";
 
 export default class CBLASTWriter extends BaseWriter {
 	constructor(options = {}) {
@@ -212,7 +213,7 @@ export default class CBLASTWriter extends BaseWriter {
 		var records = [];
 		if (!window.loadedCharging) return records;
 
-		var charging = window.loadedCharging.get(hole.holeID);
+		var charging = window.loadedCharging.get(chargingKey(hole));
 		if (!charging) return records;
 
 		var holeID = hole.holeID || "";

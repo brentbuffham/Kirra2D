@@ -11,6 +11,7 @@ import { buildMassLabels } from "./canvas2DDrawing.js";
 import { BlastAnalyticsShader } from "../shaders/analytics/BlastAnalyticsShader.js";
 import { calculateDownholeTimings, getTimingRange, fireTimeToColor, normalizeFireTime } from "../helpers/DownholeTimingCalculator.js";
 import { rebuildAnalysisFromGLB } from "../helpers/AnalysisTextureRebuilder.js";
+import { chargingKey } from "../charging/HoleCharging.js";
 
 //=================================================
 // 3D ANALYSIS CACHE - Prevents rebuilding geometry every frame
@@ -641,14 +642,14 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 		drawHoleTextThreeJS(massPosWorld.x, massPosWorld.y, collarZ, hole.measuredMass, fontSize / 1.5, "#FF6600", "right");
 	}
 	if (displayOptions.massPerHole) {
-		var mLabels = buildMassLabels(hole.holeID);
+		var mLabels = buildMassLabels(hole);
 		if (mLabels.perHole) {
 			var mphPos = canvasToWorld(leftSideCollar, middleSideToe);
 			drawHoleTextThreeJS(mphPos.x, mphPos.y, collarZ, mLabels.perHole, fontSize / 1.5, "#FF0000", "right");
 		}
 	}
 	if (displayOptions.massPerDeck) {
-		var dLabels = buildMassLabels(hole.holeID);
+		var dLabels = buildMassLabels(hole);
 		var massLineH = BASE_FONT_SIZE;
 		for (var ml = 0; ml < dLabels.perDeck.length; ml++) {
 			var mpdPos = canvasToWorld(leftSideCollar, middleSideToe + ml * massLineH);
@@ -657,7 +658,7 @@ export function drawHoleTextsAndConnectorsThreeJS(hole, displayOptions) {
 	}
 	if (displayOptions.downholeTiming) {
 		var chargingMap = window.loadedCharging;
-		if (chargingMap && chargingMap.has(hole.holeID)) {
+		if (chargingMap && chargingMap.has(chargingKey(hole))) {
 			var timingEntries = calculateDownholeTimings([hole], chargingMap, { visibleOnly: false });
 			if (timingEntries.length > 0) {
 				// Get global timing range for consistent coloring

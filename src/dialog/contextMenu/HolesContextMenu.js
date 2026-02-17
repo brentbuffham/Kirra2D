@@ -5,6 +5,7 @@
 // Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
 import { assignBlastDialog } from '../popups/generic/AssignBlastDialog.js';
+import { chargingKey } from '../../charging/HoleCharging.js';
 
 // Step 1) Show hole property editor for single or multiple holes
 export function showHolePropertyEditor(hole) {
@@ -336,7 +337,7 @@ export function showHolePropertyEditor(hole) {
 		const chargedHoles = []; // holes that have charging data
 		if (window.loadedCharging) {
 			holes.forEach(function(h) {
-				const hc = window.loadedCharging.get(h.holeID);
+				const hc = window.loadedCharging.get(chargingKey(h));
 				if (hc) {
 					chargedCount++;
 					chargedHoles.push(h);
@@ -354,7 +355,7 @@ export function showHolePropertyEditor(hole) {
 			if (mismatchCount > 0 && autoOnCount > 0) {
 				let autoUpdated = 0;
 				chargedHoles.forEach(function(h) {
-					const hc = window.loadedCharging.get(h.holeID);
+					const hc = window.loadedCharging.get(chargingKey(h));
 					if (hc && hc.autoRecalculate !== false && typeof hc.updateDimensions === "function") {
 						const mm = hc.checkDimensionMismatch(h);
 						if (mm.lengthChanged || mm.diameterChanged) {
@@ -368,7 +369,7 @@ export function showHolePropertyEditor(hole) {
 					// Recount mismatches after auto-recalc
 					mismatchCount = 0;
 					chargedHoles.forEach(function(h) {
-						const hc = window.loadedCharging.get(h.holeID);
+						const hc = window.loadedCharging.get(chargingKey(h));
 						if (hc && typeof hc.checkDimensionMismatch === "function") {
 							const mm = hc.checkDimensionMismatch(h);
 							if (mm.lengthChanged || mm.diameterChanged) mismatchCount++;
@@ -389,7 +390,7 @@ export function showHolePropertyEditor(hole) {
 			recalcBtn.addEventListener("click", function() {
 				let updated = 0;
 				chargedHoles.forEach(function(h) {
-					const hc = window.loadedCharging ? window.loadedCharging.get(h.holeID) : null;
+					const hc = window.loadedCharging ? window.loadedCharging.get(chargingKey(h)) : null;
 					if (hc && typeof hc.updateDimensions === "function") {
 						const result = hc.updateDimensions(h);
 						if (result.lengthRescaled || result.diameterUpdated) updated++;
@@ -422,7 +423,7 @@ export function showHolePropertyEditor(hole) {
 			autoCheck.addEventListener("change", function() {
 				// Apply to all charged holes in selection
 				chargedHoles.forEach(function(h) {
-					const hc = window.loadedCharging ? window.loadedCharging.get(h.holeID) : null;
+					const hc = window.loadedCharging ? window.loadedCharging.get(chargingKey(h)) : null;
 					if (hc) hc.autoRecalculate = autoCheck.checked;
 				});
 				autoCheck.indeterminate = false;
@@ -487,7 +488,7 @@ export function showHolePropertyEditor(hole) {
 
 		// Build loading tab content
 		const singleHole = holes[0];
-		const holeCharging = window.loadedCharging ? window.loadedCharging.get(singleHole.holeID) : null;
+		const holeCharging = window.loadedCharging ? window.loadedCharging.get(chargingKey(singleHole)) : null;
 
 		if (holeCharging) {
 			// Check for dimension mismatch
@@ -1417,7 +1418,7 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 		if (window.loadedCharging) {
 			let chargingUpdated = 0;
 			holes.forEach(function(h) {
-				const hc = window.loadedCharging.get(h.holeID);
+				const hc = window.loadedCharging.get(chargingKey(h));
 				if (hc && hc.autoRecalculate !== false && typeof hc.updateDimensions === "function") {
 					const result = hc.updateDimensions(h);
 					if (result.lengthRescaled || result.diameterUpdated) {

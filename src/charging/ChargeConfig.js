@@ -5,8 +5,8 @@
  * No hardcoded rule dispatch — the rule engine applies templates directly.
  *
  * Deck array entries:
- *   { idx, type, product, lengthMode, length, formula, massKg,
- *     isFixedLength, isFixedMass, isProportionalDeck, overlapPattern }
+ *   { idx, type, product, top, base, massKg, swap,
+ *     isFixedLength, isFixedMass, isVariable, isProportionalDeck, overlapPattern }
  *
  * Primer array entries:
  *   { depth (number or "fx:" formula), detonator, booster, delayMs }
@@ -24,10 +24,6 @@ export class ChargeConfig {
 
 		// Primer spacing interval (metres between primers in long charge columns)
 		this.primerInterval = options.primerInterval || CHARGING_DEFAULTS.primerInterval;
-
-		// Wet hole product swap (future)
-		this.wetHoleSwap = options.wetHoleSwap || false;
-		this.wetHoleProduct = options.wetHoleProduct || null;
 
 		// Typed deck arrays — merged at apply-time sorted by idx
 		this.inertDeckArray = options.inertDeckArray || [];
@@ -65,8 +61,6 @@ export class ChargeConfig {
 			configName: this.configName,
 			description: this.description,
 			primerInterval: this.primerInterval,
-			wetHoleSwap: this.wetHoleSwap,
-			wetHoleProduct: this.wetHoleProduct,
 			inertDeckArray: this.inertDeckArray,
 			coupledDeckArray: this.coupledDeckArray,
 			decoupledDeckArray: this.decoupledDeckArray,

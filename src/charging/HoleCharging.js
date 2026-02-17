@@ -9,6 +9,57 @@ import { DecoupledContent } from "./DecoupledContent.js";
 import { DECK_TYPES, DEFAULT_DECK, VALIDATION_MESSAGES } from "./ChargingConstants.js";
 import { evaluateFormula } from "../helpers/FormulaEvaluator.js";
 
+/**
+ * Build the composite key for loadedCharging map lookups.
+ * Format: "entityName:::holeID"
+ * @param {Object} hole - Object with entityName and holeID properties
+ * @returns {string}
+ */
+export function chargingKey(hole) {
+	return (hole.entityName || "") + ":::" + (hole.holeID || "");
+}
+
+/**
+ * Build indexed charge variables from decks for primer formula context.
+ * @param {Array} decks - Array of Deck objects
+ * @param {Object} ctx - Formula context to populate
+ */
+function buildIndexedChargeVarsForPrimers(decks, ctx) {
+	var deepestBase = 0;
+	var deepestTop = 0;
+	var deepestLen = 0;
+	var firstChargeTop = null;
+
+	for (var i = 0; i < decks.length; i++) {
+		var d = decks[i];
+		var dt = d.deckType;
+		if (dt === DECK_TYPES.COUPLED || dt === DECK_TYPES.DECOUPLED) {
+			var deckPos = i + 1;
+			var cTop = d.topDepth;
+			var cBase = d.baseDepth;
+			var cLen = cBase - cTop;
+
+			ctx["chargeBase_" + deckPos] = cBase;
+			ctx["chargeTop_" + deckPos] = cTop;
+			ctx["chargeLength_" + deckPos] = cLen;
+
+			if (cBase >= deepestBase) {
+				deepestBase = cBase;
+				deepestTop = cTop;
+				deepestLen = cLen;
+			}
+			if (firstChargeTop === null) {
+				firstChargeTop = cTop;
+			}
+		}
+	}
+
+	ctx.chargeBase = deepestBase;
+	ctx.chargeTop = deepestTop;
+	ctx.chargeLength = deepestLen;
+	ctx.stemLength = firstChargeTop !== null ? firstChargeTop : 0;
+}
+
 export class HoleCharging {
 	constructor(hole) {
 		this.holeID = hole.holeID;
@@ -338,10 +389,11 @@ export class HoleCharging {
 
 	/**
 	 * Update cached dimensions and rescale deck depths when hole length/diameter changes.
-	 * Uses a two-pass approach respecting per-deck scaling flags:
-	 *   - isFixedLength decks: keep their length unchanged
-	 *   - isFixedMass decks: recalculate length from mass/(density*PI*r²*1000) at new diameter
-	 *   - isProportionalDeck decks: share remaining space proportionally
+	 * Uses top/base formula-aware approach respecting per-deck scaling flags:
+	 *   - isVariable (VR): re-evaluate topDepthFormula/baseDepthFormula with new hole context
+	 *   - isFixedLength (FL): keep topDepth and baseDepth unchanged
+	 *   - isFixedMass (FM): recalculate length from mass at new diameter, adjust derived end
+	 *   - isProportionalDeck (PR): scale both topDepth and baseDepth proportionally
 	 *
 	 * @param {Object} hole - Current blast hole object
 	 * @returns {{ lengthRescaled: boolean, diameterUpdated: boolean }}
@@ -356,101 +408,95 @@ export class HoleCharging {
 
 		if (lengthChanged || diameterChanged) {
 			var newLength = currentLength;
+			var oldLength = this.holeLength;
 			var newDiameter = diameterChanged ? currentDiameter : this.holeDiameterMm;
 
-			// Pass 1: classify decks and calculate fixed totals
-			var fixedTotal = 0;
-			var oldProportionalTotal = 0;
-			var proportionalIndices = [];
+			// Build incremental formula context for VR deck re-evaluation
+			var formulaCtx = {
+				holeLength: newLength,
+				holeDiameter: newDiameter,
+				benchHeight: hole.benchHeight || 0,
+				subdrillLength: hole.subdrillLength || 0,
+				chargeLength: 0,
+				chargeTop: 0,
+				chargeBase: newLength,
+				stemLength: 0
+			};
 
-			for (var i = 0; i < this.decks.length; i++) {
-				var deck = this.decks[i];
-				var deckLen = deck.length;
-
-				if (deck.isFixedLength) {
-					// Fixed length: keep as-is
-					fixedTotal += deckLen;
-				} else if (deck.isFixedMass) {
-					// Fixed mass: recalculate length from stored mass at new diameter
-					var newLen = this._lengthForMass(deck, newDiameter);
-					if (newLen != null && newLen > 0) {
-						fixedTotal += newLen;
-						deck._recalcLength = newLen;
-					} else {
-						fixedTotal += deckLen;
-						deck._recalcLength = deckLen;
-					}
-				} else if (deck.isVariable && deck.lengthFormula) {
-					// Variable: re-evaluate formula with current hole context
-					var formulaCtx = {
-						holeLength: newLength,
-						holeDiameter: newDiameter,
-						benchHeight: hole.benchHeight || 0,
-						subdrillLength: hole.subdrillLength || 0
-					};
-					var fLen = evaluateFormula(deck.lengthFormula, formulaCtx);
-					var varLen = (fLen != null && fLen > 0) ? fLen : deckLen;
-					fixedTotal += varLen;
-					deck._recalcLength = varLen;
-				} else {
-					// Proportional: will be rescaled
-					oldProportionalTotal += deckLen;
-					proportionalIndices.push(i);
-				}
-			}
-
-			// Pass 2: layout sequentially from collar
-			var remainingSpace = Math.max(0, newLength - fixedTotal);
-			var proportionalRatio = oldProportionalTotal > 0 ? remainingSpace / oldProportionalTotal : 1;
-			var cursor = 0;
+			// Sequential layout: process decks in topDepth order
+			var lengthRatio = oldLength > 0 ? newLength / oldLength : 1;
 
 			for (var j = 0; j < this.decks.length; j++) {
 				var dk = this.decks[j];
-				var newDeckLen;
+				var oldLen = dk.length;
 
 				if (dk.isFixedLength) {
-					newDeckLen = dk.length;
+					// FL: keep topDepth and baseDepth unchanged
+					// (no change to deck positions)
+				} else if (dk.isVariable && (dk.topDepthFormula || dk.baseDepthFormula)) {
+					// VR: re-evaluate formulas with current hole context + resolved deck vars
+					var newTop = dk.topDepth;
+					var newBase = dk.baseDepth;
+
+					if (dk.topDepthFormula) {
+						var tResult = evaluateFormula(dk.topDepthFormula, formulaCtx);
+						if (tResult != null && isFinite(tResult)) newTop = tResult;
+					}
+					if (dk.baseDepthFormula) {
+						var bResult = evaluateFormula(dk.baseDepthFormula, formulaCtx);
+						if (bResult != null && isFinite(bResult)) newBase = bResult;
+					}
+
+					dk.topDepth = parseFloat(newTop.toFixed(3));
+					dk.baseDepth = parseFloat(newBase.toFixed(3));
 				} else if (dk.isFixedMass) {
-					newDeckLen = dk._recalcLength || dk.length;
-					delete dk._recalcLength;
-				} else if (dk.isVariable) {
-					newDeckLen = dk._recalcLength || dk.length;
-					delete dk._recalcLength;
+					// FM: recalculate length from mass at new diameter
+					var newLen = this._lengthForMass(dk, newDiameter);
+					if (newLen != null && newLen > 0) {
+						// Keep the top position, adjust base
+						dk.baseDepth = parseFloat((dk.topDepth + newLen).toFixed(3));
+					}
 				} else {
-					newDeckLen = dk.length * proportionalRatio;
+					// PR (Proportional): scale both topDepth and baseDepth
+					dk.topDepth = parseFloat((dk.topDepth * lengthRatio).toFixed(3));
+					dk.baseDepth = parseFloat((dk.baseDepth * lengthRatio).toFixed(3));
 				}
 
-				// Truncate if exceeding hole length
-				if (cursor + newDeckLen > newLength) {
-					newDeckLen = Math.max(0, newLength - cursor);
-				}
-
-				dk.topDepth = cursor;
-				dk.baseDepth = cursor + newDeckLen;
+				// Clamp to hole bounds
+				if (dk.topDepth < 0) dk.topDepth = 0;
+				if (dk.baseDepth > newLength) dk.baseDepth = parseFloat(newLength.toFixed(3));
 
 				// Rescale embedded content positions proportionally within the deck
-				if (dk.contains && dk.length > 0) {
-					var contentRatio = newDeckLen / dk.length || 1;
+				var newDeckLen = dk.length;
+				if (dk.contains && oldLen > 0 && newDeckLen > 0) {
+					var contentRatio = newDeckLen / oldLen;
 					for (var ci = 0; ci < dk.contains.length; ci++) {
 						dk.contains[ci].lengthFromCollar = dk.topDepth +
 							(dk.contains[ci].lengthFromCollar - dk.topDepth) * contentRatio;
 					}
 				}
 
-				cursor += newDeckLen;
+				// Add deckBase[N]/deckTop[N] to context for subsequent VR decks
+				var deckPos = j + 1;
+				formulaCtx["deckBase_" + deckPos] = dk.baseDepth;
+				formulaCtx["deckTop_" + deckPos] = dk.topDepth;
+				formulaCtx["deckLength_" + deckPos] = dk.baseDepth - dk.topDepth;
 			}
 
-			// Clamp last deck to hole bottom
-			if (this.decks.length > 0) {
-				this.decks[this.decks.length - 1].baseDepth = newLength;
-			}
-
-			// Rescale primer depths proportionally
-			var overallRatio = this.holeLength > 0 ? newLength / this.holeLength : 1;
+			// Rescale primer depths — re-evaluate formulas or scale proportionally
 			for (var k = 0; k < this.primers.length; k++) {
-				if (this.primers[k].lengthFromCollar != null) {
-					this.primers[k].lengthFromCollar = Math.max(0,
-						Math.min(newLength - 0.1, this.primers[k].lengthFromCollar * overallRatio));
+				var primer = this.primers[k];
+				if (primer.depthFormula) {
+					// Build primer context with charge vars
+					var primerCtx = Object.assign({}, formulaCtx);
+					buildIndexedChargeVarsForPrimers(this.decks, primerCtx);
+					var pResult = evaluateFormula(primer.depthFormula, primerCtx);
+					if (pResult != null && isFinite(pResult)) {
+						primer.lengthFromCollar = Math.max(0, Math.min(newLength - 0.1, parseFloat(pResult.toFixed(2))));
+					}
+				} else if (primer.lengthFromCollar != null) {
+					primer.lengthFromCollar = Math.max(0,
+						Math.min(newLength - 0.1, primer.lengthFromCollar * lengthRatio));
 				}
 			}
 

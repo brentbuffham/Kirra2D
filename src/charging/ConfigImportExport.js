@@ -58,8 +58,6 @@ var TRANSPOSED_CONFIG_FIELDS = [
     { type: "text", field: "configName", desc: "Human-readable config name" },
     { type: "text", field: "description", desc: "Description of the charge design" },
     { type: "number", field: "primerInterval", desc: "Interval between primers (m)" },
-    { type: "bool", field: "wetHoleSwap", desc: "Swap product for wet holes" },
-    { type: "product", field: "wetHoleProduct", desc: "Wet hole replacement product name" },
     { type: "deck", field: "inertDeck", desc: "Inert deck template entries" },
     { type: "deck", field: "coupledDeck", desc: "Coupled deck template entries" },
     { type: "deck", field: "decoupledDeck", desc: "Decoupled deck template entries" },
@@ -97,8 +95,6 @@ var README_CONTENT = [
     "  configName       - Human-readable display name",
     "  description      - Description of the charge design",
     "  primerInterval   - Interval between primers in metres (for long charge columns)",
-    "  wetHoleSwap      - true/false: swap product when hole is wet",
-    "  wetHoleProduct   - Replacement product name for wet holes",
     "",
     "  All charge designs are expressed as deck arrays (inertDeck, coupledDeck,",
     "  decoupledDeck, spacerDeck) and a primer array.",
@@ -161,33 +157,48 @@ var README_CONTENT = [
     "TYPED DECK ROWS (inertDeck, coupledDeck, decoupledDeck, spacerDeck, primer):",
     "  These rows define multi-deck charge configurations.",
     "  All charge designs use deck arrays — there are no flat-field shortcuts.",
+    "  Each deck defines its top and base depth (from collar) using numbers or fx: formulas.",
     "",
     "  Deck Entry Syntax (inertDeck, coupledDeck, decoupledDeck):",
-    "    {idx,length,product}      - proportional scaling (default)",
-    "    {idx,length,product,FL}   - isFixedLength (length does not scale)",
-    "    {idx,length,product,FM}   - isFixedMass (mass does not scale)",
-    "    {idx,length,product,VR}   - isVariable (re-evaluates formula per hole)",
-    "    {idx,length,product,PR}   - isProportionalDeck (explicit proportional)",
-    "    Multiple entries separated by ;",
+    "    {idx,top,base,product}              - no mass, no flag",
+    "    {idx,top,base,product,FLAG}         - with scaling flag",
+    "    {idx,top,base,mass,product}         - with numeric mass target",
+    "    {idx,top,base,mass,product,FLAG}    - with mass and flag",
+    "    Multiple entries separated by |",
     "",
     "    idx     = integer deck order from collar (1-based)",
-    "    length  = one of:",
-    "      2.0           fixed metres (lengthMode: fixed)",
-    "      fx:expr       formula e.g. fx:holeLength*0.5 (lengthMode: formula)",
-    "      m:50          50kg of product (lengthMode: mass)",
-    "      product       length derived from product.lengthMm (lengthMode: product)",
+    "    top     = depth from collar to deck top (number or fx:formula)",
+    "    base    = depth from collar to deck base (number or fx:formula)",
+    "    mass    = optional mass field (number=target kg, 'mass'=calculate from length)",
     "    product = product name (matched from products.csv)",
+    "    FLAG    = scaling flag: FL (fixed length), FM (fixed mass), VR (variable), PR (proportional)",
+    "",
+    "    Formula variables for deck positioning:",
+    "      deckBase[N]   - base depth of deck at position N (ALL deck types)",
+    "      deckTop[N]    - top depth of deck at position N",
+    "      deckLength[N] - length of deck at position N",
+    "      holeLength    - total hole length",
+    "      e.g. top = fx:deckBase[1] means 'start where deck 1 ends'",
     "",
     "    Overlap syntax (appended after scaling flag):",
-    "      {idx,length,product,FL,overlap:base=3;base-1=2;n=1;top=2}",
+    "      {idx,top,base,product,FL,overlap:base=3|base-1=2|n=1|top=2}",
     "      Defines how many overlap charges per position in the deck.",
     "      Keys: base, base-1, n (general), top",
     "",
+    "    Swap syntax (appended after flag/overlap — per-deck product swap):",
+    "      {idx,top,base,product,VR,swap:w{WR-ANFO}|r{Emulsion}|t{Emulsion,C>50}}",
+    "      Swaps the deck product when the hole matches a condition code.",
+    "      Condition codes: w=wet, d=damp, r=reactive, t=temperature, x1..x20=future",
+    "      Temperature thresholds: t{PRODUCT,C>50} t{PRODUCT,F>=122} t{PRODUCT,C<30}",
+    "      Operators: > < >= <=   Units: C (Celsius), F (Fahrenheit)",
+    "      Per-hole override (perHoleCondition on blast hole) takes priority over deck swap.",
+    "      Multiple rules separated by | — first match wins.",
+    "",
     "  Spacer Entry Syntax (spacerDeck):",
-    "    {idx,product}  - length derived from product.lengthMm property",
+    "    {idx,top,product}  - base derived from top + product.lengthMm/1000",
     "",
     "  Primer Entry Syntax (primer):",
-    "    {idx,depth,Det{name},HE{name}}  - multiple entries separated by ;",
+    "    {idx,depth,Det{name},HE{name}}  - multiple entries separated by |",
     "    idx   = primer number (1-based)",
     "    depth = number (metres) or formula (fx:chargeBase[1]-0.3)",
     "    Det{} = detonator product name",
@@ -206,7 +217,13 @@ var README_CONTENT = [
     "    benchHeight     - Bench height from hole data (m)",
     "    subdrillLength  - Subdrill length from hole data (m)",
     "",
-    "  Indexed variables (use the deck position number shown in the section view):",
+    "  Indexed deck variables (ALL deck types — use deck position number):",
+    "    deckBase[N]     - Base depth of any deck at position N",
+    "    deckTop[N]      - Top depth of any deck at position N",
+    "    deckLength[N]   - Length of any deck at position N",
+    "    e.g. deckBase[1] = base of stemming at deck 1, deckBase[3] = base of deck 3",
+    "",
+    "  Indexed charge variables (COUPLED/DECOUPLED only — for primer formulas):",
     "    chargeBase[N]   - Base depth of the charge deck at position N",
     "    chargeTop[N]    - Top depth of the charge deck at position N",
     "    chargeLength[N] - Length of the charge deck at position N",
@@ -235,11 +252,11 @@ var README_CONTENT = [
     "    fx:holeLength * 0.9                  Primer at 90% of total hole",
     "    fx:Math.max(chargeTop + 1, chargeBase - 0.5)   At least 1m below charge top",
     "",
-    "  DECK LENGTH EXAMPLES:",
-    "    fx:holeLength - 4                    Deck length = hole length minus 4m",
-    "    fx:holeLength * 0.5                  Deck length = 50% of hole length",
-    "    fx:holeLength - stemLength - 2       Deck fills hole minus stem and 2m",
-    "    fx:Math.min(holeLength * 0.3, 5)     Deck is 30% of hole, capped at 5m",
+    "  DECK TOP/BASE EXAMPLES:",
+    "    top=0, base=3.5                      Fixed 3.5m stemming from collar",
+    "    top=fx:deckBase[1], base=fx:holeLength   Charge from end of deck 1 to toe",
+    "    top=0, base=fx:holeLength * 0.5      Stemming fills top 50% of hole",
+    "    top=fx:deckBase[1], base=fx:holeLength - 2   Charge ends 2m above toe",
     "",
     "  CONDITIONAL EXAMPLES (ternary operators):",
     "    fx:holeLength < 5 ? holeLength * 0.4 : 2.0           If hole < 5m use 40%, else 2m",
@@ -319,8 +336,8 @@ var EXAMPLE_CONFIG_DATA = [
         configName: "Standard Single Deck",
         description: "Single stemming + charge + primer",
         primerInterval: 10.0,
-        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 3.5, isFixedLength: true }],
-        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "formula", formula: "holeLength - 3.5" }],
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", top: "0", base: "3.5", isFixedLength: true }],
+        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", top: "fx:deckBase[1]", base: "fx:holeLength", isVariable: true, swap: "w{GENERIC7030G}|r{GENERIC7030G}|t{GENERIC7030G,C>50}" }],
         primerArray: [{ depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }]
     },
     {
@@ -328,8 +345,8 @@ var EXAMPLE_CONFIG_DATA = [
         configName: "50/50 Stem and Charge",
         description: "50% stemming 50% charge split",
         primerInterval: 10.0,
-        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", lengthMode: "formula", formula: "holeLength * 0.5" }],
-        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "formula", formula: "holeLength * 0.5" }],
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", top: "0", base: "fx:holeLength * 0.5", isVariable: true }],
+        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", top: "fx:deckBase[1]", base: "fx:holeLength", isVariable: true }],
         primerArray: [{ depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }]
     },
     {
@@ -338,11 +355,11 @@ var EXAMPLE_CONFIG_DATA = [
         description: "Stem + gas bag + air + charge",
         primerInterval: 10.0,
         inertDeckArray: [
-            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 3.0, isFixedLength: true },
-            { idx: 3, type: "INERT", product: "Air", lengthMode: "formula", formula: "holeLength - 3.0 - 6.0" }
+            { idx: 1, type: "INERT", product: "Stemming", top: "0", base: "3.0", isFixedLength: true },
+            { idx: 3, type: "INERT", product: "Air", top: "fx:deckBase[2]", base: "fx:holeLength - 6.0", isVariable: true }
         ],
-        spacerDeckArray: [{ idx: 2, type: "SPACER", product: "GB230MM", lengthMode: "product" }],
-        coupledDeckArray: [{ idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 6.0 }],
+        spacerDeckArray: [{ idx: 2, type: "SPACER", product: "GB230MM", top: "fx:deckBase[1]" }],
+        coupledDeckArray: [{ idx: 4, type: "COUPLED", product: "ANFO", top: "fx:deckBase[3]", base: "fx:holeLength", isFixedLength: true }],
         primerArray: [{ depth: "fx:chargeBase - chargeLength * 0.1", detonator: "GENERIC-MS", booster: "BS400G" }]
     },
     {
@@ -350,8 +367,8 @@ var EXAMPLE_CONFIG_DATA = [
         configName: "Presplit Charging",
         description: "AirStem (Vented) + decoupled charge",
         primerInterval: 20.0,
-        inertDeckArray: [{ idx: 1, type: "INERT", product: "Air", lengthMode: "fixed", length: 2.2, isFixedLength: true }],
-        decoupledDeckArray: [{ idx: 2, type: "DECOUPLED", product: "PRE32MM", lengthMode: "formula", formula: "holeLength - 2.2" }],
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Air", top: "0", base: "2.2", isFixedLength: true }],
+        decoupledDeckArray: [{ idx: 2, type: "DECOUPLED", product: "PRE32MM", top: "fx:deckBase[1]", base: "fx:holeLength", isVariable: true }],
         primerArray: [{ depth: "fx:chargeTop[2]", detonator: "10GCORD", booster: null }]
     },
     {
@@ -359,7 +376,7 @@ var EXAMPLE_CONFIG_DATA = [
         configName: "No Charge",
         description: "Do not charge - leave hole empty",
         primerInterval: 10.0,
-        inertDeckArray: [{ idx: 1, type: "INERT", product: "Air", lengthMode: "formula", formula: "holeLength" }],
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Air", top: "0", base: "fx:holeLength", isVariable: true }],
         primerArray: []
     },
     {
@@ -368,18 +385,18 @@ var EXAMPLE_CONFIG_DATA = [
         description: "Two air deck design with indexed primer formulas",
         primerInterval: 10.0,
         inertDeckArray: [
-            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "formula", formula: "holeLength - 1.7 - 0.97 - 1.88 - 2.2 - 2.025" },
-            { idx: 3, type: "INERT", product: "Air", lengthMode: "fixed", length: 1.7 },
-            { idx: 5, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 0.97, isFixedLength: true },
-            { idx: 7, type: "INERT", product: "Air", lengthMode: "fixed", length: 1.88 }
+            { idx: 1, type: "INERT", product: "Stemming", top: "0", base: "fx:holeLength - 1.7 - 0.97 - 1.88 - 2.2 - 2.025", isVariable: true },
+            { idx: 3, type: "INERT", product: "Air", top: "fx:deckBase[2]", base: "fx:deckBase[2] + 1.7" },
+            { idx: 5, type: "INERT", product: "Stemming", top: "fx:deckBase[4]", base: "fx:deckBase[4] + 0.97", isFixedLength: true },
+            { idx: 7, type: "INERT", product: "Air", top: "fx:deckBase[6]", base: "fx:deckBase[6] + 1.88" }
         ],
         spacerDeckArray: [
-            { idx: 2, type: "SPACER", product: "GB230MM", lengthMode: "product" },
-            { idx: 6, type: "SPACER", product: "GB230MM", lengthMode: "product" }
+            { idx: 2, type: "SPACER", product: "GB230MM", top: "fx:deckBase[1]" },
+            { idx: 6, type: "SPACER", product: "GB230MM", top: "fx:deckBase[5]" }
         ],
         coupledDeckArray: [
-            { idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.2 },
-            { idx: 8, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.025 }
+            { idx: 4, type: "COUPLED", product: "ANFO", top: "fx:deckBase[3]", base: "fx:deckBase[3] + 2.2" },
+            { idx: 8, type: "COUPLED", product: "ANFO", top: "fx:deckBase[7]", base: "fx:deckBase[7] + 2.025" }
         ],
         primerArray: [
             { depth: "fx:chargeBase[8] - 0.3", detonator: "GENERIC-MS", booster: "BS400G" },
@@ -392,17 +409,17 @@ var EXAMPLE_CONFIG_DATA = [
         description: "Stem + charge + spacer + charge + spacer + charge + stem",
         primerInterval: 10.0,
         inertDeckArray: [
-            { idx: 1, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 2.0, isFixedLength: true },
-            { idx: 7, type: "INERT", product: "Stemming", lengthMode: "fixed", length: 2.0, isFixedLength: true }
+            { idx: 1, type: "INERT", product: "Stemming", top: "0", base: "2.0", isFixedLength: true },
+            { idx: 7, type: "INERT", product: "Stemming", top: "fx:deckBase[6]", base: "fx:deckBase[6] + 2.0", isFixedLength: true }
         ],
         coupledDeckArray: [
-            { idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "formula", formula: "holeLength - 4.0 - 2.0 - 2.0" },
-            { idx: 4, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.0 },
-            { idx: 6, type: "COUPLED", product: "ANFO", lengthMode: "fixed", length: 2.0 }
+            { idx: 2, type: "COUPLED", product: "ANFO", top: "fx:deckBase[1]", base: "fx:holeLength - 4.0 - 2.0", isVariable: true },
+            { idx: 4, type: "COUPLED", product: "ANFO", top: "fx:deckBase[3]", base: "fx:deckBase[3] + 2.0" },
+            { idx: 6, type: "COUPLED", product: "ANFO", top: "fx:deckBase[5]", base: "fx:deckBase[5] + 2.0" }
         ],
         spacerDeckArray: [
-            { idx: 3, type: "SPACER", product: "GB230MM", lengthMode: "product" },
-            { idx: 5, type: "SPACER", product: "GB230MM", lengthMode: "product" }
+            { idx: 3, type: "SPACER", product: "GB230MM", top: "fx:deckBase[2]" },
+            { idx: 5, type: "SPACER", product: "GB230MM", top: "fx:deckBase[4]" }
         ],
         primerArray: [{ depth: "fx:chargeBase - chargeLength * 0.1", detonator: "GENERIC-MS", booster: "BS400G" }]
     },
@@ -416,8 +433,9 @@ var EXAMPLE_CONFIG_DATA = [
                 idx: 1,
                 type: "INERT",
                 product: "Air",
-                lengthMode: "formula",
-                formula: "(holeLength-(Math.floor((holeLength-1.8)/0.4)*0.4))"
+                top: "0",
+                base: "fx:(holeLength-(Math.floor((holeLength-1.8)/0.4)*0.4))",
+                isVariable: true
             }
         ],
         decoupledDeckArray: [
@@ -425,8 +443,8 @@ var EXAMPLE_CONFIG_DATA = [
                 idx: 2,
                 type: "DECOUPLED",
                 product: "PRE32MM",
-                lengthMode: "formula",
-                formula: "(Math.floor((holeLength-1.8)/0.4)*0.4)",
+                top: "fx:deckBase[1]",
+                base: "fx:holeLength",
                 isVariable: true,
                 overlapPattern: { base: 3, "base-1": 2, n: 1 }
             }
@@ -438,8 +456,8 @@ var EXAMPLE_CONFIG_DATA = [
         configName: "Single Variable Stem",
         description: "Ternary stem logic: <3m=65%, 3-5m=50%, >=5m=2.5m fixed",
         primerInterval: 10.0,
-        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", lengthMode: "formula", formula: "(holeLength < 3 ? holeLength*0.65 : holeLength < 5 ? holeLength*0.5 : 2.5)", isVariable: true }],
-        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", lengthMode: "formula", formula: "(holeLength < 3 ? holeLength*0.35 : holeLength < 5 ? holeLength*0.5 : holeLength - 2.5)", isVariable: true }],
+        inertDeckArray: [{ idx: 1, type: "INERT", product: "Stemming", top: "0", base: "fx:(holeLength < 3 ? holeLength*0.65 : holeLength < 5 ? holeLength*0.5 : 2.5)", isVariable: true }],
+        coupledDeckArray: [{ idx: 2, type: "COUPLED", product: "ANFO", top: "fx:deckBase[1]", base: "fx:holeLength", isVariable: true }],
         primerArray: [{ depth: "fx:chargeBase - 0.3", detonator: "GENERIC-MS", booster: "BS400G" }]
     }
 ];
@@ -622,7 +640,7 @@ function getScalingFlagSuffix(entry) {
 /**
  * Serialize an overlap pattern object to overlap syntax string.
  * Input: { base: 3, "base-1": 2, n: 1, top: 2 }
- * Output: "overlap:base=3;base-1=2;n=1;top=2"
+ * Output: "overlap:base=3|base-1=2|n=1|top=2"
  * @param {Object} overlapPattern
  * @returns {string}
  */
@@ -634,7 +652,7 @@ function serializeOverlapPattern(overlapPattern) {
         parts.push(keys[i] + "=" + overlapPattern[keys[i]]);
     }
     if (parts.length === 0) return "";
-    return "overlap:" + parts.join(";");
+    return "overlap:" + parts.join("|");
 }
 
 /**
@@ -653,76 +671,69 @@ function configToFieldMap(config) {
     map.configName = json.configName || "";
     map.description = json.description || "";
     map.primerInterval = json.primerInterval != null ? String(json.primerInterval) : "";
-    map.wetHoleSwap = json.wetHoleSwap != null ? String(json.wetHoleSwap) : "";
-    map.wetHoleProduct = json.wetHoleProduct || "";
 
-    // Serialize deck arrays into typed deck columns
+    // Serialize deck arrays into typed deck columns using top/base format
     var inertEntries = [];
     var coupledEntries = [];
     var decoupledEntries = [];
     var spacerEntries = [];
 
+    // Serialize non-spacer deck array into brace notation: {idx,top,base,product[,FLAG[,overlap]]}
+    // If massKg is present: {idx,top,base,mass,product[,FLAG[,overlap]]}
+    function serializeNonSpacerEntry(entry, fallbackIdx) {
+        var idx = entry.idx || fallbackIdx;
+        var topStr = entry.top || "0";
+        var baseStr = entry.base || "fx:holeLength";
+        var massStr = (entry.massKg != null) ? String(entry.massKg) : null;
+        var flag = getScalingFlagSuffix(entry);
+        var overlap = serializeOverlapPattern(entry.overlapPattern);
+
+        var parts = [idx, topStr, baseStr];
+        if (massStr != null) parts.push(massStr);
+        parts.push(entry.product || "Unknown");
+        if (flag) parts.push(flag);
+        if (overlap) parts.push(overlap);
+        if (entry.swap) parts.push("swap:" + entry.swap);
+        return "{" + parts.join(",") + "}";
+    }
+
     // Serialize inertDeckArray
     if (json.inertDeckArray && json.inertDeckArray.length > 0) {
         for (var ia = 0; ia < json.inertDeckArray.length; ia++) {
-            var ie = json.inertDeckArray[ia];
-            var idx = ie.idx || ia + 1;
-            var lengthStr = serializeDeckLength(ie);
-            var flag = getScalingFlagSuffix(ie);
-            var overlap = serializeOverlapPattern(ie.overlapPattern);
-            var deckStr = "{" + idx + "," + lengthStr + "," + (ie.product || "Unknown");
-            if (flag) deckStr += "," + flag;
-            if (overlap) deckStr += "," + overlap;
-            deckStr += "}";
-            inertEntries.push(deckStr);
+            inertEntries.push(serializeNonSpacerEntry(json.inertDeckArray[ia], ia + 1));
         }
     }
 
     // Serialize coupledDeckArray
     if (json.coupledDeckArray && json.coupledDeckArray.length > 0) {
         for (var ca = 0; ca < json.coupledDeckArray.length; ca++) {
-            var ce = json.coupledDeckArray[ca];
-            var cidx = ce.idx || ca + 1;
-            var clengthStr = serializeDeckLength(ce);
-            var cflag = getScalingFlagSuffix(ce);
-            var coverlap = serializeOverlapPattern(ce.overlapPattern);
-            var cdeckStr = "{" + cidx + "," + clengthStr + "," + (ce.product || "Unknown");
-            if (cflag) cdeckStr += "," + cflag;
-            if (coverlap) cdeckStr += "," + coverlap;
-            cdeckStr += "}";
-            coupledEntries.push(cdeckStr);
+            coupledEntries.push(serializeNonSpacerEntry(json.coupledDeckArray[ca], ca + 1));
         }
     }
 
     // Serialize decoupledDeckArray
     if (json.decoupledDeckArray && json.decoupledDeckArray.length > 0) {
         for (var da = 0; da < json.decoupledDeckArray.length; da++) {
-            var de = json.decoupledDeckArray[da];
-            var didx = de.idx || da + 1;
-            var dlengthStr = serializeDeckLength(de);
-            var dflag = getScalingFlagSuffix(de);
-            var doverlap = serializeOverlapPattern(de.overlapPattern);
-            var ddeckStr = "{" + didx + "," + dlengthStr + "," + (de.product || "Unknown");
-            if (dflag) ddeckStr += "," + dflag;
-            if (doverlap) ddeckStr += "," + doverlap;
-            ddeckStr += "}";
-            decoupledEntries.push(ddeckStr);
+            decoupledEntries.push(serializeNonSpacerEntry(json.decoupledDeckArray[da], da + 1));
         }
     }
 
-    // Serialize spacerDeckArray
+    // Serialize spacerDeckArray: {idx,top,product}
     if (json.spacerDeckArray && json.spacerDeckArray.length > 0) {
         for (var sa = 0; sa < json.spacerDeckArray.length; sa++) {
             var se = json.spacerDeckArray[sa];
             var sidx = se.idx || sa + 1;
-            spacerEntries.push("{" + sidx + "," + (se.product || "Unknown") + "}");
+            var spacerTopStr = se.top || "fx:deckBase[" + (sidx - 1) + "]";
+            var spacerParts = [sidx, spacerTopStr, se.product || "Unknown"];
+            if (se.swap) spacerParts.push("swap:" + se.swap);
+            spacerEntries.push("{" + spacerParts.join(",") + "}");
         }
     }
 
-    map.inertDeck = inertEntries.join(";");
-    map.coupledDeck = coupledEntries.join(";");
-    map.decoupledDeck = decoupledEntries.join(";");
-    map.spacerDeck = spacerEntries.join(";");
+    map.inertDeck = inertEntries.join("|");
+    map.coupledDeck = coupledEntries.join("|");
+    map.decoupledDeck = decoupledEntries.join("|");
+    map.spacerDeck = spacerEntries.join("|");
 
     // Serialize primerArray
     var primerEntries = [];
@@ -736,28 +747,12 @@ function configToFieldMap(config) {
             primerEntries.push("{" + primerIdx + "," + depthStr + "," + detStr + "," + heStr + "}");
         }
     }
-    map.primer = primerEntries.join(";");
+    map.primer = primerEntries.join("|");
 
     return map;
 }
 
-/**
- * Serialize a deck entry's length to brace notation length string.
- * @param {Object} entry - Deck template entry
- * @returns {string} Length string (e.g. "2.0", "fill", "fx:expr", "m:50", "product")
- */
-function serializeDeckLength(entry) {
-    switch (entry.lengthMode) {
-        case "formula":
-            return "fx:" + (entry.formula || "holeLength");
-        case "mass":
-            return "m:" + (entry.massKg || 0);
-        case "product":
-            return "product";
-        default:
-            return String(entry.length || 0);
-    }
-}
+// serializeDeckLength removed — replaced by top/base serialization in configToFieldMap
 
 /**
  * Generate transposed CSV from an array of ChargeConfig objects.
@@ -867,11 +862,21 @@ function parseProductsCSV(text, errors) {
 }
 
 /**
- * Parse a typed deck column (inertDeck, coupledDeck, decoupledDeck) from brace notation.
- * Input: "{1,2.0,Stemming};{8,fill,Stemming}"
- * Supports 4th element scaling flag: FL (isFixedLength), FM (isFixedMass), PR (isProportionalDeck)
- * Supports optional overlap syntax: {idx,length,product,FL,overlap:base=3;base-1=2;n=1;top=2}
- * Returns array of deck template entries with idx for sorting.
+ * Parse a typed deck column from brace notation (top/base format).
+ *
+ * Non-spacer format:
+ *   {idx,top,base,product}                      — no mass, no flag
+ *   {idx,top,base,product,FLAG}                 — with flag
+ *   {idx,top,base,mass,product}                 — with numeric mass, no flag
+ *   {idx,top,base,mass,product,FLAG}            — with mass and flag
+ *   {idx,top,base,mass,product,FLAG,overlap:..} — full form
+ *
+ * Parse rule: 4th field is numeric or "mass" → mass field present, product is 5th.
+ *             Otherwise 4th is product.
+ *
+ * Spacer format:
+ *   {idx,top,product}    — base derived from product.lengthMm/1000
+ *
  * @param {string} text - Raw cell value
  * @param {string} deckType - "INERT", "COUPLED", "DECOUPLED", or "SPACER"
  * @returns {Array} Deck template entries with idx property
@@ -897,63 +902,78 @@ function parseDeckColumn(text, deckType) {
         var idx = parseInt(parts[0].trim(), 10);
 
         if (deckType === "SPACER") {
-            // Spacer: {idx,product} — length derived from product.lengthMm
-            result.push({
+            // Spacer: {idx,top,product[,swap:...]} — base derived from product.lengthMm
+            var spacerTop = parts.length >= 3 ? parts[1].trim() : null;
+            var spacerProduct = parts.length >= 3 ? parts[2].trim() : parts[1].trim();
+            // Backward compat: {idx,product} (2 fields, no top)
+            if (parts.length < 3) {
+                spacerTop = null;
+                spacerProduct = parts[1].trim();
+            }
+            var spacerEntry = {
                 idx: idx,
                 type: "SPACER",
-                product: parts[1].trim(),
-                lengthMode: "product",
-                length: null
-            });
+                product: spacerProduct,
+                top: spacerTop
+            };
+            // Parse remaining fields for swap
+            for (var si = 3; si < parts.length; si++) {
+                var sPart = parts[si].trim();
+                if (sPart.length > 5 && sPart.substring(0, 5) === "swap:") {
+                    spacerEntry.swap = sPart.substring(5);
+                }
+            }
+            result.push(spacerEntry);
         } else {
-            // Non-spacer: {idx,length,product} or {idx,length,product,FLAG} or {idx,length,product,FLAG,overlap:...}
-            if (parts.length < 3) continue;
-            var lengthStr = parts[1].trim();
-            var product = parts[2].trim();
+            // Non-spacer: need at least {idx,top,base,product} = 4 fields
+            if (parts.length < 4) continue;
+            var topStr = parts[1].trim();
+            var baseStr = parts[2].trim();
+
+            // Determine if 4th field is mass or product
+            var fourthField = parts[3].trim();
+            var massKg = null;
+            var product;
+            var flagStartIdx;
+
+            // Check if 4th field is numeric (mass target) or the keyword "mass"
+            var isMassField = fourthField === "mass" || (!isNaN(parseFloat(fourthField)) && isFinite(fourthField) && !isScalingFlag(fourthField));
+
+            if (isMassField && parts.length >= 5) {
+                // {idx,top,base,mass,product,...}
+                massKg = fourthField === "mass" ? "mass" : parseFloat(fourthField);
+                product = parts[4].trim();
+                flagStartIdx = 5;
+            } else {
+                // {idx,top,base,product,...}
+                product = fourthField;
+                flagStartIdx = 4;
+            }
 
             var templateEntry = {
                 idx: idx,
                 type: deckType,
                 product: product,
-                lengthMode: "fixed",
-                length: null
+                top: topStr,
+                base: baseStr,
+                massKg: massKg
             };
 
-            if (lengthStr === "product") {
-                templateEntry.lengthMode = "product";
-            } else if (lengthStr.length > 3 && lengthStr.substring(0, 3) === "fx:") {
-                templateEntry.lengthMode = "formula";
-                templateEntry.formula = lengthStr.substring(3);
-            } else if (lengthStr.length > 2 && lengthStr.substring(0, 2) === "m:") {
-                templateEntry.lengthMode = "mass";
-                templateEntry.massKg = parseFloat(lengthStr.substring(2)) || 0;
-            } else {
-                templateEntry.lengthMode = "fixed";
-                templateEntry.length = parseFloat(lengthStr) || 0;
-            }
-
-            // Parse optional 4th element: scaling flag (FL, FM, PR, VR)
-            if (parts.length >= 4) {
-                var fourthPart = parts[3].trim();
-                // Check if it's a scaling flag or overlap syntax
-                if (fourthPart === "FL") {
+            // Parse remaining fields: scaling flags, overlap, and swap
+            for (var fi = flagStartIdx; fi < parts.length; fi++) {
+                var part = parts[fi].trim();
+                if (part === "FL") {
                     templateEntry.isFixedLength = true;
-                } else if (fourthPart === "FM") {
+                } else if (part === "FM") {
                     templateEntry.isFixedMass = true;
-                } else if (fourthPart === "VR") {
+                } else if (part === "VR") {
                     templateEntry.isVariable = true;
-                } else if (fourthPart === "PR") {
+                } else if (part === "PR") {
                     templateEntry.isProportionalDeck = true;
-                } else if (fourthPart.length > 8 && fourthPart.substring(0, 8) === "overlap:") {
-                    templateEntry.overlapPattern = parseOverlapSyntax(fourthPart);
-                }
-            }
-
-            // Parse optional 5th element: overlap syntax (when flag was 4th)
-            if (parts.length >= 5) {
-                var fifthPart = parts[4].trim();
-                if (fifthPart.length > 8 && fifthPart.substring(0, 8) === "overlap:") {
-                    templateEntry.overlapPattern = parseOverlapSyntax(fifthPart);
+                } else if (part.length > 8 && part.substring(0, 8) === "overlap:") {
+                    templateEntry.overlapPattern = parseOverlapSyntax(part);
+                } else if (part.length > 5 && part.substring(0, 5) === "swap:") {
+                    templateEntry.swap = part.substring(5);
                 }
             }
 
@@ -965,8 +985,18 @@ function parseDeckColumn(text, deckType) {
 }
 
 /**
+ * Check if a string is a scaling flag (FL, FM, VR, PR).
+ * Used to distinguish mass field from product field during parsing.
+ * @param {string} str
+ * @returns {boolean}
+ */
+function isScalingFlag(str) {
+    return str === "FL" || str === "FM" || str === "VR" || str === "PR";
+}
+
+/**
  * Parse overlap syntax string into an object.
- * Input: "overlap:base=3;base-1=2;n=1;top=2"
+ * Input: "overlap:base=3|base-1=2|n=1|top=2"
  * Output: { base: 3, "base-1": 2, n: 1, top: 2 }
  * @param {string} overlapStr
  * @returns {Object}
@@ -975,7 +1005,7 @@ function parseOverlapSyntax(overlapStr) {
     var pattern = {};
     // Strip "overlap:" prefix
     var body = overlapStr.substring(8);
-    var pairs = body.split(";");
+    var pairs = body.split("|");
     for (var i = 0; i < pairs.length; i++) {
         var pair = pairs[i].trim();
         if (pair.length === 0) continue;
@@ -991,7 +1021,7 @@ function parseOverlapSyntax(overlapStr) {
 }
 
 /**
- * Split brace-notation entries on ";" respecting nested braces.
+ * Split brace-notation entries on "|" respecting nested braces.
  * Used for both deck entries (overlap syntax) and primer entries (Det{...}, HE{...}).
  * @param {string} text
  * @returns {string[]}
@@ -1006,7 +1036,7 @@ function splitBraceEntries(text) {
         if (ch === "{") depth++;
         else if (ch === "}") depth--;
 
-        if (ch === ";" && depth === 0) {
+        if (ch === "|" && depth === 0) {
             entries.push(current);
             current = "";
         } else {
@@ -1020,7 +1050,7 @@ function splitBraceEntries(text) {
 
 /**
  * Parse the primer column from brace notation.
- * Input: "{1,fx:chargeBase-0.3,Det{MSHD500},HE{BS400G}};{2,8.5,Det{GENERIC-MS},HE{BS400G}}"
+ * Input: "{1,fx:chargeBase-0.3,Det{MSHD500},HE{BS400G}}|{2,8.5,Det{GENERIC-MS},HE{BS400G}}"
  * Returns array of primer template entries.
  * @param {string} text
  * @returns {Array} Primer template entries
@@ -1128,7 +1158,6 @@ function parseTransposedChargeConfigsCSV(lines, headers, errors) {
     var stringFields = {
         configName: true,
         description: true,
-        wetHoleProduct: true,
         inertDeck: true,
         coupledDeck: true,
         decoupledDeck: true,
@@ -1223,7 +1252,6 @@ function parseLegacyChargeConfigsCSV(lines, headers, errors) {
     var stringHeaders = {
         configName: true,
         description: true,
-        wetHoleProduct: true,
         inertDeck: true,
         coupledDeck: true,
         decoupledDeck: true,

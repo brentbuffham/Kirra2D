@@ -267,10 +267,10 @@ import { showDeckBuilderDialog } from "./charging/ui/DeckBuilderDialog.js";
 import { applyChargeRule } from "./charging/rules/SimpleRuleEngine.js";
 import { exportBaseConfigTemplate, exportCurrentConfig, importConfigFromZip, clearAllProducts, clearAllChargeConfigs, backupChargingConfig } from "./charging/ConfigImportExport.js";
 import { buildSurfaceConnectorPresets } from "./charging/ui/ConnectorPresets.js";
-import { remapChargingKeys, extractPlainIdRemap } from "./charging/ChargingRemapper.js";
+import { remapChargingKeys } from "./charging/ChargingRemapper.js";
 import { recalcMassPerHole } from "./helpers/ChargingMassHelper.js";
 import { calculateDownholeTimings, getTimingRange, fireTimeToColor, normalizeFireTime } from "./helpers/DownholeTimingCalculator.js";
-import { HoleCharging } from "./charging/HoleCharging.js";
+import { HoleCharging, chargingKey } from "./charging/HoleCharging.js";
 import { Deck } from "./charging/Deck.js";
 import { Primer } from "./charging/Primer.js";
 //=================================================
@@ -811,7 +811,6 @@ function exposeGlobalsToWindow() {
 	window.getShaderMaterialForModel = getShaderMaterialForModel;
 
 	window.remapChargingKeys = remapChargingKeys;
-	window.extractPlainIdRemap = extractPlainIdRemap;
 	window.exportBaseConfigTemplate = exportBaseConfigTemplate;
 	window.exportCurrentConfig = function() { exportCurrentConfig(loadedProducts, loadedChargeConfigs); };
 	window.importConfigFromZip = importConfigFromZip;
@@ -11035,7 +11034,7 @@ document.querySelector(".cblast-input-btn")?.addEventListener("click", function 
 										}
 
 										if (!window.loadedCharging) window.loadedCharging = new Map();
-										window.loadedCharging.set(createdHole.holeID, hc);
+										window.loadedCharging.set(chargingKey(createdHole), hc);
 									} catch (chgErr) {
 										console.warn("CBLAST: Failed to create charging for hole " + createdHole.holeID + ":", chgErr);
 									}
@@ -13681,9 +13680,9 @@ function resolveDuplicatesAutoRenumber(allBlastHoles, duplicateReport) {
 			newID = (++entity.maxNumeric).toString();
 		}
 
-		// Track remap for charging
+		// Track remap for charging (composite keys: entityName:::holeID)
 		if (oldID !== newID) {
-			dupRemapMap.set(oldID, newID);
+			dupRemapMap.set(duplicate.entityName + ":::" + oldID, duplicate.entityName + ":::" + newID);
 		}
 
 		// Update the hole ID
@@ -27567,6 +27566,11 @@ function addHoleToAllBlastHoles(
 		measuredMassTimeStamp: measuredMassTimeStamp,
 		measuredComment: measuredComment,
 		measuredCommentTimeStamp: measuredCommentTimeStamp,
+		holeConditions: "",
+		measuredTemperature: 0,
+		measuredTemperatureUnit: "C",
+		measuredTemperatureTimeStamp: "09/05/1975 00:00:00",
+		perHoleCondition: "",
 		visible: true,
 		rowID: parseInt(rowID),
 		posID: parseInt(posID),
@@ -28697,7 +28701,7 @@ function timeChart() {
 
 			// Deck-level binning for deckCount and massPerDeck modes
 			if ((chartMode === "deckCount" || chartMode === "massPerDeck") && window.loadedCharging) {
-				var charging = window.loadedCharging.get(hole.holeID);
+				var charging = window.loadedCharging.get(chargingKey(hole));
 				if (charging && charging.decks) {
 					for (var di = 0; di < charging.decks.length; di++) {
 						var deck = charging.decks[di];
@@ -31937,13 +31941,13 @@ function drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj) {
 		drawRightAlignedText(leftSideCollar, middleSideCollar, "Pos:" + hole.posID, "#FF00FF");
 	}
 	if (displayOptions.massPerHole) {
-		var mLabels = buildMassLabels(hole.holeID);
+		var mLabels = buildMassLabels(hole);
 		if (mLabels.perHole) {
 			drawRightAlignedText(leftSideCollar, middleSideToe, mLabels.perHole, "#FF0000");
 		}
 	}
 	if (displayOptions.massPerDeck) {
-		var dLabels = buildMassLabels(hole.holeID);
+		var dLabels = buildMassLabels(hole);
 		var lineH = parseInt(currentFontSize);
 		for (var ml = 0; ml < dLabels.perDeck.length; ml++) {
 			drawRightAlignedText(leftSideCollar, middleSideToe + ml * lineH, dLabels.perDeck[ml], "#FF0000");
@@ -31951,7 +31955,7 @@ function drawHoleTextsAndConnectors(hole, x, y, lineEndX, lineEndY, ctxObj) {
 	}
 	if (displayOptions.downholeTiming) {
 		var chargingMap = window.loadedCharging;
-		if (chargingMap && chargingMap.has(hole.holeID)) {
+		if (chargingMap && chargingMap.has(chargingKey(hole))) {
 			var timingEntries = calculateDownholeTimings([hole], chargingMap, { visibleOnly: false });
 			if (timingEntries.length > 0) {
 				// Get global timing range for consistent coloring (cache per draw cycle)
@@ -36033,7 +36037,7 @@ document.addEventListener("DOMContentLoaded", () => {
 				function () {
 					for (var i = 0; i < targets.length; i++) {
 						if (window.loadedCharging) {
-							window.loadedCharging.delete(targets[i].holeID);
+							window.loadedCharging.delete(chargingKey(targets[i]));
 						}
 					}
 					if (typeof window.debouncedSaveCharging === "function") window.debouncedSaveCharging();
@@ -51459,6 +51463,7 @@ window.handleTreeViewRenameMultipleHoles = function (nodeIds, treeViewInstance) 
 			var reassignRemapMap = new Map();
 			selectedHolesList.forEach(function (hole) {
 				if (hole.entityName !== targetBlastName) {
+					var oldEntityName = hole.entityName;
 					var oldHoleID = hole.holeID;
 					var newHoleID = hole.holeID;
 
@@ -51467,10 +51472,8 @@ window.handleTreeViewRenameMultipleHoles = function (nodeIds, treeViewInstance) 
 						newHoleID = hole.holeID + "_" + generateUniqueCode();
 					}
 
-					// Track remap for charging if ID changed
-					if (oldHoleID !== newHoleID) {
-						reassignRemapMap.set(oldHoleID, newHoleID);
-					}
+					// Track remap for charging (composite keys: old entity:::oldID -> new entity:::newID)
+					reassignRemapMap.set(oldEntityName + ":::" + oldHoleID, targetBlastName + ":::" + newHoleID);
 
 					hole.entityName = targetBlastName;
 					hole.holeID = newHoleID;
@@ -52723,8 +52726,11 @@ function renumberSelectedHoles(startNumber) {
 		var currentNumber = parseInt(alphaMatch[2]);
 
 		selectedHoles.forEach(function(hole) {
+			var oldHoleID = hole.holeID;
 			var newHoleID = currentLetter + currentNumber;
-			oldToNewHoleIDMap.set(hole.holeID, newHoleID);
+			if (oldHoleID !== newHoleID) {
+				oldToNewHoleIDMap.set((hole.entityName || "") + ":::" + oldHoleID, (hole.entityName || "") + ":::" + newHoleID);
+			}
 			hole.holeID = newHoleID;
 			currentNumber++;
 		});
@@ -52732,19 +52738,27 @@ function renumberSelectedHoles(startNumber) {
 		var currentNum = parseInt(startValue) || 1;
 
 		selectedHoles.forEach(function(hole) {
-			oldToNewHoleIDMap.set(hole.holeID, currentNum.toString());
-			hole.holeID = currentNum.toString();
+			var oldHoleID = hole.holeID;
+			var newHoleID = currentNum.toString();
+			if (oldHoleID !== newHoleID) {
+				oldToNewHoleIDMap.set((hole.entityName || "") + ":::" + oldHoleID, (hole.entityName || "") + ":::" + newHoleID);
+			}
+			hole.holeID = newHoleID;
 			currentNum++;
 		});
 	}
 
-	// Update fromHoleID references
+	// Update fromHoleID references (fromHoleID is a plain holeID, not composite)
+	// Build a plain oldID->newID lookup from the composite key map
+	var plainIdRemap = new Map();
+	oldToNewHoleIDMap.forEach(function(newComposite, oldComposite) {
+		var oldPlain = oldComposite.split(":::")[1] || oldComposite;
+		var newPlain = newComposite.split(":::")[1] || newComposite;
+		plainIdRemap.set(oldPlain, newPlain);
+	});
 	window.allBlastHoles.forEach(function(hole) {
-		if (hole.fromHoleID) {
-			var parts = hole.fromHoleID.split(":::");
-			if (parts.length === 2 && oldToNewHoleIDMap.has(parts[1])) {
-				hole.fromHoleID = parts[0] + ":::" + oldToNewHoleIDMap.get(parts[1]);
-			}
+		if (hole.fromHoleID && plainIdRemap.has(hole.fromHoleID)) {
+			hole.fromHoleID = plainIdRemap.get(hole.fromHoleID);
 		}
 	});
 

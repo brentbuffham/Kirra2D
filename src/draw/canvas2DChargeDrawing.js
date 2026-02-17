@@ -4,6 +4,7 @@
  * Reference: src/referenceFiles/Diagrams/hole_charging.html
  */
 import { DECK_TYPES, DECK_COLORS, NON_EXPLOSIVE_TYPES, BULK_EXPLOSIVE_TYPES } from "../charging/ChargingConstants.js";
+import { chargingKey } from "../charging/HoleCharging.js";
 
 var PRIMER_2D_COLOR = "#dd1111";     // Red
 var DETONATOR_2D_COLOR = "#2858a8";  // Blue diamond
@@ -119,7 +120,7 @@ function getDeckColor2D(deck) {
 export function drawCharges2D(ctx, hole, cx, cy, radius) {
 	if (!window.loadedCharging) return;
 
-	var charging = window.loadedCharging.get(hole.holeID);
+	var charging = window.loadedCharging.get(chargingKey(hole));
 	if (!charging || !charging.decks || charging.decks.length === 0) return;
 
 	var holeLength = charging.holeLength || hole.holeLengthCalculated || 0;
