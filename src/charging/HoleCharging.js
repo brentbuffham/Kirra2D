@@ -33,8 +33,15 @@ function buildIndexedChargeVarsForPrimers(decks, ctx) {
 	for (var i = 0; i < decks.length; i++) {
 		var d = decks[i];
 		var dt = d.deckType;
+		var deckPos = i + 1;
+
+		// deckBase[N]/deckTop[N]/deckLength[N] — ALL deck types
+		ctx["deckBase_" + deckPos] = d.baseDepth;
+		ctx["deckTop_" + deckPos] = d.topDepth;
+		ctx["deckLength_" + deckPos] = d.baseDepth - d.topDepth;
+
+		// chargeBase[N]/chargeTop[N]/chargeLength[N] — charge decks only
 		if (dt === DECK_TYPES.COUPLED || dt === DECK_TYPES.DECOUPLED) {
-			var deckPos = i + 1;
 			var cTop = d.topDepth;
 			var cBase = d.baseDepth;
 			var cLen = cBase - cTop;

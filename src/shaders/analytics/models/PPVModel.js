@@ -111,40 +111,89 @@ export class PPVModel {
             void main() {
                 float peakPPV = 0.0;
 
-                // Timing window mode: combine charges within the window
-                bool useTimeWindow = uTimeWindow > 0.0 && uTimeOffset >= 0.0;
+                // Time-bin MIC mode: fixed-width bins, PPV from bin MIC
+                bool useTimeWindow = uTimeWindow > 0.0;
 
                 if (useTimeWindow) {
-                    // Pass: accumulate in-window charges into mass-weighted centroid
-                    float totalQ = 0.0;
-                    vec3 weightedCenter = vec3(0.0);
-                    float halfWindow = uTimeWindow * 0.5;
+                    // Fixed bins: [offset, offset+W), [offset+W, offset+2W), ...
+                    // Edge bin:   [0, offset) for any holes before the first full bin.
+                    // Each hole belongs to exactly one bin.
+                    // MIC per bin = sum of charges from all holes in that bin.
+                    // PPV evaluated at top/center/base of each hole using its bin's MIC.
 
-                    for (int j = 0; j < 512; j++) {
-                        if (j >= uHoleCount) break;
+                    for (int i = 0; i < 512; i++) {
+                        if (i >= uHoleCount) break;
 
-                        vec4 posCharge = getHoleData(j, 0);
-                        float charge = posCharge.w;
-                        if (charge <= 0.0) continue;
+                        vec4 posCharge_i = getHoleData(i, 0);
+                        float charge_i = posCharge_i.w;
+                        if (charge_i <= 0.0) continue;
 
-                        // Display time filter (overall time cutoff)
-                        vec4 props = getHoleData(j, 2);
-                        float timing_j = props.y;
-                        if (uDisplayTime >= 0.0 && timing_j > uDisplayTime) continue;
+                        vec4 props_i = getHoleData(i, 2);
+                        float timing_i = props_i.y;
+                        if (uDisplayTime >= 0.0 && timing_i > uDisplayTime) continue;
 
-                        // Time window filter
-                        if (abs(timing_j - uTimeOffset) > halfWindow) continue;
+                        // Determine bin index for hole i
+                        // Edge bin (timing < offset) gets index -1
+                        float bin_i = (uTimeOffset > 0.0 && timing_i < uTimeOffset)
+                            ? -1.0
+                            : floor((timing_i - uTimeOffset) / uTimeWindow);
 
-                        vec3 center_j = getChargeCentroid(j);
-                        weightedCenter += center_j * charge;
-                        totalQ += charge;
-                    }
+                        // Sum charges of all holes in the same bin → MIC
+                        float mic = 0.0;
+                        for (int j = 0; j < 512; j++) {
+                            if (j >= uHoleCount) break;
+                            vec4 pc_j = getHoleData(j, 0);
+                            float q_j = pc_j.w;
+                            if (q_j <= 0.0) continue;
 
-                    if (totalQ > 0.0) {
-                        weightedCenter /= totalQ;
-                        float dist = max(distance(vWorldPos, weightedCenter), uCutoff);
-                        float sd = dist / pow(totalQ, uChargeExp);
-                        peakPPV = max(peakPPV, uK * pow(sd, -uB));
+                            vec4 pr_j = getHoleData(j, 2);
+                            float t_j = pr_j.y;
+                            if (uDisplayTime >= 0.0 && t_j > uDisplayTime) continue;
+
+                            float bin_j = (uTimeOffset > 0.0 && t_j < uTimeOffset)
+                                ? -1.0
+                                : floor((t_j - uTimeOffset) / uTimeWindow);
+
+                            if (abs(bin_j - bin_i) < 0.5) {
+                                mic += q_j;
+                            }
+                        }
+
+                        if (mic <= 0.0) continue;
+
+                        // Evaluate PPV at top/center/base of this hole using bin MIC
+                        vec3 chargeCenter = getChargeCentroid(i);
+
+                        vec4 collar = getHoleData(i, 0);
+                        vec4 toe = getHoleData(i, 1);
+                        vec4 charging = getHoleData(i, 3);
+                        vec3 collarPos = collar.xyz;
+                        vec3 toePos = toe.xyz;
+                        float holeLen = toe.w;
+
+                        float ctd = charging.x;
+                        float cbd = charging.y;
+                        if (cbd <= 0.0 || cbd <= ctd) {
+                            ctd = holeLen * 0.3;
+                            cbd = holeLen;
+                        }
+
+                        vec3 holeAxis = (holeLen > 0.001) ? normalize(toePos - collarPos) : vec3(0.0);
+                        vec3 chargeTop = collarPos + holeAxis * ctd;
+                        vec3 chargeBase = collarPos + holeAxis * cbd;
+
+                        float sd, ppv;
+                        sd = max(distance(vWorldPos, chargeTop), uCutoff) / pow(mic, uChargeExp);
+                        ppv = uK * pow(sd, -uB);
+                        peakPPV = max(peakPPV, ppv);
+
+                        sd = max(distance(vWorldPos, chargeCenter), uCutoff) / pow(mic, uChargeExp);
+                        ppv = uK * pow(sd, -uB);
+                        peakPPV = max(peakPPV, ppv);
+
+                        sd = max(distance(vWorldPos, chargeBase), uCutoff) / pow(mic, uChargeExp);
+                        ppv = uK * pow(sd, -uB);
+                        peakPPV = max(peakPPV, ppv);
                     }
                 } else {
                     // Per-hole peak mode — each hole evaluated independently from charge centroid

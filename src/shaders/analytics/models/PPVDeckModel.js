@@ -89,42 +89,80 @@ export class PPVDeckModel {
 				float peakPPV = 0.0;
 				float minDist = 1e10;
 
-				bool useTimeWindow = uTimeWindow > 0.0 && uTimeOffset >= 0.0;
+				bool useTimeWindow = uTimeWindow > 0.0;
 
 				if (useTimeWindow) {
-					// Combine decks within timing window: mass-weighted centroid, summed mass
-					float totalQ = 0.0;
-					vec3 weightedCenter = vec3(0.0);
-					float halfWindow = uTimeWindow * 0.5;
+					// Fixed-width time bins for MIC calculation.
+					// Bins: [offset, offset+W), [offset+W, offset+2W), ...
+					// Edge bin: [0, offset) for holes before the first full bin.
+					// Each deck belongs to exactly one bin.
+					// MIC per bin = sum of masses from all decks in that bin.
+					// PPV evaluated at top/mid/base of each deck using its bin's MIC.
 
 					for (int d = 0; d < 2048; d++) {
 						if (d >= uDeckCount) break;
 
-						vec4 top = getDeckData(d, 0);
-						vec4 bot = getDeckData(d, 1);
-						vec4 extra = getDeckData(d, 2);
+						vec4 top_d = getDeckData(d, 0);
+						vec4 bot_d = getDeckData(d, 1);
+						vec4 extra_d = getDeckData(d, 2);
 
-						float deckMass = top.w;
-						if (deckMass <= 0.0) continue;
+						float mass_d = top_d.w;
+						if (mass_d <= 0.0) continue;
 
-						float timing_d = extra.z;
-
-						// Display time filter
+						float timing_d = extra_d.z;
 						if (uDisplayTime >= 0.0 && timing_d > uDisplayTime) continue;
 
-						// Time window filter
-						if (abs(timing_d - uTimeOffset) > halfWindow) continue;
+						// Quick distance check
+						vec3 midPos_d = (top_d.xyz + bot_d.xyz) * 0.5;
+						float distCheck = distance(vWorldPos, midPos_d);
+						if (distCheck > uMaxDisplayDistance) continue;
+						minDist = min(minDist, distCheck);
 
-						vec3 midPos = (top.xyz + bot.xyz) * 0.5;
-						weightedCenter += midPos * deckMass;
-						totalQ += deckMass;
-					}
+						// Determine bin index for deck d
+						float bin_d = (uTimeOffset > 0.0 && timing_d < uTimeOffset)
+							? -1.0
+							: floor((timing_d - uTimeOffset) / uTimeWindow);
 
-					if (totalQ > 0.0) {
-						weightedCenter /= totalQ;
-						float dist = max(distance(vWorldPos, weightedCenter), uCutoff);
-						float sd = dist / pow(totalQ, uChargeExp);
-						peakPPV = max(peakPPV, uK * pow(sd, -uB));
+						// Sum masses of all decks in the same bin → MIC
+						float mic = 0.0;
+						for (int j = 0; j < 2048; j++) {
+							if (j >= uDeckCount) break;
+							vec4 top_j = getDeckData(j, 0);
+							float mass_j = top_j.w;
+							if (mass_j <= 0.0) continue;
+
+							vec4 extra_j = getDeckData(j, 2);
+							float t_j = extra_j.z;
+							if (uDisplayTime >= 0.0 && t_j > uDisplayTime) continue;
+
+							float bin_j = (uTimeOffset > 0.0 && t_j < uTimeOffset)
+								? -1.0
+								: floor((t_j - uTimeOffset) / uTimeWindow);
+
+							if (abs(bin_j - bin_d) < 0.5) {
+								mic += mass_j;
+							}
+						}
+
+						if (mic <= 0.0) continue;
+
+						// Evaluate PPV at top/mid/base of this deck using bin MIC
+						vec3 topPos = top_d.xyz;
+						vec3 botPos = bot_d.xyz;
+						vec3 midPos = (topPos + botPos) * 0.5;
+
+						float sd, ppv;
+						sd = max(distance(vWorldPos, topPos), uCutoff) / pow(mic, uChargeExp);
+						ppv = uK * pow(sd, -uB);
+						peakPPV = max(peakPPV, ppv);
+
+						sd = max(distance(vWorldPos, midPos), uCutoff) / pow(mic, uChargeExp);
+						ppv = uK * pow(sd, -uB);
+						peakPPV = max(peakPPV, ppv);
+
+						sd = max(distance(vWorldPos, botPos), uCutoff) / pow(mic, uChargeExp);
+						ppv = uK * pow(sd, -uB);
+						peakPPV = max(peakPPV, ppv);
 					}
 				} else {
 					// Per-deck peak: evaluate each deck at 3 points (top, mid, base)

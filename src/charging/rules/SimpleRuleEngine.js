@@ -356,6 +356,15 @@ function applyTemplate(hole, config, deckSequence) {
 		// Track resolved position for deckBase[N]/deckTop[N]
 		resolvedDecks.push({ topDepth: topDepth, baseDepth: baseDepth });
 		buildIndexedDeckVars(resolvedDecks, formulaCtx);
+
+		// Also add chargeBase[N]/chargeTop[N] incrementally for COUPLED/DECOUPLED decks
+		// so subsequent deck formulas can reference them (not just primers)
+		if (deckType === DECK_TYPES.COUPLED || deckType === DECK_TYPES.DECOUPLED) {
+			var chargeIdx = resolvedDecks.length; // 1-based (matches deckBase[N] numbering)
+			formulaCtx["chargeBase_" + chargeIdx] = baseDepth;
+			formulaCtx["chargeTop_" + chargeIdx] = topDepth;
+			formulaCtx["chargeLength_" + chargeIdx] = baseDepth - topDepth;
+		}
 	}
 
 	// Build primer formula context with indexed charge variables

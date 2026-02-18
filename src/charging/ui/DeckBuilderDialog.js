@@ -86,12 +86,18 @@ function buildFormulaCtxFromDecks(workingCharging) {
     for (var i = 0; i < workingCharging.decks.length; i++) {
         var d = workingCharging.decks[i];
         var dt = d.deckType;
+        var deckPos = i + 1; // 1-based deck array position — matches UI labels
+
+        // deckBase[N]/deckTop[N]/deckLength[N] — ALL deck types
+        ctx["deckBase_" + deckPos] = d.baseDepth;
+        ctx["deckTop_" + deckPos] = d.topDepth;
+        ctx["deckLength_" + deckPos] = d.baseDepth - d.topDepth;
+
+        // chargeBase[N]/chargeTop[N]/chargeLength[N] — charge decks only
         if (dt === DECK_TYPES.COUPLED || dt === DECK_TYPES.DECOUPLED) {
-            var deckPos = i + 1; // 1-based deck array position — matches UI labels
             var cTop = d.topDepth;
             var cBase = d.baseDepth;
             var cLen = cBase - cTop;
-            // Index by deck position so chargeBase[4] matches COUPLED[4] in the UI
             ctx["chargeBase_" + deckPos] = cBase;
             ctx["chargeTop_" + deckPos] = cTop;
             ctx["chargeLength_" + deckPos] = cLen;

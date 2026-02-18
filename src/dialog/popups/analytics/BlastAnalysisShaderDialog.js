@@ -374,11 +374,13 @@ function getModelInfo(modelName) {
 				<ul style="margin: 5px 0; padding-left: 20px;">
 					<li><strong>K</strong> - Site constant (mm/s), calibrated from blast monitoring</li>
 					<li><strong>b</strong> - Distance attenuation exponent (typical 1.5-2.0)</li>
-					<li><strong>n</strong> - Charge weight scaling exponent (typically 0.5 for cube root)</li>
-					<li><strong>D</strong> - Distance from charge (m), calculated per pixel</li>
+					<li><strong>n</strong> - Charge weight scaling exponent (typically 0.5 for square-root SD)</li>
+					<li><strong>D</strong> - Distance from charge top/centre/base (m), per pixel</li>
 					<li><strong>W</strong> - Charge mass per hole (kg), from charging data</li>
 				</ul>
-				<p style="margin-top: 8px; font-style: italic;">💡 Use this for compliance predictions and monitoring comparisons.</p>
+				<p style="margin-top: 8px;"><strong>MIC Bin Mode</strong> (when Bin Width > 0):<br>
+				The blast timeline is divided into fixed-width time bins. All holes firing within the same bin have their charges summed to give the <strong>Maximum Instantaneous Charge (MIC)</strong> for that bin. PPV is then evaluated at each hole's charge top, centre, and base using the bin MIC. The worst-case bin determines the peak PPV at each pixel. The Bin Offset shifts the bin boundaries (e.g. 8ms bins with 4ms offset: edge bin [0,4ms), then [4,12), [12,20)...).</p>
+				<p style="margin-top: 8px; font-style: italic;">Use for: Compliance predictions, monitoring comparisons, and MIC-based vibration analysis.</p>
 			`;
 
 		case "ppv_deck":
@@ -389,11 +391,12 @@ function getModelInfo(modelName) {
 				<ul style="margin: 5px 0; padding-left: 20px;">
 					<li><strong>K, b, n</strong> - Site constants (same as PPV model)</li>
 					<li><strong>Per-deck mass</strong> - Each deck uses its own mass, not total hole mass</li>
-					<li><strong>Multi-deck holes</strong> - Air gaps between decks are naturally excluded</li>
-					<li><strong>3-point evaluation</strong> - Checks PPV at top, centre, and base of each deck</li>
-					<li><strong>Time Window</strong> - Combine decks firing within a time window</li>
+					<li><strong>Multi-deck holes</strong> - Air gaps between decks naturally excluded</li>
+					<li><strong>3-point evaluation</strong> - PPV checked at top, centre, and base of each deck</li>
 				</ul>
-				<p style="margin-top: 8px; font-style: italic;">Use for: Per-deck PPV analysis with multi-deck charge configurations.</p>
+				<p style="margin-top: 8px;"><strong>MIC Bin Mode</strong> (when Bin Width > 0):<br>
+				Same fixed-width bin approach as PPV model. Deck masses within the same time bin are summed for MIC. Each deck's top/mid/base is evaluated using the bin MIC. The offset shifts bin boundaries to test different bin alignments.</p>
+				<p style="margin-top: 8px; font-style: italic;">Use for: Per-deck PPV analysis with multi-deck charge configurations and MIC windowing.</p>
 			`;
 
 		case "heelan_original":
@@ -550,9 +553,10 @@ function updateModelParameters(modelName, dialogContent) {
 		if (params.hasOwnProperty(key)) {
 			var param = params[key];
 			var unitSpan = param.unit ? `<span style="margin-left: 8px; color: #888; font-size: 11px;">${param.unit}</span>` : '';
+			var tooltipAttr = param.tooltip ? ` title="${param.tooltip.replace(/"/g, '&quot;')}"` : '';
 			html += `
-				<div class="button-container-2col" style="display: grid; grid-template-columns: 40% 60%; column-gap: 8px; row-gap: 2px; align-items: center; width: 100%; margin-bottom: 8px;">
-					<label class="labelWhite12" style="font-size: 11px; font-family: sans-serif; text-align: right; padding-right: 8px;">${param.label}:</label>
+				<div class="button-container-2col" style="display: grid; grid-template-columns: 40% 60%; column-gap: 8px; row-gap: 2px; align-items: center; width: 100%; margin-bottom: 8px;"${tooltipAttr}>
+					<label class="labelWhite12" style="font-size: 11px; font-family: sans-serif; text-align: right; padding-right: 8px; cursor: help;"${tooltipAttr}>${param.label}:</label>
 					<div style="display: flex; align-items: center;">
 						<input type="number"
 							   name="param_${key}"
@@ -560,6 +564,7 @@ function updateModelParameters(modelName, dialogContent) {
 							   step="${param.step || 'any'}"
 							   min="${param.min || ''}"
 							   max="${param.max || ''}"
+							   ${tooltipAttr}
 							   style="width: 120px; padding: 4px 8px; background: var(--input-bg); color: var(--text-color); border: 1px solid var(--light-mode-border); border-radius: 3px; font-size: 12px;">
 						${unitSpan}
 					</div>
@@ -583,102 +588,162 @@ function getDefaultParametersForModel(modelName) {
 	switch (modelName) {
 		case "ppv":
 			return {
-				K: { label: "Site Constant K", value: 1140, min: 100, max: 5000, step: 10, unit: "" },
-				B: { label: "Site Exponent b", value: 1.6, min: 1.0, max: 2.5, step: 0.1, unit: "" },
-				chargeExponent: { label: "Scaled Weight Exponent n", value: 0.5, min: 0.3, max: 0.8, step: 0.05, unit: "" },
-				targetPPV: { label: "Target PPV (mm/s) - 0 = disabled", value: 0, min: 0, max: 500, step: 5, unit: "mm/s" },
-				timeWindow: { label: "Time Window", value: 0, min: 0, max: 500, step: 1, unit: "ms" },
-				timeOffset: { label: "Offset Window (+/-)", value: 0, min: -500, max: 500, step: 1, unit: "ms" }
+				K: { label: "Site Constant K", value: 1140, min: 100, max: 5000, step: 10, unit: "",
+					tooltip: "Empirical site constant (intercept) from blast monitoring regression. Higher K = higher predicted PPV. Calibrate from site vibration data." },
+				B: { label: "Site Exponent b", value: 1.6, min: 1.0, max: 2.5, step: 0.1, unit: "",
+					tooltip: "Distance attenuation exponent (slope). Typical range 1.5-2.0. Higher b = faster PPV decay with distance." },
+				chargeExponent: { label: "Scaled Weight Exponent n", value: 0.5, min: 0.3, max: 0.8, step: 0.05, unit: "",
+					tooltip: "Charge weight scaling exponent. 0.5 = square-root (standard SD), 0.33 = cube-root. Controls how charge mass influences scaled distance." },
+				targetPPV: { label: "Target PPV (0 = off)", value: 0, min: 0, max: 500, step: 5, unit: "mm/s",
+					tooltip: "Draw a black contour line at this PPV value. Set to 0 to disable. Useful for compliance boundaries." },
+				timeWindow: { label: "MIC Bin Width (0 = per-hole)", value: 0, min: 0, max: 500, step: 1, unit: "ms",
+					tooltip: "Time bin width for Maximum Instantaneous Charge (MIC). Holes firing within the same bin have their charges summed. 0 = each hole evaluated independently. Typical: 8-25 ms." },
+				timeOffset: { label: "Bin Offset", value: 0, min: 0, max: 500, step: 1, unit: "ms",
+					tooltip: "Shifts the bin boundaries. With 8ms bins and 4ms offset: edge bin [0,4), then [4,12), [12,20), etc. 0 = bins start at t=0." }
 			};
 
 		case "heelan_original":
 			return {
-				rockDensity: { label: "Rock Density", value: 2700, min: 2000, max: 3500, step: 50, unit: "kg/m³" },
-				pWaveVelocity: { label: "P-Wave Velocity", value: 4500, min: 2000, max: 7000, step: 100, unit: "m/s" },
-				sWaveVelocity: { label: "S-Wave Velocity", value: 2600, min: 1500, max: 4000, step: 100, unit: "m/s" },
-				detonationVelocity: { label: "VOD", value: 5500, min: 3000, max: 8000, step: 100, unit: "m/s" },
-				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "" },
-				qualityFactorP: { label: "Quality Factor P", value: 50, min: 0, max: 200, step: 5, unit: "" },
-				qualityFactorS: { label: "Quality Factor S", value: 30, min: 0, max: 200, step: 5, unit: "" }
+				rockDensity: { label: "Rock Density", value: 2700, min: 2000, max: 3500, step: 50, unit: "kg/m³",
+					tooltip: "In-situ rock mass density. Affects wave impedance and radiation pattern amplitude. Typical: granite 2700, sandstone 2400, limestone 2600." },
+				pWaveVelocity: { label: "P-Wave Velocity", value: 4500, min: 2000, max: 7000, step: 100, unit: "m/s",
+					tooltip: "Compressional (P) wave velocity from seismic refraction or crosshole testing. Controls radiation pattern shape and wavelength." },
+				sWaveVelocity: { label: "S-Wave Velocity", value: 2600, min: 1500, max: 4000, step: 100, unit: "m/s",
+					tooltip: "Shear (S) wave velocity. Typically 0.5-0.6 of P-wave velocity. Controls SV-wave radiation lobe geometry." },
+				detonationVelocity: { label: "VOD", value: 5500, min: 3000, max: 8000, step: 100, unit: "m/s",
+					tooltip: "Velocity of detonation of the explosive. Controls the Mach angle of the radiation pattern. ANFO ~4500, emulsion ~5500 m/s." },
+				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "",
+					tooltip: "Number of point sources used to discretise the charge column. Higher = more accurate but slower. 20 is a good balance." },
+				qualityFactorP: { label: "Quality Factor P", value: 50, min: 0, max: 200, step: 5, unit: "",
+					tooltip: "Seismic quality factor for P-waves (anelastic attenuation). Higher Q = less attenuation. 0 = no attenuation. Typical rock: 30-100." },
+				qualityFactorS: { label: "Quality Factor S", value: 30, min: 0, max: 200, step: 5, unit: "",
+					tooltip: "Seismic quality factor for S-waves. Usually lower than Qp. Typical: 20-80." }
 			};
 
 		case "scaled_heelan":
 			return {
-				K: { label: "Site Constant K", value: 1140, min: 100, max: 5000, step: 10, unit: "" },
-				B: { label: "Site Exponent B", value: 1.6, min: 1.0, max: 2.5, step: 0.1, unit: "" },
-				chargeExponent: { label: "Charge Exponent", value: 0.5, min: 0.3, max: 0.8, step: 0.05, unit: "" },
-				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "" },
-				pWaveVelocity: { label: "P-Wave Velocity", value: 4500, min: 2000, max: 7000, step: 100, unit: "m/s" },
-				sWaveVelocity: { label: "S-Wave Velocity", value: 2600, min: 1500, max: 4000, step: 100, unit: "m/s" },
-				detonationVelocity: { label: "VOD", value: 5500, min: 3000, max: 8000, step: 100, unit: "m/s" },
-				pWaveWeight: { label: "P-Wave Weight", value: 1.0, min: 0, max: 2, step: 0.1, unit: "" },
-				svWaveWeight: { label: "SV-Wave Weight", value: 1.0, min: 0, max: 2, step: 0.1, unit: "" }
+				K: { label: "Site Constant K", value: 1140, min: 100, max: 5000, step: 10, unit: "",
+					tooltip: "Site constant from blast monitoring regression. Scales the overall PPV magnitude. Calibrate from monitoring data." },
+				B: { label: "Site Exponent B", value: 1.6, min: 1.0, max: 2.5, step: 0.1, unit: "",
+					tooltip: "Distance attenuation exponent. Controls how fast PPV decays with scaled distance. Typical 1.5-2.0." },
+				chargeExponent: { label: "Charge Exponent", value: 0.5, min: 0.3, max: 0.8, step: 0.05, unit: "",
+					tooltip: "Charge weight scaling exponent. 0.5 = square-root (standard scaled distance)." },
+				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "",
+					tooltip: "Number of point sources along the charge column. Higher = more accurate directional pattern but slower." },
+				pWaveVelocity: { label: "P-Wave Velocity", value: 4500, min: 2000, max: 7000, step: 100, unit: "m/s",
+					tooltip: "Compressional wave velocity. Shapes the radiation pattern directionality." },
+				sWaveVelocity: { label: "S-Wave Velocity", value: 2600, min: 1500, max: 4000, step: 100, unit: "m/s",
+					tooltip: "Shear wave velocity. Affects SV-wave lobe direction." },
+				detonationVelocity: { label: "VOD", value: 5500, min: 3000, max: 8000, step: 100, unit: "m/s",
+					tooltip: "Explosive detonation velocity. Controls the Mach cone angle of the radiation pattern." },
+				pWaveWeight: { label: "P-Wave Weight", value: 1.0, min: 0, max: 2, step: 0.1, unit: "",
+					tooltip: "Relative contribution of P-wave radiation. 1.0 = normal. Increase to emphasise axial vibration." },
+				svWaveWeight: { label: "SV-Wave Weight", value: 1.0, min: 0, max: 2, step: 0.1, unit: "",
+					tooltip: "Relative contribution of SV-wave radiation. 1.0 = normal. Increase to emphasise lateral/shear vibration." }
 			};
 
 		case "nonlinear_damage":
 			return {
-				K_hp: { label: "H-P Constant K", value: 700, min: 100, max: 2000, step: 50, unit: "" },
-				alpha_hp: { label: "H-P Alpha (α)", value: 0.7, min: 0.3, max: 1.5, step: 0.05, unit: "" },
-				beta_hp: { label: "H-P Beta (β)", value: 1.5, min: 1.0, max: 2.5, step: 0.1, unit: "" },
-				ppvCritical: { label: "Critical PPV", value: 700, min: 100, max: 2000, step: 50, unit: "mm/s" },
-				numElements: { label: "Charge Elements", value: 20, min: 5, max: 50, step: 1, unit: "" },
-				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m" }
+				K_hp: { label: "H-P Constant K", value: 700, min: 100, max: 2000, step: 50, unit: "",
+					tooltip: "Holmberg-Persson site constant. Calibrated from observed damage extents or near-field PPV data." },
+				alpha_hp: { label: "H-P Alpha (α)", value: 0.7, min: 0.3, max: 1.5, step: 0.05, unit: "",
+					tooltip: "Charge mass exponent in Holmberg-Persson formula. Controls how charge mass influences PPV. Typical 0.5-1.0." },
+				beta_hp: { label: "H-P Beta (β)", value: 1.5, min: 1.0, max: 2.5, step: 0.1, unit: "",
+					tooltip: "Distance exponent in Holmberg-Persson formula. Controls attenuation rate with distance." },
+				ppvCritical: { label: "Critical PPV", value: 700, min: 100, max: 2000, step: 50, unit: "mm/s",
+					tooltip: "PPV threshold for damage initiation. Pixels at or above this value show full damage (ratio = 1.0). Typical: 700 mm/s for hard rock." },
+				numElements: { label: "Charge Elements", value: 20, min: 5, max: 50, step: 1, unit: "",
+					tooltip: "Sub-elements per charge column for Holmberg-Persson integration. Higher = smoother damage contours." },
+				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m",
+					tooltip: "Minimum distance clamp to avoid singularity at charge axis. Prevents infinite values at zero distance." }
 			};
 
 		case "sdob":
 			return {
-				targetSDoB: { label: "Target SDoB Threshold", value: 1.5, min: 0.5, max: 5.0, step: 0.1, unit: "m/kg^(1/3)" },
-				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" },
-				fallbackDensity: { label: "Fallback Explosive Density (no charging)", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L" }
+				targetSDoB: { label: "Target SDoB Threshold", value: 1.5, min: 0.5, max: 5.0, step: 0.1, unit: "m/kg^(1/3)",
+					tooltip: "Scaled Depth of Burial contour threshold. Values below this indicate flyrock risk. McKenzie (2022) recommends 1.5 for surface blasting." },
+				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m",
+					tooltip: "Maximum distance from nearest hole to render. Controls the extent of the Voronoi-style heatmap." },
+				fallbackDensity: { label: "Fallback Explosive Density", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L",
+					tooltip: "Used when no charging data is available for a hole. Typical: ANFO 0.85, emulsion 1.15-1.25 kg/L." }
 			};
 
 		case "see":
 			return {
-				fallbackDensity: { label: "Fallback Explosive Density", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L" },
-				fallbackVOD: { label: "Fallback VOD", value: 5000, min: 3000, max: 8000, step: 100, unit: "m/s" },
-				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" }
+				fallbackDensity: { label: "Fallback Explosive Density", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L",
+					tooltip: "Explosive density when not available from charging products. SEE = 0.5 x density x VOD^2." },
+				fallbackVOD: { label: "Fallback VOD", value: 5000, min: 3000, max: 8000, step: 100, unit: "m/s",
+					tooltip: "Velocity of detonation when not available from charging products. Typical: ANFO 4500, emulsion 5500 m/s." },
+				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m",
+					tooltip: "Maximum distance from nearest hole to render the heatmap." }
 			};
 
 		case "pressure":
 			return {
-				attenuationExponent: { label: "Attenuation Exponent (α)", value: 2.0, min: 1.0, max: 4.0, step: 0.1, unit: "" },
-				fallbackDensity: { label: "Fallback Explosive Density", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L" },
-				fallbackVOD: { label: "Fallback VOD", value: 5000, min: 3000, max: 8000, step: 100, unit: "m/s" },
-				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "" },
-				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m" },
-				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" }
+				attenuationExponent: { label: "Attenuation Exponent (α)", value: 2.0, min: 1.0, max: 4.0, step: 0.1, unit: "",
+					tooltip: "Geometric spreading exponent. 2.0 = cylindrical divergence (standard). Higher values = faster pressure decay." },
+				fallbackDensity: { label: "Fallback Explosive Density", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L",
+					tooltip: "Explosive density when not available from deck products. Borehole pressure Pb = density x VOD^2 / 8." },
+				fallbackVOD: { label: "Fallback VOD", value: 5000, min: 3000, max: 8000, step: 100, unit: "m/s",
+					tooltip: "Detonation velocity when not available from deck products. Higher VOD = higher borehole pressure." },
+				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "",
+					tooltip: "Number of point sources per charge column. Higher = smoother pressure contours near the charge." },
+				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m",
+					tooltip: "Minimum distance clamp. Prevents infinite pressure at zero distance from the charge axis." },
+				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m",
+					tooltip: "Maximum distance from nearest deck to render. Pressure decays rapidly so large values may show little at the edge." }
 			};
 
 		case "powder_factor_vol":
 			return {
-				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m" },
-				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" }
+				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m",
+					tooltip: "Minimum distance from deck segment. Prevents infinite powder factor at the charge surface." },
+				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m",
+					tooltip: "Maximum distance from nearest deck to render. PF drops rapidly with distance (1/R^3)." }
 			};
 
 		case "jointed_rock":
 			return {
-				K_hp: { label: "H-P Constant K", value: 700, min: 100, max: 2000, step: 50, unit: "" },
-				alpha_hp: { label: "H-P Alpha (α)", value: 0.7, min: 0.3, max: 1.5, step: 0.05, unit: "" },
-				beta_hp: { label: "H-P Beta (β)", value: 1.5, min: 1.0, max: 2.5, step: 0.1, unit: "" },
-				rockTensileStrength: { label: "Rock Tensile Strength", value: 10, min: 1, max: 50, step: 1, unit: "MPa" },
-				rockDensity: { label: "Rock Density", value: 2700, min: 2000, max: 3500, step: 50, unit: "kg/m³" },
-				pWaveVelocity: { label: "P-Wave Velocity", value: 4500, min: 2000, max: 7000, step: 100, unit: "m/s" },
-				jointSetAngle: { label: "Joint Set Angle", value: 45, min: 0, max: 90, step: 5, unit: "°" },
-				jointCohesion: { label: "Joint Cohesion", value: 0.1, min: 0, max: 5.0, step: 0.1, unit: "MPa" },
-				jointFrictionAngle: { label: "Joint Friction Angle", value: 30, min: 10, max: 45, step: 1, unit: "°" },
-				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "" }
+				K_hp: { label: "H-P Constant K", value: 700, min: 100, max: 2000, step: 50, unit: "",
+					tooltip: "Holmberg-Persson site constant for PPV estimation. Calibrate from near-field monitoring data." },
+				alpha_hp: { label: "H-P Alpha (α)", value: 0.7, min: 0.3, max: 1.5, step: 0.05, unit: "",
+					tooltip: "Charge mass exponent in H-P formula. Controls sensitivity to charge amount." },
+				beta_hp: { label: "H-P Beta (β)", value: 1.5, min: 1.0, max: 2.5, step: 0.1, unit: "",
+					tooltip: "Distance exponent in H-P formula. Controls PPV attenuation rate." },
+				rockTensileStrength: { label: "Rock Tensile Strength", value: 10, min: 1, max: 50, step: 1, unit: "MPa",
+					tooltip: "Intact rock tensile strength. Fracture ratio = dynamic stress / tensile strength. Typically UCS/10 to UCS/15." },
+				rockDensity: { label: "Rock Density", value: 2700, min: 2000, max: 3500, step: 50, unit: "kg/m³",
+					tooltip: "Rock mass density. Used to convert PPV to dynamic stress: sigma = density x Vp x PPV." },
+				pWaveVelocity: { label: "P-Wave Velocity", value: 4500, min: 2000, max: 7000, step: 100, unit: "m/s",
+					tooltip: "P-wave velocity for stress calculation. Higher Vp = higher dynamic stress for same PPV." },
+				jointSetAngle: { label: "Joint Set Angle", value: 45, min: 0, max: 90, step: 5, unit: "°",
+					tooltip: "Orientation of dominant joint set relative to blast wave direction (degrees). 45 deg maximises shear on joints." },
+				jointCohesion: { label: "Joint Cohesion", value: 0.1, min: 0, max: 5.0, step: 0.1, unit: "MPa",
+					tooltip: "Mohr-Coulomb cohesion of joints. Higher cohesion = more resistance to shear failure along joints." },
+				jointFrictionAngle: { label: "Joint Friction Angle", value: 30, min: 10, max: 45, step: 1, unit: "°",
+					tooltip: "Mohr-Coulomb friction angle of joint surfaces. Higher friction = more resistance to sliding. Typical 25-35 deg." },
+				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "",
+					tooltip: "Sub-elements per deck for H-P integration. Higher = smoother damage contours." }
 			};
 
 		case "ppv_deck":
 			return {
-				K: { label: "Site Constant K", value: 1140, min: 100, max: 5000, step: 10, unit: "" },
-				B: { label: "Site Exponent b", value: 1.6, min: 1.0, max: 2.5, step: 0.1, unit: "" },
-				chargeExponent: { label: "Scaled Weight Exponent n", value: 0.5, min: 0.3, max: 0.8, step: 0.05, unit: "" },
-				targetPPV: { label: "Target PPV (mm/s) - 0 = disabled", value: 0, min: 0, max: 500, step: 5, unit: "mm/s" },
-				timeWindow: { label: "Time Window", value: 0, min: 0, max: 500, step: 1, unit: "ms" },
-				timeOffset: { label: "Offset Window (+/-)", value: 0, min: -500, max: 500, step: 1, unit: "ms" },
-				maxDisplayDistance: { label: "Max Display Distance", value: 200, min: 10, max: 1000, step: 10, unit: "m" },
-				cutoffDistance: { label: "Min Distance", value: 1.0, min: 0.1, max: 5.0, step: 0.1, unit: "m" }
+				K: { label: "Site Constant K", value: 1140, min: 100, max: 5000, step: 10, unit: "",
+					tooltip: "Empirical site constant from blast monitoring. Same as PPV model but applied per-deck." },
+				B: { label: "Site Exponent b", value: 1.6, min: 1.0, max: 2.5, step: 0.1, unit: "",
+					tooltip: "Distance attenuation exponent. Controls PPV decay with scaled distance." },
+				chargeExponent: { label: "Scaled Weight Exponent n", value: 0.5, min: 0.3, max: 0.8, step: 0.05, unit: "",
+					tooltip: "Charge weight scaling exponent. 0.5 = square-root (standard SD)." },
+				targetPPV: { label: "Target PPV (0 = off)", value: 0, min: 0, max: 500, step: 5, unit: "mm/s",
+					tooltip: "Draw a black contour line at this PPV value. 0 = disabled." },
+				timeWindow: { label: "MIC Bin Width (0 = per-deck)", value: 0, min: 0, max: 500, step: 1, unit: "ms",
+					tooltip: "Time bin width for MIC calculation. Decks firing in the same bin have their masses summed. 0 = each deck independent. Typical: 8-25 ms." },
+				timeOffset: { label: "Bin Offset", value: 0, min: 0, max: 500, step: 1, unit: "ms",
+					tooltip: "Shifts bin boundaries. E.g. 8ms bins with 4ms offset: edge bin [0,4), then [4,12), [12,20)..." },
+				maxDisplayDistance: { label: "Max Display Distance", value: 200, min: 10, max: 1000, step: 10, unit: "m",
+					tooltip: "Maximum distance from nearest deck to render. Limits the spatial extent of the heatmap." },
+				cutoffDistance: { label: "Min Distance", value: 1.0, min: 0.1, max: 5.0, step: 0.1, unit: "m",
+					tooltip: "Minimum distance clamp to avoid singularity at the charge axis." }
 			};
 
 		default:
