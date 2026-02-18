@@ -31470,6 +31470,10 @@ function drawData(allBlastHoles, selectedHole) {
 		// This was the cause of 17k+ scene objects - KAD was adding every frame without clearing!
 		var shouldRebuildKAD = window.threeDataNeedsRebuild || window.threeKADNeedsRebuild;
 		if (drawingsGroupVisible && shouldRebuildKAD) {
+			// Step 3.0) CLEAR old KAD geometry before rebuild to prevent stale segments
+			// Without this, old polygon closing lines and other geometry accumulates in kadGroup
+			disposeKADThreeJS();
+
 			// Get display options for 3D KAD rendering (e.g., kadPointID toggle)
 			const displayOptions = getDisplayOptions();
 

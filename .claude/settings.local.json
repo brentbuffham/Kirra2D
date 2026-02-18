@@ -43,7 +43,8 @@
       "Bash(python3:*)",
       "WebFetch(domain:claude.ai)",
       "WebFetch(domain:scielo.org.za)",
-      "WebFetch(domain:www.degruyterbrill.com)"
+      "WebFetch(domain:www.degruyterbrill.com)",
+      "Skill(keybindings-help)"
     ]
   }
 }
