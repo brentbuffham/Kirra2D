@@ -21,6 +21,11 @@ import { ColourRampFactory } from "../shaders/core/ColourRampFactory.js";
  * Always creates a permanent surface with baked texture, registered via
  * AddSurfaceAction for undo support. Surfaces appear in TreeView and
  * persist to IndexedDB.
+ *
+ * Supports arbitrary surface orientations:
+ * - Horizontal surfaces: bake pipeline with top-down camera (existing behavior)
+ * - Non-horizontal surfaces: direct ShaderMaterial on mesh (bypasses bake UVs)
+ *   + adaptive bake for 2D image
  */
 
 /**
@@ -36,6 +41,10 @@ var MODEL_DISPLAY_NAMES = {
 
 /**
  * Apply blast analysis shader — creates a permanent surface with baked texture.
+ *
+ * Detects surface orientation and routes to:
+ * - Horizontal: existing bake pipeline (preserves current behavior)
+ * - Non-horizontal: direct ShaderMaterial on mesh + adaptive bake for 2D
  *
  * @param {Object} config - { model, surfaceId, blastName, planePadding, params }
  */
@@ -83,6 +92,7 @@ export function applyBlastAnalysisShader(config) {
 		bakeResolution = Math.min(Math.max(Math.ceil(extentMax * pxPerM), 2048), 8192);
 	}
 
+	// Bake shader to texture (now auto-detects surface orientation)
 	var bakeResult = ShaderTextureBaker.bakeShaderToTexture(surfaceData, shaderMaterial, {
 		resolution: bakeResolution,
 		padding: config.planePadding || 10
@@ -120,11 +130,28 @@ export function applyBlastAnalysisShader(config) {
 		window.loadedSurfaces.set(surfaceId, surface);
 	}
 
-	// Build and register the 3D mesh
-	buildAndRegisterAnalysisMesh(surfaceId, surface, bakeResult);
+	// Route based on surface orientation
+	if (bakeResult.isHorizontal) {
+		// Horizontal surface — existing bake pipeline (texture-mapped mesh)
+		buildAndRegisterAnalysisMesh(surfaceId, surface, bakeResult);
+	} else {
+		// Non-horizontal surface — direct ShaderMaterial on mesh for 3D
+		// Need a fresh shader material since the bake consumed one
+		var directShaderMaterial = getShaderMaterialForModel(config.model, holes, config.params);
+		if (directShaderMaterial) {
+			buildDirectShaderAnalysisMesh(surfaceId, surface, directShaderMaterial, bakeResult);
+		} else {
+			// Fallback to bake path
+			buildAndRegisterAnalysisMesh(surfaceId, surface, bakeResult);
+		}
+	}
 
-	// Create flattened image for 2D rendering (same pattern as textured OBJs)
-	createFlattenedAnalysisImage(surfaceId, surface, bakeResult);
+	// Create flattened image for 2D rendering.
+	// Vertical surfaces have near-zero XY extent so a top-down projection
+	// produces no useful image — skip for those.
+	if (!bakeResult.isVertical) {
+		createFlattenedAnalysisImage(surfaceId, surface, bakeResult);
+	}
 
 	// Push undo action (without re-executing — surface is already added)
 	if (window.undoManager) {
@@ -155,7 +182,9 @@ export function applyBlastAnalysisShader(config) {
 		legendInfo.colorStops
 	);
 
-	console.log("Blast analysis surface created: " + surfaceId + " (" + config.model + " on " + holes.length + " holes)");
+	console.log("Blast analysis surface created: " + surfaceId + " (" + config.model +
+		" on " + holes.length + " holes, " +
+		(bakeResult.isHorizontal ? "horizontal bake" : "direct shader") + ")");
 }
 
 /**
@@ -205,10 +234,11 @@ function buildAnalysisSurfaceData(config, holes) {
 
 /**
  * Build a textured analysis mesh directly and register it in the scene.
+ * Used for horizontal surfaces — bakes texture and applies planar UVs.
  *
  * @param {string} surfaceId - Surface ID
  * @param {Object} surface - Surface object with triangles/points
- * @param {Object} bakeResult - { texture, canvas, uvBounds }
+ * @param {Object} bakeResult - { texture, canvas, uvBounds, projectionBasis, center3D, isHorizontal }
  */
 function buildAndRegisterAnalysisMesh(surfaceId, surface, bakeResult) {
 	if (!window.threeRenderer || !surface.triangles || surface.triangles.length === 0) {
@@ -226,24 +256,8 @@ function buildAndRegisterAnalysisMesh(surfaceId, surface, bakeResult) {
 
 	for (var i = 0; i < triCount; i++) {
 		var tri = surface.triangles[i];
-
-		// Resolve triangle vertices — handle multiple formats
-		var verts;
-		if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
-			verts = [surface.points[tri.a], surface.points[tri.b], surface.points[tri.c]];
-		} else if (tri.indices && Array.isArray(tri.indices)) {
-			verts = [surface.points[tri.indices[0]], surface.points[tri.indices[1]], surface.points[tri.indices[2]]];
-		} else if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
-			if (typeof tri.vertices[0] === "object") {
-				verts = tri.vertices;
-			} else {
-				verts = [surface.points[tri.vertices[0]], surface.points[tri.vertices[1]], surface.points[tri.vertices[2]]];
-			}
-		} else {
-			continue;
-		}
-
-		if (!verts[0] || !verts[1] || !verts[2]) continue;
+		var verts = ShaderTextureBaker._resolveTriangleVertices(tri, surface.points);
+		if (!verts) continue;
 
 		for (var j = 0; j < 3; j++) {
 			var v = verts[j];
@@ -254,7 +268,7 @@ function buildAndRegisterAnalysisMesh(surfaceId, surface, bakeResult) {
 			positions[i * 9 + j * 3 + 1] = local.y;
 			positions[i * 9 + j * 3 + 2] = v.z;
 
-			// Planar UV from world XY
+			// Planar UV from world XY — matches the top-down bake camera
 			uvs[i * 6 + j * 2]     = (v.x - uvBounds.minU) / uvW;
 			uvs[i * 6 + j * 2 + 1] = (v.y - uvBounds.minV) / uvH;
 		}
@@ -300,6 +314,93 @@ function buildAndRegisterAnalysisMesh(surfaceId, surface, bakeResult) {
 }
 
 /**
+ * Build a direct ShaderMaterial analysis mesh for non-horizontal surfaces.
+ *
+ * Instead of baking to texture and applying UVs, this applies the ShaderMaterial
+ * directly to the mesh geometry. The fragment shader computes per-pixel values from
+ * vWorldPos, which works for ANY surface orientation — no UVs needed.
+ *
+ * @param {string} surfaceId - Surface ID
+ * @param {Object} surface - Surface object with triangles/points
+ * @param {THREE.ShaderMaterial} shaderMaterial - Configured shader material
+ * @param {Object} bakeResult - { center3D } for world offset
+ */
+function buildDirectShaderAnalysisMesh(surfaceId, surface, shaderMaterial, bakeResult) {
+	if (!window.threeRenderer || !surface.triangles || surface.triangles.length === 0) {
+		return;
+	}
+
+	var triCount = surface.triangles.length;
+	var positions = new Float32Array(triCount * 9);
+	var idx = 0;
+
+	// Compute centroid for local space offset
+	var center = bakeResult.center3D || { x: 0, y: 0, z: 0 };
+
+	// Use worldToThreeLocal for XY, keep Z as-is (same as other surfaces in scene)
+	for (var i = 0; i < triCount; i++) {
+		var tri = surface.triangles[i];
+		var verts = ShaderTextureBaker._resolveTriangleVertices(tri, surface.points);
+		if (!verts) continue;
+
+		for (var j = 0; j < 3; j++) {
+			var v = verts[j];
+			var local = window.worldToThreeLocal(v.x, v.y);
+
+			positions[idx++] = local.x;
+			positions[idx++] = local.y;
+			positions[idx++] = v.z;
+		}
+	}
+
+	// Trim if some triangles were skipped
+	var trimmedPositions = idx < positions.length ? positions.subarray(0, idx) : positions;
+
+	var geometry = new THREE.BufferGeometry();
+	geometry.setAttribute("position", new THREE.BufferAttribute(trimmedPositions, 3));
+	geometry.computeVertexNormals();
+
+	// Set uWorldOffset so the shader can reconstruct world positions.
+	// The mesh vertices are in Three.js local space (world - threeLocalOrigin).
+	// So uWorldOffset = threeLocalOrigin so that:
+	// vWorldPos = localPos + uWorldOffset = (worldXY - originXY) + originXY = worldXY
+	var originX = window.threeLocalOriginX || 0;
+	var originY = window.threeLocalOriginY || 0;
+	// Z stays at the surface center for precision
+	if (shaderMaterial.uniforms && shaderMaterial.uniforms.uWorldOffset) {
+		shaderMaterial.uniforms.uWorldOffset.value.set(originX, originY, 0);
+	}
+
+	// Configure shader material for mesh rendering
+	shaderMaterial.side = THREE.DoubleSide;
+	shaderMaterial.transparent = true;
+
+	var mesh = new THREE.Mesh(geometry, shaderMaterial);
+	mesh.userData = {
+		type: "surface",
+		surfaceId: surfaceId,
+		isAnalysisSurface: true,
+		isDirectShader: true
+	};
+
+	// Register in scene and surfaceMeshMap
+	window.threeRenderer.surfacesGroup.add(mesh);
+	window.threeRenderer.surfaceMeshMap.set(surfaceId, mesh);
+
+	// For direct shader meshes, GLB export may not capture shader —
+	// save surface data for re-creation on reload
+	surface.isDirectShaderAnalysis = true;
+	if (window.saveSurfaceToDB) {
+		window.saveSurfaceToDB(surfaceId).catch(function(err) {
+			console.error("Failed to save direct shader analysis surface:", err);
+		});
+	}
+
+	console.log("Built and registered direct shader analysis mesh for " + surfaceId +
+		" (" + (idx / 9) + " triangles)");
+}
+
+/**
  * Create a flattened image from the baked analysis canvas and register it
  * in loadedImages for 2D rendering. Also stores data URL on the surface
  * for IndexedDB persistence (same pattern as textured OBJ flattening).
@@ -325,22 +426,34 @@ function createFlattenedAnalysisImage(surfaceId, surface, bakeResult) {
 	var worldWidth = meshBounds.maxX - meshBounds.minX;
 	var worldHeight = meshBounds.maxY - meshBounds.minY;
 
-	// Convert baked canvas to data URL for IndexedDB persistence
-	var imageDataURL = texCanvas.toDataURL("image/png");
+	// Flip the baked canvas vertically: Three.js bake renders Y-up (North at
+	// pixel row 0), but the 2D image drawing code draws canvas row 0 at the
+	// screen position of maxY. Since screen Y is inverted from world Y, the
+	// image needs to be flipped so row 0 = South and last row = North.
+	var flippedCanvas = document.createElement("canvas");
+	flippedCanvas.width = texCanvas.width;
+	flippedCanvas.height = texCanvas.height;
+	var flipCtx = flippedCanvas.getContext("2d");
+	flipCtx.translate(0, texCanvas.height);
+	flipCtx.scale(1, -1);
+	flipCtx.drawImage(texCanvas, 0, 0);
+
+	// Convert flipped canvas to data URL for IndexedDB persistence
+	var imageDataURL = flippedCanvas.toDataURL("image/png");
 
 	// Store on surface for saveSurfaceToDB
 	surface.flattenedImageDataURL = imageDataURL;
 	surface.flattenedImageBounds = meshBounds;
-	surface.flattenedImageDimensions = { width: texCanvas.width, height: texCanvas.height };
+	surface.flattenedImageDimensions = { width: flippedCanvas.width, height: flippedCanvas.height };
 
 	// Register in loadedImages for immediate 2D rendering
 	var imageEntry = {
 		id: imageId,
 		name: surface.name + "_flattened",
-		canvas: texCanvas,
+		canvas: flippedCanvas,
 		bbox: [meshBounds.minX, meshBounds.minY, meshBounds.maxX, meshBounds.maxY],
-		width: texCanvas.width,
-		height: texCanvas.height,
+		width: flippedCanvas.width,
+		height: flippedCanvas.height,
 		visible: true,
 		transparency: surface.transparency || 1.0,
 		zElevation: meshBounds.minZ || 0,

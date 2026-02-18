@@ -7,6 +7,8 @@ import * as THREE from "three";
  *
  * This mirrors the existing renderSurfaceToCanvas pattern but uses the GPU pipeline
  * for shader-based analytics.
+ *
+ * Supports arbitrary surface orientations via optional surfaceNormal parameter.
  */
 export class ShaderFlattenHelper {
     /**
@@ -25,10 +27,14 @@ export class ShaderFlattenHelper {
      * @param {THREE.Mesh} mesh - The shader-driven mesh
      * @param {Object} bounds - { minX, minY, maxX, maxY } in world coords
      * @param {number} pixelsPerMetre - Resolution (default 1.0)
+     * @param {Object} [options] - Optional settings
+     * @param {Object} [options.surfaceNormal] - {x, y, z} surface normal for camera orientation
+     * @param {Object} [options.projectionBasis] - { tangent, bitangent, normal } for non-horizontal surfaces
      * @returns {{ canvas, bounds, width, height, pixelsPerMetre }}
      */
-    flatten(mesh, bounds, pixelsPerMetre) {
+    flatten(mesh, bounds, pixelsPerMetre, options) {
         pixelsPerMetre = pixelsPerMetre || 1.0;
+        options = options || {};
 
         var worldW = bounds.maxX - bounds.minX;
         var worldH = bounds.maxY - bounds.minY;
@@ -44,26 +50,51 @@ export class ShaderFlattenHelper {
             });
         }
 
-        // Orthographic camera looking straight down
+        // Orthographic camera — oriented based on surface normal
         if (!this.orthoCamera) {
             this.orthoCamera = new THREE.OrthographicCamera();
         }
-        this.orthoCamera.left = bounds.minX;
-        this.orthoCamera.right = bounds.maxX;
-        this.orthoCamera.top = bounds.maxY;
-        this.orthoCamera.bottom = bounds.minY;
-        this.orthoCamera.near = -1000;
-        this.orthoCamera.far = 1000;
-        this.orthoCamera.position.set(
-            (bounds.minX + bounds.maxX) / 2,
-            (bounds.minY + bounds.maxY) / 2,
-            500
-        );
-        this.orthoCamera.lookAt(
-            (bounds.minX + bounds.maxX) / 2,
-            (bounds.minY + bounds.maxY) / 2,
-            0
-        );
+
+        var centerX = (bounds.minX + bounds.maxX) / 2;
+        var centerY = (bounds.minY + bounds.maxY) / 2;
+
+        var surfaceNormal = options.surfaceNormal;
+        var isNonHorizontal = surfaceNormal &&
+            (Math.abs(surfaceNormal.z) < 0.95);
+
+        if (isNonHorizontal && options.projectionBasis) {
+            // Non-horizontal surface — orient camera along surface normal
+            var basis = options.projectionBasis;
+            var n = surfaceNormal;
+
+            // Camera frustum uses projected bounds
+            this.orthoCamera.left = -worldW / 2;
+            this.orthoCamera.right = worldW / 2;
+            this.orthoCamera.top = worldH / 2;
+            this.orthoCamera.bottom = -worldH / 2;
+            this.orthoCamera.near = -1000;
+            this.orthoCamera.far = 1000;
+
+            // Position camera along surface normal
+            this.orthoCamera.position.set(
+                centerX + n.x * 500,
+                centerY + n.y * 500,
+                (bounds.minZ || 0) + n.z * 500
+            );
+            this.orthoCamera.up.set(basis.bitangent.x, basis.bitangent.y, basis.bitangent.z);
+            this.orthoCamera.lookAt(centerX, centerY, bounds.minZ || 0);
+        } else {
+            // Horizontal surface — looking straight down (existing behavior)
+            this.orthoCamera.left = bounds.minX;
+            this.orthoCamera.right = bounds.maxX;
+            this.orthoCamera.top = bounds.maxY;
+            this.orthoCamera.bottom = bounds.minY;
+            this.orthoCamera.near = -1000;
+            this.orthoCamera.far = 1000;
+            this.orthoCamera.position.set(centerX, centerY, 500);
+            this.orthoCamera.up.set(0, 1, 0);
+            this.orthoCamera.lookAt(centerX, centerY, 0);
+        }
         this.orthoCamera.updateProjectionMatrix();
 
         // Temporary scene with just the shader mesh

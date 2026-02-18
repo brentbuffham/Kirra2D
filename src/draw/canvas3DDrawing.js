@@ -1003,6 +1003,86 @@ function _rebuildAnalysisMeshFromTexture(surfaceId, surfaceData) {
 	console.log("Rebuilt analysis mesh from stored texture for " + surfaceId);
 }
 
+/**
+ * Rebuild a direct ShaderMaterial analysis mesh for non-horizontal surfaces.
+ * Called when surfaceMeshMap was cleared but the surface data is still in memory.
+ * Re-creates the ShaderMaterial from the stored model name and params.
+ */
+function _rebuildDirectShaderAnalysisMesh(surfaceId, surfaceData) {
+	var triCount = surfaceData.triangles ? surfaceData.triangles.length : 0;
+	if (triCount === 0) return;
+
+	// Re-create shader material from stored model/params
+	var holes = window.allBlastHoles || [];
+	var shaderMaterial = getShaderMaterialForModel(
+		surfaceData.analysisModelName,
+		holes,
+		surfaceData.analysisParams
+	);
+	if (!shaderMaterial) {
+		// Fallback to baked texture if shader creation fails
+		if (surfaceData.analysisTexture && surfaceData.analysisUVBounds) {
+			_rebuildAnalysisMeshFromTexture(surfaceId, surfaceData);
+		}
+		return;
+	}
+
+	var positions = new Float32Array(triCount * 9);
+	var idx = 0;
+
+	for (var i = 0; i < triCount; i++) {
+		var tri = surfaceData.triangles[i];
+		var verts;
+		if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
+			verts = [surfaceData.points[tri.a], surfaceData.points[tri.b], surfaceData.points[tri.c]];
+		} else if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
+			if (typeof tri.vertices[0] === "object") {
+				verts = tri.vertices;
+			} else {
+				verts = [surfaceData.points[tri.vertices[0]], surfaceData.points[tri.vertices[1]], surfaceData.points[tri.vertices[2]]];
+			}
+		} else {
+			continue;
+		}
+		if (!verts[0] || !verts[1] || !verts[2]) continue;
+
+		for (var j = 0; j < 3; j++) {
+			var v = verts[j];
+			var local = window.worldToThreeLocal(v.x, v.y);
+			positions[idx++] = local.x;
+			positions[idx++] = local.y;
+			positions[idx++] = v.z;
+		}
+	}
+
+	var trimmedPositions = idx < positions.length ? positions.subarray(0, idx) : positions;
+	var geometry = new THREE.BufferGeometry();
+	geometry.setAttribute("position", new THREE.BufferAttribute(trimmedPositions, 3));
+	geometry.computeVertexNormals();
+
+	// Set uWorldOffset for world position reconstruction
+	var originX = window.threeLocalOriginX || 0;
+	var originY = window.threeLocalOriginY || 0;
+	if (shaderMaterial.uniforms && shaderMaterial.uniforms.uWorldOffset) {
+		shaderMaterial.uniforms.uWorldOffset.value.set(originX, originY, 0);
+	}
+
+	shaderMaterial.side = THREE.DoubleSide;
+	shaderMaterial.transparent = true;
+
+	var mesh = new THREE.Mesh(geometry, shaderMaterial);
+	mesh.userData = {
+		type: "surface",
+		surfaceId: surfaceId,
+		isAnalysisSurface: true,
+		isDirectShader: true
+	};
+
+	window.threeRenderer.surfacesGroup.add(mesh);
+	window.threeRenderer.surfaceMeshMap.set(surfaceId, mesh);
+	console.log("Rebuilt direct shader analysis mesh for " + surfaceId);
+}
+
 // Step 12) Draw surface in Three.js
 export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, transparency, surfaceData) {
 	if (!window.threeInitialized || !window.threeRenderer) return;
@@ -1235,14 +1315,20 @@ export function drawSurfaceThreeJS(surfaceId, triangles, minZ, maxZ, gradient, t
 		&& surfaceData && surfaceData.isAnalysisSurface) {
 		var existingAnalysisMesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
 		if (existingAnalysisMesh) {
-			// Mesh already has baked texture — ensure visible and in scene
+			// Mesh already has baked texture or direct shader — ensure visible and in scene
 			if (!existingAnalysisMesh.parent) {
 				window.threeRenderer.surfacesGroup.add(existingAnalysisMesh);
 			}
 			existingAnalysisMesh.visible = true;
-			return; // CRITICAL: Don't rebuild — preserve baked texture
+			return; // CRITICAL: Don't rebuild — preserve existing analysis mesh
 		}
-		// No mesh in surfaceMeshMap — try rebuild from stored canvas/texture (same session)
+		// No mesh in surfaceMeshMap — need to rebuild
+		// Direct shader surfaces (non-horizontal): re-create ShaderMaterial mesh
+		if (surfaceData.isDirectShaderAnalysis && surfaceData.analysisModelName) {
+			_rebuildDirectShaderAnalysisMesh(surfaceId, surfaceData);
+			return;
+		}
+		// Baked texture surfaces (horizontal): rebuild from stored canvas/texture
 		if (surfaceData.analysisTexture && surfaceData.analysisUVBounds) {
 			_rebuildAnalysisMeshFromTexture(surfaceId, surfaceData);
 			return;

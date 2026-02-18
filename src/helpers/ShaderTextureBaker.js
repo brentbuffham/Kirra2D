@@ -7,7 +7,8 @@ import * as THREE from "three";
  *
  * Key Features:
  * - Offscreen rendering to 2048×2048 canvas (configurable)
- * - Planar UV mapping (top-down projection)
+ * - Adaptive camera orientation based on surface normal
+ * - Projection basis for non-horizontal surfaces
  * - Creates THREE.CanvasTexture for 3D rendering
  * - Stores canvas for 2D rendering
  * - Handles coordinate transformations
@@ -17,10 +18,14 @@ export class ShaderTextureBaker {
     /**
      * Bake a blast analysis shader to a texture.
      *
+     * For horizontal surfaces, the camera looks straight down (Z-down) — same as before.
+     * For non-horizontal surfaces, the camera is oriented along the surface normal so
+     * the bake captures the surface extent correctly.
+     *
      * @param {Object} surface - Surface object with points array
      * @param {THREE.ShaderMaterial} shaderMaterial - Configured shader material
      * @param {Object} options - { resolution: 2048, padding: 10 }
-     * @returns {Object} - { texture, canvas, uvBounds: {minU, maxU, minV, maxV} }
+     * @returns {Object} - { texture, canvas, uvBounds, projectionBasis, surfaceNormal, center3D }
      */
     static bakeShaderToTexture(surface, shaderMaterial, options) {
         options = options || {};
@@ -29,6 +34,18 @@ export class ShaderTextureBaker {
 
         // Calculate surface bounds in world coordinates
         var bounds = this._calculateSurfaceBounds(surface);
+
+        // Compute surface normal for routing decisions (returned to caller)
+        var normalInfo = this._computeSurfaceNormal(surface);
+        var basis = this._buildProjectionBasis(normalInfo.normal);
+
+        // Center point in world coordinates — used to avoid float32 precision loss
+        // UTM coords like 500000, 6000000 exceed Float32 precision (~7 digits).
+        var centerX = (bounds.minX + bounds.maxX) / 2;
+        var centerY = (bounds.minY + bounds.maxY) / 2;
+        var centerZ = (bounds.minZ + bounds.maxZ) / 2;
+
+        // Always add padding to XY bounds
         bounds.minX -= padding;
         bounds.maxX += padding;
         bounds.minY -= padding;
@@ -37,12 +54,10 @@ export class ShaderTextureBaker {
         var width = bounds.maxX - bounds.minX;
         var height = bounds.maxY - bounds.minY;
 
-        // Center point in world coordinates — used to avoid float32 precision loss
-        // UTM coords like 500000, 6000000 exceed Float32 precision (~7 digits).
-        // By centering geometry around (0,0) and using uWorldOffset, the vertex
-        // shader reconstructs world positions: vWorldPos = localPos + uWorldOffset
-        var centerX = (bounds.minX + bounds.maxX) / 2;
-        var centerY = (bounds.minY + bounds.maxY) / 2;
+        // Bake always uses top-down (Z-down) orthographic camera.
+        // This produces the correct XY-planar projection for 2D canvas rendering.
+        // For non-horizontal surfaces, the 3D view uses a direct ShaderMaterial
+        // instead of this baked texture (see BlastAnalysisShaderHelper).
 
         // Create offscreen rendering setup
         var offscreenCanvas = document.createElement("canvas");
@@ -58,7 +73,7 @@ export class ShaderTextureBaker {
         offscreenRenderer.setSize(resolution, resolution);
         offscreenRenderer.setClearColor(0x000000, 0); // Transparent background
 
-        // Create orthographic camera in LOCAL space (centered at origin)
+        // Create orthographic camera — always top-down in LOCAL space
         var halfW = width / 2;
         var halfH = height / 2;
         var camera = new THREE.OrthographicCamera(
@@ -72,13 +87,13 @@ export class ShaderTextureBaker {
         // Create scene with shader mesh
         var scene = new THREE.Scene();
 
-        // Build mesh in LOCAL space (centered around bounds center)
-        var geometry = this._buildSurfaceGeometry(surface, centerX, centerY);
+        // Build mesh in LOCAL space (centered around bounds center, including Z)
+        var geometry = this._buildSurfaceGeometry(surface, centerX, centerY, centerZ);
 
         // Set uWorldOffset so the shader reconstructs world positions:
         // vWorldPos = localPos + uWorldOffset = (worldPos - center) + center = worldPos
         if (shaderMaterial.uniforms && shaderMaterial.uniforms.uWorldOffset) {
-            shaderMaterial.uniforms.uWorldOffset.value.set(centerX, centerY, 0);
+            shaderMaterial.uniforms.uWorldOffset.value.set(centerX, centerY, centerZ);
         }
 
         var mesh = new THREE.Mesh(geometry, shaderMaterial);
@@ -108,7 +123,8 @@ export class ShaderTextureBaker {
         offscreenRenderer.dispose();
 
         console.log("Baked shader texture: " + resolution + "×" + resolution +
-                    " covering (" + width.toFixed(1) + "m × " + height.toFixed(1) + "m)");
+                    " covering (" + width.toFixed(1) + "m × " + height.toFixed(1) + "m)" +
+                    (normalInfo.isHorizontal ? " [horizontal]" : " [non-horizontal]"));
 
         return {
             texture: texture,
@@ -118,7 +134,12 @@ export class ShaderTextureBaker {
                 maxU: bounds.maxX,
                 minV: bounds.minY,
                 maxV: bounds.maxY
-            }
+            },
+            projectionBasis: basis,
+            surfaceNormal: normalInfo.normal,
+            center3D: { x: centerX, y: centerY, z: centerZ },
+            isHorizontal: normalInfo.isHorizontal,
+            isVertical: normalInfo.isVertical
         };
     }
 
@@ -141,6 +162,44 @@ export class ShaderTextureBaker {
             var v = (point.y - uvBounds.minV) / height;
 
             // Clamp to [0,1] to avoid texture sampling issues
+            uvs[i * 2] = Math.max(0, Math.min(1, u));
+            uvs[i * 2 + 1] = Math.max(0, Math.min(1, v));
+        }
+
+        return uvs;
+    }
+
+    /**
+     * Generate projection-basis UV coordinates for surface vertices.
+     * Projects vertices onto the tangent/bitangent plane for non-horizontal surfaces.
+     *
+     * @param {Array} points - Surface points [{x, y, z}, ...]
+     * @param {Object} center - {x, y, z} center of surface
+     * @param {Object} basis - { tangent, bitangent, normal } from _buildProjectionBasis
+     * @param {number} width - Projected width (maxU - minU)
+     * @param {number} height - Projected height (maxV - minV)
+     * @param {number} minU - Minimum U in projected space
+     * @param {number} minV - Minimum V in projected space
+     * @returns {Float32Array} - UV coordinates [u0, v0, u1, v1, ...]
+     */
+    static generateBasisUVs(points, center, basis, width, height, minU, minV) {
+        var uvs = new Float32Array(points.length * 2);
+        var t = basis.tangent;
+        var b = basis.bitangent;
+
+        for (var i = 0; i < points.length; i++) {
+            var p = points[i];
+            var dx = p.x - center.x;
+            var dy = p.y - center.y;
+            var dz = p.z - center.z;
+
+            // Project onto tangent/bitangent
+            var projU = dx * t.x + dy * t.y + dz * t.z;
+            var projV = dx * b.x + dy * b.y + dz * b.z;
+
+            var u = (projU - minU) / width;
+            var v = (projV - minV) / height;
+
             uvs[i * 2] = Math.max(0, Math.min(1, u));
             uvs[i * 2 + 1] = Math.max(0, Math.min(1, v));
         }
@@ -210,32 +269,10 @@ export class ShaderTextureBaker {
         // Draw each triangle with texture sampling
         for (var i = 0; i < surface.triangles.length; i++) {
             var tri = surface.triangles[i];
+            var verts = this._resolveTriangleVertices(tri, surface.points);
+            if (!verts) continue;
 
-            // Resolve triangle vertices — handle multiple formats
-            var p0, p1, p2;
-            if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
-                p0 = surface.points[tri.a];
-                p1 = surface.points[tri.b];
-                p2 = surface.points[tri.c];
-            } else if (tri.indices && Array.isArray(tri.indices)) {
-                p0 = surface.points[tri.indices[0]];
-                p1 = surface.points[tri.indices[1]];
-                p2 = surface.points[tri.indices[2]];
-            } else if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
-                if (typeof tri.vertices[0] === "object") {
-                    p0 = tri.vertices[0];
-                    p1 = tri.vertices[1];
-                    p2 = tri.vertices[2];
-                } else {
-                    p0 = surface.points[tri.vertices[0]];
-                    p1 = surface.points[tri.vertices[1]];
-                    p2 = surface.points[tri.vertices[2]];
-                }
-            } else {
-                continue;
-            }
-
-            if (!p0 || !p1 || !p2) continue;
+            var p0 = verts[0], p1 = verts[1], p2 = verts[2];
 
             // Transform to canvas coordinates
             var c0 = worldToCanvas(p0.x, p0.y);
@@ -284,6 +321,176 @@ export class ShaderTextureBaker {
     }
 
     /**
+     * Compute area-weighted average normal of a surface.
+     *
+     * @param {Object} surface - Surface with points and triangles
+     * @returns {Object} - { normal: {x,y,z}, isHorizontal, isVertical }
+     */
+    static _computeSurfaceNormal(surface) {
+        if (!surface.triangles || surface.triangles.length === 0 || !surface.points) {
+            return { normal: { x: 0, y: 0, z: 1 }, isHorizontal: true, isVertical: false };
+        }
+
+        var nx = 0, ny = 0, nz = 0;
+
+        for (var i = 0; i < surface.triangles.length; i++) {
+            var tri = surface.triangles[i];
+            var verts = this._resolveTriangleVertices(tri, surface.points);
+            if (!verts) continue;
+
+            var p0 = verts[0], p1 = verts[1], p2 = verts[2];
+
+            // Edge vectors
+            var e1x = p1.x - p0.x, e1y = p1.y - p0.y, e1z = p1.z - p0.z;
+            var e2x = p2.x - p0.x, e2y = p2.y - p0.y, e2z = p2.z - p0.z;
+
+            // Cross product (area-weighted normal)
+            nx += e1y * e2z - e1z * e2y;
+            ny += e1z * e2x - e1x * e2z;
+            nz += e1x * e2y - e1y * e2x;
+        }
+
+        // Normalize
+        var len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+        if (len < 1e-10) {
+            return { normal: { x: 0, y: 0, z: 1 }, isHorizontal: true, isVertical: false };
+        }
+        nx /= len;
+        ny /= len;
+        nz /= len;
+
+        // Ensure normal points "upward" (positive Z component) for consistency
+        if (nz < 0) {
+            nx = -nx;
+            ny = -ny;
+            nz = -nz;
+        }
+
+        var absNz = Math.abs(nz);
+        var isHorizontal = absNz > 0.95;   // Nearly flat
+        var isVertical = absNz < 0.05;      // Nearly vertical
+
+        return {
+            normal: { x: nx, y: ny, z: nz },
+            isHorizontal: isHorizontal,
+            isVertical: isVertical
+        };
+    }
+
+    /**
+     * Resolve triangle vertices from multiple storage formats.
+     * Shared helper to replace duplicated vertex resolution blocks.
+     *
+     * @param {Object} tri - Triangle object (may have .a/.b/.c, .indices, or .vertices)
+     * @param {Array} points - Surface points array
+     * @returns {Array|null} - [p0, p1, p2] or null if unresolvable
+     */
+    static _resolveTriangleVertices(tri, points) {
+        var p0, p1, p2;
+
+        if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
+            p0 = points[tri.a];
+            p1 = points[tri.b];
+            p2 = points[tri.c];
+        } else if (tri.indices && Array.isArray(tri.indices)) {
+            p0 = points[tri.indices[0]];
+            p1 = points[tri.indices[1]];
+            p2 = points[tri.indices[2]];
+        } else if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
+            if (typeof tri.vertices[0] === "object") {
+                p0 = tri.vertices[0];
+                p1 = tri.vertices[1];
+                p2 = tri.vertices[2];
+            } else {
+                p0 = points[tri.vertices[0]];
+                p1 = points[tri.vertices[1]];
+                p2 = points[tri.vertices[2]];
+            }
+        } else {
+            return null;
+        }
+
+        if (!p0 || !p1 || !p2) return null;
+        return [p0, p1, p2];
+    }
+
+    /**
+     * Build orthonormal tangent/bitangent/normal basis from a surface normal.
+     *
+     * For horizontal surfaces (normal ≈ [0,0,1]):
+     *   tangent = [1,0,0] (X/East), bitangent = [0,1,0] (Y/North)
+     *
+     * For other surfaces, uses Gram-Schmidt to find tangent in the surface plane.
+     *
+     * @param {Object} normal - {x, y, z} unit normal
+     * @returns {Object} - { tangent: {x,y,z}, bitangent: {x,y,z}, normal: {x,y,z} }
+     */
+    static _buildProjectionBasis(normal) {
+        var nx = normal.x, ny = normal.y, nz = normal.z;
+
+        // Choose a reference vector not parallel to the normal
+        var refX, refY, refZ;
+        if (Math.abs(nz) > 0.9) {
+            // Normal is near-vertical — use Y as reference
+            refX = 0; refY = 1; refZ = 0;
+        } else {
+            // Normal is tilted — use Z as reference
+            refX = 0; refY = 0; refZ = 1;
+        }
+
+        // Tangent = normalize(ref - (ref·n)n)  (Gram-Schmidt)
+        var dot = refX * nx + refY * ny + refZ * nz;
+        var tx = refX - dot * nx;
+        var ty = refY - dot * ny;
+        var tz = refZ - dot * nz;
+        var tLen = Math.sqrt(tx * tx + ty * ty + tz * tz);
+        tx /= tLen; ty /= tLen; tz /= tLen;
+
+        // Bitangent = normal × tangent
+        var bx = ny * tz - nz * ty;
+        var by = nz * tx - nx * tz;
+        var bz = nx * ty - ny * tx;
+
+        return {
+            tangent: { x: tx, y: ty, z: tz },
+            bitangent: { x: bx, y: by, z: bz },
+            normal: { x: nx, y: ny, z: nz }
+        };
+    }
+
+    /**
+     * Project surface points onto a 2D basis and return bounds.
+     *
+     * @param {Array} points - [{x, y, z}, ...]
+     * @param {Object} center - {x, y, z} center of projection
+     * @param {Object} basis - { tangent, bitangent, normal }
+     * @returns {Object} - { minU, maxU, minV, maxV }
+     */
+    static _projectPointsToBasis(points, center, basis) {
+        var t = basis.tangent;
+        var b = basis.bitangent;
+        var minU = Infinity, maxU = -Infinity;
+        var minV = Infinity, maxV = -Infinity;
+
+        for (var i = 0; i < points.length; i++) {
+            var p = points[i];
+            var dx = p.x - center.x;
+            var dy = p.y - center.y;
+            var dz = p.z - center.z;
+
+            var u = dx * t.x + dy * t.y + dz * t.z;
+            var v = dx * b.x + dy * b.y + dz * b.z;
+
+            if (u < minU) minU = u;
+            if (u > maxU) maxU = u;
+            if (v < minV) minV = v;
+            if (v > maxV) maxV = v;
+        }
+
+        return { minU: minU, maxU: maxU, minV: minV, maxV: maxV };
+    }
+
+    /**
      * Calculate bounding box of surface in world coordinates.
      *
      * @param {Object} surface - Surface with points array
@@ -320,49 +527,27 @@ export class ShaderTextureBaker {
      * @param {Object} surface - Surface with points and triangles
      * @param {number} centerX - Center X to subtract (for float precision)
      * @param {number} centerY - Center Y to subtract (for float precision)
+     * @param {number} centerZ - Center Z to subtract (for float precision)
      * @returns {THREE.BufferGeometry}
      * @private
      */
-    static _buildSurfaceGeometry(surface, centerX, centerY) {
+    static _buildSurfaceGeometry(surface, centerX, centerY, centerZ) {
         centerX = centerX || 0;
         centerY = centerY || 0;
+        centerZ = centerZ || 0;
         var vertices = [];
 
         for (var i = 0; i < surface.triangles.length; i++) {
             var tri = surface.triangles[i];
-
-            // Resolve triangle vertices — handle multiple formats
-            var p0, p1, p2;
-            if (tri.a !== undefined && tri.b !== undefined && tri.c !== undefined) {
-                p0 = surface.points[tri.a];
-                p1 = surface.points[tri.b];
-                p2 = surface.points[tri.c];
-            } else if (tri.indices && Array.isArray(tri.indices)) {
-                p0 = surface.points[tri.indices[0]];
-                p1 = surface.points[tri.indices[1]];
-                p2 = surface.points[tri.indices[2]];
-            } else if (tri.vertices && Array.isArray(tri.vertices) && tri.vertices.length === 3) {
-                if (typeof tri.vertices[0] === "object") {
-                    p0 = tri.vertices[0];
-                    p1 = tri.vertices[1];
-                    p2 = tri.vertices[2];
-                } else {
-                    p0 = surface.points[tri.vertices[0]];
-                    p1 = surface.points[tri.vertices[1]];
-                    p2 = surface.points[tri.vertices[2]];
-                }
-            } else {
-                continue;
-            }
-
-            if (!p0 || !p1 || !p2) continue;
+            var verts = this._resolveTriangleVertices(tri, surface.points);
+            if (!verts) continue;
 
             // Local space — subtract center to keep coords small for Float32
             // Shader reconstructs world positions via uWorldOffset
             vertices.push(
-                p0.x - centerX, p0.y - centerY, p0.z,
-                p1.x - centerX, p1.y - centerY, p1.z,
-                p2.x - centerX, p2.y - centerY, p2.z
+                verts[0].x - centerX, verts[0].y - centerY, verts[0].z - centerZ,
+                verts[1].x - centerX, verts[1].y - centerY, verts[1].z - centerZ,
+                verts[2].x - centerX, verts[2].y - centerY, verts[2].z - centerZ
             );
         }
 

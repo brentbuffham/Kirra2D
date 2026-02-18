@@ -130,7 +130,7 @@ export class SDoBModel {
 					if (i >= uHoleCount) break;
 
 					vec4 posCharge = getHoleData(i, 0);
-					float dist = distance(vWorldPos.xy, posCharge.xy);
+					float dist = distance(vWorldPos, posCharge.xyz);
 					if (dist > uMaxDisplayDistance) continue;
 
 					float sdob = computeHoleSDoB(i);
