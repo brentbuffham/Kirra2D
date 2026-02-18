@@ -1,20 +1,22 @@
 // src/shaders/analytics/models/PressureModel.js
+import * as THREE from "three";
 
 /**
- * PressureModel implements borehole pressure analysis.
+ * PressureModel implements borehole pressure analysis using per-deck data.
  *
  * Borehole wall pressure: Pb = ρ_e × VOD² / 8
  * Attenuation with distance: P(R) = Pb × (a / R)^α
  *
  * where:
- *   ρ_e  = explosive density (kg/m³)
- *   VOD  = velocity of detonation (m/s)
- *   a    = borehole radius (m)
- *   R    = distance from charge element to observation point (m)
+ *   ρ_e  = explosive density (kg/m³) — from deck product
+ *   VOD  = velocity of detonation (m/s) — from deck product
+ *   a    = borehole radius (m) — from deck holeDiamMm
+ *   R    = distance from observation point to nearest point on deck segment (m)
  *   α    = attenuation exponent (≈ 2 for cylindrical divergence)
  *
- * Integrates along the charge column, taking the peak pressure
- * contribution across all elements and all holes.
+ * Uses distToSegment for smooth, artifact-free contours (no discrete elements).
+ * Air gaps between decks are naturally excluded since only charged decks
+ * appear in the deck data texture.
  */
 export class PressureModel {
 	constructor() {
@@ -30,8 +32,7 @@ export class PressureModel {
 		return {
 			attenuationExponent: 2.0,   // α — geometric spreading exponent
 			fallbackDensity: 1.2,       // kg/L — only when no charging data
-			fallbackVOD: 5000,          // m/s — only when no per-hole VOD
-			numElements: 20,            // M — charge column discretisation
+			fallbackVOD: 5000,          // m/s — only when no per-deck VOD
 			cutoffDistance: 0.3,        // minimum distance (m) to avoid singularity
 			maxDisplayDistance: 50.0     // m — max distance from nearest hole to render
 		};
@@ -40,25 +41,31 @@ export class PressureModel {
 	/**
 	 * GLSL fragment shader source.
 	 *
-	 * Data layout (from ShaderUniformManager):
-	 *   Row 0: [collarX, collarY, collarZ, totalChargeKg]
-	 *   Row 1: [toeX, toeY, toeZ, holeLength_m]
-	 *   Row 2: [MIC_kg, timing_ms, holeDiam_mm, unused]
-	 *   Row 3: [chargeTopDepth_m, chargeBaseDepth_m, vodMs, totalExplosiveMassKg]
+	 * Per-deck DataTexture layout (3 rows × deckCount):
+	 *   Row 0: [topX, topY, topZ, deckMassKg]
+	 *   Row 1: [baseX, baseY, baseZ, densityKgPerL]
+	 *   Row 2: [vodMs, holeDiamMm, timing_ms, holeIndex]
 	 */
 	getFragmentSource() {
 		return `
 			precision highp float;
 
+			// Standard hole data (kept for compatibility but not used by this model)
 			uniform sampler2D uHoleData;
 			uniform int uHoleCount;
 			uniform float uHoleDataWidth;
+
+			// Per-deck data texture (3 rows × deckCount columns)
+			uniform sampler2D uDeckData;
+			uniform int uDeckCount;
+			uniform float uDeckDataWidth;
+
 			uniform float uAttenuationExp;
 			uniform float uFallbackDensity;
 			uniform float uFallbackVOD;
-			uniform int uNumElements;
 			uniform float uCutoff;
 			uniform float uMaxDisplayDistance;
+			uniform float uDisplayTime;
 			uniform sampler2D uColourRamp;
 			uniform float uMinValue;
 			uniform float uMaxValue;
@@ -66,92 +73,66 @@ export class PressureModel {
 
 			varying vec3 vWorldPos;
 
-			vec4 getHoleData(int index, int row) {
-				float u = (float(index) + 0.5) / uHoleDataWidth;
-				float v = (float(row) + 0.5) / 4.0;
-				return texture2D(uHoleData, vec2(u, v));
+			vec4 getDeckData(int index, int row) {
+				float u = (float(index) + 0.5) / uDeckDataWidth;
+				float v = (float(row) + 0.5) / 3.0;
+				return texture2D(uDeckData, vec2(u, v));
+			}
+
+			// Distance from point P to nearest point on line segment AB
+			float distToSegment(vec3 P, vec3 A, vec3 B) {
+				vec3 AB = B - A;
+				float lenSq = dot(AB, AB);
+				if (lenSq < 0.0001) return distance(P, A);
+				float t = clamp(dot(P - A, AB) / lenSq, 0.0, 1.0);
+				vec3 closest = A + t * AB;
+				return distance(P, closest);
 			}
 
 			void main() {
 				float peakPressure = 0.0;
 				float minDist = 1e10;
 
-				for (int i = 0; i < 512; i++) {
-					if (i >= uHoleCount) break;
+				for (int i = 0; i < 2048; i++) {
+					if (i >= uDeckCount) break;
 
-					vec4 collar = getHoleData(i, 0);
-					vec4 toe = getHoleData(i, 1);
-					vec4 props = getHoleData(i, 2);
-					vec4 charging = getHoleData(i, 3);
+					vec4 top = getDeckData(i, 0);   // [topX, topY, topZ, mass]
+					vec4 bot = getDeckData(i, 1);   // [baseX, baseY, baseZ, density]
+					vec4 extra = getDeckData(i, 2); // [vod, holeDiamMm, timing, holeIndex]
 
-					vec3 collarPos = collar.xyz;
-					vec3 toePos = toe.xyz;
-					float totalCharge = collar.w;
-					float holeLen = toe.w;
-					float holeDiam_mm = props.z;
-					float chargeTopDepth = charging.x;
-					float chargeBaseDepth = charging.y;
-					float holeVOD = charging.z;
-					float totalMassKg = charging.w;
+					vec3 topPos = top.xyz;
+					vec3 botPos = bot.xyz;
+					float mass = top.w;
+					float densityKgPerL = bot.w;
+					float vod = extra.x;
+					float holeDiamMm = extra.y;
 
-					if (totalCharge <= 0.0 || holeLen <= 0.0) continue;
+					if (mass <= 0.0) continue;
 
-					float holeRadius = holeDiam_mm * 0.0005;  // mm -> m radius
+					// Time filtering: skip decks that haven't fired yet
+					float timing_d = extra.z;
+					if (uDisplayTime >= 0.0 && timing_d > uDisplayTime) continue;
 
-					// Quick distance check to collar
-					float distToCollar = distance(vWorldPos, collarPos);
-					if (distToCollar > uMaxDisplayDistance) continue;
-					minDist = min(minDist, distToCollar);
+					// Quick distance check to midpoint
+					vec3 mid = (topPos + botPos) * 0.5;
+					float distToMid = distance(vWorldPos, mid);
+					if (distToMid > uMaxDisplayDistance) continue;
+					minDist = min(minDist, distToMid);
 
-					// Charge column bounds
-					float chargeLen;
-					float chargeStartOffset;
-					if (chargeBaseDepth > 0.0 && chargeBaseDepth > chargeTopDepth) {
-						chargeLen = chargeBaseDepth - chargeTopDepth;
-						chargeStartOffset = chargeTopDepth;
-					} else {
-						chargeLen = holeLen * 0.7;
-						chargeStartOffset = holeLen * 0.3;
-					}
+					// Physical properties from deck data
+					float holeRadius = holeDiamMm * 0.0005;  // mm -> m radius
+					float effectiveVOD = vod > 0.0 ? vod : uFallbackVOD;
+					float rho_e = densityKgPerL > 0.0 ? densityKgPerL * 1000.0 : uFallbackDensity * 1000.0;  // kg/L -> kg/m³
 
-					// Per-hole VOD
-					float effectiveVOD = holeVOD > 0.0 ? holeVOD : uFallbackVOD;
+					// Borehole wall pressure: Pb = ρ_e × VOD² / 8 (Pa -> MPa)
+					float Pb_MPa = rho_e * effectiveVOD * effectiveVOD * 0.125 / 1000000.0;
 
-					// Explosive density
-					float area = 3.14159 * holeRadius * holeRadius;
-					float massFinal = totalMassKg > 0.0 ? totalMassKg : totalCharge;
-					float rho_e;
-					if (chargeLen > 0.0 && area > 0.0) {
-						rho_e = massFinal / (chargeLen * area);  // kg/m³
-					} else {
-						rho_e = uFallbackDensity * 1000.0;  // kg/L -> kg/m³
-					}
+					// Distance from observation point to deck segment (smooth, no halos)
+					float R = max(distToSegment(vWorldPos, topPos, botPos), uCutoff);
 
-					// Borehole wall pressure: Pb = ρ_e × VOD² / 8 (Pa)
-					float Pb = rho_e * effectiveVOD * effectiveVOD * 0.125;
-					// Convert to MPa
-					float Pb_MPa = Pb / 1000000.0;
-
-					// Hole axis
-					vec3 holeAxis = normalize(toePos - collarPos);
-					vec3 chargeEndPos = collarPos + holeAxis * (chargeStartOffset + chargeLen);
-
-					// Element length
-					float dL = chargeLen / float(uNumElements);
-
-					// Integrate along charge column, take peak
-					for (int m = 0; m < 64; m++) {
-						if (m >= uNumElements) break;
-
-						float elemOffset = (float(m) + 0.5) * dL;
-						vec3 elemPos = chargeEndPos - holeAxis * elemOffset;
-
-						float R = max(distance(vWorldPos, elemPos), uCutoff);
-
-						// P(R) = Pb × (a / R)^α
-						float P_elem = Pb_MPa * pow(holeRadius / R, uAttenuationExp);
-						peakPressure = max(peakPressure, P_elem);
-					}
+					// P(R) = Pb × (a / R)^α
+					float P_deck = Pb_MPa * pow(holeRadius / R, uAttenuationExp);
+					peakPressure = max(peakPressure, P_deck);
 				}
 
 				if (peakPressure <= 0.0 || minDist > uMaxDisplayDistance) discard;
@@ -171,13 +152,34 @@ export class PressureModel {
 
 	getUniforms(params) {
 		var p = Object.assign(this.getDefaultParams(), params || {});
-		return {
+		var deckData = p._deckData;
+
+		var uniforms = {
 			uAttenuationExp: { value: p.attenuationExponent },
 			uFallbackDensity: { value: p.fallbackDensity },
 			uFallbackVOD: { value: p.fallbackVOD },
-			uNumElements: { value: p.numElements },
 			uCutoff: { value: p.cutoffDistance },
-			uMaxDisplayDistance: { value: p.maxDisplayDistance }
+			uMaxDisplayDistance: { value: p.maxDisplayDistance },
+			uDisplayTime: { value: p.displayTime !== undefined ? p.displayTime : -1.0 }
 		};
+
+		// Deck texture from prepareDeckDataTexture
+		if (deckData && deckData.texture) {
+			uniforms.uDeckData = { value: deckData.texture };
+			uniforms.uDeckCount = { value: deckData.count };
+			uniforms.uDeckDataWidth = { value: deckData.width };
+		} else {
+			// Fallback: empty 1x3 texture
+			var emptyData = new Float32Array(1 * 3 * 4);
+			var emptyTex = new THREE.DataTexture(emptyData, 1, 3, THREE.RGBAFormat, THREE.FloatType);
+			emptyTex.minFilter = THREE.NearestFilter;
+			emptyTex.magFilter = THREE.NearestFilter;
+			emptyTex.needsUpdate = true;
+			uniforms.uDeckData = { value: emptyTex };
+			uniforms.uDeckCount = { value: 0 };
+			uniforms.uDeckDataWidth = { value: 1.0 };
+		}
+
+		return uniforms;
 	}
 }

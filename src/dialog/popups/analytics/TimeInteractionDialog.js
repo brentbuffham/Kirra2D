@@ -84,14 +84,112 @@ export function showTimeInteractionDialog(config) {
 	sliderSection.style.flexDirection = "column";
 	sliderSection.style.justifyContent = "center";
 
+	// Label + transport controls row
+	var labelRow = document.createElement("div");
+	labelRow.style.display = "flex";
+	labelRow.style.alignItems = "center";
+	labelRow.style.marginBottom = "8px";
+	labelRow.style.gap = "8px";
+
 	var sliderLabel = document.createElement("label");
 	sliderLabel.style.fontSize = "12px";
 	sliderLabel.style.fontWeight = "bold";
 	sliderLabel.style.color = "var(--text-color)";
-	sliderLabel.style.display = "block";
-	sliderLabel.style.marginBottom = "8px";
 	sliderLabel.textContent = "Time Slice:";
-	sliderSection.appendChild(sliderLabel);
+	labelRow.appendChild(sliderLabel);
+
+	// Transport controls: Reset, Play, Pause
+	var transportBtnStyle = "padding: 2px 8px; font-size: 14px; cursor: pointer; " +
+		"background: rgba(77,166,255,0.15); border: 1px solid rgba(77,166,255,0.4); " +
+		"border-radius: 3px; color: var(--text-color); line-height: 1;";
+
+	var resetBtn = document.createElement("button");
+	resetBtn.type = "button";
+	resetBtn.textContent = "\u23EE";
+	resetBtn.title = "Reset to 0";
+	resetBtn.setAttribute("style", transportBtnStyle);
+	labelRow.appendChild(resetBtn);
+
+	var playBtn = document.createElement("button");
+	playBtn.type = "button";
+	playBtn.textContent = "\u25B6";
+	playBtn.title = "Play";
+	playBtn.setAttribute("style", transportBtnStyle);
+	labelRow.appendChild(playBtn);
+
+	var pauseBtn = document.createElement("button");
+	pauseBtn.type = "button";
+	pauseBtn.textContent = "\u23F8";
+	pauseBtn.title = "Pause";
+	pauseBtn.setAttribute("style", transportBtnStyle);
+	labelRow.appendChild(pauseBtn);
+
+	// Speed label
+	var speedLabel = document.createElement("span");
+	speedLabel.style.fontSize = "10px";
+	speedLabel.style.color = "#888";
+	speedLabel.style.marginLeft = "auto";
+	speedLabel.textContent = "1x";
+	labelRow.appendChild(speedLabel);
+
+	sliderSection.appendChild(labelRow);
+
+	// Playback state
+	var playAnimId = null;
+	var playSpeed = 1;   // multiplier
+	var lastFrameTime = 0;
+
+	function startPlayback() {
+		if (playAnimId) return;  // already playing
+		lastFrameTime = performance.now();
+		function animateStep(now) {
+			var dt = now - lastFrameTime;
+			lastFrameTime = now;
+			var currentVal = parseFloat(slider.value);
+			var advance = dt * playSpeed;   // 1ms of blast time per 1ms wall-clock at 1x
+			var newVal = currentVal + advance;
+			if (newVal >= parseFloat(slider.max)) {
+				newVal = parseFloat(slider.max);
+				slider.value = String(newVal);
+				updateTimeSlice(newVal);
+				stopPlayback();
+				return;
+			}
+			slider.value = String(Math.round(newVal / parseFloat(slider.step)) * parseFloat(slider.step));
+			updateTimeSlice(parseFloat(slider.value));
+			playAnimId = requestAnimationFrame(animateStep);
+		}
+		playAnimId = requestAnimationFrame(animateStep);
+	}
+
+	function stopPlayback() {
+		if (playAnimId) {
+			cancelAnimationFrame(playAnimId);
+			playAnimId = null;
+		}
+	}
+
+	playBtn.addEventListener("click", function() {
+		startPlayback();
+	});
+
+	pauseBtn.addEventListener("click", function() {
+		stopPlayback();
+	});
+
+	resetBtn.addEventListener("click", function() {
+		stopPlayback();
+		slider.value = "0";
+		updateTimeSlice(0);
+	});
+
+	// Speed cycling on double-click of play button
+	playBtn.addEventListener("dblclick", function() {
+		if (playSpeed === 1) playSpeed = 2;
+		else if (playSpeed === 2) playSpeed = 5;
+		else playSpeed = 1;
+		speedLabel.textContent = playSpeed + "x";
+	});
 
 	var slider = document.createElement("input");
 	slider.type = "range";
@@ -110,7 +208,7 @@ export function showTimeInteractionDialog(config) {
 	// Current time display
 	var timeDisplay = document.createElement("div");
 	timeDisplay.style.textAlign = "center";
-	timeDisplay.style.fontSize = "28px";
+	timeDisplay.style.fontSize = "18px";
 	timeDisplay.style.fontWeight = "bold";
 	timeDisplay.style.color = "#4DA6FF";
 	timeDisplay.style.margin = "12px 0";
@@ -176,10 +274,13 @@ export function showTimeInteractionDialog(config) {
 		width: 480,
 		height: 320,
 		showConfirm: true,
-		confirmText: "Freeze",
+		confirmText: "Generate",
 		cancelText: "Cancel",
 		onConfirm: function () {
 			var timeMs = parseFloat(slider.value);
+
+			// Stop playback animation
+			stopPlayback();
 
 			// Clear debounce timer
 			if (bakeDebounceTimer) clearTimeout(bakeDebounceTimer);
@@ -198,6 +299,9 @@ export function showTimeInteractionDialog(config) {
 			}
 		},
 		onCancel: function () {
+			// Stop playback animation
+			stopPlayback();
+
 			// Clear debounce timer
 			if (bakeDebounceTimer) clearTimeout(bakeDebounceTimer);
 

@@ -15,6 +15,44 @@ import * as THREE from "three";
  */
 export class ShaderTextureBaker {
 
+    // Cached offscreen WebGL renderer — reused across bake calls to avoid
+    // exhausting the browser's WebGL context limit (~8-16 contexts).
+    static _offscreenRenderer = null;
+    static _offscreenCanvas = null;
+
+    /**
+     * Get or create the shared offscreen WebGLRenderer.
+     * Resizes the canvas if the requested resolution differs.
+     *
+     * @param {number} resolution - Desired canvas width/height in pixels
+     * @returns {THREE.WebGLRenderer}
+     * @private
+     */
+    static _getOffscreenRenderer(resolution) {
+        if (!this._offscreenCanvas) {
+            this._offscreenCanvas = document.createElement("canvas");
+        }
+
+        if (this._offscreenCanvas.width !== resolution || this._offscreenCanvas.height !== resolution) {
+            this._offscreenCanvas.width = resolution;
+            this._offscreenCanvas.height = resolution;
+        }
+
+        if (!this._offscreenRenderer) {
+            this._offscreenRenderer = new THREE.WebGLRenderer({
+                canvas: this._offscreenCanvas,
+                antialias: true,
+                alpha: true,
+                preserveDrawingBuffer: true // CRITICAL: allows reading pixels
+            });
+        }
+
+        this._offscreenRenderer.setSize(resolution, resolution);
+        this._offscreenRenderer.setClearColor(0x000000, 0); // Transparent background
+
+        return this._offscreenRenderer;
+    }
+
     /**
      * Bake a blast analysis shader to a texture.
      *
@@ -59,19 +97,9 @@ export class ShaderTextureBaker {
         // For non-horizontal surfaces, the 3D view uses a direct ShaderMaterial
         // instead of this baked texture (see BlastAnalysisShaderHelper).
 
-        // Create offscreen rendering setup
-        var offscreenCanvas = document.createElement("canvas");
-        offscreenCanvas.width = resolution;
-        offscreenCanvas.height = resolution;
-
-        var offscreenRenderer = new THREE.WebGLRenderer({
-            canvas: offscreenCanvas,
-            antialias: true,
-            alpha: true,
-            preserveDrawingBuffer: true // CRITICAL: allows reading pixels
-        });
-        offscreenRenderer.setSize(resolution, resolution);
-        offscreenRenderer.setClearColor(0x000000, 0); // Transparent background
+        // Reuse cached offscreen renderer (avoids WebGL context exhaustion)
+        var offscreenRenderer = this._getOffscreenRenderer(resolution);
+        var offscreenCanvas = this._offscreenCanvas;
 
         // Create orthographic camera — always top-down in LOCAL space
         var halfW = width / 2;
@@ -118,9 +146,8 @@ export class ShaderTextureBaker {
         texture.wrapS = THREE.ClampToEdgeWrapping;
         texture.wrapT = THREE.ClampToEdgeWrapping;
 
-        // Cleanup WebGL resources
+        // Cleanup geometry (renderer is reused, not disposed)
         geometry.dispose();
-        offscreenRenderer.dispose();
 
         console.log("Baked shader texture: " + resolution + "×" + resolution +
                     " covering (" + width.toFixed(1) + "m × " + height.toFixed(1) + "m)" +

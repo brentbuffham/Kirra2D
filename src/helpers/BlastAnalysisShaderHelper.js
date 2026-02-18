@@ -41,7 +41,8 @@ var MODEL_DISPLAY_NAMES = {
 	see: "SEE",
 	pressure: "Borehole Pressure",
 	powder_factor_vol: "Vol. Powder Factor",
-	jointed_rock: "Jointed Rock Damage"
+	jointed_rock: "Jointed Rock Damage",
+	ppv_deck: "PPV (Per-Deck)"
 };
 
 /**
@@ -74,10 +75,8 @@ export function applyBlastAnalysisShader(config) {
 		return;
 	}
 
-	// For PF model, prepare per-deck DataTexture from charging data
-	if (config.model === "powder_factor_vol") {
-		config.params._deckData = prepareDeckDataTexture(holes);
-	}
+	// Prepare per-deck DataTexture from charging data — available for all models
+	config.params._deckData = prepareDeckDataTexture(holes);
 
 	// Get shader material and bake to texture
 	var shaderMaterial = getShaderMaterialForModel(config.model, holes, config.params);
@@ -504,7 +503,8 @@ function getShaderLegendInfo(modelName) {
 		see: { title: "SEE (GJ/m³)", ramp: "jet", min: 0, max: 25 },
 		pressure: { title: "Pressure (MPa)", ramp: "pressure", min: 0, max: 100 },
 		powder_factor_vol: { title: "Powder Factor (kg/m³) [log]", ramp: "spectrum", min: 0.01, max: 100 },
-		jointed_rock: { title: "Damage Ratio", ramp: "damage", min: 0, max: 2 }
+		jointed_rock: { title: "Damage Ratio", ramp: "damage", min: 0, max: 2 },
+		ppv_deck: { title: "PPV (mm/s)", ramp: "ppv", min: 0, max: 200 }
 	};
 	var info = models[modelName] || models.ppv;
 	var stops = ColourRampFactory.RAMPS[info.ramp] || ColourRampFactory.RAMPS["jet"];
@@ -850,10 +850,8 @@ export function applyLiveAnalysisShader(config) {
 		return null;
 	}
 
-	// For PF model, prepare per-deck DataTexture
-	if (config.model === "powder_factor_vol") {
-		config.params._deckData = prepareDeckDataTexture(holes);
-	}
+	// Prepare per-deck DataTexture from charging data — available for all models
+	config.params._deckData = prepareDeckDataTexture(holes);
 
 	var shaderMaterial = getShaderMaterialForModel(config.model, holes, config.params);
 	if (!shaderMaterial) {

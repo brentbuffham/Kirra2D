@@ -1,11 +1,17 @@
 // src/shaders/analytics/models/ScaledHeelanModel.js
+import * as THREE from "three";
 
 /**
- * ScaledHeelanModel implements the Scaled Heelan model developed by Blair & Minchinton (2006).
+ * ScaledHeelanModel implements the Scaled Heelan model (Blair & Minchinton 2006)
+ * using per-deck data.
  *
- * This model bridges the Original Heelan waveform model with the familiar charge weight
- * scaling law. Each elemental waveform has a peak particle velocity given by the site law,
- * while retaining the directional radiation patterns from the Original Heelan model.
+ * Each charged deck is subdivided into uElemsPerDeck sub-elements. Blair's (2008)
+ * non-linear superposition with radiation patterns is applied per deck:
+ *   Em = [m*w_e]^A - [(m-1)*w_e]^A
+ *   vppv_element = K * Em * R^(-B) * F(phi)
+ *
+ * Air gaps between decks are naturally excluded. Each deck uses its own VOD
+ * for frequency/attenuation calculations.
  *
  * Reference: Blair & Minchinton (2006), "Near-field blast vibration models", Fragblast-8
  */
@@ -19,74 +25,31 @@ export class ScaledHeelanModel {
         this.defaultMax = 300;  // mm/s VPPV
     }
 
-    /**
-     * Scaled Heelan parameters.
-     *
-     * The Scaled Heelan model (Blair & Minchinton 2006) scales each elemental
-     * Heelan waveform so its peak matches the site law: vppv_m = K * w_e^A * R^(-B).
-     *
-     * Blair (2008) non-linear superposition replaces w_e^A with Em:
-     *   Em = [m*w_e]^A - [(m-1)*w_e]^A
-     *   vppv_element = K * Em * R^(-B) * F(phi)
-     *
-     * where:
-     *   K, B = site law constants (from regression of field data)
-     *   A    = charge exponent (typically 0.5 for square-root scaling)
-     *   Em   = incremental effective charge factor (replaces w_e^A)
-     *   R    = distance from element to observation point
-     *   phi  = angle from hole axis to observation direction
-     *   F(phi) = combined radiation pattern (retains Heelan directional structure)
-     *
-     * Total: Σ Em = (M*w_e)^A = totalCharge^A (independent of M)
-     */
     getDefaultParams() {
         return {
-            // Site law constants — calibrate from field PPV measurements
-            K: 1140,                   // Site constant (intercept)
-            B: 1.6,                    // Site exponent (slope, negative gradient)
-            chargeExponent: 0.5,       // A — typically 0.5 (square-root) or 0.33 (cube-root)
-
-            // Charge column discretisation
-            numElements: 20,           // M — number of charge elements
-
-            // Rock mass properties (for radiation pattern)
-            pWaveVelocity: 4500,       // Vp, m/s — affects radiation pattern shape
-            sWaveVelocity: 2600,       // Vs, m/s — affects radiation pattern shape
-            detonationVelocity: 5500,  // VOD, m/s — fallback when no product VOD assigned
-
-            // Radiation pattern weighting
-            pWaveWeight: 1.0,          // Relative weight of P-wave contribution
-            svWaveWeight: 1.0,         // Relative weight of SV-wave contribution
-
-            // Distance limits
-            cutoffDistance: 0.5,       // Minimum distance (m) to avoid singularity
-
-            // Viscoelastic attenuation
-            qualityFactorP: 50,        // Q_p (0 = no attenuation)
-            qualityFactorS: 30         // Q_s (0 = no attenuation)
+            K: 1140,
+            B: 1.6,
+            chargeExponent: 0.5,
+            elemsPerDeck: 8,
+            pWaveVelocity: 4500,
+            sWaveVelocity: 2600,
+            detonationVelocity: 5500,
+            pWaveWeight: 1.0,
+            svWaveWeight: 1.0,
+            cutoffDistance: 0.5,
+            qualityFactorP: 50,
+            qualityFactorS: 30
         };
     }
 
     /**
-     * The Scaled Heelan fragment shader.
+     * Fragment shader using per-deck data with Blair non-linear superposition
+     * and Heelan radiation patterns.
      *
-     * For each hole:
-     * 1. Read charge column bounds from Row 3 (actual charging data)
-     *    - If charging data exists: use chargeTopDepth and chargeBaseDepth
-     *    - If no charging data: fall back to 70% of hole length estimate
-     * 2. Read per-hole VOD from Row 3, fall back to uniform uVOD if 0
-     * 3. Divide the charge column into M elements starting from the bottom
-     * 4. For each element:
-     *    a. Compute distance R and angle phi to observation point
-     *    b. Compute element PPV: K * Em * R^(-B) (Blair 2008, Eq. 3)
-     *    c. Apply Heelan radiation patterns F1(phi), F2(phi)
-     *    d. Compute P-wave and SV-wave velocity amplitudes
-     * 5. Incoherent (RMS) superposition: sum squared amplitudes across elements
-     *    This avoids interference artefacts from coherent phase superposition
-     *    and produces a smooth merged pattern per hole rather than per-element
-     *    butterflies. Note: |vP|² + |vSV|² is equivalent to vr² + vz² since
-     *    the rotation to (vr,vz) is orthogonal.
-     * 6. Take peak across all holes
+     * Deck DataTexture layout (3 rows × deckCount):
+     *   Row 0: [topX, topY, topZ, deckMassKg]
+     *   Row 1: [baseX, baseY, baseZ, densityKgPerL]
+     *   Row 2: [vodMs, holeDiamMm, timing_ms, holeIndex]
      */
     getFragmentSource() {
         return `
@@ -96,28 +59,33 @@ export class ScaledHeelanModel {
             uniform int uHoleCount;
             uniform float uHoleDataWidth;
 
+            // Per-deck data texture
+            uniform sampler2D uDeckData;
+            uniform int uDeckCount;
+            uniform float uDeckDataWidth;
+
             // Site law constants
-            uniform float uK;             // Site constant K
-            uniform float uB;             // Site exponent B (attenuation slope)
-            uniform float uChargeExp;     // Charge exponent A (0.5 or 0.33)
+            uniform float uK;
+            uniform float uB;
+            uniform float uChargeExp;
 
             // Rock and explosive properties
-            uniform float uPWaveVel;      // Vp (m/s)
-            uniform float uSWaveVel;      // Vs (m/s)
-            uniform float uVOD;           // Fallback detonation velocity (m/s)
-            uniform float uPWeight;       // P-wave weighting factor
-            uniform float uSVWeight;      // SV-wave weighting factor
+            uniform float uPWaveVel;
+            uniform float uSWaveVel;
+            uniform float uVOD;
+            uniform float uPWeight;
+            uniform float uSVWeight;
 
             // Discretisation
-            uniform int uNumElements;     // M
-            uniform float uCutoff;        // Minimum distance
+            uniform int uElemsPerDeck;
+            uniform float uCutoff;
 
             // Attenuation
-            uniform float uQp;            // P-wave quality factor
-            uniform float uQs;            // S-wave quality factor
+            uniform float uQp;
+            uniform float uQs;
 
             // Time filtering
-            uniform float uDisplayTime;   // -1 = show all (no time filter)
+            uniform float uDisplayTime;
 
             // Colour mapping
             uniform sampler2D uColourRamp;
@@ -129,18 +97,22 @@ export class ScaledHeelanModel {
 
             vec4 getHoleData(int index, int row) {
                 float u = (float(index) + 0.5) / uHoleDataWidth;
-                float v = (float(row) + 0.5) / 4.0;  // 4 rows per hole
+                float v = (float(row) + 0.5) / 4.0;
                 return texture2D(uHoleData, vec2(u, v));
             }
 
+            vec4 getDeckData(int index, int row) {
+                float u = (float(index) + 0.5) / uDeckDataWidth;
+                float v = (float(row) + 0.5) / 3.0;
+                return texture2D(uDeckData, vec2(u, v));
+            }
+
             // Heelan P-wave radiation pattern
-            // F1(phi) = sin(2*phi) * cos(phi)
             float F1(float sinPhi, float cosPhi) {
                 return 2.0 * sinPhi * cosPhi * cosPhi;
             }
 
             // Heelan SV-wave radiation pattern
-            // F2(phi) = sin(phi) * cos(2*phi)
             float F2(float sinPhi, float cosPhi) {
                 return sinPhi * (2.0 * cosPhi * cosPhi - 1.0);
             }
@@ -148,107 +120,72 @@ export class ScaledHeelanModel {
             void main() {
                 float peakVPPV = 0.0;
 
-                for (int i = 0; i < 512; i++) {
-                    if (i >= uHoleCount) break;
+                for (int d = 0; d < 2048; d++) {
+                    if (d >= uDeckCount) break;
 
-                    // Read from 4-row DataTexture layout:
-                    // Row 0: [collarX, collarY, collarZ, totalChargeKg]
-                    // Row 1: [toeX, toeY, toeZ, holeLength_m]
-                    // Row 2: [MIC_kg, timing_ms, holeDiam_mm, unused]
-                    // Row 3: [chargeTopDepth_m, chargeBaseDepth_m, vodMs, totalExplosiveMassKg]
-                    vec4 collar = getHoleData(i, 0);
-                    vec4 toe = getHoleData(i, 1);
-                    vec4 props = getHoleData(i, 2);
-                    vec4 charging = getHoleData(i, 3);
+                    vec4 top = getDeckData(d, 0);
+                    vec4 bot = getDeckData(d, 1);
+                    vec4 extra = getDeckData(d, 2);
 
-                    vec3 collarPos = collar.xyz;
-                    vec3 toePos = toe.xyz;
-                    float totalCharge = collar.w;        // kg
-                    float holeLen = toe.w;                // m
-                    float holeDiam = props.z;             // mm
+                    vec3 topPos = top.xyz;
+                    vec3 botPos = bot.xyz;
+                    float deckMass = top.w;
+                    float deckVOD = extra.x;
+                    float holeDiamMm = extra.y;
+                    float timing_d = extra.z;
+                    int holeIdx = int(extra.w);
 
-                    // Charging data from Row 3
-                    float chargeTopDepth = charging.x;    // m from collar (stemming length)
-                    float chargeBaseDepth = charging.y;   // m from collar (bottom of charge)
-                    float holeVOD = charging.z;           // m/s (0 = use uniform fallback)
+                    if (deckMass <= 0.0) continue;
 
-                    if (totalCharge <= 0.0 || holeLen <= 0.0) continue;
+                    // Time filtering
+                    if (uDisplayTime >= 0.0 && timing_d > uDisplayTime) continue;
 
-                    // Time filtering: skip holes that haven't fired yet
-                    if (uDisplayTime >= 0.0) {
-                        float timing_ms = props.y;
-                        if (timing_ms > uDisplayTime) continue;
-                    }
+                    // Deck geometry
+                    vec3 deckAxis = botPos - topPos;
+                    float deckLen = length(deckAxis);
+                    if (deckLen < 0.001) continue;
+                    vec3 deckDir = deckAxis / deckLen;
 
-                    // Use actual charge column bounds if available, else fall back to 70% estimate
-                    float chargeLen;
-                    float chargeStartOffset;  // distance from collar to start of charge
-                    if (chargeBaseDepth > 0.0 && chargeBaseDepth > chargeTopDepth) {
-                        chargeLen = chargeBaseDepth - chargeTopDepth;
-                        chargeStartOffset = chargeTopDepth;
-                    } else {
-                        // Fallback: 70% of hole is charged, starting after 30% stemming
-                        chargeLen = holeLen * 0.7;
-                        chargeStartOffset = holeLen * 0.3;
-                    }
+                    // Get hole axis from main hole data
+                    vec4 holeCollar = getHoleData(holeIdx, 0);
+                    vec4 holeToe = getHoleData(holeIdx, 1);
+                    vec3 holeAxis = normalize(holeToe.xyz - holeCollar.xyz);
+                    float holeLen = holeToe.w;
 
-                    // Per-hole VOD (from assigned product) or uniform fallback
-                    float effectiveVOD = holeVOD > 0.0 ? holeVOD : uVOD;
+                    float holeRadius = holeDiamMm * 0.0005;
+                    float effectiveVOD = deckVOD > 0.0 ? deckVOD : uVOD;
 
-                    float holeRadius = holeDiam * 0.0005;
+                    // Sub-element properties
+                    float dL = deckLen / float(uElemsPerDeck);
+                    float elementMass = deckMass / float(uElemsPerDeck);  // w_e (kg)
 
-                    // Hole axis from collar to toe (supports angled holes)
-                    vec3 holeAxis = normalize(toePos - collarPos);
-
-                    // Charge column start and end positions along hole axis
-                    vec3 chargeStartPos = collarPos + holeAxis * chargeStartOffset;
-                    vec3 chargeEndPos = collarPos + holeAxis * (chargeStartOffset + chargeLen);
-
-                    // Element properties
-                    float dL = chargeLen / float(uNumElements);
-                    float elementMass = (totalCharge / chargeLen) * dL;  // w_e (kg)
-
-                    // Incoherent (RMS) superposition — sum squared amplitudes
-                    // Avoids coherent phase interference that creates per-element
-                    // butterfly artefacts in a static (time-independent) map.
+                    // Incoherent (RMS) superposition
                     float sumEnergy = 0.0;
 
-                    for (int m = 0; m < 64; m++) {
-                        if (m >= uNumElements) break;
+                    for (int m = 0; m < 32; m++) {
+                        if (m >= uElemsPerDeck) break;
 
-                        // Element centre within charge column (from bottom up)
-                        // Element 0 is at the bottom of charge, element M-1 is at the top
                         float elemOffset = (float(m) + 0.5) * dL;
-                        vec3 elemPos = chargeEndPos - holeAxis * elemOffset;
+                        vec3 elemPos = topPos + deckDir * elemOffset;
 
-                        // Vector and distance to observation point
                         vec3 toObs = vWorldPos - elemPos;
                         float R = max(length(toObs), uCutoff);
 
-                        // Angle phi from hole axis (signed for correct wave superposition)
                         float cosPhi = dot(normalize(toObs), holeAxis);
                         float sinPhi = sqrt(max(1.0 - cosPhi * cosPhi, 0.0));
 
-                        // === BLAIR'S NON-LINEAR SUPERPOSITION (Blair 2008, Eq. 3) ===
-                        // Em = [m*we]^A - [(m-1)*we]^A
-                        // Em replaces we^A in the Scaled Heelan amplitude factor.
-                        // Total: Σ Em = (M*we)^A = totalCharge^A  (independent of M)
-                        //
-                        // Element PPV factor = K * Em * R^(-B)  (three-parameter form)
-                        // NOT K * (R/Em)^(-B) which gives K * Em^B / R^B and breaks
-                        // the telescoping sum when B ≠ 1.
-                        float mwe = float(m + 1) * elementMass;      // (m+1)*we (m starts at 0)
-                        float m1we = float(m) * elementMass;         // m*we
+                        // Blair's non-linear superposition (Blair 2008, Eq. 3)
+                        float mwe = float(m + 1) * elementMass;
+                        float m1we = float(m) * elementMass;
                         float Em = pow(mwe, uChargeExp) - (m1we > 0.0 ? pow(m1we, uChargeExp) : 0.0);
 
-                        // PPV_element = K * Em * R^(-B)  [mm/s]
+                        // PPV_element = K * Em * R^(-B)
                         float vppvElement = uK * Em * pow(R, -uB);
 
-                        // Radiation patterns
                         float f1 = F1(sinPhi, cosPhi);
                         float f2 = F2(sinPhi, cosPhi);
 
-                        // Viscoelastic attenuation (using per-hole VOD for frequency)
+                        // Viscoelastic attenuation (using per-deck VOD for frequency)
                         float attP = 1.0;
                         float attS = 1.0;
                         if (uQp > 0.0) {
@@ -257,27 +194,21 @@ export class ScaledHeelanModel {
                             attS = exp(-omega * R / (2.0 * uQs * uSWaveVel));
                         }
 
-                        // P-wave and SV-wave velocity contributions
                         float vP  = vppvElement * f1 * uPWeight * attP;
                         float vSV = vppvElement * f2 * uSVWeight * attS;
 
-                        // Accumulate squared amplitudes (incoherent sum)
-                        // |vP|² + |vSV|² == vr² + vz² (orthogonal rotation)
                         sumEnergy += vP * vP + vSV * vSV;
                     }
 
-                    // Attenuate below the toe — physical confinement limits damage
-                    // The Heelan model radiates symmetrically, but rock below the
-                    // toe is confined with no free face, so PPV decays rapidly.
-                    float projOnAxis = dot(vWorldPos - collarPos, holeAxis);
+                    // Attenuate below the toe
+                    float projOnAxis = dot(vWorldPos - holeCollar.xyz, holeAxis);
                     float belowToe = projOnAxis - holeLen;
                     if (belowToe > 0.0) {
-                        float decayLen = max(chargeLen * 0.15, holeRadius * 4.0);
+                        float decayLen = max(deckLen * 0.15, holeRadius * 4.0);
                         float att = exp(-belowToe / decayLen);
-                        sumEnergy *= att * att;  // att² because energy ∝ amplitude²
+                        sumEnergy *= att * att;
                     }
 
-                    // RMS peak particle velocity = sqrt(Σ(vP² + vSV²))
                     float vppv = sqrt(sumEnergy);
                     peakVPPV = max(peakVPPV, vppv);
                 }
@@ -294,7 +225,9 @@ export class ScaledHeelanModel {
 
     getUniforms(params) {
         var p = Object.assign(this.getDefaultParams(), params || {});
-        return {
+        var deckData = p._deckData;
+
+        var uniforms = {
             uK: { value: p.K },
             uB: { value: p.B },
             uChargeExp: { value: p.chargeExponent },
@@ -303,11 +236,28 @@ export class ScaledHeelanModel {
             uVOD: { value: p.detonationVelocity },
             uPWeight: { value: p.pWaveWeight },
             uSVWeight: { value: p.svWaveWeight },
-            uNumElements: { value: p.numElements },
+            uElemsPerDeck: { value: p.elemsPerDeck },
             uCutoff: { value: p.cutoffDistance },
             uQp: { value: p.qualityFactorP },
             uQs: { value: p.qualityFactorS },
             uDisplayTime: { value: p.displayTime !== undefined ? p.displayTime : -1.0 }
         };
+
+        if (deckData && deckData.texture) {
+            uniforms.uDeckData = { value: deckData.texture };
+            uniforms.uDeckCount = { value: deckData.count };
+            uniforms.uDeckDataWidth = { value: deckData.width };
+        } else {
+            var emptyData = new Float32Array(1 * 3 * 4);
+            var emptyTex = new THREE.DataTexture(emptyData, 1, 3, THREE.RGBAFormat, THREE.FloatType);
+            emptyTex.minFilter = THREE.NearestFilter;
+            emptyTex.magFilter = THREE.NearestFilter;
+            emptyTex.needsUpdate = true;
+            uniforms.uDeckData = { value: emptyTex };
+            uniforms.uDeckCount = { value: 0 };
+            uniforms.uDeckDataWidth = { value: 1.0 };
+        }
+
+        return uniforms;
     }
 }

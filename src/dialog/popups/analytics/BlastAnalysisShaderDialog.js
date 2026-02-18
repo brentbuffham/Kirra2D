@@ -196,7 +196,7 @@ export function showBlastAnalysisShaderDialog(callback) {
 	container.appendChild(infoSection);
 
 	// Models that support time interaction
-	var TIMING_CAPABLE_MODELS = ["ppv", "heelan_original", "scaled_heelan", "nonlinear_damage"];
+	var TIMING_CAPABLE_MODELS = ["ppv", "ppv_deck", "heelan_original", "scaled_heelan", "nonlinear_damage", "pressure", "jointed_rock", "powder_factor_vol"];
 
 	var dialog = new FloatingDialog({
 		title: "Blast Analysis Shader",
@@ -379,6 +379,21 @@ function getModelInfo(modelName) {
 					<li><strong>W</strong> - Charge mass per hole (kg), from charging data</li>
 				</ul>
 				<p style="margin-top: 8px; font-style: italic;">💡 Use this for compliance predictions and monitoring comparisons.</p>
+			`;
+
+		case "ppv_deck":
+			return `
+				<p><strong>PPV (Per-Deck) - Site Law with Deck Resolution</strong></p>
+				<p>Evaluates PPV independently for each charged deck, showing per-deck influence zones.</p>
+				<p><strong>Formula:</strong> PPV = K × (SD)<sup>-b</sup> per deck</p>
+				<ul style="margin: 5px 0; padding-left: 20px;">
+					<li><strong>K, b, n</strong> - Site constants (same as PPV model)</li>
+					<li><strong>Per-deck mass</strong> - Each deck uses its own mass, not total hole mass</li>
+					<li><strong>Multi-deck holes</strong> - Air gaps between decks are naturally excluded</li>
+					<li><strong>3-point evaluation</strong> - Checks PPV at top, centre, and base of each deck</li>
+					<li><strong>Time Window</strong> - Combine decks firing within a time window</li>
+				</ul>
+				<p style="margin-top: 8px; font-style: italic;">Use for: Per-deck PPV analysis with multi-deck charge configurations.</p>
 			`;
 
 		case "heelan_original":
@@ -571,7 +586,9 @@ function getDefaultParametersForModel(modelName) {
 				K: { label: "Site Constant K", value: 1140, min: 100, max: 5000, step: 10, unit: "" },
 				B: { label: "Site Exponent b", value: 1.6, min: 1.0, max: 2.5, step: 0.1, unit: "" },
 				chargeExponent: { label: "Scaled Weight Exponent n", value: 0.5, min: 0.3, max: 0.8, step: 0.05, unit: "" },
-				targetPPV: { label: "Target PPV (mm/s) - 0 = disabled", value: 0, min: 0, max: 500, step: 5, unit: "mm/s" }
+				targetPPV: { label: "Target PPV (mm/s) - 0 = disabled", value: 0, min: 0, max: 500, step: 5, unit: "mm/s" },
+				timeWindow: { label: "Time Window", value: 0, min: 0, max: 500, step: 1, unit: "ms" },
+				timeOffset: { label: "Offset Window (+/-)", value: 0, min: -500, max: 500, step: 1, unit: "ms" }
 			};
 
 		case "heelan_original":
@@ -650,6 +667,18 @@ function getDefaultParametersForModel(modelName) {
 				jointCohesion: { label: "Joint Cohesion", value: 0.1, min: 0, max: 5.0, step: 0.1, unit: "MPa" },
 				jointFrictionAngle: { label: "Joint Friction Angle", value: 30, min: 10, max: 45, step: 1, unit: "°" },
 				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "" }
+			};
+
+		case "ppv_deck":
+			return {
+				K: { label: "Site Constant K", value: 1140, min: 100, max: 5000, step: 10, unit: "" },
+				B: { label: "Site Exponent b", value: 1.6, min: 1.0, max: 2.5, step: 0.1, unit: "" },
+				chargeExponent: { label: "Scaled Weight Exponent n", value: 0.5, min: 0.3, max: 0.8, step: 0.05, unit: "" },
+				targetPPV: { label: "Target PPV (mm/s) - 0 = disabled", value: 0, min: 0, max: 500, step: 5, unit: "mm/s" },
+				timeWindow: { label: "Time Window", value: 0, min: 0, max: 500, step: 1, unit: "ms" },
+				timeOffset: { label: "Offset Window (+/-)", value: 0, min: -500, max: 500, step: 1, unit: "ms" },
+				maxDisplayDistance: { label: "Max Display Distance", value: 200, min: 10, max: 1000, step: 10, unit: "m" },
+				cutoffDistance: { label: "Min Distance", value: 1.0, min: 0.1, max: 5.0, step: 0.1, unit: "m" }
 			};
 
 		default:

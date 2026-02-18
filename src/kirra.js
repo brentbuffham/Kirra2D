@@ -33459,7 +33459,18 @@ async function saveSurfaceToDB(surfaceId) {
 			if (surface.isAnalysisSurface) {
 				surfaceRecord.isAnalysisSurface = true;
 				surfaceRecord.analysisModelName = surface.analysisModelName || null;
-				surfaceRecord.analysisParams = surface.analysisParams || null;
+				// Strip non-serializable fields (_deckData contains THREE.DataTexture with event listeners)
+			if (surface.analysisParams) {
+				var cleanParams = {};
+				for (var key in surface.analysisParams) {
+					if (key !== "_deckData") {
+						cleanParams[key] = surface.analysisParams[key];
+					}
+				}
+				surfaceRecord.analysisParams = cleanParams;
+			} else {
+				surfaceRecord.analysisParams = null;
+			}
 				surfaceRecord.analysisUVBounds = surface.analysisUVBounds || null;
 				if (surface.analysisGLB) {
 					surfaceRecord.analysisGLB = surface.analysisGLB;  // ArrayBuffer

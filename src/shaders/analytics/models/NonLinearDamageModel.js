@@ -1,29 +1,28 @@
 // src/shaders/analytics/models/NonLinearDamageModel.js
+import * as THREE from "three";
 
 /**
- * NonLinearDamageModel implements the Holmberg-Persson near-field damage model.
+ * NonLinearDamageModel implements the Holmberg-Persson near-field damage model
+ * using per-deck data.
  *
- * The Holmberg-Persson (H-P) approach integrates PPV contributions along the
- * full charge column of each hole, rather than treating each hole as a point
- * source. This captures the near-field effect where distance to individual
- * charge elements varies significantly along the column.
+ * The Holmberg-Persson (H-P) approach integrates PPV contributions along each
+ * charged deck, rather than treating each hole as a single charge column.
+ * Multi-deck holes produce separate damage zones per deck, with air gaps
+ * naturally excluded.
  *
- * For each hole the charge column is divided into M elements and each element
- * contributes:
+ * Each deck is subdivided into uElemsPerDeck sub-elements:
  *   PPV_i = K * (q * dL)^α / R_i^β
  *
- * where q = linear charge density (kg/m), dL = element length (m),
- * R_i = distance from element centre to observation point, and K, α, β are
- * site-calibrated constants.
+ * where q = linear charge density (kg/m), dL = sub-element length (m),
+ * R_i = distance from sub-element centre to observation point.
  *
- * Elements are summed incoherently (RMS) within each hole:
- *   PPV_hole = sqrt( Σ PPV_i² )
+ * Elements are summed incoherently (RMS) within each deck:
+ *   PPV_deck = sqrt( Σ PPV_i² )
  *
- * The damage index is: DI = PPV_nearest_hole / PPV_critical
- * where PPV_critical is the threshold for crack initiation in the rock mass.
+ * The damage index is: DI = peakPPV / PPV_critical
  *
  * Reference: Holmberg & Persson (1979), "Design of tunnel perimeter blasthole
- * patterns to prevent rock damage", Tunnelling and Underground Space Technology.
+ * patterns to prevent rock damage"
  */
 export class NonLinearDamageModel {
     constructor() {
@@ -35,59 +34,51 @@ export class NonLinearDamageModel {
         this.defaultMax = 1.0;
     }
 
-    /**
-     * Holmberg-Persson near-field damage model parameters.
-     *
-     * PPV per element = K * (q * dL)^α / R^β
-     *
-     * Default K, α, β from NIOSH Modified H-P (Perimeter Blast Design):
-     *   K = 700, α = 0.7, β = 1.5
-     *
-     * ppvCritical: Threshold PPV (mm/s) at which new crack initiation begins.
-     * Typical range 700-1000 mm/s for competent rock.
-     */
     getDefaultParams() {
         return {
             K_hp: 700,                 // H-P site constant
             alpha_hp: 0.7,             // H-P charge exponent
             beta_hp: 1.5,              // H-P distance exponent
             ppvCritical: 700,          // mm/s — PPV threshold for crack initiation
-            numElements: 20,           // M — charge column discretisation
+            elemsPerDeck: 8,           // sub-elements per deck
             cutoffDistance: 0.3        // Minimum distance (m) to avoid singularity
         };
     }
 
     /**
-     * Fragment shader for Holmberg-Persson near-field damage calculation.
+     * Fragment shader for Holmberg-Persson near-field damage using per-deck data.
      *
-     * For each hole:
-     * 1. Read charge column bounds from Row 3 (chargeTopDepth, chargeBaseDepth)
-     * 2. Divide charge column into M elements
-     * 3. For each element: PPV_i = K * (q*dL)^α / R_i^β
-     * 4. Incoherent (RMS) sum within hole: PPV_hole = sqrt(Σ PPV_i²)
-     * 5. Take peak PPV across all holes (nearest hole dominates damage)
-     * 6. Damage index = peakPPV / ppvCritical
+     * Deck DataTexture layout (3 rows × deckCount):
+     *   Row 0: [topX, topY, topZ, deckMassKg]
+     *   Row 1: [baseX, baseY, baseZ, densityKgPerL]
+     *   Row 2: [vodMs, holeDiamMm, timing_ms, holeIndex]
      */
     getFragmentSource() {
         return `
             precision highp float;
 
+            // Standard hole data (kept for compatibility)
             uniform sampler2D uHoleData;
             uniform int uHoleCount;
             uniform float uHoleDataWidth;
 
+            // Per-deck data texture (3 rows × deckCount columns)
+            uniform sampler2D uDeckData;
+            uniform int uDeckCount;
+            uniform float uDeckDataWidth;
+
             // H-P site constants
-            uniform float uK_hp;          // Site constant K
-            uniform float uAlpha;         // Charge exponent α
-            uniform float uBeta;          // Distance exponent β
-            uniform float uPPVCritical;   // Critical PPV (mm/s)
+            uniform float uK_hp;
+            uniform float uAlpha;
+            uniform float uBeta;
+            uniform float uPPVCritical;
 
             // Discretisation
-            uniform int uNumElements;     // M — number of charge elements
-            uniform float uCutoff;        // Minimum distance (m)
+            uniform int uElemsPerDeck;
+            uniform float uCutoff;
 
             // Time filtering
-            uniform float uDisplayTime;   // -1 = show all (no time filter)
+            uniform float uDisplayTime;
 
             // Colour mapping
             uniform sampler2D uColourRamp;
@@ -97,91 +88,63 @@ export class NonLinearDamageModel {
 
             varying vec3 vWorldPos;
 
-            vec4 getHoleData(int index, int row) {
-                float u = (float(index) + 0.5) / uHoleDataWidth;
-                float v = (float(row) + 0.5) / 4.0;  // 4 rows per hole
-                return texture2D(uHoleData, vec2(u, v));
+            vec4 getDeckData(int index, int row) {
+                float u = (float(index) + 0.5) / uDeckDataWidth;
+                float v = (float(row) + 0.5) / 3.0;
+                return texture2D(uDeckData, vec2(u, v));
             }
 
             void main() {
                 float peakPPV = 0.0;
 
-                for (int i = 0; i < 512; i++) {
-                    if (i >= uHoleCount) break;
+                for (int d = 0; d < 2048; d++) {
+                    if (d >= uDeckCount) break;
 
-                    // Read from 4-row DataTexture layout:
-                    // Row 0: [collarX, collarY, collarZ, totalChargeKg]
-                    // Row 1: [toeX, toeY, toeZ, holeLength_m]
-                    // Row 2: [MIC_kg, timing_ms, holeDiam_mm, unused]
-                    // Row 3: [chargeTopDepth_m, chargeBaseDepth_m, vodMs, totalExplosiveMassKg]
-                    vec4 collar = getHoleData(i, 0);
-                    vec4 toe = getHoleData(i, 1);
-                    vec4 charging = getHoleData(i, 3);
+                    vec4 top = getDeckData(d, 0);
+                    vec4 bot = getDeckData(d, 1);
+                    vec4 extra = getDeckData(d, 2);
 
-                    vec3 collarPos = collar.xyz;
-                    vec3 toePos = toe.xyz;
-                    float totalCharge = collar.w;        // kg
-                    float holeLen = toe.w;                // m
+                    vec3 topPos = top.xyz;
+                    vec3 botPos = bot.xyz;
+                    float deckMass = top.w;
+                    float timing_d = extra.z;
 
-                    // Charging data from Row 3
-                    float chargeTopDepth = charging.x;    // m from collar
-                    float chargeBaseDepth = charging.y;   // m from collar
+                    if (deckMass <= 0.0) continue;
 
-                    if (totalCharge <= 0.0 || holeLen <= 0.0) continue;
+                    // Time filtering
+                    if (uDisplayTime >= 0.0 && timing_d > uDisplayTime) continue;
 
-                    // Time filtering: skip holes that haven't fired yet
-                    if (uDisplayTime >= 0.0) {
-                        vec4 props = getHoleData(i, 2);
-                        float timing_ms = props.y;
-                        if (timing_ms > uDisplayTime) continue;
-                    }
+                    // Deck geometry
+                    vec3 deckAxis = botPos - topPos;
+                    float deckLen = length(deckAxis);
+                    if (deckLen < 0.001) continue;
+                    vec3 deckDir = deckAxis / deckLen;
 
-                    // Use actual charge column bounds if available, else fall back to 70% estimate
-                    float chargeLen;
-                    float chargeStartOffset;
-                    if (chargeBaseDepth > 0.0 && chargeBaseDepth > chargeTopDepth) {
-                        chargeLen = chargeBaseDepth - chargeTopDepth;
-                        chargeStartOffset = chargeTopDepth;
-                    } else {
-                        chargeLen = holeLen * 0.7;
-                        chargeStartOffset = holeLen * 0.3;
-                    }
+                    // Sub-element properties
+                    float dL = deckLen / float(uElemsPerDeck);
+                    float linearDensity = deckMass / deckLen;  // kg/m
+                    float elementCharge = linearDensity * dL;  // kg
 
-                    // Hole axis from collar to toe (supports angled holes)
-                    vec3 holeAxis = normalize(toePos - collarPos);
-
-                    // Charge column end position (bottom of charge)
-                    vec3 chargeEndPos = collarPos + holeAxis * (chargeStartOffset + chargeLen);
-
-                    // Element properties
-                    float dL = chargeLen / float(uNumElements);
-                    float linearChargeDensity = totalCharge / chargeLen;  // q (kg/m)
-                    float elementCharge = linearChargeDensity * dL;       // q*dL (kg)
-
-                    // Incoherent (RMS) sum of element contributions
+                    // Incoherent (RMS) sum of sub-element contributions
                     float sumPPVsq = 0.0;
 
-                    for (int m = 0; m < 64; m++) {
-                        if (m >= uNumElements) break;
+                    for (int m = 0; m < 32; m++) {
+                        if (m >= uElemsPerDeck) break;
 
-                        // Element centre (from bottom up, same convention as Scaled Heelan)
+                        // Sub-element centre within deck (from top to base)
                         float elemOffset = (float(m) + 0.5) * dL;
-                        vec3 elemPos = chargeEndPos - holeAxis * elemOffset;
+                        vec3 elemPos = topPos + deckDir * elemOffset;
 
-                        // Distance from element to observation point
                         float R = max(length(vWorldPos - elemPos), uCutoff);
 
-                        // Holmberg-Persson per element: PPV_i = K * (q*dL)^α / R^β
+                        // H-P per element: PPV_i = K * (q*dL)^α / R^β
                         float ppvElem = uK_hp * pow(elementCharge, uAlpha) * pow(R, -uBeta);
-
                         sumPPVsq += ppvElem * ppvElem;
                     }
 
-                    // RMS PPV for this hole
-                    float holePPV = sqrt(sumPPVsq);
-
-                    // Peak across all holes (nearest hole dominates damage)
-                    peakPPV = max(peakPPV, holePPV);
+                    // RMS PPV for this deck
+                    float deckPPV = sqrt(sumPPVsq);
+                    peakPPV = max(peakPPV, deckPPV);
                 }
 
                 // Damage index: ratio of peak PPV to critical PPV
@@ -199,14 +162,34 @@ export class NonLinearDamageModel {
 
     getUniforms(params) {
         var p = Object.assign(this.getDefaultParams(), params || {});
-        return {
+        var deckData = p._deckData;
+
+        var uniforms = {
             uK_hp: { value: p.K_hp },
             uAlpha: { value: p.alpha_hp },
             uBeta: { value: p.beta_hp },
             uPPVCritical: { value: p.ppvCritical },
-            uNumElements: { value: p.numElements },
+            uElemsPerDeck: { value: p.elemsPerDeck },
             uCutoff: { value: p.cutoffDistance },
             uDisplayTime: { value: p.displayTime !== undefined ? p.displayTime : -1.0 }
         };
+
+        // Deck texture from prepareDeckDataTexture
+        if (deckData && deckData.texture) {
+            uniforms.uDeckData = { value: deckData.texture };
+            uniforms.uDeckCount = { value: deckData.count };
+            uniforms.uDeckDataWidth = { value: deckData.width };
+        } else {
+            var emptyData = new Float32Array(1 * 3 * 4);
+            var emptyTex = new THREE.DataTexture(emptyData, 1, 3, THREE.RGBAFormat, THREE.FloatType);
+            emptyTex.minFilter = THREE.NearestFilter;
+            emptyTex.magFilter = THREE.NearestFilter;
+            emptyTex.needsUpdate = true;
+            uniforms.uDeckData = { value: emptyTex };
+            uniforms.uDeckCount = { value: 0 };
+            uniforms.uDeckDataWidth = { value: 1.0 };
+        }
+
+        return uniforms;
     }
 }

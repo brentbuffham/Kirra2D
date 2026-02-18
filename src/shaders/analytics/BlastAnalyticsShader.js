@@ -13,6 +13,7 @@ import { SEEModel } from "./models/SEEModel.js";
 import { PressureModel } from "./models/PressureModel.js";
 import { PowderFactorModel } from "./models/PowderFactorModel.js";
 import { JointedRockDamageModel } from "./models/JointedRockDamageModel.js";
+import { PPVDeckModel } from "./models/PPVDeckModel.js";
 
 // Shared vertex shader
 var VERT_SOURCE = `
@@ -55,6 +56,7 @@ export class BlastAnalyticsShader extends BaseAnalyticsShader {
         this._registerModel(new PressureModel());
         this._registerModel(new PowderFactorModel());
         this._registerModel(new JointedRockDamageModel());
+        this._registerModel(new PPVDeckModel());
 
         // Active model
         this.activeModel = null;

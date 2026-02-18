@@ -47,6 +47,7 @@ export class PowderFactorModel {
 
 			uniform float uCutoff;
 			uniform float uMaxDisplayDistance;
+			uniform float uDisplayTime;
 			uniform sampler2D uColourRamp;
 			uniform float uMinValue;
 			uniform float uMaxValue;
@@ -56,7 +57,7 @@ export class PowderFactorModel {
 
 			vec4 getDeckData(int index, int row) {
 				float u = (float(index) + 0.5) / uDeckDataWidth;
-				float v = (float(row) + 0.5) / 2.0;
+				float v = (float(row) + 0.5) / 3.0;
 				return texture2D(uDeckData, vec2(u, v));
 			}
 
@@ -79,12 +80,17 @@ export class PowderFactorModel {
 
 					vec4 top = getDeckData(i, 0);  // [topX, topY, topZ, mass]
 					vec4 bot = getDeckData(i, 1);  // [baseX, baseY, baseZ, 0]
+					vec4 extra = getDeckData(i, 2); // [vod, holeDiamMm, timing, holeIndex]
 
 					vec3 topPos = top.xyz;
 					vec3 botPos = bot.xyz;
 					float mass = top.w;
 
 					if (mass <= 0.0) continue;
+
+					// Time filtering: skip decks that haven't fired yet
+					float timing_d = extra.z;
+					if (uDisplayTime >= 0.0 && timing_d > uDisplayTime) continue;
 
 					// Quick distance check to midpoint
 					vec3 mid = (topPos + botPos) * 0.5;
@@ -130,7 +136,8 @@ export class PowderFactorModel {
 
 		var uniforms = {
 			uCutoff: { value: p.cutoffDistance },
-			uMaxDisplayDistance: { value: p.maxDisplayDistance }
+			uMaxDisplayDistance: { value: p.maxDisplayDistance },
+			uDisplayTime: { value: p.displayTime !== undefined ? p.displayTime : -1.0 }
 		};
 
 		// Deck texture from prepareDeckDataTexture
@@ -139,9 +146,9 @@ export class PowderFactorModel {
 			uniforms.uDeckCount = { value: deckData.count };
 			uniforms.uDeckDataWidth = { value: deckData.width };
 		} else {
-			// Fallback: empty 1x2 texture
-			var emptyData = new Float32Array(1 * 2 * 4);
-			var emptyTex = new THREE.DataTexture(emptyData, 1, 2, THREE.RGBAFormat, THREE.FloatType);
+			// Fallback: empty 1x3 texture
+			var emptyData = new Float32Array(1 * 3 * 4);
+			var emptyTex = new THREE.DataTexture(emptyData, 1, 3, THREE.RGBAFormat, THREE.FloatType);
 			emptyTex.minFilter = THREE.NearestFilter;
 			emptyTex.magFilter = THREE.NearestFilter;
 			emptyTex.needsUpdate = true;
@@ -158,18 +165,20 @@ export class PowderFactorModel {
  * Prepare a per-deck DataTexture from blast hole charging data.
  *
  * Each COUPLED or DECOUPLED deck becomes a separate entry with its
- * world-space charge segment endpoints and mass. This allows the shader
- * to show separate PF hotspots per deck (e.g. multi-deck holes with
- * air gaps show two distinct zones).
+ * world-space charge segment endpoints, mass, and physical properties.
+ * This allows shaders to show separate hotspots per deck (e.g. multi-deck
+ * holes with air gaps show distinct zones) and access per-deck VOD/density.
  *
- * Texture layout (width=deckCount, height=2, RGBA Float):
- *   Row 0: [chargeTopWorldX, chargeTopWorldY, chargeTopWorldZ, deckMassKg]
- *   Row 1: [chargeBaseWorldX, chargeBaseWorldY, chargeBaseWorldZ, 0]
+ * Texture layout (width=deckCount, height=3, RGBA Float):
+ *   Row 0: [chargeTopWorldX,  chargeTopWorldY,  chargeTopWorldZ,  deckMassKg]
+ *   Row 1: [chargeBaseWorldX, chargeBaseWorldY, chargeBaseWorldZ, densityKgPerL]
+ *   Row 2: [vodMs,           holeDiamMm,       timing_ms,        holeIndex]
  *
  * @param {Array} holes - allBlastHoles array
  * @returns {{ texture: THREE.DataTexture, count: number, width: number }}
  */
 export function prepareDeckDataTexture(holes) {
+	var ROWS_PER_DECK = 3;
 	var deckEntries = [];
 
 	for (var i = 0; i < holes.length; i++) {
@@ -184,6 +193,9 @@ export function prepareDeckDataTexture(holes) {
 		var axY = (h.endYLocation - h.startYLocation) / holeLen;
 		var axZ = (h.endZLocation - h.startZLocation) / holeLen;
 
+		var holeDiamMm = parseFloat(h.holeDiameter) || 115;
+		var timingMs = parseFloat(h.holeTime) || parseFloat(h.timingDelayMilliseconds) || 0;
+
 		if (!chargingObj || !chargingObj.decks || chargingObj.decks.length === 0) {
 			// Fallback: treat entire hole as single charge (30%-100% of hole)
 			var mass = parseFloat(h.measuredMass) || 0;
@@ -197,12 +209,15 @@ export function prepareDeckDataTexture(holes) {
 				baseX: h.endXLocation,
 				baseY: h.endYLocation,
 				baseZ: h.endZLocation,
-				mass: mass
+				mass: mass,
+				density: 1.2,   // fallback density (kg/L)
+				vod: 5000,      // fallback VOD (m/s)
+				holeDiamMm: holeDiamMm,
+				timingMs: timingMs,
+				holeIndex: i
 			});
 			continue;
 		}
-
-		var holeDiamMm = parseFloat(h.holeDiameter) || 115;
 
 		for (var d = 0; d < chargingObj.decks.length; d++) {
 			var deck = chargingObj.decks[d];
@@ -214,6 +229,11 @@ export function prepareDeckDataTexture(holes) {
 			var deckTop = Math.min(deck.topDepth, deck.baseDepth);
 			var deckBase = Math.max(deck.topDepth, deck.baseDepth);
 
+			// Extract product properties
+			var product = deck.product || null;
+			var density = product ? (parseFloat(product.density) || 1.2) : 1.2;  // g/cc = kg/L
+			var vod = product ? (parseFloat(product.vodMs) || 5000) : 5000;
+
 			deckEntries.push({
 				topX: h.startXLocation + axX * deckTop,
 				topY: h.startYLocation + axY * deckTop,
@@ -221,14 +241,19 @@ export function prepareDeckDataTexture(holes) {
 				baseX: h.startXLocation + axX * deckBase,
 				baseY: h.startYLocation + axY * deckBase,
 				baseZ: h.startZLocation + axZ * deckBase,
-				mass: deckMass
+				mass: deckMass,
+				density: density,
+				vod: vod,
+				holeDiamMm: holeDiamMm,
+				timingMs: timingMs,
+				holeIndex: i
 			});
 		}
 	}
 
 	if (deckEntries.length === 0) {
-		var emptyData = new Float32Array(1 * 2 * 4);
-		var emptyTex = new THREE.DataTexture(emptyData, 1, 2, THREE.RGBAFormat, THREE.FloatType);
+		var emptyData = new Float32Array(1 * ROWS_PER_DECK * 4);
+		var emptyTex = new THREE.DataTexture(emptyData, 1, ROWS_PER_DECK, THREE.RGBAFormat, THREE.FloatType);
 		emptyTex.minFilter = THREE.NearestFilter;
 		emptyTex.magFilter = THREE.NearestFilter;
 		emptyTex.needsUpdate = true;
@@ -236,7 +261,7 @@ export function prepareDeckDataTexture(holes) {
 	}
 
 	var width = deckEntries.length;
-	var data = new Float32Array(width * 2 * 4);
+	var data = new Float32Array(width * ROWS_PER_DECK * 4);
 
 	for (var i = 0; i < deckEntries.length; i++) {
 		var de = deckEntries[i];
@@ -245,19 +270,24 @@ export function prepareDeckDataTexture(holes) {
 		data[i * 4 + 1] = de.topY;
 		data[i * 4 + 2] = de.topZ;
 		data[i * 4 + 3] = de.mass;
-		// Row 1: charge base position
+		// Row 1: charge base position + density
 		data[width * 4 + i * 4 + 0] = de.baseX;
 		data[width * 4 + i * 4 + 1] = de.baseY;
 		data[width * 4 + i * 4 + 2] = de.baseZ;
-		data[width * 4 + i * 4 + 3] = 0;
+		data[width * 4 + i * 4 + 3] = de.density;
+		// Row 2: VOD, hole diameter, timing, hole index
+		data[width * 2 * 4 + i * 4 + 0] = de.vod;
+		data[width * 2 * 4 + i * 4 + 1] = de.holeDiamMm;
+		data[width * 2 * 4 + i * 4 + 2] = de.timingMs;
+		data[width * 2 * 4 + i * 4 + 3] = de.holeIndex;
 	}
 
-	var texture = new THREE.DataTexture(data, width, 2, THREE.RGBAFormat, THREE.FloatType);
+	var texture = new THREE.DataTexture(data, width, ROWS_PER_DECK, THREE.RGBAFormat, THREE.FloatType);
 	texture.minFilter = THREE.NearestFilter;
 	texture.magFilter = THREE.NearestFilter;
 	texture.needsUpdate = true;
 
-	console.log("PowderFactorModel: packed " + deckEntries.length + " deck entries from " + holes.length + " holes");
+	console.log("prepareDeckDataTexture: packed " + deckEntries.length + " deck entries from " + holes.length + " holes");
 
 	return { texture: texture, count: deckEntries.length, width: width };
 }
