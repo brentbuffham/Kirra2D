@@ -9,6 +9,10 @@ import { HeelanOriginalModel } from "./models/HeelanOriginalModel.js";
 import { ScaledHeelanModel } from "./models/ScaledHeelanModel.js";
 import { NonLinearDamageModel } from "./models/NonLinearDamageModel.js";
 import { SDoBModel } from "./models/SDoBModel.js";
+import { SEEModel } from "./models/SEEModel.js";
+import { PressureModel } from "./models/PressureModel.js";
+import { PowderFactorModel } from "./models/PowderFactorModel.js";
+import { JointedRockDamageModel } from "./models/JointedRockDamageModel.js";
 
 // Shared vertex shader
 var VERT_SOURCE = `
@@ -47,6 +51,10 @@ export class BlastAnalyticsShader extends BaseAnalyticsShader {
         this._registerModel(new ScaledHeelanModel());
         this._registerModel(new NonLinearDamageModel());
         this._registerModel(new SDoBModel());
+        this._registerModel(new SEEModel());
+        this._registerModel(new PressureModel());
+        this._registerModel(new PowderFactorModel());
+        this._registerModel(new JointedRockDamageModel());
 
         // Active model
         this.activeModel = null;

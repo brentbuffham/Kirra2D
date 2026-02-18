@@ -6202,6 +6202,9 @@ function updateTranslations(language) {
 					case "holeFiringTime":
 						option.textContent = langTranslations.hole_firing_time;
 						break;
+					case "sdob":
+						option.textContent = langTranslations.sdob || "Scaled Depth of Burial";
+						break;
 				}
 			});
 		}
@@ -19622,6 +19625,63 @@ function getVoronoiMetrics(allBlastHoles, useToeLocation) {
 			const bsVolume = (parseFloat(h.burden) || 1) * (parseFloat(h.spacing) || 1) * (parseFloat(h.holeLengthCalculated) || 1);
 			const powderFactorDesigned = designedMass > 0 && bsVolume > 0 ? designedMass / bsVolume : null;
 
+			// SDoB (Chiappetta): D / Wt^(1/3)
+			var sdob = null;
+			var holeLen = parseFloat(h.holeLengthCalculated) || 0;
+			var holeDiam_mm = parseFloat(h.holeDiameter) || 115;
+			var holeDiam_m = holeDiam_mm / 1000.0;
+			var sdobStemming = 0;
+			var sdobChargeLen = 0;
+			var sdobTotalMass = 0;
+
+			// Get charging details — same approach as ShaderUniformManager._getChargingDetails
+			var chargingObj = window.loadedCharging ? window.loadedCharging.get(chargingKey(h)) : null;
+			if (chargingObj && chargingObj.decks && chargingObj.decks.length > 0) {
+				var firstChargeTop = null;
+				var deepestChargeBase = 0;
+				var deckMassTotal = 0;
+				for (var di = 0; di < chargingObj.decks.length; di++) {
+					var deck = chargingObj.decks[di];
+					if (deck.deckType !== "COUPLED" && deck.deckType !== "DECOUPLED") continue;
+					var deckMass = parseFloat(deck.calculateMass(holeDiam_mm)) || 0;
+					if (deckMass <= 0) continue;
+					deckMassTotal += deckMass;
+					var deckTop = Math.min(deck.topDepth, deck.baseDepth);
+					var deckBase = Math.max(deck.topDepth, deck.baseDepth);
+					if (firstChargeTop === null || deckTop < firstChargeTop) firstChargeTop = deckTop;
+					if (deckBase > deepestChargeBase) deepestChargeBase = deckBase;
+				}
+				if (chargingObj.primers) {
+					for (var pk = 0; pk < chargingObj.primers.length; pk++) {
+						deckMassTotal += (chargingObj.primers[pk].totalBoosterMassGrams || 0) / 1000;
+					}
+				}
+				if (deckMassTotal > 0 && firstChargeTop !== null) {
+					sdobStemming = firstChargeTop;
+					sdobChargeLen = deepestChargeBase - firstChargeTop;
+					sdobTotalMass = deckMassTotal;
+				}
+			}
+
+			// Fallback: estimate from hole attributes when no detailed charging
+			if (sdobChargeLen <= 0 && holeLen > 0) {
+				sdobStemming = holeLen * 0.3;
+				sdobChargeLen = holeLen * 0.7;
+				sdobTotalMass = parseFloat(h.measuredMass) || parseFloat(h.massPerHole) || 0;
+				if (sdobTotalMass <= 0 && holeDiam_m > 0) {
+					var radius_m = holeDiam_m / 2.0;
+					sdobTotalMass = 3.14159 * radius_m * radius_m * sdobChargeLen * 1200.0;
+				}
+			}
+
+			if (sdobChargeLen > 0 && sdobTotalMass > 0 && sdobStemming > 0) {
+				var sdobM = holeDiam_m >= 0.1 ? 10 : 8;
+				var contributingLen = Math.min(sdobChargeLen, sdobM * holeDiam_m);
+				var Wt = (sdobTotalMass / sdobChargeLen) * contributingLen;
+				var D = sdobStemming + 0.5 * contributingLen;
+				sdob = D / Math.pow(Wt, 1.0 / 3.0);
+			}
+
 			voronoiResults.push({
 				index: i,
 				hole: h,
@@ -19636,6 +19696,7 @@ function getVoronoiMetrics(allBlastHoles, useToeLocation) {
 				designedMass: designedMass,
 				powderFactor: powderFactor,
 				powderFactorDesigned: powderFactorDesigned,
+				sdob: sdob,
 			});
 		}
 
@@ -19875,6 +19936,38 @@ function getVolumeColor(volume, min, max) {
 		r = 255;
 		g = Math.round(255 * (1 - t));
 		b = 0;
+	}
+	return `rgb(${r},${g},${b})`;
+}
+
+function getSDoBColor(value, min, max) {
+	// SDoB colour: Red (low/flyrock risk) -> Orange -> Lime (target ~1.5) -> Cyan -> Blue (high/safe)
+	var ratio = Math.min(Math.max((value - min) / (max - min), 0), 1);
+	var r, g, b;
+	if (ratio < 0.25) {
+		// Red (255,0,0) to Orange (255,160,0)
+		var t = ratio / 0.25;
+		r = 255;
+		g = Math.round(160 * t);
+		b = 0;
+	} else if (ratio < 0.5) {
+		// Orange (255,160,0) to Lime (80,255,0)
+		var t = (ratio - 0.25) / 0.25;
+		r = Math.round(255 * (1 - t) + 80 * t);
+		g = Math.round(160 * (1 - t) + 255 * t);
+		b = 0;
+	} else if (ratio < 0.75) {
+		// Lime (80,255,0) to Cyan (0,200,255)
+		var t = (ratio - 0.5) / 0.25;
+		r = Math.round(80 * (1 - t));
+		g = Math.round(255 * (1 - t) + 200 * t);
+		b = Math.round(255 * t);
+	} else {
+		// Cyan (0,200,255) to Blue (0,50,255)
+		var t = (ratio - 0.75) / 0.25;
+		r = 0;
+		g = Math.round(200 * (1 - t) + 50 * t);
+		b = 255;
 	}
 	return `rgb(${r},${g},${b})`;
 }
@@ -30033,6 +30126,52 @@ function drawData(allBlastHoles, selectedHole) {
 					}
 					break;
 				}
+				case "sdob": {
+					let minSDoB, maxSDoB, intervalSDoB, deltaSDoB;
+
+					if (!isVoronoiLegendFixed) {
+						const voronoiMetrics = getVoronoiMetrics(allBlastHoles, useToeLocation);
+						const clippedCells = clipVoronoiCells(voronoiMetrics);
+						const sdobValues = clippedCells.map((c) => c.sdob).filter((v) => v != null && !isNaN(v));
+						minSDoB = sdobValues.length > 0 ? Math.min(...sdobValues) : 0;
+						maxSDoB = sdobValues.length > 0 ? Math.max(...sdobValues) : 3;
+						if (maxSDoB - minSDoB > 0) {
+							deltaSDoB = maxSDoB - minSDoB;
+							intervalSDoB = deltaSDoB / 10;
+						} else {
+							minSDoB = 0;
+							maxSDoB = 3;
+							intervalSDoB = 0.3;
+						}
+					} else {
+						minSDoB = 0;
+						maxSDoB = 3.0;
+						deltaSDoB = 3.0;
+						intervalSDoB = 0.3;
+					}
+					// Step 8a) Draw 2D Voronoi only when NOT in 3D-only mode
+					if (!onlyShowThreeJS) {
+						drawVoronoiLegendAndCells(allBlastHoles, selectedVoronoiMetric, (value) => getSDoBColor(value, minSDoB, maxSDoB), "Legend SDoB", minSDoB, maxSDoB, intervalSDoB);
+					}
+					// HUD: Show Voronoi legend
+					showVoronoiLegend("SDoB (m/kg^1/3)", minSDoB, maxSDoB);
+					// Step 8b) Draw Voronoi cells in Three.js (only in 3D mode)
+					if (threeInitialized && onlyShowThreeJS) {
+						drawVoronoiCellsThreeJS(
+							function (value) {
+								return getSDoBColor(value, minSDoB, maxSDoB);
+							},
+							allBlastHoles,
+							0.2,
+							useToeLocation,
+							"sdob",
+							getCachedVoronoiCells,
+							getVoronoiMetrics,
+							clipVoronoiCells
+						);
+					}
+					break;
+				}
 				case "powderFactorDesigned": {
 					let minPFD, maxPFD, intervalPFD, deltaPFD;
 
@@ -30778,6 +30917,26 @@ function drawData(allBlastHoles, selectedHole) {
 							return getHoleFiringTimeColor(value, minHTime3D, maxHTime3D);
 						};
 						break;
+					case "sdob":
+						var minSDoB3D, maxSDoB3D;
+						if (!isVoronoiLegendFixed) {
+							var sdobValues3D = clippedCells3D
+								.map(function (c) {
+									return c.sdob;
+								})
+								.filter(function (v) {
+									return v != null && !isNaN(v);
+								});
+							minSDoB3D = sdobValues3D.length > 0 ? Math.min.apply(null, sdobValues3D) : 0;
+							maxSDoB3D = sdobValues3D.length > 0 ? Math.max.apply(null, sdobValues3D) : 3;
+						} else {
+							minSDoB3D = 0;
+							maxSDoB3D = 3.0;
+						}
+						colorFunction3D = function (value) {
+							return getSDoBColor(value, minSDoB3D, maxSDoB3D);
+						};
+						break;
 					case "powderFactorDesigned":
 						var minPFD3D, maxPFD3D;
 						if (!isVoronoiLegendFixed) {
@@ -30865,6 +31024,9 @@ function drawData(allBlastHoles, selectedHole) {
 						break;
 					case "holeFiringTime":
 						showVoronoiLegend("Hole Firing Time (ms)", minHTime3D, maxHTime3D);
+						break;
+					case "sdob":
+						showVoronoiLegend("SDoB (m/kg^1/3)", minSDoB3D, maxSDoB3D);
 						break;
 				}
 			}
@@ -44099,16 +44261,13 @@ function renderSurfaceToCache(surfaceId, surface, surfaceMinZ, surfaceMaxZ) {
 		var destW = (uvBounds.maxU - uvBounds.minU) * cacheScale;
 		var destH = (uvBounds.maxV - uvBounds.minV) * cacheScale;
 
-		// Flip the baked canvas vertically: the Three.js bake renders with
-		// Y-up (North at pixel row 0), but the cache canvas is Y-down screen
-		// space (row 0 = maxY/North). drawImage without flip would invert the
-		// image.  Use a canvas transform to flip within the destination rect.
+		// The bake canvas from ShaderTextureBaker uses drawImage(webglCanvas)
+		// which gives HTML canvas convention: row 0 = top = North (maxY).
+		// The cache canvas also maps maxY to row 0 (destY computed from maxY).
+		// Both share the same orientation — no flip needed.
 		cacheCtx.save();
 		cacheCtx.globalAlpha = transparency;
-		cacheCtx.translate(destX, destY);
-		cacheCtx.translate(0, destH);
-		cacheCtx.scale(1, -1);
-		cacheCtx.drawImage(texCanvas, 0, 0, destW, destH);
+		cacheCtx.drawImage(texCanvas, destX, destY, destW, destH);
 		cacheCtx.restore();
 
 		// Store cache entry and return

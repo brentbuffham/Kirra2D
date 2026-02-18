@@ -86,6 +86,9 @@ export class HeelanOriginalModel {
             uniform float uQp;             // P-wave quality factor
             uniform float uQs;             // S-wave quality factor
 
+            // Time filtering
+            uniform float uDisplayTime;    // -1 = show all (no time filter)
+
             // Colour mapping
             uniform sampler2D uColourRamp;
             uniform float uMinValue;
@@ -142,6 +145,12 @@ export class HeelanOriginalModel {
                     float holeVOD = charging.z;            // m/s (0 = use uniform fallback)
 
                     if (totalCharge <= 0.0 || holeLen <= 0.0) continue;
+
+                    // Time filtering: skip holes that haven't fired yet
+                    if (uDisplayTime >= 0.0) {
+                        float timing_ms = props.y;
+                        if (timing_ms > uDisplayTime) continue;
+                    }
 
                     float holeRadius = holeDiam * 0.0005;  // mm -> m radius
 
@@ -266,7 +275,8 @@ export class HeelanOriginalModel {
             uCutoff: { value: p.cutoffDistance },
             uNumElements: { value: p.numElements },
             uQp: { value: p.qualityFactorP },
-            uQs: { value: p.qualityFactorS }
+            uQs: { value: p.qualityFactorS },
+            uDisplayTime: { value: p.displayTime !== undefined ? p.displayTime : -1.0 }
         };
     }
 }

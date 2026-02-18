@@ -86,6 +86,9 @@ export class NonLinearDamageModel {
             uniform int uNumElements;     // M — number of charge elements
             uniform float uCutoff;        // Minimum distance (m)
 
+            // Time filtering
+            uniform float uDisplayTime;   // -1 = show all (no time filter)
+
             // Colour mapping
             uniform sampler2D uColourRamp;
             uniform float uMinValue;
@@ -125,6 +128,13 @@ export class NonLinearDamageModel {
                     float chargeBaseDepth = charging.y;   // m from collar
 
                     if (totalCharge <= 0.0 || holeLen <= 0.0) continue;
+
+                    // Time filtering: skip holes that haven't fired yet
+                    if (uDisplayTime >= 0.0) {
+                        vec4 props = getHoleData(i, 2);
+                        float timing_ms = props.y;
+                        if (timing_ms > uDisplayTime) continue;
+                    }
 
                     // Use actual charge column bounds if available, else fall back to 70% estimate
                     float chargeLen;
@@ -195,7 +205,8 @@ export class NonLinearDamageModel {
             uBeta: { value: p.beta_hp },
             uPPVCritical: { value: p.ppvCritical },
             uNumElements: { value: p.numElements },
-            uCutoff: { value: p.cutoffDistance }
+            uCutoff: { value: p.cutoffDistance },
+            uDisplayTime: { value: p.displayTime !== undefined ? p.displayTime : -1.0 }
         };
     }
 }

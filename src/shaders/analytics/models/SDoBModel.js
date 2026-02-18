@@ -1,22 +1,25 @@
 // src/shaders/analytics/models/SDoBModel.js
 
 /**
- * SDoBModel implements Scaled Depth of Burial analysis (Chiappetta & Treleven 1997).
+ * SDoBModel implements Volumetric Scaled Depth of Burial analysis.
  *
- * Formula: SDoB = D / Wt_m^(1/3)  (m/kg^(1/3))
+ * For each observation point P, computes the nearest 3D distance D to the
+ * charge column segment, then:
+ *   SDoB = D / Wt_m^(1/3)  (m/kg^(1/3))
+ *
  * where:
- *   D    = St + 0.5 × contributingLen  (distance from surface to centre of contributing charge)
- *   St   = stemming length (m) = chargeTopDepth from ShaderUniformManager Row 3
- *   Wt_m = mass (kg) of explosive in contributing charge length
+ *   D      = distToSegment(P, chargeTop3D, chargeBase3D) — varies per pixel
+ *   Wt_m   = mass (kg) of explosive in contributing charge length
  *   Contributing length = min(chargeLen, m × ø)
- *   m    = 10 for ø >= 100mm, 8 for smaller holes
+ *   m      = 10 for ø >= 100mm, 8 for smaller holes
  *
- * Per-hole charging data (mass, stemming, charge column) is read from the
- * DataTexture packed by ShaderUniformManager. The fallback explosive density
- * is only used when a hole has NO charging data at all.
+ * Key behaviors:
+ * - On collar plane directly above hole: D ≈ stemming length → standard SDoB
+ * - On plane cutting through charge zone: D ≈ 0 → SDoB ≈ 0 (high flyrock risk)
+ * - On vertical face: D = lateral distance to charge → volumetric SDoB
+ * - Far from any hole: no contribution (edge fade)
  *
- * Each pixel shows an inverse-distance-weighted blend of all nearby hole SDoB values,
- * rendered as a smooth gradient ramp: Red (0, flyrock risk) → Lime green (target) → Blue (high, safe).
+ * Colour ramp: Red (0, flyrock risk) → Lime green (target) → Blue (high, safe).
  */
 export class SDoBModel {
 	constructor() {
@@ -30,7 +33,7 @@ export class SDoBModel {
 
 	/**
 	 * Default parameters.
-	 * inholeDensity is ONLY used as fallback when a hole has no charging data.
+	 * fallbackDensity is ONLY used as fallback when a hole has no charging data.
 	 */
 	getDefaultParams() {
 		return {
@@ -72,53 +75,14 @@ export class SDoBModel {
 				return texture2D(uHoleData, vec2(u, v));
 			}
 
-			// Compute SDoB for a single hole from its packed data
-			float computeHoleSDoB(int index) {
-				vec4 row1 = getHoleData(index, 1);   // toe + holeLength
-				vec4 row2 = getHoleData(index, 2);   // MIC, timing, holeDiam_mm
-				vec4 row3 = getHoleData(index, 3);   // chargeTopDepth, chargeBaseDepth, vod, totalMassKg
-
-				float holeLength = row1.w;
-				float holeDiam_mm = row2.z;
-				float holeDiam_m = holeDiam_mm / 1000.0;
-				float chargeTopDepth = row3.x;   // stemming (m from collar)
-				float chargeBaseDepth = row3.y;
-				float totalMassKg = row3.w;
-
-				// Stemming length (St)
-				float St = chargeTopDepth;
-				if (St <= 0.0 && holeLength > 0.0) {
-					St = holeLength * 0.3;  // fallback: 30% of hole length
-				}
-
-				// Charge length
-				float chargeLen = chargeBaseDepth - chargeTopDepth;
-				if (chargeLen <= 0.0 && holeLength > 0.0) {
-					chargeLen = holeLength * 0.7;  // fallback
-				}
-
-				// Contributing diameters cap
-				float m = (holeDiam_mm >= 100.0) ? 10.0 : 8.0;
-				float contributingLen = min(chargeLen, m * holeDiam_m);
-
-				// Contributing charge mass (Wt_m)
-				float Wt_m = 0.0;
-				if (totalMassKg > 0.0 && chargeLen > 0.0) {
-					// Use actual per-hole charging data (mass / charge length = density per metre)
-					float massPerMetre = totalMassKg / chargeLen;
-					Wt_m = massPerMetre * contributingLen;
-				} else if (holeDiam_m > 0.0) {
-					// Fallback: estimate from fallback density and hole diameter
-					float radius_m = holeDiam_m / 2.0;
-					float massPerMetre = 3.14159 * radius_m * radius_m * uFallbackDensity * 1000.0;
-					Wt_m = massPerMetre * contributingLen;
-				}
-
-				if (Wt_m <= 0.0 || St <= 0.0) return 0.0;
-
-				// Chiappetta SDoB: D = stemming + half the contributing charge length
-				float D = St + 0.5 * contributingLen;
-				return D / pow(Wt_m, 1.0 / 3.0);
+			// Distance from point P to nearest point on line segment AB
+			float distToSegment(vec3 P, vec3 A, vec3 B) {
+				vec3 AB = B - A;
+				float lenSq = dot(AB, AB);
+				if (lenSq < 0.0001) return distance(P, A);
+				float t = clamp(dot(P - A, AB) / lenSq, 0.0, 1.0);
+				vec3 closest = A + t * AB;
+				return distance(P, closest);
 			}
 
 			void main() {
@@ -129,17 +93,73 @@ export class SDoBModel {
 				for (int i = 0; i < 512; i++) {
 					if (i >= uHoleCount) break;
 
-					vec4 posCharge = getHoleData(i, 0);
-					float dist = distance(vWorldPos, posCharge.xyz);
-					if (dist > uMaxDisplayDistance) continue;
+					vec4 row0 = getHoleData(i, 0);   // collar + totalCharge
+					vec4 row1 = getHoleData(i, 1);   // toe + holeLength
+					vec4 row2 = getHoleData(i, 2);   // MIC, timing, holeDiam_mm
+					vec4 row3 = getHoleData(i, 3);   // chargeTopDepth, chargeBaseDepth, vod, totalMassKg
 
-					float sdob = computeHoleSDoB(i);
-					if (sdob <= 0.0) continue;
+					vec3 collarPos = row0.xyz;
+					vec3 toePos = row1.xyz;
+					float holeLength = row1.w;
+					float holeDiam_mm = row2.z;
+					float holeDiam_m = holeDiam_mm / 1000.0;
+					float chargeTopDepth = row3.x;
+					float chargeBaseDepth = row3.y;
+					float totalMassKg = row3.w;
 
-					float w = 1.0 / max(dist * dist, 0.01);
+					if (holeLength <= 0.0) continue;
+
+					// Quick distance check to collar for culling
+					float distToCollar = distance(vWorldPos, collarPos);
+					if (distToCollar > uMaxDisplayDistance) continue;
+					minDist = min(minDist, distToCollar);
+
+					// Hole axis direction
+					vec3 holeAxis = normalize(toePos - collarPos);
+
+					// Charge column bounds (depth along hole from collar)
+					float chargeTopD = chargeTopDepth;
+					float chargeBaseD = chargeBaseDepth;
+					if (chargeBaseD <= 0.0 || chargeBaseD <= chargeTopD) {
+						// Fallback: stemming = 30%, charge = 70%
+						chargeTopD = holeLength * 0.3;
+						chargeBaseD = holeLength;
+					}
+
+					float chargeLen = chargeBaseD - chargeTopD;
+					if (chargeLen <= 0.0) continue;
+
+					// 3D charge column endpoints
+					vec3 chargeTop3D = collarPos + holeAxis * chargeTopD;
+					vec3 chargeBase3D = collarPos + holeAxis * chargeBaseD;
+
+					// Distance from observation point to charge segment
+					float D = distToSegment(vWorldPos, chargeTop3D, chargeBase3D);
+
+					// Contributing diameters cap (Chiappetta)
+					float m = (holeDiam_mm >= 100.0) ? 10.0 : 8.0;
+					float contributingLen = min(chargeLen, m * holeDiam_m);
+
+					// Contributing charge mass (Wt_m)
+					float Wt_m = 0.0;
+					if (totalMassKg > 0.0 && chargeLen > 0.0) {
+						float massPerMetre = totalMassKg / chargeLen;
+						Wt_m = massPerMetre * contributingLen;
+					} else if (holeDiam_m > 0.0) {
+						float radius_m = holeDiam_m / 2.0;
+						float massPerMetre = 3.14159 * radius_m * radius_m * uFallbackDensity * 1000.0;
+						Wt_m = massPerMetre * contributingLen;
+					}
+
+					if (Wt_m <= 0.0) continue;
+
+					// SDoB = D / Wt_m^(1/3)
+					float sdob = D / pow(Wt_m, 1.0 / 3.0);
+
+					// IDW blending using distance to collar (spatial weighting)
+					float w = 1.0 / max(distToCollar * distToCollar, 0.01);
 					weightedSum += sdob * w;
 					weightTotal += w;
-					minDist = min(minDist, dist);
 				}
 
 				if (weightTotal <= 0.0 || minDist > uMaxDisplayDistance) discard;

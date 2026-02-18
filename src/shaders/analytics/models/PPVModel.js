@@ -60,6 +60,7 @@ export class PPVModel {
             uniform float uChargeExp;
             uniform float uCutoff;
             uniform float uTargetPPV;
+            uniform float uDisplayTime;  // -1 = show all (no time filter)
             uniform sampler2D uColourRamp;
             uniform float uMinValue;
             uniform float uMaxValue;
@@ -84,6 +85,13 @@ export class PPVModel {
                     float charge = posCharge.w;
 
                     if (charge <= 0.0) continue;
+
+                    // Time filtering: skip holes that haven't fired yet
+                    if (uDisplayTime >= 0.0) {
+                        vec4 props = getHoleData(i, 2);
+                        float timing_ms = props.y;
+                        if (timing_ms > uDisplayTime) continue;
+                    }
 
                     // 3D distance from fragment to hole
                     float dist = max(distance(vWorldPos, holePos), uCutoff);
@@ -134,7 +142,8 @@ export class PPVModel {
             uB: { value: p.B },
             uChargeExp: { value: p.chargeExponent },
             uCutoff: { value: p.cutoffDistance },
-            uTargetPPV: { value: p.targetPPV || 0.0 }
+            uTargetPPV: { value: p.targetPPV || 0.0 },
+            uDisplayTime: { value: p.displayTime !== undefined ? p.displayTime : -1.0 }
         };
     }
 }

@@ -35,7 +35,13 @@ export class ColourRampFactory {
         "grey": [[0, 0, 0], [1, 1, 1]],
 
         // SDoB: Red (0, flyrock risk) → Orange → Lime green (target ~1.5) → Cyan → Blue (safe)
-        "sdob": [[1, 0, 0], [1, 0.4, 0], [0.2, 1, 0], [0, 0.8, 1], [0, 0.2, 1]]
+        "sdob": [[1, 0, 0], [1, 0.4, 0], [0.2, 1, 0], [0, 0.8, 1], [0, 0.2, 1]],
+
+        // Pressure: dark blue → blue → cyan → green → yellow → orange → red → dark red
+        "pressure": [[0, 0, 0.5], [0, 0, 1], [0, 1, 1], [0, 1, 0], [1, 1, 0], [1, 0.5, 0], [1, 0, 0], [0.5, 0, 0]],
+
+        // Spectrum: violet → blue → cyan → green → yellow → orange → red (matches Voronoi PF)
+        "spectrum": [[0.5, 0, 1], [0, 0, 1], [0, 1, 1], [0, 1, 0], [1, 1, 0], [1, 0.5, 0], [1, 0, 0]]
     };
 
     /**

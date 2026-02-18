@@ -115,14 +115,21 @@ export async function rebuildAnalysisFromGLB(surfaceId, glbData, analysisParams)
 					window.threeRenderer.surfacesGroup.add(scene);
 
 					// Restore analysisTexture and analysisCanvas on the surface
-					// so the 2D renderer can use drawImage with the baked texture
+					// so the 2D renderer can use drawImage with the baked texture.
+					// GLB/glTF textures use flipY=false (OpenGL convention: Y=0 at bottom).
+					// The 2D canvas uses Y=0 at top, so we must flip Y when extracting.
 					if (surface && extractedTexture && extractedTexture.image) {
 						var img = extractedTexture.image;
 						var canvas2D = document.createElement("canvas");
 						canvas2D.width = img.width || img.naturalWidth || 1024;
 						canvas2D.height = img.height || img.naturalHeight || 1024;
 						var ctx2D = canvas2D.getContext("2d");
+						// Flip Y: GLB texture row 0 = bottom, canvas needs row 0 = top (North)
+						ctx2D.save();
+						ctx2D.translate(0, canvas2D.height);
+						ctx2D.scale(1, -1);
 						ctx2D.drawImage(img, 0, 0, canvas2D.width, canvas2D.height);
+						ctx2D.restore();
 
 						surface.analysisCanvas = canvas2D;
 						surface.analysisTexture = extractedTexture;

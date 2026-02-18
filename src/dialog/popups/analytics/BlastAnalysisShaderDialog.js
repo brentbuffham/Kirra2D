@@ -1,5 +1,7 @@
 // src/dialog/popups/analytics/BlastAnalysisShaderDialog.js
 import { FloatingDialog, createEnhancedFormContent, getFormData } from "../../FloatingDialog.js";
+import { showTimeInteractionDialog } from "./TimeInteractionDialog.js";
+import { applyLiveAnalysisShader, removeLiveAnalysisSurface, bakeLiveShaderTo2D, removeLiveFlattenedImage } from "../../../helpers/BlastAnalysisShaderHelper.js";
 
 /**
  * Show dialog for configuring blast analysis shader overlay.
@@ -193,6 +195,9 @@ export function showBlastAnalysisShaderDialog(callback) {
 
 	container.appendChild(infoSection);
 
+	// Models that support time interaction
+	var TIMING_CAPABLE_MODELS = ["ppv", "heelan_original", "scaled_heelan", "nonlinear_damage"];
+
 	var dialog = new FloatingDialog({
 		title: "Blast Analysis Shader",
 		content: container,
@@ -201,6 +206,8 @@ export function showBlastAnalysisShaderDialog(callback) {
 		showConfirm: true,
 		confirmText: "Apply Analysis",
 		cancelText: "Cancel",
+		showOption1: true,
+		option1Text: "Interact",
 		onConfirm: function() {
 			var formData = getFormData(this.content);
 
@@ -228,6 +235,67 @@ export function showBlastAnalysisShaderDialog(callback) {
 				params: params
 			});
 		},
+		onOption1: function() {
+			// [Interact] — apply a LIVE shader (not baked) then open time slider
+			var formData = getFormData(dialog.content);
+			var params = getModelParameters(formData.model);
+			var planePadding = parseFloat(formData.planePadding) || 200;
+
+			// Store settings
+			window.blastAnalyticsSettings = {
+				model: formData.model,
+				surfaceId: formData.surfaceId,
+				blastName: formData.blastName,
+				planePadding: planePadding,
+				params: params
+			};
+			saveSettingsToStorage(window.blastAnalyticsSettings);
+
+			// Apply a LIVE (non-baked) shader so uniforms can be updated in real-time
+			var liveConfig = {
+				model: formData.model,
+				surfaceId: formData.surfaceId,
+				blastName: formData.blastName,
+				planePadding: planePadding,
+				params: params
+			};
+			var liveResult = applyLiveAnalysisShader(liveConfig);
+
+			if (!liveResult) {
+				console.warn("Failed to create live analysis shader");
+				return;
+			}
+
+			// Bake initial 2D image so 2D view shows the analysis immediately
+			bakeLiveShaderTo2D(liveResult.surfaceId, liveConfig);
+
+			// Open time interaction dialog with direct reference to live shader
+			showTimeInteractionDialog({
+				surfaceId: liveResult.surfaceId,
+				shaderMaterial: liveResult.shaderMaterial,
+				modelName: formData.model,
+				params: params,
+				liveConfig: liveConfig,
+				onFreeze: function(freezeConfig) {
+					// Remove live surface and flattened image, then bake a permanent one at this time
+					removeLiveFlattenedImage(liveResult.surfaceId);
+					removeLiveAnalysisSurface(liveResult.surfaceId);
+					var freezeParams = Object.assign({}, params, { displayTime: freezeConfig.timeMs });
+					callback({
+						model: formData.model,
+						surfaceId: formData.surfaceId,
+						blastName: formData.blastName,
+						planePadding: planePadding,
+						params: freezeParams
+					});
+				},
+				onClose: function() {
+					// User cancelled — remove the live surface and flattened image
+					removeLiveFlattenedImage(liveResult.surfaceId);
+					removeLiveAnalysisSurface(liveResult.surfaceId);
+				}
+			});
+		},
 		onCancel: function() {
 			// Do nothing
 		}
@@ -250,10 +318,24 @@ export function showBlastAnalysisShaderDialog(callback) {
 			updateModelParameters(modelSelect.value, dialog.content);
 			updateModelInfo(modelSelect.value, dialog.content);
 
+			// Set initial [Interact] button visibility
+			var option1Btn = dialog.dialogElement ? dialog.dialogElement.querySelector(".option1") : null;
+			if (option1Btn) {
+				var isTimingCapable = TIMING_CAPABLE_MODELS.indexOf(modelSelect.value) !== -1;
+				option1Btn.style.display = isTimingCapable ? "" : "none";
+			}
+
 			// Add change listener
 			modelSelect.addEventListener("change", function() {
 				updateModelParameters(this.value, dialog.content);
 				updateModelInfo(this.value, dialog.content);
+
+				// Show/hide [Interact] button based on timing capability
+				var option1Btn = dialog.dialogElement ? dialog.dialogElement.querySelector(".option1") : null;
+				if (option1Btn) {
+					var isTimingCapable = TIMING_CAPABLE_MODELS.indexOf(this.value) !== -1;
+					option1Btn.style.display = isTimingCapable ? "" : "none";
+				}
 			});
 		} else {
 			console.error("Model select element not found!");
@@ -357,6 +439,59 @@ function getModelInfo(modelName) {
 				</ul>
 				<p style="margin-top: 8px;">Colour: <span style="color:#ff0000;">Red</span> = Low SDoB (flyrock risk) | <span style="color:#00cc00;">Green</span> = High SDoB (well confined)</p>
 				<p style="font-style: italic;">Use for: Flyrock risk assessment, stemming adequacy checks, clearance zone planning.</p>
+			`;
+
+		case "see":
+			return `
+				<p><strong>Specific Explosive Energy (SEE)</strong></p>
+				<p>Detonation energy density: SEE = 0.5 × ρ<sub>e</sub> × VOD²</p>
+				<ul style="margin: 5px 0; padding-left: 20px;">
+					<li><strong>ρ<sub>e</sub></strong> - Explosive density (kg/m³), from charging data</li>
+					<li><strong>VOD</strong> - Velocity of detonation (m/s), from product database or fallback</li>
+				</ul>
+				<p>Displayed as IDW-weighted heatmap in GJ/m³. Higher values = more energy per unit volume.</p>
+				<p>Typical range: ANFO ≈ 8.6 GJ/m³, Emulsion ≈ 18.9 GJ/m³</p>
+				<p style="margin-top: 8px; font-style: italic;">Use for: Comparing explosive energy distribution, product performance assessment.</p>
+			`;
+
+		case "pressure":
+			return `
+				<p><strong>Borehole Pressure</strong></p>
+				<p>Wall pressure: P<sub>b</sub> = ρ<sub>e</sub> × VOD² / 8</p>
+				<p>Attenuation: P(R) = P<sub>b</sub> × (a/R)<sup>α</sup></p>
+				<ul style="margin: 5px 0; padding-left: 20px;">
+					<li><strong>a</strong> - Borehole radius (m)</li>
+					<li><strong>R</strong> - Distance from charge element (m)</li>
+					<li><strong>α</strong> - Attenuation exponent (≈2 for cylindrical divergence)</li>
+				</ul>
+				<p style="margin-top: 8px; font-style: italic;">Use for: Borehole interaction analysis, wall damage assessment.</p>
+			`;
+
+		case "powder_factor_vol":
+			return `
+				<p><strong>Volumetric Powder Factor</strong></p>
+				<p>Integrates along each charge column. Each element contributes mass to an expanding capsule volume:</p>
+				<p><strong>PF<sub>elem</sub> = elementMass / ((4/3)π R³)</strong></p>
+				<ul style="margin: 5px 0; padding-left: 20px;">
+					<li>Near charge: small capsule volume → high PF (red)</li>
+					<li>Far from charge: large capsule volume → low PF (violet)</li>
+					<li>Elements summed within each hole, peak taken across holes</li>
+				</ul>
+				<p style="margin-top: 8px; font-style: italic;">Use for: Identifying over/under-charged zones, charge distribution assessment.</p>
+			`;
+
+		case "jointed_rock":
+			return `
+				<p><strong>Jointed Rock Damage</strong></p>
+				<p>Combines intact rock fracture with joint-controlled failure using Mohr-Coulomb criterion.</p>
+				<ul style="margin: 5px 0; padding-left: 20px;">
+					<li><strong>PPV</strong> - Holmberg-Persson integration along charge column</li>
+					<li><strong>Dynamic stress</strong> - σ<sub>d</sub> = ρ<sub>rock</sub> × V<sub>p</sub> × PPV</li>
+					<li><strong>Rock fracture</strong> - σ<sub>d</sub> / tensile strength</li>
+					<li><strong>Joint failure</strong> - τ / (c + μ×σ<sub>n</sub>) via Mohr-Coulomb</li>
+				</ul>
+				<p>Output: max(rock fracture ratio, joint failure ratio). Values > 1 = damage.</p>
+				<p style="margin-top: 8px; font-style: italic;">Use for: Predicting failure zones controlled by rock structure.</p>
 			`;
 
 		default:
@@ -478,6 +613,43 @@ function getDefaultParametersForModel(modelName) {
 				targetSDoB: { label: "Target SDoB Threshold", value: 1.5, min: 0.5, max: 5.0, step: 0.1, unit: "m/kg^(1/3)" },
 				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" },
 				fallbackDensity: { label: "Fallback Explosive Density (no charging)", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L" }
+			};
+
+		case "see":
+			return {
+				fallbackDensity: { label: "Fallback Explosive Density", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L" },
+				fallbackVOD: { label: "Fallback VOD", value: 5000, min: 3000, max: 8000, step: 100, unit: "m/s" },
+				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" }
+			};
+
+		case "pressure":
+			return {
+				attenuationExponent: { label: "Attenuation Exponent (α)", value: 2.0, min: 1.0, max: 4.0, step: 0.1, unit: "" },
+				fallbackDensity: { label: "Fallback Explosive Density", value: 1.2, min: 0.8, max: 1.6, step: 0.05, unit: "kg/L" },
+				fallbackVOD: { label: "Fallback VOD", value: 5000, min: 3000, max: 8000, step: 100, unit: "m/s" },
+				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "" },
+				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m" },
+				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" }
+			};
+
+		case "powder_factor_vol":
+			return {
+				cutoffDistance: { label: "Min Distance", value: 0.3, min: 0.1, max: 2.0, step: 0.1, unit: "m" },
+				maxDisplayDistance: { label: "Max Display Distance", value: 50, min: 10, max: 500, step: 10, unit: "m" }
+			};
+
+		case "jointed_rock":
+			return {
+				K_hp: { label: "H-P Constant K", value: 700, min: 100, max: 2000, step: 50, unit: "" },
+				alpha_hp: { label: "H-P Alpha (α)", value: 0.7, min: 0.3, max: 1.5, step: 0.05, unit: "" },
+				beta_hp: { label: "H-P Beta (β)", value: 1.5, min: 1.0, max: 2.5, step: 0.1, unit: "" },
+				rockTensileStrength: { label: "Rock Tensile Strength", value: 10, min: 1, max: 50, step: 1, unit: "MPa" },
+				rockDensity: { label: "Rock Density", value: 2700, min: 2000, max: 3500, step: 50, unit: "kg/m³" },
+				pWaveVelocity: { label: "P-Wave Velocity", value: 4500, min: 2000, max: 7000, step: 100, unit: "m/s" },
+				jointSetAngle: { label: "Joint Set Angle", value: 45, min: 0, max: 90, step: 5, unit: "°" },
+				jointCohesion: { label: "Joint Cohesion", value: 0.1, min: 0, max: 5.0, step: 0.1, unit: "MPa" },
+				jointFrictionAngle: { label: "Joint Friction Angle", value: 30, min: 10, max: 45, step: 1, unit: "°" },
+				numElements: { label: "Charge Elements", value: 20, min: 5, max: 64, step: 1, unit: "" }
 			};
 
 		default:

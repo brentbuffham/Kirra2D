@@ -13,6 +13,10 @@ export { HeelanOriginalModel } from "./analytics/models/HeelanOriginalModel.js";
 export { ScaledHeelanModel } from "./analytics/models/ScaledHeelanModel.js";
 export { NonLinearDamageModel } from "./analytics/models/NonLinearDamageModel.js";
 export { SDoBModel } from "./analytics/models/SDoBModel.js";
+export { SEEModel } from "./analytics/models/SEEModel.js";
+export { PressureModel } from "./analytics/models/PressureModel.js";
+export { PowderFactorModel } from "./analytics/models/PowderFactorModel.js";
+export { JointedRockDamageModel } from "./analytics/models/JointedRockDamageModel.js";
 
 // Main analytics orchestrator
 export { BlastAnalyticsShader } from "./analytics/BlastAnalyticsShader.js";

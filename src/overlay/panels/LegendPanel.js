@@ -84,6 +84,11 @@ function getGradientForMetric(title) {
     if (title.indexOf("Powder Factor") !== -1) {
         return "rgb(0,0,255) 0%, rgb(0,255,255) 20%, rgb(0,255,0) 40%, rgb(255,255,0) 60%, rgb(255,128,0) 80%, rgb(255,0,0) 100%";
     }
+    // SDoB: red (low/flyrock risk) -> orange -> lime (target) -> cyan -> blue (high/safe)
+    // Matches getSDoBColor
+    if (title.indexOf("SDoB") !== -1) {
+        return "rgb(255,0,0) 0%, rgb(255,160,0) 25%, rgb(80,255,0) 50%, rgb(0,200,255) 75%, rgb(0,50,255) 100%";
+    }
     // Mass, Volume, Area, Length: blue -> cyan -> green -> yellow -> red
     // Matches getMassColor, getVolumeColor, getAreaColor, getLengthColor
     return "rgb(0,0,255) 0%, rgb(0,255,255) 25%, rgb(0,255,0) 50%, rgb(255,255,0) 75%, rgb(255,0,0) 100%";
@@ -110,25 +115,31 @@ function buildGradientLegendHTML(title, minVal, maxVal, colorStops) {
     html += "<div class='hud-legend-gradient' style='background: " + gradientCSS + ";'></div>";
     html += "<div class='hud-legend-gradient-labels'>";
 
-    // Add more tick marks for better readability
+    // Add tick marks for readability
     var min = (minVal !== undefined ? minVal : 0);
     var max = (maxVal !== undefined ? maxVal : 3);
-    var range = max - min;
 
-    // Generate 5 tick marks: min, 25%, 50%, 75%, max
-    var tickValues = [
-        min,
-        min + range * 0.25,
-        min + range * 0.5,
-        min + range * 0.75,
-        max
-    ];
+    // Use custom ticks if provided (e.g. log-scale), otherwise generate linear ticks
+    var ticks;
+    if (colorStops && colorStops.tickValues) {
+        ticks = colorStops.tickValues;
+    } else {
+        var range = max - min;
+        ticks = [
+            { value: min, pos: 0 },
+            { value: min + range * 0.25, pos: 0.25 },
+            { value: min + range * 0.5, pos: 0.5 },
+            { value: min + range * 0.75, pos: 0.75 },
+            { value: max, pos: 1.0 }
+        ];
+    }
 
-    for (var i = 0; i < tickValues.length; i++) {
-        var tickVal = tickValues[i];
-        var tickPos = (i / (tickValues.length - 1)) * 100; // 0%, 25%, 50%, 75%, 100%
+    for (var i = 0; i < ticks.length; i++) {
+        var tick = ticks[i];
+        var tickPos = tick.pos * 100;
+        var label = tick.label !== undefined ? tick.label : tick.value.toFixed(1);
         html += "<span class='hud-legend-label' style='position: absolute; top: " + tickPos + "%;";
-        html += "transform: translateY(-50%); font-size: 11px;'>" + tickVal.toFixed(1) + "</span>";
+        html += "transform: translateY(-50%); font-size: 11px;'>" + label + "</span>";
     }
 
     html += "</div>";

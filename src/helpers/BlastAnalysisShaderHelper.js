@@ -14,6 +14,7 @@ import { ShaderTextureBaker } from "./ShaderTextureBaker.js";
 import { exportAnalysisMeshToGLB } from "./AnalysisTextureRebuilder.js";
 import { AddSurfaceAction } from "../tools/UndoActions.js";
 import { ColourRampFactory } from "../shaders/core/ColourRampFactory.js";
+import { prepareDeckDataTexture } from "../shaders/analytics/models/PowderFactorModel.js";
 
 /**
  * BlastAnalysisShaderHelper manages blast analysis surfaces.
@@ -36,7 +37,11 @@ var MODEL_DISPLAY_NAMES = {
 	heelan_original: "Heelan Original",
 	scaled_heelan: "Scaled Heelan",
 	nonlinear_damage: "Nonlinear Damage",
-	sdob: "SDoB"
+	sdob: "SDoB",
+	see: "SEE",
+	pressure: "Borehole Pressure",
+	powder_factor_vol: "Vol. Powder Factor",
+	jointed_rock: "Jointed Rock Damage"
 };
 
 /**
@@ -67,6 +72,11 @@ export function applyBlastAnalysisShader(config) {
 	if (!surfaceData) {
 		console.error("BlastAnalysisShaderHelper: Failed to build surface geometry");
 		return;
+	}
+
+	// For PF model, prepare per-deck DataTexture from charging data
+	if (config.model === "powder_factor_vol") {
+		config.params._deckData = prepareDeckDataTexture(holes);
 	}
 
 	// Get shader material and bake to texture
@@ -426,34 +436,27 @@ function createFlattenedAnalysisImage(surfaceId, surface, bakeResult) {
 	var worldWidth = meshBounds.maxX - meshBounds.minX;
 	var worldHeight = meshBounds.maxY - meshBounds.minY;
 
-	// Flip the baked canvas vertically: Three.js bake renders Y-up (North at
-	// pixel row 0), but the 2D image drawing code draws canvas row 0 at the
-	// screen position of maxY. Since screen Y is inverted from world Y, the
-	// image needs to be flipped so row 0 = South and last row = North.
-	var flippedCanvas = document.createElement("canvas");
-	flippedCanvas.width = texCanvas.width;
-	flippedCanvas.height = texCanvas.height;
-	var flipCtx = flippedCanvas.getContext("2d");
-	flipCtx.translate(0, texCanvas.height);
-	flipCtx.scale(1, -1);
-	flipCtx.drawImage(texCanvas, 0, 0);
+	// The bake camera is top-down Y-up, and drawImage from WebGL canvas
+	// preserves HTML canvas convention: row 0 = top = North.
+	// drawBackgroundImage maps bbox maxY (North) to screen top, drawing
+	// canvas row 0 there — no flip needed.
 
-	// Convert flipped canvas to data URL for IndexedDB persistence
-	var imageDataURL = flippedCanvas.toDataURL("image/png");
+	// Convert canvas to data URL for IndexedDB persistence
+	var imageDataURL = texCanvas.toDataURL("image/png");
 
 	// Store on surface for saveSurfaceToDB
 	surface.flattenedImageDataURL = imageDataURL;
 	surface.flattenedImageBounds = meshBounds;
-	surface.flattenedImageDimensions = { width: flippedCanvas.width, height: flippedCanvas.height };
+	surface.flattenedImageDimensions = { width: texCanvas.width, height: texCanvas.height };
 
 	// Register in loadedImages for immediate 2D rendering
 	var imageEntry = {
 		id: imageId,
 		name: surface.name + "_flattened",
-		canvas: flippedCanvas,
+		canvas: texCanvas,
 		bbox: [meshBounds.minX, meshBounds.minY, meshBounds.maxX, meshBounds.maxY],
-		width: flippedCanvas.width,
-		height: flippedCanvas.height,
+		width: texCanvas.width,
+		height: texCanvas.height,
 		visible: true,
 		transparency: surface.transparency || 1.0,
 		zElevation: meshBounds.minZ || 0,
@@ -497,7 +500,11 @@ function getShaderLegendInfo(modelName) {
 		heelan_original: { title: "PPV (mm/s)", ramp: "jet", min: 0, max: 300 },
 		scaled_heelan: { title: "PPV (mm/s)", ramp: "jet", min: 0, max: 300 },
 		nonlinear_damage: { title: "Damage Index", ramp: "damage", min: 0, max: 1 },
-		sdob: { title: "SDoB (m/kg^1/3)", ramp: "sdob", min: 0, max: 3 }
+		sdob: { title: "SDoB (m/kg^1/3)", ramp: "sdob", min: 0, max: 3 },
+		see: { title: "SEE (GJ/m³)", ramp: "jet", min: 0, max: 25 },
+		pressure: { title: "Pressure (MPa)", ramp: "pressure", min: 0, max: 100 },
+		powder_factor_vol: { title: "Powder Factor (kg/m³) [log]", ramp: "spectrum", min: 0.01, max: 100 },
+		jointed_rock: { title: "Damage Ratio", ramp: "damage", min: 0, max: 2 }
 	};
 	var info = models[modelName] || models.ppv;
 	var stops = ColourRampFactory.RAMPS[info.ramp] || ColourRampFactory.RAMPS["jet"];
@@ -512,6 +519,23 @@ function getShaderLegendInfo(modelName) {
 			color: "rgb(" + Math.round(rgb[0] * 255) + "," + Math.round(rgb[1] * 255) + "," + Math.round(rgb[2] * 255) + ")"
 		});
 	}
+
+	// For log-scale models, provide custom tick labels at log-spaced positions
+	if (modelName === "powder_factor_vol") {
+		// Log10 scale: min=0.01 (-2), max=100 (+2), range=4 decades
+		// Tick positions in normalized log space:
+		//   0    → log10(0.01) = -2 → pos = 0.0
+		//   1    → log10(1)    =  0 → pos = 0.5
+		//   10   → log10(10)   =  1 → pos = 0.75
+		//   100  → log10(100)  =  2 → pos = 1.0
+		colorStops.tickValues = [
+			{ value: 0, pos: 0.0, label: "0" },
+			{ value: 1, pos: 0.5, label: "1" },
+			{ value: 10, pos: 0.75, label: "10" },
+			{ value: 100, pos: 1.0, label: "100" }
+		];
+	}
+
 	return { title: info.title, minVal: info.min, maxVal: info.max, colorStops: colorStops };
 }
 
@@ -678,4 +702,274 @@ export function flattenAnalysisTo2D(pixelsPerMetre) {
 export function clearFlattenedAnalysis() {
 	window.blastAnalyticsFlattenedCanvas = null;
 	window.blastAnalyticsFlattenedBounds = null;
+}
+
+/**
+ * Bake the current live shader state to a 2D image for canvas rendering.
+ * Creates/updates a flattened image entry in loadedImages and redraws 2D.
+ *
+ * @param {string} liveSurfaceId - ID of the live analysis surface
+ * @param {Object} config - { model, blastName, params, surfaceId, planePadding }
+ * @returns {string|null} - The flattened image ID, or null on failure
+ */
+export function bakeLiveShaderTo2D(liveSurfaceId, config) {
+	if (!config || !config.model) return null;
+
+	var holes = getBlastHolesByEntity(config.blastName);
+	if (!holes || holes.length === 0) return null;
+
+	// Build surface geometry (same as the live surface)
+	var surfaceData = buildAnalysisSurfaceData(config, holes);
+	if (!surfaceData) return null;
+
+	// Create a fresh shader material with current params (including displayTime)
+	var shaderMaterial = getShaderMaterialForModel(config.model, holes, config.params);
+	if (!shaderMaterial) return null;
+
+	// If there's a displayTime, set it on the new shader material
+	if (config.params && config.params.displayTime !== undefined) {
+		if (shaderMaterial.uniforms && shaderMaterial.uniforms.uDisplayTime) {
+			shaderMaterial.uniforms.uDisplayTime.value = config.params.displayTime;
+		}
+	}
+
+	// Calculate bake resolution
+	var bakeResolution = 2048;
+	if (surfaceData.points && surfaceData.points.length > 0) {
+		var bx = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+		for (var pi = 0; pi < surfaceData.points.length; pi++) {
+			var pt = surfaceData.points[pi];
+			if (pt.x < bx.minX) bx.minX = pt.x;
+			if (pt.x > bx.maxX) bx.maxX = pt.x;
+			if (pt.y < bx.minY) bx.minY = pt.y;
+			if (pt.y > bx.maxY) bx.maxY = pt.y;
+		}
+		var extentMax = Math.max(bx.maxX - bx.minX, bx.maxY - bx.minY);
+		var pxPerM = 15; // Lower resolution for live bake (speed)
+		bakeResolution = Math.min(Math.max(Math.ceil(extentMax * pxPerM), 1024), 4096);
+	}
+
+	// Bake shader to texture
+	var bakeResult = ShaderTextureBaker.bakeShaderToTexture(surfaceData, shaderMaterial, {
+		resolution: bakeResolution,
+		padding: config.planePadding || 10
+	});
+
+	if (!bakeResult || !bakeResult.canvas) return null;
+
+	// Create/update flattened image for 2D rendering
+	var imageId = "flattened_live_" + liveSurfaceId;
+	var uvBounds = bakeResult.uvBounds;
+	var texCanvas = bakeResult.canvas;
+	var worldWidth = uvBounds.maxU - uvBounds.minU;
+	var worldHeight = uvBounds.maxV - uvBounds.minV;
+
+	var imageEntry = {
+		id: imageId,
+		name: "Live Analysis 2D",
+		canvas: texCanvas,
+		bbox: [uvBounds.minU, uvBounds.minV, uvBounds.maxU, uvBounds.maxV],
+		width: texCanvas.width,
+		height: texCanvas.height,
+		visible: true,
+		transparency: 1.0,
+		zElevation: 0,
+		isGeoReferenced: true,
+		bounds: {
+			minX: uvBounds.minU,
+			maxX: uvBounds.maxU,
+			minY: uvBounds.minV,
+			maxY: uvBounds.maxV
+		},
+		pixelWidth: worldWidth / texCanvas.width,
+		pixelHeight: worldHeight / texCanvas.height,
+		sourceType: "flattened_live_analysis",
+		sourceSurfaceId: liveSurfaceId
+	};
+
+	if (window.loadedImages) {
+		window.loadedImages.set(imageId, imageEntry);
+	}
+
+	// Redraw 2D view
+	if (window.drawData) {
+		window.drawData(window.allBlastHoles, window.selectedHole);
+	}
+
+	return imageId;
+}
+
+/**
+ * Remove a live flattened analysis image from 2D view.
+ *
+ * @param {string} liveSurfaceId - Live surface ID
+ */
+export function removeLiveFlattenedImage(liveSurfaceId) {
+	if (!liveSurfaceId) return;
+	var imageId = "flattened_live_" + liveSurfaceId;
+	if (window.loadedImages) {
+		window.loadedImages.delete(imageId);
+	}
+	// Redraw 2D
+	if (window.drawData) {
+		window.drawData(window.allBlastHoles, window.selectedHole);
+	}
+}
+
+/**
+ * Apply a LIVE (non-baked) analysis shader to a surface mesh.
+ * The ShaderMaterial remains active so uniforms (like uDisplayTime) can
+ * be updated in real-time by the TimeInteractionDialog slider.
+ *
+ * Call applyBlastAnalysisShader() later to bake a permanent snapshot.
+ *
+ * @param {Object} config - { model, surfaceId, blastName, planePadding, params }
+ * @returns {Object|null} - { surfaceId, shaderMaterial, mesh } or null on failure
+ */
+export function applyLiveAnalysisShader(config) {
+	if (!config || !config.model) {
+		console.error("applyLiveAnalysisShader: Invalid config");
+		return null;
+	}
+
+	var holes = getBlastHolesByEntity(config.blastName);
+	if (!holes || holes.length === 0) {
+		console.warn("applyLiveAnalysisShader: No holes for blast: " + config.blastName);
+		return null;
+	}
+
+	// Ensure cumulative firing times are computed before packing into DataTexture.
+	// calculateTimes() sets hole.holeTime which the shader uses for time filtering.
+	if (window.calculateTimes && window.allBlastHoles) {
+		window.calculateTimes(window.allBlastHoles);
+	}
+
+	var surfaceData = buildAnalysisSurfaceData(config, holes);
+	if (!surfaceData) {
+		console.error("applyLiveAnalysisShader: Failed to build surface geometry");
+		return null;
+	}
+
+	// For PF model, prepare per-deck DataTexture
+	if (config.model === "powder_factor_vol") {
+		config.params._deckData = prepareDeckDataTexture(holes);
+	}
+
+	var shaderMaterial = getShaderMaterialForModel(config.model, holes, config.params);
+	if (!shaderMaterial) {
+		console.error("applyLiveAnalysisShader: Failed to create shader material");
+		return null;
+	}
+
+	// Ensure uDisplayTime = -1 (show all time initially)
+	if (shaderMaterial.uniforms && shaderMaterial.uniforms.uDisplayTime) {
+		shaderMaterial.uniforms.uDisplayTime.value = -1.0;
+	}
+
+	// Build a temporary surface ID for the live preview
+	var surfaceId = "LiveAnalysis_" + config.model + "_" + Date.now();
+
+	var surface = {
+		id: surfaceId,
+		name: "Live " + (MODEL_DISPLAY_NAMES[config.model] || config.model),
+		type: "triangulated",
+		points: surfaceData.points,
+		triangles: surfaceData.triangles,
+		visible: true,
+		gradient: "analysis",
+		transparency: 1.0,
+		isAnalysisSurface: true,
+		isLiveAnalysis: true,
+		analysisModelName: config.model,
+		analysisParams: config.params
+	};
+
+	if (window.loadedSurfaces) {
+		window.loadedSurfaces.set(surfaceId, surface);
+	}
+
+	// Build mesh with live ShaderMaterial (reuses buildDirectShaderAnalysisMesh logic)
+	if (!window.threeRenderer || !surface.triangles || surface.triangles.length === 0) {
+		return null;
+	}
+
+	var triCount = surface.triangles.length;
+	var positions = new Float32Array(triCount * 9);
+	var idx = 0;
+
+	for (var i = 0; i < triCount; i++) {
+		var tri = surface.triangles[i];
+		var verts = ShaderTextureBaker._resolveTriangleVertices(tri, surface.points);
+		if (!verts) continue;
+		for (var j = 0; j < 3; j++) {
+			var v = verts[j];
+			var local = window.worldToThreeLocal(v.x, v.y);
+			positions[idx++] = local.x;
+			positions[idx++] = local.y;
+			positions[idx++] = v.z;
+		}
+	}
+
+	var trimmedPositions = idx < positions.length ? positions.subarray(0, idx) : positions;
+	var geometry = new THREE.BufferGeometry();
+	geometry.setAttribute("position", new THREE.BufferAttribute(trimmedPositions, 3));
+	geometry.computeVertexNormals();
+
+	// Set uWorldOffset for world-space reconstruction in shader
+	var originX = window.threeLocalOriginX || 0;
+	var originY = window.threeLocalOriginY || 0;
+	if (shaderMaterial.uniforms && shaderMaterial.uniforms.uWorldOffset) {
+		shaderMaterial.uniforms.uWorldOffset.value.set(originX, originY, 0);
+	}
+
+	shaderMaterial.side = THREE.DoubleSide;
+	shaderMaterial.transparent = true;
+
+	var mesh = new THREE.Mesh(geometry, shaderMaterial);
+	mesh.userData = { type: "surface", surfaceId: surfaceId, isAnalysisSurface: true, isLiveAnalysis: true };
+
+	window.threeRenderer.surfacesGroup.add(mesh);
+	window.threeRenderer.surfaceMeshMap.set(surfaceId, mesh);
+	window.threeRenderer.needsRender = true;
+
+	// Show legend
+	var legendInfo = getShaderLegendInfo(config.model);
+	showShaderAnalyticsLegend(legendInfo.title, legendInfo.minVal, legendInfo.maxVal, legendInfo.colorStops);
+
+	console.log("Live analysis shader applied: " + surfaceId + " (" + config.model + ")");
+
+	return {
+		surfaceId: surfaceId,
+		shaderMaterial: shaderMaterial,
+		mesh: mesh
+	};
+}
+
+/**
+ * Remove a live analysis surface (cleanup after time interaction).
+ *
+ * @param {string} surfaceId - Live surface ID to remove
+ */
+export function removeLiveAnalysisSurface(surfaceId) {
+	if (!surfaceId) return;
+
+	// Remove from 3D scene
+	if (window.threeRenderer && window.threeRenderer.surfaceMeshMap) {
+		var mesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
+		if (mesh && mesh.parent) {
+			mesh.parent.remove(mesh);
+		}
+		window.threeRenderer.surfaceMeshMap.delete(surfaceId);
+		window.threeRenderer.needsRender = true;
+	}
+
+	// Remove from loadedSurfaces
+	if (window.loadedSurfaces) {
+		window.loadedSurfaces.delete(surfaceId);
+	}
+
+	// Hide legend
+	hideShaderAnalyticsLegend();
+
+	console.log("Removed live analysis surface: " + surfaceId);
 }
