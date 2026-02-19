@@ -1,13 +1,25 @@
 /**
  * SurfaceIntersectionDialog.js
  *
- * Dialog for selecting 2+ surfaces and options for computing
+ * Dialog for selecting 2 surfaces and options for computing
  * triangle-mesh intersection polylines.
+ * Uses screen-pick target-arrow pattern (same as SurfaceBooleanDialog).
  */
 
+import * as THREE from "three";
 import { FloatingDialog, createEnhancedFormContent, getFormData } from "../../FloatingDialog.js";
 
 var SETTINGS_KEY = "kirra_surface_intersection_settings";
+
+// ────────────────────────────────────────────────────────
+// Module-level state
+// ────────────────────────────────────────────────────────
+var pickCallback = null;
+var highlightBox = null;
+
+function getThreeCanvas() {
+    return window.threeRenderer ? window.threeRenderer.getCanvas() : null;
+}
 
 function loadSavedSettings() {
     try {
@@ -26,21 +38,202 @@ function saveSettings(settings) {
     }
 }
 
+// ────────────────────────────────────────────────────────
+// Screen pick mode
+// ────────────────────────────────────────────────────────
+
+function enterPickMode(pickRow, onPicked) {
+    exitPickMode();
+
+    pickRow.pickBtn.style.background = "rgba(255,60,60,0.4)";
+    pickRow.pickBtn.style.borderColor = "#FF4444";
+
+    var canvas = getThreeCanvas();
+    if (!canvas) {
+        console.warn("Surface Intersection Pick: No 3D canvas found");
+        return;
+    }
+
+    canvas.style.cursor = "crosshair";
+
+    pickCallback = function (e) {
+        e.stopPropagation();
+
+        var surfaceId = raycastSurface(e, canvas);
+        if (surfaceId) {
+            onPicked(surfaceId);
+            showPickHighlight(surfaceId);
+            console.log("Surface Intersection Pick: " + surfaceId);
+        }
+
+        exitPickMode();
+        pickRow.pickBtn.style.background = "rgba(255,255,255,0.08)";
+        pickRow.pickBtn.style.borderColor = "rgba(255,255,255,0.2)";
+    };
+
+    canvas.addEventListener("pointerup", pickCallback, { once: true, capture: true });
+}
+
+function exitPickMode() {
+    var canvas = getThreeCanvas();
+    if (canvas) {
+        canvas.style.cursor = "";
+        if (pickCallback) {
+            canvas.removeEventListener("pointerup", pickCallback, { capture: true });
+        }
+    }
+    pickCallback = null;
+    clearPickHighlight();
+}
+
+function raycastSurface(event, canvas) {
+    var tr = window.threeRenderer;
+    if (!tr || !tr.scene || !tr.camera || !tr.surfaceMeshMap) return null;
+
+    var rect = canvas.getBoundingClientRect();
+    var mouseX = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    var mouseY = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    var raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(mouseX, mouseY), tr.camera);
+
+    var meshes = [];
+    tr.surfaceMeshMap.forEach(function (mesh, surfaceId) {
+        if (mesh && mesh.visible) {
+            mesh.traverse(function (child) {
+                if (child.isMesh) {
+                    child.userData._pickSurfaceId = surfaceId;
+                    meshes.push(child);
+                }
+            });
+        }
+    });
+
+    var hits = raycaster.intersectObjects(meshes, false);
+    if (hits.length > 0) {
+        return hits[0].object.userData._pickSurfaceId || null;
+    }
+    return null;
+}
+
+function showPickHighlight(surfaceId) {
+    clearPickHighlight();
+
+    var tr = window.threeRenderer;
+    if (!tr || !tr.surfaceMeshMap) return;
+
+    var mesh = tr.surfaceMeshMap.get(surfaceId);
+    if (!mesh) return;
+
+    var box = new THREE.Box3().setFromObject(mesh);
+    if (box.isEmpty()) return;
+
+    var helper = new THREE.Box3Helper(box, 0x00FF00);
+    helper.name = "surfIxPickHighlight";
+    helper.userData = { isPickHighlight: true };
+    tr.scene.add(helper);
+    highlightBox = helper;
+    tr.render();
+}
+
+function clearPickHighlight() {
+    if (highlightBox) {
+        var tr = window.threeRenderer;
+        if (tr && tr.scene) {
+            tr.scene.remove(highlightBox);
+        }
+        if (highlightBox.geometry) highlightBox.geometry.dispose();
+        if (highlightBox.material) highlightBox.material.dispose();
+        highlightBox = null;
+        if (tr) tr.render();
+    }
+}
+
+// ────────────────────────────────────────────────────────
+// Pick row builder (same pattern as SurfaceBooleanDialog)
+// ────────────────────────────────────────────────────────
+
+function createPickRow(label, options, defaultValue, onPick) {
+    var row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.alignItems = "center";
+    row.style.gap = "8px";
+
+    var labelEl = document.createElement("label");
+    labelEl.textContent = label;
+    labelEl.style.minWidth = "80px";
+    labelEl.style.fontSize = "13px";
+    labelEl.style.fontWeight = "bold";
+    labelEl.style.flexShrink = "0";
+
+    var pickBtn = document.createElement("button");
+    pickBtn.type = "button";
+    pickBtn.title = "Pick a surface from 3D view";
+    pickBtn.style.width = "28px";
+    pickBtn.style.height = "28px";
+    pickBtn.style.padding = "2px";
+    pickBtn.style.border = "1px solid rgba(255,255,255,0.2)";
+    pickBtn.style.borderRadius = "4px";
+    pickBtn.style.background = "rgba(255,255,255,0.08)";
+    pickBtn.style.cursor = "pointer";
+    pickBtn.style.flexShrink = "0";
+    pickBtn.style.display = "flex";
+    pickBtn.style.alignItems = "center";
+    pickBtn.style.justifyContent = "center";
+
+    var pickImg = document.createElement("img");
+    pickImg.src = "icons/target-arrow.png";
+    pickImg.style.width = "20px";
+    pickImg.style.height = "20px";
+    pickImg.style.filter = "invert(0.8)";
+    pickBtn.appendChild(pickImg);
+
+    pickBtn.addEventListener("click", onPick);
+
+    var select = document.createElement("select");
+    select.style.flex = "1";
+    select.style.padding = "4px 6px";
+    select.style.fontSize = "12px";
+    select.style.borderRadius = "4px";
+    select.style.border = "1px solid rgba(255,255,255,0.2)";
+    select.style.background = "rgba(30,30,30,0.9)";
+    select.style.color = "#eee";
+    select.style.minWidth = "0";
+
+    for (var i = 0; i < options.length; i++) {
+        var opt = document.createElement("option");
+        opt.value = options[i].value;
+        opt.textContent = options[i].text;
+        if (options[i].value === defaultValue) opt.selected = true;
+        select.appendChild(opt);
+    }
+
+    row.appendChild(labelEl);
+    row.appendChild(pickBtn);
+    row.appendChild(select);
+
+    return { row: row, select: select, pickBtn: pickBtn };
+}
+
+// ────────────────────────────────────────────────────────
+// Public: Show the Surface Intersection dialog
+// ────────────────────────────────────────────────────────
+
 /**
  * Show the Surface Intersection configuration dialog.
  *
  * @param {Function} callback - Called with config object on Compute
  */
 export function showSurfaceIntersectionDialog(callback) {
-    // Step 1) Build surface checklist from window.loadedSurfaces
-    var surfaces = [];
+    // Step 1) Build surface list from window.loadedSurfaces
+    var surfaceEntries = [];
     if (window.loadedSurfaces && window.loadedSurfaces.size > 0) {
         for (var [surfId, surf] of window.loadedSurfaces) {
             var triCount = 0;
             if (surf.triangles && Array.isArray(surf.triangles)) {
                 triCount = surf.triangles.length;
             }
-            surfaces.push({
+            surfaceEntries.push({
                 id: surfId,
                 name: surf.name || surfId,
                 triCount: triCount
@@ -48,10 +241,10 @@ export function showSurfaceIntersectionDialog(callback) {
         }
     }
 
-    if (surfaces.length < 2) {
+    if (surfaceEntries.length < 2) {
         var warnContent = document.createElement("div");
         warnContent.style.padding = "15px";
-        warnContent.textContent = "At least 2 loaded surfaces are required for intersection. Currently loaded: " + surfaces.length;
+        warnContent.textContent = "At least 2 loaded surfaces are required for intersection. Currently loaded: " + surfaceEntries.length;
         var warnDialog = new FloatingDialog({
             title: "Surface Intersection",
             content: warnContent,
@@ -68,7 +261,37 @@ export function showSurfaceIntersectionDialog(callback) {
     // Step 2) Load saved settings
     var saved = loadSavedSettings();
 
-    // Step 3) Build form fields
+    // Step 3) Build surface options for dropdowns
+    var surfaceOptions = surfaceEntries.map(function (se) {
+        return { value: se.id, text: se.name + " (" + se.triCount + " tris)" };
+    });
+
+    // Step 4) Build container with pick rows + form fields
+    var container = document.createElement("div");
+    container.style.display = "flex";
+    container.style.flexDirection = "column";
+    container.style.gap = "8px";
+    container.style.padding = "4px 0";
+
+    // Surface A pick row
+    var defaultA = (saved && saved.surfaceIds && saved.surfaceIds[0]) || surfaceOptions[0].value;
+    var rowA = createPickRow("Surface A", surfaceOptions, defaultA, function () {
+        enterPickMode(rowA, function (surfaceId) {
+            rowA.select.value = surfaceId;
+        });
+    });
+    container.appendChild(rowA.row);
+
+    // Surface B pick row
+    var defaultB = (saved && saved.surfaceIds && saved.surfaceIds[1]) || (surfaceOptions.length > 1 ? surfaceOptions[1].value : surfaceOptions[0].value);
+    var rowB = createPickRow("Surface B", surfaceOptions, defaultB, function () {
+        enterPickMode(rowB, function (surfaceId) {
+            rowB.select.value = surfaceId;
+        });
+    });
+    container.appendChild(rowB.row);
+
+    // Step 5) Build form fields
     var fields = [
         {
             label: "Vertex Spacing (m)",
@@ -110,119 +333,57 @@ export function showSurfaceIntersectionDialog(callback) {
     ];
 
     var formContent = createEnhancedFormContent(fields);
-
-    // Step 4) Build surface checklist UI
-    var container = document.createElement("div");
-
-    var checklistLabel = document.createElement("div");
-    checklistLabel.style.fontWeight = "bold";
-    checklistLabel.style.marginBottom = "8px";
-    checklistLabel.style.fontSize = "13px";
-    checklistLabel.textContent = "Select Surfaces (min 2):";
-    container.appendChild(checklistLabel);
-
-    var checklistDiv = document.createElement("div");
-    checklistDiv.style.maxHeight = "180px";
-    checklistDiv.style.overflowY = "auto";
-    checklistDiv.style.border = "1px solid rgba(255,255,255,0.15)";
-    checklistDiv.style.borderRadius = "4px";
-    checklistDiv.style.padding = "6px";
-    checklistDiv.style.marginBottom = "12px";
-    checklistDiv.style.background = "rgba(0,0,0,0.15)";
-
-    var checkboxes = [];
-    surfaces.forEach(function(surf) {
-        var row = document.createElement("label");
-        row.style.display = "flex";
-        row.style.alignItems = "center";
-        row.style.padding = "4px 6px";
-        row.style.cursor = "pointer";
-        row.style.borderRadius = "3px";
-        row.style.fontSize = "12px";
-
-        row.addEventListener("mouseenter", function() {
-            row.style.background = "rgba(255,255,255,0.08)";
-        });
-        row.addEventListener("mouseleave", function() {
-            row.style.background = "transparent";
-        });
-
-        var cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.value = surf.id;
-        cb.style.marginRight = "8px";
-        cb.style.flexShrink = "0";
-        // Pre-check if saved
-        if (saved && saved.surfaceIds && saved.surfaceIds.indexOf(surf.id) !== -1) {
-            cb.checked = true;
-        }
-        checkboxes.push(cb);
-
-        var text = document.createElement("span");
-        text.textContent = surf.name + " (" + surf.triCount + " tris)";
-        text.style.overflow = "hidden";
-        text.style.textOverflow = "ellipsis";
-        text.style.whiteSpace = "nowrap";
-
-        row.appendChild(cb);
-        row.appendChild(text);
-        checklistDiv.appendChild(row);
-    });
-
-    container.appendChild(checklistDiv);
-
-    // Step 5) Status line for selection count
-    var statusLine = document.createElement("div");
-    statusLine.style.fontSize = "11px";
-    statusLine.style.marginBottom = "10px";
-    statusLine.style.color = "rgba(255,200,0,0.8)";
-    statusLine.textContent = "0 surfaces selected";
-    container.appendChild(statusLine);
-
-    function updateStatus() {
-        var count = 0;
-        checkboxes.forEach(function(cb) { if (cb.checked) count++; });
-        statusLine.textContent = count + " surface" + (count !== 1 ? "s" : "") + " selected";
-        if (count < 2) {
-            statusLine.style.color = "rgba(255,100,100,0.9)";
-        } else {
-            statusLine.style.color = "rgba(100,255,100,0.9)";
-        }
-    }
-    checkboxes.forEach(function(cb) {
-        cb.addEventListener("change", updateStatus);
-    });
-    updateStatus();
-
-    // Step 6) Append form fields below checklist
     container.appendChild(formContent);
 
-    // Step 7) Create dialog
+    // Notes
+    var notesDiv = document.createElement("div");
+    notesDiv.style.marginTop = "10px";
+    notesDiv.style.fontSize = "10px";
+    notesDiv.style.color = "#888";
+    notesDiv.innerHTML =
+        "<strong>Surface Intersection:</strong><br>" +
+        "&bull; Computes intersection polylines between two surfaces<br>" +
+        "&bull; Results are stored as KAD polygon entities<br>" +
+        "<br><strong>Tip:</strong> Click the pick button then click a surface in the 3D view.";
+    container.appendChild(notesDiv);
+
+    // Step 6) Create dialog
     var dialog = new FloatingDialog({
         title: "Surface Intersection",
         content: container,
+        layoutType: "wide",
         width: 480,
-        height: 560,
+        height: 480,
         showConfirm: true,
         confirmText: "Compute",
         cancelText: "Cancel",
-        onConfirm: function() {
-            // Gather selected surface IDs
-            var selectedIds = [];
-            checkboxes.forEach(function(cb) {
-                if (cb.checked) selectedIds.push(cb.value);
-            });
+        onConfirm: function () {
+            exitPickMode();
 
-            if (selectedIds.length < 2) {
-                statusLine.textContent = "Please select at least 2 surfaces!";
-                statusLine.style.color = "rgba(255,80,80,1)";
+            var surfaceIdA = rowA.select.value;
+            var surfaceIdB = rowB.select.value;
+
+            if (surfaceIdA === surfaceIdB) {
+                var infoContent = document.createElement("div");
+                infoContent.style.padding = "15px";
+                infoContent.textContent = "Surface A and Surface B must be different.";
+                var infoDialog = new FloatingDialog({
+                    title: "Surface Intersection",
+                    content: infoContent,
+                    width: 350,
+                    height: 160,
+                    showConfirm: true,
+                    confirmText: "OK",
+                    showCancel: false
+                });
+                infoDialog.show();
                 return false; // Prevent dialog close
             }
 
             var data = getFormData(formContent);
 
             var config = {
-                surfaceIds: selectedIds,
+                surfaceIds: [surfaceIdA, surfaceIdB],
                 vertexSpacing: parseFloat(data.vertexSpacing) || 0,
                 closedPolygons: data.closedPolygons !== false && data.closedPolygons !== "false",
                 color: data.color || "#FFCC00",
@@ -232,6 +393,9 @@ export function showSurfaceIntersectionDialog(callback) {
 
             saveSettings(config);
             callback(config);
+        },
+        onCancel: function () {
+            exitPickMode();
         }
     });
 

@@ -35983,6 +35983,66 @@ document.addEventListener("DOMContentLoaded", function () {
 	}
 });
 
+// Extrude KAD to Solid button handler
+document.addEventListener("DOMContentLoaded", function () {
+	var extrudeBtn = document.getElementById("extrudeKADToSolidBtn");
+	if (extrudeBtn) {
+		extrudeBtn.addEventListener("click", async function () {
+			try {
+				var { showExtrudeKADDialog } = await import("./dialog/popups/surface/ExtrudeKADDialog.js");
+				showExtrudeKADDialog();
+			} catch (error) {
+				console.error("Failed to load Extrude KAD to Solid:", error);
+			}
+		});
+	}
+});
+
+// Solid Boolean (CSG) button handler
+document.addEventListener("DOMContentLoaded", function () {
+	var solidBoolBtn = document.getElementById("solidBooleanBtn");
+	if (solidBoolBtn) {
+		solidBoolBtn.addEventListener("click", async function () {
+			try {
+				var { showSolidCSGDialog } = await import("./dialog/popups/surface/SolidCSGDialog.js");
+				showSolidCSGDialog();
+			} catch (error) {
+				console.error("Failed to load Solid CSG:", error);
+			}
+		});
+	}
+});
+
+// Surface Boolean button handler
+document.addEventListener("DOMContentLoaded", function () {
+	var surfBoolBtn = document.getElementById("surfaceBooleanBtn");
+	if (surfBoolBtn) {
+		surfBoolBtn.addEventListener("click", async function () {
+			try {
+				var { showSurfaceBooleanDialog } = await import("./dialog/popups/surface/SurfaceBooleanDialog.js");
+				showSurfaceBooleanDialog();
+			} catch (error) {
+				console.error("Failed to load Surface Boolean:", error);
+			}
+		});
+	}
+});
+
+// KAD Boolean button handler
+document.addEventListener("DOMContentLoaded", function () {
+	var kadBoolBtn = document.getElementById("kadBooleanBtn");
+	if (kadBoolBtn) {
+		kadBoolBtn.addEventListener("click", async function () {
+			try {
+				var { showKADBooleanDialog } = await import("./dialog/popups/kad/KADBooleanDialog.js");
+				showKADBooleanDialog();
+			} catch (error) {
+				console.error("Failed to load KAD Boolean:", error);
+			}
+		});
+	}
+});
+
 function openNavLeft() {
 	console.log(isMobile);
 	const sidenavHeight = 350;

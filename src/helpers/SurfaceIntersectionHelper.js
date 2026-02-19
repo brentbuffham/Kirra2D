@@ -115,7 +115,7 @@ export function computeSurfaceIntersections(config) {
  * @param {Object} surface
  * @returns {Array} Array of {v0, v1, v2} where each is {x, y, z}
  */
-function extractTriangles(surface) {
+export function extractTriangles(surface) {
     var tris = [];
     var triangles = surface.triangles;
     var points = surface.points;
@@ -163,7 +163,7 @@ function extractTriangles(surface) {
 // Step 2) Bounding box utilities
 // ────────────────────────────────────────────────────────
 
-function computeBBox(tris) {
+export function computeBBox(tris) {
     var minX = Infinity, minY = Infinity, minZ = Infinity;
     var maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
 
@@ -184,13 +184,13 @@ function computeBBox(tris) {
     return { minX: minX, minY: minY, minZ: minZ, maxX: maxX, maxY: maxY, maxZ: maxZ };
 }
 
-function bboxOverlap(a, b) {
+export function bboxOverlap(a, b) {
     return a.minX <= b.maxX && a.maxX >= b.minX &&
            a.minY <= b.maxY && a.maxY >= b.minY &&
            a.minZ <= b.maxZ && a.maxZ >= b.minZ;
 }
 
-function triBBox(tri) {
+export function triBBox(tri) {
     return {
         minX: Math.min(tri.v0.x, tri.v1.x, tri.v2.x),
         minY: Math.min(tri.v0.y, tri.v1.y, tri.v2.y),
@@ -205,7 +205,7 @@ function triBBox(tri) {
 // Step 3) Spatial grid acceleration
 // ────────────────────────────────────────────────────────
 
-function buildSpatialGrid(tris, cellSize) {
+export function buildSpatialGrid(tris, cellSize) {
     var grid = {};
 
     for (var i = 0; i < tris.length; i++) {
@@ -227,7 +227,7 @@ function buildSpatialGrid(tris, cellSize) {
     return grid;
 }
 
-function queryGrid(grid, bb, cellSize) {
+export function queryGrid(grid, bb, cellSize) {
     var x0 = Math.floor(bb.minX / cellSize);
     var y0 = Math.floor(bb.minY / cellSize);
     var x1 = Math.floor(bb.maxX / cellSize);
@@ -288,7 +288,7 @@ function intersectSurfacePair(trisA, trisB) {
     return segments;
 }
 
-function estimateAvgEdge(tris) {
+export function estimateAvgEdge(tris) {
     if (tris.length === 0) return 1.0;
     var total = 0;
     var count = Math.min(tris.length, 100); // Sample first 100
@@ -301,7 +301,7 @@ function estimateAvgEdge(tris) {
     return total / (count * 3);
 }
 
-function dist3D(a, b) {
+export function dist3D(a, b) {
     var dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
     return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
@@ -310,7 +310,7 @@ function dist3D(a, b) {
  * Moller triangle-triangle intersection.
  * Returns intersection line segment {p0, p1} or null.
  */
-function triTriIntersection(triA, triB) {
+export function triTriIntersection(triA, triB) {
     // Compute plane of triangle B
     var nB = triNormal(triB);
     var dB = -(nB.x * triB.v0.x + nB.y * triB.v0.y + nB.z * triB.v0.z);
@@ -384,7 +384,66 @@ function triTriIntersection(triA, triB) {
     return { p0: p0, p1: p1 };
 }
 
-function triNormal(tri) {
+/**
+ * Moller triangle-triangle intersection with signed-distance data.
+ * Returns { dA: [d0,d1,d2], dB: [d0,d1,d2], segLen } or null.
+ * dA = signed distances of triA's vertices to plane(triB)
+ * dB = signed distances of triB's vertices to plane(triA)
+ * segLen = length of the intersection segment
+ */
+export function triTriIntersectionDetailed(triA, triB) {
+    var nB = triNormal(triB);
+    var dB = -(nB.x * triB.v0.x + nB.y * triB.v0.y + nB.z * triB.v0.z);
+
+    var dA0 = nB.x * triA.v0.x + nB.y * triA.v0.y + nB.z * triA.v0.z + dB;
+    var dA1 = nB.x * triA.v1.x + nB.y * triA.v1.y + nB.z * triA.v1.z + dB;
+    var dA2 = nB.x * triA.v2.x + nB.y * triA.v2.y + nB.z * triA.v2.z + dB;
+
+    if (dA0 > 0 && dA1 > 0 && dA2 > 0) return null;
+    if (dA0 < 0 && dA1 < 0 && dA2 < 0) return null;
+
+    var nA = triNormal(triA);
+    var dA = -(nA.x * triA.v0.x + nA.y * triA.v0.y + nA.z * triA.v0.z);
+
+    var dB0 = nA.x * triB.v0.x + nA.y * triB.v0.y + nA.z * triB.v0.z + dA;
+    var dB1 = nA.x * triB.v1.x + nA.y * triB.v1.y + nA.z * triB.v1.z + dA;
+    var dB2 = nA.x * triB.v2.x + nA.y * triB.v2.y + nA.z * triB.v2.z + dA;
+
+    if (dB0 > 0 && dB1 > 0 && dB2 > 0) return null;
+    if (dB0 < 0 && dB1 < 0 && dB2 < 0) return null;
+
+    var dotN = nA.x * nB.x + nA.y * nB.y + nA.z * nB.z;
+    if (Math.abs(dotN) > 0.9999) return null;
+
+    var lineDir = cross(nA, nB);
+    var lineDirLen = Math.sqrt(lineDir.x * lineDir.x + lineDir.y * lineDir.y + lineDir.z * lineDir.z);
+    if (lineDirLen < 1e-12) return null;
+    lineDir.x /= lineDirLen; lineDir.y /= lineDirLen; lineDir.z /= lineDirLen;
+
+    var linePoint = findLinePoint(nA, dA, nB, dB, lineDir);
+    if (!linePoint) return null;
+
+    var intervalA = computeTriInterval(triA, lineDir, linePoint, dA0, dA1, dA2);
+    if (!intervalA) return null;
+
+    var intervalB = computeTriInterval(triB, lineDir, linePoint, dB0, dB1, dB2);
+    if (!intervalB) return null;
+
+    var overlapMin = Math.max(intervalA.min, intervalB.min);
+    var overlapMax = Math.min(intervalA.max, intervalB.max);
+    if (overlapMin >= overlapMax - 1e-10) return null;
+
+    var segLen = overlapMax - overlapMin;
+    if (segLen < 1e-8) return null;
+
+    return {
+        dA: [dA0, dA1, dA2],
+        dB: [dB0, dB1, dB2],
+        segLen: segLen
+    };
+}
+
+export function triNormal(tri) {
     var e1 = { x: tri.v1.x - tri.v0.x, y: tri.v1.y - tri.v0.y, z: tri.v1.z - tri.v0.z };
     var e2 = { x: tri.v2.x - tri.v0.x, y: tri.v2.y - tri.v0.y, z: tri.v2.z - tri.v0.z };
     var n = cross(e1, e2);
@@ -393,7 +452,7 @@ function triNormal(tri) {
     return { x: n.x / len, y: n.y / len, z: n.z / len };
 }
 
-function cross(a, b) {
+export function cross(a, b) {
     return {
         x: a.y * b.z - a.z * b.y,
         y: a.z * b.x - a.x * b.z,
@@ -405,7 +464,7 @@ function cross(a, b) {
  * Compute the parametric interval where a triangle crosses the
  * intersection line, projected along lineDir.
  */
-function computeTriInterval(tri, lineDir, linePoint, d0, d1, d2) {
+export function computeTriInterval(tri, lineDir, linePoint, d0, d1, d2) {
     var verts = [tri.v0, tri.v1, tri.v2];
     var dists = [d0, d1, d2];
     var params = [];
@@ -448,7 +507,7 @@ function computeTriInterval(tri, lineDir, linePoint, d0, d1, d2) {
 /**
  * Find a point on the intersection line of two planes.
  */
-function findLinePoint(nA, dA, nB, dB, lineDir) {
+export function findLinePoint(nA, dA, nB, dB, lineDir) {
     // Find the dominant axis of lineDir to set it to 0
     var ax = Math.abs(lineDir.x);
     var ay = Math.abs(lineDir.y);
@@ -582,17 +641,17 @@ function createKADEntities(polylines, config) {
     var activeLayer = null;
     if (window.allDrawingLayers) {
         for (var [layerId, layer] of window.allDrawingLayers) {
-            if (layer.name === config.layerName) {
+            if ((layer.layerName || layer.name) === config.layerName) {
                 activeLayer = layer;
                 activeLayerId = layerId;
                 break;
             }
         }
         if (!activeLayer) {
-            activeLayerId = "layer_" + Date.now();
+            activeLayerId = "layer_" + Math.random().toString(36).substring(2, 6);
             activeLayer = {
                 layerId: activeLayerId,
-                name: config.layerName,
+                layerName: config.layerName,
                 type: "drawing",
                 visible: true,
                 entities: new Set()
@@ -603,7 +662,7 @@ function createKADEntities(polylines, config) {
 
     // Step 7c) Create entity per polyline
     polylines.forEach(function(points, idx) {
-        var entityName = config.layerName + "_" + Date.now() + "_" + idx;
+        var entityName = config.layerName + "_" + Math.random().toString(36).substring(2, 6) + "_" + idx;
         var entityData = {
             entityType: "poly",
             layerId: activeLayerId,

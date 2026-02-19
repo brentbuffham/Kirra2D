@@ -44,7 +44,11 @@
       "WebFetch(domain:claude.ai)",
       "WebFetch(domain:scielo.org.za)",
       "WebFetch(domain:www.degruyterbrill.com)",
-      "Skill(keybindings-help)"
+      "Skill(keybindings-help)",
+      "WebFetch(domain:www.npmjs.com)",
+      "Bash(npm view:*)",
+      "WebFetch(domain:help.maptek.com)",
+      "WebFetch(domain:sourceforge.net)"
     ]
   }
 }
