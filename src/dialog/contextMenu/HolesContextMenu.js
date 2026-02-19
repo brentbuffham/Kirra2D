@@ -1405,12 +1405,9 @@ export function processHolePropertyUpdates(holes, formData, originalValues, isMu
 
 	// Step 12) Trigger updates
 	if (timingChanged) {
-		// Note: calculateAllHoleDelays and generateDelayColorRamp don't exist yet
-		// TODO: Implement or remove these function calls
-		// if (window.autoCalculateTimingEnabled) {
-		// 	window.calculateAllHoleDelays();
-		// }
-		// window.generateDelayColorRamp();
+		if (window.onTimingChanged) {
+			window.onTimingChanged();
+		}
 	}
 
 	if (geometryChanged) {

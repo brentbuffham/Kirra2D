@@ -755,6 +755,21 @@ function exposeGlobalsToWindow() {
 		drawData(window.allBlastHoles, window.selectedHole);
 	};
 
+	// Step 6b.1a) Central timing recalculation — contours, overlays, time chart, and analysis re-bake.
+	// Call this from any code path that changes timing (delay edits, connector adds/removes, etc.)
+	window.onTimingChanged = function () {
+		holeTimes = calculateTimes(allBlastHoles);
+		var result = recalculateContours(allBlastHoles, deltaX, deltaY);
+		contourLinesArray = result.contourLinesArray;
+		directionArrows = result.directionArrows;
+		updateOverlayColorsForTheme();
+		timeChart();
+		// Re-bake any analysis surfaces with stale timing
+		if (window._rebakeAnalysisSurfaces) {
+			window._rebakeAnalysisSurfaces();
+		}
+	};
+
 	// Step 6b.2) Helper function for KAD-ONLY 3D rebuild (no holes rebuild)
 	// Use this during drawing operations to avoid expensive hole rebuilds
 	// Holes remain visible unchanged, only KAD geometry updates

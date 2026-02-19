@@ -128,6 +128,7 @@ export function applyBlastAnalysisShader(config) {
 		transparency: 1.0,
 		isAnalysisSurface: true,
 		analysisModelName: config.model,
+		analysisBlastName: config.blastName,
 		analysisParams: config.params,
 		analysisTexture: bakeResult.texture,
 		analysisCanvas: bakeResult.canvas,
@@ -879,6 +880,7 @@ export function applyLiveAnalysisShader(config) {
 		isAnalysisSurface: true,
 		isLiveAnalysis: true,
 		analysisModelName: config.model,
+		analysisBlastName: config.blastName,
 		analysisParams: config.params
 	};
 
@@ -971,3 +973,89 @@ export function removeLiveAnalysisSurface(surfaceId) {
 
 	console.log("Removed live analysis surface: " + surfaceId);
 }
+
+/**
+ * Re-bake all permanent (non-live) analysis surfaces with current timing data.
+ * Called when hole timing changes (delay edits, connector adds/removes) so that
+ * baked shader textures reflect the updated firing sequence.
+ */
+export function rebakeAnalysisSurfaces() {
+	if (!window.loadedSurfaces || !window.threeRenderer) return;
+
+	window.loadedSurfaces.forEach(function(surface, surfaceId) {
+		// Only re-bake permanent analysis surfaces (not live shader surfaces)
+		if (!surface.isAnalysisSurface || surface.isLiveAnalysis) return;
+		if (!surface.analysisModelName) return;
+
+		var blastName = surface.analysisBlastName || "__ALL__";
+		var holes = getBlastHolesByEntity(blastName);
+		if (!holes || holes.length === 0) return;
+
+		// Prepare per-deck DataTexture
+		var params = Object.assign({}, surface.analysisParams || {});
+		params._deckData = prepareDeckDataTexture(holes);
+
+		// Fresh shader material with current hole timing
+		var shaderMaterial = getShaderMaterialForModel(
+			surface.analysisModelName, holes, params
+		);
+		if (!shaderMaterial) return;
+
+		// Calculate bake resolution from surface extent
+		var bakeResolution = 2048;
+		if (surface.points && surface.points.length > 0) {
+			var bx = { minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+			for (var pi = 0; pi < surface.points.length; pi++) {
+				var pt = surface.points[pi];
+				if (pt.x < bx.minX) bx.minX = pt.x;
+				if (pt.x > bx.maxX) bx.maxX = pt.x;
+				if (pt.y < bx.minY) bx.minY = pt.y;
+				if (pt.y > bx.maxY) bx.maxY = pt.y;
+			}
+			var extentMax = Math.max(bx.maxX - bx.minX, bx.maxY - bx.minY);
+			bakeResolution = Math.min(Math.max(Math.ceil(extentMax * 30), 2048), 8192);
+		}
+
+		// Re-bake
+		var bakeResult = ShaderTextureBaker.bakeShaderToTexture(
+			{ points: surface.points, triangles: surface.triangles },
+			shaderMaterial,
+			{ resolution: bakeResolution, padding: 10 }
+		);
+		if (!bakeResult || !bakeResult.texture) return;
+
+		// Update 3D mesh texture in-place
+		var mesh = window.threeRenderer.surfaceMeshMap.get(surfaceId);
+		if (mesh) {
+			mesh.traverse(function(child) {
+				if (child.isMesh && child.material) {
+					if (child.material.map) child.material.map.dispose();
+					child.material.map = bakeResult.texture;
+					child.material.needsUpdate = true;
+				}
+			});
+		}
+
+		// Update surface object
+		if (surface.analysisTexture) surface.analysisTexture.dispose();
+		surface.analysisTexture = bakeResult.texture;
+		surface.analysisCanvas = bakeResult.canvas;
+
+		// Update flattened 2D image if it exists
+		var imageId = "flattened_" + surfaceId;
+		if (window.loadedImages && window.loadedImages.has(imageId)) {
+			var imageEntry = window.loadedImages.get(imageId);
+			imageEntry.canvas = bakeResult.canvas;
+		}
+
+		console.log("Re-baked analysis surface: " + surfaceId);
+	});
+
+	// Request 3D render
+	if (window.threeRenderer) {
+		window.threeRenderer.needsRender = true;
+	}
+}
+
+// Register rebake function on window so kirra.js onTimingChanged() can call it
+window._rebakeAnalysisSurfaces = rebakeAnalysisSurfaces;
