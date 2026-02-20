@@ -9300,6 +9300,10 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 							} else if (isDTM && data.surfaces && data.surfaces.length > 0) {
 								// Import DTM surfaces properly to loadedSurfaces Map
 
+								// Create surface layer for DTM import
+								var dtmLayerStandalone = getOrCreateLayerForImport("surface", fileName);
+								var dtmLayerIdStandalone = dtmLayerStandalone ? dtmLayerStandalone.layerId : null;
+
 								data.surfaces.forEach(function (surface) {
 									// Generate unique surface ID
 									var surfaceId = surface.name || ("DTM_Surface_" + Date.now());
@@ -9325,11 +9329,17 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 										visible: surface.visible !== false, // Default to true
 										gradient: "default",
 										color: surface.color || "#00FF00",
-										transparency: 1.0
+										transparency: 1.0,
+										layerId: dtmLayerIdStandalone
 									};
 
 									// Add to loadedSurfaces Map
 									loadedSurfaces.set(surfaceId, surfaceData);
+
+									// Add surface to layer's entities set
+									if (dtmLayerStandalone) {
+										dtmLayerStandalone.entities.add(surfaceId);
+									}
 
 									console.log("Added surface '" + surfaceId + "' with " + points.length + " points and " + surface.triangles.length + " triangles");
 
@@ -34093,6 +34103,62 @@ function isSurfaceClosed(surface) {
 
 // Expose to window for TreeView access
 window.isSurfaceClosed = isSurfaceClosed;
+
+/**
+ * Diagnostic: check surface closure and report boundary edge stats.
+ * Usage: window.debugSurfaceClosed("BOOL_SURFACE_xxxx")
+ */
+function debugSurfaceClosed(surfaceId) {
+	var surface = window.loadedSurfaces.get(surfaceId);
+	if (!surface) { console.error("Surface not found: " + surfaceId); return; }
+
+	var edgeCount = new Map();
+	var tris = surface.triangles || [];
+
+	function vk(v) { return v.x + "," + v.y + "," + v.z; }
+	function ek(a, b) { return a < b ? a + "|" + b : b + "|" + a; }
+
+	for (var i = 0; i < tris.length; i++) {
+		var tri = tris[i];
+		var verts = tri.vertices || [surface.points[tri.a], surface.points[tri.b], surface.points[tri.c]];
+		if (!verts || verts.length < 3 || !verts[0] || !verts[1] || !verts[2]) continue;
+		var keys = [vk(verts[0]), vk(verts[1]), vk(verts[2])];
+		for (var e = 0; e < 3; e++) {
+			var ne = (e + 1) % 3;
+			var key = ek(keys[e], keys[ne]);
+			edgeCount.set(key, (edgeCount.get(key) || 0) + 1);
+		}
+	}
+
+	var boundary = 0, shared = 0, overShared = 0;
+	for (var entry of edgeCount.entries()) {
+		if (entry[1] === 1) boundary++;
+		else if (entry[1] === 2) shared++;
+		else overShared++;
+	}
+
+	console.log("=== Surface Closure Diagnostic: " + surfaceId + " ===");
+	console.log("  Triangles: " + tris.length);
+	console.log("  Total edges: " + edgeCount.size);
+	console.log("  Shared (count=2): " + shared);
+	console.log("  Boundary (count=1): " + boundary);
+	console.log("  Over-shared (count>2): " + overShared);
+	console.log("  Closed: " + (boundary === 0 && overShared === 0));
+
+	if (boundary > 0 && boundary <= 20) {
+		console.log("  First boundary edges:");
+		var shown = 0;
+		for (var entry2 of edgeCount.entries()) {
+			if (entry2[1] === 1 && shown < 20) {
+				console.log("    " + entry2[0]);
+				shown++;
+			}
+		}
+	}
+
+	return { boundary: boundary, shared: shared, overShared: overShared, total: edgeCount.size };
+}
+window.debugSurfaceClosed = debugSurfaceClosed;
 
 // ? Function to remove hidden entities from current selections
 function clearHiddenFromSelections() {

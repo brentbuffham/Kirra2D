@@ -2020,10 +2020,10 @@ label {
 /* Tree View Panel Styles */
 .tree-panel {
     position: fixed;
-    top: 70px;
+    top: 5vh;
     right: 20px;
-    width: 300px;
-    height: 400px;
+    width: 350px;
+    height: 90vh;
     background-color: rgba(255, 255, 255, 0.9);
     border: 1px solid var(--light-mode-border);
     border-radius: 6px;

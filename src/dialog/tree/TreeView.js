@@ -13,6 +13,77 @@ const TREE_NODE_SEPARATOR = "\u28FF";
 
 import { formatEntityStatistics } from '../../helpers/GeometryStatistics.js';
 
+/**
+ * Compute signed volume of a closed triangulated mesh using the divergence theorem.
+ * Each triangle forms a tetrahedron with the origin; sum of signed volumes = mesh volume.
+ */
+function computeMeshVolume(surface) {
+	var tris = surface.triangles;
+	if (!tris || tris.length === 0) return 0;
+
+	var vol = 0;
+	var pts = surface.points;
+
+	for (var i = 0; i < tris.length; i++) {
+		var tri = tris[i];
+		var v0, v1, v2;
+		if (tri.vertices && tri.vertices.length >= 3) {
+			v0 = tri.vertices[0]; v1 = tri.vertices[1]; v2 = tri.vertices[2];
+		} else if (tri.a !== undefined && pts) {
+			v0 = pts[tri.a]; v1 = pts[tri.b]; v2 = pts[tri.c];
+		} else {
+			continue;
+		}
+		if (!v0 || !v1 || !v2) continue;
+		// Signed volume of tetrahedron with origin
+		vol += (v0.x * (v1.y * v2.z - v2.y * v1.z)
+			- v1.x * (v0.y * v2.z - v2.y * v0.z)
+			+ v2.x * (v0.y * v1.z - v1.y * v0.z)) / 6.0;
+	}
+
+	return vol;
+}
+
+/**
+ * Compute the XY footprint area of an open surface (sum of projected triangle areas).
+ */
+function computeFootprintArea(surface) {
+	var tris = surface.triangles;
+	if (!tris || tris.length === 0) return 0;
+
+	var area = 0;
+	var pts = surface.points;
+
+	for (var i = 0; i < tris.length; i++) {
+		var tri = tris[i];
+		var v0, v1, v2;
+		if (tri.vertices && tri.vertices.length >= 3) {
+			v0 = tri.vertices[0]; v1 = tri.vertices[1]; v2 = tri.vertices[2];
+		} else if (tri.a !== undefined && pts) {
+			v0 = pts[tri.a]; v1 = pts[tri.b]; v2 = pts[tri.c];
+		} else {
+			continue;
+		}
+		if (!v0 || !v1 || !v2) continue;
+		// Shoelace formula for projected XY triangle area
+		area += Math.abs(
+			(v1.x - v0.x) * (v2.y - v0.y) -
+			(v2.x - v0.x) * (v1.y - v0.y)
+		) / 2.0;
+	}
+
+	return area;
+}
+
+/**
+ * Format a number with appropriate units (K, M) for compact display.
+ */
+function formatNumber(val) {
+	if (val >= 1e6) return (val / 1e6).toFixed(2) + "M";
+	if (val >= 1e4) return (val / 1e3).toFixed(1) + "K";
+	return val.toFixed(1);
+}
+
 export class TreeView {
 	constructor(containerId) {
 		this.container = document.getElementById(containerId);
@@ -180,7 +251,7 @@ export class TreeView {
 		var deltaX = this.resizeData.startX - e.clientX;
 		var newWidth = this.resizeData.startWidth + deltaX;
 
-		var minWidth = 150;
+		var minWidth = 180;
 		var maxWidth = window.innerWidth - 100;
 		newWidth = Math.max(minWidth, Math.min(maxWidth, newWidth));
 
@@ -1693,11 +1764,27 @@ export class TreeView {
 				layerSurfaceMap.set(layerId, []);
 			}
 
+			// Build stats string: [SOLID/OPEN] (#pts, #tris, volume or footprint area)
+			var ptCount = surface.points ? surface.points.length : 0;
+			var triCount = surface.triangles ? surface.triangles.length : 0;
+			var typeLabel = isClosed ? "SOLID" : "OPEN";
+			var statExtra = "";
+			if (isClosed) {
+				var vol = computeMeshVolume(surface);
+				statExtra = ", " + formatNumber(Math.abs(vol)) + " m\u00B3";
+			} else {
+				var area = computeFootprintArea(surface);
+				if (area > 0) {
+					statExtra = ", " + formatNumber(area) + " m\u00B2";
+				}
+			}
+			var meta = "[" + typeLabel + "] (" + ptCount + " pts, " + triCount + " tris" + statExtra + ")";
+
 			layerSurfaceMap.get(layerId).push({
 				id: "surface" + TREE_NODE_SEPARATOR + surfaceId,
 				type: surfaceType,
 				label: surface.name,
-				meta: "(" + (surface.points ? surface.points.length : 0) + " pts | " + (surface.triangles ? surface.triangles.length : 0) + " tris)",
+				meta: meta,
 				visible: surfaceVisible,
 				surfaceId: surfaceId
 			});

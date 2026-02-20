@@ -567,6 +567,54 @@ function showPhase2(splitResult, gradient) {
 
 	buttonBar.appendChild(invertBtn);
 	buttonBar.appendChild(invertLabel);
+
+	// Snap Vertices tolerance
+	var snapLabel = document.createElement("label");
+	snapLabel.style.display = "flex";
+	snapLabel.style.alignItems = "center";
+	snapLabel.style.gap = "4px";
+	snapLabel.style.marginLeft = "auto";
+	snapLabel.style.fontSize = "11px";
+	snapLabel.style.color = "#ccc";
+
+	snapLabel.appendChild(document.createTextNode("Snap Vertices:"));
+
+	var snapInput = document.createElement("input");
+	snapInput.type = "number";
+	snapInput.value = "0.001";
+	snapInput.step = "0.001";
+	snapInput.min = "0";
+	snapInput.style.width = "60px";
+	snapInput.style.fontSize = "11px";
+	snapInput.style.padding = "2px 4px";
+	snapInput.style.background = "#333";
+	snapInput.style.color = "#ccc";
+	snapInput.style.border = "1px solid #555";
+	snapInput.style.borderRadius = "3px";
+
+	snapLabel.appendChild(snapInput);
+	snapLabel.appendChild(document.createTextNode("m"));
+	buttonBar.appendChild(snapLabel);
+
+	// Close Surface checkbox
+	var closeLabel = document.createElement("label");
+	closeLabel.style.display = "flex";
+	closeLabel.style.alignItems = "center";
+	closeLabel.style.gap = "4px";
+	closeLabel.style.marginLeft = "8px";
+	closeLabel.style.fontSize = "11px";
+	closeLabel.style.color = "#ccc";
+	closeLabel.style.cursor = "pointer";
+
+	var closeCheckbox = document.createElement("input");
+	closeCheckbox.type = "checkbox";
+	closeCheckbox.checked = false;
+	closeCheckbox.style.cursor = "pointer";
+
+	closeLabel.appendChild(closeCheckbox);
+	closeLabel.appendChild(document.createTextNode("Close Surface"));
+	buttonBar.appendChild(closeLabel);
+
 	container.appendChild(buttonBar);
 
 	// Step 6) Create dialog
@@ -594,10 +642,13 @@ function showPhase2(splitResult, gradient) {
 			clearPreview();
 			restoreHiddenSurfaces();
 
+			var snapTol = parseFloat(snapInput.value) || 0;
 			var resultId = applyMerge(splits, {
 				gradient: gradient,
 				surfaceIdA: splitResult.surfaceIdA,
-				surfaceIdB: splitResult.surfaceIdB
+				surfaceIdB: splitResult.surfaceIdB,
+				closeSurface: closeCheckbox.checked,
+				snapTolerance: snapTol
 			});
 
 			if (resultId) {

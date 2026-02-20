@@ -577,17 +577,24 @@ export function createSplitPreviewMeshes(splits) {
  * Update a split mesh's visibility/appearance based on kept state.
  */
 export function updateSplitMeshAppearance(mesh, kept) {
-	if (!mesh || !mesh.material) return;
-	if (kept) {
-		mesh.material.opacity = 0.6;
-		mesh.material.color.set(mesh.userData.originalColor || "#4488FF");
-		mesh.visible = true;
-	} else {
-		mesh.material.opacity = 0.15;
-		mesh.material.color.set("#444444");
-		mesh.visible = true;
-	}
-	mesh.material.needsUpdate = true;
+	if (!mesh) return;
+
+	var originalColor = mesh.userData.originalColor || "#4488FF";
+	mesh.visible = true;
+
+	// mesh is a Group containing solidFill (Mesh) + wireframe (LineSegments)
+	mesh.traverse(function (child) {
+		if (!child.material) return;
+		if (child.name === "solidFill") {
+			child.material.opacity = kept ? 0.3 : 0.08;
+			child.material.color.set(kept ? originalColor : "#444444");
+			child.material.needsUpdate = true;
+		} else if (child.name === "wireframe") {
+			child.material.opacity = kept ? 0.7 : 0.15;
+			child.material.color.set(kept ? originalColor : "#444444");
+			child.material.needsUpdate = true;
+		}
+	});
 }
 
 /**
@@ -608,25 +615,27 @@ export function applyMerge(splits, config) {
 		return null;
 	}
 
-	// Convert to surface format
-	var worldPoints = [];
-	var triangles = [];
-
-	for (var i = 0; i < keptTriangles.length; i++) {
-		var tri = keptTriangles[i];
-		worldPoints.push(
-			{ x: tri.v0.x, y: tri.v0.y, z: tri.v0.z },
-			{ x: tri.v1.x, y: tri.v1.y, z: tri.v1.z },
-			{ x: tri.v2.x, y: tri.v2.y, z: tri.v2.z }
-		);
-		triangles.push({
-			vertices: [
-				{ x: tri.v0.x, y: tri.v0.y, z: tri.v0.z },
-				{ x: tri.v1.x, y: tri.v1.y, z: tri.v1.z },
-				{ x: tri.v2.x, y: tri.v2.y, z: tri.v2.z }
-			]
-		});
+	// Optionally close the surface by capping boundary loops
+	if (config.closeSurface) {
+		var capTris = capBoundaryLoops(keptTriangles);
+		if (capTris.length > 0) {
+			console.log("Surface Boolean: capping with " + capTris.length + " triangles");
+			for (var ct = 0; ct < capTris.length; ct++) {
+				keptTriangles.push(capTris[ct]);
+			}
+		} else {
+			console.log("Surface Boolean: no boundary loops found to cap");
+		}
 	}
+
+	// Convert to surface format with vertex welding
+	var snapTol = config.snapTolerance || 0;
+	var welded = weldVertices(keptTriangles, snapTol);
+	var worldPoints = welded.points;
+	var triangles = welded.triangles;
+
+	console.log("Surface Boolean: welded " + keptTriangles.length * 3 + " vertices → " +
+		worldPoints.length + " unique points (tol=" + snapTol + "m)");
 
 	// Compute bounds
 	var bounds = computeBounds(worldPoints);
@@ -683,6 +692,356 @@ export function applyMerge(splits, config) {
 }
 
 // ────────────────────────────────────────────────────────
+// Vertex welding — merge coincident points
+// ────────────────────────────────────────────────────────
+
+/**
+ * Weld triangle soup into indexed mesh, merging vertices within tolerance.
+ * Returns { points: [{x,y,z}], triangles: [{vertices:[{x,y,z},{x,y,z},{x,y,z}]}] }
+ *
+ * Uses spatial grid for O(n) welding instead of O(n²).
+ */
+function weldVertices(tris, tolerance) {
+	var points = [];
+	var triangles = [];
+
+	if (tolerance <= 0) {
+		// No welding — fast path: store vertices per triangle (original behavior)
+		for (var i = 0; i < tris.length; i++) {
+			var tri = tris[i];
+			points.push(
+				{ x: tri.v0.x, y: tri.v0.y, z: tri.v0.z },
+				{ x: tri.v1.x, y: tri.v1.y, z: tri.v1.z },
+				{ x: tri.v2.x, y: tri.v2.y, z: tri.v2.z }
+			);
+			triangles.push({
+				vertices: [
+					{ x: tri.v0.x, y: tri.v0.y, z: tri.v0.z },
+					{ x: tri.v1.x, y: tri.v1.y, z: tri.v1.z },
+					{ x: tri.v2.x, y: tri.v2.y, z: tri.v2.z }
+				]
+			});
+		}
+		return { points: points, triangles: triangles };
+	}
+
+	// Spatial grid for fast nearest-vertex lookup
+	var cellSize = Math.max(tolerance * 2, 0.002);
+	var grid = {}; // "gx,gy,gz" -> [pointIndex, ...]
+	var tolSq = tolerance * tolerance;
+
+	function getOrAddPoint(v) {
+		var gx = Math.floor(v.x / cellSize);
+		var gy = Math.floor(v.y / cellSize);
+		var gz = Math.floor(v.z / cellSize);
+
+		// Search nearby cells
+		for (var dx = -1; dx <= 1; dx++) {
+			for (var dy = -1; dy <= 1; dy++) {
+				for (var dz = -1; dz <= 1; dz++) {
+					var key = (gx + dx) + "," + (gy + dy) + "," + (gz + dz);
+					var cell = grid[key];
+					if (!cell) continue;
+					for (var c = 0; c < cell.length; c++) {
+						var p = points[cell[c]];
+						var ddx = p.x - v.x, ddy = p.y - v.y, ddz = p.z - v.z;
+						if (ddx * ddx + ddy * ddy + ddz * ddz <= tolSq) {
+							return cell[c];
+						}
+					}
+				}
+			}
+		}
+
+		// New unique point
+		var idx = points.length;
+		points.push({ x: v.x, y: v.y, z: v.z });
+		var homeKey = gx + "," + gy + "," + gz;
+		if (!grid[homeKey]) grid[homeKey] = [];
+		grid[homeKey].push(idx);
+		return idx;
+	}
+
+	for (var i2 = 0; i2 < tris.length; i2++) {
+		var tri2 = tris[i2];
+		var i0 = getOrAddPoint(tri2.v0);
+		var i1 = getOrAddPoint(tri2.v1);
+		var i22 = getOrAddPoint(tri2.v2);
+
+		// Skip degenerate triangles where welding collapsed vertices
+		if (i0 === i1 || i1 === i22 || i0 === i22) continue;
+
+		triangles.push({
+			vertices: [
+				{ x: points[i0].x, y: points[i0].y, z: points[i0].z },
+				{ x: points[i1].x, y: points[i1].y, z: points[i1].z },
+				{ x: points[i22].x, y: points[i22].y, z: points[i22].z }
+			]
+		});
+	}
+
+	return { points: points, triangles: triangles };
+}
+
+// ────────────────────────────────────────────────────────
+// Boundary capping — close open surfaces
+// ────────────────────────────────────────────────────────
+
+/**
+ * Find boundary edges, chain into loops, triangulate each loop to cap.
+ * Returns array of cap triangles {v0, v1, v2}.
+ */
+function capBoundaryLoops(tris) {
+	// Step 1) Build edge count map — boundary edges appear exactly once
+	var edgeMap = {}; // "x1,y1,z1|x2,y2,z2" -> { count, v0, v1 }
+	var PREC = 6;
+
+	function vKey(v) {
+		return v.x.toFixed(PREC) + "," + v.y.toFixed(PREC) + "," + v.z.toFixed(PREC);
+	}
+
+	function edgeKey(ka, kb) {
+		return ka < kb ? ka + "|" + kb : kb + "|" + ka;
+	}
+
+	// Also build a directed half-edge map for winding order
+	var halfEdges = {}; // "ka|kb" -> true (directed: ka → kb exists as a triangle edge)
+
+	for (var i = 0; i < tris.length; i++) {
+		var tri = tris[i];
+		var verts = [tri.v0, tri.v1, tri.v2];
+		var keys = [vKey(verts[0]), vKey(verts[1]), vKey(verts[2])];
+
+		for (var e = 0; e < 3; e++) {
+			var ne = (e + 1) % 3;
+			var ek = edgeKey(keys[e], keys[ne]);
+			if (!edgeMap[ek]) {
+				edgeMap[ek] = { count: 0, v0: verts[e], v1: verts[ne], k0: keys[e], k1: keys[ne] };
+			}
+			edgeMap[ek].count++;
+			// Record directed half-edge
+			halfEdges[keys[e] + "|" + keys[ne]] = true;
+		}
+	}
+
+	// Step 2) Collect boundary edges (count === 1)
+	var boundaryEdges = [];
+	for (var ek2 in edgeMap) {
+		if (edgeMap[ek2].count === 1) {
+			boundaryEdges.push(edgeMap[ek2]);
+		}
+	}
+
+	if (boundaryEdges.length === 0) return [];
+
+	console.log("Surface Boolean: " + boundaryEdges.length + " boundary edges found");
+
+	// Step 3) Build adjacency for boundary vertices and chain into loops
+	// Determine correct winding: boundary edge direction should be OPPOSITE to the
+	// existing half-edge (so the cap triangle normals face outward)
+	var adj = {}; // vertexKey -> [{ key: neighborKey, vertex: {x,y,z} }]
+
+	for (var b = 0; b < boundaryEdges.length; b++) {
+		var be = boundaryEdges[b];
+		// The existing mesh has half-edge k0→k1, so boundary should go k1→k0
+		// for consistent outward normals on the cap
+		var fromKey, toKey, fromVert, toVert;
+		if (halfEdges[be.k0 + "|" + be.k1]) {
+			fromKey = be.k1; toKey = be.k0;
+			fromVert = be.v1; toVert = be.v0;
+		} else {
+			fromKey = be.k0; toKey = be.k1;
+			fromVert = be.v0; toVert = be.v1;
+		}
+		if (!adj[fromKey]) adj[fromKey] = [];
+		adj[fromKey].push({ key: toKey, vertex: toVert, fromVertex: fromVert });
+	}
+
+	// Chain into loops
+	var used = {};
+	var loops = [];
+
+	for (var startKey in adj) {
+		if (used[startKey]) continue;
+
+		var loop = [];
+		var currentKey = startKey;
+		var safety = boundaryEdges.length + 1;
+
+		while (safety-- > 0) {
+			if (used[currentKey]) break;
+			used[currentKey] = true;
+
+			var neighbors = adj[currentKey];
+			if (!neighbors || neighbors.length === 0) break;
+
+			// Pick first unused neighbor
+			var next = null;
+			for (var n = 0; n < neighbors.length; n++) {
+				if (!used[neighbors[n].key] || (neighbors[n].key === startKey && loop.length > 2)) {
+					next = neighbors[n];
+					break;
+				}
+			}
+
+			if (!next) break;
+
+			loop.push(next.fromVertex);
+			currentKey = next.key;
+
+			// Closed the loop?
+			if (currentKey === startKey) break;
+		}
+
+		if (loop.length >= 3) {
+			loops.push(loop);
+		}
+	}
+
+	console.log("Surface Boolean: " + loops.length + " boundary loop(s) found, sizes: " +
+		loops.map(function (l) { return l.length; }).join(", "));
+
+	// Step 4) Triangulate each loop using ear-clipping
+	var capTris = [];
+	for (var li = 0; li < loops.length; li++) {
+		var loopTris = triangulateLoop(loops[li]);
+		for (var lt = 0; lt < loopTris.length; lt++) {
+			capTris.push(loopTris[lt]);
+		}
+	}
+
+	return capTris;
+}
+
+/**
+ * Triangulate a 3D polygon loop using ear-clipping projected onto the
+ * best-fit 2D plane (the plane with the largest projected area).
+ *
+ * @param {Array} loop - Array of {x, y, z} vertices in order
+ * @returns {Array} Array of {v0, v1, v2} triangles
+ */
+function triangulateLoop(loop) {
+	if (loop.length < 3) return [];
+	if (loop.length === 3) {
+		return [{ v0: loop[0], v1: loop[1], v2: loop[2] }];
+	}
+
+	// Compute loop normal to determine best projection plane
+	var nx = 0, ny = 0, nz = 0;
+	for (var i = 0; i < loop.length; i++) {
+		var curr = loop[i];
+		var next = loop[(i + 1) % loop.length];
+		// Newell's method
+		nx += (curr.y - next.y) * (curr.z + next.z);
+		ny += (curr.z - next.z) * (curr.x + next.x);
+		nz += (curr.x - next.x) * (curr.y + next.y);
+	}
+
+	// Pick the 2D projection plane that preserves the most area
+	var anx = Math.abs(nx), any = Math.abs(ny), anz = Math.abs(nz);
+	var projU, projV; // functions to project 3D -> 2D
+	if (anz >= anx && anz >= any) {
+		// Project onto XY
+		projU = function (p) { return p.x; };
+		projV = function (p) { return p.y; };
+	} else if (any >= anx) {
+		// Project onto XZ
+		projU = function (p) { return p.x; };
+		projV = function (p) { return p.z; };
+	} else {
+		// Project onto YZ
+		projU = function (p) { return p.y; };
+		projV = function (p) { return p.z; };
+	}
+
+	// Build index array
+	var indices = [];
+	for (var j = 0; j < loop.length; j++) indices.push(j);
+
+	// Determine polygon winding in 2D
+	var signedArea = 0;
+	for (var k = 0; k < indices.length; k++) {
+		var k1 = (k + 1) % indices.length;
+		signedArea += projU(loop[indices[k]]) * projV(loop[indices[k1]]);
+		signedArea -= projU(loop[indices[k1]]) * projV(loop[indices[k]]);
+	}
+	var ccw = signedArea > 0;
+
+	var result = [];
+	var maxIter = loop.length * loop.length;
+
+	while (indices.length > 2 && maxIter-- > 0) {
+		var earFound = false;
+
+		for (var ei = 0; ei < indices.length; ei++) {
+			var pi = (ei + indices.length - 1) % indices.length;
+			var ni = (ei + 1) % indices.length;
+
+			var pv = loop[indices[pi]];
+			var cv = loop[indices[ei]];
+			var nv = loop[indices[ni]];
+
+			// Check if this is a convex vertex (an ear candidate)
+			var cross2D = (projU(cv) - projU(pv)) * (projV(nv) - projV(pv))
+				- (projV(cv) - projV(pv)) * (projU(nv) - projU(pv));
+
+			var isConvex = ccw ? cross2D > 0 : cross2D < 0;
+			if (!isConvex) continue;
+
+			// Check no other vertex is inside this ear triangle
+			var earOk = true;
+			for (var ci = 0; ci < indices.length; ci++) {
+				if (ci === pi || ci === ei || ci === ni) continue;
+				if (pointInTri2D(
+					projU(loop[indices[ci]]), projV(loop[indices[ci]]),
+					projU(pv), projV(pv),
+					projU(cv), projV(cv),
+					projU(nv), projV(nv)
+				)) {
+					earOk = false;
+					break;
+				}
+			}
+
+			if (earOk) {
+				result.push({ v0: pv, v1: cv, v2: nv });
+				indices.splice(ei, 1);
+				earFound = true;
+				break;
+			}
+		}
+
+		if (!earFound) {
+			// Degenerate — force clip to avoid infinite loop
+			if (indices.length >= 3) {
+				result.push({
+					v0: loop[indices[0]],
+					v1: loop[indices[1]],
+					v2: loop[indices[2]]
+				});
+				indices.splice(1, 1);
+			} else {
+				break;
+			}
+		}
+	}
+
+	return result;
+}
+
+/**
+ * 2D point-in-triangle test for ear clipping.
+ */
+function pointInTri2D(px, py, ax, ay, bx, by, cx, cy) {
+	var d1 = (px - bx) * (ay - by) - (ax - bx) * (py - by);
+	var d2 = (px - cx) * (by - cy) - (bx - cx) * (py - cy);
+	var d3 = (px - ax) * (cy - ay) - (cx - ax) * (py - ay);
+	var hasNeg = (d1 < 0) || (d2 < 0) || (d3 < 0);
+	var hasPos = (d1 > 0) || (d2 > 0) || (d3 > 0);
+	return !(hasNeg && hasPos);
+}
+
+// ────────────────────────────────────────────────────────
 // Internal: Mesh creation for preview
 // ────────────────────────────────────────────────────────
 
@@ -703,17 +1062,33 @@ function trianglesToMesh(tris, color, visible) {
 	geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
 	geometry.computeVertexNormals();
 
-	var material = new THREE.MeshBasicMaterial({
+	var group = new THREE.Group();
+	group.userData.originalColor = color;
+
+	// Semi-transparent solid fill (matches extrude preview style)
+	var solidMaterial = new THREE.MeshBasicMaterial({
 		color: new THREE.Color(color || "#4488FF"),
 		transparent: true,
-		opacity: visible ? 0.6 : 0.15,
+		opacity: visible ? 0.3 : 0.08,
 		side: THREE.DoubleSide,
 		depthWrite: false
 	});
+	var solidMesh = new THREE.Mesh(geometry.clone(), solidMaterial);
+	solidMesh.name = "solidFill";
+	group.add(solidMesh);
 
-	var mesh = new THREE.Mesh(geometry, material);
-	mesh.userData.originalColor = color;
-	return mesh;
+	// Wireframe overlay
+	var wireGeometry = new THREE.WireframeGeometry(geometry);
+	var wireMaterial = new THREE.LineBasicMaterial({
+		color: new THREE.Color(color || "#4488FF"),
+		transparent: true,
+		opacity: visible ? 0.7 : 0.15
+	});
+	var wireframe = new THREE.LineSegments(wireGeometry, wireMaterial);
+	wireframe.name = "wireframe";
+	group.add(wireframe);
+
+	return group;
 }
 
 function computeBounds(points) {
