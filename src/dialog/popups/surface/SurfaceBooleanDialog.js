@@ -12,6 +12,7 @@ import { FloatingDialog, createEnhancedFormContent, getFormData } from "../../Fl
 import {
 	computeSplits,
 	createSplitPreviewMeshes,
+	createIntersectionPolylineMesh,
 	updateSplitMeshAppearance,
 	applyMerge
 } from "../../../helpers/SurfaceBooleanHelper.js";
@@ -433,11 +434,17 @@ function showPhase2(splitResult, gradient) {
 	hideSurface(splitResult.surfaceIdB);
 	hiddenSurfaceIds.push(splitResult.surfaceIdB);
 
-	// Step 4) Create colored preview meshes
+	// Step 4) Create colored preview meshes + intersection polyline
 	clearPreview();
 	if (window.threeRenderer && window.threeRenderer.scene) {
 		previewGroup = createSplitPreviewMeshes(splits);
 		if (previewGroup) {
+			// Add intersection polyline visualization (bright yellow)
+			var ixLine = createIntersectionPolylineMesh(splitResult.taggedSegments);
+			if (ixLine) {
+				previewGroup.add(ixLine);
+				console.log("Surface Boolean: showing " + splitResult.taggedSegments.length + " intersection segments");
+			}
 			window.threeRenderer.scene.add(previewGroup);
 		}
 		// Redraw to reflect hidden originals + new previews
@@ -542,12 +549,12 @@ function showPhase2(splitResult, gradient) {
 
 	container.appendChild(listDiv);
 
-	// Button bar: Invert All
-	var buttonBar = document.createElement("div");
-	buttonBar.style.display = "flex";
-	buttonBar.style.gap = "8px";
-	buttonBar.style.marginTop = "10px";
-	buttonBar.style.alignItems = "center";
+	// ── Row 1: Invert + Snap ──
+	var row1 = document.createElement("div");
+	row1.style.display = "flex";
+	row1.style.gap = "8px";
+	row1.style.marginTop = "10px";
+	row1.style.alignItems = "center";
 
 	var invertBtn = createIconButton("icons/switch.png", "Invert visible regions", function () {
 		for (var i = 0; i < splitRows.length; i++) {
@@ -565,57 +572,123 @@ function showPhase2(splitResult, gradient) {
 	invertLabel.style.fontSize = "11px";
 	invertLabel.style.color = "#aaa";
 
-	buttonBar.appendChild(invertBtn);
-	buttonBar.appendChild(invertLabel);
+	row1.appendChild(invertBtn);
+	row1.appendChild(invertLabel);
 
-	// Snap Vertices tolerance
-	var snapLabel = document.createElement("label");
-	snapLabel.style.display = "flex";
-	snapLabel.style.alignItems = "center";
-	snapLabel.style.gap = "4px";
-	snapLabel.style.marginLeft = "auto";
-	snapLabel.style.fontSize = "11px";
-	snapLabel.style.color = "#ccc";
-
-	snapLabel.appendChild(document.createTextNode("Snap Vertices:"));
-
-	var snapInput = document.createElement("input");
-	snapInput.type = "number";
-	snapInput.value = "0.001";
-	snapInput.step = "0.001";
-	snapInput.min = "0";
-	snapInput.style.width = "60px";
-	snapInput.style.fontSize = "11px";
-	snapInput.style.padding = "2px 4px";
-	snapInput.style.background = "#333";
-	snapInput.style.color = "#ccc";
-	snapInput.style.border = "1px solid #555";
-	snapInput.style.borderRadius = "3px";
-
+	var snapLabel = createInlineLabel("Snap:", "auto");
+	var snapInput = createSmallInput("0.001", "60px", "0.001", "0");
 	snapLabel.appendChild(snapInput);
 	snapLabel.appendChild(document.createTextNode("m"));
-	buttonBar.appendChild(snapLabel);
+	row1.appendChild(snapLabel);
 
-	// Close Surface checkbox
-	var closeLabel = document.createElement("label");
-	closeLabel.style.display = "flex";
-	closeLabel.style.alignItems = "center";
-	closeLabel.style.gap = "4px";
-	closeLabel.style.marginLeft = "8px";
-	closeLabel.style.fontSize = "11px";
-	closeLabel.style.color = "#ccc";
-	closeLabel.style.cursor = "pointer";
+	container.appendChild(row1);
 
-	var closeCheckbox = document.createElement("input");
-	closeCheckbox.type = "checkbox";
-	closeCheckbox.checked = false;
-	closeCheckbox.style.cursor = "pointer";
+	// ── Row 2: Close Mode + Floor Offset ──
+	var row2 = document.createElement("div");
+	row2.style.display = "flex";
+	row2.style.gap = "8px";
+	row2.style.marginTop = "6px";
+	row2.style.alignItems = "center";
 
-	closeLabel.appendChild(closeCheckbox);
-	closeLabel.appendChild(document.createTextNode("Close Surface"));
-	buttonBar.appendChild(closeLabel);
+	var closeModeLabel = createInlineLabel("Close:", "0");
+	var closeModeSelect = document.createElement("select");
+	applySmallSelectStyle(closeModeSelect);
+	var closeModeOptions = [
+		{ value: "none", text: "None" },
+		{ value: "stitch", text: "Stitch Boundaries" },
+		{ value: "curtain", text: "Curtain + Cap" },
+		{ value: "stitch+curtain", text: "Stitch + Curtain" }
+	];
+	for (var cm = 0; cm < closeModeOptions.length; cm++) {
+		var opt = document.createElement("option");
+		opt.value = closeModeOptions[cm].value;
+		opt.textContent = closeModeOptions[cm].text;
+		closeModeSelect.appendChild(opt);
+	}
+	closeModeLabel.appendChild(closeModeSelect);
+	row2.appendChild(closeModeLabel);
 
-	container.appendChild(buttonBar);
+	var stitchTolLabel = createInlineLabel("Stitch Tol:", "8px");
+	stitchTolLabel.style.display = "none";
+	var stitchTolInput = createSmallInput("1.0", "50px", "0.1", "0");
+	stitchTolLabel.appendChild(stitchTolInput);
+	stitchTolLabel.appendChild(document.createTextNode("m"));
+	row2.appendChild(stitchTolLabel);
+
+	var floorOffsetLabel = createInlineLabel("Floor:", "8px");
+	floorOffsetLabel.style.display = "none";
+	var floorOffsetInput = createSmallInput("10", "50px", "1", "0");
+	floorOffsetLabel.appendChild(floorOffsetInput);
+	floorOffsetLabel.appendChild(document.createTextNode("m"));
+	row2.appendChild(floorOffsetLabel);
+
+	closeModeSelect.addEventListener("change", function () {
+		var mode = closeModeSelect.value;
+		var showFloor = (mode === "curtain" || mode === "stitch+curtain");
+		var showStitch = (mode === "stitch" || mode === "stitch+curtain");
+		floorOffsetLabel.style.display = showFloor ? "flex" : "none";
+		stitchTolLabel.style.display = showStitch ? "flex" : "none";
+	});
+
+	container.appendChild(row2);
+
+	// ── Row 3: Cleanup Options ──
+	var row3 = document.createElement("div");
+	row3.style.display = "flex";
+	row3.style.gap = "10px";
+	row3.style.marginTop = "6px";
+	row3.style.alignItems = "center";
+	row3.style.flexWrap = "wrap";
+	row3.style.padding = "4px 6px";
+	row3.style.background = "rgba(0,0,0,0.15)";
+	row3.style.borderRadius = "4px";
+	row3.style.border = "1px solid rgba(255,255,255,0.08)";
+
+	var cleanTitle = document.createElement("span");
+	cleanTitle.textContent = "Cleanup:";
+	cleanTitle.style.fontSize = "11px";
+	cleanTitle.style.color = "#aaa";
+	cleanTitle.style.fontWeight = "bold";
+	row3.appendChild(cleanTitle);
+
+	// Remove Degenerate checkbox (on by default)
+	var degenerateCheck = createCheckboxLabel("Remove Degenerate", true);
+	row3.appendChild(degenerateCheck.label);
+
+	// Remove Slivers checkbox + ratio input (off by default)
+	var sliverCheck = createCheckboxLabel("Remove Slivers", false);
+	row3.appendChild(sliverCheck.label);
+
+	var sliverRatioLabel = createInlineLabel("ratio:", "0");
+	sliverRatioLabel.style.display = "none";
+	var sliverRatioInput = createSmallInput("0.01", "50px", "0.001", "0");
+	sliverRatioLabel.appendChild(sliverRatioInput);
+	row3.appendChild(sliverRatioLabel);
+
+	sliverCheck.checkbox.addEventListener("change", function () {
+		sliverRatioLabel.style.display = sliverCheck.checkbox.checked ? "flex" : "none";
+	});
+
+	// Clean Crossings checkbox (off by default)
+	var crossingCheck = createCheckboxLabel("Clean Crossings", false);
+	row3.appendChild(crossingCheck.label);
+
+	// Remove Overlapping / Internal Walls checkbox + tolerance (off by default)
+	var overlapCheck = createCheckboxLabel("Remove Overlapping", false);
+	row3.appendChild(overlapCheck.label);
+
+	var overlapTolLabel = createInlineLabel("tol:", "0");
+	overlapTolLabel.style.display = "none";
+	var overlapTolInput = createSmallInput("0.5", "50px", "0.1", "0");
+	overlapTolLabel.appendChild(overlapTolInput);
+	overlapTolLabel.appendChild(document.createTextNode("m"));
+	row3.appendChild(overlapTolLabel);
+
+	overlapCheck.checkbox.addEventListener("change", function () {
+		overlapTolLabel.style.display = overlapCheck.checkbox.checked ? "flex" : "none";
+	});
+
+	container.appendChild(row3);
 
 	// Step 6) Create dialog
 	var dialog = new FloatingDialog({
@@ -623,7 +696,7 @@ function showPhase2(splitResult, gradient) {
 		content: container,
 		layoutType: "wide",
 		width: 480,
-		height: 460,
+		height: 540,
 		showConfirm: true,
 		showCancel: true,
 		confirmText: "Apply",
@@ -643,12 +716,23 @@ function showPhase2(splitResult, gradient) {
 			restoreHiddenSurfaces();
 
 			var snapTol = parseFloat(snapInput.value) || 0;
+			var closeMode = closeModeSelect.value || "none";
+			var floorOffset = parseFloat(floorOffsetInput.value) || 10;
+			var stitchTol = parseFloat(stitchTolInput.value) || 1.0;
 			var resultId = applyMerge(splits, {
 				gradient: gradient,
 				surfaceIdA: splitResult.surfaceIdA,
 				surfaceIdB: splitResult.surfaceIdB,
-				closeSurface: closeCheckbox.checked,
-				snapTolerance: snapTol
+				closeMode: closeMode,
+				floorOffset: floorOffset,
+				stitchTolerance: stitchTol,
+				snapTolerance: snapTol,
+				removeDegenerate: degenerateCheck.checkbox.checked,
+				removeSlivers: sliverCheck.checkbox.checked,
+				sliverRatio: parseFloat(sliverRatioInput.value) || 0.01,
+				cleanCrossings: crossingCheck.checkbox.checked,
+				removeOverlapping: overlapCheck.checkbox.checked,
+				overlapTolerance: parseFloat(overlapTolInput.value) || 0.5
 			});
 
 			if (resultId) {
@@ -695,6 +779,76 @@ function createIconButton(iconSrc, tooltip, onClick) {
 
 	btn.addEventListener("click", onClick);
 	return btn;
+}
+
+/**
+ * Create a small inline label with flex layout.
+ */
+function createInlineLabel(text, marginLeft) {
+	var label = document.createElement("label");
+	label.style.display = "flex";
+	label.style.alignItems = "center";
+	label.style.gap = "4px";
+	label.style.marginLeft = marginLeft || "0";
+	label.style.fontSize = "11px";
+	label.style.color = "#ccc";
+	label.appendChild(document.createTextNode(text));
+	return label;
+}
+
+/**
+ * Create a small numeric input.
+ */
+function createSmallInput(value, width, step, min) {
+	var input = document.createElement("input");
+	input.type = "number";
+	input.value = value;
+	input.step = step || "0.001";
+	input.min = min || "0";
+	input.style.width = width || "60px";
+	input.style.fontSize = "11px";
+	input.style.padding = "2px 4px";
+	input.style.background = "#333";
+	input.style.color = "#ccc";
+	input.style.border = "1px solid #555";
+	input.style.borderRadius = "3px";
+	return input;
+}
+
+/**
+ * Apply standard small select styling.
+ */
+function applySmallSelectStyle(select) {
+	select.style.fontSize = "11px";
+	select.style.padding = "2px 4px";
+	select.style.background = "#333";
+	select.style.color = "#ccc";
+	select.style.border = "1px solid #555";
+	select.style.borderRadius = "3px";
+}
+
+/**
+ * Create a checkbox with inline label. Returns { label, checkbox }.
+ */
+function createCheckboxLabel(text, checked) {
+	var label = document.createElement("label");
+	label.style.display = "flex";
+	label.style.alignItems = "center";
+	label.style.gap = "3px";
+	label.style.fontSize = "11px";
+	label.style.color = "#ccc";
+	label.style.cursor = "pointer";
+	label.style.whiteSpace = "nowrap";
+
+	var cb = document.createElement("input");
+	cb.type = "checkbox";
+	cb.checked = !!checked;
+	cb.style.cursor = "pointer";
+	cb.style.margin = "0";
+
+	label.appendChild(cb);
+	label.appendChild(document.createTextNode(text));
+	return { label: label, checkbox: cb };
 }
 
 function updateRowAppearance(row, swatch, split) {

@@ -48,7 +48,11 @@
       "WebFetch(domain:www.npmjs.com)",
       "Bash(npm view:*)",
       "WebFetch(domain:help.maptek.com)",
-      "WebFetch(domain:sourceforge.net)"
+      "WebFetch(domain:sourceforge.net)",
+      "Bash(npx vite build)",
+      "Bash(npm ls:*)",
+      "WebFetch(domain:manifoldcad.org)",
+      "WebFetch(domain:meshlib.io)"
     ]
   }
 }

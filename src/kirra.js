@@ -236,6 +236,7 @@ import "./dialog/contextMenu/SurfacesContextMenu.js";
 import "./dialog/contextMenu/ImagesContextMenu.js";
 import "./dialog/contextMenu/ContextMenuManager.js";
 import "./dialog/settings/ThreeDSettingsDialog.js";
+import "./dialog/popups/view/SectionPlaneDialog.js";
 import "./dialog/popups/confirm/ConfirmDialogs.js";
 import "./dialog/popups/error/ErrorDialogs.js";
 import "./dialog/popups/info/InfoDialogs.js";
@@ -4266,6 +4267,23 @@ document.addEventListener("DOMContentLoaded", function () {
 				setTimeout(() => {
 					this.checked = false;
 				}, 100);
+			}
+		});
+	}
+
+	// Step 14) Setup Section Plane button
+	const sectionPlaneBtn = document.getElementById("sectionPlaneBtn");
+	if (sectionPlaneBtn) {
+		sectionPlaneBtn.addEventListener("click", function () {
+			if (window.toggleSectionPlaneDialog) {
+				window.toggleSectionPlaneDialog();
+			} else {
+				// Lazy-load the dialog module
+				import("./dialog/popups/view/SectionPlaneDialog.js").then(function () {
+					if (window.toggleSectionPlaneDialog) {
+						window.toggleSectionPlaneDialog();
+					}
+				});
 			}
 		});
 	}
@@ -34115,7 +34133,7 @@ function debugSurfaceClosed(surfaceId) {
 	var edgeCount = new Map();
 	var tris = surface.triangles || [];
 
-	function vk(v) { return v.x + "," + v.y + "," + v.z; }
+	function vk(v) { return v.x.toFixed(6) + "," + v.y.toFixed(6) + "," + v.z.toFixed(6); }
 	function ek(a, b) { return a < b ? a + "|" + b : b + "|" + a; }
 
 	for (var i = 0; i < tris.length; i++) {
