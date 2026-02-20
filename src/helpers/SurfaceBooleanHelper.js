@@ -2,9 +2,9 @@
  * SurfaceBooleanHelper.js
  *
  * Interactive split-and-pick surface boolean (Vulcan TRIBOOL style).
- * Uses Moller tri-tri intersection to SPLIT straddling triangles at the
- * actual intersection boundary, then classifies sub-triangles by their
- * signed distance to the other surface's plane.
+ * Uses Moller tri-tri intersection polylines to physically SPLIT triangles
+ * along the actual intersection boundary, then classifies the resulting
+ * clean sub-triangles by centroid Z against the other surface.
  *
  * Non-intersected triangles are classified by centroid Z vs the other surface.
  */
@@ -16,9 +16,7 @@ import {
 	estimateAvgEdge as ixEstimateAvgEdge,
 	buildSpatialGrid as ixBuildSpatialGrid,
 	queryGrid as ixQueryGrid,
-	triBBox as ixTriBBox,
-	triTriIntersectionDetailed,
-	triNormal as ixTriNormal
+	intersectSurfacePairTagged
 } from "./SurfaceIntersectionHelper.js";
 
 // ────────────────────────────────────────────────────────
@@ -26,7 +24,7 @@ import {
 // ────────────────────────────────────────────────────────
 
 /**
- * Compute split groups for two surfaces using Moller intersection + triangle splitting.
+ * Compute split groups for two surfaces using polyline-based triangle splitting.
  *
  * @param {string} surfaceIdA - First surface ID
  * @param {string} surfaceIdB - Second surface ID
@@ -50,7 +48,38 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 		return null;
 	}
 
-	// Step 2) Build spatial grids
+	console.log("Surface Boolean: A=" + trisA.length + " tris, B=" + trisB.length + " tris");
+
+	// Step 2) Get tagged intersection segments
+	var taggedSegments = intersectSurfacePairTagged(trisA, trisB);
+	console.log("Surface Boolean: " + taggedSegments.length + " intersection segments found");
+
+	if (taggedSegments.length === 0) {
+		console.warn("SurfaceBooleanHelper: No intersection found — classifying by centroid only");
+	}
+
+	// Step 3) Build crossed triangle sets from tagged segments
+	var crossedSetA = {};
+	var crossedSetB = {};
+	for (var s = 0; s < taggedSegments.length; s++) {
+		var seg = taggedSegments[s];
+		if (!crossedSetA[seg.idxA]) crossedSetA[seg.idxA] = [];
+		crossedSetA[seg.idxA].push(seg);
+		if (!crossedSetB[seg.idxB]) crossedSetB[seg.idxB] = [];
+		crossedSetB[seg.idxB].push(seg);
+	}
+
+	var crossedCountA = Object.keys(crossedSetA).length;
+	var crossedCountB = Object.keys(crossedSetB).length;
+	console.log("Surface Boolean: crossed A=" + crossedCountA + ", crossed B=" + crossedCountB);
+
+	// Step 4) Split crossed triangles, pass through non-crossed
+	var splitTrisA = splitSurfaceAlongSegments(trisA, crossedSetA);
+	var splitTrisB = splitSurfaceAlongSegments(trisB, crossedSetB);
+
+	console.log("Surface Boolean: after split A=" + splitTrisA.length + " tris, B=" + splitTrisB.length + " tris");
+
+	// Step 5) Build spatial grids on ORIGINAL triangles for Z interpolation
 	var avgEdgeA = ixEstimateAvgEdge(trisA);
 	var avgEdgeB = ixEstimateAvgEdge(trisB);
 	var cellSizeA = Math.max(avgEdgeA * 2, 0.1);
@@ -58,65 +87,20 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 	var gridA = ixBuildSpatialGrid(trisA, cellSizeA);
 	var gridB = ixBuildSpatialGrid(trisB, cellSizeB);
 
-	// ──────────────────────────────────────────────────
-	// Phase A: Find all intersecting triangle pairs
-	// ──────────────────────────────────────────────────
-	// splitMapA[i] = best record for triangle A_i (longest intersection segment)
-	// splitMapB[j] = best record for triangle B_j
-	var splitMapA = {};
-	var splitMapB = {};
-
-	for (var i = 0; i < trisA.length; i++) {
-		var triA = trisA[i];
-		var bbA = ixTriBBox(triA);
-		var candidates = ixQueryGrid(gridB, bbA, cellSizeB);
-
-		for (var c = 0; c < candidates.length; c++) {
-			var j = candidates[c];
-			var triB = trisB[j];
-
-			var record = triTriIntersectionDetailed(triA, triB);
-			if (!record) continue;
-
-			// Keep the record with the longest segment for each triangle
-			if (!splitMapA[i] || record.segLen > splitMapA[i].segLen) {
-				splitMapA[i] = { dA: record.dA, segLen: record.segLen };
-			}
-			if (!splitMapB[j] || record.segLen > splitMapB[j].segLen) {
-				splitMapB[j] = { dB: record.dB, segLen: record.segLen };
-			}
-		}
-	}
-
-	// ──────────────────────────────────────────────────
-	// Phase B: Split intersected triangles + classify all
-	// ──────────────────────────────────────────────────
+	// Step 6) Classify all resulting triangles by centroid Z vs other surface
 	var aAbove = [];
 	var aBelow = [];
 	var aOutside = [];
 
-	for (var ia = 0; ia < trisA.length; ia++) {
-		if (splitMapA[ia]) {
-			// This triangle straddles the intersection — split it
-			var subTris = splitTriangleByDistances(trisA[ia], splitMapA[ia].dA);
-			for (var st = 0; st < subTris.length; st++) {
-				if (subTris[st].sign > 0) {
-					aAbove.push(subTris[st].tri);
-				} else {
-					aBelow.push(subTris[st].tri);
-				}
-			}
+	for (var ia = 0; ia < splitTrisA.length; ia++) {
+		var cA = triCentroid(splitTrisA[ia]);
+		var zB = interpolateZAtPoint(cA.x, cA.y, trisB, gridB, cellSizeB);
+		if (zB === null) {
+			aOutside.push(splitTrisA[ia]);
+		} else if (cA.z >= zB) {
+			aAbove.push(splitTrisA[ia]);
 		} else {
-			// Non-intersected triangle — classify by centroid
-			var cA = triCentroid(trisA[ia]);
-			var zB = interpolateZAtPoint(cA.x, cA.y, trisB, gridB, cellSizeB);
-			if (zB === null) {
-				aOutside.push(trisA[ia]);
-			} else if (cA.z >= zB) {
-				aAbove.push(trisA[ia]);
-			} else {
-				aBelow.push(trisA[ia]);
-			}
+			aBelow.push(splitTrisA[ia]);
 		}
 	}
 
@@ -124,28 +108,15 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 	var bBelow = [];
 	var bOutside = [];
 
-	for (var ib = 0; ib < trisB.length; ib++) {
-		if (splitMapB[ib]) {
-			// This triangle straddles the intersection — split it
-			var subTrisB = splitTriangleByDistances(trisB[ib], splitMapB[ib].dB);
-			for (var stb = 0; stb < subTrisB.length; stb++) {
-				if (subTrisB[stb].sign > 0) {
-					bAbove.push(subTrisB[stb].tri);
-				} else {
-					bBelow.push(subTrisB[stb].tri);
-				}
-			}
+	for (var ib = 0; ib < splitTrisB.length; ib++) {
+		var cB = triCentroid(splitTrisB[ib]);
+		var zA = interpolateZAtPoint(cB.x, cB.y, trisA, gridA, cellSizeA);
+		if (zA === null) {
+			bOutside.push(splitTrisB[ib]);
+		} else if (cB.z >= zA) {
+			bAbove.push(splitTrisB[ib]);
 		} else {
-			// Non-intersected triangle — classify by centroid
-			var cB = triCentroid(trisB[ib]);
-			var zA = interpolateZAtPoint(cB.x, cB.y, trisA, gridA, cellSizeA);
-			if (zA === null) {
-				bOutside.push(trisB[ib]);
-			} else if (cB.z >= zA) {
-				bAbove.push(trisB[ib]);
-			} else {
-				bBelow.push(trisB[ib]);
-			}
+			bBelow.push(splitTrisB[ib]);
 		}
 	}
 
@@ -153,13 +124,9 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 		"A=[" + aAbove.length + " above, " + aBelow.length + " below, " +
 		aOutside.length + " outside] " +
 		"B=[" + bAbove.length + " above, " + bBelow.length + " below, " +
-		bOutside.length + " outside] " +
-		"(total A=" + trisA.length + ", B=" + trisB.length + ", " +
-		"split A=" + Object.keys(splitMapA).length + ", split B=" + Object.keys(splitMapB).length + ")");
+		bOutside.length + " outside]");
 
-	// ──────────────────────────────────────────────────
-	// Phase C: Build split groups (only non-empty)
-	// ──────────────────────────────────────────────────
+	// Step 7) Build split groups (only non-empty)
 	var splits = [];
 	var nameA = surfaceA.name || surfaceIdA;
 	var nameB = surfaceB.name || surfaceIdB;
@@ -240,96 +207,267 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 }
 
 // ────────────────────────────────────────────────────────
-// Phase B: Split a triangle using signed distances to the other surface's plane
+// Polyline-based triangle splitting
 // ────────────────────────────────────────────────────────
 
 /**
- * Split a triangle into sub-triangles based on signed distances [d0, d1, d2]
- * of its vertices to the other surface's plane.
+ * Split all crossed triangles in a surface along their intersection segments.
+ * Non-crossed triangles pass through unchanged.
  *
- * Returns array of { tri: {v0,v1,v2}, sign: +1 or -1 }
- * where sign indicates which side of the plane.
- *
- * If all vertices are on the same side (shouldn't happen if called correctly),
- * returns the whole triangle with that sign.
+ * @param {Array} tris - All triangles {v0,v1,v2}
+ * @param {Object} crossedMap - Map of triIndex -> [taggedSegments] for crossed tris
+ * @returns {Array} Resulting triangles after splitting
  */
-function splitTriangleByDistances(tri, dists) {
-	var d0 = dists[0], d1 = dists[1], d2 = dists[2];
+function splitSurfaceAlongSegments(tris, crossedMap) {
+	var result = [];
+
+	for (var i = 0; i < tris.length; i++) {
+		if (!crossedMap[i]) {
+			// Not crossed — pass through unchanged
+			result.push(tris[i]);
+			continue;
+		}
+
+		// This triangle is crossed by one or more intersection segments
+		var segments = crossedMap[i];
+		var subTris = splitTriangleBySegments(tris[i], segments);
+		for (var j = 0; j < subTris.length; j++) {
+			result.push(subTris[j]);
+		}
+	}
+
+	return result;
+}
+
+/**
+ * Split a single triangle by one or more intersection segments.
+ * Uses iterative splitting: split by first segment, then check sub-triangles
+ * against remaining segments.
+ *
+ * @param {Object} tri - {v0, v1, v2}
+ * @param {Array} segments - Tagged segments that cross this triangle
+ * @returns {Array} Resulting sub-triangles
+ */
+function splitTriangleBySegments(tri, segments) {
+	var current = [tri];
+
+	for (var s = 0; s < segments.length; s++) {
+		var seg = segments[s];
+		var next = [];
+
+		for (var t = 0; t < current.length; t++) {
+			var subResult = splitOneTriangleBySegment(current[t], seg.p0, seg.p1);
+			for (var r = 0; r < subResult.length; r++) {
+				next.push(subResult[r]);
+			}
+		}
+
+		current = next;
+	}
+
+	return current;
+}
+
+/**
+ * Split a single triangle by a single intersection segment.
+ * Finds where the segment (or its infinite extension) crosses the triangle edges,
+ * then splits the triangle at those crossing points.
+ *
+ * @param {Object} tri - {v0, v1, v2}
+ * @param {Object} segP0 - First endpoint of intersection segment {x,y,z}
+ * @param {Object} segP1 - Second endpoint of intersection segment {x,y,z}
+ * @returns {Array} 1 or 3 triangles
+ */
+function splitOneTriangleBySegment(tri, segP0, segP1) {
+	// Find crossings of the segment line with the triangle's 3 edges (in 2D XY)
 	var verts = [tri.v0, tri.v1, tri.v2];
-	var ds = [d0, d1, d2];
+	var edges = [
+		{ a: 0, b: 1 },
+		{ a: 1, b: 2 },
+		{ a: 2, b: 0 }
+	];
 
-	// Use a small tolerance to decide if a vertex is "on" the plane
-	var EPS = 1e-8;
+	var crossings = [];
+	var EPS = 1e-10;
 
-	// Count vertices on each side
-	var pos = 0, neg = 0, zero = 0;
-	for (var i = 0; i < 3; i++) {
-		if (ds[i] > EPS) pos++;
-		else if (ds[i] < -EPS) neg++;
-		else zero++;
+	for (var e = 0; e < 3; e++) {
+		var va = verts[edges[e].a];
+		var vb = verts[edges[e].b];
+
+		var hit = segSegIntersection2D(
+			va.x, va.y, vb.x, vb.y,
+			segP0.x, segP0.y, segP1.x, segP1.y
+		);
+
+		if (hit === null) continue;
+
+		// hit.t is parameter along the triangle edge [0,1]
+		// hit.u is parameter along the segment line (can be outside [0,1] for extended line)
+		var t = hit.t;
+
+		// Skip crossings at edge endpoints to avoid duplicates
+		if (t < EPS || t > 1.0 - EPS) continue;
+
+		// Interpolate 3D crossing point along the edge
+		var crossPt = lerpVert(va, vb, t);
+
+		crossings.push({
+			edgeIdx: e,
+			t: t,
+			point: crossPt
+		});
 	}
 
-	// All on one side (or on the plane) — no split needed
-	if (neg === 0) {
-		return [{ tri: tri, sign: 1 }];
-	}
-	if (pos === 0) {
-		return [{ tri: tri, sign: -1 }];
+	// Deduplicate crossings that are very close in space
+	crossings = deduplicateCrossings(crossings);
+
+	// Need exactly 2 crossings on 2 different edges to split
+	if (crossings.length !== 2) {
+		return [tri];
 	}
 
-	// Find the "lone" vertex (the one on the opposite side from the other two)
-	// lone vertex has a different sign from the majority
+	if (crossings[0].edgeIdx === crossings[1].edgeIdx) {
+		return [tri];
+	}
+
+	return splitTriangleAtCrossings(tri, crossings[0], crossings[1]);
+}
+
+/**
+ * 2D segment-segment intersection test.
+ * Returns {t, u} where t is parameter on segment AB and u is parameter on segment CD.
+ * Returns null if segments are parallel or don't intersect.
+ * t in [0,1] means intersection is on segment AB.
+ * u can be any value (we use the line extension of CD).
+ */
+function segSegIntersection2D(ax, ay, bx, by, cx, cy, dx, dy) {
+	var dABx = bx - ax;
+	var dABy = by - ay;
+	var dCDx = dx - cx;
+	var dCDy = dy - cy;
+
+	var denom = dABx * dCDy - dABy * dCDx;
+	if (Math.abs(denom) < 1e-12) return null;
+
+	var dACx = cx - ax;
+	var dACy = cy - ay;
+
+	var t = (dACx * dCDy - dACy * dCDx) / denom;
+	var u = (dACx * dABy - dACy * dABx) / denom;
+
+	// t must be in [0,1] (on the triangle edge)
+	// u can be anything (we use the extended line of the intersection segment)
+	if (t < -1e-10 || t > 1.0 + 1e-10) return null;
+
+	return { t: Math.max(0, Math.min(1, t)), u: u };
+}
+
+/**
+ * Remove duplicate crossings that are very close in 3D space.
+ */
+function deduplicateCrossings(crossings) {
+	if (crossings.length <= 1) return crossings;
+
+	var result = [crossings[0]];
+	var DIST_SQ_THRESH = 1e-12;
+
+	for (var i = 1; i < crossings.length; i++) {
+		var isDup = false;
+		for (var j = 0; j < result.length; j++) {
+			var dx = crossings[i].point.x - result[j].point.x;
+			var dy = crossings[i].point.y - result[j].point.y;
+			var dz = crossings[i].point.z - result[j].point.z;
+			if (dx * dx + dy * dy + dz * dz < DIST_SQ_THRESH) {
+				isDup = true;
+				break;
+			}
+		}
+		if (!isDup) result.push(crossings[i]);
+	}
+
+	return result;
+}
+
+/**
+ * Split a triangle at two edge crossings into 3 sub-triangles.
+ *
+ * Given crossings on two different edges, the vertex shared by those
+ * two edges is the "lone" vertex. The split creates:
+ *   T1: (V_lone, Pa, Pb)     — the lone-side triangle
+ *   T2: (Pa, V_a, V_b)       — quad part 1
+ *   T3: (Pa, V_b, Pb)        — quad part 2
+ *
+ * Where V_a and V_b are the other two vertices (not V_lone).
+ */
+function splitTriangleAtCrossings(tri, crossing0, crossing1) {
+	var verts = [tri.v0, tri.v1, tri.v2];
+	var edges = [
+		{ a: 0, b: 1 },
+		{ a: 1, b: 2 },
+		{ a: 2, b: 0 }
+	];
+
+	var e0 = edges[crossing0.edgeIdx];
+	var e1 = edges[crossing1.edgeIdx];
+	var Pa = crossing0.point;
+	var Pb = crossing1.point;
+
+	// Find the lone vertex: shared by both crossed edges
 	var loneIdx = -1;
-	if (pos === 1) {
-		// One positive, two negative (or one negative + one zero)
-		for (var ip = 0; ip < 3; ip++) {
-			if (ds[ip] > EPS) { loneIdx = ip; break; }
-		}
-	} else if (neg === 1) {
-		// One negative, two positive (or one positive + one zero)
-		for (var in2 = 0; in2 < 3; in2++) {
-			if (ds[in2] < -EPS) { loneIdx = in2; break; }
-		}
+	if (e0.a === e1.a || e0.a === e1.b) {
+		loneIdx = e0.a;
+	} else if (e0.b === e1.a || e0.b === e1.b) {
+		loneIdx = e0.b;
 	}
 
 	if (loneIdx === -1) {
-		// Edge case: shouldn't happen, return whole triangle
-		return [{ tri: tri, sign: d0 + d1 + d2 >= 0 ? 1 : -1 }];
+		// Crossed edges don't share a vertex — shouldn't happen with 2 crossings
+		// on different edges of same triangle, but handle gracefully
+		return [tri];
 	}
 
-	var nextIdx = (loneIdx + 1) % 3;
-	var prevIdx = (loneIdx + 2) % 3;
+	// Pa is on the edge containing loneIdx as one endpoint
+	// Make sure Pa is on the edge from loneIdx
+	// crossing0 is on edge e0 (verts[e0.a] to verts[e0.b])
+	// crossing1 is on edge e1 (verts[e1.a] to verts[e1.b])
+	// We need: Pa on edge from loneIdx, Pb on the other edge from loneIdx
+	// Pa = point on the edge of crossing that has loneIdx, similarly Pb
+
+	// The other two vertex indices
+	var otherA = -1, otherB = -1;
+	if (loneIdx === 0) { otherA = 1; otherB = 2; }
+	else if (loneIdx === 1) { otherA = 2; otherB = 0; }
+	else { otherA = 0; otherB = 1; }
+
+	// Figure out which crossing is on which edge relative to loneIdx
+	// crossing0 is on edge e0. If e0 contains otherA, then Pa is between lone and otherA
+	var PaOnEdgeToA, PbOnEdgeToA;
+	if (e0.a === otherA || e0.b === otherA) {
+		PaOnEdgeToA = true;
+	} else {
+		PaOnEdgeToA = false;
+	}
+
+	var pToA, pToB;
+	if (PaOnEdgeToA) {
+		pToA = Pa;
+		pToB = Pb;
+	} else {
+		pToA = Pb;
+		pToB = Pa;
+	}
 
 	var vLone = verts[loneIdx];
-	var vNext = verts[nextIdx];
-	var vPrev = verts[prevIdx];
+	var vA = verts[otherA];
+	var vB = verts[otherB];
 
-	var dLone = ds[loneIdx];
-	var dNext = ds[nextIdx];
-	var dPrev = ds[prevIdx];
+	// T1: lone-side triangle
+	var t1 = { v0: vLone, v1: pToA, v2: pToB };
+	// T2, T3: quad on the other side, split into 2 triangles
+	var t2 = { v0: pToA, v1: vA, v2: vB };
+	var t3 = { v0: pToA, v1: vB, v2: pToB };
 
-	// Compute edge-crossing points
-	var tLoneNext = dLone / (dLone - dNext);
-	var pLoneNext = lerpVert(vLone, vNext, tLoneNext);
-
-	var tLonePrev = dLone / (dLone - dPrev);
-	var pLonePrev = lerpVert(vLone, vPrev, tLonePrev);
-
-	var loneSign = dLone > 0 ? 1 : -1;
-	var otherSign = -loneSign;
-
-	// Lone side: 1 triangle
-	var loneTri = { v0: vLone, v1: pLoneNext, v2: pLonePrev };
-
-	// Other side: 2 triangles (quad split)
-	var otherTri1 = { v0: pLoneNext, v1: vNext, v2: vPrev };
-	var otherTri2 = { v0: pLoneNext, v1: vPrev, v2: pLonePrev };
-
-	return [
-		{ tri: loneTri, sign: loneSign },
-		{ tri: otherTri1, sign: otherSign },
-		{ tri: otherTri2, sign: otherSign }
-	];
+	return [t1, t2, t3];
 }
 
 /**

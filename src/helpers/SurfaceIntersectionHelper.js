@@ -258,7 +258,7 @@ export function queryGrid(grid, bb, cellSize) {
 // Step 4) Moller triangle-triangle intersection
 // ────────────────────────────────────────────────────────
 
-function intersectSurfacePair(trisA, trisB) {
+export function intersectSurfacePair(trisA, trisB) {
     var segments = [];
 
     // Compute average edge length for grid cell size
@@ -281,6 +281,35 @@ function intersectSurfacePair(trisA, trisB) {
             var seg = triTriIntersection(triA, triB);
             if (seg) {
                 segments.push(seg);
+            }
+        }
+    }
+
+    return segments;
+}
+
+/**
+ * Like intersectSurfacePair but returns segments tagged with source triangle indices.
+ * Each result: { p0: {x,y,z}, p1: {x,y,z}, idxA: number, idxB: number }
+ */
+export function intersectSurfacePairTagged(trisA, trisB) {
+    var segments = [];
+
+    var avgEdge = estimateAvgEdge(trisB);
+    var cellSize = Math.max(avgEdge * 2, 0.1);
+    var gridB = buildSpatialGrid(trisB, cellSize);
+
+    for (var i = 0; i < trisA.length; i++) {
+        var triA = trisA[i];
+        var bbA = triBBox(triA);
+        var candidates = queryGrid(gridB, bbA, cellSize);
+
+        for (var c = 0; c < candidates.length; c++) {
+            var j = candidates[c];
+            var triB = trisB[j];
+            var seg = triTriIntersection(triA, triB);
+            if (seg) {
+                segments.push({ p0: seg.p0, p1: seg.p1, idxA: i, idxB: j });
             }
         }
     }
@@ -545,7 +574,7 @@ export function findLinePoint(nA, dA, nB, dB, lineDir) {
 // Step 5) Chain segments into polylines
 // ────────────────────────────────────────────────────────
 
-function chainSegments(segments, threshold) {
+export function chainSegments(segments, threshold) {
     if (segments.length === 0) return [];
 
     var threshSq = threshold * threshold;
