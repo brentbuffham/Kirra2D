@@ -2356,6 +2356,56 @@ body.dark-mode .tree-meta {
     content: "";
 }
 
+.tree-context-item[data-action="flip-normals"] span:first-child:before {
+    background-image: url("/icons/flip-horizontal.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
+.tree-context-item[data-action="align-normals"] span:first-child:before {
+    background-image: url("/icons/arrows-up.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
+.tree-context-item[data-action="normals-out"] span:first-child:before {
+    background-image: url("/icons/circle-dot-filled.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
+.tree-context-item[data-action="normals-in"] span:first-child:before {
+    background-image: url("/icons/circle-dot.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
+.tree-context-item[data-action="statistics"] span:first-child:before {
+    background-image: url("/icons/list-details.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
 /* General icon sizing for all tree icons */
 .tree-icon:before {
     width: 18px;
@@ -2585,7 +2635,12 @@ body.dark-mode .tree-context-item[data-action="properties"] span:first-child:bef
 body.dark-mode .tree-context-item[data-action="delete"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="rename"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="assign-blast"] span:first-child:before,
-body.dark-mode .tree-context-item[data-action="reset-connections"] span:first-child:before {
+body.dark-mode .tree-context-item[data-action="reset-connections"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="flip-normals"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="align-normals"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="normals-out"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="normals-in"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="statistics"] span:first-child:before {
     filter: invert(1);
 }
 

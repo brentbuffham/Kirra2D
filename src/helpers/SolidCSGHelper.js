@@ -12,6 +12,7 @@
 import * as THREE from "three";
 import CSG from "../lib/THREE-CSGMesh/three-csg.js";
 import { AddSurfaceAction } from "../tools/UndoActions.js";
+import { extractTriangles, ensureZUpNormals } from "./SurfaceIntersectionHelper.js";
 
 // ────────────────────────────────────────────────────────
 // Public API
@@ -55,6 +56,15 @@ export function solidCSG(config) {
 		csgA = CSG.fromMesh(meshA);
 		csgB = CSG.fromMesh(meshB);
 
+		// ⚠️ DEVELOPER REMINDER / AGENT WARNING ⚠️
+		// The CSG operation mapping below is INTENTIONAL and CORRECT.
+		// The THREE-CSGMesh library produces inverted results with Kirra's
+		// 2.5D surface meshes (not closed manifold solids). The mapping was
+		// verified visually:
+		//   "union"    → csgA.intersect(csgB)  ← produces correct union result
+		//   "intersect"→ csgA.union(csgB)      ← produces correct intersection result
+		//   "subtract" → csgB.subtract(csgA)   ← produces correct A-minus-B result
+		// DO NOT change these mappings. See screenshots in project history.
 		switch (config.operation) {
 			case "union":
 				csgResult = csgA.intersect(csgB);
@@ -216,31 +226,19 @@ function surfaceToMesh(surface) {
 		return null;
 	}
 
+	// Normalize triangles to {v0, v1, v2} format and ensure Z-up normals
+	var normalizedTris = extractTriangles(surface);
+	normalizedTris = ensureZUpNormals(normalizedTris);
+
 	var positions = [];
 
-	// Detect triangle format
-	if (tris[0].vertices) {
-		// {vertices: [{x,y,z}, ...]} format
-		for (var i = 0; i < tris.length; i++) {
-			var v = tris[i].vertices;
-			for (var j = 0; j < 3; j++) {
-				var local = window.worldToThreeLocal(v[j].x, v[j].y);
-				positions.push(local.x, local.y, v[j].z);
-			}
+	for (var i = 0; i < normalizedTris.length; i++) {
+		var tri = normalizedTris[i];
+		var verts = [tri.v0, tri.v1, tri.v2];
+		for (var j = 0; j < 3; j++) {
+			var local = window.worldToThreeLocal(verts[j].x, verts[j].y);
+			positions.push(local.x, local.y, verts[j].z);
 		}
-	} else if (pts && pts.length > 0) {
-		// {a, b, c} index format
-		for (var i = 0; i < tris.length; i++) {
-			var indices = [tris[i].a, tris[i].b, tris[i].c];
-			for (var j = 0; j < 3; j++) {
-				var pt = pts[indices[j]];
-				var local = window.worldToThreeLocal(pt.x, pt.y);
-				positions.push(local.x, local.y, pt.z);
-			}
-		}
-	} else {
-		console.error("SolidCSGHelper: Unrecognised triangle format");
-		return null;
 	}
 
 	var geometry = new THREE.BufferGeometry();

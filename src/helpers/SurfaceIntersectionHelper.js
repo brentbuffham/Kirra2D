@@ -489,6 +489,121 @@ export function cross(a, b) {
     };
 }
 
+// ────────────────────────────────────────────────────────
+// Normal alignment utilities
+// ────────────────────────────────────────────────────────
+
+/**
+ * Enforce Kirra's Z-up convention on all triangles.
+ * If a triangle's face normal points downward (z < 0), its winding
+ * is reversed by swapping v1 and v2. Near-vertical faces (|z| < 0.01)
+ * are left unchanged.
+ *
+ * Returns a NEW cloned array — never modifies the original.
+ *
+ * @param {Array} tris - Array of {v0, v1, v2}
+ * @returns {Array} Cloned array with consistent Z-up normals
+ */
+export function ensureZUpNormals(tris) {
+    var result = [];
+    var flipped = 0;
+
+    for (var i = 0; i < tris.length; i++) {
+        var tri = tris[i];
+        var v0 = { x: tri.v0.x, y: tri.v0.y, z: tri.v0.z };
+        var v1 = { x: tri.v1.x, y: tri.v1.y, z: tri.v1.z };
+        var v2 = { x: tri.v2.x, y: tri.v2.y, z: tri.v2.z };
+
+        var n = triNormal({ v0: v0, v1: v1, v2: v2 });
+
+        if (n.z < -0.01) {
+            // Downward-facing — swap v1 and v2 to flip normal
+            result.push({ v0: v0, v1: v2, v2: v1 });
+            flipped++;
+        } else {
+            result.push({ v0: v0, v1: v1, v2: v2 });
+        }
+    }
+
+    if (flipped > 0) {
+        console.log("ensureZUpNormals: flipped " + flipped + "/" + tris.length + " triangles to Z-up");
+    }
+
+    return result;
+}
+
+/**
+ * Count open (boundary) and non-manifold (over-shared) edges in a triangle soup.
+ * Uses the same vertex-key pattern as extractBoundaryLoops in SurfaceBooleanHelper.
+ *
+ * @param {Array} tris - Array of {v0, v1, v2}
+ * @returns {{ openEdges: number, overShared: number, total: number }}
+ */
+export function countOpenEdges(tris) {
+    var edgeMap = {};
+    var PREC = 6;
+
+    function vKey(v) {
+        return v.x.toFixed(PREC) + "," + v.y.toFixed(PREC) + "," + v.z.toFixed(PREC);
+    }
+
+    function edgeKey(ka, kb) {
+        return ka < kb ? ka + "|" + kb : kb + "|" + ka;
+    }
+
+    for (var i = 0; i < tris.length; i++) {
+        var tri = tris[i];
+        var verts = [tri.v0, tri.v1, tri.v2];
+        var keys = [vKey(verts[0]), vKey(verts[1]), vKey(verts[2])];
+
+        for (var e = 0; e < 3; e++) {
+            var ne = (e + 1) % 3;
+            var ek = edgeKey(keys[e], keys[ne]);
+            if (!edgeMap[ek]) {
+                edgeMap[ek] = 0;
+            }
+            edgeMap[ek]++;
+        }
+    }
+
+    var openEdges = 0;
+    var overShared = 0;
+    var total = 0;
+
+    for (var ek2 in edgeMap) {
+        total++;
+        if (edgeMap[ek2] === 1) {
+            openEdges++;
+        } else if (edgeMap[ek2] > 2) {
+            overShared++;
+        }
+    }
+
+    return { openEdges: openEdges, overShared: overShared, total: total };
+}
+
+/**
+ * Flip all triangle normals unconditionally by swapping v1 and v2.
+ * Returns a NEW cloned array — never modifies the original.
+ *
+ * @param {Array} tris - Array of {v0, v1, v2}
+ * @returns {Array} Cloned array with all normals inverted
+ */
+export function flipAllNormals(tris) {
+    var result = [];
+
+    for (var i = 0; i < tris.length; i++) {
+        var tri = tris[i];
+        result.push({
+            v0: { x: tri.v0.x, y: tri.v0.y, z: tri.v0.z },
+            v1: { x: tri.v2.x, y: tri.v2.y, z: tri.v2.z },
+            v2: { x: tri.v1.x, y: tri.v1.y, z: tri.v1.z }
+        });
+    }
+
+    return result;
+}
+
 /**
  * Compute the parametric interval where a triangle crosses the
  * intersection line, projected along lineDir.

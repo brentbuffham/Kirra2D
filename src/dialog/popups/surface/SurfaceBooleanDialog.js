@@ -536,8 +536,13 @@ function showPhase2(splitResult, gradient) {
 				updateSplitPreview(index, true);
 			});
 
+			var flipBtn = createIconButton("icons/flip-horizontal.png", "Flip Normals on this region", function () {
+				flipSplitRegionNormals(split, index);
+			});
+
 			btnDiv.appendChild(removeBtn);
 			btnDiv.appendChild(addBtn);
+			btnDiv.appendChild(flipBtn);
 
 			row.appendChild(leftDiv);
 			row.appendChild(btnDiv);
@@ -870,6 +875,67 @@ function updateSplitPreview(splitIndex, kept) {
 			break;
 		}
 	}
+	if (window.threeRenderer) {
+		window.threeRenderer.render();
+	}
+}
+
+/**
+ * Flip normals on a single split region's triangle data and rebuild its preview mesh.
+ * Swaps v1↔v2 on every triangle in the split, then rebuilds the BufferGeometry.
+ */
+function flipSplitRegionNormals(split, splitIndex) {
+	// Flip the triangle data in-place (swap v1 and v2)
+	for (var i = 0; i < split.triangles.length; i++) {
+		var tri = split.triangles[i];
+		var tmpX = tri.v1.x, tmpY = tri.v1.y, tmpZ = tri.v1.z;
+		tri.v1.x = tri.v2.x; tri.v1.y = tri.v2.y; tri.v1.z = tri.v2.z;
+		tri.v2.x = tmpX; tri.v2.y = tmpY; tri.v2.z = tmpZ;
+	}
+
+	// Rebuild the preview mesh geometry
+	if (!previewGroup) return;
+	var children = previewGroup.children;
+	for (var c = 0; c < children.length; c++) {
+		if (children[c].userData && children[c].userData.splitIndex === splitIndex) {
+			var group = children[c];
+
+			// Rebuild positions from flipped triangles
+			var positions = [];
+			for (var t = 0; t < split.triangles.length; t++) {
+				var tri = split.triangles[t];
+				var l0 = window.worldToThreeLocal(tri.v0.x, tri.v0.y);
+				var l1 = window.worldToThreeLocal(tri.v1.x, tri.v1.y);
+				var l2 = window.worldToThreeLocal(tri.v2.x, tri.v2.y);
+				positions.push(
+					l0.x, l0.y, tri.v0.z,
+					l1.x, l1.y, tri.v1.z,
+					l2.x, l2.y, tri.v2.z
+				);
+			}
+
+			var newGeom = new THREE.BufferGeometry();
+			newGeom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+			newGeom.computeVertexNormals();
+
+			// Update solid fill mesh and wireframe
+			group.traverse(function (child) {
+				if (child.isMesh && child.name === "solidFill") {
+					if (child.geometry) child.geometry.dispose();
+					child.geometry = newGeom.clone();
+				}
+				if (child.isLineSegments && child.name === "wireframe") {
+					if (child.geometry) child.geometry.dispose();
+					child.geometry = new THREE.WireframeGeometry(newGeom);
+				}
+			});
+
+			break;
+		}
+	}
+
+	console.log("Flip Normals: flipped " + split.triangles.length + " tris on split region " + splitIndex);
+
 	if (window.threeRenderer) {
 		window.threeRenderer.render();
 	}

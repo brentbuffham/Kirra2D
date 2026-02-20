@@ -19,7 +19,8 @@ import {
 	estimateAvgEdge as ixEstimateAvgEdge,
 	buildSpatialGrid as ixBuildSpatialGrid,
 	queryGrid as ixQueryGrid,
-	intersectSurfacePairTagged
+	intersectSurfacePairTagged,
+	countOpenEdges
 } from "./SurfaceIntersectionHelper.js";
 
 // ────────────────────────────────────────────────────────
@@ -50,6 +51,9 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 		console.error("SurfaceBooleanHelper: One or both surfaces have no triangles");
 		return null;
 	}
+
+	// Note: Normal alignment is NOT done here — splitting is purely geometric.
+	// Users can align/flip normals on the result via TreeView context menu.
 
 	console.log("Surface Boolean: A=" + trisA.length + " tris, B=" + trisB.length + " tris");
 
@@ -552,6 +556,196 @@ function lerpVert(a, b, t) {
 }
 
 // ────────────────────────────────────────────────────────
+// Straddling triangle refinement — Z-interpolation split
+// ────────────────────────────────────────────────────────
+
+/**
+ * Detect and split triangles that straddle the intersection boundary.
+ *
+ * After the primary tri-tri split, some triangles may still cross the boundary.
+ * This pass checks each vertex's Z against the other surface and splits any
+ * triangle with vertices on both sides.
+ *
+ * Handles two straddle cases:
+ *   Case 1: All 3 vertices covered, some above and some below → 2 Z-crossings
+ *   Case 2: Mixed coverage (some null) with above+below → 1 Z-crossing + bisect
+ *           through the null vertex
+ *   Case 3: Mixed coverage, covered vertices agree in Z → extent boundary straddle,
+ *           find coverage boundary via binary search on null edge
+ *
+ * @param {Array} tris - Triangle soup after primary split
+ * @param {Array} otherTris - The other surface's original triangles
+ * @param {Object} otherGrid - Spatial grid on the other surface
+ * @param {number} otherCellSize - Grid cell size
+ * @returns {Array} Refined triangle soup
+ */
+function refineStraddlingTriangles(tris, otherTris, otherGrid, otherCellSize) {
+	var result = [];
+	var splitCount = 0;
+	var edges = [{ a: 0, b: 1 }, { a: 1, b: 2 }, { a: 2, b: 0 }];
+	var oppositeVertex = [2, 0, 1]; // Vertex opposite to edge 0, 1, 2
+
+	for (var i = 0; i < tris.length; i++) {
+		var tri = tris[i];
+		var verts = [tri.v0, tri.v1, tri.v2];
+
+		// Compute deltaZ for each vertex (own Z minus other surface Z)
+		var deltas = [];
+		var hasAbove = false;
+		var hasBelow = false;
+		var nullCount = 0;
+		var nullIdx = -1; // Last null index (for nullCount===1)
+		var covIdx = -1;  // Last covered index (for nullCount===2)
+
+		for (var v = 0; v < 3; v++) {
+			var zOther = interpolateZAtPoint(verts[v].x, verts[v].y, otherTris, otherGrid, otherCellSize);
+			if (zOther === null) {
+				nullCount++;
+				nullIdx = v;
+				deltas.push(null);
+			} else {
+				covIdx = v;
+				var dz = verts[v].z - zOther;
+				deltas.push(dz);
+				if (dz > 0.001) hasAbove = true;
+				else if (dz < -0.001) hasBelow = true;
+			}
+		}
+
+		// Skip if no straddle possible
+		if (nullCount === 3) { result.push(tri); continue; } // No coverage at all
+		if (!hasAbove && !hasBelow) { result.push(tri); continue; } // All neutral or all null
+
+		// ── Case 1 & 2: above+below disagreement among covered vertices ──
+		if (hasAbove && hasBelow) {
+			// Find Z-crossings on covered-covered edges
+			var crossings = [];
+			for (var e = 0; e < 3; e++) {
+				var dA = deltas[edges[e].a];
+				var dB = deltas[edges[e].b];
+				if (dA === null || dB === null) continue;
+				if ((dA > 0 && dB > 0) || (dA < 0 && dB < 0)) continue;
+				if (Math.abs(dA) < 0.001 || Math.abs(dB) < 0.001) continue;
+
+				var t = dA / (dA - dB);
+				if (t < 0.002 || t > 0.998) continue;
+
+				crossings.push({
+					edgeIdx: e,
+					t: t,
+					point: lerpVert(verts[edges[e].a], verts[edges[e].b], t)
+				});
+			}
+
+			if (crossings.length === 2 && crossings[0].edgeIdx !== crossings[1].edgeIdx) {
+				// Case 1: Standard 2-crossing split → 3 sub-triangles
+				var subTris = splitTriangleAtCrossings(tri, crossings[0], crossings[1]);
+				for (var s = 0; s < subTris.length; s++) result.push(subTris[s]);
+				splitCount++;
+				continue;
+			}
+
+			if (crossings.length === 1 && nullCount === 1) {
+				// Case 2: 1 Z-crossing + null vertex → bisect through null vertex
+				// The crossing is on the edge between the two covered vertices.
+				// The null vertex is opposite. Split into 2 triangles.
+				var cEdge = edges[crossings[0].edgeIdx];
+				var cPt = crossings[0].point;
+				var nullV = verts[nullIdx];
+				var vA = verts[cEdge.a];
+				var vB = verts[cEdge.b];
+
+				result.push({ v0: vA, v1: cPt, v2: nullV });
+				result.push({ v0: cPt, v1: vB, v2: nullV });
+				splitCount++;
+				continue;
+			}
+
+			// Couldn't split — pass through
+			result.push(tri);
+			continue;
+		}
+
+		// ── Case 3: Triangle crosses the other surface's extent boundary ──
+		// Find coverage boundary on edges between covered and null vertices.
+		// Works for nullCount === 1 (2 covered, 1 null) and nullCount === 2 (1 covered, 2 null).
+		if (nullCount === 1 || nullCount === 2) {
+			var covBoundaries = [];
+			for (var e2 = 0; e2 < 3; e2++) {
+				var idxA = edges[e2].a;
+				var idxB = edges[e2].b;
+				// Must be an edge with one null and one covered vertex
+				var aCov = deltas[idxA] !== null;
+				var bCov = deltas[idxB] !== null;
+				if (aCov === bCov) continue; // Both covered or both null
+
+				// Binary search for coverage boundary
+				var covEnd = aCov ? idxA : idxB;
+				var nullEnd = aCov ? idxB : idxA;
+				var boundary = findCoverageBoundary(
+					verts[covEnd], verts[nullEnd],
+					otherTris, otherGrid, otherCellSize
+				);
+				if (boundary) {
+					covBoundaries.push({
+						edgeIdx: e2,
+						t: aCov ? boundary.t : (1.0 - boundary.t),
+						point: boundary.point
+					});
+				}
+			}
+
+			if (covBoundaries.length === 2 && covBoundaries[0].edgeIdx !== covBoundaries[1].edgeIdx) {
+				var subTris2 = splitTriangleAtCrossings(tri, covBoundaries[0], covBoundaries[1]);
+				for (var s2 = 0; s2 < subTris2.length; s2++) result.push(subTris2[s2]);
+				splitCount++;
+				continue;
+			}
+		}
+
+		result.push(tri);
+	}
+
+	if (splitCount > 0) {
+		console.log("SurfaceBooleanHelper: refineStraddling split " + splitCount + " triangles");
+	}
+
+	return result;
+}
+
+/**
+ * Binary search along an edge to find where Z-coverage transitions
+ * from covered to uncovered.
+ *
+ * @param {Object} vCovered - Vertex with Z coverage
+ * @param {Object} vNull - Vertex without Z coverage
+ * @returns {{ t: number, point: {x,y,z} } | null} - Parametric position from vCovered
+ */
+function findCoverageBoundary(vCovered, vNull, otherTris, otherGrid, otherCellSize) {
+	var lo = 0, hi = 1;
+	var bestT = 0;
+	var bestPt = vCovered;
+
+	for (var iter = 0; iter < 10; iter++) {
+		var mid = (lo + hi) / 2;
+		var pt = lerpVert(vCovered, vNull, mid);
+		var z = interpolateZAtPoint(pt.x, pt.y, otherTris, otherGrid, otherCellSize);
+		if (z !== null) {
+			lo = mid;
+			bestT = mid;
+			bestPt = pt;
+		} else {
+			hi = mid;
+		}
+	}
+
+	if (bestT < 0.01) return null; // Boundary too close to covered vertex
+	if (bestT > 0.99) return null; // Shouldn't happen (vNull is uncovered)
+
+	return { t: bestT, point: bestPt };
+}
+
+// ────────────────────────────────────────────────────────
 // Centroid classification for non-intersected triangles
 // ────────────────────────────────────────────────────────
 
@@ -949,6 +1143,10 @@ export function applyMerge(splits, config) {
 	// ── Step 8: Log boundary stats ──
 	var finalSoup = weldedToSoup(triangles);
 	logBoundaryStats(finalSoup, closeMode);
+
+	// ── Step 8b: Open-edge diagnostic via countOpenEdges ──
+	var edgeStats = countOpenEdges(finalSoup);
+	console.log("SurfaceBooleanHelper: result — " + edgeStats.openEdges + " open edges, " + edgeStats.overShared + " non-manifold");
 
 	// ── Step 9: Store result surface ──
 	var bounds = computeBounds(worldPoints);

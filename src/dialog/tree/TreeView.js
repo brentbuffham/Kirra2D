@@ -84,6 +84,13 @@ function formatNumber(val) {
 	return val.toFixed(1);
 }
 
+/**
+ * Format area/volume values in full units with commas and 2 decimal places.
+ */
+function formatArea(val) {
+	return val.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export class TreeView {
 	constructor(containerId) {
 		this.container = document.getElementById(containerId);
@@ -684,6 +691,21 @@ export class TreeView {
 			assignBlastItem.style.display = hasHolesOrEntities ? "flex" : "none";
 		}
 
+		// Surface normal/statistics tools — show only for surface nodes
+		var hasSurfaces = selectedNodeIds.some(function (nodeId) {
+			return nodeId.startsWith("surface⣿") && nodeId.split("⣿").length === 2;
+		});
+		var flipNormalsItem = menu.querySelector("[data-action=\"flip-normals\"]");
+		var alignNormalsItem = menu.querySelector("[data-action=\"align-normals\"]");
+		var statisticsItem = menu.querySelector("[data-action=\"statistics\"]");
+		var normalsOutItem = menu.querySelector("[data-action=\"normals-out\"]");
+		var normalsInItem = menu.querySelector("[data-action=\"normals-in\"]");
+		if (flipNormalsItem) flipNormalsItem.style.display = hasSurfaces ? "flex" : "none";
+		if (alignNormalsItem) alignNormalsItem.style.display = hasSurfaces ? "flex" : "none";
+		if (normalsOutItem) normalsOutItem.style.display = hasSurfaces ? "flex" : "none";
+		if (normalsInItem) normalsInItem.style.display = hasSurfaces ? "flex" : "none";
+		if (statisticsItem) statisticsItem.style.display = hasSurfaces ? "flex" : "none";
+
 		menu.style.left = x + "px";
 		menu.style.top = y + "px";
 		menu.style.display = "block";
@@ -729,6 +751,21 @@ export class TreeView {
 				break;
 			case "properties":
 				this.showProperties();
+				break;
+			case "flip-normals":
+				this.flipNormals();
+				break;
+			case "align-normals":
+				this.alignNormals();
+				break;
+			case "normals-out":
+				this.setNormalsDirection("out");
+				break;
+			case "normals-in":
+				this.setNormalsDirection("in");
+				break;
+			case "statistics":
+				this.showStatistics();
 				break;
 		}
 		document.getElementById("treeContextMenu").style.display = "none";
@@ -800,6 +837,346 @@ export class TreeView {
 		if (typeof window.handleTreeViewResetConnections === "function") {
 			window.handleTreeViewResetConnections(holeNodeIds);
 		}
+	}
+
+	/**
+	 * Flip all normals on selected surface(s) — reverses triangle winding order.
+	 */
+	flipNormals() {
+		if (this.selectedNodes.size === 0) return;
+
+		var nodeIds = Array.from(this.selectedNodes);
+		var surfaceIds = [];
+		for (var i = 0; i < nodeIds.length; i++) {
+			var parts = nodeIds[i].split(TREE_NODE_SEPARATOR);
+			if (parts[0] === "surface" && parts.length === 2) {
+				surfaceIds.push(parts[1]);
+			}
+		}
+		if (surfaceIds.length === 0) return;
+
+		import("../../helpers/SurfaceNormalHelper.js").then(function (mod) {
+			for (var s = 0; s < surfaceIds.length; s++) {
+				var surfaceId = surfaceIds[s];
+				var surface = window.loadedSurfaces ? window.loadedSurfaces.get(surfaceId) : null;
+				if (!surface) continue;
+
+				surface.triangles = mod.flipSurfaceNormals(surface);
+				console.log("Flip Normals: flipped all normals on " + surfaceId);
+
+				if (typeof window.saveSurfaceToDB === "function") {
+					window.saveSurfaceToDB(surfaceId);
+				}
+			}
+
+			if (typeof window.invalidateSurfaceCache === "function") {
+				for (var s2 = 0; s2 < surfaceIds.length; s2++) {
+					window.invalidateSurfaceCache(surfaceIds[s2]);
+				}
+			}
+			if (typeof window.drawData === "function") {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
+			if (typeof window.debouncedUpdateTreeView === "function") {
+				window.debouncedUpdateTreeView();
+			}
+		}).catch(function (err) {
+			console.error("Flip Normals failed:", err);
+		});
+	}
+
+	/**
+	 * Align normals on selected surface(s) to Kirra's Z-up convention.
+	 */
+	alignNormals() {
+		if (this.selectedNodes.size === 0) return;
+
+		var nodeIds = Array.from(this.selectedNodes);
+		var surfaceIds = [];
+		for (var i = 0; i < nodeIds.length; i++) {
+			var parts = nodeIds[i].split(TREE_NODE_SEPARATOR);
+			if (parts[0] === "surface" && parts.length === 2) {
+				surfaceIds.push(parts[1]);
+			}
+		}
+		if (surfaceIds.length === 0) return;
+
+		import("../../helpers/SurfaceNormalHelper.js").then(function (mod) {
+			var results = [];
+
+			for (var s = 0; s < surfaceIds.length; s++) {
+				var surfaceId = surfaceIds[s];
+				var surface = window.loadedSurfaces ? window.loadedSurfaces.get(surfaceId) : null;
+				if (!surface) continue;
+
+				var result = mod.alignSurfaceNormals(surface);
+				surface.triangles = result.triangles;
+				results.push({
+					name: surface.name || surfaceId,
+					flipped: result.flippedCount,
+					total: result.totalCount
+				});
+
+				console.log("Align Normals: " + surfaceId + " — " + result.flippedCount + "/" + result.totalCount + " flipped to Z-up");
+
+				if (typeof window.saveSurfaceToDB === "function") {
+					window.saveSurfaceToDB(surfaceId);
+				}
+			}
+
+			if (typeof window.invalidateSurfaceCache === "function") {
+				for (var s2 = 0; s2 < surfaceIds.length; s2++) {
+					window.invalidateSurfaceCache(surfaceIds[s2]);
+				}
+			}
+			if (typeof window.drawData === "function") {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
+			if (typeof window.debouncedUpdateTreeView === "function") {
+				window.debouncedUpdateTreeView();
+			}
+
+			// Show results dialog
+			import("../../dialog/FloatingDialog.js").then(function (dlgMod) {
+				var content = document.createElement("div");
+				content.style.padding = "15px";
+				content.style.fontFamily = "monospace";
+				content.style.fontSize = "13px";
+
+				var lines = [];
+				for (var r = 0; r < results.length; r++) {
+					var res = results[r];
+					if (res.flipped === 0) {
+						lines.push(res.name + ": 0/" + res.total + " faces flipped (already aligned)");
+					} else {
+						lines.push(res.name + ": " + res.flipped + "/" + res.total + " faces flipped to Z-up");
+					}
+				}
+				content.textContent = lines.join("\n");
+
+				var dialog = new dlgMod.FloatingDialog({
+					title: "Align Normals — Results",
+					content: content,
+					width: 450,
+					height: 200,
+					showConfirm: true,
+					confirmText: "OK",
+					showCancel: false
+				});
+				dialog.show();
+			});
+		}).catch(function (err) {
+			console.error("Align Normals failed:", err);
+		});
+	}
+
+	/**
+	 * Set normals direction (out or in) on selected closed solid surface(s).
+	 * Uses signed volume to determine current orientation and flips if needed.
+	 */
+	setNormalsDirection(direction) {
+		if (this.selectedNodes.size === 0) return;
+
+		var nodeIds = Array.from(this.selectedNodes);
+		var surfaceIds = [];
+		for (var i = 0; i < nodeIds.length; i++) {
+			var parts = nodeIds[i].split(TREE_NODE_SEPARATOR);
+			if (parts[0] === "surface" && parts.length === 2) {
+				surfaceIds.push(parts[1]);
+			}
+		}
+		if (surfaceIds.length === 0) return;
+
+		import("../../helpers/SurfaceNormalHelper.js").then(function (mod) {
+			var results = [];
+
+			for (var s = 0; s < surfaceIds.length; s++) {
+				var surfaceId = surfaceIds[s];
+				var surface = window.loadedSurfaces ? window.loadedSurfaces.get(surfaceId) : null;
+				if (!surface) continue;
+
+				var result = mod.setSurfaceNormalsDirection(surface, direction);
+				surface.triangles = result.triangles;
+				results.push({ name: surface.name || surfaceId, message: result.message });
+
+				console.log("Normals " + direction + ": " + surfaceId + " — " + result.message);
+
+				if (typeof window.saveSurfaceToDB === "function") {
+					window.saveSurfaceToDB(surfaceId);
+				}
+			}
+
+			if (typeof window.invalidateSurfaceCache === "function") {
+				for (var s2 = 0; s2 < surfaceIds.length; s2++) {
+					window.invalidateSurfaceCache(surfaceIds[s2]);
+				}
+			}
+			if (typeof window.drawData === "function") {
+				window.drawData(window.allBlastHoles, window.selectedHole);
+			}
+			if (typeof window.debouncedUpdateTreeView === "function") {
+				window.debouncedUpdateTreeView();
+			}
+
+			// Show results dialog
+			import("../../dialog/FloatingDialog.js").then(function (dlgMod) {
+				var content = document.createElement("div");
+				content.style.padding = "15px";
+				content.style.fontFamily = "monospace";
+				content.style.fontSize = "13px";
+
+				var lines = [];
+				for (var r = 0; r < results.length; r++) {
+					lines.push(results[r].name + ": " + results[r].message);
+				}
+				content.textContent = lines.join("\n");
+
+				var label = direction === "out" ? "Normals Out" : "Normals In";
+				var dialog = new dlgMod.FloatingDialog({
+					title: label + " — Results",
+					content: content,
+					width: 400,
+					height: 200,
+					showConfirm: true,
+					confirmText: "OK",
+					showCancel: false
+				});
+				dialog.show();
+			});
+		}).catch(function (err) {
+			console.error("Set Normals Direction failed:", err);
+		});
+	}
+
+	/**
+	 * Show statistics table for selected surface(s).
+	 */
+	showStatistics() {
+		if (this.selectedNodes.size === 0) return;
+
+		var nodeIds = Array.from(this.selectedNodes);
+		var surfaceIds = [];
+		for (var i = 0; i < nodeIds.length; i++) {
+			var parts = nodeIds[i].split(TREE_NODE_SEPARATOR);
+			if (parts[0] === "surface" && parts.length === 2) {
+				surfaceIds.push(parts[1]);
+			}
+		}
+		if (surfaceIds.length === 0) return;
+
+		import("../../helpers/SurfaceNormalHelper.js").then(function (mod) {
+			var rows = [];
+			for (var s = 0; s < surfaceIds.length; s++) {
+				var surface = window.loadedSurfaces ? window.loadedSurfaces.get(surfaceIds[s]) : null;
+				if (!surface) continue;
+				rows.push(mod.computeSurfaceStatistics(surface));
+			}
+
+			if (rows.length === 0) return;
+
+			import("../../dialog/FloatingDialog.js").then(function (dlgMod) {
+				var content = document.createElement("div");
+				content.style.padding = "10px";
+				content.style.overflow = "auto";
+
+				var table = document.createElement("table");
+				table.style.borderCollapse = "collapse";
+				table.style.width = "100%";
+				table.style.fontSize = "12px";
+				table.style.fontFamily = "monospace";
+
+				// Header
+				var headers = ["Name", "Points", "Edges", "Faces", "Normal Dir.", "XY Area (m\u00B2)", "YZ Area (m\u00B2)", "XZ Area (m\u00B2)", "3D Area (m\u00B2)", "Volume (m\u00B3)", "Closed"];
+				var thead = document.createElement("thead");
+				var headerRow = document.createElement("tr");
+				for (var h = 0; h < headers.length; h++) {
+					var th = document.createElement("th");
+					th.textContent = headers[h];
+					th.style.borderBottom = "2px solid #666";
+					th.style.padding = "4px 8px";
+					th.style.textAlign = h === 0 || h === 4 || h === 10 ? "left" : "right";
+					th.style.whiteSpace = "nowrap";
+					headerRow.appendChild(th);
+				}
+				thead.appendChild(headerRow);
+				table.appendChild(thead);
+
+				// Rows
+				var tbody = document.createElement("tbody");
+				for (var r = 0; r < rows.length; r++) {
+					var row = rows[r];
+					var tr = document.createElement("tr");
+					tr.style.borderBottom = "1px solid #444";
+
+					var cells = [
+						row.name,
+						row.points.toLocaleString(),
+						row.edges.toLocaleString(),
+						row.faces.toLocaleString(),
+						row.normalDirection,
+						formatArea(row.xyArea),
+						formatArea(row.yzArea),
+						formatArea(row.xzArea),
+						formatArea(row.surfaceArea),
+						formatArea(row.volume),
+						row.closed
+					];
+
+					for (var c = 0; c < cells.length; c++) {
+						var td = document.createElement("td");
+						td.textContent = cells[c];
+						td.style.padding = "4px 8px";
+						td.style.textAlign = c === 0 || c === 4 || c === 10 ? "left" : "right";
+						td.style.whiteSpace = "nowrap";
+						tr.appendChild(td);
+					}
+					tbody.appendChild(tr);
+				}
+				table.appendChild(tbody);
+				content.appendChild(table);
+
+				// Build tab-separated text for clipboard copy
+				var clipText = headers.join("\t") + "\n";
+				for (var cr = 0; cr < rows.length; cr++) {
+					var cRow = rows[cr];
+					clipText += [
+						cRow.name,
+						cRow.points,
+						cRow.edges,
+						cRow.faces,
+						cRow.normalDirection,
+						cRow.xyArea.toFixed(2),
+						cRow.yzArea.toFixed(2),
+						cRow.xzArea.toFixed(2),
+						cRow.surfaceArea.toFixed(2),
+						cRow.volume.toFixed(2),
+						cRow.closed
+					].join("\t") + "\n";
+				}
+
+				var dialog = new dlgMod.FloatingDialog({
+					title: "Surface Statistics",
+					content: content,
+					width: Math.min(900, window.innerWidth - 100),
+					height: Math.min(300 + rows.length * 30, window.innerHeight - 100),
+					showConfirm: true,
+					confirmText: "Copy",
+					onConfirm: function () {
+						navigator.clipboard.writeText(clipText).then(function () {
+							console.log("Statistics copied to clipboard");
+						}).catch(function (err) {
+							console.error("Clipboard copy failed:", err);
+						});
+						return false; // Keep dialog open after copy
+					},
+					showCancel: true,
+					cancelText: "Close"
+				});
+				dialog.show();
+			});
+		}).catch(function (err) {
+			console.error("Statistics failed:", err);
+		});
 	}
 
 	deleteSelected() {
