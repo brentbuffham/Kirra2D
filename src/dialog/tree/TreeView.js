@@ -695,6 +695,11 @@ export class TreeView {
 		var hasSurfaces = selectedNodeIds.some(function (nodeId) {
 			return nodeId.startsWith("surface⣿") && nodeId.split("⣿").length === 2;
 		});
+		// KAD poly/line/points statistics — show for line, poly, or points entity nodes
+		var hasPolysOrLines = selectedNodeIds.some(function (nodeId) {
+			var parts = nodeId.split("⣿");
+			return (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points") && parts.length === 2;
+		});
 		var flipNormalsItem = menu.querySelector("[data-action=\"flip-normals\"]");
 		var alignNormalsItem = menu.querySelector("[data-action=\"align-normals\"]");
 		var statisticsItem = menu.querySelector("[data-action=\"statistics\"]");
@@ -704,7 +709,7 @@ export class TreeView {
 		if (alignNormalsItem) alignNormalsItem.style.display = hasSurfaces ? "flex" : "none";
 		if (normalsOutItem) normalsOutItem.style.display = hasSurfaces ? "flex" : "none";
 		if (normalsInItem) normalsInItem.style.display = hasSurfaces ? "flex" : "none";
-		if (statisticsItem) statisticsItem.style.display = hasSurfaces ? "flex" : "none";
+		if (statisticsItem) statisticsItem.style.display = (hasSurfaces || hasPolysOrLines) ? "flex" : "none";
 
 		menu.style.left = x + "px";
 		menu.style.top = y + "px";
@@ -1056,12 +1061,23 @@ export class TreeView {
 
 		var nodeIds = Array.from(this.selectedNodes);
 		var surfaceIds = [];
+		var kadEntityNames = [];
 		for (var i = 0; i < nodeIds.length; i++) {
 			var parts = nodeIds[i].split(TREE_NODE_SEPARATOR);
 			if (parts[0] === "surface" && parts.length === 2) {
 				surfaceIds.push(parts[1]);
 			}
+			if ((parts[0] === "line" || parts[0] === "poly" || parts[0] === "points") && parts.length === 2) {
+				kadEntityNames.push(parts[1]);
+			}
 		}
+
+		// Dispatch to the appropriate statistics view
+		if (kadEntityNames.length > 0) {
+			this.showKADStatistics(kadEntityNames);
+			return;
+		}
+
 		if (surfaceIds.length === 0) return;
 
 		import("../../helpers/SurfaceNormalHelper.js").then(function (mod) {
@@ -1176,6 +1192,118 @@ export class TreeView {
 			});
 		}).catch(function (err) {
 			console.error("Statistics failed:", err);
+		});
+	}
+
+	showKADStatistics(entityNames) {
+		import("../../helpers/KADStatisticsHelper.js").then(function (mod) {
+			var rows = [];
+			for (var i = 0; i < entityNames.length; i++) {
+				var entity = window.allKADDrawingsMap ? window.allKADDrawingsMap.get(entityNames[i]) : null;
+				if (!entity) continue;
+				rows.push(mod.computeKADEntityStatistics(entity));
+			}
+
+			if (rows.length === 0) return;
+
+			import("../../dialog/FloatingDialog.js").then(function (dlgMod) {
+				var content = document.createElement("div");
+				content.style.padding = "10px";
+				content.style.overflow = "auto";
+
+				var table = document.createElement("table");
+				table.style.borderCollapse = "collapse";
+				table.style.width = "100%";
+				table.style.fontSize = "12px";
+				table.style.fontFamily = "monospace";
+
+				// Header
+				var headers = ["Name", "#Vertices", "#Segments", "Length (m)", "Area XY (m\u00B2)", "Area YZ (m\u00B2)", "Area XZ (m\u00B2)", "Winding Dir.", "Closed"];
+				var thead = document.createElement("thead");
+				var headerRow = document.createElement("tr");
+				for (var h = 0; h < headers.length; h++) {
+					var th = document.createElement("th");
+					th.textContent = headers[h];
+					th.style.borderBottom = "2px solid #666";
+					th.style.padding = "4px 8px";
+					th.style.textAlign = h === 0 || h === 7 || h === 8 ? "left" : "right";
+					th.style.whiteSpace = "nowrap";
+					headerRow.appendChild(th);
+				}
+				thead.appendChild(headerRow);
+				table.appendChild(thead);
+
+				// Rows
+				var tbody = document.createElement("tbody");
+				for (var r = 0; r < rows.length; r++) {
+					var row = rows[r];
+					var tr = document.createElement("tr");
+					tr.style.borderBottom = "1px solid #444";
+
+					var cells = [
+						row.name,
+						row.vertices.toLocaleString(),
+						row.segments.toLocaleString(),
+						row.length.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+						row.areaXY.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+						row.areaYZ.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+						row.areaXZ.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+						row.windingDirection,
+						row.closed
+					];
+
+					for (var c = 0; c < cells.length; c++) {
+						var td = document.createElement("td");
+						td.textContent = cells[c];
+						td.style.padding = "4px 8px";
+						td.style.textAlign = c === 0 || c === 7 || c === 8 ? "left" : "right";
+						td.style.whiteSpace = "nowrap";
+						tr.appendChild(td);
+					}
+					tbody.appendChild(tr);
+				}
+				table.appendChild(tbody);
+				content.appendChild(table);
+
+				// Build tab-separated text for clipboard copy
+				var clipText = headers.join("\t") + "\n";
+				for (var cr = 0; cr < rows.length; cr++) {
+					var cRow = rows[cr];
+					clipText += [
+						cRow.name,
+						cRow.vertices,
+						cRow.segments,
+						cRow.length.toFixed(2),
+						cRow.areaXY.toFixed(2),
+						cRow.areaYZ.toFixed(2),
+						cRow.areaXZ.toFixed(2),
+						cRow.windingDirection,
+						cRow.closed
+					].join("\t") + "\n";
+				}
+
+				var dialog = new dlgMod.FloatingDialog({
+					title: "Line / Polygon Statistics",
+					content: content,
+					width: Math.min(900, window.innerWidth - 100),
+					height: Math.min(300 + rows.length * 30, window.innerHeight - 100),
+					showConfirm: true,
+					confirmText: "Copy",
+					onConfirm: function () {
+						navigator.clipboard.writeText(clipText).then(function () {
+							console.log("KAD statistics copied to clipboard");
+						}).catch(function (err) {
+							console.error("Clipboard copy failed:", err);
+						});
+						return false; // Keep dialog open after copy
+					},
+					showCancel: true,
+					cancelText: "Close"
+				});
+				dialog.show();
+			});
+		}).catch(function (err) {
+			console.error("KAD Statistics failed:", err);
 		});
 	}
 
