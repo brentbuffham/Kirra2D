@@ -6,6 +6,8 @@
 // Step 2) All functions use FloatingDialog for consistency and proper theming
 // Step 0) Converted to ES Module for Vite bundling - 2025-12-26
 
+import { getOrCreateSurfaceLayer } from "../../../helpers/LayerHelper.js";
+
 // Step 2.5) PERFORMANCE FIX 2025-12-28: Helper function to estimate triangulation point count
 function estimateTriangulationPointCount(formData) {
 	var pointCount = 0;
@@ -449,6 +451,14 @@ export async function showTriangulationPopup() {
 						// Step 14) Add to loaded surfaces
 						window.loadedSurfaces.set(surfaceId, surface);
 						console.log("✅ Surface created:", surface.name, "with", result.resultTriangles.length, "triangles");
+
+						// Step 14a) Assign to "Triangulated" layer
+						var triLayerId = getOrCreateSurfaceLayer("Triangulated");
+						if (triLayerId) {
+							surface.layerId = triLayerId;
+							var triLayer = window.allSurfaceLayers.get(triLayerId);
+							if (triLayer && triLayer.entities) triLayer.entities.add(surfaceId);
+						}
 
 						// ✅ Apply boundary clipping if requested
 						if (formData.clipToBoundary && formData.clipToBoundary !== "none") {

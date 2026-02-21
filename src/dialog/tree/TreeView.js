@@ -691,6 +691,19 @@ export class TreeView {
 			assignBlastItem.style.display = hasHolesOrEntities ? "flex" : "none";
 		}
 
+		// "Move to Layer" — show for surface nodes and KAD entity nodes
+		var moveToLayerItem = menu.querySelector("[data-action=\"move-to-layer\"]");
+		if (moveToLayerItem) {
+			var hasMoveableSurfaces = selectedNodeIds.some(function (nodeId) {
+				return nodeId.startsWith("surface⣿") && nodeId.split("⣿").length === 2;
+			});
+			var hasMoveableEntities = selectedNodeIds.some(function (nodeId) {
+				var parts = nodeId.split("⣿");
+				return (parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2;
+			});
+			moveToLayerItem.style.display = (hasMoveableSurfaces || hasMoveableEntities) ? "flex" : "none";
+		}
+
 		// Surface normal/statistics tools — show only for surface nodes
 		var hasSurfaces = selectedNodeIds.some(function (nodeId) {
 			return nodeId.startsWith("surface⣿") && nodeId.split("⣿").length === 2;
@@ -771,6 +784,9 @@ export class TreeView {
 				break;
 			case "statistics":
 				this.showStatistics();
+				break;
+			case "move-to-layer":
+				this.moveToLayer();
 				break;
 		}
 		document.getElementById("treeContextMenu").style.display = "none";
@@ -2657,6 +2673,53 @@ export class TreeView {
 			window.assignBlastDialog(selectedHolesList);
 		} else {
 			console.error("assignBlastDialog function not found in window scope");
+		}
+	}
+
+	moveToLayer() {
+		if (this.selectedNodes.size === 0) return;
+
+		var nodeIds = Array.from(this.selectedNodes);
+		var surfaceIds = [];
+		var drawingEntityNames = [];
+
+		nodeIds.forEach(function (nodeId) {
+			var parts = nodeId.split("⣿");
+
+			// Surface nodes: "surface⣿surfaceId"
+			if (parts[0] === "surface" && parts.length === 2) {
+				surfaceIds.push(parts[1]);
+			}
+			// KAD entity nodes: "line⣿name", "poly⣿name", "points⣿name", "circle⣿name", "text⣿name"
+			else if ((parts[0] === "line" || parts[0] === "poly" || parts[0] === "points" || parts[0] === "circle" || parts[0] === "text") && parts.length === 2) {
+				drawingEntityNames.push(parts[1]);
+			}
+		});
+
+		// Reject mixed selection
+		if (surfaceIds.length > 0 && drawingEntityNames.length > 0) {
+			if (typeof window.showModalMessage === "function") {
+				window.showModalMessage("Mixed Selection", "Cannot move surfaces and drawings at the same time. Please select only one type.", "warning");
+			}
+			return;
+		}
+
+		if (surfaceIds.length > 0) {
+			if (typeof window.moveToLayerDialog === "function") {
+				window.moveToLayerDialog("surface", surfaceIds);
+			} else {
+				console.error("moveToLayerDialog function not found in window scope");
+			}
+		} else if (drawingEntityNames.length > 0) {
+			if (typeof window.moveToLayerDialog === "function") {
+				window.moveToLayerDialog("drawing", drawingEntityNames);
+			} else {
+				console.error("moveToLayerDialog function not found in window scope");
+			}
+		} else {
+			if (typeof window.showModalMessage === "function") {
+				window.showModalMessage("No Items", "No surfaces or drawing entities found in the selection.", "warning");
+			}
 		}
 	}
 

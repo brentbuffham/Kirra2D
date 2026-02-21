@@ -14,6 +14,7 @@ import Delaunator from "delaunator";
 import Constrainautor from "@kninnug/constrainautor";
 import { MeshLine, MeshLineMaterial } from "./meshLineModified.js";
 import { AddSurfaceAction } from "../tools/UndoActions.js";
+import { getOrCreateSurfaceLayer } from "./LayerHelper.js";
 import {
 	extractTriangles as ixExtractTriangles,
 	estimateAvgEdge as ixEstimateAvgEdge,
@@ -2928,26 +2929,4 @@ function weldBoundaryVertices(tris, tolerance) {
 	return result;
 }
 
-/**
- * Get or create a named surface layer in allSurfaceLayers.
- */
-function getOrCreateSurfaceLayer(layerName) {
-	if (!window.allSurfaceLayers) return null;
-
-	for (var [layerId, layer] of window.allSurfaceLayers) {
-		if (layer.layerName === layerName) return layerId;
-	}
-
-	var newLayerId = "slayer_" + Math.random().toString(36).substring(2, 6);
-	window.allSurfaceLayers.set(newLayerId, {
-		layerId: newLayerId,
-		layerName: layerName,
-		visible: true,
-		sourceFile: null,
-		importDate: new Date().toISOString(),
-		entities: new Set()
-	});
-
-	if (typeof window.debouncedSaveLayers === "function") window.debouncedSaveLayers();
-	return newLayerId;
-}
+// getOrCreateSurfaceLayer imported from LayerHelper.js

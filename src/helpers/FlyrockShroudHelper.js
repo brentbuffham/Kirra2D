@@ -12,6 +12,7 @@
 import { generate } from "../tools/flyrock/FlyrockShroudGenerator.js";
 import { AddSurfaceAction } from "../tools/UndoActions.js";
 import { FloatingDialog } from "../dialog/FloatingDialog.js";
+import { getOrCreateSurfaceLayer } from "./LayerHelper.js";
 
 /**
  * Apply flyrock shroud: filter holes, generate surface, add to scene.
@@ -78,6 +79,14 @@ export function applyFlyrockShroud(config) {
 		console.warn("Flyrock shroud: " + surface.flyrockParams.holesSkipped +
 			" hole(s) skipped (no charging data), " +
 			surface.flyrockParams.holeCount + " hole(s) used");
+	}
+
+	// Assign to "Flyrock" layer
+	var layerId = getOrCreateSurfaceLayer("Flyrock");
+	if (layerId) {
+		surface.layerId = layerId;
+		var layer = window.allSurfaceLayers.get(layerId);
+		if (layer && layer.entities) layer.entities.add(surface.id);
 	}
 
 	// Execute via UndoManager (handles: add to loadedSurfaces, save, TreeView, redraw)

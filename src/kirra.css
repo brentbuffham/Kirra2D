@@ -2611,6 +2611,16 @@ body.dark-mode .tree-item.active-layer {
     content: "";
 }
 
+.tree-context-item[data-action="move-to-layer"] span:first-child:before {
+    background-image: url("/icons/direction-sign.png");
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    background-size: contain;
+    background-position: center;
+    content: "";
+}
+
 /* Context Menu */
 .tree-context-menu {
     position: fixed;
@@ -2640,7 +2650,8 @@ body.dark-mode .tree-context-item[data-action="flip-normals"] span:first-child:b
 body.dark-mode .tree-context-item[data-action="align-normals"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="normals-out"] span:first-child:before,
 body.dark-mode .tree-context-item[data-action="normals-in"] span:first-child:before,
-body.dark-mode .tree-context-item[data-action="statistics"] span:first-child:before {
+body.dark-mode .tree-context-item[data-action="statistics"] span:first-child:before,
+body.dark-mode .tree-context-item[data-action="move-to-layer"] span:first-child:before {
     filter: invert(1);
 }
 

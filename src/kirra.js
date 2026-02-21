@@ -244,6 +244,7 @@ import "./dialog/popups/generic/PatternGenerationDialogs.js";
 import "./dialog/popups/generic/AddHoleDialog.js";
 import "./dialog/popups/generic/HolePropertyDialogs.js";
 import "./dialog/popups/generic/AssignBlastDialog.js";
+import "./dialog/popups/generic/MoveToLayerDialog.js";
 import "./dialog/popups/generic/ExportDialogs.js";
 import "./dialog/popups/generic/KADDialogs.js";
 import "./dialog/popups/generic/SurfaceAssignmentDialogs.js";

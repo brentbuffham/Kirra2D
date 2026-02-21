@@ -13,6 +13,7 @@ import * as THREE from "three";
 import CSG from "../lib/THREE-CSGMesh/three-csg.js";
 import { AddSurfaceAction } from "../tools/UndoActions.js";
 import { extractTriangles, ensureZUpNormals } from "./SurfaceIntersectionHelper.js";
+import { getOrCreateSurfaceLayer } from "./LayerHelper.js";
 
 // ────────────────────────────────────────────────────────
 // Public API
@@ -271,26 +272,4 @@ function computeBounds(points) {
 	return { minX: minX, maxX: maxX, minY: minY, maxY: maxY, minZ: minZ, maxZ: maxZ };
 }
 
-/**
- * Get or create a named surface layer in allSurfaceLayers.
- */
-function getOrCreateSurfaceLayer(layerName) {
-	if (!window.allSurfaceLayers) return null;
-
-	for (var [layerId, layer] of window.allSurfaceLayers) {
-		if (layer.layerName === layerName) return layerId;
-	}
-
-	var layerId = "slayer_" + Math.random().toString(36).substring(2, 6);
-	window.allSurfaceLayers.set(layerId, {
-		layerId: layerId,
-		layerName: layerName,
-		visible: true,
-		sourceFile: null,
-		importDate: new Date().toISOString(),
-		entities: new Set()
-	});
-
-	if (typeof window.debouncedSaveLayers === "function") window.debouncedSaveLayers();
-	return layerId;
-}
+// getOrCreateSurfaceLayer imported from LayerHelper.js
