@@ -12,6 +12,7 @@ const TREE_CHUNK_THRESHOLD = 20;  // Only chunk if more than this many points
 const TREE_NODE_SEPARATOR = "\u28FF";
 
 import { formatEntityStatistics } from '../../helpers/GeometryStatistics.js';
+import { flashHighlight } from '../../helpers/SurfaceHighlightHelper.js';
 
 /**
  * Compute signed volume of a closed triangulated mesh using the divergence theorem.
@@ -2505,6 +2506,9 @@ export class TreeView {
 						selectionType: "entity",
 					});
 				}
+			} else if (parts[0] === "surface" && parts.length === 2) {
+				// Surface node selection — flash highlight in 3D view
+				flashHighlight(parts[1]);
 			}
 		});
 

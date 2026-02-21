@@ -12,7 +12,7 @@
 import * as THREE from "three";
 import CSG from "../lib/THREE-CSGMesh/three-csg.js";
 import { AddSurfaceAction } from "../tools/UndoActions.js";
-import { extractTriangles, ensureZUpNormals } from "./SurfaceIntersectionHelper.js";
+import { extractTriangles } from "./SurfaceIntersectionHelper.js";
 import { getOrCreateSurfaceLayer } from "./LayerHelper.js";
 
 // ────────────────────────────────────────────────────────
@@ -57,24 +57,19 @@ export function solidCSG(config) {
 		csgA = CSG.fromMesh(meshA);
 		csgB = CSG.fromMesh(meshB);
 
-		// ⚠️ DEVELOPER REMINDER / AGENT WARNING ⚠️
-		// The CSG operation mapping below is INTENTIONAL and CORRECT.
-		// The THREE-CSGMesh library produces inverted results with Kirra's
-		// 2.5D surface meshes (not closed manifold solids). The mapping was
-		// verified visually:
-		//   "union"    → csgA.intersect(csgB)  ← produces correct union result
-		//   "intersect"→ csgA.union(csgB)      ← produces correct intersection result
-		//   "subtract" → csgB.subtract(csgA)   ← produces correct A-minus-B result
-		// DO NOT change these mappings. See screenshots in project history.
+		// CSG operations use standard mapping. The previous union↔intersect swap
+		// was a workaround for ensureZUpNormals() corrupting triangle winding order.
+		// With that call removed (see surfaceToMesh below), CSG receives proper
+		// manifold geometry and standard operations produce correct results.
 		switch (config.operation) {
 			case "union":
-				csgResult = csgA.intersect(csgB);
-				break;
-			case "intersect":
 				csgResult = csgA.union(csgB);
 				break;
+			case "intersect":
+				csgResult = csgA.intersect(csgB);
+				break;
 			case "subtract":
-				csgResult = csgB.subtract(csgA);
+				csgResult = csgA.subtract(csgB);
 				break;
 			default:
 				console.error("SolidCSGHelper: Unknown operation: " + config.operation);
@@ -227,9 +222,11 @@ function surfaceToMesh(surface) {
 		return null;
 	}
 
-	// Normalize triangles to {v0, v1, v2} format and ensure Z-up normals
+	// Normalize triangles to {v0, v1, v2} format, preserving original winding order.
+	// Do NOT call ensureZUpNormals() here — it flips winding on downward-facing
+	// triangles (bottom caps, side walls), which corrupts CSG plane normals and
+	// breaks boolean operations on closed solids.
 	var normalizedTris = extractTriangles(surface);
-	normalizedTris = ensureZUpNormals(normalizedTris);
 
 	var positions = [];
 

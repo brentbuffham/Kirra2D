@@ -8,6 +8,7 @@
 
 import * as THREE from "three";
 import { FloatingDialog, createEnhancedFormContent, getFormData } from "../../FloatingDialog.js";
+import { flashHighlight, clearHighlight, clearAllHighlights } from "../../../helpers/SurfaceHighlightHelper.js";
 
 var SETTINGS_KEY = "kirra_surface_intersection_settings";
 
@@ -15,7 +16,7 @@ var SETTINGS_KEY = "kirra_surface_intersection_settings";
 // Module-level state
 // ────────────────────────────────────────────────────────
 var pickCallback = null;
-var highlightBox = null;
+var highlightedSurfaceId = null;
 
 function getThreeCanvas() {
     return window.threeRenderer ? window.threeRenderer.getCanvas() : null;
@@ -119,34 +120,14 @@ function raycastSurface(event, canvas) {
 
 function showPickHighlight(surfaceId) {
     clearPickHighlight();
-
-    var tr = window.threeRenderer;
-    if (!tr || !tr.surfaceMeshMap) return;
-
-    var mesh = tr.surfaceMeshMap.get(surfaceId);
-    if (!mesh) return;
-
-    var box = new THREE.Box3().setFromObject(mesh);
-    if (box.isEmpty()) return;
-
-    var helper = new THREE.Box3Helper(box, 0x00FF00);
-    helper.name = "surfIxPickHighlight";
-    helper.userData = { isPickHighlight: true };
-    tr.scene.add(helper);
-    highlightBox = helper;
-    tr.render();
+    flashHighlight(surfaceId, { color: 0x00FF88, opacity: 0.25 });
+    highlightedSurfaceId = surfaceId;
 }
 
 function clearPickHighlight() {
-    if (highlightBox) {
-        var tr = window.threeRenderer;
-        if (tr && tr.scene) {
-            tr.scene.remove(highlightBox);
-        }
-        if (highlightBox.geometry) highlightBox.geometry.dispose();
-        if (highlightBox.material) highlightBox.material.dispose();
-        highlightBox = null;
-        if (tr) tr.render();
+    if (highlightedSurfaceId) {
+        clearHighlight(highlightedSurfaceId);
+        highlightedSurfaceId = null;
     }
 }
 
@@ -366,6 +347,7 @@ export function showSurfaceIntersectionDialog(callback) {
         cancelText: "Cancel",
         onConfirm: function () {
             exitPickMode();
+            clearAllHighlights();
 
             var surfaceIdA = rowA.select.value;
             var surfaceIdB = rowB.select.value;
@@ -403,6 +385,7 @@ export function showSurfaceIntersectionDialog(callback) {
         },
         onCancel: function () {
             exitPickMode();
+            clearAllHighlights();
         }
     });
 
