@@ -53,7 +53,12 @@
       "Bash(npm ls:*)",
       "WebFetch(domain:manifoldcad.org)",
       "WebFetch(domain:meshlib.io)",
-      "Bash(tr:*)"
+      "Bash(tr:*)",
+      "WebFetch(domain:openjscad.xyz)",
+      "WebFetch(domain:codesandbox.io)",
+      "Bash(curl:*)",
+      "Bash(jq:*)",
+      "Bash(npm install:*)"
     ]
   }
 }

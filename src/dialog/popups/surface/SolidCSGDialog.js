@@ -84,7 +84,9 @@ export function showSolidCSGDialog() {
 			options: [
 				{ value: "union", text: "Union (A + B)" },
 				{ value: "intersect", text: "Intersect (A ∩ B)" },
-				{ value: "subtract", text: "Subtract (A - B)" }
+				{ value: "subtract", text: "Subtract (A - B)" },
+				{ value: "reverseSubtract", text: "Reverse Subtract (B - A)" },
+				{ value: "difference", text: "Difference (A △ B / XOR)" }
 			]
 		},
 		{
@@ -118,6 +120,8 @@ export function showSolidCSGDialog() {
 		"&bull; <b>Union</b> — combine both meshes into one solid<br>" +
 		"&bull; <b>Intersect</b> — keep only the overlapping volume<br>" +
 		"&bull; <b>Subtract</b> — cut mesh B out of mesh A<br>" +
+		"&bull; <b>Reverse Subtract</b> — cut mesh A out of mesh B<br>" +
+		"&bull; <b>Difference</b> — keep non-overlapping parts (XOR)<br>" +
 		"<br><strong>Tip:</strong> Click the pick button then click a surface in the 3D view.";
 	container.appendChild(notesDiv);
 
@@ -127,7 +131,7 @@ export function showSolidCSGDialog() {
 		content: container,
 		layoutType: "wide",
 		width: 480,
-		height: 440,
+		height: 470,
 		showConfirm: true,
 		showCancel: true,
 		confirmText: "Execute",
