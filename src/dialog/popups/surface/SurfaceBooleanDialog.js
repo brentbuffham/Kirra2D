@@ -16,6 +16,7 @@ import {
 	updateSplitMeshAppearance,
 	applyMerge
 } from "../../../helpers/SurfaceBooleanHelper.js";
+import { ensureZUpNormals } from "../../../helpers/SurfaceIntersectionHelper.js";
 
 // ────────────────────────────────────────────────────────
 // Split preview colors — jscolor palette (red → light grey, no black/white)
@@ -162,10 +163,11 @@ function showPhase1(surfaceEntries) {
 	container.appendChild(formContent);
 
 	// Notes
+	var notesDark = isDarkMode();
 	var notesDiv = document.createElement("div");
 	notesDiv.style.marginTop = "10px";
 	notesDiv.style.fontSize = "10px";
-	notesDiv.style.color = "#888";
+	notesDiv.style.color = notesDark ? "#888" : "#666";
 	notesDiv.innerHTML =
 		"<strong>Surface Boolean (TRIBOOL):</strong><br>" +
 		"&bull; Computes the intersection line between two surfaces<br>" +
@@ -228,6 +230,7 @@ function showPhase1(surfaceEntries) {
 // ────────────────────────────────────────────────────────
 
 function createPickRow(label, options, defaultValue, onPick) {
+	var dark = isDarkMode();
 	var row = document.createElement("div");
 	row.style.display = "flex";
 	row.style.alignItems = "center";
@@ -246,9 +249,9 @@ function createPickRow(label, options, defaultValue, onPick) {
 	pickBtn.style.width = "28px";
 	pickBtn.style.height = "28px";
 	pickBtn.style.padding = "2px";
-	pickBtn.style.border = "1px solid rgba(255,255,255,0.2)";
+	pickBtn.style.border = dark ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.2)";
 	pickBtn.style.borderRadius = "4px";
-	pickBtn.style.background = "rgba(255,255,255,0.08)";
+	pickBtn.style.background = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)";
 	pickBtn.style.cursor = "pointer";
 	pickBtn.style.flexShrink = "0";
 	pickBtn.style.display = "flex";
@@ -259,7 +262,7 @@ function createPickRow(label, options, defaultValue, onPick) {
 	pickImg.src = "icons/target-arrow.png";
 	pickImg.style.width = "20px";
 	pickImg.style.height = "20px";
-	pickImg.style.filter = "invert(0.8)";
+	pickImg.style.filter = dark ? "invert(0.8)" : "invert(0.2)";
 	pickBtn.appendChild(pickImg);
 
 	pickBtn.addEventListener("click", onPick);
@@ -269,9 +272,9 @@ function createPickRow(label, options, defaultValue, onPick) {
 	select.style.padding = "4px 6px";
 	select.style.fontSize = "12px";
 	select.style.borderRadius = "4px";
-	select.style.border = "1px solid rgba(255,255,255,0.2)";
-	select.style.background = "rgba(30,30,30,0.9)";
-	select.style.color = "#eee";
+	select.style.border = dark ? "1px solid rgba(255,255,255,0.2)" : "1px solid #999";
+	select.style.background = dark ? "rgba(30,30,30,0.9)" : "#fff";
+	select.style.color = dark ? "#eee" : "#333";
 	select.style.minWidth = "0";
 
 	for (var i = 0; i < options.length; i++) {
@@ -458,12 +461,13 @@ function showPhase2(splitResult, gradient) {
 	container.style.padding = "8px";
 
 	// Header
+	var p2Dark = isDarkMode();
 	var headerDiv = document.createElement("div");
 	headerDiv.style.fontSize = "11px";
-	headerDiv.style.color = "rgba(255,200,0,0.8)";
+	headerDiv.style.color = p2Dark ? "rgba(255,200,0,0.8)" : "rgba(180,120,0,0.9)";
 	headerDiv.style.marginBottom = "8px";
 	headerDiv.style.padding = "4px 8px";
-	headerDiv.style.background = "rgba(0,0,0,0.2)";
+	headerDiv.style.background = p2Dark ? "rgba(0,0,0,0.2)" : "rgba(255,240,200,0.5)";
 	headerDiv.style.borderRadius = "4px";
 	headerDiv.textContent = splits.length + " split regions — toggle visibility, then Apply to merge visible regions.";
 	container.appendChild(headerDiv);
@@ -472,10 +476,10 @@ function showPhase2(splitResult, gradient) {
 	var listDiv = document.createElement("div");
 	listDiv.style.maxHeight = "220px";
 	listDiv.style.overflowY = "auto";
-	listDiv.style.border = "1px solid rgba(255,255,255,0.15)";
+	listDiv.style.border = p2Dark ? "1px solid rgba(255,255,255,0.15)" : "1px solid rgba(0,0,0,0.15)";
 	listDiv.style.borderRadius = "4px";
 	listDiv.style.padding = "6px";
-	listDiv.style.background = "rgba(0,0,0,0.15)";
+	listDiv.style.background = p2Dark ? "rgba(0,0,0,0.15)" : "rgba(240,240,240,0.5)";
 
 	var splitRows = [];
 
@@ -540,9 +544,14 @@ function showPhase2(splitResult, gradient) {
 				flipSplitRegionNormals(split, index);
 			});
 
+			var alignBtn = createIconButton("icons/arrows-up.png", "Align Normals Z-Up on this region", function () {
+				alignSplitRegionNormals(split, index);
+			});
+
 			btnDiv.appendChild(removeBtn);
 			btnDiv.appendChild(addBtn);
 			btnDiv.appendChild(flipBtn);
+			btnDiv.appendChild(alignBtn);
 
 			row.appendChild(leftDiv);
 			row.appendChild(btnDiv);
@@ -561,7 +570,7 @@ function showPhase2(splitResult, gradient) {
 	row1.style.marginTop = "10px";
 	row1.style.alignItems = "center";
 
-	var invertBtn = createIconButton("icons/switch.png", "Invert visible regions", function () {
+	var invertBtn = createIconButton("icons/switch.png", "Invert All: Swap kept/hidden on every region", function () {
 		for (var i = 0; i < splitRows.length; i++) {
 			var sr = splitRows[i];
 			sr.split.kept = !sr.split.kept;
@@ -575,20 +584,22 @@ function showPhase2(splitResult, gradient) {
 	var invertLabel = document.createElement("span");
 	invertLabel.textContent = "Invert All";
 	invertLabel.style.fontSize = "11px";
-	invertLabel.style.color = "#aaa";
+	invertLabel.style.color = p2Dark ? "#aaa" : "#555";
 
 	row1.appendChild(invertBtn);
 	row1.appendChild(invertLabel);
 
 	var snapLabel = createInlineLabel("Snap:", "auto");
+	snapLabel.title = "Weld tolerance: vertices closer than this distance are merged into one";
 	var snapInput = createSmallInput("0.001", "60px", "0.001", "0");
+	snapInput.title = "Weld tolerance in metres — vertices within this distance are merged";
 	snapLabel.appendChild(snapInput);
 	snapLabel.appendChild(document.createTextNode("m"));
 	row1.appendChild(snapLabel);
 
 	container.appendChild(row1);
 
-	// ── Row 2: Close Mode + Floor Offset ──
+	// ── Row 2: Close Mode ──
 	var row2 = document.createElement("div");
 	row2.style.display = "flex";
 	row2.style.gap = "8px";
@@ -596,43 +607,41 @@ function showPhase2(splitResult, gradient) {
 	row2.style.alignItems = "center";
 
 	var closeModeLabel = createInlineLabel("Close:", "0");
+	closeModeLabel.title = "How to handle open edges after merging the kept regions";
 	var closeModeSelect = document.createElement("select");
 	applySmallSelectStyle(closeModeSelect);
+	closeModeSelect.title = "Stitch Intersection: weld shared seam only (fast)\nClose by Stitching: also bridge nearby open edges and cap small holes";
 	var closeModeOptions = [
-		{ value: "none", text: "None" },
-		{ value: "stitch", text: "Stitch Boundaries" },
-		{ value: "curtain", text: "Curtain + Cap" },
-		{ value: "stitch+curtain", text: "Stitch + Curtain" }
+		{ value: "none", text: "Stitch Intersection", disabled: false },
+		{ value: "stitch", text: "Close by Stitching", disabled: false },
+		{ value: "curtain", text: "Close by Capping", disabled: true },
+		{ value: "stitch+curtain", text: "Close by Curtain", disabled: true }
 	];
 	for (var cm = 0; cm < closeModeOptions.length; cm++) {
 		var opt = document.createElement("option");
 		opt.value = closeModeOptions[cm].value;
 		opt.textContent = closeModeOptions[cm].text;
+		if (closeModeOptions[cm].disabled) {
+			opt.disabled = true;
+			opt.style.color = "#666";
+		}
 		closeModeSelect.appendChild(opt);
 	}
 	closeModeLabel.appendChild(closeModeSelect);
 	row2.appendChild(closeModeLabel);
 
-	var stitchTolLabel = createInlineLabel("Stitch Tol:", "8px");
+	var stitchTolLabel = createInlineLabel("Stitch tol:", "0");
 	stitchTolLabel.style.display = "none";
-	var stitchTolInput = createSmallInput("1.0", "50px", "0.1", "0");
+	stitchTolLabel.title = "Max distance to bridge open boundary edges — edges with both endpoints within this distance are connected";
+	var stitchTolInput = createSmallInput("1.0", "60px", "0.1", "0");
+	stitchTolInput.title = "Max distance (metres) between boundary edge endpoints to stitch them together";
 	stitchTolLabel.appendChild(stitchTolInput);
 	stitchTolLabel.appendChild(document.createTextNode("m"));
 	row2.appendChild(stitchTolLabel);
 
-	var floorOffsetLabel = createInlineLabel("Floor:", "8px");
-	floorOffsetLabel.style.display = "none";
-	var floorOffsetInput = createSmallInput("10", "50px", "1", "0");
-	floorOffsetLabel.appendChild(floorOffsetInput);
-	floorOffsetLabel.appendChild(document.createTextNode("m"));
-	row2.appendChild(floorOffsetLabel);
-
 	closeModeSelect.addEventListener("change", function () {
-		var mode = closeModeSelect.value;
-		var showFloor = (mode === "curtain" || mode === "stitch+curtain");
-		var showStitch = (mode === "stitch" || mode === "stitch+curtain");
-		floorOffsetLabel.style.display = showFloor ? "flex" : "none";
-		stitchTolLabel.style.display = showStitch ? "flex" : "none";
+		stitchTolLabel.style.display = closeModeSelect.value === "stitch" ? "flex" : "none";
+		updateInfoText(closeModeSelect.value);
 	});
 
 	container.appendChild(row2);
@@ -645,28 +654,33 @@ function showPhase2(splitResult, gradient) {
 	row3.style.alignItems = "center";
 	row3.style.flexWrap = "wrap";
 	row3.style.padding = "4px 6px";
-	row3.style.background = "rgba(0,0,0,0.15)";
+	row3.style.background = p2Dark ? "rgba(0,0,0,0.15)" : "rgba(240,240,240,0.5)";
 	row3.style.borderRadius = "4px";
-	row3.style.border = "1px solid rgba(255,255,255,0.08)";
+	row3.style.border = p2Dark ? "1px solid rgba(255,255,255,0.08)" : "1px solid rgba(0,0,0,0.1)";
 
 	var cleanTitle = document.createElement("span");
 	cleanTitle.textContent = "Cleanup:";
 	cleanTitle.style.fontSize = "11px";
-	cleanTitle.style.color = "#aaa";
+	cleanTitle.style.color = p2Dark ? "#aaa" : "#555";
 	cleanTitle.style.fontWeight = "bold";
+	cleanTitle.title = "Post-merge cleanup operations to improve mesh quality";
 	row3.appendChild(cleanTitle);
 
 	// Remove Degenerate checkbox (on by default)
 	var degenerateCheck = createCheckboxLabel("Remove Degenerate", true);
+	degenerateCheck.label.title = "Remove zero-area and collapsed triangles (recommended)";
 	row3.appendChild(degenerateCheck.label);
 
 	// Remove Slivers checkbox + ratio input (off by default)
 	var sliverCheck = createCheckboxLabel("Remove Slivers", false);
+	sliverCheck.label.title = "Remove very thin triangles where shortest edge / longest edge < ratio";
 	row3.appendChild(sliverCheck.label);
 
 	var sliverRatioLabel = createInlineLabel("ratio:", "0");
 	sliverRatioLabel.style.display = "none";
+	sliverRatioLabel.title = "Min edge ratio — triangles with shortest/longest edge below this are removed";
 	var sliverRatioInput = createSmallInput("0.01", "50px", "0.001", "0");
+	sliverRatioInput.title = "Edge ratio threshold (0.01 = remove very thin slivers only)";
 	sliverRatioLabel.appendChild(sliverRatioInput);
 	row3.appendChild(sliverRatioLabel);
 
@@ -676,15 +690,19 @@ function showPhase2(splitResult, gradient) {
 
 	// Clean Crossings checkbox (off by default)
 	var crossingCheck = createCheckboxLabel("Clean Crossings", false);
+	crossingCheck.label.title = "Remove triangles on over-shared edges (more than 2 triangles sharing an edge) — keeps the 2 largest";
 	row3.appendChild(crossingCheck.label);
 
 	// Remove Overlapping / Internal Walls checkbox + tolerance (off by default)
 	var overlapCheck = createCheckboxLabel("Remove Overlapping", false);
+	overlapCheck.label.title = "Remove internal wall triangles — pairs with close centroids and opposing normals";
 	row3.appendChild(overlapCheck.label);
 
 	var overlapTolLabel = createInlineLabel("tol:", "0");
 	overlapTolLabel.style.display = "none";
+	overlapTolLabel.title = "Max centroid distance to detect overlapping triangle pairs";
 	var overlapTolInput = createSmallInput("0.5", "50px", "0.1", "0");
+	overlapTolInput.title = "Overlap detection tolerance in metres";
 	overlapTolLabel.appendChild(overlapTolInput);
 	overlapTolLabel.appendChild(document.createTextNode("m"));
 	row3.appendChild(overlapTolLabel);
@@ -695,13 +713,46 @@ function showPhase2(splitResult, gradient) {
 
 	container.appendChild(row3);
 
+	// ── Info Section ──
+	var infoDiv = document.createElement("div");
+	infoDiv.style.marginTop = "8px";
+	infoDiv.style.padding = "6px 8px";
+	infoDiv.style.fontSize = "10px";
+	infoDiv.style.lineHeight = "1.5";
+	infoDiv.style.color = p2Dark ? "#888" : "#666";
+	infoDiv.style.background = p2Dark ? "rgba(0,0,0,0.2)" : "rgba(245,245,245,0.8)";
+	infoDiv.style.borderRadius = "4px";
+	infoDiv.style.border = p2Dark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(0,0,0,0.08)";
+
+	function updateInfoText(mode) {
+		if (mode === "stitch") {
+			infoDiv.innerHTML =
+				"<b>Close by Stitching:</b> After welding the intersection seam, finds open boundary " +
+				"edges whose endpoints are within the <i>Stitch tolerance</i> and bridges them with " +
+				"triangles. Small remaining holes (< 500 verts) are flat-capped.<br>" +
+				"<b>Tip:</b> Use a small tolerance (0.1 – 1.0m) to close gaps near the seam without " +
+				"connecting distant outer boundaries.";
+		} else {
+			infoDiv.innerHTML =
+				"<b>Stitch Intersection:</b> Welds vertices along the intersection seam so the kept " +
+				"regions share edges cleanly. Outer boundaries remain open. This is the fastest mode.<br>" +
+				"<b>Buttons per region:</b> " +
+				"<span style='opacity:0.7'>&#9651;&#8722;</span> Hide | " +
+				"<span style='opacity:0.7'>&#9651;+</span> Show | " +
+				"<span style='opacity:0.7'>&#8644;</span> Flip Normals | " +
+				"<span style='opacity:0.7'>&#8657;</span> Align Z-Up";
+		}
+	}
+	updateInfoText("none");
+	container.appendChild(infoDiv);
+
 	// Step 6) Create dialog
 	var dialog = new FloatingDialog({
 		title: "Surface Boolean — Pick Regions",
 		content: container,
 		layoutType: "wide",
 		width: 480,
-		height: 540,
+		height: 600,
 		showConfirm: true,
 		showCancel: true,
 		confirmText: "Apply",
@@ -722,29 +773,40 @@ function showPhase2(splitResult, gradient) {
 
 			var snapTol = parseFloat(snapInput.value) || 0;
 			var closeMode = closeModeSelect.value || "none";
-			var floorOffset = parseFloat(floorOffsetInput.value) || 10;
-			var stitchTol = parseFloat(stitchTolInput.value) || 1.0;
-			var resultId = applyMerge(splits, {
+			var mergeConfig = {
 				gradient: gradient,
 				surfaceIdA: splitResult.surfaceIdA,
 				surfaceIdB: splitResult.surfaceIdB,
 				closeMode: closeMode,
-				floorOffset: floorOffset,
-				stitchTolerance: stitchTol,
 				snapTolerance: snapTol,
+				stitchTolerance: parseFloat(stitchTolInput.value) || 1.0,
 				removeDegenerate: degenerateCheck.checkbox.checked,
 				removeSlivers: sliverCheck.checkbox.checked,
 				sliverRatio: parseFloat(sliverRatioInput.value) || 0.01,
 				cleanCrossings: crossingCheck.checkbox.checked,
 				removeOverlapping: overlapCheck.checkbox.checked,
 				overlapTolerance: parseFloat(overlapTolInput.value) || 0.5
-			});
+			};
 
-			if (resultId) {
-				console.log("Surface Boolean applied: " + resultId);
-			} else {
-				showInfoDialog("Surface Boolean failed to produce a result.");
-			}
+			// Run merge async with progress dialog to avoid UI freeze
+			var progressDialog = showProgressDialog(
+				"Merging " + splits.filter(function (s) { return s.kept; }).length +
+				" regions...\nMode: " + (closeMode === "stitch" ? "Close by Stitching" : "Stitch Intersection")
+			);
+
+			setTimeout(function () {
+				var resultId = applyMerge(splits, mergeConfig);
+
+				if (progressDialog && progressDialog.close) {
+					progressDialog.close();
+				}
+
+				if (resultId) {
+					console.log("Surface Boolean applied: " + resultId);
+				} else {
+					showInfoDialog("Surface Boolean failed to produce a result.");
+				}
+			}, 50);
 		},
 		onCancel: function () {
 			clearPreview();
@@ -760,15 +822,16 @@ function showPhase2(splitResult, gradient) {
 // ────────────────────────────────────────────────────────
 
 function createIconButton(iconSrc, tooltip, onClick) {
+	var dark = isDarkMode();
 	var btn = document.createElement("button");
 	btn.type = "button";
 	btn.title = tooltip;
 	btn.style.width = "26px";
 	btn.style.height = "26px";
 	btn.style.padding = "2px";
-	btn.style.border = "1px solid rgba(255,255,255,0.2)";
+	btn.style.border = dark ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.2)";
 	btn.style.borderRadius = "4px";
-	btn.style.background = "rgba(255,255,255,0.08)";
+	btn.style.background = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)";
 	btn.style.cursor = "pointer";
 	btn.style.display = "flex";
 	btn.style.alignItems = "center";
@@ -779,7 +842,7 @@ function createIconButton(iconSrc, tooltip, onClick) {
 	img.src = iconSrc;
 	img.style.width = "18px";
 	img.style.height = "18px";
-	img.style.filter = "invert(0.8)";
+	img.style.filter = dark ? "invert(0.8)" : "invert(0.2)";
 	btn.appendChild(img);
 
 	btn.addEventListener("click", onClick);
@@ -787,16 +850,24 @@ function createIconButton(iconSrc, tooltip, onClick) {
 }
 
 /**
+ * Check dark mode state.
+ */
+function isDarkMode() {
+	return typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : true;
+}
+
+/**
  * Create a small inline label with flex layout.
  */
 function createInlineLabel(text, marginLeft) {
+	var dark = isDarkMode();
 	var label = document.createElement("label");
 	label.style.display = "flex";
 	label.style.alignItems = "center";
 	label.style.gap = "4px";
 	label.style.marginLeft = marginLeft || "0";
 	label.style.fontSize = "11px";
-	label.style.color = "#ccc";
+	label.style.color = dark ? "#ccc" : "#333";
 	label.appendChild(document.createTextNode(text));
 	return label;
 }
@@ -805,6 +876,7 @@ function createInlineLabel(text, marginLeft) {
  * Create a small numeric input.
  */
 function createSmallInput(value, width, step, min) {
+	var dark = isDarkMode();
 	var input = document.createElement("input");
 	input.type = "number";
 	input.value = value;
@@ -813,9 +885,9 @@ function createSmallInput(value, width, step, min) {
 	input.style.width = width || "60px";
 	input.style.fontSize = "11px";
 	input.style.padding = "2px 4px";
-	input.style.background = "#333";
-	input.style.color = "#ccc";
-	input.style.border = "1px solid #555";
+	input.style.background = dark ? "#333" : "#fff";
+	input.style.color = dark ? "#ccc" : "#333";
+	input.style.border = dark ? "1px solid #555" : "1px solid #999";
 	input.style.borderRadius = "3px";
 	return input;
 }
@@ -824,11 +896,12 @@ function createSmallInput(value, width, step, min) {
  * Apply standard small select styling.
  */
 function applySmallSelectStyle(select) {
+	var dark = isDarkMode();
 	select.style.fontSize = "11px";
 	select.style.padding = "2px 4px";
-	select.style.background = "#333";
-	select.style.color = "#ccc";
-	select.style.border = "1px solid #555";
+	select.style.background = dark ? "#333" : "#fff";
+	select.style.color = dark ? "#ccc" : "#333";
+	select.style.border = dark ? "1px solid #555" : "1px solid #999";
 	select.style.borderRadius = "3px";
 }
 
@@ -836,12 +909,13 @@ function applySmallSelectStyle(select) {
  * Create a checkbox with inline label. Returns { label, checkbox }.
  */
 function createCheckboxLabel(text, checked) {
+	var dark = isDarkMode();
 	var label = document.createElement("label");
 	label.style.display = "flex";
 	label.style.alignItems = "center";
 	label.style.gap = "3px";
 	label.style.fontSize = "11px";
-	label.style.color = "#ccc";
+	label.style.color = dark ? "#ccc" : "#333";
 	label.style.cursor = "pointer";
 	label.style.whiteSpace = "nowrap";
 
@@ -885,12 +959,13 @@ function updateSplitPreview(splitIndex, kept) {
  * Swaps v1↔v2 on every triangle in the split, then rebuilds the BufferGeometry.
  */
 function flipSplitRegionNormals(split, splitIndex) {
-	// Flip the triangle data in-place (swap v1 and v2)
+	// Flip the triangle data in-place (swap v1 and v2 references, not coordinates)
+	// Swapping references is safe with shared vertex objects from deduplicateSeamVertices
 	for (var i = 0; i < split.triangles.length; i++) {
 		var tri = split.triangles[i];
-		var tmpX = tri.v1.x, tmpY = tri.v1.y, tmpZ = tri.v1.z;
-		tri.v1.x = tri.v2.x; tri.v1.y = tri.v2.y; tri.v1.z = tri.v2.z;
-		tri.v2.x = tmpX; tri.v2.y = tmpY; tri.v2.z = tmpZ;
+		var tmp = tri.v1;
+		tri.v1 = tri.v2;
+		tri.v2 = tmp;
 	}
 
 	// Rebuild the preview mesh geometry
@@ -935,6 +1010,61 @@ function flipSplitRegionNormals(split, splitIndex) {
 	}
 
 	console.log("Flip Normals: flipped " + split.triangles.length + " tris on split region " + splitIndex);
+
+	if (window.threeRenderer) {
+		window.threeRenderer.render();
+	}
+}
+
+/**
+ * Align normals Z-up on a single split region using ensureZUpNormals.
+ * Replaces the split's triangles with Z-up aligned clones, then rebuilds the preview mesh.
+ */
+function alignSplitRegionNormals(split, splitIndex) {
+	// ensureZUpNormals returns a new array of cloned triangles with Z-up normals
+	var aligned = ensureZUpNormals(split.triangles);
+	split.triangles = aligned;
+
+	// Rebuild the preview mesh geometry
+	if (!previewGroup) return;
+	var children = previewGroup.children;
+	for (var c = 0; c < children.length; c++) {
+		if (children[c].userData && children[c].userData.splitIndex === splitIndex) {
+			var group = children[c];
+
+			var positions = [];
+			for (var t = 0; t < split.triangles.length; t++) {
+				var tri = split.triangles[t];
+				var l0 = window.worldToThreeLocal(tri.v0.x, tri.v0.y);
+				var l1 = window.worldToThreeLocal(tri.v1.x, tri.v1.y);
+				var l2 = window.worldToThreeLocal(tri.v2.x, tri.v2.y);
+				positions.push(
+					l0.x, l0.y, tri.v0.z,
+					l1.x, l1.y, tri.v1.z,
+					l2.x, l2.y, tri.v2.z
+				);
+			}
+
+			var newGeom = new THREE.BufferGeometry();
+			newGeom.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+			newGeom.computeVertexNormals();
+
+			group.traverse(function (child) {
+				if (child.isMesh && child.name === "solidFill") {
+					if (child.geometry) child.geometry.dispose();
+					child.geometry = newGeom.clone();
+				}
+				if (child.isLineSegments && child.name === "wireframe") {
+					if (child.geometry) child.geometry.dispose();
+					child.geometry = new THREE.WireframeGeometry(newGeom);
+				}
+			});
+
+			break;
+		}
+	}
+
+	console.log("Align Normals Z-Up: aligned " + split.triangles.length + " tris on split region " + splitIndex);
 
 	if (window.threeRenderer) {
 		window.threeRenderer.render();

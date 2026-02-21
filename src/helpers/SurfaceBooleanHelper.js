@@ -932,11 +932,9 @@ export function createSplitPreviewMeshes(splits) {
 		var split = splits[s];
 		var mesh = trianglesToMesh(split.triangles, split.color, split.kept);
 		mesh.name = "split_" + split.id;
-		mesh.userData = {
-			splitId: split.id,
-			splitIndex: s,
-			isPreview: true
-		};
+		mesh.userData.splitId = split.id;
+		mesh.userData.splitIndex = s;
+		mesh.userData.isPreview = true;
 		group.add(mesh);
 	}
 
@@ -1018,11 +1016,104 @@ export function updateSplitMeshAppearance(mesh, kept) {
 }
 
 /**
+ * Deduplicate seam vertices in triangle soup using a spatial grid.
+ * Both surfaces produce crossing points that are nearly identical but not
+ * the same object. This merges vertices within tolerance so seam edges
+ * share exact positions.
+ *
+ * @param {Array} tris - Triangle soup [{v0,v1,v2}, ...]
+ * @param {number} tolerance - Distance tolerance (default 1e-4m)
+ * @returns {Array} Triangle soup with deduplicated vertices
+ */
+function deduplicateSeamVertices(tris, tolerance) {
+	if (!tris || tris.length === 0) return tris;
+	if (tolerance === undefined) tolerance = 1e-4;
+
+	var cellSize = tolerance * 3;
+	var invCell = 1.0 / cellSize;
+	var grid = {};
+	var canonical = []; // array of canonical vertex objects
+	var mergedCount = 0;
+
+	function getKey(x, y, z) {
+		var cx = Math.floor(x * invCell);
+		var cy = Math.floor(y * invCell);
+		var cz = Math.floor(z * invCell);
+		return cx + "," + cy + "," + cz;
+	}
+
+	function findOrRegister(vx, vy, vz) {
+		// Check 3×3×3 neighborhood for existing canonical vertex
+		var cx = Math.floor(vx * invCell);
+		var cy = Math.floor(vy * invCell);
+		var cz = Math.floor(vz * invCell);
+		var tolSq = tolerance * tolerance;
+		var bestDist = tolSq;
+		var bestVert = null;
+
+		for (var dx = -1; dx <= 1; dx++) {
+			for (var dy = -1; dy <= 1; dy++) {
+				for (var dz = -1; dz <= 1; dz++) {
+					var key = (cx + dx) + "," + (cy + dy) + "," + (cz + dz);
+					var bucket = grid[key];
+					if (!bucket) continue;
+					for (var b = 0; b < bucket.length; b++) {
+						var cv = bucket[b];
+						var ddx = cv.x - vx, ddy = cv.y - vy, ddz = cv.z - vz;
+						var dSq = ddx * ddx + ddy * ddy + ddz * ddz;
+						if (dSq < bestDist) {
+							bestDist = dSq;
+							bestVert = cv;
+						}
+					}
+				}
+			}
+		}
+
+		if (bestVert) {
+			mergedCount++;
+			return bestVert;
+		}
+
+		// Register new canonical vertex
+		var newVert = { x: vx, y: vy, z: vz };
+		var regKey = getKey(vx, vy, vz);
+		if (!grid[regKey]) grid[regKey] = [];
+		grid[regKey].push(newVert);
+		canonical.push(newVert);
+		return newVert;
+	}
+
+	var result = [];
+	var degenerateRemoved = 0;
+
+	for (var i = 0; i < tris.length; i++) {
+		var tri = tris[i];
+		var cv0 = findOrRegister(tri.v0.x, tri.v0.y, tri.v0.z);
+		var cv1 = findOrRegister(tri.v1.x, tri.v1.y, tri.v1.z);
+		var cv2 = findOrRegister(tri.v2.x, tri.v2.y, tri.v2.z);
+
+		// Skip degenerate triangles where vertices collapsed to same object
+		if (cv0 === cv1 || cv1 === cv2 || cv2 === cv0) {
+			degenerateRemoved++;
+			continue;
+		}
+
+		result.push({ v0: cv0, v1: cv1, v2: cv2 });
+	}
+
+	console.log("deduplicateSeamVertices — merged " + mergedCount +
+		" vertices, removed " + degenerateRemoved + " degenerate tris" +
+		" (" + canonical.length + " unique vertices)");
+
+	return result;
+}
+
+/**
  * Merge kept splits into a new surface and store it.
  */
 export function applyMerge(splits, config) {
 	var closeMode = config.closeMode || "none";
-	var floorOffset = config.floorOffset || 10;
 	var snapTol = config.snapTolerance || 0;
 
 	// ── Step 1: Collect kept triangles ──
@@ -1052,13 +1143,16 @@ export function applyMerge(splits, config) {
 		", removeDegenerate=" + removeDegenerate + ", removeSlivers=" + removeSlivers +
 		", cleanCrossings=" + cleanCrossings + ", sliverRatio=" + sliverRatio);
 
-	// ── Step 2: Weld vertices (snap close vertices in 3D) ──
-	var welded = weldVertices(keptTriangles, snapTol);
-	console.log("SurfaceBooleanHelper: welded " + keptTriangles.length * 3 + " vertices → " +
+	// ── Step 1b: Deduplicate seam vertices (always runs) ──
+	var soup = deduplicateSeamVertices(keptTriangles, 1e-4);
+
+	// ── Step 2: Weld vertices (user snap tolerance) ──
+	var welded = weldVertices(soup, snapTol);
+	console.log("SurfaceBooleanHelper: welded " + soup.length * 3 + " vertices → " +
 		welded.points.length + " unique points (tol=" + snapTol + "m)");
 
 	// Convert back to soup for subsequent operations
-	var soup = weldedToSoup(welded.triangles);
+	soup = weldedToSoup(welded.triangles);
 
 	// ── Step 3: Remove degenerate / sliver triangles (if enabled) ──
 	if (removeDegenerate || removeSlivers) {
@@ -1090,42 +1184,19 @@ export function applyMerge(splits, config) {
 		soup = removeOverlappingTriangles(soup, overlapTol);
 	}
 
-	// ── Step 4c: Weld boundary vertices with higher tolerance to close seam gaps ──
-	if (config.removeOverlapping || closeMode !== "none") {
-		var seamTol = config.overlapTolerance || 0.5;
-		soup = weldBoundaryVertices(soup, seamTol);
-	}
-
-	// ── Step 5: Stitch boundary edges by proximity (if mode includes stitch) ──
-	if (closeMode === "stitch" || closeMode === "stitch+curtain") {
+	// ── Step 5: Stitch boundary edges by proximity (if mode = "stitch") ──
+	if (closeMode === "stitch") {
 		var stitchTol = config.stitchTolerance || 1.0;
 		var stitchTris = stitchByProximity(soup, stitchTol);
 		if (stitchTris.length > 0) {
-			console.log("SurfaceBooleanHelper: stitching added " + stitchTris.length + " triangles");
 			for (var st = 0; st < stitchTris.length; st++) {
 				soup.push(stitchTris[st]);
 			}
+			console.log("SurfaceBooleanHelper: stitchByProximity added " + stitchTris.length + " triangles");
 		}
 	}
 
-	// ── Step 5b: Generate closing triangles — fill remaining boundary gaps ──
-	if (closeMode !== "none") {
-		var closeDist = config.stitchTolerance || 1.0;
-		soup = generateClosingTriangles(soup, closeDist);
-	}
-
-	// ── Step 6: Curtain walls + bottom cap (if mode includes curtain) ──
-	if (closeMode === "curtain" || closeMode === "stitch+curtain") {
-		var curtainTris = buildCurtainAndCap(soup, floorOffset);
-		if (curtainTris.length > 0) {
-			console.log("SurfaceBooleanHelper: curtain+cap added " + curtainTris.length + " triangles");
-			for (var ct = 0; ct < curtainTris.length; ct++) {
-				soup.push(curtainTris[ct]);
-			}
-		}
-	}
-
-	// ── Step 7: Re-weld final soup (merge closing seams) ──
+	// ── Step 6: Final weld ──
 	var finalWelded = weldVertices(soup, snapTol);
 	var worldPoints = finalWelded.points;
 	var triangles = finalWelded.triangles;
@@ -1133,14 +1204,7 @@ export function applyMerge(splits, config) {
 	console.log("SurfaceBooleanHelper: final weld → " + worldPoints.length +
 		" points, " + triangles.length + " triangles");
 
-	// ── Step 7b: Force-close on indexed mesh (uses point indices, no precision issues) ──
-	if (closeMode !== "none") {
-		var closeResult = forceCloseIndexedMesh(worldPoints, triangles);
-		worldPoints = closeResult.points;
-		triangles = closeResult.triangles;
-	}
-
-	// ── Step 8: Log boundary stats ──
+	// ── Step 7: Log boundary stats ──
 	var finalSoup = weldedToSoup(triangles);
 	logBoundaryStats(finalSoup, closeMode);
 
@@ -1958,6 +2022,9 @@ function stitchByProximity(tris, stitchTolerance) {
 		" edge pairs → " + extraTris.length + " new triangles");
 
 	// Step 4) After proximity stitching, check remaining boundary loops and flat-cap small ones
+	// Limit loop size for flat-capping to avoid freezing on large outer boundaries
+	var MAX_CAP_LOOP_VERTS = 500;
+
 	if (extraTris.length > 0) {
 		// Merge stitch triangles into a temporary soup to re-check boundaries
 		var tempSoup = tris.slice();
@@ -1969,30 +2036,36 @@ function stitchByProximity(tris, stitchTolerance) {
 			postResult.boundaryEdgeCount + " boundary edges, " +
 			postResult.loops.length + " loops remain");
 
-		// Flat-cap ALL remaining boundary loops to close the mesh
+		// Flat-cap remaining boundary loops (skip oversized loops)
 		for (var li = 0; li < postResult.loops.length; li++) {
 			var loop = postResult.loops[li];
-			if (loop.length >= 3) {
+			if (loop.length >= 3 && loop.length <= MAX_CAP_LOOP_VERTS) {
 				var capTris = triangulateLoop(loop);
 				for (var ct = 0; ct < capTris.length; ct++) {
 					extraTris.push(capTris[ct]);
 				}
 				console.log("SurfaceBooleanHelper:   flat-capped loop[" + li + "]: " +
 					loop.length + " verts → " + capTris.length + " cap tris");
+			} else if (loop.length > MAX_CAP_LOOP_VERTS) {
+				console.warn("SurfaceBooleanHelper:   skipped loop[" + li + "]: " +
+					loop.length + " verts exceeds cap limit (" + MAX_CAP_LOOP_VERTS + ")");
 			}
 		}
 	} else {
-		// No edge pairs found within tolerance — flat-cap all boundary loops
+		// No edge pairs found within tolerance — flat-cap small boundary loops
 		var loopResult = extractBoundaryLoops(tris);
 		for (var li2 = 0; li2 < loopResult.loops.length; li2++) {
 			var loop2 = loopResult.loops[li2];
-			if (loop2.length >= 3) {
+			if (loop2.length >= 3 && loop2.length <= MAX_CAP_LOOP_VERTS) {
 				var capTris2 = triangulateLoop(loop2);
 				for (var ct2 = 0; ct2 < capTris2.length; ct2++) {
 					extraTris.push(capTris2[ct2]);
 				}
 				console.log("SurfaceBooleanHelper:   flat-capped loop[" + li2 + "]: " +
 					loop2.length + " verts → " + capTris2.length + " cap tris");
+			} else if (loop2.length > MAX_CAP_LOOP_VERTS) {
+				console.warn("SurfaceBooleanHelper:   skipped loop[" + li2 + "]: " +
+					loop2.length + " verts exceeds cap limit (" + MAX_CAP_LOOP_VERTS + ")");
 			}
 		}
 	}
