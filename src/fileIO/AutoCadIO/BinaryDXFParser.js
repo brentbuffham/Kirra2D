@@ -277,6 +277,7 @@ class BinaryDXFParser extends BaseParser {
 		var kadDrawingsMap = new Map();
 		var surfacePoints = [];
 		var surfaceTriangles = [];
+		var pointHashMap = {}; // Spatial hash for O(1) point deduplication
 
 		// Step 39) Entity counters for unique naming
 		var counts = {
@@ -826,9 +827,9 @@ class BinaryDXFParser extends BaseParser {
 						z: data.vertex3.z || 0
 					};
 
-					var p1Index = this.addUniquePoint(surfacePoints, p1);
-					var p2Index = this.addUniquePoint(surfacePoints, p2);
-					var p3Index = this.addUniquePoint(surfacePoints, p3);
+					var p1Index = this.addUniquePointHashed(surfacePoints, pointHashMap, p1);
+					var p2Index = this.addUniquePointHashed(surfacePoints, pointHashMap, p2);
+					var p3Index = this.addUniquePointHashed(surfacePoints, pointHashMap, p3);
 
 					surfaceTriangles.push({
 						vertices: [surfacePoints[p1Index], surfacePoints[p2Index], surfacePoints[p3Index]],
@@ -964,6 +965,7 @@ class BinaryDXFParser extends BaseParser {
 	}
 
 	// Step 83) Helper: Add unique point with tolerance
+	// NOTE: Legacy O(n) method — kept for non-3DFACE use. Use addUniquePointHashed for bulk 3DFACE.
 	addUniquePoint(pointsArray, newPoint, tolerance) {
 		tolerance = tolerance || 0.001;
 
@@ -980,6 +982,45 @@ class BinaryDXFParser extends BaseParser {
 
 		pointsArray.push(newPoint);
 		return pointsArray.length - 1;
+	}
+
+	// Step 83b) Spatial-hash point deduplication — O(1) average lookup
+	addUniquePointHashed(pointsArray, hashMap, newPoint, tolerance) {
+		tolerance = tolerance || 0.001;
+
+		var invTol = 1 / tolerance;
+		var kx = Math.round(newPoint.x * invTol);
+		var ky = Math.round(newPoint.y * invTol);
+		var kz = Math.round(newPoint.z * invTol);
+		var key = kx + "," + ky + "," + kz;
+
+		if (hashMap[key] !== undefined) {
+			return hashMap[key];
+		}
+
+		// Check adjacent cells to handle points near cell boundaries
+		for (var dx = -1; dx <= 1; dx++) {
+			for (var dy = -1; dy <= 1; dy++) {
+				for (var dz = -1; dz <= 1; dz++) {
+					if (dx === 0 && dy === 0 && dz === 0) continue;
+					var neighborKey = (kx + dx) + "," + (ky + dy) + "," + (kz + dz);
+					if (hashMap[neighborKey] !== undefined) {
+						var existing = pointsArray[hashMap[neighborKey]];
+						if (Math.abs(existing.x - newPoint.x) < tolerance &&
+							Math.abs(existing.y - newPoint.y) < tolerance &&
+							Math.abs(existing.z - newPoint.z) < tolerance) {
+							hashMap[key] = hashMap[neighborKey];
+							return hashMap[neighborKey];
+						}
+					}
+				}
+			}
+		}
+
+		var idx = pointsArray.length;
+		pointsArray.push(newPoint);
+		hashMap[key] = idx;
+		return idx;
 	}
 
 	// Step 84) Helper: Extract Vulcan name from extended data

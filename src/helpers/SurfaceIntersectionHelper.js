@@ -79,7 +79,16 @@ export function computeSurfaceIntersections(config) {
     console.log("Total intersection segments: " + allSegments.length);
 
     // Step 5) Chain segments into polylines
-    var polylines = chainSegments(allSegments, 0.01);
+    // Use tolerance based on average segment length (floating-point matching)
+    var avgSegLen = 0;
+    for (var sl = 0; sl < allSegments.length; sl++) {
+        avgSegLen += dist3D(allSegments[sl].p0, allSegments[sl].p1);
+    }
+    avgSegLen = allSegments.length > 0 ? avgSegLen / allSegments.length : 1.0;
+    var chainThreshold = Math.max(avgSegLen * 0.01, 0.001); // 1% of avg segment length, min 1mm
+    console.log("Chain threshold: " + chainThreshold.toFixed(6) + "m (avg seg len: " + avgSegLen.toFixed(4) + "m)");
+
+    var polylines = chainSegments(allSegments, chainThreshold);
     console.log("Chained into " + polylines.length + " polyline(s)");
 
     // Step 6) Simplify by vertex spacing
@@ -692,9 +701,69 @@ export function findLinePoint(nA, dA, nB, dB, lineDir) {
 export function chainSegments(segments, threshold) {
     if (segments.length === 0) return [];
 
+    // Build a spatial hash of segment endpoints for O(1) neighbor lookup
+    var cellSize = threshold * 2;
+    var endpointMap = {}; // hash -> [{segIdx, endIdx (0 or 1)}]
+
+    function pointHash(p) {
+        var cx = Math.floor(p.x / cellSize);
+        var cy = Math.floor(p.y / cellSize);
+        var cz = Math.floor(p.z / cellSize);
+        return cx + "," + cy + "," + cz;
+    }
+
+    function nearbyKeys(p) {
+        var cx = Math.floor(p.x / cellSize);
+        var cy = Math.floor(p.y / cellSize);
+        var cz = Math.floor(p.z / cellSize);
+        var keys = [];
+        for (var dx = -1; dx <= 1; dx++) {
+            for (var dy = -1; dy <= 1; dy++) {
+                for (var dz = -1; dz <= 1; dz++) {
+                    keys.push((cx + dx) + "," + (cy + dy) + "," + (cz + dz));
+                }
+            }
+        }
+        return keys;
+    }
+
+    // Index all endpoints
+    for (var i = 0; i < segments.length; i++) {
+        var pts = [segments[i].p0, segments[i].p1];
+        for (var e = 0; e < 2; e++) {
+            var key = pointHash(pts[e]);
+            if (!endpointMap[key]) endpointMap[key] = [];
+            endpointMap[key].push({ segIdx: i, endIdx: e });
+        }
+    }
+
     var threshSq = threshold * threshold;
     var used = new Array(segments.length);
-    for (var i = 0; i < used.length; i++) used[i] = false;
+    for (var u = 0; u < used.length; u++) used[u] = false;
+
+    // Find nearest unused segment endpoint to a query point
+    function findNearest(queryPt, excludeSeg) {
+        var keys = nearbyKeys(queryPt);
+        var bestDist = threshSq;
+        var bestSeg = -1;
+        var bestEnd = -1;
+        for (var k = 0; k < keys.length; k++) {
+            var bucket = endpointMap[keys[k]];
+            if (!bucket) continue;
+            for (var b = 0; b < bucket.length; b++) {
+                var entry = bucket[b];
+                if (used[entry.segIdx] || entry.segIdx === excludeSeg) continue;
+                var pt = entry.endIdx === 0 ? segments[entry.segIdx].p0 : segments[entry.segIdx].p1;
+                var d = distSq3D(queryPt, pt);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestSeg = entry.segIdx;
+                    bestEnd = entry.endIdx;
+                }
+            }
+        }
+        return bestSeg >= 0 ? { segIdx: bestSeg, endIdx: bestEnd } : null;
+    }
 
     var polylines = [];
 
@@ -702,40 +771,55 @@ export function chainSegments(segments, threshold) {
         if (used[s]) continue;
         used[s] = true;
 
-        // Start a new chain
-        var chain = [segments[s].p0, segments[s].p1];
-        var changed = true;
+        // Build chain as a deque (array grown from tail, then reversed front prepended at end)
+        var tailChain = [segments[s].p0, segments[s].p1];
+        var headChain = []; // will be reversed and prepended
 
-        while (changed) {
-            changed = false;
-            for (var t = 0; t < segments.length; t++) {
-                if (used[t]) continue;
-
-                var seg = segments[t];
-                var head = chain[0];
-                var tail = chain[chain.length - 1];
-
-                if (distSq3D(tail, seg.p0) < threshSq) {
-                    chain.push(seg.p1);
-                    used[t] = true;
-                    changed = true;
-                } else if (distSq3D(tail, seg.p1) < threshSq) {
-                    chain.push(seg.p0);
-                    used[t] = true;
-                    changed = true;
-                } else if (distSq3D(head, seg.p1) < threshSq) {
-                    chain.unshift(seg.p0);
-                    used[t] = true;
-                    changed = true;
-                } else if (distSq3D(head, seg.p0) < threshSq) {
-                    chain.unshift(seg.p1);
-                    used[t] = true;
-                    changed = true;
+        // Extend tail
+        var extending = true;
+        while (extending) {
+            extending = false;
+            var tail = tailChain[tailChain.length - 1];
+            var match = findNearest(tail, -1);
+            if (match) {
+                used[match.segIdx] = true;
+                var seg = segments[match.segIdx];
+                // match.endIdx is the end that matched our tail; push the OTHER end
+                if (match.endIdx === 0) {
+                    tailChain.push(seg.p1);
+                } else {
+                    tailChain.push(seg.p0);
                 }
+                extending = true;
             }
         }
 
-        polylines.push(chain);
+        // Extend head (grow headChain forward, reverse later)
+        extending = true;
+        while (extending) {
+            extending = false;
+            var head = headChain.length > 0 ? headChain[headChain.length - 1] : tailChain[0];
+            var match2 = findNearest(head, -1);
+            if (match2) {
+                used[match2.segIdx] = true;
+                var seg2 = segments[match2.segIdx];
+                if (match2.endIdx === 0) {
+                    headChain.push(seg2.p1);
+                } else {
+                    headChain.push(seg2.p0);
+                }
+                extending = true;
+            }
+        }
+
+        // Combine: reverse headChain + tailChain
+        if (headChain.length > 0) {
+            headChain.reverse();
+            var chain = headChain.concat(tailChain);
+            polylines.push(chain);
+        } else {
+            polylines.push(tailChain);
+        }
     }
 
     return polylines;

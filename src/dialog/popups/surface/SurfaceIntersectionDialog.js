@@ -67,8 +67,9 @@ function enterPickMode(pickRow, onPicked) {
         }
 
         exitPickMode();
-        pickRow.pickBtn.style.background = "rgba(255,255,255,0.08)";
-        pickRow.pickBtn.style.borderColor = "rgba(255,255,255,0.2)";
+        var dk = isDarkMode();
+        pickRow.pickBtn.style.background = dk ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)";
+        pickRow.pickBtn.style.borderColor = dk ? "rgba(255,255,255,0.2)" : "rgba(0,0,0,0.2)";
     };
 
     canvas.addEventListener("pointerup", pickCallback, { once: true, capture: true });
@@ -149,11 +150,16 @@ function clearPickHighlight() {
     }
 }
 
+function isDarkMode() {
+    return typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : true;
+}
+
 // ────────────────────────────────────────────────────────
 // Pick row builder (same pattern as SurfaceBooleanDialog)
 // ────────────────────────────────────────────────────────
 
 function createPickRow(label, options, defaultValue, onPick) {
+    var dark = isDarkMode();
     var row = document.createElement("div");
     row.style.display = "flex";
     row.style.alignItems = "center";
@@ -172,9 +178,9 @@ function createPickRow(label, options, defaultValue, onPick) {
     pickBtn.style.width = "28px";
     pickBtn.style.height = "28px";
     pickBtn.style.padding = "2px";
-    pickBtn.style.border = "1px solid rgba(255,255,255,0.2)";
+    pickBtn.style.border = dark ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(0,0,0,0.2)";
     pickBtn.style.borderRadius = "4px";
-    pickBtn.style.background = "rgba(255,255,255,0.08)";
+    pickBtn.style.background = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.05)";
     pickBtn.style.cursor = "pointer";
     pickBtn.style.flexShrink = "0";
     pickBtn.style.display = "flex";
@@ -185,7 +191,7 @@ function createPickRow(label, options, defaultValue, onPick) {
     pickImg.src = "icons/target-arrow.png";
     pickImg.style.width = "20px";
     pickImg.style.height = "20px";
-    pickImg.style.filter = "invert(0.8)";
+    pickImg.style.filter = dark ? "invert(0.8)" : "invert(0.2)";
     pickBtn.appendChild(pickImg);
 
     pickBtn.addEventListener("click", onPick);
@@ -195,9 +201,9 @@ function createPickRow(label, options, defaultValue, onPick) {
     select.style.padding = "4px 6px";
     select.style.fontSize = "12px";
     select.style.borderRadius = "4px";
-    select.style.border = "1px solid rgba(255,255,255,0.2)";
-    select.style.background = "rgba(30,30,30,0.9)";
-    select.style.color = "#eee";
+    select.style.border = dark ? "1px solid rgba(255,255,255,0.2)" : "1px solid #999";
+    select.style.background = dark ? "rgba(30,30,30,0.9)" : "#fff";
+    select.style.color = dark ? "#eee" : "#333";
     select.style.minWidth = "0";
 
     for (var i = 0; i < options.length; i++) {
@@ -336,10 +342,11 @@ export function showSurfaceIntersectionDialog(callback) {
     container.appendChild(formContent);
 
     // Notes
+    var notesDark = isDarkMode();
     var notesDiv = document.createElement("div");
     notesDiv.style.marginTop = "10px";
     notesDiv.style.fontSize = "10px";
-    notesDiv.style.color = "#888";
+    notesDiv.style.color = notesDark ? "#888" : "#666";
     notesDiv.innerHTML =
         "<strong>Surface Intersection:</strong><br>" +
         "&bull; Computes intersection polylines between two surfaces<br>" +

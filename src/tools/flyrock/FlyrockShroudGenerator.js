@@ -93,6 +93,12 @@ export function generate(holes, params) {
 				break;
 		}
 
+		// Scale velocity for FoS — envelope range = V²/g, so FoS× range needs V × √FoS
+		var fos = params.factorOfSafety || 2;
+		if (fos > 1) {
+			maxVelocity = maxVelocity * Math.sqrt(fos);
+		}
+
 		if (maxDistance <= 0 || maxVelocity <= 0) continue;
 
 		// Log every hole for diagnostics

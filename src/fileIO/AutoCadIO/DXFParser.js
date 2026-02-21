@@ -90,6 +90,7 @@ class DXFParser extends BaseParser {
 		var kadDrawingsMap = new Map();
 		var surfacePoints = [];
 		var surfaceTriangles = [];
+		var pointHashMap = {}; // Spatial hash for O(1) point deduplication
 
 		// Step 19) Entity counters for unique naming (per layer and per type)
 		var layerCounters = {}; // { "SP_2": { point: 0, line: 0, poly: 0, ... }, ... }
@@ -100,22 +101,23 @@ class DXFParser extends BaseParser {
 		var offsetY = this.offsetY;
 		var self = this;
 
+		// Step 20b) Scaled progress interval — ~100 updates regardless of file size
+		var progressInterval = Math.max(1, Math.floor(totalEntities / 100));
+
 		// Step 21) Iterate over every entity with progress updates
 		for (var index = 0; index < dxf.entities.length; index++) {
 			var ent = dxf.entities[index];
 
-			// Step 22) Update progress every entity and yield to UI periodically
-			if (progressUpdateDXF) {
+			// Step 22) Update progress at scaled intervals
+			if (progressUpdateDXF && index % progressInterval === 0) {
 				var percent = Math.round(index / totalEntities * 100);
 				var message = "Processing entity " + (index + 1) + " of " + totalEntities;
 				progressUpdateDXF(percent, message);
 
-				// Step 23) Yield to UI every 50 entities to allow progress bar to update
-				if (index % 50 === 0) {
-					await new Promise(function(resolve) {
-						setTimeout(resolve, 0);
-					});
-				}
+				// Step 23) Yield to UI at same scaled interval
+				await new Promise(function(resolve) {
+					setTimeout(resolve, 0);
+				});
 			}
 
 			var t = ent.type.toUpperCase();
@@ -477,10 +479,10 @@ class DXFParser extends BaseParser {
 						z: verts[2].z || 0
 					};
 
-					// Step 41) Add points to surface points collection (with deduplication)
-					var p1Index = this.addUniquePoint(surfacePoints, p1);
-					var p2Index = this.addUniquePoint(surfacePoints, p2);
-					var p3Index = this.addUniquePoint(surfacePoints, p3);
+					// Step 41) Add points via spatial hash (O(1) dedup instead of O(n) scan)
+					var p1Index = this.addUniquePointHashed(surfacePoints, pointHashMap, p1);
+					var p2Index = this.addUniquePointHashed(surfacePoints, pointHashMap, p2);
+					var p3Index = this.addUniquePointHashed(surfacePoints, pointHashMap, p3);
 
 					// Step 42) Create triangle referencing the point indices
 					surfaceTriangles.push({
@@ -760,6 +762,7 @@ class DXFParser extends BaseParser {
 	}
 
 	// Step 57) Helper: Add unique point to array (deduplication with tolerance)
+	// NOTE: Legacy O(n) method — kept for non-3DFACE use. Use addUniquePointHashed for bulk 3DFACE.
 	addUniquePoint(pointsArray, newPoint, tolerance) {
 		tolerance = tolerance || 0.001;
 
@@ -778,6 +781,49 @@ class DXFParser extends BaseParser {
 		// Step 59) Point doesn't exist, add it
 		pointsArray.push(newPoint);
 		return pointsArray.length - 1;
+	}
+
+	// Step 57b) Spatial-hash point deduplication — O(1) average lookup
+	// Snaps coordinates to a grid (tolerance = cell size) and uses a hash map.
+	addUniquePointHashed(pointsArray, hashMap, newPoint, tolerance) {
+		tolerance = tolerance || 0.001;
+
+		// Snap to grid — points within tolerance land in the same cell
+		var invTol = 1 / tolerance;
+		var kx = Math.round(newPoint.x * invTol);
+		var ky = Math.round(newPoint.y * invTol);
+		var kz = Math.round(newPoint.z * invTol);
+		var key = kx + "," + ky + "," + kz;
+
+		if (hashMap[key] !== undefined) {
+			return hashMap[key];
+		}
+
+		// Check adjacent cells to handle points near cell boundaries
+		for (var dx = -1; dx <= 1; dx++) {
+			for (var dy = -1; dy <= 1; dy++) {
+				for (var dz = -1; dz <= 1; dz++) {
+					if (dx === 0 && dy === 0 && dz === 0) continue;
+					var neighborKey = (kx + dx) + "," + (ky + dy) + "," + (kz + dz);
+					if (hashMap[neighborKey] !== undefined) {
+						var existing = pointsArray[hashMap[neighborKey]];
+						if (Math.abs(existing.x - newPoint.x) < tolerance &&
+							Math.abs(existing.y - newPoint.y) < tolerance &&
+							Math.abs(existing.z - newPoint.z) < tolerance) {
+							// Also register in this cell for future lookups
+							hashMap[key] = hashMap[neighborKey];
+							return hashMap[neighborKey];
+						}
+					}
+				}
+			}
+		}
+
+		// New unique point
+		var idx = pointsArray.length;
+		pointsArray.push(newPoint);
+		hashMap[key] = idx;
+		return idx;
 	}
 
 	// Step 60) Helper: Extract VulcanName from XDATA

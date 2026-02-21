@@ -206,6 +206,7 @@ export function showTimeInteractionDialog(config) {
 	container.appendChild(sliderSection);
 
 	// Current time display
+	var tiDark = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : true;
 	var timeDisplay = document.createElement("div");
 	timeDisplay.style.textAlign = "center";
 	timeDisplay.style.fontSize = "18px";
@@ -213,7 +214,7 @@ export function showTimeInteractionDialog(config) {
 	timeDisplay.style.color = "#4DA6FF";
 	timeDisplay.style.margin = "12px 0";
 	timeDisplay.style.padding = "10px";
-	timeDisplay.style.background = "rgba(0,0,0,0.2)";
+	timeDisplay.style.background = tiDark ? "rgba(0,0,0,0.2)" : "rgba(0,0,0,0.06)";
 	timeDisplay.style.borderRadius = "5px";
 	timeDisplay.style.flexShrink = "0";
 	timeDisplay.textContent = sliderMax.toFixed(1) + " ms";

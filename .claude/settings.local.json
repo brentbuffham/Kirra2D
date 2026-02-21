@@ -52,7 +52,8 @@
       "Bash(npx vite build)",
       "Bash(npm ls:*)",
       "WebFetch(domain:manifoldcad.org)",
-      "WebFetch(domain:meshlib.io)"
+      "WebFetch(domain:meshlib.io)",
+      "Bash(tr:*)"
     ]
   }
 }

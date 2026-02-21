@@ -189,20 +189,21 @@ class SHPFileParser extends BaseParser {
 		var offset = 100; // Start after header
 		var recordNumber = 0;
 		var totalFileSize = header.fileLength * 2; // Convert from 16-bit words to bytes
+		var lastProgressOffset = 0;
+		var progressByteInterval = Math.max(10000, Math.floor(totalFileSize / 100)); // ~100 updates
 
 		while (offset < totalFileSize) {
-			// Step 21) Update progress
-			if (progressBar && progressText) {
+			// Step 21) Update progress — scaled to ~100 updates regardless of file size
+			if (progressBar && progressText && (offset - lastProgressOffset) >= progressByteInterval) {
 				var percent = Math.round(offset / totalFileSize * 100);
 				progressBar.style.width = percent + "%";
 				progressText.textContent = "Processing record " + (recordNumber + 1) + "...";
+				lastProgressOffset = offset;
 
-				// Yield to UI every 50 records
-				if (recordNumber % 50 === 0) {
-					await new Promise(function(resolve) {
-						setTimeout(resolve, 0);
-					});
-				}
+				// Yield to UI at same interval
+				await new Promise(function(resolve) {
+					setTimeout(resolve, 0);
+				});
 			}
 
 			// Step 22) Parse record header (8 bytes, big-endian)

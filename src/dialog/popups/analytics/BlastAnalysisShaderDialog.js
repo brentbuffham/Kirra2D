@@ -139,13 +139,14 @@ export function showBlastAnalysisShaderDialog(callback) {
 	container.appendChild(formContent);
 
 	// Add model-specific parameter section
+	var baDark = typeof window.darkModeEnabled !== "undefined" ? window.darkModeEnabled : true;
 	var parametersSection = document.createElement("div");
 	parametersSection.id = "modelParametersSection";
 	parametersSection.style.marginTop = "20px";
 	parametersSection.style.padding = "12px 15px";
-	parametersSection.style.background = "rgba(0,0,0,0.15)";
+	parametersSection.style.background = baDark ? "rgba(0,0,0,0.15)" : "rgba(0,0,0,0.04)";
 	parametersSection.style.borderRadius = "5px";
-	parametersSection.style.border = "1px solid var(--light-mode-border)";
+	parametersSection.style.border = baDark ? "1px solid var(--dark-mode-border)" : "1px solid var(--light-mode-border)";
 
 	var parametersTitle = document.createElement("h3");
 	parametersTitle.style.marginTop = "0";

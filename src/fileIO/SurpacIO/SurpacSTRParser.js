@@ -33,6 +33,7 @@ class SurpacSTRParser extends BaseParser {
 		super(options);
 		// Step 3) Entity counter for generating unique names
 		this.entityCounter = 0;
+		this.entityNameSet = new Set(); // O(1) uniqueness check
 	}
 
 	// Step 4) Main parse method - handles both text and binary
@@ -43,6 +44,7 @@ class SurpacSTRParser extends BaseParser {
 
 		// Step 5) Reset counter for this parse session
 		this.entityCounter = 0;
+		this.entityNameSet = new Set();
 
 		// Step 6) Detect binary vs text content
 		var isBinary = this.isBinaryContent(content);
@@ -414,16 +416,13 @@ class SurpacSTRParser extends BaseParser {
 		// Step 38b) Always append unique counter to guarantee uniqueness
 		var uniqueName = baseName + "_" + this.padNumber(this.entityCounter, 4);
 
-		// Step 39) Double-check uniqueness (safety)
-		while (
-			kadEntities.some(function(e) {
-				return e.entityName === uniqueName;
-			})
-		) {
+		// Step 39) Double-check uniqueness via O(1) Set lookup (was O(n) Array.some scan)
+		while (this.entityNameSet.has(uniqueName)) {
 			this.entityCounter++;
 			uniqueName = baseName + "_" + this.padNumber(this.entityCounter, 4);
 		}
 
+		this.entityNameSet.add(uniqueName);
 		return uniqueName;
 	}
 
