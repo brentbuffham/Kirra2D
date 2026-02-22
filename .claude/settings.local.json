@@ -58,7 +58,9 @@
       "WebFetch(domain:codesandbox.io)",
       "Bash(curl:*)",
       "Bash(jq:*)",
-      "Bash(npm install:*)"
+      "Bash(npm install:*)",
+      "Bash(git -C /Volumes/2TBSSD-BB-NTFS/Kirra-Vite-Clean/Kirra diff --stat src/helpers/SurfaceBooleanHelper.js)",
+      "Bash(npx vite build:*)"
     ]
   }
 }

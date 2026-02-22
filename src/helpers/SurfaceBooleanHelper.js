@@ -2,12 +2,11 @@
  * SurfaceBooleanHelper.js
  *
  * Interactive split-and-pick surface boolean (Vulcan TRIBOOL style).
- * Uses Moller tri-tri intersection polylines to physically SPLIT triangles
- * along the actual intersection boundary. The intersection line acts as a
- * "knife" — edges created by the cut are tracked, and connected-component
- * flood-fill (which cannot cross cut edges) detects topologically separate
- * pieces. Z-refinement catches any straddling triangles the segment
- * splitter missed.
+ * Uses Moller tri-tri intersection to find intersection segments, chains
+ * them into polylines, then classifies triangles as inside/outside using
+ * geometric point-in-polygon / signed-side tests. Straddling triangles
+ * (those crossed by intersection segments) are split at the intersection
+ * edges, then each sub-triangle is classified by its centroid.
  */
 
 import * as THREE from "three";
@@ -18,15 +17,15 @@ import { AddSurfaceAction } from "../tools/UndoActions.js";
 import { getOrCreateSurfaceLayer } from "./LayerHelper.js";
 import {
 	extractTriangles as ixExtractTriangles,
-	estimateAvgEdge as ixEstimateAvgEdge,
-	buildSpatialGrid as ixBuildSpatialGrid,
-	queryGrid as ixQueryGrid,
 	intersectSurfacePairTagged,
-	countOpenEdges
+	countOpenEdges,
+	chainSegments,
+	dist3D as ixDist3D,
+	ensureZUpNormals
 } from "./SurfaceIntersectionHelper.js";
 
 // ────────────────────────────────────────────────────────
-// Vertex/edge key helpers (shared by splitting + flood-fill)
+// Vertex/edge key helpers
 // ────────────────────────────────────────────────────────
 
 var CUT_KEY_PREC = 6;
@@ -42,101 +41,397 @@ function cutEdgeKey(va, vb) {
 }
 
 // ────────────────────────────────────────────────────────
-// Connected-component detection (cut-edge aware)
+// Polyline classification utilities
 // ────────────────────────────────────────────────────────
 
 /**
- * Find connected components in a triangle soup via edge-adjacency BFS.
- * Triangles sharing an edge are neighbors, UNLESS that edge is in the
- * cutEdgeKeys set. Cut edges act as barriers so the flood-fill cannot
- * cross the intersection seam.
- *
- * @param {Array} tris - Triangle soup [{v0, v1, v2}, ...]
- * @param {Set} cutEdgeKeys - Set of edge keys to exclude from adjacency
- * @returns {Array} Array of arrays — each inner array is the triangles in one component
+ * Check whether a polyline is closed (first ≈ last point).
+ * @param {Array} polyline - Array of {x,y,z}
+ * @param {number} threshold - Distance threshold
+ * @returns {boolean}
  */
-function findConnectedComponents(tris, cutEdgeKeys) {
-	if (tris.length === 0) return [];
+function isPolylineClosed(polyline, threshold) {
+	if (polyline.length < 3) return false;
+	var a = polyline[0];
+	var b = polyline[polyline.length - 1];
+	var dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
+	return Math.sqrt(dx * dx + dy * dy + dz * dz) <= threshold;
+}
 
-	// Step 1) Build edge-to-triangle adjacency (skip cut edges)
-	var edgeToTris = {};
-	var cutHits = 0;
-	var totalEdges = 0;
-	for (var ti = 0; ti < tris.length; ti++) {
-		var tri = tris[ti];
-		var k0 = cutVKey(tri.v0);
-		var k1 = cutVKey(tri.v1);
-		var k2 = cutVKey(tri.v2);
-		var triEdges = [
-			k0 < k1 ? k0 + "|" + k1 : k1 + "|" + k0,
-			k1 < k2 ? k1 + "|" + k2 : k2 + "|" + k1,
-			k2 < k0 ? k2 + "|" + k0 : k0 + "|" + k2
-		];
-		for (var e = 0; e < 3; e++) {
-			totalEdges++;
-			if (cutEdgeKeys && cutEdgeKeys.has(triEdges[e])) {
-				cutHits++;
-				continue;
-			}
-			if (!edgeToTris[triEdges[e]]) edgeToTris[triEdges[e]] = [];
-			edgeToTris[triEdges[e]].push(ti);
+/**
+ * Ray-casting point-in-polygon test on XY projection of a closed 3D loop.
+ * @param {number} px - Test point X
+ * @param {number} py - Test point Y
+ * @param {Array} loop - Array of {x,y,z} forming a closed polygon
+ * @returns {boolean} true if (px,py) is inside the loop
+ */
+function classifyPointClosedLoop(px, py, loop) {
+	var inside = false;
+	var n = loop.length;
+	for (var i = 0, j = n - 1; i < n; j = i++) {
+		var xi = loop[i].x, yi = loop[i].y;
+		var xj = loop[j].x, yj = loop[j].y;
+		if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi)) {
+			inside = !inside;
 		}
 	}
-	console.log("findConnectedComponents: " + tris.length + " tris, " +
-		totalEdges + " edge refs, " + cutHits + " cut-edge hits (from " +
-		(cutEdgeKeys ? cutEdgeKeys.size : 0) + " cut keys)");
+	return inside;
+}
 
-	// Step 2) Build per-triangle neighbor list from shared non-cut edges
-	var neighbors = new Array(tris.length);
-	for (var ni = 0; ni < tris.length; ni++) neighbors[ni] = [];
+/**
+ * Classify a point relative to an open polyline using the signed cross product
+ * of the closest segment. Positive = left side, negative = right side.
+ *
+ * @param {number} px - Test point X
+ * @param {number} py - Test point Y
+ * @param {Array} polyline - Array of {x,y,z}
+ * @returns {number} Sign: +1 or -1
+ */
+function classifyPointOpenPolyline(px, py, polyline) {
+	var bestDistSq = Infinity;
+	var bestCross = 0;
 
-	for (var ek in edgeToTris) {
-		var list = edgeToTris[ek];
-		for (var a = 0; a < list.length; a++) {
-			for (var b = a + 1; b < list.length; b++) {
-				neighbors[list[a]].push(list[b]);
-				neighbors[list[b]].push(list[a]);
-			}
+	for (var i = 0; i < polyline.length - 1; i++) {
+		var ax = polyline[i].x, ay = polyline[i].y;
+		var bx = polyline[i + 1].x, by = polyline[i + 1].y;
+
+		// Project point onto segment to find closest point
+		var abx = bx - ax, aby = by - ay;
+		var apx = px - ax, apy = py - ay;
+		var abLenSq = abx * abx + aby * aby;
+
+		if (abLenSq < 1e-20) continue; // degenerate segment
+
+		var t = (apx * abx + apy * aby) / abLenSq;
+		if (t < 0) t = 0;
+		if (t > 1) t = 1;
+
+		var closestX = ax + t * abx;
+		var closestY = ay + t * aby;
+		var dx = px - closestX, dy = py - closestY;
+		var dSq = dx * dx + dy * dy;
+
+		if (dSq < bestDistSq) {
+			bestDistSq = dSq;
+			// 2D cross product of segment direction × vector to point
+			bestCross = abx * apy - aby * apx;
 		}
 	}
 
-	// Step 3) BFS flood-fill to assign component IDs
-	var componentId = new Int32Array(tris.length);
-	for (var ci = 0; ci < tris.length; ci++) componentId[ci] = -1;
+	return bestCross >= 0 ? 1 : -1;
+}
 
-	var currentId = 0;
-	for (var seed = 0; seed < tris.length; seed++) {
-		if (componentId[seed] !== -1) continue;
+/**
+ * Classify a single centroid as "inside" (1) or "outside" (-1) relative
+ * to the intersection polylines.
+ *
+ * Closed polylines use ray-casting PIP on XY projection.
+ * Open polylines use signed cross product of the closest segment.
+ *
+ * @param {{x,y,z}} centroid
+ * @param {Array} closedPolylines - Array of closed polyline arrays
+ * @param {Array} openPolylines - Array of open polyline arrays
+ * @returns {number} 1 = inside, -1 = outside
+ */
+function classifyCentroid(centroid, closedPolylines, openPolylines) {
+	// Check closed polylines first — inside any closed loop → "inside"
+	for (var c = 0; c < closedPolylines.length; c++) {
+		if (classifyPointClosedLoop(centroid.x, centroid.y, closedPolylines[c])) {
+			return 1; // inside
+		}
+	}
 
-		componentId[seed] = currentId;
-		var queue = [seed];
-		var head = 0;
+	// Check open polylines — closest segment determines side
+	if (openPolylines.length > 0) {
+		// Use the closest open polyline to determine classification
+		var bestDistSq = Infinity;
+		var bestSign = -1;
 
-		while (head < queue.length) {
-			var cur = queue[head++];
-			var nbrs = neighbors[cur];
-			for (var n = 0; n < nbrs.length; n++) {
-				var nbr = nbrs[n];
-				if (componentId[nbr] === -1) {
-					componentId[nbr] = currentId;
-					queue.push(nbr);
+		for (var o = 0; o < openPolylines.length; o++) {
+			var poly = openPolylines[o];
+			for (var i = 0; i < poly.length - 1; i++) {
+				var ax = poly[i].x, ay = poly[i].y;
+				var bx = poly[i + 1].x, by = poly[i + 1].y;
+				var abx = bx - ax, aby = by - ay;
+				var apx = centroid.x - ax, apy = centroid.y - ay;
+				var abLenSq = abx * abx + aby * aby;
+
+				if (abLenSq < 1e-20) continue;
+
+				var t = (apx * abx + apy * aby) / abLenSq;
+				if (t < 0) t = 0;
+				if (t > 1) t = 1;
+
+				var closestX = ax + t * abx;
+				var closestY = ay + t * aby;
+				var dx = centroid.x - closestX, dy = centroid.y - closestY;
+				var dSq = dx * dx + dy * dy;
+
+				if (dSq < bestDistSq) {
+					bestDistSq = dSq;
+					bestSign = (abx * apy - aby * apx) >= 0 ? 1 : -1;
 				}
 			}
 		}
-		currentId++;
+
+		return bestSign;
 	}
 
-	// Step 4) Group triangles by component ID
-	var components = new Array(currentId);
-	for (var gi = 0; gi < currentId; gi++) components[gi] = [];
+	return -1; // default: outside
+}
+
+/**
+ * Classify all triangles' centroids against intersection polylines.
+ *
+ * @param {Array} tris - Triangle soup [{v0,v1,v2}, ...]
+ * @param {Array} closedPolylines
+ * @param {Array} openPolylines
+ * @returns {Int8Array} Classification per triangle: 1=inside, -1=outside
+ */
+function classifyAllTriangles(tris, closedPolylines, openPolylines) {
+	var result = new Int8Array(tris.length);
+	for (var i = 0; i < tris.length; i++) {
+		var tri = tris[i];
+		var cx = (tri.v0.x + tri.v1.x + tri.v2.x) / 3;
+		var cy = (tri.v0.y + tri.v1.y + tri.v2.y) / 3;
+		var cz = (tri.v0.z + tri.v1.z + tri.v2.z) / 3;
+		result[i] = classifyCentroid({ x: cx, y: cy, z: cz }, closedPolylines, openPolylines);
+	}
+	return result;
+}
+
+/**
+ * Separate triangles into inside/outside groups.
+ * Non-crossed triangles go directly by classification.
+ * Crossed (straddling) triangles are split first, then each sub-triangle classified.
+ *
+ * @param {Array} tris - Triangle soup
+ * @param {Int8Array} classifications - Per-triangle classification
+ * @param {Object} crossedMap - Map of triIndex -> [taggedSegments]
+ * @param {Array} closedPolylines
+ * @param {Array} openPolylines
+ * @returns {{ inside: Array, outside: Array }}
+ */
+function splitStraddlingAndClassify(tris, classifications, crossedMap, closedPolylines, openPolylines) {
+	var inside = [];
+	var outside = [];
+
+	for (var i = 0; i < tris.length; i++) {
+		if (!crossedMap[i]) {
+			// Non-crossed: use pre-computed classification
+			if (classifications[i] === 1) {
+				inside.push(tris[i]);
+			} else {
+				outside.push(tris[i]);
+			}
+			continue;
+		}
+
+		// Crossed triangle: split by each intersection segment
+		var segments = crossedMap[i];
+		var current = [tris[i]];
+
+		for (var s = 0; s < segments.length; s++) {
+			var seg = segments[s];
+			var next = [];
+			for (var t = 0; t < current.length; t++) {
+				var subResult = splitOneTriangleBySegment(current[t], seg.p0, seg.p1, null);
+				for (var r = 0; r < subResult.length; r++) {
+					next.push(subResult[r]);
+				}
+			}
+			current = next;
+		}
+
+		// Classify each sub-triangle by its centroid
+		for (var j = 0; j < current.length; j++) {
+			var sub = current[j];
+			var cx = (sub.v0.x + sub.v1.x + sub.v2.x) / 3;
+			var cy = (sub.v0.y + sub.v1.y + sub.v2.y) / 3;
+			var cz = (sub.v0.z + sub.v1.z + sub.v2.z) / 3;
+			var cls = classifyCentroid({ x: cx, y: cy, z: cz }, closedPolylines, openPolylines);
+			if (cls === 1) {
+				inside.push(sub);
+			} else {
+				outside.push(sub);
+			}
+		}
+	}
+
+	return { inside: inside, outside: outside };
+}
+
+/**
+ * Propagate consistent winding order across a triangle mesh via BFS.
+ * If the mesh is manifold (every edge shared by exactly 2 triangles),
+ * BFS from a seed triangle and enforce consistent winding by checking
+ * shared-edge direction. If not manifold, falls back to ensureZUpNormals.
+ *
+ * @param {Array} tris - Triangle soup [{v0,v1,v2}, ...]
+ * @returns {Array} Triangle soup with consistent normals
+ */
+function propagateNormals(tris) {
+	if (tris.length === 0) return tris;
+
+	// Build half-edge-to-triangle adjacency
+	var PREC = 6;
+	function vKey(v) {
+		return v.x.toFixed(PREC) + "," + v.y.toFixed(PREC) + "," + v.z.toFixed(PREC);
+	}
+
+	// For each triangle, compute its 3 directed half-edges
+	var edgeToTris = {}; // "ka|kb" (sorted) -> [{triIdx, directedFrom, directedTo}]
+	var triVKeys = []; // triIdx -> [k0, k1, k2]
+
+	for (var i = 0; i < tris.length; i++) {
+		var tri = tris[i];
+		var k0 = vKey(tri.v0), k1 = vKey(tri.v1), k2 = vKey(tri.v2);
+		triVKeys.push([k0, k1, k2]);
+		var edges = [
+			{ from: k0, to: k1 },
+			{ from: k1, to: k2 },
+			{ from: k2, to: k0 }
+		];
+		for (var e = 0; e < 3; e++) {
+			var sortedKey = edges[e].from < edges[e].to
+				? edges[e].from + "|" + edges[e].to
+				: edges[e].to + "|" + edges[e].from;
+			if (!edgeToTris[sortedKey]) edgeToTris[sortedKey] = [];
+			edgeToTris[sortedKey].push({
+				triIdx: i,
+				from: edges[e].from,
+				to: edges[e].to
+			});
+		}
+	}
+
+	// Check manifoldness — every edge should have exactly 2 triangles
+	var isManifold = true;
+	for (var ek in edgeToTris) {
+		if (edgeToTris[ek].length !== 2) {
+			isManifold = false;
+			break;
+		}
+	}
+
+	if (!isManifold) {
+		// Non-manifold: fall back to per-triangle Z-up normals
+		return ensureZUpNormals(tris);
+	}
+
+	// Build per-triangle neighbor list via shared edges
+	var neighbors = new Array(tris.length);
+	for (var ni = 0; ni < tris.length; ni++) neighbors[ni] = [];
+
+	for (var ek2 in edgeToTris) {
+		var pair = edgeToTris[ek2];
+		if (pair.length !== 2) continue;
+		var t0 = pair[0], t1 = pair[1];
+		neighbors[t0.triIdx].push({
+			neighbor: t1.triIdx,
+			// If both traverse this edge in the SAME direction, they're inconsistent
+			sameDirection: (t0.from === t1.from)
+		});
+		neighbors[t1.triIdx].push({
+			neighbor: t0.triIdx,
+			sameDirection: (t0.from === t1.from)
+		});
+	}
+
+	// BFS from seed (triangle 0), enforce consistent winding
+	var flipped = new Uint8Array(tris.length); // 0=keep, 1=flip
+	var visited = new Uint8Array(tris.length);
+	visited[0] = 1; // seed keeps its winding
+
+	var queue = [0];
+	var head = 0;
+
+	while (head < queue.length) {
+		var cur = queue[head++];
+		var nbrs = neighbors[cur];
+		for (var n = 0; n < nbrs.length; n++) {
+			var nb = nbrs[n];
+			if (visited[nb.neighbor]) continue;
+			visited[nb.neighbor] = 1;
+
+			// Two adjacent triangles should traverse their shared edge in OPPOSITE directions.
+			// If sameDirection is true, one needs flipping.
+			var curFlipped = flipped[cur];
+			if (nb.sameDirection) {
+				// They traverse in the same direction → neighbor needs opposite flip state
+				flipped[nb.neighbor] = curFlipped ? 0 : 1;
+			} else {
+				// They traverse in opposite directions → same flip state
+				flipped[nb.neighbor] = curFlipped;
+			}
+
+			queue.push(nb.neighbor);
+		}
+	}
+
+	// Apply flips
+	var result = [];
+	var flipCount = 0;
 	for (var ri = 0; ri < tris.length; ri++) {
-		components[componentId[ri]].push(tris[ri]);
+		var t = tris[ri];
+		if (flipped[ri]) {
+			result.push({
+				v0: { x: t.v0.x, y: t.v0.y, z: t.v0.z },
+				v1: { x: t.v2.x, y: t.v2.y, z: t.v2.z },
+				v2: { x: t.v1.x, y: t.v1.y, z: t.v1.z }
+			});
+			flipCount++;
+		} else {
+			result.push({
+				v0: { x: t.v0.x, y: t.v0.y, z: t.v0.z },
+				v1: { x: t.v1.x, y: t.v1.y, z: t.v1.z },
+				v2: { x: t.v2.x, y: t.v2.y, z: t.v2.z }
+			});
+		}
 	}
 
-	// Sort by size descending so the largest piece is first
-	components.sort(function (a, b) { return b.length - a.length; });
+	if (flipCount > 0) {
+		console.log("propagateNormals: flipped " + flipCount + "/" + tris.length + " triangles for consistency");
+	}
 
-	return components;
+	return result;
+}
+
+/**
+ * Build result when no intersection is found — each surface returned as one whole group.
+ */
+function buildNoIntersectionResult(trisA, trisB, surfaceIdA, surfaceIdB, surfaceA, surfaceB) {
+	var nameA = surfaceA.name || surfaceIdA;
+	var nameB = surfaceB.name || surfaceIdB;
+	var splits = [];
+
+	if (trisA.length > 0) {
+		splits.push({
+			id: "A_1",
+			surfaceId: surfaceIdA,
+			label: nameA + " [whole]",
+			triangles: trisA,
+			color: "#FF0000",
+			kept: true
+		});
+	}
+	if (trisB.length > 0) {
+		splits.push({
+			id: "B_1",
+			surfaceId: surfaceIdB,
+			label: nameB + " [whole]",
+			triangles: trisB,
+			color: "#00FF00",
+			kept: true
+		});
+	}
+
+	return {
+		splits: splits,
+		surfaceIdA: surfaceIdA,
+		surfaceIdB: surfaceIdB,
+		taggedSegments: []
+	};
 }
 
 // ────────────────────────────────────────────────────────
@@ -144,11 +439,21 @@ function findConnectedComponents(tris, cutEdgeKeys) {
 // ────────────────────────────────────────────────────────
 
 /**
- * Compute split groups for two surfaces using polyline-based triangle splitting.
+ * Compute split groups for two surfaces using classify-then-split.
+ *
+ * Algorithm:
+ *   1-2) Extract triangles, find Moller intersection segments
+ *   3) Chain segments into polylines
+ *   4) Classify polylines as closed or open
+ *   5) Classify every triangle centroid (inside/outside)
+ *   6) Split straddling triangles at intersection edges, classify sub-triangles
+ *   7) Deduplicate seam vertices
+ *   8) Propagate normals for consistent winding
+ *   9) Build split groups
  *
  * @param {string} surfaceIdA - First surface ID
  * @param {string} surfaceIdB - Second surface ID
- * @returns {Object|null} { splits: [{id, surfaceId, label, triangles, color, kept}], surfaceIdA, surfaceIdB }
+ * @returns {Object|null} { splits, surfaceIdA, surfaceIdB, taggedSegments }
  */
 export function computeSplits(surfaceIdA, surfaceIdB) {
 	var surfaceA = window.loadedSurfaces ? window.loadedSurfaces.get(surfaceIdA) : null;
@@ -168,9 +473,6 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 		return null;
 	}
 
-	// Note: Normal alignment is NOT done here — splitting is purely geometric.
-	// Users can align/flip normals on the result via TreeView context menu.
-
 	console.log("Surface Boolean: A=" + trisA.length + " tris, B=" + trisB.length + " tris");
 
 	// Step 2) Get tagged intersection segments
@@ -178,10 +480,38 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 	console.log("Surface Boolean: " + taggedSegments.length + " intersection segments found");
 
 	if (taggedSegments.length === 0) {
-		console.warn("SurfaceBooleanHelper: No intersection found — classifying by centroid only");
+		console.warn("SurfaceBooleanHelper: No intersection found — returning each surface as whole group");
+		return buildNoIntersectionResult(trisA, trisB, surfaceIdA, surfaceIdB, surfaceA, surfaceB);
 	}
 
-	// Step 3) Build crossed triangle sets from tagged segments
+	// Step 3) Chain segments into polylines
+	var avgSegLen = 0;
+	for (var sl = 0; sl < taggedSegments.length; sl++) {
+		avgSegLen += ixDist3D(taggedSegments[sl].p0, taggedSegments[sl].p1);
+	}
+	avgSegLen = taggedSegments.length > 0 ? avgSegLen / taggedSegments.length : 1.0;
+	var chainThreshold = Math.max(avgSegLen * 0.01, 0.001);
+
+	var polylines = chainSegments(taggedSegments, chainThreshold);
+	console.log("Surface Boolean: chained into " + polylines.length + " polyline(s)");
+
+	// Step 4) Classify polylines as closed or open
+	var closedPolylines = [];
+	var openPolylines = [];
+	var closureThreshold = avgSegLen * 0.5;
+
+	for (var p = 0; p < polylines.length; p++) {
+		if (polylines[p].length < 2) continue;
+		if (isPolylineClosed(polylines[p], closureThreshold)) {
+			closedPolylines.push(polylines[p]);
+		} else {
+			openPolylines.push(polylines[p]);
+		}
+	}
+	console.log("Surface Boolean: " + closedPolylines.length + " closed, " +
+		openPolylines.length + " open polyline(s)");
+
+	// Step 3b) Build crossed triangle sets from tagged segments
 	var crossedSetA = {};
 	var crossedSetB = {};
 	for (var s = 0; s < taggedSegments.length; s++) {
@@ -196,66 +526,77 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 	var crossedCountB = Object.keys(crossedSetB).length;
 	console.log("Surface Boolean: crossed A=" + crossedCountA + ", crossed B=" + crossedCountB);
 
-	// Step 4) Split crossed triangles, pass through non-crossed.
-	// Track every newly created edge that lies on the intersection knife.
-	var cutEdgeKeysA = [];
-	var cutEdgeKeysB = [];
-	var splitTrisA = splitSurfaceAlongSegments(trisA, crossedSetA, cutEdgeKeysA);
-	var splitTrisB = splitSurfaceAlongSegments(trisB, crossedSetB, cutEdgeKeysB);
+	// Step 5) Classify every triangle centroid
+	var classA = classifyAllTriangles(trisA, closedPolylines, openPolylines);
+	var classB = classifyAllTriangles(trisB, closedPolylines, openPolylines);
 
-	console.log("Surface Boolean: after CDT split A=" + splitTrisA.length + " tris (" +
-		cutEdgeKeysA.length + " cut edges), B=" + splitTrisB.length + " tris (" +
-		cutEdgeKeysB.length + " cut edges)");
+	// Step 6) Split straddling triangles and classify sub-triangles
+	var groupsA = splitStraddlingAndClassify(trisA, classA, crossedSetA, closedPolylines, openPolylines);
+	var groupsB = splitStraddlingAndClassify(trisB, classB, crossedSetB, closedPolylines, openPolylines);
 
-	// NOTE: Z-refinement (refineStraddlingTriangles) is NOT used with CDT splitting.
-	// CDT guarantees the constraint edges exist in the output mesh. Z-refinement
-	// would split CDT sub-triangles, destroying the constraint edges and allowing
-	// the flood-fill to leak through.
+	console.log("Surface Boolean: A inside=" + groupsA.inside.length + " outside=" + groupsA.outside.length +
+		", B inside=" + groupsB.inside.length + " outside=" + groupsB.outside.length);
 
-	// Step 5) Find connected components using cut-edge-aware flood-fill.
-	// The CDT constraint edges act as barriers — the BFS cannot cross them.
-	// This correctly separates e.g. a donut from its hole on a flat plane.
-	var cutSetA = new Set(cutEdgeKeysA);
-	var cutSetB = new Set(cutEdgeKeysB);
-	var componentsA = findConnectedComponents(splitTrisA, cutSetA);
-	var componentsB = findConnectedComponents(splitTrisB, cutSetB);
+	// Step 7) Deduplicate seam vertices
+	if (groupsA.inside.length > 0) groupsA.inside = deduplicateSeamVertices(groupsA.inside, 1e-4);
+	if (groupsA.outside.length > 0) groupsA.outside = deduplicateSeamVertices(groupsA.outside, 1e-4);
+	if (groupsB.inside.length > 0) groupsB.inside = deduplicateSeamVertices(groupsB.inside, 1e-4);
+	if (groupsB.outside.length > 0) groupsB.outside = deduplicateSeamVertices(groupsB.outside, 1e-4);
 
-	console.log("Surface Boolean: connected components A=" + componentsA.length +
-		" (" + componentsA.map(function (c) { return c.length; }).join(",") + " tris)" +
-		", B=" + componentsB.length +
-		" (" + componentsB.map(function (c) { return c.length; }).join(",") + " tris)");
+	// Step 8) Propagate normals for consistent winding
+	if (groupsA.inside.length > 0) groupsA.inside = propagateNormals(groupsA.inside);
+	if (groupsA.outside.length > 0) groupsA.outside = propagateNormals(groupsA.outside);
+	if (groupsB.inside.length > 0) groupsB.inside = propagateNormals(groupsB.inside);
+	if (groupsB.outside.length > 0) groupsB.outside = propagateNormals(groupsB.outside);
 
-	// Step 7) Build split groups from connected components
+	// Step 9) Build split groups
 	var splits = [];
 	var nameA = surfaceA.name || surfaceIdA;
 	var nameB = surfaceB.name || surfaceIdB;
 
-	var colorsA = ["#FF0000", "#FF8800", "#FF00FF", "#FFFF00", "#CC4444", "#FF44AA"];
-	var colorsB = ["#00FF00", "#00CCFF", "#009900", "#0066CC", "#44CC44", "#44AAFF"];
-
-	for (var ca = 0; ca < componentsA.length; ca++) {
+	if (groupsA.inside.length > 0) {
 		splits.push({
-			id: "A_" + (ca + 1),
+			id: "A_inside",
 			surfaceId: surfaceIdA,
-			label: nameA + "[" + (ca + 1) + "]",
-			triangles: componentsA[ca],
-			color: colorsA[ca % colorsA.length],
+			label: nameA + " [inside]",
+			triangles: groupsA.inside,
+			color: "#FF0000",
 			kept: true
 		});
 	}
-	for (var cb = 0; cb < componentsB.length; cb++) {
+	if (groupsA.outside.length > 0) {
 		splits.push({
-			id: "B_" + (cb + 1),
+			id: "A_outside",
+			surfaceId: surfaceIdA,
+			label: nameA + " [outside]",
+			triangles: groupsA.outside,
+			color: "#FF8800",
+			kept: true
+		});
+	}
+	if (groupsB.inside.length > 0) {
+		splits.push({
+			id: "B_inside",
 			surfaceId: surfaceIdB,
-			label: nameB + "[" + (cb + 1) + "]",
-			triangles: componentsB[cb],
-			color: colorsB[cb % colorsB.length],
+			label: nameB + " [inside]",
+			triangles: groupsB.inside,
+			color: "#00FF00",
+			kept: true
+		});
+	}
+	if (groupsB.outside.length > 0) {
+		splits.push({
+			id: "B_outside",
+			surfaceId: surfaceIdB,
+			label: nameB + " [outside]",
+			triangles: groupsB.outside,
+			color: "#00CCFF",
 			kept: true
 		});
 	}
 
 	if (splits.length === 0) {
-		console.warn("SurfaceBooleanHelper: No overlap found between surfaces");
+		console.warn("SurfaceBooleanHelper: No split groups created");
 		return null;
 	}
 
@@ -270,72 +611,8 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 }
 
 // ────────────────────────────────────────────────────────
-// Polyline-based triangle splitting
+// Triangle splitting at intersection edges
 // ────────────────────────────────────────────────────────
-
-/**
- * Split all crossed triangles in a surface along their intersection segments.
- * Non-crossed triangles pass through unchanged.
- *
- * @param {Array} tris - All triangles {v0,v1,v2}
- * @param {Object} crossedMap - Map of triIndex -> [taggedSegments] for crossed tris
- * @param {Array} [cutEdgeKeysOut] - Output: edge keys that lie on the cut line
- * @returns {Array} Resulting triangles after splitting
- */
-function splitSurfaceAlongSegments(tris, crossedMap, cutEdgeKeysOut) {
-	var result = [];
-	var cdtCount = 0;
-
-	for (var i = 0; i < tris.length; i++) {
-		if (!crossedMap[i]) {
-			result.push(tris[i]);
-			continue;
-		}
-
-		// Use CDT to split — guarantees constraint edges exist in the output
-		var segments = crossedMap[i];
-		var subTris = splitTriangleByCDT(tris[i], segments, cutEdgeKeysOut);
-		cdtCount++;
-		for (var j = 0; j < subTris.length; j++) {
-			result.push(subTris[j]);
-		}
-	}
-
-	if (cdtCount > 0) {
-		console.log("SurfaceBooleanHelper: CDT-split " + cdtCount + " crossed triangles");
-	}
-	return result;
-}
-
-/**
- * Split a single triangle by one or more intersection segments.
- * Uses iterative splitting: split by first segment, then check sub-triangles
- * against remaining segments.
- *
- * @param {Object} tri - {v0, v1, v2}
- * @param {Array} segments - Tagged segments that cross this triangle
- * @param {Array} [cutEdgeKeysOut] - Output: edge keys that lie on the cut line
- * @returns {Array} Resulting sub-triangles
- */
-function splitTriangleBySegments(tri, segments, cutEdgeKeysOut) {
-	var current = [tri];
-
-	for (var s = 0; s < segments.length; s++) {
-		var seg = segments[s];
-		var next = [];
-
-		for (var t = 0; t < current.length; t++) {
-			var subResult = splitOneTriangleBySegment(current[t], seg.p0, seg.p1, cutEdgeKeysOut);
-			for (var r = 0; r < subResult.length; r++) {
-				next.push(subResult[r]);
-			}
-		}
-
-		current = next;
-	}
-
-	return current;
-}
 
 /**
  * Split a single triangle by a single intersection segment.
@@ -590,230 +867,7 @@ function splitTriangleAtCrossings(tri, crossing0, crossing1) {
 	return [t1, t2, t3];
 }
 
-// ────────────────────────────────────────────────────────
-// CDT-based triangle splitting (robust alternative)
-// ────────────────────────────────────────────────────────
 
-/**
- * Barycentric point-in-triangle test in local 2D {u,v} space.
- * Returns true if (pu, pv) is inside the triangle defined by p0, p1, p2.
- */
-function pointInLocalTri2D(pu, pv, p0, p1, p2) {
-	var d00 = (p1.u - p0.u) * (p1.u - p0.u) + (p1.v - p0.v) * (p1.v - p0.v);
-	var d01 = (p1.u - p0.u) * (p2.u - p0.u) + (p1.v - p0.v) * (p2.v - p0.v);
-	var d11 = (p2.u - p0.u) * (p2.u - p0.u) + (p2.v - p0.v) * (p2.v - p0.v);
-	var d20 = (pu - p0.u) * (p1.u - p0.u) + (pv - p0.v) * (p1.v - p0.v);
-	var d21 = (pu - p0.u) * (p2.u - p0.u) + (pv - p0.v) * (p2.v - p0.v);
-	var denom = d00 * d11 - d01 * d01;
-	if (Math.abs(denom) < 1e-20) return false;
-	var bv = (d11 * d20 - d01 * d21) / denom;
-	var bw = (d00 * d21 - d01 * d20) / denom;
-	var bu = 1.0 - bv - bw;
-	var EPS = -1e-4;
-	return bu >= EPS && bv >= EPS && bw >= EPS;
-}
-
-/**
- * Split a triangle by multiple intersection segments using Constrained Delaunay
- * Triangulation. All segment endpoints are inserted as points, and the segments
- * themselves become constrained edges — guaranteeing the cut line exists in the
- * output mesh.
- *
- * @param {Object} tri - {v0, v1, v2}
- * @param {Array} segments - Tagged intersection segments [{p0, p1}, ...]
- * @param {Array} [cutEdgeKeysOut] - Output: cut edge keys
- * @returns {Array} Sub-triangles
- */
-function splitTriangleByCDT(tri, segments, cutEdgeKeysOut) {
-	// Step 1) Build local 2D coordinate frame on the triangle plane
-	var e1x = tri.v1.x - tri.v0.x;
-	var e1y = tri.v1.y - tri.v0.y;
-	var e1z = tri.v1.z - tri.v0.z;
-	var e2x = tri.v2.x - tri.v0.x;
-	var e2y = tri.v2.y - tri.v0.y;
-	var e2z = tri.v2.z - tri.v0.z;
-
-	var e1Len = Math.sqrt(e1x * e1x + e1y * e1y + e1z * e1z);
-	if (e1Len < 1e-12) return [tri];
-	var ux = e1x / e1Len, uy = e1y / e1Len, uz = e1z / e1Len;
-
-	var nx = e1y * e2z - e1z * e2y;
-	var ny = e1z * e2x - e1x * e2z;
-	var nz = e1x * e2y - e1y * e2x;
-	var nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
-	if (nLen < 1e-12) return [tri];
-
-	var bvx = ny * uz - nz * uy;
-	var bvy = nz * ux - nx * uz;
-	var bvz = nx * uy - ny * ux;
-	var bvLen = Math.sqrt(bvx * bvx + bvy * bvy + bvz * bvz);
-	if (bvLen < 1e-12) return [tri];
-	bvx /= bvLen; bvy /= bvLen; bvz /= bvLen;
-
-	var oxx = tri.v0.x, oyy = tri.v0.y, ozz = tri.v0.z;
-	function toLocal(p) {
-		var dx = p.x - oxx, dy = p.y - oyy, dz = p.z - ozz;
-		return { u: dx * ux + dy * uy + dz * uz, v: dx * bvx + dy * bvy + dz * bvz };
-	}
-
-	// Step 2) Collect points: triangle verts are indices 0, 1, 2
-	var pts2D = [toLocal(tri.v0), toLocal(tri.v1), toLocal(tri.v2)];
-	var pts3D = [tri.v0, tri.v1, tri.v2];
-
-	var SNAP_DIST = e1Len * 1e-6;
-	var SNAP_DIST_SQ = SNAP_DIST * SNAP_DIST;
-
-	function addPoint(p3d) {
-		var p2d = toLocal(p3d);
-		for (var i = 0; i < pts2D.length; i++) {
-			var du = p2d.u - pts2D[i].u;
-			var dv = p2d.v - pts2D[i].v;
-			if (du * du + dv * dv < SNAP_DIST_SQ) return i;
-		}
-		pts2D.push(p2d);
-		pts3D.push(p3d);
-		return pts2D.length - 1;
-	}
-
-	// Step 3) For each segment, extend to infinite line and find where it crosses
-	// THIS triangle's edges. Raw segment endpoints can be in the triangle's INTERIOR
-	// (the Moller intersection clips to both triangles, so an endpoint may be on the
-	// OTHER triangle's edge). Using edge crossings guarantees points are ON the boundary,
-	// so the CDT constraint goes wall-to-wall and the flood-fill can't leak around.
-	var verts2D = [pts2D[0], pts2D[1], pts2D[2]];
-	var triEdges = [{ a: 0, b: 1 }, { a: 1, b: 2 }, { a: 2, b: 0 }];
-	var EDGE_EPS = 0.002;
-
-	var crossingPtIndices = new Set();
-	for (var s = 0; s < segments.length; s++) {
-		var seg = segments[s];
-		var ls0 = toLocal(seg.p0);
-		var ls1 = toLocal(seg.p1);
-
-		var segCrossings = [];
-		for (var e = 0; e < 3; e++) {
-			var la = verts2D[triEdges[e].a];
-			var lb = verts2D[triEdges[e].b];
-
-			var hit = segSegIntersection2D(la.u, la.v, lb.u, lb.v, ls0.u, ls0.v, ls1.u, ls1.v);
-			if (hit === null) continue;
-			if (hit.t < EDGE_EPS || hit.t > 1.0 - EDGE_EPS) continue;
-
-			var vA = pts3D[triEdges[e].a];
-			var vB = pts3D[triEdges[e].b];
-			var crossPt = lerpVert(vA, vB, hit.t);
-			var idx = addPoint(crossPt);
-			if (idx > 2) {
-				segCrossings.push(idx);
-				crossingPtIndices.add(idx);
-			}
-		}
-	}
-
-	var cutPtArr = Array.from(crossingPtIndices);
-	if (cutPtArr.length < 2) return [tri];
-
-	// Step 3b) Chain intersection points into a sorted polyline.
-	// Multiple segments within one triangle can CROSS each other if constrained
-	// independently. Sorting by projection onto the main intersection direction
-	// and chaining sequentially produces non-crossing edges.
-	var refPt = pts2D[cutPtArr[0]];
-	var maxDistSq = 0;
-	var farIdx = 0;
-	for (var fp = 1; fp < cutPtArr.length; fp++) {
-		var dfu = pts2D[cutPtArr[fp]].u - refPt.u;
-		var dfv = pts2D[cutPtArr[fp]].v - refPt.v;
-		var dSq = dfu * dfu + dfv * dfv;
-		if (dSq > maxDistSq) { maxDistSq = dSq; farIdx = fp; }
-	}
-
-	var dirU = pts2D[cutPtArr[farIdx]].u - refPt.u;
-	var dirV = pts2D[cutPtArr[farIdx]].v - refPt.v;
-	var dirLen = Math.sqrt(dirU * dirU + dirV * dirV);
-	if (dirLen < 1e-12) return [tri];
-	dirU /= dirLen;
-	dirV /= dirLen;
-
-	cutPtArr.sort(function (a, b) {
-		var projA = (pts2D[a].u - refPt.u) * dirU + (pts2D[a].v - refPt.v) * dirV;
-		var projB = (pts2D[b].u - refPt.u) * dirU + (pts2D[b].v - refPt.v) * dirV;
-		return projA - projB;
-	});
-
-	var constraintPairs = [];
-	for (var ch = 0; ch < cutPtArr.length - 1; ch++) {
-		constraintPairs.push([cutPtArr[ch], cutPtArr[ch + 1]]);
-	}
-
-	if (constraintPairs.length === 0) return [tri];
-
-	// Step 4) Build flat coords for Delaunator
-	var numPts = pts2D.length;
-	var coords = new Float64Array(numPts * 2);
-	for (var j = 0; j < numPts; j++) {
-		coords[j * 2] = pts2D[j].u;
-		coords[j * 2 + 1] = pts2D[j].v;
-	}
-
-	// Step 5) Constrained Delaunay Triangulation.
-	// NOTE: Do NOT constrain the 3 boundary edges (0-1, 1-2, 2-0). The triangle
-	// is convex, so boundary edges are already in the Delaunay triangulation as
-	// convex hull edges. Constraining them would conflict with knife edges whose
-	// endpoints lie ON the boundary (Constrainautor rejects edges that touch an
-	// already-constrained edge).
-	var del;
-	try {
-		del = new Delaunator(coords);
-		var con = new Constrainautor(del);
-
-		var constrainedCount = 0;
-		for (var c = 0; c < constraintPairs.length; c++) {
-			try {
-				con.constrainOne(constraintPairs[c][0], constraintPairs[c][1]);
-				constrainedCount++;
-			} catch (e) {
-				console.warn("splitTriangleByCDT: constraint failed [" +
-					constraintPairs[c][0] + "->" + constraintPairs[c][1] + "]: " + e.message);
-			}
-		}
-		if (constrainedCount === 0 && constraintPairs.length > 0) {
-			console.warn("splitTriangleByCDT: ALL " + constraintPairs.length + " constraints failed");
-		}
-	} catch (e) {
-		console.warn("splitTriangleByCDT: CDT failed, falling back:", e.message);
-		return [tri];
-	}
-
-	// Step 6) Extract output triangles, keep only those inside the original triangle
-	var result = [];
-	var triIdx = del.triangles;
-	for (var k = 0; k < triIdx.length; k += 3) {
-		var ia = triIdx[k], ib = triIdx[k + 1], ic = triIdx[k + 2];
-
-		var cu = (pts2D[ia].u + pts2D[ib].u + pts2D[ic].u) / 3;
-		var cv = (pts2D[ia].v + pts2D[ib].v + pts2D[ic].v) / 3;
-
-		if (pointInLocalTri2D(cu, cv, pts2D[0], pts2D[1], pts2D[2])) {
-			result.push({ v0: pts3D[ia], v1: pts3D[ib], v2: pts3D[ic] });
-		}
-	}
-
-	// Step 7) Record cut edges
-	if (cutEdgeKeysOut) {
-		for (var ce = 0; ce < constraintPairs.length; ce++) {
-			cutEdgeKeysOut.push(cutEdgeKey(
-				pts3D[constraintPairs[ce][0]],
-				pts3D[constraintPairs[ce][1]]
-			));
-		}
-	}
-
-	if (result.length === 0) {
-		console.warn("splitTriangleByCDT: no output triangles, returning original");
-		return [tri];
-	}
-	return result;
-}
 
 /**
  * Linearly interpolate between two vertices.
@@ -826,374 +880,7 @@ function lerpVert(a, b, t) {
 	};
 }
 
-// ────────────────────────────────────────────────────────
-// Straddling triangle refinement — Z-interpolation split
-// ────────────────────────────────────────────────────────
 
-/**
- * Detect and split triangles that straddle the intersection boundary.
- *
- * After the primary tri-tri split, some triangles may still cross the boundary.
- * This pass checks each vertex's Z against the other surface and splits any
- * triangle with vertices on both sides.
- *
- * Handles two straddle cases:
- *   Case 1: All 3 vertices covered, some above and some below → 2 Z-crossings
- *   Case 2: Mixed coverage (some null) with above+below → 1 Z-crossing + bisect
- *           through the null vertex
- *   Case 3: Mixed coverage, covered vertices agree in Z → extent boundary straddle,
- *           find coverage boundary via binary search on null edge
- *
- * @param {Array} tris - Triangle soup after primary split
- * @param {Array} otherTris - The other surface's original triangles
- * @param {Object} otherGrid - Spatial grid on the other surface
- * @param {number} otherCellSize - Grid cell size
- * @param {Array} [cutEdgeKeysOut] - Output: edge keys created by Z-refinement splits
- * @returns {Array} Refined triangle soup
- */
-function refineStraddlingTriangles(tris, otherTris, otherGrid, otherCellSize, cutEdgeKeysOut) {
-	var result = [];
-	var splitCount = 0;
-	var edges = [{ a: 0, b: 1 }, { a: 1, b: 2 }, { a: 2, b: 0 }];
-	var oppositeVertex = [2, 0, 1]; // Vertex opposite to edge 0, 1, 2
-
-	for (var i = 0; i < tris.length; i++) {
-		var tri = tris[i];
-		var verts = [tri.v0, tri.v1, tri.v2];
-
-		// Compute deltaZ for each vertex (own Z minus other surface Z)
-		var deltas = [];
-		var hasAbove = false;
-		var hasBelow = false;
-		var nullCount = 0;
-		var nullIdx = -1; // Last null index (for nullCount===1)
-		var covIdx = -1;  // Last covered index (for nullCount===2)
-
-		for (var v = 0; v < 3; v++) {
-			var zOther = interpolateZAtPoint(verts[v].x, verts[v].y, otherTris, otherGrid, otherCellSize);
-			if (zOther === null) {
-				nullCount++;
-				nullIdx = v;
-				deltas.push(null);
-			} else {
-				covIdx = v;
-				var dz = verts[v].z - zOther;
-				deltas.push(dz);
-				if (dz > 0.001) hasAbove = true;
-				else if (dz < -0.001) hasBelow = true;
-			}
-		}
-
-		// Skip if no straddle possible
-		if (nullCount === 3) { result.push(tri); continue; } // No coverage at all
-		if (!hasAbove && !hasBelow) { result.push(tri); continue; } // All neutral or all null
-
-		// ── Case 1 & 2: above+below disagreement among covered vertices ──
-		if (hasAbove && hasBelow) {
-			// Find Z-crossings on covered-covered edges
-			var crossings = [];
-			for (var e = 0; e < 3; e++) {
-				var dA = deltas[edges[e].a];
-				var dB = deltas[edges[e].b];
-				if (dA === null || dB === null) continue;
-				if ((dA > 0 && dB > 0) || (dA < 0 && dB < 0)) continue;
-				if (Math.abs(dA) < 0.001 || Math.abs(dB) < 0.001) continue;
-
-				var t = dA / (dA - dB);
-				if (t < 0.002 || t > 0.998) continue;
-
-				crossings.push({
-					edgeIdx: e,
-					t: t,
-					point: lerpVert(verts[edges[e].a], verts[edges[e].b], t)
-				});
-			}
-
-			if (crossings.length === 2 && crossings[0].edgeIdx !== crossings[1].edgeIdx) {
-				// Case 1: Standard 2-crossing split → 3 sub-triangles
-				var subTris = splitTriangleAtCrossings(tri, crossings[0], crossings[1]);
-				for (var s = 0; s < subTris.length; s++) result.push(subTris[s]);
-				if (cutEdgeKeysOut) {
-					cutEdgeKeysOut.push(cutEdgeKey(crossings[0].point, crossings[1].point));
-				}
-				splitCount++;
-				continue;
-			}
-
-			if (crossings.length === 1 && nullCount === 1) {
-				// Case 2: 1 Z-crossing + null vertex → bisect through null vertex
-				var cEdge = edges[crossings[0].edgeIdx];
-				var cPt = crossings[0].point;
-				var nullV = verts[nullIdx];
-				var vA = verts[cEdge.a];
-				var vB = verts[cEdge.b];
-
-				result.push({ v0: vA, v1: cPt, v2: nullV });
-				result.push({ v0: cPt, v1: vB, v2: nullV });
-				if (cutEdgeKeysOut) {
-					cutEdgeKeysOut.push(cutEdgeKey(cPt, nullV));
-				}
-				splitCount++;
-				continue;
-			}
-
-			// Couldn't split — pass through
-			result.push(tri);
-			continue;
-		}
-
-		// ── Case 3: Triangle crosses the other surface's extent boundary ──
-		// Find coverage boundary on edges between covered and null vertices.
-		// Works for nullCount === 1 (2 covered, 1 null) and nullCount === 2 (1 covered, 2 null).
-		if (nullCount === 1 || nullCount === 2) {
-			var covBoundaries = [];
-			for (var e2 = 0; e2 < 3; e2++) {
-				var idxA = edges[e2].a;
-				var idxB = edges[e2].b;
-				// Must be an edge with one null and one covered vertex
-				var aCov = deltas[idxA] !== null;
-				var bCov = deltas[idxB] !== null;
-				if (aCov === bCov) continue; // Both covered or both null
-
-				// Binary search for coverage boundary
-				var covEnd = aCov ? idxA : idxB;
-				var nullEnd = aCov ? idxB : idxA;
-				var boundary = findCoverageBoundary(
-					verts[covEnd], verts[nullEnd],
-					otherTris, otherGrid, otherCellSize
-				);
-				if (boundary) {
-					covBoundaries.push({
-						edgeIdx: e2,
-						t: aCov ? boundary.t : (1.0 - boundary.t),
-						point: boundary.point
-					});
-				}
-			}
-
-			if (covBoundaries.length === 2 && covBoundaries[0].edgeIdx !== covBoundaries[1].edgeIdx) {
-				var subTris2 = splitTriangleAtCrossings(tri, covBoundaries[0], covBoundaries[1]);
-				for (var s2 = 0; s2 < subTris2.length; s2++) result.push(subTris2[s2]);
-				if (cutEdgeKeysOut) {
-					cutEdgeKeysOut.push(cutEdgeKey(covBoundaries[0].point, covBoundaries[1].point));
-				}
-				splitCount++;
-				continue;
-			}
-		}
-
-		result.push(tri);
-	}
-
-	if (splitCount > 0) {
-		console.log("SurfaceBooleanHelper: refineStraddling split " + splitCount + " triangles");
-	}
-
-	return result;
-}
-
-/**
- * Binary search along an edge to find where Z-coverage transitions
- * from covered to uncovered.
- *
- * @param {Object} vCovered - Vertex with Z coverage
- * @param {Object} vNull - Vertex without Z coverage
- * @returns {{ t: number, point: {x,y,z} } | null} - Parametric position from vCovered
- */
-function findCoverageBoundary(vCovered, vNull, otherTris, otherGrid, otherCellSize) {
-	var lo = 0, hi = 1;
-	var bestT = 0;
-	var bestPt = vCovered;
-
-	for (var iter = 0; iter < 10; iter++) {
-		var mid = (lo + hi) / 2;
-		var pt = lerpVert(vCovered, vNull, mid);
-		var z = interpolateZAtPoint(pt.x, pt.y, otherTris, otherGrid, otherCellSize);
-		if (z !== null) {
-			lo = mid;
-			bestT = mid;
-			bestPt = pt;
-		} else {
-			hi = mid;
-		}
-	}
-
-	if (bestT < 0.01) return null; // Boundary too close to covered vertex
-	if (bestT > 0.99) return null; // Shouldn't happen (vNull is uncovered)
-
-	return { t: bestT, point: bestPt };
-}
-
-// ────────────────────────────────────────────────────────
-// Centroid classification for non-intersected triangles
-// ────────────────────────────────────────────────────────
-
-function triCentroid(tri) {
-	return {
-		x: (tri.v0.x + tri.v1.x + tri.v2.x) / 3,
-		y: (tri.v0.y + tri.v1.y + tri.v2.y) / 3,
-		z: (tri.v0.z + tri.v1.z + tri.v2.z) / 3
-	};
-}
-
-/**
- * 2D point-in-triangle test using barycentric coordinates (XY only).
- */
-function pointInTriangle2D(px, py, tri) {
-	var ax = tri.v0.x, ay = tri.v0.y;
-	var bx = tri.v1.x, by = tri.v1.y;
-	var cx = tri.v2.x, cy = tri.v2.y;
-
-	var denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-	if (Math.abs(denom) < 1e-12) return false;
-
-	var u = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / denom;
-	var v = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / denom;
-	var w = 1 - u - v;
-
-	return u >= -1e-8 && v >= -1e-8 && w >= -1e-8;
-}
-
-/**
- * Interpolate Z at point (px, py) on a triangle using barycentric coordinates.
- */
-function interpolateZOnTriangle(px, py, tri) {
-	var ax = tri.v0.x, ay = tri.v0.y, az = tri.v0.z;
-	var bx = tri.v1.x, by = tri.v1.y, bz = tri.v1.z;
-	var cx = tri.v2.x, cy = tri.v2.y, cz = tri.v2.z;
-
-	var denom = (by - cy) * (ax - cx) + (cx - bx) * (ay - cy);
-	if (Math.abs(denom) < 1e-12) return (az + bz + cz) / 3;
-
-	var u = ((by - cy) * (px - cx) + (cx - bx) * (py - cy)) / denom;
-	var v = ((cy - ay) * (px - cx) + (ax - cx) * (py - cy)) / denom;
-	var w = 1 - u - v;
-
-	return u * az + v * bz + w * cz;
-}
-
-/**
- * Find the Z of the other surface at (px, py) using spatial grid lookup.
- * Returns interpolated Z or null if outside.
- */
-function interpolateZAtPoint(px, py, tris, grid, cellSize) {
-	var candidates = ixQueryGrid(grid, { minX: px, maxX: px, minY: py, maxY: py }, cellSize);
-
-	for (var c = 0; c < candidates.length; c++) {
-		var tri = tris[candidates[c]];
-		if (pointInTriangle2D(px, py, tri)) {
-			return interpolateZOnTriangle(px, py, tri);
-		}
-	}
-
-	return null;
-}
-
-// ────────────────────────────────────────────────────────
-// Outside reclassification — adjacency flood-fill
-// ────────────────────────────────────────────────────────
-
-/**
- * Reclassify "outside" triangles (class=0) by adjacency flood-fill.
- *
- * Triangles outside the other surface's XY extent are initially unclassified.
- * They should inherit the classification of their connected neighbors because
- * they're part of the same connected region — only the intersection line should
- * create region boundaries, not the XY extent of the other surface.
- *
- * Algorithm:
- * 1. Build edge→[triIndex] adjacency map using vertex keys
- * 2. Seed queue from all classified triangles (above=1 or below=-1)
- * 3. BFS: for each unclassified neighbor, adopt the seed's classification
- * 4. Iterate until all reachable "outside" triangles are reclassified
- *
- * @param {Array} tris - Triangle soup [{v0, v1, v2}, ...]
- * @param {Array} classes - Per-triangle classification: 1=above, -1=below, 0=outside
- * @returns {Array} Updated classification array
- */
-function reclassifyOutsideByAdjacency(tris, classes) {
-	var outsideCount = 0;
-	for (var i = 0; i < classes.length; i++) {
-		if (classes[i] === 0) outsideCount++;
-	}
-	if (outsideCount === 0) return classes;
-
-	var PREC = 6;
-	function vKey(v) {
-		return v.x.toFixed(PREC) + "," + v.y.toFixed(PREC) + "," + v.z.toFixed(PREC);
-	}
-	function edgeKey(ka, kb) {
-		return ka < kb ? ka + "|" + kb : kb + "|" + ka;
-	}
-
-	// Step 1) Build edge→[triIndex] adjacency
-	var edgeToTris = {};
-	for (var ti = 0; ti < tris.length; ti++) {
-		var tri = tris[ti];
-		var k0 = vKey(tri.v0);
-		var k1 = vKey(tri.v1);
-		var k2 = vKey(tri.v2);
-		var edges = [edgeKey(k0, k1), edgeKey(k1, k2), edgeKey(k2, k0)];
-		for (var e = 0; e < 3; e++) {
-			if (!edgeToTris[edges[e]]) edgeToTris[edges[e]] = [];
-			edgeToTris[edges[e]].push(ti);
-		}
-	}
-
-	// Build per-triangle neighbor list
-	var neighbors = new Array(tris.length);
-	for (var ni = 0; ni < tris.length; ni++) neighbors[ni] = [];
-
-	for (var ek in edgeToTris) {
-		var list = edgeToTris[ek];
-		for (var a = 0; a < list.length; a++) {
-			for (var b = a + 1; b < list.length; b++) {
-				neighbors[list[a]].push(list[b]);
-				neighbors[list[b]].push(list[a]);
-			}
-		}
-	}
-
-	// Step 2) BFS from classified triangles into outside triangles
-	var result = classes.slice(); // copy
-	var queue = [];
-
-	// Seed: all classified triangles that have at least one outside neighbor
-	for (var si = 0; si < tris.length; si++) {
-		if (result[si] !== 0) {
-			queue.push(si);
-		}
-	}
-
-	// Step 3) Flood-fill
-	var reclassified = 0;
-	var head = 0;
-	while (head < queue.length) {
-		var current = queue[head++];
-		var currentClass = result[current];
-		var nbrs = neighbors[current];
-
-		for (var n = 0; n < nbrs.length; n++) {
-			var nbr = nbrs[n];
-			if (result[nbr] === 0) {
-				result[nbr] = currentClass;
-				reclassified++;
-				queue.push(nbr);
-			}
-		}
-	}
-
-	if (reclassified > 0) {
-		var remaining = 0;
-		for (var ri = 0; ri < result.length; ri++) {
-			if (result[ri] === 0) remaining++;
-		}
-		console.log("SurfaceBooleanHelper: reclassified " + reclassified + "/" + outsideCount +
-			" outside tris by adjacency" + (remaining > 0 ? " (" + remaining + " disconnected remain)" : ""));
-	}
-
-	return result;
-}
 
 // ────────────────────────────────────────────────────────
 // Public: Preview mesh creation
