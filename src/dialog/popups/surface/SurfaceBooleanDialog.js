@@ -17,6 +17,7 @@ import {
 	applyMerge
 } from "../../../helpers/SurfaceBooleanHelper.js";
 import { ensureZUpNormals } from "../../../helpers/SurfaceIntersectionHelper.js";
+import { classifyNormalDirection } from "../../../helpers/SurfaceNormalHelper.js";
 import { flashHighlight, clearHighlight, clearAllHighlights } from "../../../helpers/SurfaceHighlightHelper.js";
 
 // ────────────────────────────────────────────────────────
@@ -502,8 +503,18 @@ function showPhase2(splitResult, gradient) {
 			label.style.whiteSpace = "nowrap";
 			label.textContent = split.label;
 
+			// Normal direction badge (updated dynamically after flip/align)
+			var badge = document.createElement("span");
+			badge.style.fontSize = "10px";
+			badge.style.fontWeight = "bold";
+			badge.style.padding = "1px 4px";
+			badge.style.borderRadius = "3px";
+			badge.style.flexShrink = "0";
+			updateNormalBadge(badge, split, p2Dark);
+
 			leftDiv.appendChild(swatch);
 			leftDiv.appendChild(label);
+			leftDiv.appendChild(badge);
 
 			// Right: remove/add icon buttons
 			var btnDiv = document.createElement("div");
@@ -525,10 +536,12 @@ function showPhase2(splitResult, gradient) {
 
 			var flipBtn = createIconButton("icons/flip-horizontal.png", "Flip Normals on this region", function () {
 				flipSplitRegionNormals(split, index);
+				updateNormalBadge(badge, split, p2Dark);
 			});
 
 			var alignBtn = createIconButton("icons/arrows-up.png", "Align Normals Z-Up on this region", function () {
 				alignSplitRegionNormals(split, index);
+				updateNormalBadge(badge, split, p2Dark);
 			});
 
 			btnDiv.appendChild(removeBtn);
@@ -915,6 +928,24 @@ function createCheckboxLabel(text, checked) {
 	label.appendChild(cb);
 	label.appendChild(document.createTextNode(text));
 	return { label: label, checkbox: cb };
+}
+
+function updateNormalBadge(badge, split, dark) {
+	var dir = classifyNormalDirection(split.triangles, false, 0);
+	badge.textContent = "[" + dir + "]";
+	if (dir === "Z+" || dir === "Out") {
+		badge.style.color = "#00CC44";
+		badge.style.background = "rgba(0,204,68,0.15)";
+	} else if (dir === "Z-" || dir === "In") {
+		badge.style.color = "#FF8800";
+		badge.style.background = "rgba(255,136,0,0.15)";
+	} else if (dir === "Chaos") {
+		badge.style.color = "#FF3333";
+		badge.style.background = "rgba(255,51,51,0.15)";
+	} else {
+		badge.style.color = dark ? "#aaa" : "#666";
+		badge.style.background = dark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)";
+	}
 }
 
 function updateRowAppearance(row, swatch, split) {

@@ -126,9 +126,9 @@ export function buildExtrudeGeometry(entity, params) {
 			var b = faceIndices[f][1];
 			var c = faceIndices[f][2];
 			positions.push(
-				verts[a].x, verts[a].y, verts[a].z + signedDepth,
 				verts[c].x, verts[c].y, verts[c].z + signedDepth,
-				verts[b].x, verts[b].y, verts[b].z + signedDepth
+				verts[b].x, verts[b].y, verts[b].z + signedDepth,
+				verts[a].x, verts[a].y, verts[a].z + signedDepth
 			);
 		}
 

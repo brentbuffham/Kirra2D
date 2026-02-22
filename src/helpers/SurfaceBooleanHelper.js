@@ -1175,6 +1175,34 @@ export function applyMerge(splits, config) {
 	console.log("SurfaceBooleanHelper: final weld → " + worldPoints.length +
 		" points, " + triangles.length + " triangles");
 
+	// ── Step 6b: Post-weld iterative capping (stitch mode only) ──
+	if (closeMode === "stitch") {
+		var postSoup = weldedToSoup(triangles);
+		var maxCapPasses = 3;
+		for (var capPass = 0; capPass < maxCapPasses; capPass++) {
+			var capResult = capBoundaryLoops(postSoup);
+			if (capResult.length === 0) break;
+
+			for (var ci = 0; ci < capResult.length; ci++) {
+				postSoup.push(capResult[ci]);
+			}
+			console.log("SurfaceBooleanHelper: post-weld cap pass " + (capPass + 1) +
+				" added " + capResult.length + " tris");
+
+			// Re-weld to integrate cap vertices
+			var reWelded = weldVertices(postSoup, snapTol);
+			postSoup = weldedToSoup(reWelded.triangles);
+		}
+
+		// Update final output with capped result
+		var cappedWeld = weldVertices(postSoup, snapTol);
+		worldPoints = cappedWeld.points;
+		triangles = cappedWeld.triangles;
+
+		console.log("SurfaceBooleanHelper: after post-weld capping → " +
+			worldPoints.length + " points, " + triangles.length + " triangles");
+	}
+
 	// ── Step 7: Log boundary stats ──
 	var finalSoup = weldedToSoup(triangles);
 	logBoundaryStats(finalSoup, closeMode);
@@ -1493,6 +1521,24 @@ function triangulateLoop(loop) {
 	if (loop.length < 3) return [];
 	if (loop.length === 3) {
 		return [{ v0: loop[0], v1: loop[1], v2: loop[2] }];
+	}
+	// Direct quad split for 4-vertex loops — Delaunator/Constrainautor fails on
+	// degenerate 2D projections of near-collinear quads. Split along the shorter
+	// diagonal to avoid thin slivers.
+	if (loop.length === 4) {
+		var d02 = dist3(loop[0], loop[2]);
+		var d13 = dist3(loop[1], loop[3]);
+		if (d02 <= d13) {
+			return [
+				{ v0: loop[0], v1: loop[1], v2: loop[2] },
+				{ v0: loop[0], v1: loop[2], v2: loop[3] }
+			];
+		} else {
+			return [
+				{ v0: loop[0], v1: loop[1], v2: loop[3] },
+				{ v0: loop[1], v1: loop[2], v2: loop[3] }
+			];
+		}
 	}
 
 	// Compute loop normal to determine best projection plane (Newell's method)

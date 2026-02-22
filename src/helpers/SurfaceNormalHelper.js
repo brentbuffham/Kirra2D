@@ -207,7 +207,7 @@ function countUniqueEdges(tris) {
  * @param {number} signedVolume - Signed volume from divergence theorem
  * @returns {string} Classification label
  */
-function classifyNormalDirection(tris, isClosed, signedVolume) {
+export function classifyNormalDirection(tris, isClosed, signedVolume) {
 	if (tris.length === 0) return "N/A";
 
 	// Compute area-weighted normal sum and total area
@@ -248,7 +248,14 @@ function classifyNormalDirection(tris, isClosed, signedVolume) {
 	var avgLen = Math.sqrt(sumNx * sumNx + sumNy * sumNy + sumNz * sumNz);
 	var consistency = avgLen / totalArea;
 
-	if (consistency < 0.15) return "Chaos";
+	if (consistency < 0.15) {
+		// Before declaring "Chaos", try signed volume for nearly-closed solids.
+		// A mesh with Z+ top and Z- bottom has cancelling normals (low consistency)
+		// but a meaningful signed volume that indicates outward/inward orientation.
+		if (signedVolume > 1e-6) return isClosed ? "Out" : "~Out";
+		if (signedVolume < -1e-6) return isClosed ? "In" : "~In";
+		return "Chaos";
+	}
 
 	// Normalize the average normal to find dominant axis
 	var nx = sumNx / avgLen;
