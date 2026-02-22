@@ -595,6 +595,7 @@ function showPhase2(splitResult, gradient) {
 	applySmallSelectStyle(closeModeSelect);
 	closeModeSelect.title = "Stitch Intersection: weld shared seam only (fast)\nClose by Stitching: also bridge nearby open edges and cap small holes";
 	var closeModeOptions = [
+		{ value: "raw", text: "None", disabled: false },
 		{ value: "none", text: "Stitch Intersection", disabled: false },
 		{ value: "stitch", text: "Close by Stitching", disabled: false },
 		{ value: "curtain", text: "Close by Capping", disabled: true },
@@ -708,25 +709,28 @@ function showPhase2(splitResult, gradient) {
 	infoDiv.style.border = p2Dark ? "1px solid rgba(255,255,255,0.06)" : "1px solid rgba(0,0,0,0.08)";
 
 	function updateInfoText(mode) {
+		var buttons = "<b>Buttons per region:</b> " +
+			"<span style='opacity:0.7'>&#9651;&#8722;</span> Hide | " +
+			"<span style='opacity:0.7'>&#9651;+</span> Show | " +
+			"<span style='opacity:0.7'>&#8644;</span> Flip Normals | " +
+			"<span style='opacity:0.7'>&#8657;</span> Align Z-Up";
 		if (mode === "stitch") {
 			infoDiv.innerHTML =
 				"<b>Close by Stitching:</b> After welding the intersection seam, finds open boundary " +
 				"edges whose endpoints are within the <i>Stitch tolerance</i> and bridges them with " +
-				"triangles. Small remaining holes (< 500 verts) are flat-capped.<br>" +
-				"<b>Tip:</b> Use a small tolerance (0.1 – 1.0m) to close gaps near the seam without " +
-				"connecting distant outer boundaries.";
+				"triangles. Small remaining holes (< 500 verts) are flat-capped.<br>" + buttons;
+		} else if (mode === "raw") {
+			infoDiv.innerHTML =
+				"<b>None:</b> No post-processing. Kept regions are merged as raw triangle soup " +
+				"without welding or stitching. Vertices along the intersection will be duplicated " +
+				"(seam is a tear, not welded).<br>" + buttons;
 		} else {
 			infoDiv.innerHTML =
 				"<b>Stitch Intersection:</b> Welds vertices along the intersection seam so the kept " +
-				"regions share edges cleanly. Outer boundaries remain open. This is the fastest mode.<br>" +
-				"<b>Buttons per region:</b> " +
-				"<span style='opacity:0.7'>&#9651;&#8722;</span> Hide | " +
-				"<span style='opacity:0.7'>&#9651;+</span> Show | " +
-				"<span style='opacity:0.7'>&#8644;</span> Flip Normals | " +
-				"<span style='opacity:0.7'>&#8657;</span> Align Z-Up";
+				"regions share edges cleanly. Outer boundaries remain open. This is the fastest mode.<br>" + buttons;
 		}
 	}
-	updateInfoText("none");
+	updateInfoText("raw");
 	container.appendChild(infoDiv);
 
 	// Step 6) Create dialog

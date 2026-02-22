@@ -3,10 +3,11 @@
  *
  * Interactive split-and-pick surface boolean (Vulcan TRIBOOL style).
  * Uses Moller tri-tri intersection polylines to physically SPLIT triangles
- * along the actual intersection boundary, then classifies the resulting
- * clean sub-triangles by centroid Z against the other surface.
- *
- * Non-intersected triangles are classified by centroid Z vs the other surface.
+ * along the actual intersection boundary. The intersection line acts as a
+ * "knife" — edges created by the cut are tracked, and connected-component
+ * flood-fill (which cannot cross cut edges) detects topologically separate
+ * pieces. Z-refinement catches any straddling triangles the segment
+ * splitter missed.
  */
 
 import * as THREE from "three";
@@ -23,6 +24,120 @@ import {
 	intersectSurfacePairTagged,
 	countOpenEdges
 } from "./SurfaceIntersectionHelper.js";
+
+// ────────────────────────────────────────────────────────
+// Vertex/edge key helpers (shared by splitting + flood-fill)
+// ────────────────────────────────────────────────────────
+
+var CUT_KEY_PREC = 6;
+
+function cutVKey(v) {
+	return v.x.toFixed(CUT_KEY_PREC) + "," + v.y.toFixed(CUT_KEY_PREC) + "," + v.z.toFixed(CUT_KEY_PREC);
+}
+
+function cutEdgeKey(va, vb) {
+	var ka = cutVKey(va);
+	var kb = cutVKey(vb);
+	return ka < kb ? ka + "|" + kb : kb + "|" + ka;
+}
+
+// ────────────────────────────────────────────────────────
+// Connected-component detection (cut-edge aware)
+// ────────────────────────────────────────────────────────
+
+/**
+ * Find connected components in a triangle soup via edge-adjacency BFS.
+ * Triangles sharing an edge are neighbors, UNLESS that edge is in the
+ * cutEdgeKeys set. Cut edges act as barriers so the flood-fill cannot
+ * cross the intersection seam.
+ *
+ * @param {Array} tris - Triangle soup [{v0, v1, v2}, ...]
+ * @param {Set} cutEdgeKeys - Set of edge keys to exclude from adjacency
+ * @returns {Array} Array of arrays — each inner array is the triangles in one component
+ */
+function findConnectedComponents(tris, cutEdgeKeys) {
+	if (tris.length === 0) return [];
+
+	// Step 1) Build edge-to-triangle adjacency (skip cut edges)
+	var edgeToTris = {};
+	var cutHits = 0;
+	var totalEdges = 0;
+	for (var ti = 0; ti < tris.length; ti++) {
+		var tri = tris[ti];
+		var k0 = cutVKey(tri.v0);
+		var k1 = cutVKey(tri.v1);
+		var k2 = cutVKey(tri.v2);
+		var triEdges = [
+			k0 < k1 ? k0 + "|" + k1 : k1 + "|" + k0,
+			k1 < k2 ? k1 + "|" + k2 : k2 + "|" + k1,
+			k2 < k0 ? k2 + "|" + k0 : k0 + "|" + k2
+		];
+		for (var e = 0; e < 3; e++) {
+			totalEdges++;
+			if (cutEdgeKeys && cutEdgeKeys.has(triEdges[e])) {
+				cutHits++;
+				continue;
+			}
+			if (!edgeToTris[triEdges[e]]) edgeToTris[triEdges[e]] = [];
+			edgeToTris[triEdges[e]].push(ti);
+		}
+	}
+	console.log("findConnectedComponents: " + tris.length + " tris, " +
+		totalEdges + " edge refs, " + cutHits + " cut-edge hits (from " +
+		(cutEdgeKeys ? cutEdgeKeys.size : 0) + " cut keys)");
+
+	// Step 2) Build per-triangle neighbor list from shared non-cut edges
+	var neighbors = new Array(tris.length);
+	for (var ni = 0; ni < tris.length; ni++) neighbors[ni] = [];
+
+	for (var ek in edgeToTris) {
+		var list = edgeToTris[ek];
+		for (var a = 0; a < list.length; a++) {
+			for (var b = a + 1; b < list.length; b++) {
+				neighbors[list[a]].push(list[b]);
+				neighbors[list[b]].push(list[a]);
+			}
+		}
+	}
+
+	// Step 3) BFS flood-fill to assign component IDs
+	var componentId = new Int32Array(tris.length);
+	for (var ci = 0; ci < tris.length; ci++) componentId[ci] = -1;
+
+	var currentId = 0;
+	for (var seed = 0; seed < tris.length; seed++) {
+		if (componentId[seed] !== -1) continue;
+
+		componentId[seed] = currentId;
+		var queue = [seed];
+		var head = 0;
+
+		while (head < queue.length) {
+			var cur = queue[head++];
+			var nbrs = neighbors[cur];
+			for (var n = 0; n < nbrs.length; n++) {
+				var nbr = nbrs[n];
+				if (componentId[nbr] === -1) {
+					componentId[nbr] = currentId;
+					queue.push(nbr);
+				}
+			}
+		}
+		currentId++;
+	}
+
+	// Step 4) Group triangles by component ID
+	var components = new Array(currentId);
+	for (var gi = 0; gi < currentId; gi++) components[gi] = [];
+	for (var ri = 0; ri < tris.length; ri++) {
+		components[componentId[ri]].push(tris[ri]);
+	}
+
+	// Sort by size descending so the largest piece is first
+	components.sort(function (a, b) { return b.length - a.length; });
+
+	return components;
+}
 
 // ────────────────────────────────────────────────────────
 // Public API
@@ -81,140 +196,60 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
 	var crossedCountB = Object.keys(crossedSetB).length;
 	console.log("Surface Boolean: crossed A=" + crossedCountA + ", crossed B=" + crossedCountB);
 
-	// Step 4) Split crossed triangles, pass through non-crossed
-	var splitTrisA = splitSurfaceAlongSegments(trisA, crossedSetA);
-	var splitTrisB = splitSurfaceAlongSegments(trisB, crossedSetB);
+	// Step 4) Split crossed triangles, pass through non-crossed.
+	// Track every newly created edge that lies on the intersection knife.
+	var cutEdgeKeysA = [];
+	var cutEdgeKeysB = [];
+	var splitTrisA = splitSurfaceAlongSegments(trisA, crossedSetA, cutEdgeKeysA);
+	var splitTrisB = splitSurfaceAlongSegments(trisB, crossedSetB, cutEdgeKeysB);
 
-	console.log("Surface Boolean: after split A=" + splitTrisA.length + " tris, B=" + splitTrisB.length + " tris");
+	console.log("Surface Boolean: after CDT split A=" + splitTrisA.length + " tris (" +
+		cutEdgeKeysA.length + " cut edges), B=" + splitTrisB.length + " tris (" +
+		cutEdgeKeysB.length + " cut edges)");
 
-	// Step 5) Build spatial grids on ORIGINAL triangles for Z interpolation
-	var avgEdgeA = ixEstimateAvgEdge(trisA);
-	var avgEdgeB = ixEstimateAvgEdge(trisB);
-	var cellSizeA = Math.max(avgEdgeA * 2, 0.1);
-	var cellSizeB = Math.max(avgEdgeB * 2, 0.1);
-	var gridA = ixBuildSpatialGrid(trisA, cellSizeA);
-	var gridB = ixBuildSpatialGrid(trisB, cellSizeB);
+	// NOTE: Z-refinement (refineStraddlingTriangles) is NOT used with CDT splitting.
+	// CDT guarantees the constraint edges exist in the output mesh. Z-refinement
+	// would split CDT sub-triangles, destroying the constraint edges and allowing
+	// the flood-fill to leak through.
 
-	// Step 6) Classify all resulting triangles by centroid Z vs other surface
-	// Initial pass: above / below / outside (null Z = no XY coverage on other surface)
-	var classA = []; // per-triangle: 1=above, -1=below, 0=outside
-	for (var ia = 0; ia < splitTrisA.length; ia++) {
-		var cA = triCentroid(splitTrisA[ia]);
-		var zB = interpolateZAtPoint(cA.x, cA.y, trisB, gridB, cellSizeB);
-		if (zB === null) {
-			classA.push(0);
-		} else if (cA.z >= zB) {
-			classA.push(1);
-		} else {
-			classA.push(-1);
-		}
-	}
+	// Step 5) Find connected components using cut-edge-aware flood-fill.
+	// The CDT constraint edges act as barriers — the BFS cannot cross them.
+	// This correctly separates e.g. a donut from its hole on a flat plane.
+	var cutSetA = new Set(cutEdgeKeysA);
+	var cutSetB = new Set(cutEdgeKeysB);
+	var componentsA = findConnectedComponents(splitTrisA, cutSetA);
+	var componentsB = findConnectedComponents(splitTrisB, cutSetB);
 
-	var classB = [];
-	for (var ib = 0; ib < splitTrisB.length; ib++) {
-		var cB = triCentroid(splitTrisB[ib]);
-		var zA = interpolateZAtPoint(cB.x, cB.y, trisA, gridA, cellSizeA);
-		if (zA === null) {
-			classB.push(0);
-		} else if (cB.z >= zA) {
-			classB.push(1);
-		} else {
-			classB.push(-1);
-		}
-	}
+	console.log("Surface Boolean: connected components A=" + componentsA.length +
+		" (" + componentsA.map(function (c) { return c.length; }).join(",") + " tris)" +
+		", B=" + componentsB.length +
+		" (" + componentsB.map(function (c) { return c.length; }).join(",") + " tris)");
 
-	// Step 6b) Reclassify "outside" triangles by adjacency flood-fill.
-	// Triangles outside the other surface's XY extent should inherit the
-	// classification of their connected neighbors. Without this, the pit
-	// surface gets artificially split into "above" and "outside" groups
-	// even though they're the same connected region with no intersection
-	// boundary between them.
-	classA = reclassifyOutsideByAdjacency(splitTrisA, classA);
-	classB = reclassifyOutsideByAdjacency(splitTrisB, classB);
-
-	// Collect into arrays
-	var aAbove = [], aBelow = [], aOutside = [];
-	for (var ia2 = 0; ia2 < splitTrisA.length; ia2++) {
-		if (classA[ia2] === 1) aAbove.push(splitTrisA[ia2]);
-		else if (classA[ia2] === -1) aBelow.push(splitTrisA[ia2]);
-		else aOutside.push(splitTrisA[ia2]);
-	}
-
-	var bAbove = [], bBelow = [], bOutside = [];
-	for (var ib2 = 0; ib2 < splitTrisB.length; ib2++) {
-		if (classB[ib2] === 1) bAbove.push(splitTrisB[ib2]);
-		else if (classB[ib2] === -1) bBelow.push(splitTrisB[ib2]);
-		else bOutside.push(splitTrisB[ib2]);
-	}
-
-	console.log("Surface Boolean classification: " +
-		"A=[" + aAbove.length + " above, " + aBelow.length + " below, " +
-		aOutside.length + " outside] " +
-		"B=[" + bAbove.length + " above, " + bBelow.length + " below, " +
-		bOutside.length + " outside]");
-
-	// Step 7) Build split groups (only non-empty)
+	// Step 7) Build split groups from connected components
 	var splits = [];
 	var nameA = surfaceA.name || surfaceIdA;
 	var nameB = surfaceB.name || surfaceIdB;
 
-	if (aAbove.length > 0) {
+	var colorsA = ["#FF0000", "#FF8800", "#FF00FF", "#FFFF00", "#CC4444", "#FF44AA"];
+	var colorsB = ["#00FF00", "#00CCFF", "#009900", "#0066CC", "#44CC44", "#44AAFF"];
+
+	for (var ca = 0; ca < componentsA.length; ca++) {
 		splits.push({
-			id: "A_above",
+			id: "A_" + (ca + 1),
 			surfaceId: surfaceIdA,
-			label: nameA + " (above B)",
-			triangles: aAbove,
-			color: "#FF0000",
+			label: nameA + "[" + (ca + 1) + "]",
+			triangles: componentsA[ca],
+			color: colorsA[ca % colorsA.length],
 			kept: true
 		});
 	}
-	if (aBelow.length > 0) {
+	for (var cb = 0; cb < componentsB.length; cb++) {
 		splits.push({
-			id: "A_below",
-			surfaceId: surfaceIdA,
-			label: nameA + " (below B)",
-			triangles: aBelow,
-			color: "#FFFF00",
-			kept: true
-		});
-	}
-	if (aOutside.length > 0) {
-		splits.push({
-			id: "A_outside",
-			surfaceId: surfaceIdA,
-			label: nameA + " (outside)",
-			triangles: aOutside,
-			color: "#FF00FF",
-			kept: true
-		});
-	}
-	if (bAbove.length > 0) {
-		splits.push({
-			id: "B_above",
+			id: "B_" + (cb + 1),
 			surfaceId: surfaceIdB,
-			label: nameB + " (above A)",
-			triangles: bAbove,
-			color: "#00FF00",
-			kept: true
-		});
-	}
-	if (bBelow.length > 0) {
-		splits.push({
-			id: "B_below",
-			surfaceId: surfaceIdB,
-			label: nameB + " (below A)",
-			triangles: bBelow,
-			color: "#0099FF",
-			kept: true
-		});
-	}
-	if (bOutside.length > 0) {
-		splits.push({
-			id: "B_outside",
-			surfaceId: surfaceIdB,
-			label: nameB + " (outside)",
-			triangles: bOutside,
-			color: "#009900",
+			label: nameB + "[" + (cb + 1) + "]",
+			triangles: componentsB[cb],
+			color: colorsB[cb % colorsB.length],
 			kept: true
 		});
 	}
@@ -244,26 +279,31 @@ export function computeSplits(surfaceIdA, surfaceIdB) {
  *
  * @param {Array} tris - All triangles {v0,v1,v2}
  * @param {Object} crossedMap - Map of triIndex -> [taggedSegments] for crossed tris
+ * @param {Array} [cutEdgeKeysOut] - Output: edge keys that lie on the cut line
  * @returns {Array} Resulting triangles after splitting
  */
-function splitSurfaceAlongSegments(tris, crossedMap) {
+function splitSurfaceAlongSegments(tris, crossedMap, cutEdgeKeysOut) {
 	var result = [];
+	var cdtCount = 0;
 
 	for (var i = 0; i < tris.length; i++) {
 		if (!crossedMap[i]) {
-			// Not crossed — pass through unchanged
 			result.push(tris[i]);
 			continue;
 		}
 
-		// This triangle is crossed by one or more intersection segments
+		// Use CDT to split — guarantees constraint edges exist in the output
 		var segments = crossedMap[i];
-		var subTris = splitTriangleBySegments(tris[i], segments);
+		var subTris = splitTriangleByCDT(tris[i], segments, cutEdgeKeysOut);
+		cdtCount++;
 		for (var j = 0; j < subTris.length; j++) {
 			result.push(subTris[j]);
 		}
 	}
 
+	if (cdtCount > 0) {
+		console.log("SurfaceBooleanHelper: CDT-split " + cdtCount + " crossed triangles");
+	}
 	return result;
 }
 
@@ -274,9 +314,10 @@ function splitSurfaceAlongSegments(tris, crossedMap) {
  *
  * @param {Object} tri - {v0, v1, v2}
  * @param {Array} segments - Tagged segments that cross this triangle
+ * @param {Array} [cutEdgeKeysOut] - Output: edge keys that lie on the cut line
  * @returns {Array} Resulting sub-triangles
  */
-function splitTriangleBySegments(tri, segments) {
+function splitTriangleBySegments(tri, segments, cutEdgeKeysOut) {
 	var current = [tri];
 
 	for (var s = 0; s < segments.length; s++) {
@@ -284,7 +325,7 @@ function splitTriangleBySegments(tri, segments) {
 		var next = [];
 
 		for (var t = 0; t < current.length; t++) {
-			var subResult = splitOneTriangleBySegment(current[t], seg.p0, seg.p1);
+			var subResult = splitOneTriangleBySegment(current[t], seg.p0, seg.p1, cutEdgeKeysOut);
 			for (var r = 0; r < subResult.length; r++) {
 				next.push(subResult[r]);
 			}
@@ -304,9 +345,10 @@ function splitTriangleBySegments(tri, segments) {
  * @param {Object} tri - {v0, v1, v2}
  * @param {Object} segP0 - First endpoint of intersection segment {x,y,z}
  * @param {Object} segP1 - Second endpoint of intersection segment {x,y,z}
+ * @param {Array} [cutEdgeKeysOut] - Output: edge keys that lie on the cut line
  * @returns {Array} 1 or 3 triangles
  */
-function splitOneTriangleBySegment(tri, segP0, segP1) {
+function splitOneTriangleBySegment(tri, segP0, segP1, cutEdgeKeysOut) {
 	// Find crossings of the segment line with the triangle's 3 edges.
 	// CRITICAL: Work in the triangle's local 2D coordinate frame, NOT world XY.
 	// Using world XY causes incorrect splits on steep/vertical pit-wall triangles
@@ -405,6 +447,9 @@ function splitOneTriangleBySegment(tri, segP0, segP1) {
 		return [tri];
 	}
 
+	if (cutEdgeKeysOut) {
+		cutEdgeKeysOut.push(cutEdgeKey(crossings[0].point, crossings[1].point));
+	}
 	return splitTriangleAtCrossings(tri, crossings[0], crossings[1]);
 }
 
@@ -545,6 +590,231 @@ function splitTriangleAtCrossings(tri, crossing0, crossing1) {
 	return [t1, t2, t3];
 }
 
+// ────────────────────────────────────────────────────────
+// CDT-based triangle splitting (robust alternative)
+// ────────────────────────────────────────────────────────
+
+/**
+ * Barycentric point-in-triangle test in local 2D {u,v} space.
+ * Returns true if (pu, pv) is inside the triangle defined by p0, p1, p2.
+ */
+function pointInLocalTri2D(pu, pv, p0, p1, p2) {
+	var d00 = (p1.u - p0.u) * (p1.u - p0.u) + (p1.v - p0.v) * (p1.v - p0.v);
+	var d01 = (p1.u - p0.u) * (p2.u - p0.u) + (p1.v - p0.v) * (p2.v - p0.v);
+	var d11 = (p2.u - p0.u) * (p2.u - p0.u) + (p2.v - p0.v) * (p2.v - p0.v);
+	var d20 = (pu - p0.u) * (p1.u - p0.u) + (pv - p0.v) * (p1.v - p0.v);
+	var d21 = (pu - p0.u) * (p2.u - p0.u) + (pv - p0.v) * (p2.v - p0.v);
+	var denom = d00 * d11 - d01 * d01;
+	if (Math.abs(denom) < 1e-20) return false;
+	var bv = (d11 * d20 - d01 * d21) / denom;
+	var bw = (d00 * d21 - d01 * d20) / denom;
+	var bu = 1.0 - bv - bw;
+	var EPS = -1e-4;
+	return bu >= EPS && bv >= EPS && bw >= EPS;
+}
+
+/**
+ * Split a triangle by multiple intersection segments using Constrained Delaunay
+ * Triangulation. All segment endpoints are inserted as points, and the segments
+ * themselves become constrained edges — guaranteeing the cut line exists in the
+ * output mesh.
+ *
+ * @param {Object} tri - {v0, v1, v2}
+ * @param {Array} segments - Tagged intersection segments [{p0, p1}, ...]
+ * @param {Array} [cutEdgeKeysOut] - Output: cut edge keys
+ * @returns {Array} Sub-triangles
+ */
+function splitTriangleByCDT(tri, segments, cutEdgeKeysOut) {
+	// Step 1) Build local 2D coordinate frame on the triangle plane
+	var e1x = tri.v1.x - tri.v0.x;
+	var e1y = tri.v1.y - tri.v0.y;
+	var e1z = tri.v1.z - tri.v0.z;
+	var e2x = tri.v2.x - tri.v0.x;
+	var e2y = tri.v2.y - tri.v0.y;
+	var e2z = tri.v2.z - tri.v0.z;
+
+	var e1Len = Math.sqrt(e1x * e1x + e1y * e1y + e1z * e1z);
+	if (e1Len < 1e-12) return [tri];
+	var ux = e1x / e1Len, uy = e1y / e1Len, uz = e1z / e1Len;
+
+	var nx = e1y * e2z - e1z * e2y;
+	var ny = e1z * e2x - e1x * e2z;
+	var nz = e1x * e2y - e1y * e2x;
+	var nLen = Math.sqrt(nx * nx + ny * ny + nz * nz);
+	if (nLen < 1e-12) return [tri];
+
+	var bvx = ny * uz - nz * uy;
+	var bvy = nz * ux - nx * uz;
+	var bvz = nx * uy - ny * ux;
+	var bvLen = Math.sqrt(bvx * bvx + bvy * bvy + bvz * bvz);
+	if (bvLen < 1e-12) return [tri];
+	bvx /= bvLen; bvy /= bvLen; bvz /= bvLen;
+
+	var oxx = tri.v0.x, oyy = tri.v0.y, ozz = tri.v0.z;
+	function toLocal(p) {
+		var dx = p.x - oxx, dy = p.y - oyy, dz = p.z - ozz;
+		return { u: dx * ux + dy * uy + dz * uz, v: dx * bvx + dy * bvy + dz * bvz };
+	}
+
+	// Step 2) Collect points: triangle verts are indices 0, 1, 2
+	var pts2D = [toLocal(tri.v0), toLocal(tri.v1), toLocal(tri.v2)];
+	var pts3D = [tri.v0, tri.v1, tri.v2];
+
+	var SNAP_DIST = e1Len * 1e-6;
+	var SNAP_DIST_SQ = SNAP_DIST * SNAP_DIST;
+
+	function addPoint(p3d) {
+		var p2d = toLocal(p3d);
+		for (var i = 0; i < pts2D.length; i++) {
+			var du = p2d.u - pts2D[i].u;
+			var dv = p2d.v - pts2D[i].v;
+			if (du * du + dv * dv < SNAP_DIST_SQ) return i;
+		}
+		pts2D.push(p2d);
+		pts3D.push(p3d);
+		return pts2D.length - 1;
+	}
+
+	// Step 3) For each segment, extend to infinite line and find where it crosses
+	// THIS triangle's edges. Raw segment endpoints can be in the triangle's INTERIOR
+	// (the Moller intersection clips to both triangles, so an endpoint may be on the
+	// OTHER triangle's edge). Using edge crossings guarantees points are ON the boundary,
+	// so the CDT constraint goes wall-to-wall and the flood-fill can't leak around.
+	var verts2D = [pts2D[0], pts2D[1], pts2D[2]];
+	var triEdges = [{ a: 0, b: 1 }, { a: 1, b: 2 }, { a: 2, b: 0 }];
+	var EDGE_EPS = 0.002;
+
+	var crossingPtIndices = new Set();
+	for (var s = 0; s < segments.length; s++) {
+		var seg = segments[s];
+		var ls0 = toLocal(seg.p0);
+		var ls1 = toLocal(seg.p1);
+
+		var segCrossings = [];
+		for (var e = 0; e < 3; e++) {
+			var la = verts2D[triEdges[e].a];
+			var lb = verts2D[triEdges[e].b];
+
+			var hit = segSegIntersection2D(la.u, la.v, lb.u, lb.v, ls0.u, ls0.v, ls1.u, ls1.v);
+			if (hit === null) continue;
+			if (hit.t < EDGE_EPS || hit.t > 1.0 - EDGE_EPS) continue;
+
+			var vA = pts3D[triEdges[e].a];
+			var vB = pts3D[triEdges[e].b];
+			var crossPt = lerpVert(vA, vB, hit.t);
+			var idx = addPoint(crossPt);
+			if (idx > 2) {
+				segCrossings.push(idx);
+				crossingPtIndices.add(idx);
+			}
+		}
+	}
+
+	var cutPtArr = Array.from(crossingPtIndices);
+	if (cutPtArr.length < 2) return [tri];
+
+	// Step 3b) Chain intersection points into a sorted polyline.
+	// Multiple segments within one triangle can CROSS each other if constrained
+	// independently. Sorting by projection onto the main intersection direction
+	// and chaining sequentially produces non-crossing edges.
+	var refPt = pts2D[cutPtArr[0]];
+	var maxDistSq = 0;
+	var farIdx = 0;
+	for (var fp = 1; fp < cutPtArr.length; fp++) {
+		var dfu = pts2D[cutPtArr[fp]].u - refPt.u;
+		var dfv = pts2D[cutPtArr[fp]].v - refPt.v;
+		var dSq = dfu * dfu + dfv * dfv;
+		if (dSq > maxDistSq) { maxDistSq = dSq; farIdx = fp; }
+	}
+
+	var dirU = pts2D[cutPtArr[farIdx]].u - refPt.u;
+	var dirV = pts2D[cutPtArr[farIdx]].v - refPt.v;
+	var dirLen = Math.sqrt(dirU * dirU + dirV * dirV);
+	if (dirLen < 1e-12) return [tri];
+	dirU /= dirLen;
+	dirV /= dirLen;
+
+	cutPtArr.sort(function (a, b) {
+		var projA = (pts2D[a].u - refPt.u) * dirU + (pts2D[a].v - refPt.v) * dirV;
+		var projB = (pts2D[b].u - refPt.u) * dirU + (pts2D[b].v - refPt.v) * dirV;
+		return projA - projB;
+	});
+
+	var constraintPairs = [];
+	for (var ch = 0; ch < cutPtArr.length - 1; ch++) {
+		constraintPairs.push([cutPtArr[ch], cutPtArr[ch + 1]]);
+	}
+
+	if (constraintPairs.length === 0) return [tri];
+
+	// Step 4) Build flat coords for Delaunator
+	var numPts = pts2D.length;
+	var coords = new Float64Array(numPts * 2);
+	for (var j = 0; j < numPts; j++) {
+		coords[j * 2] = pts2D[j].u;
+		coords[j * 2 + 1] = pts2D[j].v;
+	}
+
+	// Step 5) Constrained Delaunay Triangulation.
+	// NOTE: Do NOT constrain the 3 boundary edges (0-1, 1-2, 2-0). The triangle
+	// is convex, so boundary edges are already in the Delaunay triangulation as
+	// convex hull edges. Constraining them would conflict with knife edges whose
+	// endpoints lie ON the boundary (Constrainautor rejects edges that touch an
+	// already-constrained edge).
+	var del;
+	try {
+		del = new Delaunator(coords);
+		var con = new Constrainautor(del);
+
+		var constrainedCount = 0;
+		for (var c = 0; c < constraintPairs.length; c++) {
+			try {
+				con.constrainOne(constraintPairs[c][0], constraintPairs[c][1]);
+				constrainedCount++;
+			} catch (e) {
+				console.warn("splitTriangleByCDT: constraint failed [" +
+					constraintPairs[c][0] + "->" + constraintPairs[c][1] + "]: " + e.message);
+			}
+		}
+		if (constrainedCount === 0 && constraintPairs.length > 0) {
+			console.warn("splitTriangleByCDT: ALL " + constraintPairs.length + " constraints failed");
+		}
+	} catch (e) {
+		console.warn("splitTriangleByCDT: CDT failed, falling back:", e.message);
+		return [tri];
+	}
+
+	// Step 6) Extract output triangles, keep only those inside the original triangle
+	var result = [];
+	var triIdx = del.triangles;
+	for (var k = 0; k < triIdx.length; k += 3) {
+		var ia = triIdx[k], ib = triIdx[k + 1], ic = triIdx[k + 2];
+
+		var cu = (pts2D[ia].u + pts2D[ib].u + pts2D[ic].u) / 3;
+		var cv = (pts2D[ia].v + pts2D[ib].v + pts2D[ic].v) / 3;
+
+		if (pointInLocalTri2D(cu, cv, pts2D[0], pts2D[1], pts2D[2])) {
+			result.push({ v0: pts3D[ia], v1: pts3D[ib], v2: pts3D[ic] });
+		}
+	}
+
+	// Step 7) Record cut edges
+	if (cutEdgeKeysOut) {
+		for (var ce = 0; ce < constraintPairs.length; ce++) {
+			cutEdgeKeysOut.push(cutEdgeKey(
+				pts3D[constraintPairs[ce][0]],
+				pts3D[constraintPairs[ce][1]]
+			));
+		}
+	}
+
+	if (result.length === 0) {
+		console.warn("splitTriangleByCDT: no output triangles, returning original");
+		return [tri];
+	}
+	return result;
+}
+
 /**
  * Linearly interpolate between two vertices.
  */
@@ -578,9 +848,10 @@ function lerpVert(a, b, t) {
  * @param {Array} otherTris - The other surface's original triangles
  * @param {Object} otherGrid - Spatial grid on the other surface
  * @param {number} otherCellSize - Grid cell size
+ * @param {Array} [cutEdgeKeysOut] - Output: edge keys created by Z-refinement splits
  * @returns {Array} Refined triangle soup
  */
-function refineStraddlingTriangles(tris, otherTris, otherGrid, otherCellSize) {
+function refineStraddlingTriangles(tris, otherTris, otherGrid, otherCellSize, cutEdgeKeysOut) {
 	var result = [];
 	var splitCount = 0;
 	var edges = [{ a: 0, b: 1 }, { a: 1, b: 2 }, { a: 2, b: 0 }];
@@ -642,14 +913,15 @@ function refineStraddlingTriangles(tris, otherTris, otherGrid, otherCellSize) {
 				// Case 1: Standard 2-crossing split → 3 sub-triangles
 				var subTris = splitTriangleAtCrossings(tri, crossings[0], crossings[1]);
 				for (var s = 0; s < subTris.length; s++) result.push(subTris[s]);
+				if (cutEdgeKeysOut) {
+					cutEdgeKeysOut.push(cutEdgeKey(crossings[0].point, crossings[1].point));
+				}
 				splitCount++;
 				continue;
 			}
 
 			if (crossings.length === 1 && nullCount === 1) {
 				// Case 2: 1 Z-crossing + null vertex → bisect through null vertex
-				// The crossing is on the edge between the two covered vertices.
-				// The null vertex is opposite. Split into 2 triangles.
 				var cEdge = edges[crossings[0].edgeIdx];
 				var cPt = crossings[0].point;
 				var nullV = verts[nullIdx];
@@ -658,6 +930,9 @@ function refineStraddlingTriangles(tris, otherTris, otherGrid, otherCellSize) {
 
 				result.push({ v0: vA, v1: cPt, v2: nullV });
 				result.push({ v0: cPt, v1: vB, v2: nullV });
+				if (cutEdgeKeysOut) {
+					cutEdgeKeysOut.push(cutEdgeKey(cPt, nullV));
+				}
 				splitCount++;
 				continue;
 			}
@@ -699,6 +974,9 @@ function refineStraddlingTriangles(tris, otherTris, otherGrid, otherCellSize) {
 			if (covBoundaries.length === 2 && covBoundaries[0].edgeIdx !== covBoundaries[1].edgeIdx) {
 				var subTris2 = splitTriangleAtCrossings(tri, covBoundaries[0], covBoundaries[1]);
 				for (var s2 = 0; s2 < subTris2.length; s2++) result.push(subTris2[s2]);
+				if (cutEdgeKeysOut) {
+					cutEdgeKeysOut.push(cutEdgeKey(covBoundaries[0].point, covBoundaries[1].point));
+				}
 				splitCount++;
 				continue;
 			}
@@ -1144,8 +1422,13 @@ export function applyMerge(splits, config) {
 		", removeDegenerate=" + removeDegenerate + ", removeSlivers=" + removeSlivers +
 		", cleanCrossings=" + cleanCrossings + ", sliverRatio=" + sliverRatio);
 
-	// ── Step 1b: Deduplicate seam vertices (always runs) ──
-	var soup = deduplicateSeamVertices(keptTriangles, 1e-4);
+	// ── Step 1b: Deduplicate seam vertices (skip for "raw" mode = tear at seam) ──
+	var soup;
+	if (closeMode === "raw") {
+		soup = keptTriangles;
+	} else {
+		soup = deduplicateSeamVertices(keptTriangles, 1e-4);
+	}
 
 	// ── Step 2: Weld vertices (user snap tolerance) ──
 	var welded = weldVertices(soup, snapTol);

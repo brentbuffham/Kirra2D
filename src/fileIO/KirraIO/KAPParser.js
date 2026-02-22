@@ -45,6 +45,47 @@ class KAPParser extends BaseParser {
 			}
 		}
 
+		// ============ COORDINATE DELTA CHECK ============
+		// Pre-parse KAP contents to compute incoming centroid for coordinate delta warning
+		var kapHoles = [];
+		var kapKad = [];
+		var kapSurfaces = [];
+		var holesFilePre = zip.file("holes.json");
+		if (holesFilePre) {
+			try {
+				var hd = JSON.parse(await holesFilePre.async("string"));
+				if (Array.isArray(hd)) kapHoles = hd;
+			} catch (e) { /* ignore */ }
+		}
+		var drawingsFilePre = zip.file("drawings.json");
+		if (drawingsFilePre) {
+			try {
+				var dd = JSON.parse(await drawingsFilePre.async("string"));
+				if (Array.isArray(dd)) kapKad = dd.map(function (kv) { return kv[1]; }).filter(Boolean);
+			} catch (e) { /* ignore */ }
+		}
+		var surfacesFilePre = zip.file("surfaces.json");
+		if (surfacesFilePre) {
+			try {
+				var sd = JSON.parse(await surfacesFilePre.async("string"));
+				if (Array.isArray(sd)) kapSurfaces = sd;
+			} catch (e) { /* ignore */ }
+		}
+		var kapIncoming = { holes: kapHoles, kadEntities: kapKad, surfaces: kapSurfaces };
+		if (typeof window.checkCoordinateDeltaBeforeImport === "function") {
+			var hasAnyIncoming = kapHoles.length > 0 || kapKad.length > 0 || kapSurfaces.length > 0;
+			if (hasAnyIncoming) {
+				var proceedKap = await window.checkCoordinateDeltaBeforeImport(kapIncoming, file.name || "KAP");
+				if (!proceedKap) {
+					throw new Error("KAP import cancelled by user (coordinate delta warning)");
+				}
+				// Step 1) Clean & Replace: wipe data first so hasExistingData is false; Import KAP dialog is skipped
+				if (proceedKap === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+					await window.performCleanAndReplaceBeforeImport();
+				}
+			}
+		}
+
 		// ============ CLEAR EXISTING DATA ============
 		// CRITICAL: Set flag to prevent debounced saves during import
 		window._kapImporting = true;
@@ -54,11 +95,11 @@ class KAPParser extends BaseParser {
 			window.clearAllPendingTimers();
 		}
 
-		// Check if user has existing data
+		// Check if user has existing data (allKADDrawingsMap is the KAD store; loadedKADs is legacy alias)
 		var hasExistingData =
 			(window.allBlastHoles && window.allBlastHoles.length > 0) ||
 			(window.loadedSurfaces && window.loadedSurfaces.size > 0) ||
-			(window.loadedKADs && window.loadedKADs.size > 0) ||
+			((window.allKADDrawingsMap && window.allKADDrawingsMap.size > 0) || (window.loadedKADs && window.loadedKADs.size > 0)) ||
 			(window.loadedImages && window.loadedImages.size > 0);
 
 		var shouldMerge = false;
@@ -71,10 +112,17 @@ class KAPParser extends BaseParser {
 				console.log("Merging imported data with existing data");
 				// Don't clear data structures - will merge below
 			} else {
-				console.log("Replacing all existing data");
+				console.log("Replacing all existing data - wiping IndexedDB stores then memory");
+				// Step 1) Wipe IndexedDB stores first so replace = clean import
+				if (typeof window.clearAllIndexedDBStoresForKAPReplace === "function") {
+					await window.clearAllIndexedDBStoresForKAPReplace();
+				}
+				// Step 2) Clear in-memory structures
 				if (typeof window.clearAllDataStructures === "function") {
 					window.clearAllDataStructures();
 				}
+				// Step 3) Force 3D rebuild so scene reflects cleared state and new import
+				window.threeDataNeedsRebuild = true;
 			}
 		} else {
 			// No existing data, just clear to be safe
@@ -507,6 +555,11 @@ class KAPParser extends BaseParser {
 			// Update tree view
 			if (typeof window.debouncedUpdateTreeView === "function") {
 				window.debouncedUpdateTreeView();
+			}
+
+			// Reset view to fit new data (zoom and camera)
+			if (typeof window.zoomToFitAll === "function") {
+				window.zoomToFitAll();
 			}
 
 			// Save everything to IndexedDB immediately (not debounced) to prevent race conditions

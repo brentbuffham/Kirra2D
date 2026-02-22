@@ -174,6 +174,7 @@ import "./dialog/popups/export/DXFExportDialog.js";
 // Charging Export Dialog Module
 import "./dialog/popups/export/ChargingExportDialog.js";
 // Helper Modules
+import { getOrCreateDrawingLayer } from "./helpers/LayerHelper.js";
 import { exportImagesAsGeoTIFF, exportSurfacesAsElevationGeoTIFF } from "./helpers/GeoTIFFExporter.js";
 import { CoordinateDebugger } from "./helpers/CoordinateDebugger.js";
 // ProcessingIndicator - Shows "Please Wait" overlay during heavy operations
@@ -1062,6 +1063,187 @@ function requestCentroidRecalculation() {
 }
 // Expose to window for external modules
 window.requestCentroidRecalculation = requestCentroidRecalculation;
+
+// Step 5a.1) Coordinate delta warning threshold (metres) - warn when import centroid is far from existing
+// ~100km safe for float32 precision; beyond this, text/labels and geometry can appear distorted
+var COORDINATE_DELTA_WARNING_THRESHOLD_M = 100000;
+
+/**
+ * Step 5a.2) Compute XY centroid from various data structures (holes, surfaces, KAD).
+ * @param {Object} data - { holes: [] } | { surfaces: [] } | { kadEntities: Map } | holes array
+ * @returns {{ x: number, y: number } | null} - Centroid or null if no valid points
+ */
+function computeCentroidFromImportData(data) {
+	var sumX = 0, sumY = 0, count = 0;
+
+	// Step 5a.2) Process each supported data type (multiple types can be combined, e.g. Wenco entities + surfaces)
+	if (data.holes && Array.isArray(data.holes) && data.holes.length > 0) {
+		for (var i = 0; i < data.holes.length; i++) {
+			var h = data.holes[i];
+			var x = parseFloat(h.startXLocation);
+			var y = parseFloat(h.startYLocation);
+			if (isFinite(x) && isFinite(y)) { sumX += x; sumY += y; count++; }
+		}
+	}
+	if (data.surfaces && Array.isArray(data.surfaces) && data.surfaces.length > 0) {
+		for (var s = 0; s < data.surfaces.length; s++) {
+			var surf = data.surfaces[s];
+			if (surf.points && surf.points.length > 0) {
+				for (var p = 0; p < surf.points.length; p++) {
+					var pt = surf.points[p];
+					var px = parseFloat(pt.x);
+					var py = parseFloat(pt.y);
+					if (isFinite(px) && isFinite(py)) { sumX += px; sumY += py; count++; }
+				}
+			} else if (surf.meshBounds) {
+				var cx = ((parseFloat(surf.meshBounds.minX) || 0) + (parseFloat(surf.meshBounds.maxX) || 0)) / 2;
+				var cy = ((parseFloat(surf.meshBounds.minY) || 0) + (parseFloat(surf.meshBounds.maxY) || 0)) / 2;
+				if (isFinite(cx) && isFinite(cy)) { sumX += cx; sumY += cy; count++; }
+			} else if (surf.triangles && Array.isArray(surf.triangles)) {
+				for (var ti = 0; ti < surf.triangles.length; ti++) {
+					var tri = surf.triangles[ti];
+					if (tri && tri.vertices && Array.isArray(tri.vertices)) {
+						for (var vi = 0; vi < tri.vertices.length; vi++) {
+							var v = tri.vertices[vi];
+							var vx = parseFloat(v.x);
+							var vy = parseFloat(v.y);
+							if (isFinite(vx) && isFinite(vy)) { sumX += vx; sumY += vy; count++; }
+						}
+					}
+				}
+			}
+		}
+	}
+	if (data.kadEntities) {
+		var entities = data.kadEntities instanceof Map ? Array.from(data.kadEntities.values()) : (Array.isArray(data.kadEntities) ? data.kadEntities : Object.values(data.kadEntities));
+		for (var ei = 0; ei < entities.length; ei++) {
+			var entity = entities[ei];
+			if (entity && entity.data && Array.isArray(entity.data)) {
+				for (var d = 0; d < entity.data.length; d++) {
+					var pt = entity.data[d];
+					var ex = parseFloat(pt.pointXLocation);
+					var ey = parseFloat(pt.pointYLocation);
+					if (isFinite(ex) && isFinite(ey)) { sumX += ex; sumY += ey; count++; }
+				}
+			}
+		}
+	}
+	if (data.entitiesWithPoints && Array.isArray(data.entitiesWithPoints) && data.entitiesWithPoints.length > 0) {
+		// Step 5a.2b) Entities with .points array (e.g. Wenco NAV before KAD conversion): point.x, point.y
+		for (var epi = 0; epi < data.entitiesWithPoints.length; epi++) {
+			var ent = data.entitiesWithPoints[epi];
+			if (ent && ent.points && Array.isArray(ent.points)) {
+				for (var pi = 0; pi < ent.points.length; pi++) {
+					var p = ent.points[pi];
+					var px = parseFloat(p.x);
+					var py = parseFloat(p.y);
+					if (isFinite(px) && isFinite(py)) { sumX += px; sumY += py; count++; }
+				}
+			}
+		}
+	}
+	if (data.kadRows && Array.isArray(data.kadRows) && data.kadRows.length > 0) {
+		// Step 5a.2a) KAD CSV rows: row[1]=entityType, row[3]=x, row[4]=y (point/line/poly/circle/text)
+		for (var ri = 0; ri < data.kadRows.length; ri++) {
+			var row = data.kadRows[ri];
+			if (row && row.length >= 5) {
+				var rx = parseFloat(row[3]);
+				var ry = parseFloat(row[4]);
+				if (isFinite(rx) && isFinite(ry)) { sumX += rx; sumY += ry; count++; }
+			}
+		}
+	}
+	if (Array.isArray(data) && data.length > 0) {
+		for (var j = 0; j < data.length; j++) {
+			var item = data[j];
+			var ix = parseFloat(item.startXLocation != null ? item.startXLocation : item.x);
+			var iy = parseFloat(item.startYLocation != null ? item.startYLocation : item.y);
+			if (isFinite(ix) && isFinite(iy)) { sumX += ix; sumY += iy; count++; }
+		}
+	}
+	if (count === 0) return null;
+	return { x: sumX / count, y: sumY / count };
+}
+
+/**
+ * Step 5a.3) Check if import data has large coordinate delta from existing data.
+ * If so, show warning dialog. Returns Promise<boolean|string>: true = proceed, false = cancel, "cleanReplace" = wipe then import.
+ * @param {Object} incomingData - Parsed data (holes, surfaces, kadEntities)
+ * @param {string} fileName - File name for message
+ * @returns {Promise<boolean|string>}
+ */
+function checkCoordinateDeltaBeforeImport(incomingData, fileName) {
+	var existingCentroid = calculateDataCentroid();
+	var existingX = existingCentroid.x;
+	var existingY = existingCentroid.y;
+	var hasExisting = isFinite(existingX) && isFinite(existingY) && (
+		(allBlastHoles && allBlastHoles.length > 0) ||
+		(loadedSurfaces && loadedSurfaces.size > 0) ||
+		(allKADDrawingsMap && allKADDrawingsMap.size > 0)
+	);
+	if (!hasExisting) return Promise.resolve(true);
+
+	var incomingCentroid = computeCentroidFromImportData(incomingData);
+	if (!incomingCentroid || !isFinite(incomingCentroid.x) || !isFinite(incomingCentroid.y)) return Promise.resolve(true);
+
+	var deltaX = incomingCentroid.x - existingX;
+	var deltaY = incomingCentroid.y - existingY;
+	var distanceM = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+	if (distanceM < COORDINATE_DELTA_WARNING_THRESHOLD_M) return Promise.resolve(true);
+
+	return new Promise(function (resolve) {
+		var distKm = (distanceM / 1000).toFixed(1);
+		var content = document.createElement("div");
+		content.style.padding = "12px";
+		content.style.lineHeight = "1.5";
+		content.innerHTML =
+			"<p><strong>Large coordinate delta detected</strong></p>" +
+			"<p>The new file (" + fileName + ") has coordinates that are <strong>" + distKm + " km</strong> away from your existing data.</p>" +
+			"<p>Displaying both together can cause:</p>" +
+			"<ul style='margin: 8px 0; padding-left: 20px;'>" +
+			"<li>Float precision errors</li>" +
+			"<li>Distorted or incorrectly positioned geometry</li>" +
+			"<li>Difficulty viewing or selecting entities</li>" +
+			"</ul>" +
+			"<p><strong>Recommended:</strong> Continue with the current file in its coordinate system, or import files that use similar coordinates (e.g. same UTM zone).</p>";
+		var dialog = new FloatingDialog({
+			title: "Coordinate System Mismatch",
+			content: content,
+			width: 420,
+			height: 280,
+			showConfirm: true,
+			showCancel: true,
+			showOption1: true,
+			confirmText: "Ignore & Import",
+			cancelText: "Cancel",
+			option1Text: "Clean & Replace",
+			onConfirm: function () { resolve(true); },
+			onCancel: function () { resolve(false); },
+			onOption1: function () { resolve("cleanReplace"); }
+		});
+		dialog.show();
+	});
+}
+
+/**
+ * Step 5a.3a) Perform clean-and-replace: wipe IndexedDB and memory, then trigger rebuild.
+ * Call when user chooses "Clean and Replace" from coordinate delta dialog.
+ * @returns {Promise<void>}
+ */
+async function performCleanAndReplaceBeforeImport() {
+	if (typeof window.clearAllIndexedDBStoresForKAPReplace === "function") {
+		await window.clearAllIndexedDBStoresForKAPReplace();
+	}
+	if (typeof window.clearAllDataStructures === "function") {
+		window.clearAllDataStructures();
+	}
+	window.threeDataNeedsRebuild = true;
+	// Step 5a.3b) After import completes, recalc centroids and zoom to fit new data
+	window._cleanReplacePendingCentroidZoom = true;
+}
+window.performCleanAndReplaceBeforeImport = performCleanAndReplaceBeforeImport;
+
+window.checkCoordinateDeltaBeforeImport = checkCoordinateDeltaBeforeImport;
 
 // Step 5b) Validate and clamp world Z coordinate to prevent extreme values
 // CRITICAL FIX: Without validation, cursor can disappear when Z becomes extreme (e.g., -683885)
@@ -8678,8 +8860,18 @@ document.querySelectorAll(".kad-input-btn").forEach(function (button) {
 			if (!file) return;
 
 			var reader = new FileReader();
-			reader.onload = function (event) {
+			reader.onload = async function (event) {
 				try {
+					// Step 1) Coordinate delta warning - parse rows for centroid check before import
+					var parseResult = Papa.parse(event.target.result, { delimiter: "", skipEmptyLines: true, trimHeaders: true });
+					var dataRows = parseResult.data || [];
+					if (dataRows.length > 0) {
+					var proceedWithImport = await checkCoordinateDeltaBeforeImport({ kadRows: dataRows }, file.name);
+					if (!proceedWithImport) return;
+					if (proceedWithImport === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+						await window.performCleanAndReplaceBeforeImport();
+					}
+					}
 					parseKADFile(event.target.result);
 					// Update TreeView to show imported KAD entities
 					if (typeof debouncedUpdateTreeView === "function") {
@@ -9071,8 +9263,15 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 							surfaceName: surfaceName,
 							color: "#00FF00"
 						})
-							.then(function (data) {
+							.then(async function (data) {
 								if (data.surfaces && data.surfaces.length > 0) {
+									// Step 6c.0) Coordinate delta warning - warn when import coordinates are far from existing data
+									var proceedSurface = await checkCoordinateDeltaBeforeImport({ surfaces: data.surfaces }, surfaceName + ".dtm");
+									if (!proceedSurface) return;
+									if (proceedSurface === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+										await window.performCleanAndReplaceBeforeImport();
+									}
+
 									// Add surfaces to loadedSurfaces
 									if (!window.loadedSurfaces) {
 										window.loadedSurfaces = new Map();
@@ -9186,13 +9385,20 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 
 					var parser = new Parser();
 					parser.parse(content)
-						.then(function (data) {
+						.then(async function (data) {
 							// Step 8) Process parsed data
 							// NOTE: Surpac STR files contain KAD geometry only (polylines, points)
 							// Blast holes use CSV or IREDES format instead
 
 							// Add KAD entities if any
 							if (data.kadEntities && data.kadEntities.length > 0) {
+								// Step 8a) Coordinate delta warning - warn when import coordinates are far from existing data
+								var proceedSTR = await checkCoordinateDeltaBeforeImport({ kadEntities: data.kadEntities }, file.name);
+								if (!proceedSTR) return;
+								if (proceedSTR === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+									await window.performCleanAndReplaceBeforeImport();
+								}
+
 								if (!allKADDrawingsMap) allKADDrawingsMap = new Map();
 
 								// Step 22) Create drawing layer for STR import using filename
@@ -9317,10 +9523,17 @@ document.querySelectorAll(".surpac-input-btn").forEach(function (button) {
 								}
 								showModalMessage("Import Complete", message, "success");
 							} else if (isDTM && data.surfaces && data.surfaces.length > 0) {
+								// Step 8b) Coordinate delta warning - warn when import coordinates are far from existing data
+								var proceedDTM = await checkCoordinateDeltaBeforeImport({ surfaces: data.surfaces }, file.name);
+								if (!proceedDTM) return;
+								if (proceedDTM === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+									await window.performCleanAndReplaceBeforeImport();
+								}
+
 								// Import DTM surfaces properly to loadedSurfaces Map
 
 								// Create surface layer for DTM import
-								var dtmLayerStandalone = getOrCreateLayerForImport("surface", fileName);
+								var dtmLayerStandalone = getOrCreateLayerForImport("surface", file.name);
 								var dtmLayerIdStandalone = dtmLayerStandalone ? dtmLayerStandalone.layerId : null;
 
 								data.surfaces.forEach(function (surface) {
@@ -9890,6 +10103,20 @@ document.querySelectorAll(".kml-input-btn").forEach(function (button) {
 							throw new Error(result.message || "Failed to parse KML/KMZ file");
 						}
 
+						// Step 4a) Coordinate delta warning - warn when import coordinates are far from existing data
+						var kmlHoles = result.holes || [];
+						var kmlKad = result.kadEntities ? (result.kadEntities instanceof Map ? Array.from(result.kadEntities.values()) : result.kadEntities) : [];
+						var kmlSurfaces = result.surfaces || [];
+						var kmlIncoming = (kmlHoles.length > 0 ? { holes: kmlHoles } : {}) || (kmlKad.length > 0 ? { kadEntities: kmlKad } : {}) || (kmlSurfaces.length > 0 ? { surfaces: kmlSurfaces } : {});
+						if (kmlHoles.length > 0 || kmlKad.length > 0 || kmlSurfaces.length > 0) {
+							var incomingForCheck = { holes: kmlHoles, kadEntities: kmlKad, surfaces: kmlSurfaces };
+							var proceedKML = await checkCoordinateDeltaBeforeImport(incomingForCheck, file.name);
+							if (!proceedKML) return;
+							if (proceedKML === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+								await window.performCleanAndReplaceBeforeImport();
+							}
+						}
+
 						// Step 5) Handle the imported data based on type
 						if (result.dataType === "blastholes") {
 							// Step 6) Import blast holes
@@ -10204,7 +10431,7 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 					if (parser) {
 						parser
 							.parse(file)
-							.then(function (result) {
+							.then(async function (result) {
 								// Step 4) Extract holes from result
 								var holes = result.holes;
 								var metadata = result.metadata;
@@ -10212,6 +10439,13 @@ document.querySelectorAll(".surfaceManager-input-btn").forEach(function (button)
 								if (!holes || holes.length === 0) {
 									showModalMessage("No Holes Found", "The IREDES file does not contain any holes.", "warning");
 									return;
+								}
+
+								// Step 4a) Coordinate delta warning - warn when import coordinates are far from existing data
+								var proceedIREDES = await checkCoordinateDeltaBeforeImport({ holes: holes }, file.name);
+								if (!proceedIREDES) return;
+								if (proceedIREDES === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+									await window.performCleanAndReplaceBeforeImport();
 								}
 
 								// Step 5) RULE #9: Use addHole() to create proper hole geometry
@@ -10612,13 +10846,20 @@ document.querySelector(".wenco-input-btn")?.addEventListener("click", function (
 			if (parser) {
 				parser
 					.parse(file)
-					.then(function (result) {
+					.then(async function (result) {
 						var entities = result.entities || [];
 						var surfaces = result.surfaces || [];
 
 						if (entities.length === 0 && surfaces.length === 0) {
 							showModalMessage("No Data Found", "The NAV file does not contain any entities or surfaces.", "warning");
 							return;
+						}
+
+						// Step 2a) Coordinate delta warning - warn when import coordinates are far from existing data
+						var proceedNAV = await checkCoordinateDeltaBeforeImport({ entitiesWithPoints: entities, surfaces: surfaces }, file.name);
+						if (!proceedNAV) return;
+						if (proceedNAV === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+							await window.performCleanAndReplaceBeforeImport();
 						}
 
 						// Step 3) Add entities to KAD map
@@ -10955,6 +11196,13 @@ document.querySelector(".cblast-input-btn")?.addEventListener("click", function 
 						if (!holes || holes.length === 0) {
 							showModalMessage("No Holes Found", "The CBLAST file does not contain any holes.", "warning");
 							return;
+						}
+
+						// Step 2a) Coordinate delta warning - warn when import coordinates are far from existing data
+						var proceedCBLAST = await checkCoordinateDeltaBeforeImport({ holes: holes }, file.name);
+						if (!proceedCBLAST) return;
+						if (proceedCBLAST === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+							await window.performCleanAndReplaceBeforeImport();
 						}
 
 						// Step 3) RULE #9: Use addHole() to create proper hole geometry
@@ -11359,6 +11607,13 @@ document.querySelector(".orica-input-btn")?.addEventListener("click", function (
 						if (!holes || holes.length === 0) {
 							showModalMessage("No Holes Found", "The ShotPlus file does not contain any valid holes.", "warning");
 							return;
+						}
+
+						// Step 3a) Coordinate delta warning - warn when import coordinates are far from existing data
+						var proceedSPF = await checkCoordinateDeltaBeforeImport({ holes: holes }, file.name);
+						if (!proceedSPF) return;
+						if (proceedSPF === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+							await window.performCleanAndReplaceBeforeImport();
 						}
 
 						// Step 4) Use filename (without extension) as entity name
@@ -13381,6 +13636,16 @@ async function handleFileUpload(event) {
 		const data = event.target.result;
 
 		if (file.name.endsWith(".kad") || file.name.endsWith(".KAD") || file.name.endsWith(".txt") || file.name.endsWith(".TXT")) {
+			// Step 1) Coordinate delta warning - parse rows for centroid check before import
+			var kadParseResult = Papa.parse(data, { delimiter: "", skipEmptyLines: true, trimHeaders: true });
+			var kadDataRows = kadParseResult.data || [];
+			if (kadDataRows.length > 0) {
+				var proceedKAD = await checkCoordinateDeltaBeforeImport({ kadRows: kadDataRows }, file.name);
+				if (!proceedKAD) return;
+				if (proceedKAD === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+					await window.performCleanAndReplaceBeforeImport();
+				}
+			}
 			parseKADFile(data);
 			// Step 1) Clear text cache when data changes
 			if (window.threeRenderer && typeof window.threeRenderer.clearTextCacheOnDataChange === "function") {
@@ -13942,6 +14207,16 @@ async function parseK2Dcsv(data, filename) {
 			progressDialog.setDetails("Found " + holes.length + " holes to import");
 		}
 
+		// Step 1a) Coordinate delta warning - warn when import coordinates are far from existing data
+		var proceedWithImport = await checkCoordinateDeltaBeforeImport({ holes: holes }, filename || "CSV");
+		if (!proceedWithImport) {
+			if (progressDialog) progressDialog.fail("Import cancelled by user");
+			return allBlastHoles;
+		}
+		if (proceedWithImport === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+			await window.performCleanAndReplaceBeforeImport();
+		}
+
 		// Step 2) RULE #9: Use addHole() to create proper hole geometry
 		if (!allBlastHoles || !Array.isArray(allBlastHoles)) allBlastHoles = [];
 
@@ -14214,6 +14489,17 @@ async function parseDXFtoKadMaps(dxf, fileName) {
 
 		var parser = new DXFParser();
 		var result = await parser.parse({ dxfData: dxf });
+
+		// Step 1a) Coordinate delta warning - warn when import coordinates are far from existing data
+		var kadArray = result.kadDrawings ? Array.from(result.kadDrawings.values()) : [];
+		var surfArray = result.surfaces ? Array.from(result.surfaces.values()) : [];
+		if (kadArray.length > 0 || surfArray.length > 0) {
+			var proceedDXF = await checkCoordinateDeltaBeforeImport({ kadEntities: kadArray, surfaces: surfArray }, fileName || "DXF");
+			if (!proceedDXF) return;
+			if (proceedDXF === "cleanReplace" && typeof window.performCleanAndReplaceBeforeImport === "function") {
+				await window.performCleanAndReplaceBeforeImport();
+			}
+		}
 
 		// Step 15a) Layer System - Create layer for this DXF import
 		var layerId = null;
@@ -15769,6 +16055,64 @@ var DEFAULT_SURFACE_LAYER_ID = "layer_default_surfaces";
 // Step 18) Active layer tracking - which layer new entities are added to
 var activeDrawingLayerId = DEFAULT_DRAWING_LAYER_ID;
 var activeSurfaceLayerId = DEFAULT_SURFACE_LAYER_ID;
+
+// Step 18a) Session flag: user has provided a layer name for first KAD draw
+var userHasNamedDrawingLayerThisSession = false;
+
+/**
+ * Step 18b) Prompt user for layer name when creating first KAD entity in session.
+ * Shows FloatingDialog with layer name input. On confirm, creates layer and invokes callback(layerId).
+ * On cancel, callback(null). Caller should abort creation if null.
+ * @param {function(string|null)} callback - Invoked with layerId or null
+ */
+function showLayerNamePromptForFirstKAD(callback) {
+	var fields = [
+		{
+			label: "Layer Name",
+			name: "layerName",
+			type: "text",
+			value: "Drawings",
+			placeholder: "Enter name for drawing layer"
+		}
+	];
+	var formContent = createEnhancedFormContent(fields);
+	var container = document.createElement("div");
+	container.appendChild(formContent);
+	var notesDiv = document.createElement("div");
+	notesDiv.style.marginTop = "8px";
+	notesDiv.style.fontSize = "11px";
+	notesDiv.style.color = "#666";
+	notesDiv.textContent = "New drawings will be added to this layer. You can change layers later in the TreeView.";
+	container.appendChild(notesDiv);
+	var dialog = new FloatingDialog({
+		title: "Name Your Drawing Layer",
+		content: container,
+		width: 340,
+		height: 160,
+		showConfirm: true,
+		showCancel: true,
+		confirmText: "OK",
+		cancelText: "Cancel",
+		onConfirm: function () {
+			var data = getFormData(formContent);
+			var layerName = (data.layerName || "Drawings").trim();
+			if (layerName.length === 0) layerName = "Drawings";
+			var layerId = getOrCreateDrawingLayer(layerName);
+			if (layerId) {
+				activeDrawingLayerId = layerId;
+				window.activeDrawingLayerId = layerId;
+				userHasNamedDrawingLayerThisSession = true;
+				callback(layerId);
+			} else {
+				callback(null);
+			}
+		},
+		onCancel: function () {
+			callback(null);
+		}
+	});
+	dialog.show();
+}
 
 // Step #) Convert CSS color names to hex for 3D compatibility
 // Three.js batched rendering only handles hex colors, not named colors
@@ -20293,7 +20637,7 @@ function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWi
 			if (!window.allDrawingLayers.has(activeLayerId)) {
 				window.allDrawingLayers.set(activeLayerId, {
 					layerId: activeLayerId,
-					name: "Default Layer",
+					layerName: "Default Layer",
 					type: "drawing",
 					visible: true,
 					entities: new Set()
@@ -20378,7 +20722,7 @@ function getRadiiPolygons(points, steps, radius, union, addToMaps, color, lineWi
 		if (!window.allDrawingLayers.has(activeLayerId)) {
 			window.allDrawingLayers.set(activeLayerId, {
 				layerId: activeLayerId,
-				name: "Default Layer",
+				layerName: "Default Layer",
 				type: "drawing",
 				visible: true,
 				entities: new Set()
@@ -20533,7 +20877,7 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 			if (!window.allDrawingLayers.has(activeLayerId)) {
 				window.allDrawingLayers.set(activeLayerId, {
 					layerId: activeLayerId,
-					name: "Default Layer",
+					layerName: "Default Layer",
 					type: "drawing",
 					visible: true,
 					entities: new Set()
@@ -20646,7 +20990,7 @@ function getRadiiPolygonsEnhanced(points, steps, radius, union, addToMaps, color
 		if (!window.allDrawingLayers.has(activeLayerId)) {
 			window.allDrawingLayers.set(activeLayerId, {
 				layerId: activeLayerId,
-				name: "Default Layer",
+				layerName: "Default Layer",
 				type: "drawing",
 				visible: true,
 				entities: new Set()
@@ -21331,7 +21675,7 @@ function createLineOffsetCustom(originalEntity, offsetAmount, projectionAngle, c
 		if (!window.allDrawingLayers.has(activeLayerId)) {
 			window.allDrawingLayers.set(activeLayerId, {
 				layerId: activeLayerId,
-				name: "Default Layer",
+				layerName: "Default Layer",
 				type: "drawing",
 				visible: true,
 				entities: new Set()
@@ -21419,7 +21763,7 @@ function createSimpleLineOffset(originalEntity, horizontalOffset, zDelta, color,
 	if (!window.allDrawingLayers.has(activeLayerId)) {
 		window.allDrawingLayers.set(activeLayerId, {
 			layerId: activeLayerId,
-			name: "Default Layer",
+			layerName: "Default Layer",
 			type: "drawing",
 			visible: true,
 			entities: new Set()
@@ -25500,6 +25844,13 @@ function getUniqueKADEntityName(prefix) {
 }
 
 function addKADPoint() {
+	// Step 1) On first KAD drawn in session, prompt for layer name
+	if (allKADDrawingsMap.size === 0 && !userHasNamedDrawingLayerThisSession) {
+		showLayerNamePromptForFirstKAD(function (layerId) {
+			if (layerId) addKADPoint();
+		});
+		return;
+	}
 	if (isDrawingPoint) {
 		const color = getJSColorHexDrawing();
 		const entityType = "point";
@@ -25541,7 +25892,7 @@ function addKADPoint() {
 			if (!window.allDrawingLayers.has(activeLayerId)) {
 				window.allDrawingLayers.set(activeLayerId, {
 					layerId: activeLayerId,
-					name: "Default Layer",
+					layerName: "Default Layer",
 					type: "drawing",
 					visible: true,
 					entities: new Set()
@@ -25622,6 +25973,13 @@ function handleKADLineClick(event) {
 }
 
 function addKADLine() {
+	// Step 1) On first KAD drawn in session, prompt for layer name
+	if (allKADDrawingsMap.size === 0 && !userHasNamedDrawingLayerThisSession) {
+		showLayerNamePromptForFirstKAD(function (layerId) {
+			if (layerId) addKADLine();
+		});
+		return;
+	}
 	if (isDrawingLine) {
 		const entityType = "line";
 		const pointID = allKADDrawingsMap.has(entityName) ? allKADDrawingsMap.get(entityName).data.length + 1 : 1; // Changed map
@@ -25658,7 +26016,7 @@ function addKADLine() {
 			if (!window.allDrawingLayers.has(activeLayerId)) {
 				window.allDrawingLayers.set(activeLayerId, {
 					layerId: activeLayerId,
-					name: "Default Layer",
+					layerName: "Default Layer",
 					type: "drawing",
 					visible: true,
 					entities: new Set()
@@ -25736,6 +26094,13 @@ function handleKADPolyClick(event) {
 }
 // Function to add a point to the allKADDrawingsMap
 function addKADPoly() {
+	// Step 1) On first KAD drawn in session, prompt for layer name
+	if (allKADDrawingsMap.size === 0 && !userHasNamedDrawingLayerThisSession) {
+		showLayerNamePromptForFirstKAD(function (layerId) {
+			if (layerId) addKADPoly();
+		});
+		return;
+	}
 	if (isDrawingPoly) {
 		// Create a new point object or use the existing one
 		const entityType = "poly";
@@ -25774,7 +26139,7 @@ function addKADPoly() {
 			if (!window.allDrawingLayers.has(activeLayerId)) {
 				window.allDrawingLayers.set(activeLayerId, {
 					layerId: activeLayerId,
-					name: "Default Layer",
+					layerName: "Default Layer",
 					type: "drawing",
 					visible: true,
 					entities: new Set()
@@ -25853,6 +26218,13 @@ function handleKADCircleClick(event) {
 }
 
 function addKADCircle() {
+	// Step 1) On first KAD drawn in session, prompt for layer name
+	if (allKADDrawingsMap.size === 0 && !userHasNamedDrawingLayerThisSession) {
+		showLayerNamePromptForFirstKAD(function (layerId) {
+			if (layerId) addKADCircle();
+		});
+		return;
+	}
 	if (isDrawingCircle) {
 		const color = getJSColorHexDrawing();
 		const radius = circleRadius.value;
@@ -25895,7 +26267,7 @@ function addKADCircle() {
 			if (!window.allDrawingLayers.has(activeLayerId)) {
 				window.allDrawingLayers.set(activeLayerId, {
 					layerId: activeLayerId,
-					name: "Default Layer",
+					layerName: "Default Layer",
 					type: "drawing",
 					visible: true,
 					entities: new Set()
@@ -26077,6 +26449,13 @@ function showCalculationErrorPopup(originalText, errorMessage) {
 }
 
 async function addKADText() {
+	// Step 1) On first KAD drawn in session, prompt for layer name
+	if (allKADDrawingsMap.size === 0 && !userHasNamedDrawingLayerThisSession) {
+		showLayerNamePromptForFirstKAD(function (layerId) {
+			if (layerId) addKADText();
+		});
+		return;
+	}
 	console.log("=== addKADText() called ===");
 	console.log("createNewEntity:", createNewEntity);
 	console.log("current entityName:", entityName);
@@ -26153,7 +26532,7 @@ async function addKADText() {
 			if (!window.allDrawingLayers.has(activeLayerId)) {
 				window.allDrawingLayers.set(activeLayerId, {
 					layerId: activeLayerId,
-					name: "Default Layer",
+					layerName: "Default Layer",
 					type: "drawing",
 					visible: true,
 					entities: new Set()
@@ -29443,6 +29822,16 @@ function drawData(allBlastHoles, selectedHole) {
 
 	// Expose globals to window for canvas3DDrawing.js module
 	exposeGlobalsToWindow();
+
+	// Step 0.4) After Clean & Replace import: recalc centroids and zoom to fit new data
+	if (window._cleanReplacePendingCentroidZoom) {
+		var hasData = (allBlastHoles && allBlastHoles.length > 0) || (allKADDrawingsMap && allKADDrawingsMap.size > 0) || (loadedSurfaces && loadedSurfaces.size > 0);
+		if (hasData) {
+			window._cleanReplacePendingCentroidZoom = false;
+			updateCentroids();
+			zoomToFitAll();
+		}
+	}
 
 	// Step 0.5) Initialize mouse indicator on first draw in 3D mode
 	// This ensures the grey torus appears immediately on startup
@@ -35968,6 +36357,59 @@ async function clearLoadedData() {
 
 	console.log("✅ All data cleared successfully");
 }
+
+// Step 7) Clear all IndexedDB stores for KAP Replace - wipe before importing new data
+// Use when Replace is chosen: clear stores first, then clear memory, then import
+async function clearAllIndexedDBStoresForKAPReplace() {
+	if (!db) return;
+	try {
+		// Step 7a) Clear KAD store
+		await new Promise(function (resolve, reject) {
+			var tx = db.transaction([STORE_NAME], "readwrite");
+			var store = tx.objectStore(STORE_NAME);
+			var req = store.clear();
+			req.onsuccess = function () { resolve(); };
+			req.onerror = function () { reject(req.error); };
+		});
+		// Step 7b) Clear surfaces
+		await deleteAllSurfacesFromDB();
+		// Step 7c) Clear images
+		await deleteAllImagesFromDB();
+		// Step 7d) Clear holes store
+		await new Promise(function (resolve, reject) {
+			var tx = db.transaction([BLASTHOLES_STORE_NAME], "readwrite");
+			var store = tx.objectStore(BLASTHOLES_STORE_NAME);
+			var req = store.clear();
+			req.onsuccess = function () { resolve(); };
+			req.onerror = function () { reject(req.error); };
+		});
+		// Step 7e) Clear layers store
+		await new Promise(function (resolve, reject) {
+			var tx = db.transaction([LAYERS_STORE_NAME], "readwrite");
+			var store = tx.objectStore(LAYERS_STORE_NAME);
+			var req = store.clear();
+			req.onsuccess = function () { resolve(); };
+			req.onerror = function () { reject(req.error); };
+		});
+		// Step 7f) Clear charging stores
+		for (var si = 0; si < ALL_CHARGING_STORES.length; si++) {
+			var storeName = ALL_CHARGING_STORES[si];
+			await new Promise(function (resolve, reject) {
+				var tx = db.transaction([storeName], "readwrite");
+				var store = tx.objectStore(storeName);
+				var req = store.clear();
+				req.onsuccess = function () { resolve(); };
+				req.onerror = function () { reject(req.error); };
+			});
+		}
+		console.log("✅ All IndexedDB stores cleared for KAP Replace");
+	} catch (err) {
+		console.error("Error clearing IndexedDB stores for KAP Replace:", err);
+		throw err;
+	}
+}
+window.clearAllIndexedDBStoresForKAPReplace = clearAllIndexedDBStoresForKAPReplace;
+
 window.addEventListener("resize", () => {
 	if (htmlUIVersion === "1") {
 		canvas.width = document.documentElement.clientWidth - canvasAdjustWidth;
@@ -50037,8 +50479,19 @@ debouncedUpdateTreeView = function (delay = 250) {  // Increased default delay
 	}, delay);
 };
 // ? Function to update TreeView visual states based on actual visibility
+// Step 1) O(1) lookup: Pre-build Map to avoid O(n) querySelector per entity/element (fixes hide lag with 600+ lines)
 function updateTreeViewVisibilityStates() {
 	if (!treeView) return;
+
+	var nodeIdToElement = new Map();
+	var allNodes = treeView.container.querySelectorAll("[data-node-id]");
+	for (var ni = 0; ni < allNodes.length; ni++) {
+		var n = allNodes[ni];
+		var id = n.getAttribute("data-node-id");
+		if (id) nodeIdToElement.set(id, n);
+	}
+
+	function getNode(id) { return nodeIdToElement.get(id) || null; }
 
 	// Update group visibility states
 	const groupNodes = [
@@ -50081,7 +50534,7 @@ function updateTreeViewVisibilityStates() {
 	];
 
 	groupNodes.forEach(({ nodeId, visible }) => {
-		const element = treeView.container.querySelector('[data-node-id="' + nodeId + '"]');
+		const element = getNode(nodeId);
 		if (element) {
 			if (visible) {
 				element.style.opacity = "1";
@@ -50099,7 +50552,7 @@ function updateTreeViewVisibilityStates() {
 			// Step 1) Map entityType to tree node ID prefix (point→points, others stay same)
 			var entityTypePrefix = entity.entityType === "point" ? "points" : entity.entityType;
 			const nodeId = entityTypePrefix + "⣿" + entityName;
-			const element = treeView.container.querySelector('[data-node-id="' + nodeId + '"]');
+			const element = getNode(nodeId);
 			if (element) {
 				// Check both entity visibility AND parent group visibility
 				let isVisible = entity.visible !== false && drawingsGroupVisible;
@@ -50123,7 +50576,7 @@ function updateTreeViewVisibilityStates() {
 			// ? ADD: Update individual element visibility states
 			entity.data.forEach((elementData, index) => {
 				const elementNodeId = entity.entityType + "⣿" + entityName + "⣿element⣿" + (elementData.pointID || index + 1);
-				const elementElement = treeView.container.querySelector('[data-node-id="' + elementNodeId + '"]');
+				const elementElement = getNode(elementNodeId);
 				if (elementElement) {
 					// Element inherits from entity and group visibility
 					let isElementVisible = entity.visible !== false && drawingsGroupVisible;
@@ -50155,7 +50608,7 @@ function updateTreeViewVisibilityStates() {
 	if (typeof allBlastHoles !== "undefined" && allBlastHoles) {
 		allBlastHoles.forEach((hole) => {
 			const nodeId = "hole⣿" + (hole.entityName || "Unknown") + "⣿" + hole.holeID;
-			const element = treeView.container.querySelector('[data-node-id="' + nodeId + '"]');
+			const element = getNode(nodeId);
 			if (element) {
 				const isVisible = hole.visible !== false && blastGroupVisible;
 				if (isVisible) {
@@ -50182,7 +50635,7 @@ function updateTreeViewVisibilityStates() {
 
 		Object.keys(entityGroups).forEach((entityName) => {
 			const nodeId = "entity⣿" + entityName;
-			const element = treeView.container.querySelector('[data-node-id="' + nodeId + '"]');
+			const element = getNode(nodeId);
 			if (element) {
 				// Check if any holes in this entity are visible and blast group is visible
 				const entityHoles = entityGroups[entityName];
@@ -50204,7 +50657,7 @@ function updateTreeViewVisibilityStates() {
 	if (typeof allDrawingLayers !== "undefined" && allDrawingLayers) {
 		allDrawingLayers.forEach(function (layer, layerId) {
 			var layerNodeId = "layer-drawing⣿" + layerId;
-			var layerElement = treeView.container.querySelector("[data-node-id=\"" + layerNodeId + "\"]");
+			var layerElement = getNode(layerNodeId);
 			if (layerElement) {
 				var layerIsVisible = layer.visible !== false && drawingsGroupVisible;
 				if (layerIsVisible) {
@@ -50220,7 +50673,7 @@ function updateTreeViewVisibilityStates() {
 			var entityTypeFolders = ["points", "lines", "polygons", "circles", "texts"];
 			entityTypeFolders.forEach(function (folder) {
 				var folderNodeId = "layer-drawing⣿" + layerId + "⣿" + folder;
-				var folderElement = treeView.container.querySelector("[data-node-id=\"" + folderNodeId + "\"]");
+				var folderElement = getNode(folderNodeId);
 				if (folderElement) {
 					var folderVisible = layer.visible !== false && drawingsGroupVisible;
 					if (folderVisible) {
@@ -50239,7 +50692,7 @@ function updateTreeViewVisibilityStates() {
 	if (typeof allSurfaceLayers !== "undefined" && allSurfaceLayers) {
 		allSurfaceLayers.forEach(function (layer, layerId) {
 			var layerNodeId = "layer-surface⣿" + layerId;
-			var layerElement = treeView.container.querySelector("[data-node-id=\"" + layerNodeId + "\"]");
+			var layerElement = getNode(layerNodeId);
 			if (layerElement) {
 				var layerIsVisible = layer.visible !== false && surfacesGroupVisible;
 				if (layerIsVisible) {
@@ -50257,7 +50710,7 @@ function updateTreeViewVisibilityStates() {
 	if (typeof loadedSurfaces !== "undefined" && loadedSurfaces) {
 		loadedSurfaces.forEach(function (surface, surfaceId) {
 			var surfaceNodeId = "surface⣿" + surfaceId;
-			var surfaceElement = treeView.container.querySelector("[data-node-id=\"" + surfaceNodeId + "\"]");
+			var surfaceElement = getNode(surfaceNodeId);
 			if (surfaceElement) {
 				var surfaceIsVisible = surface.visible !== false && surfacesGroupVisible;
 				if (surfaceIsVisible) {
@@ -50275,7 +50728,7 @@ function updateTreeViewVisibilityStates() {
 	if (typeof loadedImages !== "undefined" && loadedImages) {
 		loadedImages.forEach(function (image, imageId) {
 			var imageNodeId = "image⣿" + imageId;
-			var imageElement = treeView.container.querySelector("[data-node-id=\"" + imageNodeId + "\"]");
+			var imageElement = getNode(imageNodeId);
 			if (imageElement) {
 				var imageIsVisible = image.visible !== false && imagesGroupVisible;
 				if (imageIsVisible) {
@@ -51327,15 +51780,25 @@ window.showLayerCollisionDialog = showLayerCollisionDialog;
 // Step 17) Migration Logic - Migrate existing entities without layerId
 // ================================================================================
 
+// Step 17) Migration: Assign layerId to legacy entities. Only create Default Layer when needed.
+// With layer prompt on first draw and getOrCreateLayerForImport for imports, most data has layerId.
+// Default Layer is created only when we actually have entities/surfaces to migrate (avoids empty "Default Layer (0 entities)").
 function migrateEntitiesWithoutLayerId() {
 	console.log("🔄 [Migration] Checking for entities without layerId...");
 
 	var migratedDrawings = 0;
 	var migratedSurfaces = 0;
-
-	// Step 17a) Ensure default drawing layer exists
 	var defaultDrawingLayerId = DEFAULT_DRAWING_LAYER_ID;
-	if (!allDrawingLayers.has(defaultDrawingLayerId)) {
+	var defaultSurfaceLayerId = DEFAULT_SURFACE_LAYER_ID;
+
+	// Step 17a) Check if any KAD entities need migration before creating Default Layer
+	var needsDrawingDefault = false;
+	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
+		for (var e of allKADDrawingsMap.values()) {
+			if (!e.layerId) { needsDrawingDefault = true; break; }
+		}
+	}
+	if (needsDrawingDefault && !allDrawingLayers.has(defaultDrawingLayerId)) {
 		allDrawingLayers.set(defaultDrawingLayerId, {
 			layerId: defaultDrawingLayerId,
 			layerName: "Default Layer",
@@ -51344,17 +51807,19 @@ function migrateEntitiesWithoutLayerId() {
 			importDate: new Date().toISOString(),
 			entities: new Set()
 		});
-		console.log("✅ [Migration] Created default drawing layer");
+		console.log("✅ [Migration] Created default drawing layer for legacy entities");
 	}
 	var defaultDrawingLayer = allDrawingLayers.get(defaultDrawingLayerId);
 
-	// Step 17b) Migrate KAD entities without layerId
+	// Step 17b) Migrate KAD entities without layerId, and ensure all entities are in their layer's entities set
 	if (allKADDrawingsMap && allKADDrawingsMap.size > 0) {
 		allKADDrawingsMap.forEach(function (entity, entityName) {
 			if (!entity.layerId) {
-				entity.layerId = defaultDrawingLayerId;
-				defaultDrawingLayer.entities.add(entityName);
-				migratedDrawings++;
+				if (defaultDrawingLayer) {
+					entity.layerId = defaultDrawingLayerId;
+					defaultDrawingLayer.entities.add(entityName);
+					migratedDrawings++;
+				}
 			} else {
 				// Step 17c) Ensure entity is in its layer's entities set
 				var layer = allDrawingLayers.get(entity.layerId);
@@ -51365,9 +51830,14 @@ function migrateEntitiesWithoutLayerId() {
 		});
 	}
 
-	// Step 17d) Ensure default surface layer exists
-	var defaultSurfaceLayerId = DEFAULT_SURFACE_LAYER_ID;
-	if (!allSurfaceLayers.has(defaultSurfaceLayerId)) {
+	// Step 17d) Check if any surfaces need migration before creating Default Layer
+	var needsSurfaceDefault = false;
+	if (loadedSurfaces && loadedSurfaces.size > 0) {
+		for (var s of loadedSurfaces.values()) {
+			if (!s.layerId) { needsSurfaceDefault = true; break; }
+		}
+	}
+	if (needsSurfaceDefault && !allSurfaceLayers.has(defaultSurfaceLayerId)) {
 		allSurfaceLayers.set(defaultSurfaceLayerId, {
 			layerId: defaultSurfaceLayerId,
 			layerName: "Default Layer",
@@ -51376,17 +51846,19 @@ function migrateEntitiesWithoutLayerId() {
 			importDate: new Date().toISOString(),
 			entities: new Set()
 		});
-		console.log("✅ [Migration] Created default surface layer");
+		console.log("✅ [Migration] Created default surface layer for legacy surfaces");
 	}
 	var defaultSurfaceLayer = allSurfaceLayers.get(defaultSurfaceLayerId);
 
-	// Step 17e) Migrate surfaces without layerId
+	// Step 17e) Migrate surfaces without layerId, and ensure all surfaces are in their layer's entities set
 	if (loadedSurfaces && loadedSurfaces.size > 0) {
 		loadedSurfaces.forEach(function (surface, surfaceId) {
 			if (!surface.layerId) {
-				surface.layerId = defaultSurfaceLayerId;
-				defaultSurfaceLayer.entities.add(surfaceId);
-				migratedSurfaces++;
+				if (defaultSurfaceLayer) {
+					surface.layerId = defaultSurfaceLayerId;
+					defaultSurfaceLayer.entities.add(surfaceId);
+					migratedSurfaces++;
+				}
 			} else {
 				// Step 17f) Ensure surface is in its layer's entities set
 				var layer = allSurfaceLayers.get(surface.layerId);

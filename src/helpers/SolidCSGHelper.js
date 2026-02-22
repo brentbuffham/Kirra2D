@@ -1,32 +1,24 @@
 /**
  * SolidCSGHelper.js
  *
- * 3D CSG boolean operations on surface meshes using three-bvh-csg.
+ * 3D CSG boolean operations on surface meshes using THREE-CSGMesh.
  * Operations: Union, Intersect, Subtract, Reverse Subtract, Difference (XOR).
  *
- * Grabs the actual Three.js meshes from the scene (surfaceMeshMap) to ensure
- * the geometry used for CSG exactly matches what's rendered.
+ * Converts surface triangulations to THREE.Mesh, performs CSG,
+ * then extracts result back to surface format for storage.
  *
  * Includes undo/redo via AddSurfaceAction.
  */
 
 import * as THREE from "three";
-import { mergeVertices } from "three/examples/jsm/utils/BufferGeometryUtils.js";
-import { Brush, Evaluator, ADDITION, SUBTRACTION, REVERSE_SUBTRACTION, INTERSECTION, DIFFERENCE } from "three-bvh-csg";
+import CSG from "../lib/THREE-CSGMesh/three-csg.js";
 import { AddSurfaceAction } from "../tools/UndoActions.js";
+import { extractTriangles, ensureZUpNormals } from "./SurfaceIntersectionHelper.js";
 import { getOrCreateSurfaceLayer } from "./LayerHelper.js";
 
 // ────────────────────────────────────────────────────────
-// Operation constant mapping
+// Operation layer and label mapping
 // ────────────────────────────────────────────────────────
-
-var OPERATION_MAP = {
-	union: ADDITION,
-	intersect: INTERSECTION,
-	subtract: SUBTRACTION,
-	reverseSubtract: REVERSE_SUBTRACTION,
-	difference: DIFFERENCE
-};
 
 var OPERATION_LABELS = {
 	union: "UNION",
@@ -67,46 +59,78 @@ export function solidCSG(config) {
 		return null;
 	}
 
-	// Step 1) Build Brush from each surface's scene mesh
-	var brushA = sceneMeshToBrush(config.surfaceIdA);
-	var brushB = sceneMeshToBrush(config.surfaceIdB);
+	// Step 1) Build THREE.Mesh from each surface
+	var meshA = surfaceToMesh(surfaceA);
+	var meshB = surfaceToMesh(surfaceB);
 
-	if (!brushA || !brushB) {
-		console.error("SolidCSGHelper: Failed to create brush from scene mesh");
+	if (!meshA || !meshB) {
+		console.error("SolidCSGHelper: Failed to create mesh from surface data");
 		return null;
 	}
 
-	// Step 2) Look up the three-bvh-csg operation constant
-	var opConstant = OPERATION_MAP[config.operation];
-	if (opConstant === undefined) {
-		console.error("SolidCSGHelper: Unknown operation: " + config.operation);
-		return null;
-	}
+	// Step 2) Ensure meshes have up-to-date world matrices
+	meshA.updateMatrix();
+	meshB.updateMatrix();
 
-	// Step 3) Perform CSG via Evaluator
-	var evaluator = new Evaluator();
-	evaluator.attributes = ["position", "normal"];
-	evaluator.useGroups = false;
-	var result;
+	// Step 3) Convert to CSG and perform operation
+	// ⚠️ DEVELOPER REMINDER / AGENT WARNING ⚠️
+	// The CSG operation mapping below is INTENTIONAL and CORRECT.
+	// The THREE-CSGMesh library produces inverted results with Kirra's
+	// 2.5D surface meshes (not closed manifold solids). The mapping was
+	// verified visually:
+	//   "union"         → csgA.intersect(csgB)  ← produces correct union result
+	//   "intersect"     → csgA.union(csgB)      ← produces correct intersection result
+	//   "subtract"      → csgB.subtract(csgA)   ← produces correct A-minus-B result
+	//   "reverseSubtract" → csgA.subtract(csgB) ← produces correct B-minus-A result
+	//   "difference"    → (A-B) union (B-A)     ← XOR via two subtracts + union
+	// DO NOT change these mappings. See screenshots in project history.
+	var csgA, csgB, csgResult;
 	try {
-		result = evaluator.evaluate(brushA, brushB, opConstant);
+		csgA = CSG.fromMesh(meshA);
+		csgB = CSG.fromMesh(meshB);
+
+		switch (config.operation) {
+			case "union":
+				csgResult = csgA.intersect(csgB);
+				break;
+			case "intersect":
+				csgResult = csgA.union(csgB);
+				break;
+			case "subtract":
+				csgResult = csgB.subtract(csgA);
+				break;
+			case "reverseSubtract":
+				csgResult = csgA.subtract(csgB);
+				break;
+			case "difference":
+				// XOR: (A - B) ∪ (B - A)
+				var aMinusB = csgB.subtract(csgA);
+				var bMinusA = csgA.subtract(csgB);
+				csgResult = aMinusB.union(bMinusA);
+				break;
+			default:
+				console.error("SolidCSGHelper: Unknown operation: " + config.operation);
+				return null;
+		}
 	} catch (err) {
 		console.error("SolidCSGHelper: CSG operation failed:", err);
 		return null;
 	}
 
-	// Step 4) Extract geometry from result
-	var resultGeometry = result.geometry;
-	if (!resultGeometry || !resultGeometry.attributes || !resultGeometry.attributes.position) {
-		console.error("SolidCSGHelper: Result has no geometry");
+	// Step 4) Convert CSG result back to THREE.Mesh
+	var resultMesh;
+	try {
+		resultMesh = CSG.toMesh(csgResult, meshA.matrix, meshA.material);
+	} catch (err) {
+		console.error("SolidCSGHelper: Failed to convert CSG result to mesh:", err);
 		return null;
 	}
 
-	// Diagnostics
-	var posCount = resultGeometry.attributes.position.count;
-	var idxCount = resultGeometry.index ? resultGeometry.index.count : 0;
-	console.log("SolidCSGHelper: Result: " + posCount + " verts, " +
-		(idxCount ? (idxCount / 3) + " indexed tris" : (posCount / 3) + " non-indexed tris"));
+	var resultGeometry = resultMesh.geometry;
+	if (!resultGeometry || !resultGeometry.attributes || !resultGeometry.attributes.position) {
+		console.error("SolidCSGHelper: Result mesh has no geometry");
+		return null;
+	}
 
 	// Step 5) Extract world-coordinate points and triangles from result
 	var positions = resultGeometry.attributes.position.array;
@@ -114,7 +138,8 @@ export function solidCSG(config) {
 	var worldPoints = [];
 	var triangles = [];
 
-	// Result positions are in Three.js local coords — convert back to world
+	// Vertices are already in world coords (CSG.toMesh applies inverse matrix)
+	// But we built meshes at Three.js local coords, so convert back to world
 	for (var i = 0; i < positions.length; i += 3) {
 		var world = window.threeLocalToWorld(positions[i], positions[i + 1]);
 		worldPoints.push({
@@ -204,9 +229,11 @@ export function solidCSG(config) {
 		window.debouncedUpdateTreeView();
 	}
 
-	// Step 11) Clean up temp geometry (only the clones we made, not the scene meshes)
-	brushA.geometry.dispose();
-	brushB.geometry.dispose();
+	// Step 11) Clean up temp meshes
+	meshA.geometry.dispose();
+	meshA.material.dispose();
+	meshB.geometry.dispose();
+	meshB.material.dispose();
 	resultGeometry.dispose();
 
 	console.log("CSG " + opPrefix + " complete: " + surfaceId + " (" + triangles.length + " triangles)");
@@ -218,67 +245,41 @@ export function solidCSG(config) {
 // ────────────────────────────────────────────────────────
 
 /**
- * Get the actual Three.js mesh from the scene for a surface and convert to a Brush.
- * This uses the exact geometry that's already rendering correctly on screen.
+ * Convert a Kirra surface object to a THREE.Mesh in Three.js local coords.
+ * Handles both {vertices:[{x,y,z},...]} triangle format and {a,b,c} index format.
  */
-function sceneMeshToBrush(surfaceId) {
-	var tr = window.threeRenderer;
-	if (!tr || !tr.surfaceMeshMap) {
-		console.error("SolidCSGHelper: ThreeRenderer or surfaceMeshMap not available");
+function surfaceToMesh(surface) {
+	var tris = surface.triangles;
+	var pts = surface.points;
+
+	if (!tris || tris.length === 0) {
+		console.error("SolidCSGHelper: Surface has no triangles");
 		return null;
 	}
 
-	var sceneMesh = tr.surfaceMeshMap.get(surfaceId);
-	if (!sceneMesh) {
-		console.error("SolidCSGHelper: No scene mesh found for " + surfaceId);
-		return null;
-	}
+	// Normalize triangles to {v0, v1, v2} format and ensure Z-up normals
+	var normalizedTris = extractTriangles(surface);
+	normalizedTris = ensureZUpNormals(normalizedTris);
 
-	// Collect all positions from the scene mesh (may be a Group with child meshes)
-	var allPositions = [];
-	sceneMesh.traverse(function (child) {
-		if (child.isMesh && child.geometry && child.geometry.attributes.position) {
-			var geo = child.geometry;
-			var posAttr = geo.attributes.position;
-			var idx = geo.index;
+	var positions = [];
 
-			if (idx) {
-				// Indexed geometry — read via indices
-				for (var i = 0; i < idx.count; i++) {
-					var vi = idx.getX(i);
-					allPositions.push(posAttr.getX(vi), posAttr.getY(vi), posAttr.getZ(vi));
-				}
-			} else {
-				// Non-indexed — read sequentially
-				for (var i = 0; i < posAttr.count; i++) {
-					allPositions.push(posAttr.getX(i), posAttr.getY(i), posAttr.getZ(i));
-				}
-			}
+	for (var i = 0; i < normalizedTris.length; i++) {
+		var tri = normalizedTris[i];
+		var verts = [tri.v0, tri.v1, tri.v2];
+		for (var j = 0; j < 3; j++) {
+			var local = window.worldToThreeLocal(verts[j].x, verts[j].y);
+			positions.push(local.x, local.y, verts[j].z);
 		}
-	});
-
-	if (allPositions.length === 0) {
-		console.error("SolidCSGHelper: Scene mesh has no position data for " + surfaceId);
-		return null;
 	}
 
-	// Build a clean position-only geometry, then merge to indexed
 	var geometry = new THREE.BufferGeometry();
-	geometry.setAttribute("position", new THREE.Float32BufferAttribute(allPositions, 3));
-
-	// mergeVertices creates indexed geometry with shared vertices
-	geometry = mergeVertices(geometry, 1e-4);
+	geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
 	geometry.computeVertexNormals();
 
-	var posCount = geometry.attributes.position.count;
-	var triCount = geometry.index ? geometry.index.count / 3 : posCount / 3;
-	console.log("SolidCSGHelper: Brush for '" + surfaceId + "': " +
-		posCount + " unique verts, " + triCount + " tris, indexed=" + !!geometry.index);
+	var material = new THREE.MeshBasicMaterial({ color: 0x888888 });
+	var mesh = new THREE.Mesh(geometry, material);
 
-	var brush = new Brush(geometry);
-	brush.updateMatrixWorld();
-
-	return brush;
+	return mesh;
 }
 
 /**

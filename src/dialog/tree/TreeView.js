@@ -12,7 +12,7 @@ const TREE_CHUNK_THRESHOLD = 20;  // Only chunk if more than this many points
 const TREE_NODE_SEPARATOR = "\u28FF";
 
 import { formatEntityStatistics } from '../../helpers/GeometryStatistics.js';
-import { flashHighlight } from '../../helpers/SurfaceHighlightHelper.js';
+import { flashHighlight, clearAllHighlights } from '../../helpers/SurfaceHighlightHelper.js';
 
 /**
  * Compute signed volume of a closed triangulated mesh using the divergence theorem.
@@ -189,6 +189,7 @@ export class TreeView {
 		this.container.querySelectorAll(".tree-item").forEach((item) => {
 			item.classList.remove("selected", "multi-selected");
 		});
+		clearAllHighlights();
 	}
 
 	startDrag(e) {
@@ -359,10 +360,16 @@ export class TreeView {
 			}
 			this.lastClickedNode = nodeId;
 		} else {
-			this.clearSelection();
-			this.selectedNodes.add(nodeId);
-			treeItem.classList.add("selected");
-			this.lastClickedNode = nodeId;
+			// Step 1) If clicking the already-selected single node, deselect it
+			if (this.selectedNodes.size === 1 && this.selectedNodes.has(nodeId)) {
+				this.clearSelection();
+				this.lastClickedNode = null;
+			} else {
+				this.clearSelection();
+				this.selectedNodes.add(nodeId);
+				treeItem.classList.add("selected");
+				this.lastClickedNode = nodeId;
+			}
 		}
 
 		this.onSelectionChange();

@@ -40,6 +40,8 @@ export function computeSurfaceIntersections(config) {
             console.warn("No triangles in surface: " + surfId);
             continue;
         }
+        // Step 1a) Align normals Z-up for consistent Moller tri-tri intersection
+        tris = ensureZUpNormals(tris);
         var bbox = computeBBox(tris);
         surfaceData.push({ id: surfId, triangles: tris, bbox: bbox });
     }
